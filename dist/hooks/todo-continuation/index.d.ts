@@ -86,6 +86,10 @@ export interface StopContext {
     tool_input?: unknown;
     /** Tool input from hook payload (camelCase) */
     toolInput?: unknown;
+    /** Transcript path (snake_case) */
+    transcript_path?: string;
+    /** Transcript path (camelCase) */
+    transcriptPath?: string;
 }
 export interface TodoContinuationHook {
     checkIncomplete: (sessionId?: string) => Promise<IncompleteTodosResult>;

@@ -17848,7 +17848,7 @@ async function paneInCopyMode(paneId, execFileAsync) {
   }
 }
 function shouldAttemptAdaptiveRetry(args) {
-  if (process.env.OMG_TEAM_AUTO_INTERRUPT_RETRY === "0") return false;
+  if (process.env.OMC_TEAM_AUTO_INTERRUPT_RETRY === "0") return false;
   if (args.retriesAttempted >= 1) return false;
   if (args.paneInCopyMode) return false;
   if (!args.paneBusy) return false;
@@ -17859,9 +17859,9 @@ function shouldAttemptAdaptiveRetry(args) {
   return true;
 }
 async function sendToWorker(_sessionName, paneId, message) {
-  if (message.length > 200) {
-    console.warn(`[tmux-session] sendToWorker: message truncated to 200 chars`);
-    message = message.slice(0, 200);
+  if (message.length > 500) {
+    console.warn(`[tmux-session] sendToWorker: message rejected (${message.length} chars > 500 limit). Use file-backed inbox for long payloads.`);
+    return false;
   }
   try {
     const { execFile: execFile3 } = await import("child_process");
@@ -17987,7 +17987,7 @@ async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, options
     return;
   }
   const sessionTarget = sessionName.split(":")[0] ?? sessionName;
-  if (process.env.OMG_TEAM_ALLOW_KILL_CURRENT_SESSION !== "1" && process.env.TMUX) {
+  if (process.env.OMC_TEAM_ALLOW_KILL_CURRENT_SESSION !== "1" && process.env.TMUX) {
     try {
       const current = await tmuxAsync(["display-message", "-p", "#S"]);
       const currentSessionName = current.stdout.trim();
@@ -18184,13 +18184,13 @@ function clearScopedTeamState(job) {
 
 // src/mcp/team-server.ts
 var omcTeamJobs = /* @__PURE__ */ new Map();
-var OMG_JOBS_DIR = process.env.OMG_JOBS_DIR || (0, import_path3.join)((0, import_os.homedir)(), ".omg", "team-jobs");
+var OMC_JOBS_DIR = process.env.OMC_JOBS_DIR || (0, import_path3.join)((0, import_os.homedir)(), ".omg", "team-jobs");
 var DEPRECATION_CODE = "deprecated_cli_only";
 var TEAM_CLI_REPLACEMENT_HINTS = {
-  omc_run_team_start: "omg team start",
-  omc_run_team_status: "omg team status <job_id>",
-  omc_run_team_wait: "omg team wait <job_id>",
-  omc_run_team_cleanup: "omg team cleanup <job_id>"
+  omc_run_team_start: "omc team start",
+  omc_run_team_status: "omc team status <job_id>",
+  omc_run_team_wait: "omc team wait <job_id>",
+  omc_run_team_cleanup: "omc team cleanup <job_id>"
 };
 function isDeprecatedTeamToolName(name) {
   return Object.prototype.hasOwnProperty.call(TEAM_CLI_REPLACEMENT_HINTS, name);
@@ -18215,7 +18215,7 @@ function buildCliReplacement(toolName, args) {
     const tasks = Array.isArray(parsed.tasks) ? parsed.tasks.map(
       (task) => typeof task === "object" && task !== null && typeof task.description === "string" ? task.description.trim() : ""
     ).filter(Boolean) : [];
-    const flags = ["omg", "team", "start"];
+    const flags = ["omc", "team", "start"];
     if (teamName) flags.push("--name", quoteCliValue(teamName));
     if (cwd) flags.push("--cwd", quoteCliValue(cwd));
     if (newWindow) flags.push("--new-window");
@@ -18240,15 +18240,15 @@ function buildCliReplacement(toolName, args) {
   }
   const jobId = typeof parsed.job_id === "string" ? parsed.job_id.trim() : "<job_id>";
   if (toolName === "omc_run_team_status") {
-    return `omg team status --job-id ${quoteCliValue(jobId)}`;
+    return `omc team status --job-id ${quoteCliValue(jobId)}`;
   }
   if (toolName === "omc_run_team_wait") {
     const timeoutMs = typeof parsed.timeout_ms === "number" && Number.isFinite(parsed.timeout_ms) ? ` --timeout-ms ${Math.floor(parsed.timeout_ms)}` : "";
-    return `omg team wait --job-id ${quoteCliValue(jobId)}${timeoutMs}`;
+    return `omc team wait --job-id ${quoteCliValue(jobId)}${timeoutMs}`;
   }
   if (toolName === "omc_run_team_cleanup") {
     const graceMs = typeof parsed.grace_ms === "number" && Number.isFinite(parsed.grace_ms) ? ` --grace-ms ${Math.floor(parsed.grace_ms)}` : "";
-    return `omg team cleanup --job-id ${quoteCliValue(jobId)}${graceMs}`;
+    return `omc team cleanup --job-id ${quoteCliValue(jobId)}${graceMs}`;
   }
   return TEAM_CLI_REPLACEMENT_HINTS[toolName];
 }
@@ -18260,7 +18260,7 @@ function createDeprecatedCliOnlyEnvelopeWithArgs(toolName, args) {
       text: JSON.stringify({
         code: DEPRECATION_CODE,
         tool: toolName,
-        message: "Legacy team MCP runtime tools are deprecated. Use the omg team CLI instead.",
+        message: "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead.",
         cli_replacement: cliReplacement
       })
     }],
@@ -18269,20 +18269,20 @@ function createDeprecatedCliOnlyEnvelopeWithArgs(toolName, args) {
 }
 function persistJob(jobId, job) {
   try {
-    if (!(0, import_fs2.existsSync)(OMG_JOBS_DIR)) (0, import_fs2.mkdirSync)(OMG_JOBS_DIR, { recursive: true });
-    (0, import_fs2.writeFileSync)((0, import_path3.join)(OMG_JOBS_DIR, `${jobId}.json`), JSON.stringify(job), "utf-8");
+    if (!(0, import_fs2.existsSync)(OMC_JOBS_DIR)) (0, import_fs2.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
+    (0, import_fs2.writeFileSync)((0, import_path3.join)(OMC_JOBS_DIR, `${jobId}.json`), JSON.stringify(job), "utf-8");
   } catch {
   }
 }
 function loadJobFromDisk(jobId) {
   try {
-    return JSON.parse((0, import_fs2.readFileSync)((0, import_path3.join)(OMG_JOBS_DIR, `${jobId}.json`), "utf-8"));
+    return JSON.parse((0, import_fs2.readFileSync)((0, import_path3.join)(OMC_JOBS_DIR, `${jobId}.json`), "utf-8"));
   } catch {
     return void 0;
   }
 }
 async function loadPaneIds(jobId) {
-  const p = (0, import_path3.join)(OMG_JOBS_DIR, `${jobId}-panes.json`);
+  const p = (0, import_path3.join)(OMC_JOBS_DIR, `${jobId}-panes.json`);
   try {
     return JSON.parse(await (0, import_promises2.readFile)(p, "utf-8"));
   } catch {
@@ -18349,7 +18349,7 @@ async function handleStart(args) {
   const job = { status: "running", startedAt: Date.now(), teamName: input.teamName, cwd: input.cwd };
   omcTeamJobs.set(jobId, job);
   const child = (0, import_child_process3.spawn)("node", [runtimeCliPath], {
-    env: { ...process.env, OMG_JOB_ID: jobId, OMG_JOBS_DIR },
+    env: { ...process.env, OMC_JOB_ID: jobId, OMC_JOBS_DIR },
     stdio: ["pipe", "pipe", "pipe"]
   });
   job.pid = child.pid;
@@ -18398,7 +18398,7 @@ async function handleStatus(args) {
   if (!job) {
     return { content: [{ type: "text", text: JSON.stringify({ error: `No job found: ${job_id}` }) }] };
   }
-  const artifactConvergence = convergeJobWithResultArtifact(job, job_id, OMG_JOBS_DIR);
+  const artifactConvergence = convergeJobWithResultArtifact(job, job_id, OMC_JOBS_DIR);
   if (artifactConvergence.changed) {
     job = saveJobState(job_id, artifactConvergence.job);
     return makeJobResponse(job_id, job);
@@ -18430,7 +18430,7 @@ async function handleWait(args) {
     if (!job) {
       return { content: [{ type: "text", text: JSON.stringify({ error: `No job found: ${job_id}` }) }] };
     }
-    const artifactConvergence = convergeJobWithResultArtifact(job, job_id, OMG_JOBS_DIR);
+    const artifactConvergence = convergeJobWithResultArtifact(job, job_id, OMC_JOBS_DIR);
     if (artifactConvergence.changed) {
       job = saveJobState(job_id, artifactConvergence.job);
       const out = makeJobResponse(job_id, job);
@@ -18523,7 +18523,7 @@ async function handleCleanup(args) {
 var TOOLS = [
   {
     name: "omc_run_team_start",
-    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omg team start`.",
+    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team start`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -18549,7 +18549,7 @@ var TOOLS = [
   },
   {
     name: "omc_run_team_status",
-    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omg team status <job_id>`.",
+    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team status <job_id>`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -18560,7 +18560,7 @@ var TOOLS = [
   },
   {
     name: "omc_run_team_wait",
-    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omg team wait <job_id>`.",
+    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team wait <job_id>`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -18575,7 +18575,7 @@ var TOOLS = [
   },
   {
     name: "omc_run_team_cleanup",
-    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omg team cleanup <job_id>`.",
+    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team cleanup <job_id>`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -18611,7 +18611,7 @@ async function main() {
   await server.connect(transport);
   console.error("OMP Team MCP Server running on stdio");
 }
-if (process.env.OMG_TEAM_SERVER_DISABLE_AUTOSTART !== "1" && process.env.NODE_ENV !== "test") {
+if (process.env.OMC_TEAM_SERVER_DISABLE_AUTOSTART !== "1" && process.env.NODE_ENV !== "test") {
   main().catch((error2) => {
     console.error("Failed to start server:", error2);
     process.exit(1);

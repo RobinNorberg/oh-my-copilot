@@ -17926,7 +17926,7 @@ function getAllServers() {
 
 // src/tools/lsp/client.ts
 var DEFAULT_LSP_REQUEST_TIMEOUT_MS = (() => {
-  const env = process.env.OMG_LSP_TIMEOUT_MS;
+  const env = process.env.OMC_LSP_TIMEOUT_MS;
   if (env) {
     const parsed = parseInt(env, 10);
     if (!isNaN(parsed) && parsed > 0) return parsed;
@@ -20597,8 +20597,8 @@ var BRIDGE_SPAWN_TIMEOUT_MS = 3e4;
 var DEFAULT_GRACE_PERIOD_MS = 5e3;
 var SIGTERM_GRACE_MS = 2500;
 function getBridgeScriptPath() {
-  if (process.env.OMG_BRIDGE_SCRIPT) {
-    return process.env.OMG_BRIDGE_SCRIPT;
+  if (process.env.OMC_BRIDGE_SCRIPT) {
+    return process.env.OMC_BRIDGE_SCRIPT;
   }
   let moduleDir;
   try {
@@ -21433,7 +21433,7 @@ function getProjectIdentifier(worktreeRoot) {
   return `${dirName}-${hash}`;
 }
 function getOmcRoot(worktreeRoot) {
-  const customDir = process.env.OMG_STATE_DIR;
+  const customDir = process.env.OMC_STATE_DIR;
   if (customDir) {
     const root2 = worktreeRoot || getWorktreeRoot() || process.cwd();
     const projectId = getProjectIdentifier(root2);
@@ -23349,8 +23349,8 @@ var import_path11 = require("path");
 // src/hooks/rules-injector/constants.ts
 var import_path10 = require("path");
 var import_os2 = require("os");
-var OMG_STORAGE_DIR = (0, import_path10.join)((0, import_os2.homedir)(), ".omg");
-var RULES_INJECTOR_STORAGE = (0, import_path10.join)(OMG_STORAGE_DIR, "rules-injector");
+var OMC_STORAGE_DIR = (0, import_path10.join)((0, import_os2.homedir)(), ".omg");
+var RULES_INJECTOR_STORAGE = (0, import_path10.join)(OMC_STORAGE_DIR, "rules-injector");
 
 // src/hooks/project-memory/storage.ts
 var import_promises = __toESM(require("fs/promises"), 1);

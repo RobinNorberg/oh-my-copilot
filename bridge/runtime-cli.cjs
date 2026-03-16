@@ -134,7 +134,7 @@ function getLaunchWords(config) {
 function buildWorkerStartCommand(config) {
   const shell = getDefaultShell();
   const launchWords = getLaunchWords(config);
-  const shouldSourceRc = process.env.OMG_TEAM_NO_RC !== "1";
+  const shouldSourceRc = process.env.OMC_TEAM_NO_RC !== "1";
   if (process.platform === "win32" && !isUnixLikeOnWindows()) {
     const envPrefix = Object.entries(config.envVars).map(([k, v]) => {
       assertSafeEnvKey(k);
@@ -467,7 +467,7 @@ function paneLooksReady(captured) {
   return hasCodexHint;
 }
 async function waitForPaneReady(paneId, opts = {}) {
-  const envTimeout = Number.parseInt(process.env.OMG_SHELL_READY_TIMEOUT_MS ?? "", 10);
+  const envTimeout = Number.parseInt(process.env.OMC_SHELL_READY_TIMEOUT_MS ?? "", 10);
   const timeoutMs = Number.isFinite(opts.timeoutMs) && (opts.timeoutMs ?? 0) > 0 ? Number(opts.timeoutMs) : Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : 1e4;
   const pollIntervalMs = Number.isFinite(opts.pollIntervalMs) && (opts.pollIntervalMs ?? 0) > 0 ? Number(opts.pollIntervalMs) : 250;
   const deadline = Date.now() + timeoutMs;
@@ -479,7 +479,7 @@ async function waitForPaneReady(paneId, opts = {}) {
     await sleep(pollIntervalMs);
   }
   console.warn(
-    `[tmux-session] waitForPaneReady: pane ${paneId} timed out after ${timeoutMs}ms (set OMG_SHELL_READY_TIMEOUT_MS to tune)`
+    `[tmux-session] waitForPaneReady: pane ${paneId} timed out after ${timeoutMs}ms (set OMC_SHELL_READY_TIMEOUT_MS to tune)`
   );
   return false;
 }
@@ -495,7 +495,7 @@ async function paneInCopyMode(paneId, execFileAsync) {
   }
 }
 function shouldAttemptAdaptiveRetry(args) {
-  if (process.env.OMG_TEAM_AUTO_INTERRUPT_RETRY === "0") return false;
+  if (process.env.OMC_TEAM_AUTO_INTERRUPT_RETRY === "0") return false;
   if (args.retriesAttempted >= 1) return false;
   if (args.paneInCopyMode) return false;
   if (!args.paneBusy) return false;
@@ -506,9 +506,9 @@ function shouldAttemptAdaptiveRetry(args) {
   return true;
 }
 async function sendToWorker(_sessionName, paneId, message) {
-  if (message.length > 200) {
-    console.warn(`[tmux-session] sendToWorker: message truncated to 200 chars`);
-    message = message.slice(0, 200);
+  if (message.length > 500) {
+    console.warn(`[tmux-session] sendToWorker: message rejected (${message.length} chars > 500 limit). Use file-backed inbox for long payloads.`);
+    return false;
   }
   try {
     const { execFile: execFile2 } = await import("child_process");
@@ -591,7 +591,7 @@ async function sendToWorker(_sessionName, paneId, message) {
   }
 }
 async function injectToLeaderPane(sessionName2, leaderPaneId, message) {
-  const prefixed = `[OMG_TMUX_INJECT] ${message}`.slice(0, 200);
+  const prefixed = `[OMC_TMUX_INJECT] ${message}`.slice(0, 500);
   try {
     const { execFile: execFile2 } = await import("child_process");
     const { promisify: promisify2 } = await import("util");
@@ -669,7 +669,7 @@ async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, option
     return;
   }
   const sessionTarget = sessionName2.split(":")[0] ?? sessionName2;
-  if (process.env.OMG_TEAM_ALLOW_KILL_CURRENT_SESSION !== "1" && process.env.TMUX) {
+  if (process.env.OMC_TEAM_ALLOW_KILL_CURRENT_SESSION !== "1" && process.env.TMUX) {
     try {
       const current = await tmuxAsync(["display-message", "-p", "#S"]);
       const currentSessionName = current.stdout.trim();
@@ -740,7 +740,7 @@ function getTrustedPrefixes() {
     trusted.push(`${home}/.nvm/`);
     trusted.push(`${home}/.cargo/bin`);
   }
-  const custom = (process.env.OMG_TRUSTED_CLI_DIRS ?? "").split(":").map((part) => part.trim()).filter(Boolean).filter((part) => (0, import_path.isAbsolute)(part));
+  const custom = (process.env.OMC_TRUSTED_CLI_DIRS ?? "").split(":").map((part) => part.trim()).filter(Boolean).filter((part) => (0, import_path.isAbsolute)(part));
   trusted.push(...custom);
   return trusted;
 }
@@ -786,6 +786,19 @@ function resolveCliBinaryPath(binary) {
 var CONTRACTS = {
   claude: {
     agentType: "claude",
+    binary: "claude",
+    installInstructions: "Install Claude Code: https://docs.anthropic.com/en/docs/claude-code",
+    buildLaunchArgs(model, extraFlags = []) {
+      const args = ["--dangerously-skip-permissions"];
+      if (model) args.push("--model", model);
+      return [...args, ...extraFlags];
+    },
+    parseOutput(rawOutput) {
+      return rawOutput.trim();
+    }
+  },
+  copilot: {
+    agentType: "copilot",
     binary: "copilot",
     installInstructions: "Install Copilot CLI: https://copilot.ai/download",
     buildLaunchArgs(model, extraFlags = []) {
@@ -898,20 +911,20 @@ var WORKER_MODEL_ENV_ALLOWLIST = [
   "ANTHROPIC_DEFAULT_OPUS_MODEL",
   "ANTHROPIC_DEFAULT_SONNET_MODEL",
   "ANTHROPIC_DEFAULT_HAIKU_MODEL",
-  "OMG_MODEL_HIGH",
-  "OMG_MODEL_MEDIUM",
-  "OMG_MODEL_LOW",
-  "OMG_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL",
-  "OMG_CODEX_DEFAULT_MODEL",
-  "OMG_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL",
-  "OMG_GEMINI_DEFAULT_MODEL"
+  "OMC_MODEL_HIGH",
+  "OMC_MODEL_MEDIUM",
+  "OMC_MODEL_LOW",
+  "OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL",
+  "OMC_CODEX_DEFAULT_MODEL",
+  "OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL",
+  "OMC_GEMINI_DEFAULT_MODEL"
 ];
 function getWorkerEnv(teamName, workerName2, agentType, env = process.env) {
   validateTeamName(teamName);
   const workerEnv = {
-    OMG_TEAM_WORKER: `${teamName}/${workerName2}`,
-    OMG_TEAM_NAME: teamName,
-    OMG_WORKER_AGENT_TYPE: agentType
+    OMC_TEAM_WORKER: `${teamName}/${workerName2}`,
+    OMC_TEAM_NAME: teamName,
+    OMC_WORKER_AGENT_TYPE: agentType
   };
   for (const key of WORKER_MODEL_ENV_ALLOWLIST) {
     const value = env[key];
@@ -1022,16 +1035,16 @@ function agentTypeGuidance(agentType) {
     case "codex":
       return [
         "### Agent-Type Guidance (codex)",
-        "- Prefer short, explicit `omg team api ... --json` commands and parse outputs before next step.",
+        "- Prefer short, explicit `omc team api ... --json` commands and parse outputs before next step.",
         "- If a command fails, report the exact stderr to leader-fixed before retrying.",
-        "- You MUST run `omg team api claim-task` before starting work and `omg team api transition-task-status` when done."
+        "- You MUST run `omc team api claim-task` before starting work and `omc team api transition-task-status` when done."
       ].join("\n");
     case "gemini":
       return [
         "### Agent-Type Guidance (gemini)",
         "- Execute task work in small, verifiable increments and report each milestone to leader-fixed.",
         "- Keep commit-sized changes scoped to assigned files only; no broad refactors.",
-        "- CRITICAL: You MUST run `omg team api claim-task` before starting work and `omg team api transition-task-status` when done. Do not exit without transitioning the task status."
+        "- CRITICAL: You MUST run `omc team api claim-task` before starting work and `omc team api transition-task-status` when done. Do not exit without transitioning the task status."
       ].join("\n");
     case "claude":
     default:
@@ -1071,21 +1084,21 @@ mkdir -p $(dirname ${sentinelPath}) && touch ${sentinelPath}
 You MUST complete ALL of these steps. Do NOT skip any step. Do NOT exit without step 4.
 
 1. **Claim** your task (run this command first):
-   \`omg team api claim-task --input "{"team_name":"${teamName}","task_id":"<id>","worker":"${workerName2}"}" --json\`
+   \`omc team api claim-task --input "{"team_name":"${teamName}","task_id":"<id>","worker":"${workerName2}"}" --json\`
    Save the \`claim_token\` from the response \u2014 you need it for step 4.
 2. **Do the work** described in your task assignment below.
 3. **Send ACK** to the leader:
-   \`omg team api send-message --input "{"team_name":"${teamName}","from_worker":"${workerName2}","to_worker":"leader-fixed","body":"ACK: ${workerName2} initialized"}" --json\`
+   \`omc team api send-message --input "{"team_name":"${teamName}","from_worker":"${workerName2}","to_worker":"leader-fixed","body":"ACK: ${workerName2} initialized"}" --json\`
 4. **Transition** the task status (REQUIRED before exit):
-   - On success: \`omg team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"completed","claim_token":"<claim_token>"}" --json\`
-   - On failure: \`omg team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"failed","claim_token":"<claim_token>"}" --json\`
+   - On success: \`omc team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"completed","claim_token":"<claim_token>"}" --json\`
+   - On failure: \`omc team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"failed","claim_token":"<claim_token>"}" --json\`
 5. **Exit** immediately after transitioning.
 
 ## Identity
 - **Team**: ${teamName}
 - **Worker**: ${workerName2}
 - **Agent Type**: ${agentType}
-- **Environment**: OMG_TEAM_WORKER=${teamName}/${workerName2}
+- **Environment**: OMC_TEAM_WORKER=${teamName}/${workerName2}
 
 ## Your Tasks
 ${taskList}
@@ -1093,12 +1106,12 @@ ${taskList}
 ## Task Lifecycle Reference (CLI API)
 Use the CLI API for all task lifecycle operations. Do NOT directly edit task files.
 
-- Inspect task state: \`omg team api read-task --input "{"team_name":"${teamName}","task_id":"<id>"}" --json\`
+- Inspect task state: \`omc team api read-task --input "{"team_name":"${teamName}","task_id":"<id>"}" --json\`
 - Task id format: State/CLI APIs use task_id: "<id>" (example: "1"), not "task-1"
-- Claim task: \`omg team api claim-task --input "{"team_name":"${teamName}","task_id":"<id>","worker":"${workerName2}"}" --json\`
-- Complete task: \`omg team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"completed","claim_token":"<claim_token>"}" --json\`
-- Fail task: \`omg team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"failed","claim_token":"<claim_token>"}" --json\`
-- Release claim (rollback): \`omg team api release-task-claim --input "{"team_name":"${teamName}","task_id":"<id>","claim_token":"<claim_token>","worker":"${workerName2}"}" --json\`
+- Claim task: \`omc team api claim-task --input "{"team_name":"${teamName}","task_id":"<id>","worker":"${workerName2}"}" --json\`
+- Complete task: \`omc team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"completed","claim_token":"<claim_token>"}" --json\`
+- Fail task: \`omc team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"failed","claim_token":"<claim_token>"}" --json\`
+- Release claim (rollback): \`omc team api release-task-claim --input "{"team_name":"${teamName}","task_id":"<id>","claim_token":"<claim_token>","worker":"${workerName2}"}" --json\`
 
 ## Communication Protocol
 - **Inbox**: Read ${inboxPath} for new instructions
@@ -1114,13 +1127,13 @@ Use the CLI API for all task lifecycle operations. Do NOT directly edit task fil
 
 ## Message Protocol
 Send messages via CLI API:
-- To leader: \`omg team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json\`
-- Check mailbox: \`omg team api mailbox-list --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName2}\\"}" --json\`
-- Mark delivered: \`omg team api mailbox-mark-delivered --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName2}\\",\\"message_id\\":\\"<id>\\"}" --json\`
+- To leader: \`omc team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json\`
+- Check mailbox: \`omc team api mailbox-list --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName2}\\"}" --json\`
+- Mark delivered: \`omc team api mailbox-mark-delivered --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName2}\\",\\"message_id\\":\\"<id>\\"}" --json\`
 
 ## Startup Handshake (Required)
 Before doing any task work, send exactly one startup ACK to the leader:
-\`omg team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName2} initialized\\"}" --json\`
+\`omc team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName2} initialized\\"}" --json\`
 
 ## Shutdown Protocol
 When you see a shutdown request in your inbox:
@@ -1136,14 +1149,14 @@ When you see a shutdown request in your inbox:
 - Do NOT write lifecycle fields (status, owner, result, error) directly in task files; use CLI API
 - Do NOT spawn sub-agents. Complete work in this worker session only.
 - Do NOT create tmux panes/sessions (\`tmux split-window\`, \`tmux new-session\`, etc.).
-- Do NOT run team spawning/orchestration commands (for example: \`omg team ...\`, \`omx team ...\`, \`$team\`, \`$ultrawork\`, \`$autopilot\`, \`$ralph\`).
-- Worker-allowed control surface is only: \`omg team api ... --json\` (and equivalent \`omx team api ... --json\` where configured).
+- Do NOT run team spawning/orchestration commands (for example: \`omc team ...\`, \`omx team ...\`, \`$team\`, \`$ultrawork\`, \`$autopilot\`, \`$ralph\`).
+- Worker-allowed control surface is only: \`omc team api ... --json\` (and equivalent \`omx team api ... --json\` where configured).
 - If blocked, write {"state": "blocked", "reason": "..."} to your status file
 
 ${agentTypeGuidance(agentType)}
 
 ## BEFORE YOU EXIT
-You MUST call \`omg team api transition-task-status\` to mark your task as "completed" or "failed" before exiting.
+You MUST call \`omc team api transition-task-status\` to mark your task as "completed" or "failed" before exiting.
 If you skip this step, the leader cannot track your work and the task will appear stuck.
 
 ${bootstrapInstructions ? `## Role Context
@@ -1172,52 +1185,35 @@ async function writeWorkerOverlay(params) {
   return overlayPath;
 }
 
-// src/team/task-file-ops.ts
-var import_fs5 = require("fs");
-var import_path9 = require("path");
-
-// src/utils/paths.ts
-var import_path6 = require("path");
-var import_fs3 = require("fs");
-var import_os = require("os");
-
-// src/utils/config-dir.ts
-var import_node_os = require("node:os");
+// src/team/git-worktree.ts
+var import_node_fs = require("node:fs");
 var import_node_path = require("node:path");
-function getConfigDir() {
-  return process.env.COPILOT_CONFIG_DIR || (0, import_node_path.join)((0, import_node_os.homedir)(), ".copilot");
-}
-
-// src/utils/paths.ts
-var STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
-
-// src/team/task-file-ops.ts
-init_tmux_session();
+var import_node_child_process = require("node:child_process");
 
 // src/team/fs-utils.ts
-var import_fs4 = require("fs");
-var import_path7 = require("path");
+var import_fs3 = require("fs");
+var import_path6 = require("path");
 function atomicWriteJson(filePath, data, mode = 384) {
-  const dir = (0, import_path7.dirname)(filePath);
-  if (!(0, import_fs4.existsSync)(dir)) (0, import_fs4.mkdirSync)(dir, { recursive: true, mode: 448 });
+  const dir = (0, import_path6.dirname)(filePath);
+  if (!(0, import_fs3.existsSync)(dir)) (0, import_fs3.mkdirSync)(dir, { recursive: true, mode: 448 });
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   const serialized = JSON.stringify(data, null, 2) + "\n";
-  (0, import_fs4.writeFileSync)(tmpPath, serialized, { encoding: "utf-8", mode });
+  (0, import_fs3.writeFileSync)(tmpPath, serialized, { encoding: "utf-8", mode });
   try {
-    (0, import_fs4.renameSync)(tmpPath, filePath);
+    (0, import_fs3.renameSync)(tmpPath, filePath);
   } catch (err) {
     if (process.platform === "win32" && err && typeof err === "object" && "code" in err && err.code === "EPERM") {
       try {
-        (0, import_fs4.writeFileSync)(filePath, serialized, { encoding: "utf-8", mode });
+        (0, import_fs3.writeFileSync)(filePath, serialized, { encoding: "utf-8", mode });
       } finally {
         try {
-          (0, import_fs4.unlinkSync)(tmpPath);
+          (0, import_fs3.unlinkSync)(tmpPath);
         } catch {
         }
       }
     } else {
       try {
-        (0, import_fs4.unlinkSync)(tmpPath);
+        (0, import_fs3.unlinkSync)(tmpPath);
       } catch {
       }
       throw err;
@@ -1225,29 +1221,107 @@ function atomicWriteJson(filePath, data, mode = 384) {
   }
 }
 function ensureDirWithMode(dirPath, mode = 448) {
-  if (!(0, import_fs4.existsSync)(dirPath)) (0, import_fs4.mkdirSync)(dirPath, { recursive: true, mode });
+  if (!(0, import_fs3.existsSync)(dirPath)) (0, import_fs3.mkdirSync)(dirPath, { recursive: true, mode });
 }
 function safeRealpath(p) {
   try {
-    return (0, import_fs4.realpathSync)(p);
+    return (0, import_fs3.realpathSync)(p);
   } catch {
-    const parent = (0, import_path7.dirname)(p);
-    const name = (0, import_path7.basename)(p);
+    const parent = (0, import_path6.dirname)(p);
+    const name = (0, import_path6.basename)(p);
     try {
-      return (0, import_path7.resolve)((0, import_fs4.realpathSync)(parent), name);
+      return (0, import_path6.resolve)((0, import_fs3.realpathSync)(parent), name);
     } catch {
-      return (0, import_path7.resolve)(p);
+      return (0, import_path6.resolve)(p);
     }
   }
 }
 function validateResolvedPath(resolvedPath, expectedBase) {
   const absResolved = safeRealpath(resolvedPath);
   const absBase = safeRealpath(expectedBase);
-  const rel = (0, import_path7.relative)(absBase, absResolved);
-  if (rel.startsWith("..") || (0, import_path7.resolve)(absBase, rel) !== absResolved) {
+  const rel = (0, import_path6.relative)(absBase, absResolved);
+  if (rel.startsWith("..") || (0, import_path6.resolve)(absBase, rel) !== absResolved) {
     throw new Error(`Path traversal detected: "${resolvedPath}" escapes base "${expectedBase}"`);
   }
 }
+
+// src/team/git-worktree.ts
+init_tmux_session();
+function getWorktreePath(repoRoot, teamName, workerName2) {
+  return (0, import_node_path.join)(repoRoot, ".omg", "worktrees", sanitizeName(teamName), sanitizeName(workerName2));
+}
+function getBranchName(teamName, workerName2) {
+  return `omg-team/${sanitizeName(teamName)}/${sanitizeName(workerName2)}`;
+}
+function getMetadataPath(repoRoot, teamName) {
+  return (0, import_node_path.join)(repoRoot, ".omg", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
+}
+function readMetadata(repoRoot, teamName) {
+  const metaPath = getMetadataPath(repoRoot, teamName);
+  if (!(0, import_node_fs.existsSync)(metaPath)) return [];
+  try {
+    return JSON.parse((0, import_node_fs.readFileSync)(metaPath, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+function writeMetadata(repoRoot, teamName, entries) {
+  const metaPath = getMetadataPath(repoRoot, teamName);
+  validateResolvedPath(metaPath, repoRoot);
+  const dir = (0, import_node_path.join)(repoRoot, ".omg", "state", "team-bridge", sanitizeName(teamName));
+  ensureDirWithMode(dir);
+  atomicWriteJson(metaPath, entries);
+}
+function removeWorkerWorktree(teamName, workerName2, repoRoot) {
+  const wtPath = getWorktreePath(repoRoot, teamName, workerName2);
+  const branch = getBranchName(teamName, workerName2);
+  try {
+    (0, import_node_child_process.execFileSync)("git", ["worktree", "remove", "--force", wtPath], { cwd: repoRoot, stdio: "pipe" });
+  } catch {
+  }
+  try {
+    (0, import_node_child_process.execFileSync)("git", ["worktree", "prune"], { cwd: repoRoot, stdio: "pipe" });
+  } catch {
+  }
+  try {
+    (0, import_node_child_process.execFileSync)("git", ["branch", "-D", branch], { cwd: repoRoot, stdio: "pipe" });
+  } catch {
+  }
+  const existing = readMetadata(repoRoot, teamName);
+  const updated = existing.filter((e) => e.workerName !== workerName2);
+  writeMetadata(repoRoot, teamName, updated);
+}
+function cleanupTeamWorktrees(teamName, repoRoot) {
+  const entries = readMetadata(repoRoot, teamName);
+  for (const entry of entries) {
+    try {
+      removeWorkerWorktree(teamName, entry.workerName, repoRoot);
+    } catch {
+    }
+  }
+}
+
+// src/team/task-file-ops.ts
+var import_fs5 = require("fs");
+var import_path9 = require("path");
+
+// src/utils/paths.ts
+var import_path7 = require("path");
+var import_fs4 = require("fs");
+var import_os = require("os");
+
+// src/utils/config-dir.ts
+var import_node_os = require("node:os");
+var import_node_path2 = require("node:path");
+function getConfigDir() {
+  return process.env.COPILOT_CONFIG_DIR || (0, import_node_path2.join)((0, import_node_os.homedir)(), ".copilot");
+}
+
+// src/utils/paths.ts
+var STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
+
+// src/team/task-file-ops.ts
+init_tmux_session();
 
 // src/team/state-paths.ts
 var import_path8 = require("path");
@@ -1429,7 +1503,9 @@ function stateRoot(cwd, teamName) {
 }
 async function writeJson(filePath, data) {
   await (0, import_promises3.mkdir)((0, import_path10.join)(filePath, ".."), { recursive: true });
-  await (0, import_promises3.writeFile)(filePath, JSON.stringify(data, null, 2), "utf-8");
+  const tmpPath = `${filePath}.tmp`;
+  await (0, import_promises3.writeFile)(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+  await (0, import_promises3.rename)(tmpPath, filePath);
 }
 async function readJsonSafe(filePath) {
   const isDoneSignalPath = filePath.endsWith("done.json");
@@ -1467,8 +1543,8 @@ function taskPath(root, taskId) {
   return (0, import_path10.join)(root, "tasks", `${taskId}.json`);
 }
 async function writePanesTrackingFileIfPresent(runtime) {
-  const jobId = process.env.OMG_JOB_ID;
-  const omcJobsDir = process.env.OMG_JOBS_DIR;
+  const jobId = process.env.OMC_JOB_ID;
+  const omcJobsDir = process.env.OMC_JOBS_DIR;
   if (!jobId || !omcJobsDir) return;
   const panesPath = (0, import_path10.join)(omcJobsDir, `${jobId}-panes.json`);
   const tempPath = `${panesPath}.tmp`;
@@ -1901,10 +1977,10 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
   runtime.resolvedBinaryPaths[agentType] = resolvedBinaryPath;
   const modelForAgent = (() => {
     if (agentType === "codex") {
-      return process.env.OMG_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMG_CODEX_DEFAULT_MODEL || void 0;
+      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMC_CODEX_DEFAULT_MODEL || void 0;
     }
     if (agentType === "gemini") {
-      return process.env.OMG_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMG_GEMINI_DEFAULT_MODEL || void 0;
+      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
     }
     return void 0;
   })();
@@ -1992,7 +2068,7 @@ async function shutdownTeam(teamName, sessionName2, cwd, timeoutMs = 3e4, worker
     teamName
   });
   const configData = await readJsonSafe((0, import_path10.join)(root, "config.json"));
-  const CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "codex", "gemini"]);
+  const CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "copilot", "codex", "gemini"]);
   const agentTypes = configData?.agentTypes ?? [];
   const isCliWorkerTeam = agentTypes.length > 0 && agentTypes.every((t) => CLI_AGENT_TYPES.has(t));
   if (!isCliWorkerTeam) {
@@ -2013,6 +2089,10 @@ async function shutdownTeam(teamName, sessionName2, cwd, timeoutMs = 3e4, worker
   }
   const sessionMode = ownsWindow ?? Boolean(configData?.tmuxOwnsWindow) ? sessionName2.includes(":") ? "dedicated-window" : "detached-session" : "split-pane";
   await killTeamSession(sessionName2, workerPaneIds, leaderPaneId, { sessionMode });
+  try {
+    cleanupTeamWorktrees(teamName, cwd);
+  } catch {
+  }
   try {
     await (0, import_promises3.rm)(root, { recursive: true, force: true });
   } catch {
@@ -2282,17 +2362,17 @@ function validateAnthropicBaseUrl(urlString) {
 // src/config/models.ts
 var TIER_ENV_KEYS = {
   LOW: [
-    "OMG_MODEL_LOW",
+    "OMC_MODEL_LOW",
     "CLAUDE_CODE_BEDROCK_HAIKU_MODEL",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL"
   ],
   MEDIUM: [
-    "OMG_MODEL_MEDIUM",
+    "OMC_MODEL_MEDIUM",
     "CLAUDE_CODE_BEDROCK_SONNET_MODEL",
     "ANTHROPIC_DEFAULT_SONNET_MODEL"
   ],
   HIGH: [
-    "OMG_MODEL_HIGH",
+    "OMC_MODEL_HIGH",
     "CLAUDE_CODE_BEDROCK_OPUS_MODEL",
     "ANTHROPIC_DEFAULT_OPUS_MODEL"
   ]
@@ -2362,7 +2442,7 @@ function isVertexAI() {
   return false;
 }
 function isNonCopilotProvider() {
-  if (process.env.OMG_ROUTING_FORCE_INHERIT === "true") {
+  if (process.env.OMC_ROUTING_FORCE_INHERIT === "true") {
     return true;
   }
   if (isBedrock()) {
@@ -2555,20 +2635,20 @@ function loadEnvConfig() {
       exa: { enabled: true, apiKey: process.env.EXA_API_KEY }
     };
   }
-  if (process.env.OMG_PARALLEL_EXECUTION !== void 0) {
+  if (process.env.OMC_PARALLEL_EXECUTION !== void 0) {
     config.features = {
       ...config.features,
-      parallelExecution: process.env.OMG_PARALLEL_EXECUTION === "true"
+      parallelExecution: process.env.OMC_PARALLEL_EXECUTION === "true"
     };
   }
-  if (process.env.OMG_LSP_TOOLS !== void 0) {
+  if (process.env.OMC_LSP_TOOLS !== void 0) {
     config.features = {
       ...config.features,
-      lspTools: process.env.OMG_LSP_TOOLS === "true"
+      lspTools: process.env.OMC_LSP_TOOLS === "true"
     };
   }
-  if (process.env.OMG_MAX_BACKGROUND_TASKS) {
-    const maxTasks = parseInt(process.env.OMG_MAX_BACKGROUND_TASKS, 10);
+  if (process.env.OMC_MAX_BACKGROUND_TASKS) {
+    const maxTasks = parseInt(process.env.OMC_MAX_BACKGROUND_TASKS, 10);
     if (!isNaN(maxTasks)) {
       config.permissions = {
         ...config.permissions,
@@ -2576,20 +2656,20 @@ function loadEnvConfig() {
       };
     }
   }
-  if (process.env.OMG_ROUTING_ENABLED !== void 0) {
+  if (process.env.OMC_ROUTING_ENABLED !== void 0) {
     config.routing = {
       ...config.routing,
-      enabled: process.env.OMG_ROUTING_ENABLED === "true"
+      enabled: process.env.OMC_ROUTING_ENABLED === "true"
     };
   }
-  if (process.env.OMG_ROUTING_FORCE_INHERIT !== void 0) {
+  if (process.env.OMC_ROUTING_FORCE_INHERIT !== void 0) {
     config.routing = {
       ...config.routing,
-      forceInherit: process.env.OMG_ROUTING_FORCE_INHERIT === "true"
+      forceInherit: process.env.OMC_ROUTING_FORCE_INHERIT === "true"
     };
   }
-  if (process.env.OMG_ROUTING_DEFAULT_TIER) {
-    const tier = process.env.OMG_ROUTING_DEFAULT_TIER.toUpperCase();
+  if (process.env.OMC_ROUTING_DEFAULT_TIER) {
+    const tier = process.env.OMC_ROUTING_DEFAULT_TIER.toUpperCase();
     if (tier === "LOW" || tier === "MEDIUM" || tier === "HIGH") {
       config.routing = {
         ...config.routing,
@@ -2600,7 +2680,7 @@ function loadEnvConfig() {
   const aliasKeys = ["HAIKU", "SONNET", "OPUS"];
   const modelAliases = {};
   for (const key of aliasKeys) {
-    const envVal = process.env[`OMG_MODEL_ALIAS_${key}`];
+    const envVal = process.env[`OMC_MODEL_ALIAS_${key}`];
     if (envVal) {
       const lower = key.toLowerCase();
       modelAliases[lower] = envVal.toLowerCase();
@@ -2612,34 +2692,34 @@ function loadEnvConfig() {
       modelAliases
     };
   }
-  if (process.env.OMG_ESCALATION_ENABLED !== void 0) {
+  if (process.env.OMC_ESCALATION_ENABLED !== void 0) {
     config.routing = {
       ...config.routing,
-      escalationEnabled: process.env.OMG_ESCALATION_ENABLED === "true"
+      escalationEnabled: process.env.OMC_ESCALATION_ENABLED === "true"
     };
   }
   const externalModelsDefaults = {};
-  if (process.env.OMG_EXTERNAL_MODELS_DEFAULT_PROVIDER) {
-    const provider = process.env.OMG_EXTERNAL_MODELS_DEFAULT_PROVIDER;
+  if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_PROVIDER) {
+    const provider = process.env.OMC_EXTERNAL_MODELS_DEFAULT_PROVIDER;
     if (provider === "codex" || provider === "gemini") {
       externalModelsDefaults.provider = provider;
     }
   }
-  if (process.env.OMG_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL) {
-    externalModelsDefaults.codexModel = process.env.OMG_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL;
-  } else if (process.env.OMG_CODEX_DEFAULT_MODEL) {
-    externalModelsDefaults.codexModel = process.env.OMG_CODEX_DEFAULT_MODEL;
+  if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL) {
+    externalModelsDefaults.codexModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL;
+  } else if (process.env.OMC_CODEX_DEFAULT_MODEL) {
+    externalModelsDefaults.codexModel = process.env.OMC_CODEX_DEFAULT_MODEL;
   }
-  if (process.env.OMG_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL) {
-    externalModelsDefaults.geminiModel = process.env.OMG_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL;
-  } else if (process.env.OMG_GEMINI_DEFAULT_MODEL) {
-    externalModelsDefaults.geminiModel = process.env.OMG_GEMINI_DEFAULT_MODEL;
+  if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL) {
+    externalModelsDefaults.geminiModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL;
+  } else if (process.env.OMC_GEMINI_DEFAULT_MODEL) {
+    externalModelsDefaults.geminiModel = process.env.OMC_GEMINI_DEFAULT_MODEL;
   }
   const externalModelsFallback = {
     onModelFailure: "provider_chain"
   };
-  if (process.env.OMG_EXTERNAL_MODELS_FALLBACK_POLICY) {
-    const policy = process.env.OMG_EXTERNAL_MODELS_FALLBACK_POLICY;
+  if (process.env.OMC_EXTERNAL_MODELS_FALLBACK_POLICY) {
+    const policy = process.env.OMC_EXTERNAL_MODELS_FALLBACK_POLICY;
     if (policy === "provider_chain" || policy === "cross_provider" || policy === "claude_only") {
       externalModelsFallback.onModelFailure = policy;
     }
@@ -2650,15 +2730,15 @@ function loadEnvConfig() {
       fallbackPolicy: externalModelsFallback
     };
   }
-  if (process.env.OMG_DELEGATION_ROUTING_ENABLED !== void 0) {
+  if (process.env.OMC_DELEGATION_ROUTING_ENABLED !== void 0) {
     config.delegationRouting = {
       ...config.delegationRouting,
-      enabled: process.env.OMG_DELEGATION_ROUTING_ENABLED === "true"
+      enabled: process.env.OMC_DELEGATION_ROUTING_ENABLED === "true"
     };
   }
-  if (process.env.OMG_DELEGATION_ROUTING_DEFAULT_PROVIDER) {
-    const provider = process.env.OMG_DELEGATION_ROUTING_DEFAULT_PROVIDER;
-    if (["claude", "codex", "gemini"].includes(provider)) {
+  if (process.env.OMC_DELEGATION_ROUTING_DEFAULT_PROVIDER) {
+    const provider = process.env.OMC_DELEGATION_ROUTING_DEFAULT_PROVIDER;
+    if (["claude", "copilot", "codex", "gemini"].includes(provider)) {
       config.delegationRouting = {
         ...config.delegationRouting,
         defaultProvider: provider
@@ -2680,7 +2760,7 @@ function loadConfig() {
   }
   const envConfig = loadEnvConfig();
   config = deepMerge(config, envConfig);
-  if (config.routing?.forceInherit !== true && process.env.OMG_ROUTING_FORCE_INHERIT === void 0 && isNonCopilotProvider()) {
+  if (config.routing?.forceInherit !== true && process.env.OMC_ROUTING_FORCE_INHERIT === void 0 && isNonCopilotProvider()) {
     config.routing = {
       ...config.routing,
       forceInherit: true
@@ -2727,7 +2807,7 @@ var DEFAULT_GUARDS_CONFIG = {
 };
 function expandTokens(value, workspace) {
   const home = (0, import_os2.homedir)();
-  const ws = workspace ?? process.env.OMG_WORKSPACE ?? process.cwd();
+  const ws = workspace ?? process.env.OMC_WORKSPACE ?? process.cwd();
   return value.replace(/\$\{HOME\}/g, home).replace(/\$\{WORKSPACE\}/g, ws);
 }
 function expandTokensDeep(obj, workspace) {
@@ -3313,7 +3393,7 @@ var import_path15 = require("path");
 var WORKER_NAME_SAFE_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 // src/team/dispatch-queue.ts
-var OMG_DISPATCH_LOCK_TIMEOUT_ENV = "OMG_TEAM_DISPATCH_LOCK_TIMEOUT_MS";
+var OMC_DISPATCH_LOCK_TIMEOUT_ENV = "OMC_TEAM_DISPATCH_LOCK_TIMEOUT_MS";
 var DEFAULT_DISPATCH_LOCK_TIMEOUT_MS = 15e3;
 var MIN_DISPATCH_LOCK_TIMEOUT_MS = 1e3;
 var MAX_DISPATCH_LOCK_TIMEOUT_MS = 12e4;
@@ -3332,7 +3412,7 @@ function isDispatchStatus(value) {
   return value === "pending" || value === "notified" || value === "delivered" || value === "failed";
 }
 function resolveDispatchLockTimeoutMs(env = process.env) {
-  const raw = env[OMG_DISPATCH_LOCK_TIMEOUT_ENV];
+  const raw = env[OMC_DISPATCH_LOCK_TIMEOUT_ENV];
   if (raw === void 0 || raw === "") return DEFAULT_DISPATCH_LOCK_TIMEOUT_MS;
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) return DEFAULT_DISPATCH_LOCK_TIMEOUT_MS;
@@ -3371,7 +3451,7 @@ async function withDispatchLock(teamName, cwd, fn) {
       }
       if (Date.now() > deadline) {
         throw new Error(
-          `Timed out acquiring dispatch lock for ${teamName} after ${timeoutMs}ms. Set ${OMG_DISPATCH_LOCK_TIMEOUT_ENV} to increase (current: ${timeoutMs}ms, max: ${MAX_DISPATCH_LOCK_TIMEOUT_MS}ms).`
+          `Timed out acquiring dispatch lock for ${teamName} after ${timeoutMs}ms. Set ${OMC_DISPATCH_LOCK_TIMEOUT_ENV} to increase (current: ${timeoutMs}ms, max: ${MAX_DISPATCH_LOCK_TIMEOUT_MS}ms).`
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
@@ -3610,7 +3690,7 @@ async function queueInboxInstruction(params) {
 
 // src/team/runtime-v2.ts
 function isRuntimeV2Enabled(env = process.env) {
-  const raw = env.OMG_RUNTIME_V2;
+  const raw = env.OMC_RUNTIME_V2;
   if (!raw) return true;
   const normalized = raw.trim().toLowerCase();
   return !["0", "false", "no", "off"].includes(normalized);
@@ -3633,13 +3713,13 @@ function buildV2TaskInstruction(teamName, workerName2, task, taskId) {
     `You MUST run these commands. Do NOT skip any step.`,
     ``,
     `1. Claim your task:`,
-    `   omg team api claim-task --input '{"team_name":"${teamName}","task_id":"${taskId}","worker":"${workerName2}"}' --json`,
+    `   omc team api claim-task --input '{"team_name":"${teamName}","task_id":"${taskId}","worker":"${workerName2}"}' --json`,
     `   Save the claim_token from the response.`,
     `2. Do the work described below.`,
     `3. On completion (use claim_token from step 1):`,
-    `   omg team api transition-task-status --input '{"team_name":"${teamName}","task_id":"${taskId}","from":"in_progress","to":"completed","claim_token":"<claim_token>"}' --json`,
+    `   omc team api transition-task-status --input '{"team_name":"${teamName}","task_id":"${taskId}","from":"in_progress","to":"completed","claim_token":"<claim_token>"}' --json`,
     `4. On failure (use claim_token from step 1):`,
-    `   omg team api transition-task-status --input '{"team_name":"${teamName}","task_id":"${taskId}","from":"in_progress","to":"failed","claim_token":"<claim_token>"}' --json`,
+    `   omc team api transition-task-status --input '{"team_name":"${teamName}","task_id":"${taskId}","from":"in_progress","to":"failed","claim_token":"<claim_token>"}' --json`,
     `5. Exit immediately after transitioning.`,
     ``,
     `## Task Assignment`,
@@ -3703,16 +3783,16 @@ async function spawnV2Worker(opts) {
   }
   const envVars = {
     ...getWorkerEnv(opts.teamName, opts.workerName, opts.agentType),
-    OMG_TEAM_STATE_ROOT: teamStateRoot(opts.cwd, opts.teamName),
-    OMG_TEAM_LEADER_CWD: opts.cwd
+    OMC_TEAM_STATE_ROOT: teamStateRoot(opts.cwd, opts.teamName),
+    OMC_TEAM_LEADER_CWD: opts.cwd
   };
   const resolvedBinaryPath = opts.resolvedBinaryPaths[opts.agentType] ?? resolveValidatedBinaryPath(opts.agentType);
   const modelForAgent = (() => {
     if (opts.agentType === "codex") {
-      return process.env.OMG_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMG_CODEX_DEFAULT_MODEL || void 0;
+      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL || process.env.OMC_CODEX_DEFAULT_MODEL || void 0;
     }
     if (opts.agentType === "gemini") {
-      return process.env.OMG_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMG_GEMINI_DEFAULT_MODEL || void 0;
+      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
     }
     return void 0;
   })();
@@ -4233,7 +4313,7 @@ async function checkWatchdogFailedMarker(stateRoot2, startTime) {
   }
   return { failed: false };
 }
-async function writeResultArtifact(output, finishedAt, jobId = process.env.OMG_JOB_ID, omcJobsDir = process.env.OMG_JOBS_DIR) {
+async function writeResultArtifact(output, finishedAt, jobId = process.env.OMC_JOB_ID, omcJobsDir = process.env.OMC_JOBS_DIR) {
   if (!jobId || !omcJobsDir) return;
   const resultPath = (0, import_path17.join)(omcJobsDir, `${jobId}-result.json`);
   const tmpPath = `${resultPath}.tmp`;
@@ -4245,7 +4325,7 @@ async function writeResultArtifact(output, finishedAt, jobId = process.env.OMG_J
   await (0, import_promises8.rename)(tmpPath, resultPath);
 }
 async function writePanesFile(jobId, paneIds, leaderPaneId, sessionName2, ownsWindow) {
-  const omcJobsDir = process.env.OMG_JOBS_DIR;
+  const omcJobsDir = process.env.OMC_JOBS_DIR;
   if (!jobId || !omcJobsDir) return;
   const panesPath = (0, import_path17.join)(omcJobsDir, `${jobId}-panes.json`);
   await (0, import_promises8.writeFile)(
@@ -4410,7 +4490,7 @@ async function main() {
 `);
     process.exit(1);
   }
-  const jobId = process.env.OMG_JOB_ID;
+  const jobId = process.env.OMC_JOB_ID;
   const expectedTaskCount = tasks.length;
   let mismatchStreak = 0;
   try {

@@ -29,6 +29,8 @@ export interface VerificationState {
     requested_at: string;
     /** Original ralph task */
     original_task: string;
+    /** Critic mode for verification */
+    critic_mode?: 'codex' | 'critic' | 'architect';
 }
 /**
  * Read verification state
@@ -47,7 +49,7 @@ export declare function clearVerificationState(directory: string, sessionId?: st
 /**
  * Start verification process
  */
-export declare function startVerification(directory: string, completionClaim: string, originalTask: string, sessionId?: string): VerificationState;
+export declare function startVerification(directory: string, completionClaim: string, originalTask: string, criticMode?: 'codex' | 'critic' | 'architect', sessionId?: string): VerificationState;
 /**
  * Record architect feedback
  */

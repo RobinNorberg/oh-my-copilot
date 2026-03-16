@@ -9282,14 +9282,15 @@ function clearVerificationState(directory, sessionId) {
   }
   return true;
 }
-function startVerification(directory, completionClaim, originalTask, sessionId) {
+function startVerification(directory, completionClaim, originalTask, criticMode, sessionId) {
   const state = {
     pending: true,
     completion_claim: completionClaim,
     verification_attempts: 0,
     max_verification_attempts: DEFAULT_MAX_VERIFICATION_ATTEMPTS,
     requested_at: (/* @__PURE__ */ new Date()).toISOString(),
-    original_task: originalTask
+    original_task: originalTask,
+    critic_mode: criticMode
   };
   writeVerificationState(directory, state, sessionId);
   return state;
