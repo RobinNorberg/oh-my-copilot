@@ -51,10 +51,10 @@ HUD STATUSLINE:
 The status bar now shows OMP state. Restart Copilot CLI to see it.
 
 CLI ANALYTICS (if installed):
-- omp           - Default analytics dashboard
-- omp cost      - View cost reports (daily/weekly/monthly)
-- omp sessions  - Inspect session history
-- omp backfill  - Import transcript analytics
+- omc           - Default analytics dashboard
+- omc cost      - View cost reports (daily/weekly/monthly)
+- omc sessions  - Inspect session history
+- omc backfill  - Import transcript analytics
 
 That's it! Just use Copilot CLI normally.
 ```
@@ -92,10 +92,10 @@ HUD STATUSLINE:
 The status bar now shows OMP state. Restart Copilot CLI to see it.
 
 CLI ANALYTICS (if installed):
-- omp           - Default analytics dashboard
-- omp cost      - View cost reports (daily/weekly/monthly)
-- omp sessions  - Inspect session history
-- omp backfill  - Import transcript analytics
+- omc           - Default analytics dashboard
+- omc cost      - View cost reports (daily/weekly/monthly)
+- omc sessions  - Inspect session history
+- omc backfill  - Import transcript analytics
 
 Your workflow won't break - it just got easier!
 ```
@@ -177,12 +177,12 @@ Get the current OMP version and mark setup complete:
 # Get current OMP version from copilot-instructions.md
 OMC_VERSION=""
 if [ -f ".copilot/copilot-instructions.md" ]; then
-  OMC_VERSION=$(grep -m1 'OMP:VERSION:' .copilot/copilot-instructions.md 2>/dev/null | sed -E 's/.*OMP:VERSION:([^ ]+).*/\1/' || true)
+  OMC_VERSION=$(grep -m1 'OMC:VERSION:' .copilot/copilot-instructions.md 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 elif [ -f "$HOME/.copilot/copilot-instructions.md" ]; then
-  OMC_VERSION=$(grep -m1 'OMP:VERSION:' "$HOME/.copilot/copilot-instructions.md" 2>/dev/null | sed -E 's/.*OMP:VERSION:([^ ]+).*/\1/' || true)
+  OMC_VERSION=$(grep -m1 'OMC:VERSION:' "$HOME/.copilot/copilot-instructions.md" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 fi
 if [ -z "$OMC_VERSION" ]; then
-  OMC_VERSION=$(omp --version 2>/dev/null | head -1 || true)
+  OMC_VERSION=$(omc --version 2>/dev/null | head -1 || true)
 fi
 if [ -z "$OMC_VERSION" ]; then
   OMC_VERSION="unknown"

@@ -21457,7 +21457,7 @@ function resolveOmcPath(relativePath, worktreeRoot) {
   const fullPath = (0, import_path7.normalize)((0, import_path7.resolve)(omcDir, relativePath));
   const relativeToOmc = (0, import_path7.relative)(omcDir, fullPath);
   if (relativeToOmc.startsWith("..") || relativeToOmc.startsWith(import_path7.sep + "..")) {
-    throw new Error(`Path escapes omp boundary: ${relativePath}`);
+    throw new Error(`Path escapes omc boundary: ${relativePath}`);
   }
   return fullPath;
 }

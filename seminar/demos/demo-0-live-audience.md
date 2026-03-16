@@ -26,7 +26,7 @@
 ### 3. OMP 실행 (7분)
 ```bash
 # 터미널 전체 화면으로
-/oh-my-copilot:omp
+/oh-my-copilot:omc
 
 # 청중 요청 입력
 "Build a [청중 아이디어] with:
@@ -65,10 +65,10 @@ npm run dev
 ```bash
 # 폰트 크기 키우기
 # 불필요한 로그 숨기기
-export OMP_QUIET=true
+export OMC_QUIET=true
 
 # 빠른 모델 (Sonnet 4.5)
-export OMP_MODEL=anthropic/claude-sonnet-4-5
+export OMC_MODEL=anthropic/claude-sonnet-4-5
 ```
 
 ### 타이밍

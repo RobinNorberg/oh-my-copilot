@@ -115,7 +115,7 @@ export const projectMemoryWriteTool: ToolDefinition<{
     try {
       const root = validateWorkingDirectory(workingDirectory);
 
-      // Ensure .omp directory exists
+      // Ensure .omc directory exists
       ensureOmcDir('', root);
 
       let finalMemory: ProjectMemory;

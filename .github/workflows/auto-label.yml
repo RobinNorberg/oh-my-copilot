@@ -49,7 +49,7 @@ jobs:
             }
 
             // Agent-related
-            if (body.includes('agent') || body.includes('architect') || body.includes('omp') ||
+            if (body.includes('agent') || body.includes('architect') || body.includes('omc') ||
                 body.includes('planner') || body.includes('ultrawork') || body.includes('chillwork')) {
               labels.push('agents');
             }

@@ -17,7 +17,7 @@ const { readStdin } = await import(pathToFileURL(path.join(__dirname, 'lib', 'st
 // Allowed path patterns (no warning)
 // Paths are normalized to forward slashes before matching
 const ALLOWED_PATH_PATTERNS = [
-  /^\.omp\//,          // .omp/** (anchored)
+  /^\.omc\//,          // .omg/** (anchored)
   /^\.copilot\//,       // .copilot/** (anchored)
   /\/\.copilot\//,      // any /.copilot/ path (intentionally unanchored for absolute paths)
   /copilot-instructions\.md$/,
@@ -68,7 +68,7 @@ const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
 const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
 
 function teamWorkerIdentity() {
-  return (process.env.OMP_TEAM_WORKER || process.env.OMX_TEAM_WORKER || '').trim();
+  return (process.env.OMC_TEAM_WORKER || process.env.OMX_TEAM_WORKER || '').trim();
 }
 
 function workerCommandViolation(command) {
@@ -77,7 +77,7 @@ function workerCommandViolation(command) {
     return 'Team worker cannot run tmux pane/session orchestration commands.';
   }
   if (WORKER_BLOCKED_TEAM_CLI_PATTERN.test(command)) {
-    return 'Team worker cannot run team orchestration commands (except `omp team api ...`).';
+    return 'Team worker cannot run team orchestration commands (except `omc team api ...`).';
   }
   if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
     return 'Team worker cannot invoke orchestration skills (`$team`, `$ultrawork`, `$autopilot`, `$ralph`).';

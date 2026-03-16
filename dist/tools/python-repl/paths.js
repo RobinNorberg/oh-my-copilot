@@ -75,7 +75,7 @@ function isSecureRuntimeDir(dir) {
  *
  * @example
  * getRuntimeDir();
- * // Linux with XDG: '/run/user/1000/omp'
+ * // Linux with XDG: '/run/user/1000/omc'
  * // macOS: '~/Library/Caches/omg/runtime'
  * // Fallback: '/tmp/omg/runtime'
  */

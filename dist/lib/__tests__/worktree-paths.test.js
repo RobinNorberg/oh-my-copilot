@@ -32,11 +32,11 @@ describe('worktree-paths', () => {
         });
     });
     describe('resolveOmcPath', () => {
-        it('should resolve paths under .omp directory', () => {
+        it('should resolve paths under .omc directory', () => {
             const result = resolveOmcPath('state/ralph.json', TEST_DIR);
             expect(result).toBe(join(TEST_DIR, '.omg', 'state', 'ralph.json'));
         });
-        it('should reject paths that escape .omp boundary', () => {
+        it('should reject paths that escape .omc boundary', () => {
             expect(() => resolveOmcPath('../secret.txt', TEST_DIR)).toThrow('path traversal');
         });
     });
@@ -56,7 +56,7 @@ describe('worktree-paths', () => {
         });
     });
     describe('ensureOmcDir', () => {
-        it('should create directories under .omp', () => {
+        it('should create directories under .omc', () => {
             const result = ensureOmcDir('state', TEST_DIR);
             expect(result).toBe(join(TEST_DIR, '.omg', 'state'));
             expect(existsSync(result)).toBe(true);
@@ -93,17 +93,17 @@ describe('worktree-paths', () => {
         });
     });
     describe('isPathUnderOmc', () => {
-        it('should return true for paths under .omp', () => {
+        it('should return true for paths under .omc', () => {
             expect(isPathUnderOmc(join(TEST_DIR, '.omg', 'state', 'ralph.json'), TEST_DIR)).toBe(true);
             expect(isPathUnderOmc(join(TEST_DIR, '.omg'), TEST_DIR)).toBe(true);
         });
-        it('should return false for paths outside .omp', () => {
+        it('should return false for paths outside .omc', () => {
             expect(isPathUnderOmc(join(TEST_DIR, 'src', 'file.ts'), TEST_DIR)).toBe(false);
             expect(isPathUnderOmc('/etc/passwd', TEST_DIR)).toBe(false);
         });
     });
     describe('ensureAllOmcDirs', () => {
-        it('should create all standard .omp subdirectories', () => {
+        it('should create all standard .omc subdirectories', () => {
             ensureAllOmcDirs(TEST_DIR);
             expect(existsSync(join(TEST_DIR, '.omg'))).toBe(true);
             expect(existsSync(join(TEST_DIR, '.omg', 'state'))).toBe(true);
@@ -322,7 +322,7 @@ describe('worktree-paths', () => {
         });
     });
     describe('getOmcRoot with OMC_STATE_DIR (Issue #1014)', () => {
-        it('should return default .omp path when OMC_STATE_DIR is not set', () => {
+        it('should return default .omc path when OMC_STATE_DIR is not set', () => {
             delete process.env.OMC_STATE_DIR;
             const result = getOmcRoot(TEST_DIR);
             expect(result).toBe(join(TEST_DIR, '.omg'));
@@ -451,7 +451,7 @@ describe('worktree-paths', () => {
             const projectId = getProjectIdentifier(TEST_DIR);
             const centralPath = join(stateDir, projectId, 'state', 'ralph.json');
             expect(isPathUnderOmc(centralPath, TEST_DIR)).toBe(true);
-            // Legacy path should NOT be under omp when centralized
+            // Legacy path should NOT be under omc when centralized
             expect(isPathUnderOmc(join(TEST_DIR, '.omg', 'state', 'ralph.json'), TEST_DIR)).toBe(false);
         });
         it('ensureAllOmcDirs should create dirs under centralized path', () => {

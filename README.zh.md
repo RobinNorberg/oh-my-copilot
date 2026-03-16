@@ -102,13 +102,13 @@ Team 按阶段化流水线运行：
 
 ```bash
 # 1. 更新 marketplace 克隆
-/plugin marketplace update omp
+/plugin marketplace update omc
 
 # 2. 重新运行设置以刷新配置
 /omg-setup
 ```
 
-> **注意：** 如果 marketplace 自动更新未启用，您需要在运行设置之前手动执行 `/plugin marketplace update omp` 来同步最新版本。
+> **注意：** 如果 marketplace 自动更新未启用，您需要在运行设置之前手动执行 `/plugin marketplace update omc` 来同步最新版本。
 
 如果更新后遇到问题，清除旧的插件缓存：
 
@@ -201,9 +201,9 @@ Team 按阶段化流水线运行：
 当速率限制重置时自动恢复 Copilot CLI 会话。
 
 ```bash
-omp wait          # 检查状态，获取指导
-omp wait --start  # 启用自动恢复守护进程
-omp wait --stop   # 禁用守护进程
+omc wait          # 检查状态，获取指导
+omc wait --start  # 启用自动恢复守护进程
+omc wait --stop   # 禁用守护进程
 ```
 
 **需要：** tmux（用于会话检测）
@@ -214,14 +214,14 @@ omp wait --stop   # 禁用守护进程
 
 ```bash
 # 设置/替换标签列表
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
-omp config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
 
 # 增量更新
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 标签规则：
@@ -235,7 +235,7 @@ omp config-stop-callback discord --clear-tags
 ## 文档
 
 - **[完整参考](docs/REFERENCE.md)** - 完整功能文档
-- **[CLI 参考](https://docs/REFERENCE.md/docs.html#cli-reference)** - 所有 `omp` 命令、标志和工具
+- **[CLI 参考](https://docs/REFERENCE.md/docs.html#cli-reference)** - 所有 `omc` 命令、标志和工具
 - **[通知指南](https://docs/REFERENCE.md/docs.html#notifications)** - Discord、Telegram、Slack 和 webhook 设置
 - **[推荐工作流](https://docs/REFERENCE.md/docs.html#workflows)** - 常见任务的经过实战检验的技能链
 - **[发布说明](https://docs/REFERENCE.md/docs.html#release-notes)** - 每个版本的新内容

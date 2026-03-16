@@ -17,7 +17,7 @@ describe('Ralph Progress Module', () => {
         }
     });
     describe('initProgress', () => {
-        it('should create progress.txt in .omp directory', () => {
+        it('should create progress.txt in .omc directory', () => {
             expect(initProgress(testDir)).toBe(true);
             expect(existsSync(join(testDir, '.omg', PROGRESS_FILENAME))).toBe(true);
         });
@@ -46,7 +46,7 @@ describe('Ralph Progress Module', () => {
             writeFileSync(join(testDir, PROGRESS_FILENAME), '# Test');
             expect(readProgressRaw(testDir)).toBe('# Test');
         });
-        it('should read progress from .omp directory', () => {
+        it('should read progress from .omc directory', () => {
             const omcDir = join(testDir, '.omg');
             mkdirSync(omcDir, { recursive: true });
             writeFileSync(join(omcDir, PROGRESS_FILENAME), '# Test');

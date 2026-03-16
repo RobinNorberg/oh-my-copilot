@@ -53,7 +53,7 @@ This integrates directly with Copilot CLI's plugin system and uses Node.js hooks
 
 ### Project-Scoped Configuration (Recommended)
 
-Configure omp for the current project only:
+Configure omc for the current project only:
 
 ```
 /oh-my-copilot:omg-setup --local
@@ -66,7 +66,7 @@ Configure omp for the current project only:
 
 ### Global Configuration
 
-Configure omp for all Copilot CLI sessions:
+Configure omc for all Copilot CLI sessions:
 
 ```
 /oh-my-copilot:omg-setup
@@ -78,7 +78,7 @@ Configure omp for all Copilot CLI sessions:
 
 ### What Configuration Enables
 
-| Feature           | Without     | With omp Config            |
+| Feature           | Without     | With omc Config            |
 | ----------------- | ----------- | -------------------------- |
 | Agent delegation  | Manual only | Automatic based on task    |
 | Keyword detection | Disabled    | ultrawork, search |
@@ -113,10 +113,10 @@ By default, OMP stores state in `{worktree}/.omg/`. This is lost when worktrees 
 
 ```bash
 # In your shell profile (~/.bashrc, ~/.zshrc, etc.)
-export OMC_STATE_DIR="$HOME/.copilot/omp"
+export OMC_STATE_DIR="$HOME/.copilot/omc"
 ```
 
-This resolves to `~/.copilot/omp/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
+This resolves to `~/.copilot/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
 
 If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMP logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
 
@@ -125,7 +125,7 @@ If both a legacy `{worktree}/.omg/` directory and a centralized directory exist,
 - **First time**: Run after installation (choose project or global)
 - **After updates**: Re-run to get the latest configuration
 - **Different machines**: Run on each machine where you use Copilot CLI
-- **New projects**: Run `/oh-my-copilot:omg-setup --local` in each project that needs omp
+- **New projects**: Run `/oh-my-copilot:omg-setup --local` in each project that needs omc
 
 > **NOTE**: After updating the plugin (via `npm update`, `git pull`, or Copilot CLI's plugin update), you MUST re-run `/oh-my-copilot:omg-setup` to apply the latest copilot-instructions.md changes.
 
@@ -165,21 +165,21 @@ This is a TypeScript monorepo using:
 
 ### Stop Callback Notification Tags
 
-Configure tags for Telegram/Discord stop callbacks with `omp config-stop-callback`.
+Configure tags for Telegram/Discord stop callbacks with `omc config-stop-callback`.
 
 ```bash
 # Set/replace tags
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
 
 # Incremental updates
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 
 # Inspect current callback config
-omp config-stop-callback telegram --show
-omp config-stop-callback discord --show
+omc config-stop-callback telegram --show
+omc config-stop-callback discord --show
 ```
 
 Tag behavior:
@@ -192,13 +192,13 @@ Tag behavior:
 
 ## CLI Commands: ask/team
 
-### `omp ask`
+### `omc ask`
 
 ```bash
-omp ask copilot "review this patch"
-omp ask codex "review this patch from a security perspective"
-omp ask gemini --prompt "suggest UX improvements"
-omp ask copilot --agent-prompt executor --prompt "create an implementation plan"
+omc ask copilot "review this patch"
+omc ask codex "review this patch from a security perspective"
+omc ask gemini --prompt "suggest UX improvements"
+omc ask copilot --agent-prompt executor --prompt "create an implementation plan"
 ```
 
 - Provider matrix: `copilot | codex | gemini`
@@ -207,16 +207,16 @@ omp ask copilot --agent-prompt executor --prompt "create an implementation plan"
 - Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
 - Skill shortcuts: `/oh-my-copilot:ask-codex` and `/oh-my-copilot:ask-gemini` route to this command
 
-### `omp team` (CLI runtime surface)
+### `omc team` (CLI runtime surface)
 
 ```bash
-omp team 2:codex "review auth flow"
-omp team status review-auth-flow
-omp team shutdown review-auth-flow --force
-omp team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
+omc team 2:codex "review auth flow"
+omc team status review-auth-flow
+omc team shutdown review-auth-flow --force
+omc team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
 ```
 
-Supported entrypoints: direct start (`omp team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
+Supported entrypoints: direct start (`omc team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
 
 ---
 
@@ -227,18 +227,18 @@ The Team MCP runtime server is **not enabled by default**. If manually enabled, 
 ```json
 {
   "code": "deprecated_cli_only",
-  "message": "Legacy team MCP runtime tools are deprecated. Use the omp team CLI instead."
+  "message": "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead."
 }
 ```
 
-Use `omp team ...` replacements instead:
+Use `omc team ...` replacements instead:
 
 | Tool                   | Purpose                                                    |
 | ---------------------- | ---------------------------------------------------------- |
-| `omc_run_team_start`   | **Deprecated** → `omp team [N:agent-type] "<task>"`        |
-| `omc_run_team_status`  | **Deprecated** → `omp team status <team-name>`             |
-| `omc_run_team_wait`    | **Deprecated** → monitor via `omp team status <team-name>` |
-| `omc_run_team_cleanup` | **Deprecated** → `omp team shutdown <team-name> [--force]` |
+| `omc_run_team_start`   | **Deprecated** → `omc team [N:agent-type] "<task>"`        |
+| `omc_run_team_status`  | **Deprecated** → `omc team status <team-name>`             |
+| `omc_run_team_wait`    | **Deprecated** → monitor via `omc team status <team-name>` |
+| `omc_run_team_cleanup` | **Deprecated** → `omc team shutdown <team-name> [--force]` |
 
 Optional compatibility enablement (manual only):
 
@@ -325,8 +325,8 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
-| `ask-codex`               | Ask Codex via `omp ask codex` and store an ask artifact          | `/oh-my-copilot:ask-codex`               |
-| `ask-gemini`              | Ask Gemini via `omp ask gemini` and store an ask artifact        | `/oh-my-copilot:ask-gemini`              |
+| `ask-codex`               | Ask Codex via `omc ask codex` and store an ask artifact          | `/oh-my-copilot:ask-codex`               |
+| `ask-gemini`              | Ask Gemini via `omc ask gemini` and store an ask artifact        | `/oh-my-copilot:ask-gemini`              |
 | `autopilot`               | Full autonomous execution from idea to working code              | `/oh-my-copilot:autopilot`               |
 | `cancel`                  | Unified cancellation for active modes                            | `/oh-my-copilot:cancel`                  |
 | `ccg`                     | Tri-model workflow via `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:ccg`                     |
@@ -335,7 +335,7 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 | `deepinit`                | Generate hierarchical AGENTS.md docs                             | `/oh-my-copilot:deepinit`                |
 | `external-context`        | Parallel document-specialist research                            | `/oh-my-copilot:external-context`        |
 | `hud`                     | Configure HUD/statusline                                         | `/oh-my-copilot:hud`                     |
-| `learn-about-omp`         | Analyze OMP usage patterns                                       | `/oh-my-copilot:learn-about-omp`         |
+| `learn-about-omc`         | Analyze OMP usage patterns                                       | `/oh-my-copilot:learn-about-omc`         |
 | `learner`                 | Extract reusable skill from session                              | `/oh-my-copilot:learner`                 |
 | `mcp-setup`               | Configure MCP servers                                            | `/oh-my-copilot:mcp-setup`               |
 | `note`                    | Save notes to notepad                                            | `/oh-my-copilot:note`                    |
@@ -343,7 +343,7 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 | `omg-help`                | Show OMP usage guide                                             | `/oh-my-copilot:omg-help`                |
 | `omg-plan`                | Planning workflow (`/plan` safe alias)                           | `/oh-my-copilot:omg-plan`                |
 | `omg-setup`               | One-time setup wizard                                            | `/oh-my-copilot:omg-setup`               |
-| `omg-teams`               | Legacy compatibility wrapper for `omp team` CLI                  | `/oh-my-copilot:omg-teams`               |
+| `omg-teams`               | Legacy compatibility wrapper for `omc team` CLI                  | `/oh-my-copilot:omg-teams`               |
 | `project-session-manager` | Manage isolated dev environments (git worktrees + tmux)          | `/oh-my-copilot:project-session-manager` |
 | `psm`                     | **Deprecated** compatibility alias for `project-session-manager` | `/oh-my-copilot:psm`                     |
 | `ralph`                   | Persistence loop until verified completion                       | `/oh-my-copilot:ralph`                   |
@@ -621,17 +621,17 @@ For complete documentation, see **[Performance Monitoring Guide](./PERFORMANCE-M
 | Feature                 | Description                                     | Access                               |
 | ----------------------- | ----------------------------------------------- | ------------------------------------ |
 | **Agent Observatory**   | Real-time agent status, efficiency, bottlenecks | HUD / API                            |
-| **Token Analytics**     | Cost tracking, usage reports, budget warnings   | HUD (`analytics` preset), `omp cost` |
+| **Token Analytics**     | Cost tracking, usage reports, budget warnings   | HUD (`analytics` preset), `omc cost` |
 | **Session Replay**      | Event timeline for post-session analysis        | `.omg/state/agent-replay-*.jsonl`    |
 | **Intervention System** | Auto-detection of stale agents, cost overruns   | Automatic                            |
 
 ### CLI Commands
 
 ```bash
-omp                # Default analytics dashboard
-omp cost daily     # Daily cost report
-omp cost weekly    # Weekly cost report
-omp backfill       # Import historical transcript data
+omc                # Default analytics dashboard
+omc cost daily     # Daily cost report
+omc cost weekly    # Weekly cost report
+omc backfill       # Import historical transcript data
 # Agent breakdown: use HUD observatory / replay logs
 ```
 

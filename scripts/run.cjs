@@ -57,7 +57,7 @@ function resolveTarget(targetPath) {
   }
 
   // Fallback: scan plugin cache for the same script in the latest version.
-  // CLAUDE_PLUGIN_ROOT is e.g. ~/.copilot/plugins/cache/omp/oh-my-copilot/4.2.14
+  // CLAUDE_PLUGIN_ROOT is e.g. ~/.copilot/plugins/cache/omc/oh-my-copilot/4.2.14
   // PLUGIN_ROOT is the Copilot CLI equivalent variable name.
   // __dirname resolves to the scripts/ directory inside the plugin install root.
   // We look one level up for sibling version directories.

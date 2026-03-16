@@ -20,7 +20,7 @@ describe('Cleanup Validation', () => {
         expect('detectDeprecatedKeywords' in keywordModule).toBe(false);
         expect('DEPRECATED_KEYWORD_PATTERNS' in keywordModule).toBe(false);
     });
-    it('PluginConfig.agents matches 18-agent registry + omp', async () => {
+    it('PluginConfig.agents matches 18-agent registry + omc', async () => {
         const { DEFAULT_CONFIG } = await import('../config/loader.js');
         const agentKeys = Object.keys(DEFAULT_CONFIG.agents || {});
         expect(agentKeys).toContain('omg');

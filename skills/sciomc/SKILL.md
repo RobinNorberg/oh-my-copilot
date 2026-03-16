@@ -464,7 +464,7 @@ Optional settings in `.copilot/settings.json`:
 
 ```json
 {
-  "omp": {
+  "omc": {
     "research": {
       "maxIterations": 10,
       "maxConcurrentScientists": 5,

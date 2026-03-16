@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: swe-bench-omp
+    container_name: swe-bench-omc
 
     # Environment configuration
     environment:
@@ -28,7 +28,7 @@ services:
       # Execution logs
       - ./logs:/workspace/logs
       # Mount OMP source for development (optional)
-      - ../:/workspace/omp-source:ro
+      - ../:/workspace/omc-source:ro
       # Docker socket for SWE-bench container operations
       - /var/run/docker.sock:/var/run/docker.sock
       # Copilot config persistence

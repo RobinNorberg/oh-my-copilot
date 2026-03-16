@@ -160,7 +160,7 @@ export function readPrdStateForHud(directory) {
     // Check root first
     let prdPath = join(directory, 'prd.json');
     if (!existsSync(prdPath)) {
-        // Check .omp
+        // Check .omc
         prdPath = join(getOmcRoot(directory), 'prd.json');
         if (!existsSync(prdPath)) {
             return null;

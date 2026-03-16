@@ -9,7 +9,7 @@ vi.mock('../installer/index.js', async () => {
   return {
     ...actual,
     install: vi.fn(),
-    HOOKS_DIR: '/tmp/omp-test-hooks',
+    HOOKS_DIR: '/tmp/omc-test-hooks',
     isProjectScopedPlugin: vi.fn(),
     checkNodeVersion: vi.fn(),
   };
@@ -88,7 +88,7 @@ describe('auto-update reconciliation', () => {
     const result = reconcileUpdateRuntime({ verbose: false });
 
     expect(result.success).toBe(true);
-    expect(mockedMkdirSync).toHaveBeenCalledWith('/tmp/omp-test-hooks', { recursive: true });
+    expect(mockedMkdirSync).toHaveBeenCalledWith('/tmp/omc-test-hooks', { recursive: true });
     expect(mockedInstall).toHaveBeenCalledWith({
       force: true,
       verbose: false,

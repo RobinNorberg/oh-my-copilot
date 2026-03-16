@@ -77,7 +77,7 @@ Run vanilla Copilot CLI benchmark:
 ### run_omc.sh
 Run OMP-enhanced benchmark:
 - Copilot CLI with oh-my-copilot orchestration
-- Saves predictions to `predictions/omp/`
+- Saves predictions to `predictions/omc/`
 - Logs to `logs/omc_*.log`
 
 **Usage:**
@@ -111,7 +111,7 @@ Complete benchmark suite:
 - `--model MODEL` - Copilot model to use
 - `--timeout SECS` - Timeout per instance
 - `--skip-vanilla` - Skip vanilla benchmark run
-- `--skip-omp` - Skip OMP benchmark run
+- `--skip-omc` - Skip OMP benchmark run
 - `--skip-eval` - Skip evaluation step
 
 **Examples:**
@@ -136,7 +136,7 @@ benchmark/
 ├── requirements.txt           # Python dependencies
 ├── predictions/
 │   ├── vanilla/              # Vanilla predictions
-│   └── omp/                  # OMP predictions
+│   └── omc/                  # OMP predictions
 ├── logs/
 │   ├── vanilla_*.log         # Vanilla run logs
 │   └── omc_*.log            # OMP run logs
@@ -183,7 +183,7 @@ export ANTHROPIC_API_KEY=your_key_here
 
 4. **Review Results**:
    - Check `results/comparison_report.md`
-   - Inspect predictions in `predictions/vanilla/` and `predictions/omp/`
+   - Inspect predictions in `predictions/vanilla/` and `predictions/omc/`
    - Review logs in `logs/`
 
 ## Troubleshooting

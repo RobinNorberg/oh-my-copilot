@@ -78,17 +78,17 @@ Enable Copilot CLI native teams in `~/.copilot/settings.json`:
 
 ### tmux CLI Workers — Codex & Gemini (v4.4.0+)
 
-**v4.4.0 removes the Codex/Gemini MCP servers** (`x`, `g` providers). Use the CLI-first Team runtime (`omp team ...`) to spawn real tmux worker panes:
+**v4.4.0 removes the Codex/Gemini MCP servers** (`x`, `g` providers). Use the CLI-first Team runtime (`omc team ...`) to spawn real tmux worker panes:
 
 ```bash
-omp team 2:codex "review auth module for security issues"
-omp team 2:gemini "redesign UI components for accessibility"
-omp team 1:copilot "implement the payment flow"
-omp team status auth-review
-omp team shutdown auth-review
+omc team 2:codex "review auth module for security issues"
+omc team 2:gemini "redesign UI components for accessibility"
+omc team 1:copilot "implement the payment flow"
+omc team status auth-review
+omc team shutdown auth-review
 ```
 
-`/omg-teams` remains as a legacy compatibility skill and now routes to `omp team ...`.
+`/omg-teams` remains as a legacy compatibility skill and now routes to `omc team ...`.
 
 For mixed Codex + Gemini work in one command, use the **`/ccg`** skill (routes via `ask-codex` + `ask-gemini`, then Copilot synthesizes):
 
@@ -98,9 +98,9 @@ For mixed Codex + Gemini work in one command, use the **`/ccg`** skill (routes v
 
 | Surface                   | Workers            | Best For                                     |
 | ------------------------- | ------------------ | -------------------------------------------- |
-| `omp team N:codex "..."`  | N Codex CLI panes  | Code review, security analysis, architecture |
-| `omp team N:gemini "..."` | N Gemini CLI panes | UI/UX design, docs, large-context tasks      |
-| `omp team N:copilot "..."` | N Copilot CLI panes | General tasks via Copilot CLI in tmux         |
+| `omc team N:codex "..."`  | N Codex CLI panes  | Code review, security analysis, architecture |
+| `omc team N:gemini "..."` | N Gemini CLI panes | UI/UX design, docs, large-context tasks      |
+| `omc team N:copilot "..."` | N Copilot CLI panes | General tasks via Copilot CLI in tmux         |
 | `/ccg`                    | ask-codex + ask-gemini | Tri-model advisor synthesis             |
 
 Workers spawn on-demand and die when their task completes — no idle resource usage. Requires `codex` / `gemini` CLIs installed and an active tmux session.
@@ -111,13 +111,13 @@ Workers spawn on-demand and die when their task completes — no idle resource u
 
 ```bash
 # 1. Update the marketplace clone
-/plugin marketplace update omp
+/plugin marketplace update omc
 
 # 2. Re-run setup to refresh configuration
 /omg-setup
 ```
 
-> **Note:** If marketplace auto-update is not enabled, you must manually run `/plugin marketplace update omp` to sync the latest version before running setup.
+> **Note:** If marketplace auto-update is not enabled, you must manually run `/plugin marketplace update omc` to sync the latest version before running setup.
 
 If you experience issues after updating, clear the old plugin cache:
 
@@ -155,7 +155,7 @@ Multiple strategies for different use cases — from Team-backed orchestration t
 | Mode                    | What it is                                                                              | Use For                                                |
 | ----------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------ |
 | **Team (recommended)**  | Canonical staged pipeline (`team-plan → team-prd → team-exec → team-verify → team-fix`) | Coordinated Copilot agents on a shared task list        |
-| **omp team (CLI)**      | tmux CLI workers — real `copilot`/`codex`/`gemini` processes in split-panes              | Codex/Gemini CLI tasks; on-demand spawn, die when done |
+| **omc team (CLI)**      | tmux CLI workers — real `copilot`/`codex`/`gemini` processes in split-panes              | Codex/Gemini CLI tasks; on-demand spawn, die when done |
 | **ccg**                 | Tri-model advisors via ask-codex + ask-gemini, Copilot synthesizes                         | Mixed backend+UI work needing both Codex and Gemini    |
 | **Autopilot**           | Autonomous execution (single lead agent)                                                | End-to-end feature work with minimal ceremony          |
 | **Ultrawork**           | Maximum parallelism (non-team)                                                          | Burst parallel fixes/refactors where Team isn't needed |
@@ -187,7 +187,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 | Keyword                | Effect                                 | Example                                        |
 | ---------------------- | -------------------------------------- | ---------------------------------------------- |
 | `team`                 | Canonical Team orchestration           | `/team 3:executor "fix all TypeScript errors"` |
-| `omp team`             | tmux CLI workers (codex/gemini/copilot) | `omp team 2:codex "security review"`           |
+| `omc team`             | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"`           |
 | `ccg`                  | ask-codex + ask-gemini synthesis       | `/ccg review this PR`                          |
 | `autopilot`            | Full autonomous execution              | `autopilot: build a todo app`                  |
 | `ralph`                | Persistence mode                       | `ralph: refactor auth`                         |
@@ -285,15 +285,15 @@ All commands use `execFileSync` with WIQL escaping for security.
 
 ## Utilities
 
-### Provider Advisor (`omp ask`)
+### Provider Advisor (`omc ask`)
 
 Run local provider CLIs and save a markdown artifact under `.omg/artifacts/ask/`:
 
 ```bash
-omp ask copilot "review this migration plan"
-omp ask codex --prompt "identify architecture risks"
-omp ask gemini --prompt "propose UI polish ideas"
-omp ask copilot --agent-prompt executor --prompt "draft implementation steps"
+omc ask copilot "review this migration plan"
+omc ask codex --prompt "identify architecture risks"
+omc ask gemini --prompt "propose UI polish ideas"
+omc ask copilot --agent-prompt executor --prompt "draft implementation steps"
 ```
 
 Canonical env vars:
@@ -308,20 +308,20 @@ Phase-1 aliases `OMX_ASK_ADVISOR_SCRIPT` and `OMX_ASK_ORIGINAL_TASK` are accepte
 Auto-resume Copilot CLI sessions when rate limits reset.
 
 ```bash
-omp wait          # Check status, get guidance
-omp wait --start  # Enable auto-resume daemon
-omp wait --stop   # Disable daemon
+omc wait          # Check status, get guidance
+omc wait --start  # Enable auto-resume daemon
+omc wait --stop   # Disable daemon
 ```
 
 **Requires:** tmux (for session detection)
 
 ### Monitoring & Analytics
 
-Use the HUD for live observability and `omp` for cost/session reporting:
+Use the HUD for live observability and `omc` for cost/session reporting:
 
 - HUD analytics preset: `/oh-my-copilot:hud setup` then set `"omcHud": { "preset": "analytics" }`
-- Cost reports: `omp cost daily|weekly|monthly`
-- Session history/backfill: `omp sessions`, `omp backfill`
+- Cost reports: `omc cost daily|weekly|monthly`
+- Session history/backfill: `omc sessions`, `omc backfill`
 - Raw logs: `.omg/state/token-tracking.jsonl`, `.omg/state/agent-replay-*.jsonl`
 
 ### Notification Tags (Teams/Telegram/Discord/Slack)
@@ -330,15 +330,15 @@ You can configure who gets tagged when stop callbacks send session summaries.
 
 ```bash
 # Set/replace tag list
-omp config-stop-callback teams --enable --webhook <url> --tag-list "John Doe:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
-omp config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
+omc config-stop-callback teams --enable --webhook <url> --tag-list "John Doe:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
 
 # Incremental updates
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 Tag behavior:
@@ -354,7 +354,7 @@ Tag behavior:
 ## Documentation
 
 - **[Full Reference](docs/REFERENCE.md)** - Complete feature documentation
-- **[CLI Reference](https://docs/REFERENCE.md/docs.html#cli-reference)** - All `omp` commands, flags, and tools
+- **[CLI Reference](https://docs/REFERENCE.md/docs.html#cli-reference)** - All `omc` commands, flags, and tools
 - **[Notifications Guide](https://docs/REFERENCE.md/docs.html#notifications)** - Discord, Telegram, Slack, Teams, and webhook setup
 - **[Recommended Workflows](https://docs/REFERENCE.md/docs.html#workflows)** - Battle-tested skill chains for common tasks
 - **[Release Notes](https://docs/REFERENCE.md/docs.html#release-notes)** - What's new in each version
@@ -371,7 +371,7 @@ Tag behavior:
 
 ### Platform & tmux
 
-OMP features like `omp team` and rate-limit detection require **tmux**:
+OMP features like `omc team` and rate-limit detection require **tmux**:
 
 | Platform       | tmux provider                                            | Install                |
 | -------------- | -------------------------------------------------------- | ---------------------- |

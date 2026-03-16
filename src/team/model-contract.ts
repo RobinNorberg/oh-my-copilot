@@ -119,7 +119,7 @@ export function resolveCliBinaryPath(binary: string): string {
   }
 
   if (!isTrustedPrefix(resolvedPath)) {
-    console.warn(`[omp:cli-security] CLI binary '${binary}' resolved to non-standard path: ${resolvedPath}`);
+    console.warn(`[omc:cli-security] CLI binary '${binary}' resolved to non-standard path: ${resolvedPath}`);
   }
 
   resolvedPathCache.set(binary, resolvedPath);

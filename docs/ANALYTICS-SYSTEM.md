@@ -57,21 +57,21 @@ Use `analytics` preset for detailed display.
 
 ```bash
 # View everything (default dashboard)
-omp
+omc
 
 # Cost reports
-omp cost daily
-omp cost weekly
-omp cost monthly
+omc cost daily
+omc cost weekly
+omc cost monthly
 
 # Session history
-omp sessions
+omc sessions
 
 # Agent observability is shown in HUD/replay logs
 # (legacy standalone agent-breakdown command was removed)
 
 # Export data
-omp export cost csv ./costs.csv
+omc export cost csv ./costs.csv
 ```
 
 ## Performance
@@ -96,12 +96,12 @@ omp export cost csv ./costs.csv
 
 The analytics system can analyze historical Copilot CLI session transcripts from `~/.copilot/projects/` to backfill token usage data.
 
-### The `omp backfill` Command
+### The `omc backfill` Command
 
 Extracts actual token usage from Copilot CLI transcripts and adds them to the analytics database.
 
 ```bash
-omp backfill [options]
+omc backfill [options]
 ```
 
 #### Options
@@ -120,21 +120,21 @@ omp backfill [options]
 
 ```bash
 # Preview all available transcripts
-omp backfill --dry-run
+omc backfill --dry-run
 
 # Backfill specific project
-omp backfill --project "*VibeQuant*"
+omc backfill --project "*VibeQuant*"
 
 # Backfill recent transcripts only
-omp backfill --from "2026-01-01"
+omc backfill --from "2026-01-01"
 
 # Re-process everything
-omp backfill --reset
+omc backfill --reset
 ```
 
 ### Auto-Backfill
 
-The `omp` CLI automatically runs a silent backfill on startup if more than 24 hours have passed since the last backfill. This ensures your analytics stay up-to-date without manual intervention.
+The `omc` CLI automatically runs a silent backfill on startup if more than 24 hours have passed since the last backfill. This ensures your analytics stay up-to-date without manual intervention.
 
 ### Data Sources
 

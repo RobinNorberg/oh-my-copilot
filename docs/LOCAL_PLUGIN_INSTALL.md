@@ -69,9 +69,9 @@ npm install
 npm run build
 # Copy to shared location (adjust path for your environment)
 # Windows:
-robocopy . "\\server\shared\copilot-plugins\oh-my-copilot" /MIR /XD node_modules/.cache .git .omp
+robocopy . "\\server\shared\copilot-plugins\oh-my-copilot" /MIR /XD node_modules/.cache .git .omc
 # macOS/Linux:
-rsync -av --exclude='node_modules/.cache' --exclude='.git' --exclude='.omp' . /mnt/shared/copilot-plugins/oh-my-copilot/
+rsync -av --exclude='node_modules/.cache' --exclude='.git' --exclude='.omc' . /mnt/shared/copilot-plugins/oh-my-copilot/
 ```
 
 **Colleagues:**
@@ -126,7 +126,7 @@ npm install && npm run build
 tar czf oh-my-copilot-4.7.8.tar.gz \
   --exclude='node_modules/.cache' \
   --exclude='.git' \
-  --exclude='.omp' \
+  --exclude='.omc' \
   .claude-plugin/ agents/ bridge/ dist/ docs/ hooks/ scripts/ \
   skills/ src/ templates/ node_modules/ \
   package.json .mcp.json CLAUDE.md

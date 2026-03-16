@@ -896,7 +896,7 @@ Q3: What are your security requirements?
 [After user answers...]
 
 Creating implementation plan...
-Plan saved to: .omp/plans/auth-system.md
+Plan saved to: .omg/plans/auth-system.md
 ```
 
 Note: Planning mode uses an interactive interview to gather requirements before creating a detailed plan.
@@ -1009,7 +1009,7 @@ Note: The HUD integrates with Copilot CLI's statusLine API to show real-time orc
 
 **Plan-scoped knowledge capture:**
 
-Location: `.omp/notepads/{plan-name}/`
+Location: `.omg/notepads/{plan-name}/`
 
 | File | Purpose | Example |
 |------|---------|---------|
@@ -1034,7 +1034,7 @@ Note: Wisdom persists across sessions - future work on the same plan gets this c
 **Track token usage and costs:**
 
 ```
-$ omp-analytics summary
+$ omc-analytics summary
 
 Session Summary (last 7 days)
 -----------------------------
@@ -1109,7 +1109,7 @@ Note: Plugin marketplace is the easiest - one command and you're done.
 
 **Step 2: Setup**
 ```bash
-/oh-my-copilot:omp-setup
+/oh-my-copilot:omc-setup
 ```
 (Configures defaults, HUD, preferences)
 
@@ -1134,7 +1134,7 @@ Note: Zero learning curve means you can start using OMP immediately after instal
 ```json
 // ~/.copilot/settings.json
 {
-  "omp": {
+  "omc": {
     "defaultExecutionMode": "ultrawork",  // or ""
     "autopilot": {
       "maxIterations": 10,
@@ -1206,8 +1206,8 @@ npm install -g oh-my-copilot
 
 **Getting Help**
 ```
-/oh-my-copilot:omp-help    - Usage guide
-/oh-my-copilot:omp-doctor  - Diagnose issues
+/oh-my-copilot:omc-help    - Usage guide
+/oh-my-copilot:omc-doctor  - Diagnose issues
 ```
 
 Note: The GitHub repo has all documentation, examples, and issue tracking.
@@ -1338,7 +1338,7 @@ autopilot: build something amazing
 | Skill | Purpose | Trigger |
 |-------|---------|---------|
 | help | Show usage guide | `/help` |
-| omp-setup | Setup wizard | `/omp-setup` |
+| omc-setup | Setup wizard | `/omc-setup` |
 | ralph-init | Initialize PRD | `/ralph-init` |
 | release | Release workflow | `/release` |
 | review | Review plan | "review plan" |

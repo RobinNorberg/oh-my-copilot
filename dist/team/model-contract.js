@@ -69,7 +69,7 @@ export function resolveCliBinaryPath(binary) {
         throw new Error(`Resolved CLI binary '${binary}' to untrusted location: ${resolvedPath}`);
     }
     if (!isTrustedPrefix(resolvedPath)) {
-        console.warn(`[omp:cli-security] CLI binary '${binary}' resolved to non-standard path: ${resolvedPath}`);
+        console.warn(`[omc:cli-security] CLI binary '${binary}' resolved to non-standard path: ${resolvedPath}`);
     }
     resolvedPathCache.set(binary, resolvedPath);
     return resolvedPath;

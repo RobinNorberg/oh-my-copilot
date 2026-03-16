@@ -162,9 +162,9 @@ Farklı kullanım senaryoları için birden fazla strateji — Team destekli ork
 Rate limitler sıfırlandığında Copilot CLI oturumlarını otomatik olarak devam ettirir.
 
 ```bash
-omp wait          # Durumu kontrol et, rehberlik al
-omp wait --start  # Otomatik devam daemon'ını etkinleştir
-omp wait --stop   # Daemon'ı devre dışı bırak
+omc wait          # Durumu kontrol et, rehberlik al
+omc wait --start  # Otomatik devam daemon'ını etkinleştir
+omc wait --stop   # Daemon'ı devre dışı bırak
 ```
 
 **Gereklidir:** tmux (oturum algılama için)
@@ -175,13 +175,13 @@ Stop callback'leri oturum özetlerini gönderdiğinde kimin etiketleneceğini ya
 
 ```bash
 # Etiket listesini ayarla/değiştir
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
 
 # Artımlı güncellemeler
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 Etiket davranışı:

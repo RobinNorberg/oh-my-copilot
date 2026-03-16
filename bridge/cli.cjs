@@ -5095,7 +5095,7 @@ function resolveOmcPath(relativePath, worktreeRoot) {
   const fullPath = (0, import_path15.normalize)((0, import_path15.resolve)(omcDir, relativePath));
   const relativeToOmc = (0, import_path15.relative)(omcDir, fullPath);
   if (relativeToOmc.startsWith("..") || relativeToOmc.startsWith(import_path15.sep + "..")) {
-    throw new Error(`Path escapes omp boundary: ${relativePath}`);
+    throw new Error(`Path escapes omc boundary: ${relativePath}`);
   }
   return fullPath;
 }
@@ -6952,7 +6952,7 @@ function isOmcStatusLine(statusLine) {
 }
 function isOmcHook(command) {
   const lowerCommand = command.toLowerCase();
-  const omcPattern = /(?:^|[\/\\_-])omp(?:$|[\/\\_-])/;
+  const omcPattern = /(?:^|[\/\\_-])omc(?:$|[\/\\_-])/;
   const fullNamePattern = /oh-my-copilot/;
   if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
     return true;
@@ -7042,7 +7042,7 @@ function loadClaudeMdContent() {
   return (0, import_fs26.readFileSync)(claudeMdPath, "utf-8");
 }
 function extractOmcVersionFromClaudeMd(content) {
-  const versionMarkerMatch = content.match(/<!--\s*OMP:VERSION:([^\s]+)\s*-->/i);
+  const versionMarkerMatch = content.match(/<!--\s*OMC:VERSION:([^\s]+)\s*-->/i);
   if (versionMarkerMatch?.[1]) {
     const markerVersion = versionMarkerMatch[1].trim();
     return markerVersion.startsWith("v") ? markerVersion : `v${markerVersion}`;
@@ -7096,8 +7096,8 @@ function mergeClaudeMd(existingContent, omcContent, version3) {
   if (omcStartIdx !== -1 && omcEndIdx !== -1 && omcStartIdx < omcEndIdx) {
     cleanOmcContent = omcContent.substring(omcStartIdx + START_MARKER.length, omcEndIdx).trim();
   }
-  cleanOmcContent = cleanOmcContent.replace(/<!-- OMP:VERSION:[^\s]*? -->\n?/, "");
-  const versionMarker = version3 ? `<!-- OMP:VERSION:${version3} -->
+  cleanOmcContent = cleanOmcContent.replace(/<!-- OMC:VERSION:[^\s]*? -->\n?/, "");
+  const versionMarker = version3 ? `<!-- OMC:VERSION:${version3} -->
 ` : "";
   if (!existingContent) {
     return `${START_MARKER}
@@ -7564,7 +7564,7 @@ var init_installer = __esm({
     VERSION_FILE = (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omg-version.json");
     CORE_COMMANDS = [];
     VERSION = getRuntimePackageVersion();
-    OMC_VERSION_MARKER_PATTERN = /<!-- OMP:VERSION:([^\s]+) -->/;
+    OMC_VERSION_MARKER_PATTERN = /<!-- OMC:VERSION:([^\s]+) -->/;
     OMC_HOOK_FILENAMES = /* @__PURE__ */ new Set([
       "keyword-detector.mjs",
       "session-start.mjs",
@@ -23142,7 +23142,7 @@ function resolveCliBinaryPath(binary) {
     throw new Error(`Resolved CLI binary '${binary}' to untrusted location: ${resolvedPath}`);
   }
   if (!isTrustedPrefix(resolvedPath)) {
-    console.warn(`[omp:cli-security] CLI binary '${binary}' resolved to non-standard path: ${resolvedPath}`);
+    console.warn(`[omc:cli-security] CLI binary '${binary}' resolved to non-standard path: ${resolvedPath}`);
   }
   resolvedPathCache.set(binary, resolvedPath);
   return resolvedPath;
@@ -66570,7 +66570,7 @@ Examples:
   $ omc --madmax                       Launch with permissions bypass
   $ omc --yolo                         Launch with permissions bypass (alias)
   $ omc --notify false                 Launch without CCNotifier events
-  $ omc launch                         Explicit launch subcommand (same as bare omp)
+  $ omc launch                         Explicit launch subcommand (same as bare omc)
   $ omc launch --madmax                Explicit launch with flags
 
 Options:

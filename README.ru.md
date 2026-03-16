@@ -162,9 +162,9 @@ Team работает как поэтапный pipeline:
 Автоматическое возобновление сессий Copilot CLI при сбросе rate limit.
 
 ```bash
-omp wait          # Проверить статус, получить рекомендации
-omp wait --start  # Включить демон автовозобновления
-omp wait --stop   # Отключить демон
+omc wait          # Проверить статус, получить рекомендации
+omc wait --start  # Включить демон автовозобновления
+omc wait --stop   # Отключить демон
 ```
 
 **Требуется:** tmux (для обнаружения сессии)
@@ -175,13 +175,13 @@ omp wait --stop   # Отключить демон
 
 ```bash
 # Установить/заменить список тегов
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
 
 # Инкрементальные обновления
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 Поведение тегов:

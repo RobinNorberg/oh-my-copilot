@@ -152,7 +152,7 @@ Create or update the config file. Preserve any existing non-ADO keys.
 First, ensure the `.omg/` directory exists:
 
 ```bash
-mkdir -p .omp
+mkdir -p .omc
 ```
 
 Write `.omg/config.json` using the Write (or Edit) tool. The schema is:

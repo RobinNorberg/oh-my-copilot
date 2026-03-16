@@ -24,25 +24,25 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 ```json
 {
   "code": "deprecated_cli_only",
-  "message": "Legacy team MCP runtime tools are deprecated. Use the omp team CLI instead."
+  "message": "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead."
 }
 ```
 
 Use CLI commands instead:
 
-- `omp team [N:agent-type] "<task>"`
-- `omp team status <team-name>`
-- `omp team shutdown <team-name> [--force]`
-- `omp team api <operation> --input '<json>' --json`
+- `omc team [N:agent-type] "<task>"`
+- `omc team status <team-name>`
+- `omc team shutdown <team-name> [--force]`
+- `omc team api <operation> --input '<json>' --json`
 
-### `omp ask` env alias sunset (Phase-1 compatibility)
+### `omc ask` env alias sunset (Phase-1 compatibility)
 
 `OMC_ASK_*` is now canonical for advisor execution. Phase-1 accepts `OMX_ASK_ADVISOR_SCRIPT` and `OMX_ASK_ORIGINAL_TASK` with deprecation warnings. Planned hard sunset for alias removal: **2026-06-30**.
 
 ### How to Migrate
 
 1. Replace MCP runtime tool calls with CLI equivalents.
-2. Update skills/prompts from `/omg-teams ...` to `omp team ...` syntax.
+2. Update skills/prompts from `/omg-teams ...` to `omc team ...` syntax.
 3. Legacy Team MCP runtime is now opt-in only (not enabled by default). If you enable it manually, treat responses as deprecation-only compatibility output.
 
 ### Example mapping
@@ -55,10 +55,10 @@ mcp__team__omc_run_team_wait({ job_id: ... })
 mcp__team__omc_run_team_cleanup({ job_id: ... })
 
 # New (CLI-first)
-omp team 2:codex "review auth flow"
-omp team status review-auth-flow
-omp team shutdown review-auth-flow --force
-omp team api list-tasks --input '{"team_name":"review-auth-flow"}' --json
+omc team 2:codex "review auth flow"
+omc team status review-auth-flow
+omc team shutdown review-auth-flow --force
+omc team api list-tasks --input '{"team_name":"review-auth-flow"}' --json
 ```
 
 ---
@@ -135,7 +135,7 @@ The following skills have been **completely removed** in v3.5.3:
 
 ### New Features
 
-**New skill: `/learn-about-omp`**
+**New skill: `/learn-about-omc`**
 
 - Analyzes your OMP usage patterns
 - Provides personalized recommendations
@@ -169,7 +169,7 @@ Your old commands still work! But now you don't need them.
 
 **Before 3.0:** Explicitly invoke 25+ commands like `/oh-my-copilot:ralph "task"`, `/oh-my-copilot:ultrawork "task"`
 
-**After 3.0:** Just work naturally - Copilot auto-activates the right behaviors. One-time setup: just say "setup omp"
+**After 3.0:** Just work naturally - Copilot auto-activates the right behaviors. One-time setup: just say "setup omc"
 
 ### Project Rebrand
 
@@ -244,8 +244,8 @@ Directory structures have been renamed for consistency with the new package name
 
 #### Config Files
 
-- **Old**: `~/.copilot/omp/mnemosyne.json`
-- **New**: `~/.copilot/omp/learner.json`
+- **Old**: `~/.copilot/omc/mnemosyne.json`
+- **New**: `~/.copilot/omc/learner.json`
 
 ### Environment Variables
 
@@ -360,20 +360,20 @@ If you have existing projects using the old directory structure:
 
 ```bash
 # In each project directory
-mv .omp .omp
+mv .omc .omc
 ```
 
 #### 4. Rename Global Directories
 
 ```bash
 # Global configuration directory
-mv ~/.omp ~/.omp
+mv ~/.omc ~/.omc
 
 # Skills directory
 mv ~/.copilot/skills/omg-learned ~/.copilot/skills/omg-learned
 
 # Config directory
-mv ~/.copilot/omp ~/.copilot/omp
+mv ~/.copilot/omc ~/.copilot/omc
 ```
 
 #### 5. Update Environment Variables
@@ -394,11 +394,11 @@ Search for and update any references to:
 - Package name: `oh-my-copilot` → `oh-my-copilot`
 - Agent names: Use the mapping table above
 - Commands: Use the new slash commands
-- Directory paths: Update `.omp` → `.omp`
+- Directory paths: Update `.omc` → `.omc`
 
 #### 7. Run One-Time Setup
 
-In Copilot CLI, just say "setup omp", "omp setup", or any natural language equivalent.
+In Copilot CLI, just say "setup omc", "omc setup", or any natural language equivalent.
 
 This:
 

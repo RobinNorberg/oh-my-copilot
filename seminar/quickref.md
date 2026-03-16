@@ -5,7 +5,7 @@
 ```bash
 /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
-/oh-my-copilot:omp-setup
+/oh-my-copilot:omc-setup
 ```
 
 ## Execution Modes
@@ -59,10 +59,10 @@
 ## Key Commands
 | Command | Purpose |
 |---------|---------|
-| `/oh-my-copilot:omp-setup` | Initial setup wizard |
+| `/oh-my-copilot:omc-setup` | Initial setup wizard |
 | `/oh-my-copilot:hud setup` | Enable HUD statusline |
-| `/oh-my-copilot:omp-doctor` | Diagnose issues |
-| `/oh-my-copilot:omp-help` | Show usage guide |
+| `/oh-my-copilot:omc-doctor` | Diagnose issues |
+| `/oh-my-copilot:omc-help` | Show usage guide |
 | `/oh-my-copilot:cancel` | Stop current operation |
 | `/oh-my-copilot:note` | Save compaction-resilient note |
 | `/oh-my-copilot:learner` | Extract reusable skill |
@@ -88,20 +88,20 @@
 | `writing` | Sonnet | 0.5 | medium | Documentation |
 
 ## Plan Notepads (Wisdom Capture)
-**Location:** `.omp/notepads/{plan-name}/`
+**Location:** `.omg/notepads/{plan-name}/`
 - `learnings.md` - Technical discoveries and patterns
 - `decisions.md` - Architectural and design decisions
 - `issues.md` - Known issues and workarounds
 - `problems.md` - Blockers and challenges
 
 ## State Files
-- `.omp/state/ultrapilot-state.json` - Ultrapilot session
-- `.omp/state/ultrapilot-ownership.json` - File ownership
-- `.omp/state/swarm-{id}.json` - Swarm coordination
-- `.omp/state/pipeline-{id}.json` - Pipeline progress
+- `.omg/state/ultrapilot-state.json` - Ultrapilot session
+- `.omg/state/ultrapilot-ownership.json` - File ownership
+- `.omg/state/swarm-{id}.json` - Swarm coordination
+- `.omg/state/pipeline-{id}.json` - Pipeline progress
 
 ## Configuration
-**File:** `~/.copilot/.omp-config.json`
+**File:** `~/.copilot/.omc-config.json`
 ```json
 {
   "defaultExecutionMode": "ultrawork",  // or ""

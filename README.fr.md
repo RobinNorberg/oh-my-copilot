@@ -162,9 +162,9 @@ Raccourcis optionnels pour les utilisateurs avancés. Le langage naturel fonctio
 Reprise automatique des sessions Copilot CLI lorsque les rate limits sont réinitialisés.
 
 ```bash
-omp wait          # Vérifier le statut, obtenir des conseils
-omp wait --start  # Activer le daemon de reprise automatique
-omp wait --stop   # Désactiver le daemon
+omc wait          # Vérifier le statut, obtenir des conseils
+omc wait --start  # Activer le daemon de reprise automatique
+omc wait --stop   # Désactiver le daemon
 ```
 
 **Prérequis :** tmux (pour la détection de session)
@@ -175,13 +175,13 @@ Vous pouvez configurer qui est mentionné lorsque les callbacks d'arrêt envoien
 
 ```bash
 # Définir/remplacer la liste des tags
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
 
 # Mises à jour incrémentales
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 Comportement des tags :

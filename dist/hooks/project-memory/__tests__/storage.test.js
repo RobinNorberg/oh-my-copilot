@@ -100,7 +100,7 @@ describe('Project Memory Storage', () => {
             expect(parsed.version).toBe(SCHEMA_VERSION);
             expect(parsed.projectRoot).toBe(projectRoot);
         });
-        it('should save to centralized state dir without creating local .omp when OMC_STATE_DIR is set', async () => {
+        it('should save to centralized state dir without creating local .omc when OMC_STATE_DIR is set', async () => {
             const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), 'project-memory-state-'));
             try {
                 process.env.OMC_STATE_DIR = stateDir;

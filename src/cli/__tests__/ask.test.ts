@@ -617,7 +617,7 @@ describe('resolveAskAdvisorScriptPath', () => {
 });
 
 describe.skipIf(process.platform === 'win32')('ask wrapper scripts contract', () => {
-  it('ask-codex wrapper dispatches provider, forwards prompt, and ignores PATH omp shadow', () => {
+  it('ask-codex wrapper dispatches provider, forwards prompt, and ignores PATH omc shadow', () => {
     const wd = mkdtempSync(join(tmpdir(), 'omg-ask-wrapper-codex-'));
     try {
       const stubPath = writeAdvisorStub(wd);

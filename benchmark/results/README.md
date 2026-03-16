@@ -75,7 +75,7 @@ Top failure categories for each mode:
 1. Category: N failures (N%)
 2. ...
 
-**OMP:**
+**OMC:**
 1. Category: N failures (N%)
 2. ...
 
@@ -121,22 +121,22 @@ python evaluate.py --predictions results/vanilla/predictions.json --output resul
 
 ```bash
 # Generate predictions with OMP
-python run_benchmark.py --mode omp --dataset swe-bench-verified --output results/omp/
+python run_benchmark.py --mode omc --dataset swe-bench-verified --output results/omc/
 
 # Evaluate
-python evaluate.py --predictions results/omp/predictions.json --output results/omp/
+python evaluate.py --predictions results/omc/predictions.json --output results/omc/
 ```
 
 ### Comparing Results
 
 ```bash
-python compare_results.py --vanilla results/vanilla/ --omp results/omp/ --output comparison/
+python compare_results.py --vanilla results/vanilla/ --omc results/omc/ --output comparison/
 ```
 
 ### Analyzing Failures
 
 ```bash
-python analyze_failures.py --vanilla results/vanilla/ --omp results/omp/ --compare --output analysis/
+python analyze_failures.py --vanilla results/vanilla/ --omc results/omc/ --compare --output analysis/
 ```
 
 ## Files
@@ -148,7 +148,7 @@ results/
 │   ├── summary.json          # Evaluation summary
 │   ├── report.md             # Human-readable report
 │   └── logs/                 # Per-instance logs
-├── omp/
+├── omc/
 │   ├── predictions.json
 │   ├── summary.json
 │   ├── report.md

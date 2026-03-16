@@ -55,19 +55,19 @@ PSM provides a unified interface to:
 
 ```bash
 # Review PR #123 from oh-my-copilot repo
-/psm review omp#123
+/psm review omc#123
 
 # Review PR from any GitHub URL
 /psm review https://github.com/anthropics/copilot-cli/pull/456
 
 # Review with specific focus
-/psm review omp#123 --focus "security implications"
+/psm review omc#123 --focus "security implications"
 ```
 
 **What happens:**
 1. Fetches PR branch
-2. Creates worktree at `~/.psm/worktrees/omp/pr-123`
-3. Spawns tmux session `psm:omp:pr-123`
+2. Creates worktree at `~/.psm/worktrees/omc/pr-123`
+3. Spawns tmux session `psm:omc:pr-123`
 4. Launches Copilot CLI with PR context pre-loaded
 5. Opens diff in editor (optional)
 
@@ -75,10 +75,10 @@ PSM provides a unified interface to:
 
 ```bash
 # Fix issue #42
-/psm fix omp#42
+/psm fix omc#42
 
 # Fix with branch name override
-/psm fix omp#42 --branch fix/auth-timeout
+/psm fix omc#42 --branch fix/auth-timeout
 
 # Fix from issue URL
 /psm fix https://github.com/anthropics/copilot-cli/issues/789
@@ -87,7 +87,7 @@ PSM provides a unified interface to:
 **What happens:**
 1. Fetches issue details via `gh`
 2. Creates feature branch from main
-3. Creates worktree at `~/.psm/worktrees/omp/issue-42`
+3. Creates worktree at `~/.psm/worktrees/omc/issue-42`
 4. Spawns tmux session with issue context
 5. Pre-populates Copilot CLI with issue description
 
@@ -95,13 +95,13 @@ PSM provides a unified interface to:
 
 ```bash
 # Start new feature
-/psm feature omp "add-webhook-support"
+/psm feature omc "add-webhook-support"
 
 # Feature from existing branch
-/psm feature omp --branch feature/webhooks
+/psm feature omc --branch feature/webhooks
 
 # Feature with specific base
-/psm feature omp "dark-mode" --base develop
+/psm feature omc "dark-mode" --base develop
 ```
 
 **What happens:**
@@ -114,13 +114,13 @@ PSM provides a unified interface to:
 
 ```bash
 # Prepare release
-/psm release omp v3.5.0
+/psm release omc v3.5.0
 
 # Release candidate
-/psm release omp v3.5.0-rc1 --draft
+/psm release omc v3.5.0-rc1 --draft
 
 # Hotfix release
-/psm release omp v3.4.1 --hotfix --base v3.4.0
+/psm release omc v3.4.1 --hotfix --base v3.4.0
 ```
 
 **What happens:**
@@ -136,19 +136,19 @@ PSM provides a unified interface to:
 /psm list
 
 # List sessions for specific project
-/psm list omp
+/psm list omc
 
 # Attach to existing session
-/psm attach omp:pr-123
+/psm attach omc:pr-123
 
 # Detach current session (return to main)
 /psm detach
 
 # Kill specific session
-/psm kill omp:pr-123
+/psm kill omc:pr-123
 
 # Kill all sessions for project
-/psm kill omp --all
+/psm kill omc --all
 
 # Cleanup completed sessions
 /psm cleanup
@@ -161,7 +161,7 @@ PSM provides a unified interface to:
 
 ```bash
 # Switch to another session (detach current, attach target)
-/psm switch omp:feature-auth
+/psm switch omc:feature-auth
 
 # Switch with session picker (fzf)
 /psm switch
@@ -204,7 +204,7 @@ PSM supports multiple reference formats:
 
 ```bash
 # Short alias (requires ~/.psm/projects.json config)
-omp#123
+omc#123
 
 # Full GitHub reference
 anthropics/copilot-cli#123
@@ -225,7 +225,7 @@ https://github.com/anthropics/copilot-cli/pull/123
 // ~/.psm/projects.json
 {
   "aliases": {
-    "omp": {
+    "omc": {
       "repo": "anthropics/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
@@ -284,7 +284,7 @@ https://github.com/anthropics/copilot-cli/pull/123
                               ▼
     ┌─────────────────────────────────────────────────────────┐
     │                    Integration Layer                     │
-    │  (gh CLI, git, tmux, copilot, omp skills, Clawdbot)       │
+    │  (gh CLI, git, tmux, copilot, omc skills, Clawdbot)       │
     └─────────────────────────────────────────────────────────┘
 ```
 
@@ -361,7 +361,7 @@ User Command
 ├── logs/                    # Session logs
 │   └── psm.log
 └── worktrees/               # Default worktree location
-    ├── omp/                 # Per-project worktrees
+    ├── omc/                 # Per-project worktrees
     │   ├── pr-123/
     │   ├── issue-42/
     │   └── feature-auth/
@@ -372,7 +372,7 @@ User Command
 ### 5.2 Per-Session Directory
 
 ```
-~/.psm/worktrees/omp/pr-123/
+~/.psm/worktrees/omc/pr-123/
 ├── .git                     # Git worktree link
 ├── .psm-session.json        # Session metadata
 ├── .psm-context.md          # Pre-loaded Copilot context
@@ -385,16 +385,16 @@ User Command
 ```json
 // .psm-session.json
 {
-  "id": "omp:pr-123",
+  "id": "omc:pr-123",
   "type": "review",
-  "project": "omp",
+  "project": "omc",
   "ref": "pr-123",
   "branch": "feature/add-hooks",
   "base": "main",
   "created_at": "2024-01-26T10:30:00Z",
   "last_accessed": "2024-01-26T14:45:00Z",
-  "tmux_session": "psm:omp:pr-123",
-  "worktree_path": "~/.psm/worktrees/omp/pr-123",
+  "tmux_session": "psm:omc:pr-123",
+  "worktree_path": "~/.psm/worktrees/omc/pr-123",
   "source_repo": "~/Workspace/oh-my-copilot",
   "github": {
     "pr_number": 123,
@@ -417,11 +417,11 @@ Format: `psm:<project>:<type>-<identifier>`
 
 | Type | Pattern | Example |
 |------|---------|---------|
-| PR Review | `psm:<proj>:pr-<num>` | `psm:omp:pr-123` |
-| Issue Fix | `psm:<proj>:issue-<num>` | `psm:omp:issue-42` |
-| Feature | `psm:<proj>:feat-<name>` | `psm:omp:feat-auth` |
-| Release | `psm:<proj>:rel-<ver>` | `psm:omp:rel-v3.5.0` |
-| Generic | `psm:<proj>:<name>` | `psm:omp:experiment` |
+| PR Review | `psm:<proj>:pr-<num>` | `psm:omc:pr-123` |
+| Issue Fix | `psm:<proj>:issue-<num>` | `psm:omc:issue-42` |
+| Feature | `psm:<proj>:feat-<name>` | `psm:omc:feat-auth` |
+| Release | `psm:<proj>:rel-<ver>` | `psm:omc:rel-v3.5.0` |
+| Generic | `psm:<proj>:<name>` | `psm:omc:experiment` |
 
 ### 6.2 Worktree Directory Names
 
@@ -572,26 +572,26 @@ steps:
 {
   "version": 1,
   "sessions": {
-    "omp:pr-123": {
-      "id": "omp:pr-123",
+    "omc:pr-123": {
+      "id": "omc:pr-123",
       "state": "active",
       "created_at": "2024-01-26T10:30:00Z",
       "last_accessed": "2024-01-26T14:45:00Z",
-      "worktree": "~/.psm/worktrees/omp/pr-123",
-      "tmux": "psm:omp:pr-123",
+      "worktree": "~/.psm/worktrees/omc/pr-123",
+      "tmux": "psm:omc:pr-123",
       "type": "review",
       "metadata": {
         "pr_number": 123,
         "pr_merged": false
       }
     },
-    "omp:issue-42": {
-      "id": "omp:issue-42",
+    "omc:issue-42": {
+      "id": "omc:issue-42",
       "state": "detached",
       "created_at": "2024-01-25T09:00:00Z",
       "last_accessed": "2024-01-25T18:00:00Z",
-      "worktree": "~/.psm/worktrees/omp/issue-42",
-      "tmux": "psm:omp:issue-42",
+      "worktree": "~/.psm/worktrees/omc/issue-42",
+      "tmux": "psm:omc:issue-42",
       "type": "fix",
       "metadata": {
         "issue_number": 42,
@@ -775,13 +775,13 @@ interface ClawdbotPSMIntegration {
 
 ```bash
 # VSCode
-/psm review omp#123 --editor vscode
+/psm review omc#123 --editor vscode
 
 # Cursor
-/psm review omp#123 --editor cursor
+/psm review omc#123 --editor cursor
 
 # Neovim
-/psm review omp#123 --editor nvim
+/psm review omc#123 --editor nvim
 ```
 
 Opens editor in worktree directory alongside tmux session.
@@ -791,7 +791,7 @@ Opens editor in worktree directory alongside tmux session.
 PSM status in OMP HUD statusline:
 
 ```
-[psm:omp:pr-123] 📋 Review | 🕐 2h active | 📁 ~/.psm/worktrees/omp/pr-123
+[psm:omc:pr-123] 📋 Review | 🕐 2h active | 📁 ~/.psm/worktrees/omc/pr-123
 ```
 
 ---
@@ -830,14 +830,14 @@ PSM status in OMP HUD statusline:
 ### 11.3 Conflict Resolution
 
 ```
-User runs: /psm review omp#123
+User runs: /psm review omc#123
 
 Existing session found!
 
 Options:
   [A] Attach to existing session (recommended)
   [R] Recreate (destroys existing worktree)
-  [C] Create parallel (omp:pr-123-2)
+  [C] Create parallel (omc:pr-123-2)
   [Q] Quit
 ```
 
@@ -942,7 +942,7 @@ interface PSMPlugin {
 │   /psm repair           Fix corrupted state               │
 ├────────────────────────────────────────────────────────────┤
 │ REFERENCES                                                 │
-│   omp#123               Project alias + number            │
+│   omc#123               Project alias + number            │
 │   org/repo#123          Full GitHub reference             │
 │   https://...           GitHub URL                        │
 └────────────────────────────────────────────────────────────┘
@@ -998,30 +998,30 @@ interface PSMPlugin {
 ## Appendix C: Example Session Transcript
 
 ```bash
-$ /psm review omp#123
+$ /psm review omc#123
 
 🔍 Fetching PR #123 from oh-my-copilot...
    Title: "Add webhook support for external integrations"
    Author: @contributor
    Changed: 12 files (+450, -23)
 
-📁 Creating worktree at ~/.psm/worktrees/omp/pr-123...
+📁 Creating worktree at ~/.psm/worktrees/omc/pr-123...
    Branch: feature/webhook-support
    Base: main
 
-🖥️  Creating tmux session: psm:omp:pr-123...
+🖥️  Creating tmux session: psm:omc:pr-123...
 
 🤖 Launching Copilot CLI with PR context...
 
 ✅ Session ready!
 
-   Session ID: omp:pr-123
-   Worktree:   ~/.psm/worktrees/omp/pr-123
-   Tmux:       psm:omp:pr-123
+   Session ID: omc:pr-123
+   Worktree:   ~/.psm/worktrees/omc/pr-123
+   Tmux:       psm:omc:pr-123
 
    Commands:
-     /psm attach omp:pr-123  - Reattach later
-     /psm kill omp:pr-123    - End session
+     /psm attach omc:pr-123  - Reattach later
+     /psm kill omc:pr-123    - End session
      /psm cleanup            - Clean when PR merged
 
 Attaching to session...

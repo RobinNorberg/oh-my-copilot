@@ -51,7 +51,7 @@ describe('Project Memory Integration', () => {
             const omcStat = await fs.stat(omcDir);
             expect(omcStat.isDirectory()).toBe(true);
         });
-        it('should persist to centralized state dir without creating local .omp when OMC_STATE_DIR is set', async () => {
+        it('should persist to centralized state dir without creating local .omc when OMC_STATE_DIR is set', async () => {
             const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), 'integration-state-'));
             try {
                 process.env.OMC_STATE_DIR = stateDir;

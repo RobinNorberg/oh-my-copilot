@@ -93,8 +93,8 @@ describe('isOmcHook()', () => {
     it('recognises oh-my-copilot in command path', () => {
         expect(isOmcHook('/path/to/oh-my-copilot/hook.mjs')).toBe(true);
     });
-    it('recognises omp as a path segment', () => {
-        expect(isOmcHook('/usr/local/bin/omp-hook.sh')).toBe(true);
+    it('recognises omc as a path segment', () => {
+        expect(isOmcHook('/usr/local/bin/omc-hook.sh')).toBe(true);
     });
     it('does not recognise a plain user command', () => {
         expect(isOmcHook('/usr/local/bin/my-custom-hook.sh')).toBe(false);
@@ -103,7 +103,7 @@ describe('isOmcHook()', () => {
         expect(isOmcHook('bash /home/user/scripts/notify.sh')).toBe(false);
     });
     it('does not match "omg" inside an unrelated word', () => {
-        // "nomc" or "omcr" should NOT match the omp path-segment pattern
+        // "nomc" or "omcr" should NOT match the omc path-segment pattern
         expect(isOmcHook('/usr/bin/nomp-thing')).toBe(false);
     });
 });

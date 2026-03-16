@@ -468,7 +468,7 @@ Total: 3 iterations, 2 self-corrections, 1m 20s
 
 ### Variation 2: Show Ralph State
 ```bash
-cat .omp/state/ralph-state.json
+cat .omg/state/ralph-state.json
 ```
 
 "Ralph state shows iteration history, errors encountered, fixes applied. Useful for debugging complex migrations."
@@ -503,7 +503,7 @@ ralph ulw: refactor all auth modules to TypeScript
 
 **Transition to Q&A or Summary:**
 
-"We've seen five modes of OMP:
+"We've seen five modes of OMC:
 1. **Autopilot** - Full autonomous execution
 2. **Ultrawork** - Maximum parallelism
 3. **Pipeline** - Sequential coordination
@@ -533,7 +533,7 @@ A: Yes! Perfect use case. Ralph will attempt migration, handle errors (missing c
 A: Higher than single-pass due to iterations, but you're paying for guaranteed completion. A failed manual attempt costs MORE (wasted time + tokens).
 
 **Q: Can I see what Ralph is thinking during iterations?**
-A: Yes! Check `.omp/state/ralph-state.json` for iteration log, or use verbose mode: "ralph --verbose: refactor X"
+A: Yes! Check `.omg/state/ralph-state.json` for iteration log, or use verbose mode: "ralph --verbose: refactor X"
 
 **Q: What happens if I cancel Ralph mid-iteration?**
 A: State is saved. Resume with "resume ralph" or "/oh-my-copilot:resume-session". It picks up where it left off.

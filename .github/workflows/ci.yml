@@ -144,27 +144,27 @@ jobs:
           echo "📦 Testing global install from tarball..."
           npm install -g ./$TARBALL
           
-          echo "🔍 Checking omp command..."
-          which omp
+          echo "🔍 Checking omc command..."
+          which omc
           
-          echo "🔍 Testing omp --version..."
-          omp --version
+          echo "🔍 Testing omc --version..."
+          omc --version
           
-          VERSION_OUTPUT=$(omp --version 2>&1)
+          VERSION_OUTPUT=$(omc --version 2>&1)
           if [ $? -ne 0 ]; then
-            echo "❌ omp --version failed!"
+            echo "❌ omc --version failed!"
             echo "$VERSION_OUTPUT"
             exit 1
           fi
           
-          echo "✅ omp --version: $VERSION_OUTPUT"
+          echo "✅ omc --version: $VERSION_OUTPUT"
           
-          echo "🔍 Testing omp --help..."
-          omp --help
+          echo "🔍 Testing omc --help..."
+          omc --help
           
-          HELP_OUTPUT=$(omp --help 2>&1)
+          HELP_OUTPUT=$(omc --help 2>&1)
           if [ $? -ne 0 ]; then
-            echo "❌ omp --help failed!"
+            echo "❌ omc --help failed!"
             echo "$HELP_OUTPUT"
             exit 1
           fi

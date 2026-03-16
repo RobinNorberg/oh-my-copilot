@@ -53,7 +53,7 @@ describe('shouldSkipEntry', () => {
   });
 
   it('does not skip hidden directory if important (copilot-instructions.md is a file, so N/A)', () => {
-    // .omp is in SKIP_DIRS, so it is skipped
+    // .omc is in SKIP_DIRS, so it is skipped
     expect(shouldSkipEntry('.omg', true, [])).toBe(true);
   });
 

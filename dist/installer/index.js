@@ -33,11 +33,11 @@ export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omg-version.json');
 export const CORE_COMMANDS = [];
 /** Current version */
 export const VERSION = getRuntimePackageVersion();
-const OMC_VERSION_MARKER_PATTERN = /<!-- OMP:VERSION:([^\s]+) -->/;
+const OMC_VERSION_MARKER_PATTERN = /<!-- OMC:VERSION:([^\s]+) -->/;
 /**
  * Detects the newest installed OMG version from persistent metadata or
  * existing copilot-instructions.md markers so an older CLI package cannot overwrite a
- * newer installation during `omp setup`.
+ * newer installation during `omc setup`.
  */
 function isComparableVersion(version) {
     return !!version && /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(version);
@@ -213,8 +213,8 @@ const OMC_HOOK_FILENAMES = new Set([
 export function isOmcHook(command) {
     const lowerCommand = command.toLowerCase();
     // Match "omg" as a path segment or word boundary
-    // Matches: /omg/, /omp-, omp/, -omp, _omc, omc_
-    const omcPattern = /(?:^|[\/\\_-])omp(?:$|[\/\\_-])/;
+    // Matches: /omg/, /omc-, omc/, -omc, _omc, omc_
+    const omcPattern = /(?:^|[\/\\_-])omc(?:$|[\/\\_-])/;
     const fullNamePattern = /oh-my-copilot/;
     if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
         return true;
@@ -369,11 +369,11 @@ function loadClaudeMdContent() {
 /**
  * Extract the embedded OMG version from a copilot-instructions.md file.
  *
- * Primary source of truth is the injected `<!-- OMP:VERSION:x.y.z -->` marker.
+ * Primary source of truth is the injected `<!-- OMC:VERSION:x.y.z -->` marker.
  * Falls back to legacy headings that may include a version string inline.
  */
 export function extractOmcVersionFromClaudeMd(content) {
-    const versionMarkerMatch = content.match(/<!--\s*OMP:VERSION:([^\s]+)\s*-->/i);
+    const versionMarkerMatch = content.match(/<!--\s*OMC:VERSION:([^\s]+)\s*-->/i);
     if (versionMarkerMatch?.[1]) {
         const markerVersion = versionMarkerMatch[1].trim();
         return markerVersion.startsWith('v') ? markerVersion : `v${markerVersion}`;
@@ -446,8 +446,8 @@ export function mergeClaudeMd(existingContent, omcContent, version) {
             .trim();
     }
     // Strip any existing version marker from content and inject current version
-    cleanOmcContent = cleanOmcContent.replace(/<!-- OMP:VERSION:[^\s]*? -->\n?/, '');
-    const versionMarker = version ? `<!-- OMP:VERSION:${version} -->\n` : '';
+    cleanOmcContent = cleanOmcContent.replace(/<!-- OMC:VERSION:[^\s]*? -->\n?/, '');
+    const versionMarker = version ? `<!-- OMC:VERSION:${version} -->\n` : '';
     // Case 1: No existing content - wrap omcContent in markers
     if (!existingContent) {
         return `${START_MARKER}\n${versionMarker}${cleanOmcContent}\n${END_MARKER}\n`;

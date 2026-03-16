@@ -73,17 +73,17 @@ Team은 단계별 파이프라인으로 실행됩니다:
 
 ### tmux CLI 워커 — Codex & Gemini (v4.4.0+)
 
-**v4.4.0에서 Codex/Gemini MCP 서버**(`x`, `g` 프로바이더)가 **제거됩니다**. CLI 우선 Team 런타임(`omp team ...`)으로 tmux 분할 창에서 실제 CLI 프로세스를 실행하세요:
+**v4.4.0에서 Codex/Gemini MCP 서버**(`x`, `g` 프로바이더)가 **제거됩니다**. CLI 우선 Team 런타임(`omc team ...`)으로 tmux 분할 창에서 실제 CLI 프로세스를 실행하세요:
 
 ```bash
-omp team 2:codex "review auth module for security issues"
-omp team 2:gemini "redesign UI components for accessibility"
-omp team 1:copilot "implement the payment flow"
-omp team status auth-review
-omp team shutdown auth-review
+omc team 2:codex "review auth module for security issues"
+omc team 2:gemini "redesign UI components for accessibility"
+omc team 1:copilot "implement the payment flow"
+omc team status auth-review
+omc team shutdown auth-review
 ```
 
-`/omg-teams`는 레거시 호환 스킬로 유지되며, 현재는 내부적으로 `omp team ...`으로 라우팅됩니다.
+`/omg-teams`는 레거시 호환 스킬로 유지되며, 현재는 내부적으로 `omc team ...`으로 라우팅됩니다.
 
 하나의 명령으로 Codex + Gemini 작업을 처리하려면 **`/ccg`** 스킬을 사용하세요:
 
@@ -93,9 +93,9 @@ omp team shutdown auth-review
 
 | 실행 표면 | 워커 | 최적 용도 |
 |-------|---------|----------|
-| `omp team N:codex "..."` | N개 Codex CLI 창 | 코드 리뷰, 보안 분석, 아키텍처 |
-| `omp team N:gemini "..."` | N개 Gemini CLI 창 | UI/UX 디자인, 문서, 대용량 컨텍스트 |
-| `omp team N:copilot "..."` | N개 Copilot CLI 창 | tmux에서 Copilot CLI를 통한 일반 작업 |
+| `omc team N:codex "..."` | N개 Codex CLI 창 | 코드 리뷰, 보안 분석, 아키텍처 |
+| `omc team N:gemini "..."` | N개 Gemini CLI 창 | UI/UX 디자인, 문서, 대용량 컨텍스트 |
+| `omc team N:copilot "..."` | N개 Copilot CLI 창 | tmux에서 Copilot CLI를 통한 일반 작업 |
 | `/ccg` | ask-codex + ask-gemini | Codex+Gemini 조언을 Claude가 통합 |
 
 워커는 요청 시 생성되고 작업 완료 후 종료됩니다 — 유휴 리소스 낭비 없음. `codex` / `gemini` CLI가 설치되어 있고 활성 tmux 세션이 필요합니다.
@@ -106,13 +106,13 @@ omp team shutdown auth-review
 
 ```bash
 # 1. 마켓플레이스 클론 업데이트
-/plugin marketplace update omp
+/plugin marketplace update omc
 
 # 2. 셋업을 다시 실행하여 설정 갱신
 /omg-setup
 ```
 
-> **참고:** 마켓플레이스 auto-update가 활성화되어 있지 않은 경우, 셋업 실행 전에 `/plugin marketplace update omp`를 수동으로 실행하여 최신 버전을 동기화해야 합니다.
+> **참고:** 마켓플레이스 auto-update가 활성화되어 있지 않은 경우, 셋업 실행 전에 `/plugin marketplace update omc`를 수동으로 실행하여 최신 버전을 동기화해야 합니다.
 
 업데이트 후 문제가 발생하면, 이전 플러그인 캐시를 정리하세요:
 
@@ -149,7 +149,7 @@ omp team shutdown auth-review
 | 모드 | 특징 | 용도 |
 |------|---------|---------|
 | **Team (권장)** | 단계별 파이프라인 | 공유 작업 목록에서 협력하는 Copilot 에이전트 |
-| **omp team (CLI)** | tmux CLI 워커 | Codex/Gemini CLI 작업; 요청 시 실행, 완료 후 종료 |
+| **omc team (CLI)** | tmux CLI 워커 | Codex/Gemini CLI 작업; 요청 시 실행, 완료 후 종료 |
 | **ccg** | 트라이-모델 병렬 | Codex(분석) + Gemini(디자인), Claude가 통합 |
 | **Autopilot** | 자율 실행 | 최소한의 설정으로 end-to-end 기능 개발 |
 | **Ultrawork** | 최대 병렬 | Team이 필요 없는 병렬 수정/리팩토링 |
@@ -181,7 +181,7 @@ omp team shutdown auth-review
 | 키워드 | 효과 | 예시 |
 |---------|--------|---------|
 | `team` | 표준 Team 오케스트레이션 | `/team 3:executor "fix all TypeScript errors"` |
-| `omp team` | tmux CLI 워커 (codex/gemini/copilot) | `omp team 2:codex "security review"` |
+| `omc team` | tmux CLI 워커 (codex/gemini/copilot) | `omc team 2:codex "security review"` |
 | `ccg` | 트라이-모델 Codex+Gemini 오케스트레이션 | `/ccg review this PR` |
 | `autopilot` | 완전 자율 실행 | `autopilot: build a todo app` |
 | `ralph` | 지속 모드 | `ralph: refactor auth` |
@@ -194,7 +194,7 @@ omp team shutdown auth-review
 
 **참고:**
 - **ralph는 ultrawork를 포함합니다:** ralph 모드를 활성화하면 자동으로 ultrawork의 병렬 실행이 포함됩니다. 키워드를 결합할 필요가 없습니다.
-- `/omg-teams`는 레거시 호환 경로로 남아 있으며 내부적으로 `omp team ...`으로 라우팅됩니다.
+- `/omg-teams`는 레거시 호환 경로로 남아 있으며 내부적으로 `omc team ...`으로 라우팅됩니다.
 - `swarm N agents` 구문은 에이전트 수 추출을 위해 여전히 인식되지만, v4.1.7+에서 런타임은 Team 기반입니다.
 
 ---
@@ -206,9 +206,9 @@ omp team shutdown auth-review
 속도 제한이 리셋될 때 Copilot CLI 세션을 자동 재개합니다.
 
 ```bash
-omp wait          # 상태 확인, 가이드 받기
-omp wait --start  # 자동 재개 데몬 활성화
-omp wait --stop   # 데몬 비활성화
+omc wait          # 상태 확인, 가이드 받기
+omc wait --start  # 자동 재개 데몬 활성화
+omc wait --stop   # 데몬 비활성화
 ```
 
 **요구사항:** tmux (세션 감지용)
@@ -219,14 +219,14 @@ stop 콜백이 세션 요약을 보낼 때 태그할 대상을 설정할 수 있
 
 ```bash
 # 태그 목록 설정/교체
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
-omp config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
 
 # 점진적 수정
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 태그 동작:
@@ -240,7 +240,7 @@ omp config-stop-callback discord --clear-tags
 ## 문서
 
 - **[전체 레퍼런스](docs/REFERENCE.md)** - 완전한 기능 문서
-- **[CLI 레퍼런스](https://docs/REFERENCE.md/docs.html#cli-reference)** - 모든 `omp` 명령어, 플래그 및 도구
+- **[CLI 레퍼런스](https://docs/REFERENCE.md/docs.html#cli-reference)** - 모든 `omc` 명령어, 플래그 및 도구
 - **[알림 가이드](https://docs/REFERENCE.md/docs.html#notifications)** - Discord, Telegram, Slack 및 webhook 설정
 - **[추천 워크플로우](https://docs/REFERENCE.md/docs.html#workflows)** - 일반 작업을 위한 검증된 스킬 체인
 - **[릴리스 노트](https://docs/REFERENCE.md/docs.html#release-notes)** - 각 버전의 새로운 기능

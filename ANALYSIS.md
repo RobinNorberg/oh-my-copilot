@@ -1206,8 +1206,8 @@ BEST OF BOTH WORLDS:
 ### Deep-Executor Research Sources
 
 1. **Primary Source**: oh-my-copilot local codebase
-   - File: `/home/bellman/Workspace/omp-omo-deepexec-comparsion/agents/deep-executor.md`
-   - File: `/home/bellman/Workspace/omp-omo-deepexec-comparsion/src/agents/deep-executor.ts`
+   - File: `/home/bellman/Workspace/omc-omo-deepexec-comparsion/agents/deep-executor.md`
+   - File: `/home/bellman/Workspace/omc-omo-deepexec-comparsion/src/agents/deep-executor.ts`
 
 2. **Supporting Context**:
    - Agent utilities and types

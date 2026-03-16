@@ -4,7 +4,7 @@ This directory contains demo scripts for showcasing Oh-My-ClaudeCode's capabilit
 
 ## Overview
 
-The seminar includes 5 progressive demos that showcase different aspects of OMP:
+The seminar includes 5 progressive demos that showcase different aspects of OMC:
 
 1. **Autopilot** (5 min) - Full autonomous execution from idea to working code
 2. **Ultrawork** (3 min) - Maximum parallelism with multiple agents
@@ -17,7 +17,7 @@ The seminar includes 5 progressive demos that showcase different aspects of OMP:
 ## Global Pre-requisites
 
 ### Required Setup
-- OMP installed and configured (`/oh-my-copilot:omp-setup` completed)
+- OMP installed and configured (`/oh-my-copilot:omc-setup` completed)
 - HUD statusline installed (`/oh-my-copilot:hud setup`)
 - Clean workspace directory for demos
 - Terminal with good font size for presentation (16-18pt minimum)
@@ -30,7 +30,7 @@ mkdir -p ~/demo-workspace
 cd ~/demo-workspace
 
 # Verify OMP is installed
-which omp || echo "Run: /oh-my-copilot:omp-setup"
+which omc || echo "Run: /oh-my-copilot:omc-setup"
 
 # Check HUD is working
 echo "HUD should display in your terminal prompt"
@@ -39,7 +39,7 @@ echo "HUD should display in your terminal prompt"
 ### Pre-Demo Checklist
 - [ ] Terminal font size increased for visibility
 - [ ] No active OMP operations running (`/oh-my-copilot:cancel --all`)
-- [ ] Clean state files (`rm -rf .omp/state/*`)
+- [ ] Clean state files (`rm -rf .omg/state/*`)
 - [ ] Screen recorder ready
 - [ ] Fallback terminal outputs printed/accessible
 - [ ] Demo workspace prepared
@@ -78,7 +78,7 @@ echo "HUD should display in your terminal prompt"
 ## Common Issues & Solutions
 
 ### Issue: Agent not responding
-**Solution**: Check `.omp/logs/agent-lifecycle.log` for errors, or skip to fallback output
+**Solution**: Check `.omg/logs/agent-lifecycle.log` for errors, or skip to fallback output
 
 ### Issue: HUD not showing
 **Solution**: Mention it verbally ("The HUD would show 3 active agents here...")

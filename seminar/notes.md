@@ -568,7 +568,7 @@ Narrate:
 
 **Notepad Wisdom** (Slide 36)
 - "OMP learns from every session via the notepad system:"
-- "Location: `.omp/notepads/{plan-name}/`"
+- "Location: `.omg/notepads/{plan-name}/`"
 - "  learnings.md - Technical patterns discovered"
 - "  decisions.md - Architectural choices and rationale"
 - "  issues.md - Known problems and workarounds"
@@ -581,7 +581,7 @@ Narrate:
 - "OMP tracks token usage per session:"
 - "See exactly how much each mode costs"
 - "Compare ultrawork vs  for your workload"
-- "Audit logs at `.omp/logs/delegation-audit.jsonl`"
+- "Audit logs at `.omg/logs/delegation-audit.jsonl`"
 - "Know your costs before they surprise you."
 
 ### Transition
@@ -617,7 +617,7 @@ Narrate:
 npm install -g oh-my-copilot
 
 # Step 2: Run setup wizard
-copilot-cli "/oh-my-copilot:omp-setup"
+copilot-cli "/oh-my-copilot:omc-setup"
 
 # Step 3: Start using it
 copilot-cli "autopilot: build me a todo app"
@@ -709,7 +709,7 @@ That said, it's open-source. If there's community interest in adapting it to oth
 **Answer:**
 "Great question. Without OMP, Copilot CLI gives you one very smart generalist assistant. You tell it every step: 'search for this, analyze that, now implement this, now test that.'
 
-With OMP, you get 28 specialized agents orchestrated automatically. You state the goal - 'build authentication' - and OMP:
+With OMP, you get 28 specialized agents orchestrated automatically. You state the goal - 'build authentication' - and OMC:
 - Automatically explores your codebase for patterns
 - Plans the implementation
 - Parallelizes execution across multiple agents
@@ -727,7 +727,7 @@ Real-world impact: Tasks that took 30 minutes of back-and-forth with Copilot CLI
 
 Additionally, OMP includes a security-reviewer agent that can audit code for common vulnerabilities. You can invoke it explicitly: '/pipeline security' runs a security audit pipeline.
 
-The notepad wisdom system stores data locally in `.omp/notepads/`. Nothing is sent to external servers.
+The notepad wisdom system stores data locally in `.omg/notepads/`. Nothing is sent to external servers.
 
 For maximum security, you can review the code - it's fully open-source on GitHub. Every agent prompt is visible."
 
@@ -747,7 +747,7 @@ Focus on: fixtures, parametrization, mocking with pytest-mock.
 
 Then invoke: `Task(subagent_type="oh-my-copilot:pytest-specialist")`
 
-You can also customize execution modes, delegation categories, and model routing rules via the config file at `~/.copilot/.omp-config.json`.
+You can also customize execution modes, delegation categories, and model routing rules via the config file at `~/.copilot/.omc-config.json`.
 
 Power users go deep on customization. Casual users never need to touch it."
 
@@ -832,7 +832,7 @@ Compare this to traditional tools:
 - Kubernetes: Weeks to understand pods, deployments, services
 - Even git: Hours to understand branching, merging, rebasing
 
-OMP: Literally zero learning time. If you can describe what you want in English, you can use OMP.
+OMC: Literally zero learning time. If you can describe what you want in English, you can use OMP.
 
 The learning comes later - understanding WHEN to use ultrawork vs pipeline, WHICH agent is best for what. But that's optimization, not prerequisites."
 
@@ -862,7 +862,7 @@ The learning comes later - understanding WHEN to use ultrawork vs pipeline, WHIC
 This is your MOST IMPORTANT persuasion tool. Nail it.
 
 **Script it word-for-word:**
-"Let me show you the mental model shift. BEFORE OMP: [read the before section slowly]. You're the micromanager. AFTER OMP: [read the after section with rising energy]. You're the product owner. This isn't a 10% improvement - this is a complete paradigm shift."
+"Let me show you the mental model shift. BEFORE OMC: [read the before section slowly]. You're the micromanager. AFTER OMC: [read the after section with rising energy]. You're the product owner. This isn't a 10% improvement - this is a complete paradigm shift."
 
 ### Time Management
 - **Ahead 5+ minutes?** Extend Q&A, add extra demo, elaborate on agent system

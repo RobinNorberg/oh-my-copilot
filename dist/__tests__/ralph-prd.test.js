@@ -25,14 +25,14 @@ describe('Ralph PRD Module', () => {
             writeFileSync(prdPath, '{}');
             expect(findPrdPath(testDir)).toBe(prdPath);
         });
-        it('should find prd.json in .omp directory', () => {
+        it('should find prd.json in .omc directory', () => {
             const omcDir = join(testDir, '.omg');
             mkdirSync(omcDir, { recursive: true });
             const prdPath = join(omcDir, PRD_FILENAME);
             writeFileSync(prdPath, '{}');
             expect(findPrdPath(testDir)).toBe(prdPath);
         });
-        it('should prefer root over .omp', () => {
+        it('should prefer root over .omc', () => {
             const rootPath = join(testDir, PRD_FILENAME);
             const omcDir = join(testDir, '.omg');
             mkdirSync(omcDir, { recursive: true });
@@ -74,7 +74,7 @@ describe('Ralph PRD Module', () => {
             const read = readPrd(testDir);
             expect(read).toEqual(samplePrd);
         });
-        it('should create .omp directory when writing', () => {
+        it('should create .omc directory when writing', () => {
             writePrd(testDir, samplePrd);
             expect(existsSync(join(testDir, '.omg'))).toBe(true);
         });

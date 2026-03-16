@@ -33,7 +33,7 @@ try {
 
 // Debug logging helper - gated behind OMC_DEBUG env var
 const debugLog = (...args) => {
-  if (process.env.OMC_DEBUG) console.error('[omp:debug:post-tool-verifier]', ...args);
+  if (process.env.OMC_DEBUG) console.error('[omc:debug:post-tool-verifier]', ...args);
 };
 
 // State file for session tracking

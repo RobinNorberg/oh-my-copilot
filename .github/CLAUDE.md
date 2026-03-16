@@ -35,7 +35,7 @@ tests/                   # Test files
 ## When Responding to Issues
 
 ### Installation Issues
-- Recommend running `/oh-my-copilot:omp-doctor` to diagnose problems
+- Recommend running `/oh-my-copilot:omc-doctor` to diagnose problems
 - Check if user installed via correct method: `/plugin marketplace add RobinNorberg/oh-my-copilot`
 - Common issues: outdated Copilot CLI version, missing dependencies
 

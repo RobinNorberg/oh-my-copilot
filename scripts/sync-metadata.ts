@@ -169,8 +169,8 @@ function getFileSyncConfigs(): FileSync[] {
       path: 'docs/copilot-instructions.md',
       replacements: [
         {
-          pattern: /<!-- OMP:VERSION:[^\s]*? -->/g,
-          replacement: (m) => `<!-- OMP:VERSION:${m.version} -->`,
+          pattern: /<!-- OMC:VERSION:[^\s]*? -->/g,
+          replacement: (m) => `<!-- OMC:VERSION:${m.version} -->`,
           description: 'copilot-instructions.md version marker',
         },
       ],

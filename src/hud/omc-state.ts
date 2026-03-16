@@ -214,7 +214,7 @@ export function readPrdStateForHud(directory: string): PrdStateForHud | null {
   let prdPath = join(directory, 'prd.json');
 
   if (!existsSync(prdPath)) {
-    // Check .omp
+    // Check .omc
     prdPath = join(getOmcRoot(directory), 'prd.json');
 
     if (!existsSync(prdPath)) {

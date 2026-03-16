@@ -102,13 +102,13 @@ Trabalhadores são iniciados sob demanda e encerrados quando a tarefa é conclu�
 
 ```bash
 # 1. Atualize o clone do marketplace
-/plugin marketplace update omp
+/plugin marketplace update omc
 
 # 2. Execute o setup novamente para atualizar a configuração
 /omg-setup
 ```
 
-> **Observação:** Se a atualização automática do marketplace não estiver habilitada, você precisa executar manualmente `/plugin marketplace update omp` para sincronizar a versão mais recente antes de executar o setup.
+> **Observação:** Se a atualização automática do marketplace não estiver habilitada, você precisa executar manualmente `/plugin marketplace update omc` para sincronizar a versão mais recente antes de executar o setup.
 
 Se você tiver problemas depois de atualizar, limpe o cache antigo do plugin:
 
@@ -199,9 +199,9 @@ Atalhos opcionais para usuários avançados. Linguagem natural funciona bem sem 
 Retoma automaticamente sessões do Copilot CLI quando os rate limits são resetados.
 
 ```bash
-omp wait          # Check status, get guidance
-omp wait --start  # Enable auto-resume daemon
-omp wait --stop   # Disable daemon
+omc wait          # Check status, get guidance
+omc wait --start  # Enable auto-resume daemon
+omc wait --stop   # Disable daemon
 ```
 
 **Requer:** tmux (para detecção de sessão)
@@ -212,14 +212,14 @@ Você pode configurar quem recebe tag quando callbacks de parada enviam resumos 
 
 ```bash
 # Set/replace tag list
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
-omp config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
 
 # Incremental updates
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 Comportamento das tags:
@@ -233,7 +233,7 @@ Comportamento das tags:
 ## Documentação
 
 - **[Referência Completa](docs/REFERENCE.md)** - Documentação completa de recursos
-- **[Referência CLI](https://docs/REFERENCE.md/docs.html#cli-reference)** - Todos os comandos, flags e ferramentas do `omp`
+- **[Referência CLI](https://docs/REFERENCE.md/docs.html#cli-reference)** - Todos os comandos, flags e ferramentas do `omc`
 - **[Guia de Notificações](https://docs/REFERENCE.md/docs.html#notifications)** - Configuração de Discord, Telegram, Slack e webhooks
 - **[Workflows Recomendados](https://docs/REFERENCE.md/docs.html#workflows)** - Cadeias de skills testadas em batalha para tarefas comuns
 - **[Notas de Lançamento](https://docs/REFERENCE.md/docs.html#release-notes)** - Novidades em cada versão

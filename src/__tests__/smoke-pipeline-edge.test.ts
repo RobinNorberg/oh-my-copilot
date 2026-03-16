@@ -66,7 +66,7 @@ describe('EDGE: Pipeline Orchestrator (issue #1132)', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `edge-pipe-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(testDir, { recursive: true });
-    // Pipeline state uses getOmcRoot(worktreeRoot) — mock returns <dir>/.omp for any arg
+    // Pipeline state uses getOmcRoot(worktreeRoot) — mock returns <dir>/.omc for any arg
     mockGetOmcRoot.mockImplementation((dir?: string) => {
       const base = dir || testDir;
       const omcDir = join(base, '.omg');

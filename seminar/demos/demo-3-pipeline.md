@@ -407,7 +407,7 @@ Show custom pipeline syntax:
 
 ### Variation 3: Show Pipeline State
 ```bash
-cat .omp/state/pipeline-state.json
+cat .omg/state/pipeline-state.json
 ```
 
 "Pipeline state is persisted - you can resume if interrupted"

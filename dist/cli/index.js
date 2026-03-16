@@ -65,7 +65,7 @@ Examples:
   $ omc --madmax                       Launch with permissions bypass
   $ omc --yolo                         Launch with permissions bypass (alias)
   $ omc --notify false                 Launch without CCNotifier events
-  $ omc launch                         Explicit launch subcommand (same as bare omp)
+  $ omc launch                         Explicit launch subcommand (same as bare omc)
   $ omc launch --madmax                Explicit launch with flags
 
 Options:

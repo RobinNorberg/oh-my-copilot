@@ -36,7 +36,7 @@ export function validateConfigPath(configPath: string, homeDir: string, claudeCo
   const normOmcDir = n(resolve(homeDir, '.omg')); // resolve handles forward-slash homeDir on Windows
 
   const isUnderHome = resolved.startsWith(normHome + '/') || resolved === normHome;
-  const hasOmcComponent = resolved.includes('/.omg/') || resolved.endsWith('/.omp');
+  const hasOmcComponent = resolved.includes('/.omg/') || resolved.endsWith('/.omc');
   const isTrustedSubpath =
     resolved === normConfigDir ||
     resolved.startsWith(normConfigDir + '/') ||

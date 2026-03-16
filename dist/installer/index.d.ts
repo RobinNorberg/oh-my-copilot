@@ -117,7 +117,7 @@ export declare function isProjectScopedPlugin(): boolean;
 /**
  * Extract the embedded OMG version from a copilot-instructions.md file.
  *
- * Primary source of truth is the injected `<!-- OMP:VERSION:x.y.z -->` marker.
+ * Primary source of truth is the injected `<!-- OMC:VERSION:x.y.z -->` marker.
  * Falls back to legacy headings that may include a version string inline.
  */
 export declare function extractOmcVersionFromClaudeMd(content: string): string | null;

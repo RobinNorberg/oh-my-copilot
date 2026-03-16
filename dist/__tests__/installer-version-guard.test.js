@@ -35,7 +35,7 @@ describe('install downgrade protection (issue #1382)', () => {
                 return JSON.stringify({ version: '4.7.5' });
             }
             if (path === withUnixPaths(claudeMdPath)) {
-                return '<!-- OMG:START -->\n<!-- OMP:VERSION:4.7.5 -->\n# OMP\n<!-- OMG:END -->\n';
+                return '<!-- OMG:START -->\n<!-- OMC:VERSION:4.7.5 -->\n# OMP\n<!-- OMG:END -->\n';
             }
             throw new Error(`Unexpected read: ${path}`);
         });
@@ -57,7 +57,7 @@ describe('install downgrade protection (issue #1382)', () => {
         mockedReadFileSync.mockImplementation((pathLike) => {
             const path = withUnixPaths(pathLike);
             if (path === withUnixPaths(homeClaudeMdPath)) {
-                return '<!-- OMG:START -->\n<!-- OMP:VERSION:4.7.5 -->\n# OMP\n<!-- OMG:END -->\n';
+                return '<!-- OMG:START -->\n<!-- OMC:VERSION:4.7.5 -->\n# OMP\n<!-- OMG:END -->\n';
             }
             throw new Error(`Unexpected read: ${path}`);
         });

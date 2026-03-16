@@ -29,7 +29,7 @@ describe('Notepad Module', () => {
             expect(content).toContain(MANUAL_HEADER);
             expect(content).toContain('Auto-managed by OMP');
         });
-        it('should create .omp directory if not exists', () => {
+        it('should create .omc directory if not exists', () => {
             const omcDir = join(testDir, '.omg');
             expect(existsSync(omcDir)).toBe(false);
             initNotepad(testDir);

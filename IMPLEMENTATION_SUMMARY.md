@@ -36,7 +36,7 @@ Successfully implemented a comprehensive project memory system that auto-detects
   - "focus on A"
   - "prioritize B"
 - **Manual Directives**: Can be added programmatically
-- **Persistence**: Stored in `.omp/project-memory.json`
+- **Persistence**: Stored in `.omg/project-memory.json`
 - **Priority Levels**: High (critical) vs Normal
 - **Compaction Survival**: Re-injected via PreCompact hook
 
@@ -67,7 +67,7 @@ src/hooks/project-memory/
 ├── types.ts                 # TypeScript interfaces (expanded)
 ├── constants.ts             # Detection patterns, config paths
 ├── detector.ts              # Auto-detection logic (expanded)
-├── storage.ts               # Read/write .omp/project-memory.json
+├── storage.ts               # Read/write .omg/project-memory.json
 ├── formatter.ts             # Context string generation (expanded)
 ├── learner.ts               # PostToolUse incremental learning (expanded)
 ├── directory-mapper.ts      # NEW: Directory structure detection
@@ -194,7 +194,7 @@ interface DirectoryInfo {
 
 ## 📦 Storage
 
-- **Location**: `<project-root>/.omp/project-memory.json`
+- **Location**: `<project-root>/.omg/project-memory.json`
 - **Cache Expiry**: 24 hours
 - **Session Deduplication**: Tracks injected projects per session
 - **Incremental Updates**: Saves on every learning event
@@ -213,7 +213,7 @@ The critical problem: User says "only look at symbol=perpetual" → compaction h
 
 **Solution**:
 - Directive detector recognizes instruction patterns
-- Stores in persistent `.omp/project-memory.json`
+- Stores in persistent `.omg/project-memory.json`
 - PreCompact hook re-injects into systemMessage
 - **Directives survive compaction and persist across sessions**
 
@@ -296,7 +296,7 @@ cd <project> && echo '{"directory":"'$(pwd)'","sessionId":"test"}' | \
   node scripts/project-memory-session.mjs
 
 # 2. Verify memory file
-cat .omp/project-memory.json
+cat .omg/project-memory.json
 
 # 3. PostToolUse learning
 echo '{"toolName":"Bash","toolInput":{"command":"pnpm build"},"toolOutput":"","directory":"'$(pwd)'"}' | \

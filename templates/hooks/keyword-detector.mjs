@@ -114,15 +114,15 @@ function activateState(directory, prompt, stateName, sessionId) {
     last_checked_at: new Date().toISOString()
   };
 
-  // Write to local .omp/state directory
-  const localDir = join(directory, '.omp', 'state');
+  // Write to local .omg/state directory
+  const localDir = join(directory, '.omc', 'state');
   if (!existsSync(localDir)) {
     try { mkdirSync(localDir, { recursive: true }); } catch {}
   }
   try { writeFileSync(join(localDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
 
-  // Write to global .omp/state directory
-  const globalDir = join(homedir(), '.omp', 'state');
+  // Write to global .omg/state directory
+  const globalDir = join(homedir(), '.omc', 'state');
   if (!existsSync(globalDir)) {
     try { mkdirSync(globalDir, { recursive: true }); } catch {}
   }
@@ -134,8 +134,8 @@ function activateState(directory, prompt, stateName, sessionId) {
  */
 function clearStateFiles(directory, modeNames) {
   for (const name of modeNames) {
-    const localPath = join(directory, '.omp', 'state', `${name}-state.json`);
-    const globalPath = join(homedir(), '.omp', 'state', `${name}-state.json`);
+    const localPath = join(directory, '.omc', 'state', `${name}-state.json`);
+    const globalPath = join(homedir(), '.omc', 'state', `${name}-state.json`);
     try { if (existsSync(localPath)) unlinkSync(localPath); } catch {}
     try { if (existsSync(globalPath)) unlinkSync(globalPath); } catch {}
   }
@@ -148,9 +148,9 @@ function clearStateFiles(directory, modeNames) {
 function linkRalphTeam(directory, sessionId) {
   const getStatePath = (modeName) => {
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      return join(directory, '.omp', 'state', 'sessions', sessionId, `${modeName}-state.json`);
+      return join(directory, '.omc', 'state', 'sessions', sessionId, `${modeName}-state.json`);
     }
-    return join(directory, '.omp', 'state', `${modeName}-state.json`);
+    return join(directory, '.omc', 'state', `${modeName}-state.json`);
   };
 
   // Update ralph state with linked_team
@@ -295,8 +295,8 @@ function isTeamEnabled() {
 
 // Main
 async function main() {
-  // Skip guard: check OMP_SKIP_HOOKS env var (see issue #838)
-  const _skipHooks = (process.env.OMP_SKIP_HOOKS || '').split(',').map(s => s.trim());
+  // Skip guard: check OMC_SKIP_HOOKS env var (see issue #838)
+  const _skipHooks = (process.env.OMC_SKIP_HOOKS || '').split(',').map(s => s.trim());
   if (process.env.DISABLE_OMC === '1' || _skipHooks.includes('keyword-detector')) {
     console.log(JSON.stringify({ continue: true }));
     return;
@@ -304,7 +304,7 @@ async function main() {
 
   // Team worker guard: prevent keyword detection inside team workers to avoid
   // infinite spawning loops (worker detects "team" -> invokes team skill -> spawns more workers)
-  if (process.env.OMP_TEAM_WORKER) {
+  if (process.env.OMC_TEAM_WORKER) {
     console.log(JSON.stringify({ continue: true, suppressOutput: true }));
     return;
   }

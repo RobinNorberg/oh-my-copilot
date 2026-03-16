@@ -102,13 +102,13 @@ Công nhân được tạo theo yêu cầu và tắt khi hoàn thành tác vụ 
 
 ```bash
 # 1. Cập nhật bản sao marketplace
-/plugin marketplace update omp
+/plugin marketplace update omc
 
 # 2. Chạy lại setup để làm mới cấu hình
 /omg-setup
 ```
 
-> **Lưu ý:** Nếu tự động cập nhật marketplace chưa được bật, bạn cần chạy `/plugin marketplace update omp` thủ công để đồng bộ phiên bản mới nhất trước khi chạy setup.
+> **Lưu ý:** Nếu tự động cập nhật marketplace chưa được bật, bạn cần chạy `/plugin marketplace update omc` thủ công để đồng bộ phiên bản mới nhất trước khi chạy setup.
 
 Nếu gặp sự cố sau khi cập nhật, hãy xóa cache plugin cũ:
 
@@ -199,9 +199,9 @@ Các phím tắt tùy chọn cho người dùng nâng cao. Không dùng chúng t
 Tự động khôi phục phiên Copilot CLI khi rate limit được reset.
 
 ```bash
-omp wait          # Check status, get guidance
-omp wait --start  # Enable auto-resume daemon
-omp wait --stop   # Disable daemon
+omc wait          # Check status, get guidance
+omc wait --start  # Enable auto-resume daemon
+omc wait --stop   # Disable daemon
 ```
 
 **Yêu cầu:** tmux (để phát hiện phiên)
@@ -212,14 +212,14 @@ Bạn có thể cấu hình ai sẽ được tag khi stop callbacks gửi tóm t
 
 ```bash
 # Set/replace tag list
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
-omp config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
 
 # Incremental updates
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 Hành vi tag:
@@ -233,7 +233,7 @@ Hành vi tag:
 ## Tài liệu
 
 - **[Tham chiếu đầy đủ](docs/REFERENCE.md)** - Tài liệu đầy đủ về tính năng
-- **[Tham chiếu CLI](https://docs/REFERENCE.md/docs.html#cli-reference)** - Tất cả lệnh, cờ và công cụ `omp`
+- **[Tham chiếu CLI](https://docs/REFERENCE.md/docs.html#cli-reference)** - Tất cả lệnh, cờ và công cụ `omc`
 - **[Hướng dẫn thông báo](https://docs/REFERENCE.md/docs.html#notifications)** - Thiết lập Discord, Telegram, Slack và webhook
 - **[Quy trình khuyến nghị](https://docs/REFERENCE.md/docs.html#workflows)** - Chuỗi skill đã qua thực chiến cho các tác vụ phổ biến
 - **[Ghi chú phát hành](https://docs/REFERENCE.md/docs.html#release-notes)** - Có gì mới trong mỗi phiên bản

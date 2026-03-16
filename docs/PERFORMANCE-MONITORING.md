@@ -91,21 +91,21 @@ OMP automatically tracks token usage and costs across all sessions.
 
 ```bash
 # View everything (default dashboard)
-omp
+omc
 
 # View daily/weekly/monthly cost reports
-omp cost daily
-omp cost weekly
-omp cost monthly
+omc cost daily
+omc cost weekly
+omc cost monthly
 
 # View session history
-omp sessions
+omc sessions
 
 # Agent observability is shown in HUD/replay logs
 # (legacy standalone agent-breakdown command was removed)
 
 # Export data
-omp export cost csv ./costs.csv
+omc export cost csv ./costs.csv
 ```
 
 #### Real-time HUD Display
@@ -132,16 +132,16 @@ Analyze historical Copilot CLI transcripts:
 
 ```bash
 # Preview available transcripts
-omp backfill --dry-run
+omc backfill --dry-run
 
 # Backfill all transcripts
-omp backfill
+omc backfill
 
 # Backfill specific project
-omp backfill --project "*my-project*"
+omc backfill --project "*my-project*"
 
 # Backfill recent only
-omp backfill --from "2026-01-01"
+omc backfill --from "2026-01-01"
 ```
 
 ### Session Replay
@@ -447,7 +447,7 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 **Symptoms**: Empty cost reports, no session history
 
 **Solutions**:
-1. Run `omp backfill` to import historical transcripts
+1. Run `omc backfill` to import historical transcripts
 2. Verify HUD is running: `/oh-my-copilot:hud setup`
 3. Check `.omg/state/` directory exists
 4. Review `token-tracking.jsonl` for raw data

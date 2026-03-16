@@ -310,7 +310,7 @@ export function listActiveSessions(teamName: string): string[] {
  *
  * Instead of passing JSON via tmux send-keys (brittle quoting), the caller
  * writes config to a temp file and passes --config flag:
- *   node dist/team/bridge-entry.js --config /tmp/omp-bridge-{worker}.json
+ *   node dist/team/bridge-entry.js --config /tmp/omc-bridge-{worker}.json
  */
 export function spawnBridgeInSession(
   tmuxSession: string,

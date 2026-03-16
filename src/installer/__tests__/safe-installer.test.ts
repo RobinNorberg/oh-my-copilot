@@ -34,9 +34,9 @@ const TEST_SETTINGS_FILE = join(TEST_CLAUDE_DIR, 'settings.json');
 
 describe('isOmcHook', () => {
   it('returns true for commands containing "omg"', () => {
-    expect(isOmcHook('node ~/.copilot/hooks/omp-hook.mjs')).toBe(true);
-    expect(isOmcHook('bash $HOME/.copilot/hooks/omp-detector.sh')).toBe(true);
-    expect(isOmcHook('/usr/bin/omp-tool')).toBe(true);
+    expect(isOmcHook('node ~/.copilot/hooks/omc-hook.mjs')).toBe(true);
+    expect(isOmcHook('bash $HOME/.copilot/hooks/omc-detector.sh')).toBe(true);
+    expect(isOmcHook('/usr/bin/omc-tool')).toBe(true);
   });
 
   it('returns true for commands containing "oh-my-copilot"', () => {
@@ -44,7 +44,7 @@ describe('isOmcHook', () => {
     expect(isOmcHook('bash $HOME/.copilot/hooks/oh-my-copilot.sh')).toBe(true);
   });
 
-  it('returns false for commands not containing omp or oh-my-copilot', () => {
+  it('returns false for commands not containing omc or oh-my-copilot', () => {
     expect(isOmcHook('node ~/.copilot/hooks/other-plugin.mjs')).toBe(false);
     expect(isOmcHook('bash $HOME/.copilot/hooks/beads-hook.sh')).toBe(false);
     expect(isOmcHook('python /usr/bin/custom-hook.py')).toBe(false);
@@ -58,10 +58,10 @@ describe('isOmcHook', () => {
 
 describe('isOmcHook detection', () => {
   it('detects real OMG hooks correctly', () => {
-    expect(isOmcHook('node ~/.copilot/hooks/omp-hook.mjs')).toBe(true);
+    expect(isOmcHook('node ~/.copilot/hooks/omc-hook.mjs')).toBe(true);
     expect(isOmcHook('node ~/.copilot/hooks/oh-my-copilot-hook.mjs')).toBe(true);
-    expect(isOmcHook('node ~/.copilot/hooks/omp-pre-tool-use.mjs')).toBe(true);
-    expect(isOmcHook('/usr/local/bin/omp')).toBe(true);
+    expect(isOmcHook('node ~/.copilot/hooks/omc-pre-tool-use.mjs')).toBe(true);
+    expect(isOmcHook('/usr/local/bin/omc')).toBe(true);
   });
 
   it('detects actual OMG hook commands from settings.json (issue #606)', () => {

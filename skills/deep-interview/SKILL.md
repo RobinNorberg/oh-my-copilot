@@ -446,7 +446,7 @@ Optional settings in `.copilot/settings.json`:
 
 ```json
 {
-  "omp": {
+  "omc": {
     "deepInterview": {
       "ambiguityThreshold": 0.2,
       "maxRounds": 20,

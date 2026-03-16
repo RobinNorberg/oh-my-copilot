@@ -87,7 +87,7 @@
 
 ### 새로운 기능
 
-**새 스킬: `/learn-about-omp`**
+**새 스킬: `/learn-about-omc`**
 
 - OMP 사용 패턴을 분석합니다
 - 개인화된 추천을 제공합니다
@@ -121,7 +121,7 @@
 
 **3.0 이전:** `/oh-my-copilot:ralph "task"`, `/oh-my-copilot:ultrawork "task"` 등 25개 이상의 명령어를 명시적으로 호출
 
-**3.0 이후:** 자연스럽게 작업하면 Claude가 자동으로 적절한 동작을 활성화합니다. 최초 설정: "setup omp"라고 말하기만 하면 됩니다
+**3.0 이후:** 자연스럽게 작업하면 Claude가 자동으로 적절한 동작을 활성화합니다. 최초 설정: "setup omc"라고 말하기만 하면 됩니다
 
 ### 프로젝트 리브랜딩
 
@@ -211,7 +211,7 @@ npm install -g oh-my-copilot
 #### 설정 파일
 
 - **이전**: `~/.copilot/sisyphus/mnemosyne.json`
-- **이후**: `~/.copilot/omp/learner.json`
+- **이후**: `~/.copilot/omc/learner.json`
 
 ### 환경 변수
 
@@ -326,20 +326,20 @@ npm uninstall -g oh-my-copilot
 
 ```bash
 # 각 프로젝트 디렉토리에서
-mv .sisyphus .omp
+mv .sisyphus .omc
 ```
 
 #### 4. 글로벌 디렉토리 이름 변경
 
 ```bash
 # 글로벌 설정 디렉토리
-mv ~/.sisyphus ~/.omp
+mv ~/.sisyphus ~/.omc
 
 # 스킬 디렉토리
 mv ~/.copilot/skills/sisyphus-learned ~/.copilot/skills/omg-learned
 
 # 설정 디렉토리
-mv ~/.copilot/sisyphus ~/.copilot/omp
+mv ~/.copilot/sisyphus ~/.copilot/omc
 ```
 
 #### 5. 환경 변수 업데이트
@@ -360,11 +360,11 @@ mv ~/.copilot/sisyphus ~/.copilot/omp
 - 패키지명: `oh-my-copilot` → `oh-my-copilot`
 - 에이전트 이름: 위의 매핑 테이블 사용
 - 명령어: 새로운 슬래시 명령어 사용
-- 디렉토리 경로: `.sisyphus` → `.omp` 업데이트
+- 디렉토리 경로: `.sisyphus` → `.omc` 업데이트
 
 #### 7. 최초 설정 실행
 
-Copilot CLI에서 "setup omp", "omp setup" 또는 이에 해당하는 자연어 표현을 사용하세요.
+Copilot CLI에서 "setup omc", "omc setup" 또는 이에 해당하는 자연어 표현을 사용하세요.
 
 이 작업은 다음을 수행합니다:
 
@@ -756,8 +756,8 @@ npm update -g oh-my-copilot
 동등한 CLI 명령어:
 
 ```bash
-omp config- --disable
-omp config-agent-tiers --disable-low
+omc config- --disable
+omc config-agent-tiers --disable-low
 ```
 
 ### 호환성 파괴 변경

@@ -47,7 +47,7 @@ describe('CLI runtime boot', () => {
             env: { ...process.env, NODE_NO_WARNINGS: '1' },
         });
         expect(result).toContain('Usage:');
-        expect(result).toContain('omg');
+        expect(result).toContain('omc');
     });
     it('omc --version exits cleanly', () => {
         const result = execFileSync('node', [CLI_ENTRY, '--version'], {

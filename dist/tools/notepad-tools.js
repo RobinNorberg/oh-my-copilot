@@ -94,7 +94,7 @@ export const notepadWritePriorityTool = {
         const { content, workingDirectory } = args;
         try {
             const root = validateWorkingDirectory(workingDirectory);
-            // Ensure .omp directory exists
+            // Ensure .omc directory exists
             ensureOmcDir('', root);
             const result = setPriorityContext(root, content);
             if (!result.success) {
@@ -140,7 +140,7 @@ export const notepadWriteWorkingTool = {
         const { content, workingDirectory } = args;
         try {
             const root = validateWorkingDirectory(workingDirectory);
-            // Ensure .omp directory exists
+            // Ensure .omc directory exists
             ensureOmcDir('', root);
             const success = addWorkingMemoryEntry(root, content);
             if (!success) {
@@ -182,7 +182,7 @@ export const notepadWriteManualTool = {
         const { content, workingDirectory } = args;
         try {
             const root = validateWorkingDirectory(workingDirectory);
-            // Ensure .omp directory exists
+            // Ensure .omc directory exists
             ensureOmcDir('', root);
             const success = addManualEntry(root, content);
             if (!success) {

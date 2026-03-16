@@ -5,7 +5,7 @@
  * Inspired by oh-my-opencode, reimagined for Copilot CLI.
  *
  * Main features:
- * - OMP: Primary orchestrator that delegates to specialized subagents
+ * - OMC: Primary orchestrator that delegates to specialized subagents
  * - Parallel execution: Background agents run concurrently
  * - LSP/AST tools: IDE-like capabilities for agents
  * - Context management: Auto-injection from AGENTS.md/copilot-instructions.md

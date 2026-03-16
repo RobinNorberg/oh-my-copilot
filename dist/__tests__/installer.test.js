@@ -248,13 +248,13 @@ describe('Installer Constants', () => {
             expect(VERSION).toBe(getRuntimePackageVersion());
         });
         it('should keep docs/copilot-instructions.md version marker in sync with package version', () => {
-            const versionMatch = CLAUDE_MD_CONTENT.match(/<!-- OMP:VERSION:([^\s]*?) -->/);
+            const versionMatch = CLAUDE_MD_CONTENT.match(/<!-- OMC:VERSION:([^\s]*?) -->/);
             expect(versionMatch?.[1]).toBe(VERSION);
         });
     });
     describe('extractOmcVersionFromClaudeMd()', () => {
         it('prefers the OMG version marker', () => {
-            const content = `<!-- OMP:VERSION:4.7.7 -->
+            const content = `<!-- OMC:VERSION:4.7.7 -->
 # oh-my-copilot - Intelligent Multi-Agent Orchestration`;
             expect(extractOmcVersionFromClaudeMd(content)).toBe('v4.7.7');
         });
@@ -449,7 +449,7 @@ describe('Installer Constants', () => {
         });
         it('should handle Windows-style paths', () => {
             // Windows paths with backslashes should be normalized
-            process.env.CLAUDE_PLUGIN_ROOT = 'C:\\Users\\user\\project\\.copilot\\plugins\\omp';
+            process.env.CLAUDE_PLUGIN_ROOT = 'C:\\Users\\user\\project\\.copilot\\plugins\\omc';
             expect(isProjectScopedPlugin()).toBe(true);
         });
         it('should handle trailing slashes in paths', () => {

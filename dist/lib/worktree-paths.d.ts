@@ -8,7 +8,7 @@
  * When set, state is stored at $OMC_STATE_DIR/{project-identifier}/ instead
  * of {worktree}/.omg/. This preserves state across worktree deletions.
  */
-/** Standard .omp subdirectories */
+/** Standard .omc subdirectories */
 export declare const OmgPaths: {
     readonly ROOT: ".omg";
     readonly STATE: ".omg/state";
@@ -56,24 +56,24 @@ export declare function clearDualDirWarnings(): void;
  */
 export declare function getProjectIdentifier(worktreeRoot?: string): string;
 /**
- * Get the .omp root directory path.
+ * Get the .omc root directory path.
  *
  * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
  * instead of {worktree}/.omg/. This allows centralized state storage that
  * survives worktree deletion.
  *
  * @param worktreeRoot - Optional worktree root
- * @returns Absolute path to the omp root directory
+ * @returns Absolute path to the omc root directory
  */
 export declare function getOmcRoot(worktreeRoot?: string): string;
 /**
  * Resolve a relative path under .omg/ to an absolute path.
- * Validates the path is within the omp boundary.
+ * Validates the path is within the omc boundary.
  *
  * @param relativePath - Path relative to .omg/ (e.g., "state/ralph.json")
  * @param worktreeRoot - Optional worktree root (auto-detected if not provided)
  * @returns Absolute path
- * @throws Error if path would escape omp boundary
+ * @throws Error if path would escape omc boundary
  */
 export declare function resolveOmcPath(relativePath: string, worktreeRoot?: string): string;
 /**
@@ -126,12 +126,12 @@ export declare function resolveLogsPath(worktreeRoot?: string): string;
  */
 export declare function resolveWisdomPath(planName: string, worktreeRoot?: string): string;
 /**
- * Check if an absolute path is under the .omp directory.
+ * Check if an absolute path is under the .omc directory.
  * @param absolutePath - Absolute path to check
  */
 export declare function isPathUnderOmc(absolutePath: string, worktreeRoot?: string): boolean;
 /**
- * Ensure all standard .omp subdirectories exist.
+ * Ensure all standard .omc subdirectories exist.
  */
 export declare function ensureAllOmcDirs(worktreeRoot?: string): void;
 /**

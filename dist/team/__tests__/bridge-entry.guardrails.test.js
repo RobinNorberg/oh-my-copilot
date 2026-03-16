@@ -26,7 +26,7 @@ describe('validateConfigPath guardrails', () => {
     it('rejects path not under trusted subpaths', () => {
         expect(validateConfigPath('/home/user/project/config.json', home, claudeConfigDir)).toBe(false);
     });
-    it('accepts trusted .omp path under home', () => {
+    it('accepts trusted .omc path under home', () => {
         expect(validateConfigPath('/home/user/project/.omg/state/config.json', home, claudeConfigDir)).toBe(true);
     });
 });

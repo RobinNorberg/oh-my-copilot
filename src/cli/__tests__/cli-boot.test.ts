@@ -54,7 +54,7 @@ describe('CLI runtime boot', () => {
     });
 
     expect(result).toContain('Usage:');
-    expect(result).toContain('omg');
+    expect(result).toContain('omc');
   });
 
   it('omc --version exits cleanly', () => {

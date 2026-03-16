@@ -1,5 +1,5 @@
-<!-- OMP:START -->
-<!-- OMP:VERSION:4.7.8 -->
+<!-- OMC:START -->
+<!-- OMC:VERSION:4.8.2 -->
 
 # oh-my-copilot - Intelligent Multi-Agent Orchestration
 
@@ -31,7 +31,7 @@ explore (haiku), analyst (opus), planner (opus), architect (opus), debugger (son
 </agent_catalog>
 
 <tools>
-External AI: `/team N:executor "task"`, `omp team N:codex|gemini "..."`, `omp ask <copilot|codex|gemini>`, `/ccg`
+External AI: `/team N:executor "task"`, `omc team N:codex|gemini "..."`, `omc ask <copilot|codex|gemini>`, `/ccg`
 OMP State: `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
 Teams: `TeamCreate`, `TeamDelete`, `SendMessage`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`
 Notepad: `notepad_read`, `notepad_write_priority`, `notepad_write_working`, `notepad_write_manual`
@@ -44,7 +44,7 @@ Invoke via `/oh-my-copilot:<name>`. Trigger patterns auto-detect keywords.
 
 Workflow: `autopilot`, `ralph`, `ultrawork`, `team`, `ccg`, `ultraqa`, `omg-plan`, `ralplan`, `sciomc`, `external-context`, `deepinit`, `deep-interview`
 Keyword triggers: "autopilot"→autopilot, "ralph"→ralph, "ulw"→ultrawork, "ccg"→ccg, "ralplan"→ralplan, "deep interview"→deep-interview, "deep-analyze"→analysis mode, "tdd"→TDD mode, "deepsearch"→codebase search, "ultrathink"→deep reasoning, "cancelomc"→cancel. Team orchestration is explicit via `/team`.
-Utilities: `ask-codex`, `ask-gemini`, `cancel`, `note`, `learner`, `omg-setup`, `mcp-setup`, `hud`, `omg-doctor`, `omg-help`, `trace`, `release`, `project-session-manager`, `skill`, `writer-memory`, `ralph-init`, `configure-notifications`, `learn-about-omp`
+Utilities: `ask-codex`, `ask-gemini`, `cancel`, `note`, `learner`, `omg-setup`, `mcp-setup`, `hud`, `omg-doctor`, `omg-help`, `trace`, `release`, `project-session-manager`, `skill`, `writer-memory`, `ralph-init`, `configure-notifications`, `learn-about-omc`
 </skills>
 
 <team_pipeline>
@@ -78,6 +78,6 @@ State: `.omg/state/`, `.omg/state/sessions/{sessionId}/`, `.omg/notepad.md`, `.o
 
 ## Setup
 
-Say "setup omp" or run `/oh-my-copilot:omg-setup`.
+Say "setup omc" or run `/oh-my-copilot:omg-setup`.
 
-<!-- OMP:END -->
+<!-- OMC:END -->

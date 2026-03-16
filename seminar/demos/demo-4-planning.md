@@ -116,7 +116,7 @@ What scope should we implement first?
 **Presenter talking points:**
 - "Here's the final plan - structured, actionable, validated"
 - Point to sections: "Requirements we gathered, architecture designed, phases to implement"
-- "This plan is saved to `.omp/plans/auth-system.md`"
+- "This plan is saved to `.omg/plans/auth-system.md`"
 - "You can review, modify, or execute immediately"
 
 ## Expected Output
@@ -306,10 +306,10 @@ DEPENDENCIES
 NEXT STEPS
 ──────────
 1. Review this plan
-2. Modify if needed: edit .omp/plans/auth-system.md
+2. Modify if needed: edit .omg/plans/auth-system.md
 3. Execute: "implement the auth plan" or "ralph: implement auth-system.md"
 
-Plan saved to: .omp/plans/auth-system.md
+Plan saved to: .omg/plans/auth-system.md
 ═══════════════════════════════════════════════════════════
 
 Ready to proceed? Say "implement the plan" to execute.
@@ -350,7 +350,7 @@ Show the complete terminal output from "Expected Output" section above.
 Additionally, demonstrate the saved plan file:
 
 ```bash
-$ cat .omp/plans/auth-system.md
+$ cat .omg/plans/auth-system.md
 
 # Authentication System Plan
 
@@ -441,7 +441,7 @@ implement the auth-system plan
 A: Yes! Provide details upfront: "plan JWT-based auth with PostgreSQL and email verification". Plan will ask fewer questions or skip interview entirely.
 
 **Q: Can I modify the plan after it's generated?**
-A: Absolutely! Plans are saved as markdown in `.omp/plans/`. Edit the file, then execute it.
+A: Absolutely! Plans are saved as markdown in `.omg/plans/`. Edit the file, then execute it.
 
 **Q: How does plan know what questions to ask?**
 A: The plan skill has domain knowledge. For auth, it knows to ask about tokens vs sessions. For REST APIs, it knows to ask about databases, caching, etc. It adapts to context.

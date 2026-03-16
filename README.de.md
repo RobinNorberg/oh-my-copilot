@@ -162,9 +162,9 @@ Optionale Abkürzungen für Power-User. Natürliche Sprache funktioniert auch oh
 Automatische Wiederaufnahme von Copilot CLI Sitzungen, wenn Rate Limits zurückgesetzt werden.
 
 ```bash
-omp wait          # Status prüfen, Anleitung erhalten
-omp wait --start  # Auto-Resume-Daemon aktivieren
-omp wait --stop   # Daemon deaktivieren
+omc wait          # Status prüfen, Anleitung erhalten
+omc wait --start  # Auto-Resume-Daemon aktivieren
+omc wait --stop   # Daemon deaktivieren
 ```
 
 **Voraussetzung:** tmux (für Sitzungserkennung)
@@ -175,13 +175,13 @@ Sie können konfigurieren, wer getaggt wird, wenn Stop-Callbacks Sitzungszusamme
 
 ```bash
 # Tag-Liste festlegen/ersetzen
-omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
 
 # Inkrementelle Aktualisierungen
-omp config-stop-callback telegram --add-tag charlie
-omp config-stop-callback discord --remove-tag @here
-omp config-stop-callback discord --clear-tags
+omc config-stop-callback telegram --add-tag charlie
+omc config-stop-callback discord --remove-tag @here
+omc config-stop-callback discord --clear-tags
 ```
 
 Tag-Verhalten:

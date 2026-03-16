@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, realpathSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
 
-/** Standard .omp subdirectories */
+/** Standard .omc subdirectories */
 export const OmgPaths = {
   ROOT: '.omg',
   STATE: '.omg/state',
@@ -149,14 +149,14 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
 }
 
 /**
- * Get the .omp root directory path.
+ * Get the .omc root directory path.
  *
  * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
  * instead of {worktree}/.omg/. This allows centralized state storage that
  * survives worktree deletion.
  *
  * @param worktreeRoot - Optional worktree root
- * @returns Absolute path to the omp root directory
+ * @returns Absolute path to the omc root directory
  */
 export function getOmcRoot(worktreeRoot?: string): string {
   const customDir = process.env.OMC_STATE_DIR;
@@ -184,12 +184,12 @@ export function getOmcRoot(worktreeRoot?: string): string {
 
 /**
  * Resolve a relative path under .omg/ to an absolute path.
- * Validates the path is within the omp boundary.
+ * Validates the path is within the omc boundary.
  *
  * @param relativePath - Path relative to .omg/ (e.g., "state/ralph.json")
  * @param worktreeRoot - Optional worktree root (auto-detected if not provided)
  * @returns Absolute path
- * @throws Error if path would escape omp boundary
+ * @throws Error if path would escape omc boundary
  */
 export function resolveOmcPath(relativePath: string, worktreeRoot?: string): string {
   validatePath(relativePath);
@@ -197,10 +197,10 @@ export function resolveOmcPath(relativePath: string, worktreeRoot?: string): str
   const omcDir = getOmcRoot(worktreeRoot);
   const fullPath = normalize(resolve(omcDir, relativePath));
 
-  // Verify resolved path is still under omp directory
+  // Verify resolved path is still under omc directory
   const relativeToOmc = relative(omcDir, fullPath);
   if (relativeToOmc.startsWith('..') || relativeToOmc.startsWith(sep + '..')) {
-    throw new Error(`Path escapes omp boundary: ${relativePath}`);
+    throw new Error(`Path escapes omc boundary: ${relativePath}`);
   }
 
   return fullPath;
@@ -291,7 +291,7 @@ export function resolveWisdomPath(planName: string, worktreeRoot?: string): stri
 }
 
 /**
- * Check if an absolute path is under the .omp directory.
+ * Check if an absolute path is under the .omc directory.
  * @param absolutePath - Absolute path to check
  */
 export function isPathUnderOmc(absolutePath: string, worktreeRoot?: string): boolean {
@@ -302,7 +302,7 @@ export function isPathUnderOmc(absolutePath: string, worktreeRoot?: string): boo
 }
 
 /**
- * Ensure all standard .omp subdirectories exist.
+ * Ensure all standard .omc subdirectories exist.
  */
 export function ensureAllOmcDirs(worktreeRoot?: string): void {
   const omcRoot = getOmcRoot(worktreeRoot);

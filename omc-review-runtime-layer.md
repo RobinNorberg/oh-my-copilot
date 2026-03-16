@@ -4,7 +4,7 @@ Scope reviewed:
 - `src/team/runtime.ts`
 - `src/team/runtime-cli.ts`
 - `src/team/tmux-session.ts`
-- `skills/omp-teams/SKILL.md`
+- `skills/omc-teams/SKILL.md`
 
 ## Findings (ordered by severity)
 
@@ -28,7 +28,7 @@ Scope reviewed:
   - Multiple workers may execute same task content.
   - Worker may emit `taskId` with no corresponding task file; result is dropped from task-state accounting.
 - Note:
-  - Skill doc says decomposition should produce exactly N subtasks: `skills/omp-teams/SKILL.md:64`.
+  - Skill doc says decomposition should produce exactly N subtasks: `skills/omc-teams/SKILL.md:64`.
 
 ### 3) High: `collectTaskResults()` can race with late watchdog completion updates
 - Evidence:

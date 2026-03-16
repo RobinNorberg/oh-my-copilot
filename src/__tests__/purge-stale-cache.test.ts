@@ -102,7 +102,7 @@ describe('purgeStalePluginCacheVersions', () => {
   it('handles multiple marketplaces and plugins', () => {
     const cacheDir = '/mock/.copilot/plugins/cache';
     const active1 = join(cacheDir, 'official/hookify/aa11');
-    const active2 = join(cacheDir, 'omp/oh-my-copilot/4.3.0');
+    const active2 = join(cacheDir, 'omc/oh-my-copilot/4.3.0');
     const stale1 = join(cacheDir, 'official/hookify/bb22');
     const stale2 = join(cacheDir, 'official/hookify/cc33');
     // Normalize to forward slashes for cross-platform mock matching
@@ -120,16 +120,16 @@ describe('purgeStalePluginCacheVersions', () => {
       version: 2,
       plugins: {
         'hookify@official': [{ installPath: active1 }],
-        'oh-my-copilot@omp': [{ installPath: active2 }],
+        'oh-my-copilot@omc': [{ installPath: active2 }],
       },
     }));
 
     mockedReaddirSync.mockImplementation((p, _opts?) => {
       const ps = n(String(p));
-      if (ps === n(cacheDir)) return [dirent('official'), dirent('omg')] as any;
+      if (ps === n(cacheDir)) return [dirent('official'), dirent('omc')] as any;
       if (ps.endsWith('official')) return [dirent('hookify')] as any;
       if (ps.endsWith('hookify')) return [dirent('aa11'), dirent('bb22'), dirent('cc33')] as any;
-      if (ps.endsWith('omg')) return [dirent('oh-my-copilot')] as any;
+      if (ps.endsWith('omc')) return [dirent('oh-my-copilot')] as any;
       if (ps.endsWith('oh-my-copilot')) return [dirent('4.3.0')] as any;
       return [] as any;
     });
@@ -142,7 +142,7 @@ describe('purgeStalePluginCacheVersions', () => {
 
   it('does nothing when all cache versions are active', () => {
     const cacheDir = '/mock/.copilot/plugins/cache';
-    const active = join(cacheDir, 'omp/oh-my-copilot/4.3.0');
+    const active = join(cacheDir, 'omc/oh-my-copilot/4.3.0');
 
     mockedExistsSync.mockImplementation((p) => {
       const ps = String(p);
@@ -154,14 +154,14 @@ describe('purgeStalePluginCacheVersions', () => {
     mockedReadFileSync.mockReturnValue(JSON.stringify({
       version: 2,
       plugins: {
-        'oh-my-copilot@omp': [{ installPath: active }],
+        'oh-my-copilot@omc': [{ installPath: active }],
       },
     }));
 
     mockedReaddirSync.mockImplementation((p, _opts?) => {
       const ps = String(p);
-      if (ps === cacheDir) return [dirent('omg')] as any;
-      if (ps.endsWith('omg')) return [dirent('oh-my-copilot')] as any;
+      if (ps === cacheDir) return [dirent('omc')] as any;
+      if (ps.endsWith('omc')) return [dirent('oh-my-copilot')] as any;
       if (ps.endsWith('oh-my-copilot')) return [dirent('4.3.0')] as any;
       return [] as any;
     });
@@ -184,13 +184,13 @@ describe('purgeStalePluginCacheVersions', () => {
   // --- C2 fix: trailing slash in installPath ---
   it('matches installPath with trailing slash correctly', () => {
     const cacheDir = '/mock/.copilot/plugins/cache';
-    const versionDir = join(cacheDir, 'omp/plugin/1.0.0');
+    const versionDir = join(cacheDir, 'omc/plugin/1.0.0');
 
     mockedExistsSync.mockReturnValue(true);
     mockedReadFileSync.mockReturnValue(JSON.stringify({
       version: 2,
       plugins: {
-        'plugin@omp': [{
+        'plugin@omc': [{
           // installPath has trailing slash
           installPath: versionDir + '/',
         }],
@@ -199,8 +199,8 @@ describe('purgeStalePluginCacheVersions', () => {
 
     mockedReaddirSync.mockImplementation((p, _opts?) => {
       const ps = String(p);
-      if (ps === cacheDir) return [dirent('omg')] as any;
-      if (ps.endsWith('omg')) return [dirent('plugin')] as any;
+      if (ps === cacheDir) return [dirent('omc')] as any;
+      if (ps.endsWith('omc')) return [dirent('plugin')] as any;
       if (ps.endsWith('plugin')) return [dirent('1.0.0')] as any;
       return [] as any;
     });
@@ -214,13 +214,13 @@ describe('purgeStalePluginCacheVersions', () => {
   // --- C2 fix: installPath points to subdirectory ---
   it('preserves version when installPath points to a subdirectory', () => {
     const cacheDir = '/mock/.copilot/plugins/cache';
-    const versionDir = join(cacheDir, 'omp/plugin/2.0.0');
+    const versionDir = join(cacheDir, 'omc/plugin/2.0.0');
 
     mockedExistsSync.mockReturnValue(true);
     mockedReadFileSync.mockReturnValue(JSON.stringify({
       version: 2,
       plugins: {
-        'plugin@omp': [{
+        'plugin@omc': [{
           // installPath points into a subdirectory
           installPath: versionDir + '/dist',
         }],
@@ -229,8 +229,8 @@ describe('purgeStalePluginCacheVersions', () => {
 
     mockedReaddirSync.mockImplementation((p, _opts?) => {
       const ps = String(p);
-      if (ps === cacheDir) return [dirent('omg')] as any;
-      if (ps.endsWith('omg')) return [dirent('plugin')] as any;
+      if (ps === cacheDir) return [dirent('omc')] as any;
+      if (ps.endsWith('omc')) return [dirent('plugin')] as any;
       if (ps.endsWith('plugin')) return [dirent('2.0.0')] as any;
       return [] as any;
     });
@@ -248,13 +248,13 @@ describe('purgeStalePluginCacheVersions', () => {
     mockedExistsSync.mockReturnValue(true);
     mockedReadFileSync.mockReturnValue(JSON.stringify({
       version: 2,
-      plugins: { 'plugin@omp': [{ installPath: '/other/path' }] },
+      plugins: { 'plugin@omc': [{ installPath: '/other/path' }] },
     }));
 
     mockedReaddirSync.mockImplementation((p, _opts?) => {
       const ps = String(p);
-      if (ps === cacheDir) return [dirent('omg')] as any;
-      if (ps.endsWith('omg')) return [dirent('plugin')] as any;
+      if (ps === cacheDir) return [dirent('omc')] as any;
+      if (ps.endsWith('omc')) return [dirent('plugin')] as any;
       if (ps.endsWith('plugin')) return [dirent('1.0.0')] as any;
       return [] as any;
     });
