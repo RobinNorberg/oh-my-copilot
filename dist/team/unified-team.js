@@ -1,0 +1,92 @@
+// src/team/unified-team.ts
+/**
+ * Unified team member view across Copilot native and MCP workers.
+ *
+ * Merges Copilot CLI's native team config with MCP shadow registry
+ * to provide a single coherent view of all team members.
+ */
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { getCopilotConfigDir } from '../utils/paths.js';
+import { listMcpWorkers } from './team-registration.js';
+import { readHeartbeat, isWorkerAlive } from './heartbeat.js';
+import { getDefaultCapabilities } from './capabilities.js';
+/**
+ * Get all team members from both Copilot native teams and MCP workers.
+ */
+export function getTeamMembers(teamName, workingDirectory) {
+    const members = [];
+    // 1. Read Copilot native members from config.json
+    try {
+        const configPath = join(getCopilotConfigDir(), 'teams', teamName, 'config.json');
+        if (existsSync(configPath)) {
+            const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+            if (Array.isArray(config.members)) {
+                for (const member of config.members) {
+                    // Skip MCP workers registered via tmux backend (they'll be handled below)
+                    if (member.backendType === 'tmux' || String(member.agentType).startsWith('tmux-'))
+                        continue;
+                    members.push({
+                        name: member.name || 'unknown',
+                        agentId: member.agentId || '',
+                        backend: 'copilot-native',
+                        model: member.model || 'unknown',
+                        capabilities: getDefaultCapabilities('copilot-native'),
+                        joinedAt: member.joinedAt || 0,
+                        status: 'active', // Copilot native members are managed by CC
+                        currentTaskId: null,
+                    });
+                }
+            }
+        }
+    }
+    catch { /* graceful degradation - config may not exist */ }
+    // 2. Read MCP workers from shadow registry + heartbeat
+    try {
+        const mcpWorkers = listMcpWorkers(teamName, workingDirectory);
+        for (const worker of mcpWorkers) {
+            const heartbeat = readHeartbeat(workingDirectory, teamName, worker.name);
+            const alive = isWorkerAlive(workingDirectory, teamName, worker.name, 60000);
+            // Determine status from heartbeat
+            let status = 'unknown';
+            if (heartbeat) {
+                if (heartbeat.status === 'quarantined')
+                    status = 'quarantined';
+                else if (heartbeat.status === 'executing')
+                    status = 'active';
+                else if (heartbeat.status === 'ready' || heartbeat.status === 'polling')
+                    status = 'idle';
+                else
+                    status = heartbeat.status;
+            }
+            if (!alive)
+                status = 'dead';
+            // Determine backend and default capabilities
+            let backend;
+            if (worker.agentType === 'mcp-gemini')
+                backend = 'mcp-gemini';
+            else if (worker.agentType === 'tmux-copilot')
+                backend = 'tmux-copilot';
+            else if (worker.agentType === 'tmux-codex')
+                backend = 'tmux-codex';
+            else if (worker.agentType === 'tmux-gemini')
+                backend = 'tmux-gemini';
+            else
+                backend = 'mcp-codex';
+            const capabilities = getDefaultCapabilities(backend);
+            members.push({
+                name: worker.name,
+                agentId: worker.agentId,
+                backend,
+                model: worker.model,
+                capabilities,
+                joinedAt: worker.joinedAt,
+                status,
+                currentTaskId: heartbeat?.currentTaskId ?? null,
+            });
+        }
+    }
+    catch { /* graceful degradation */ }
+    return members;
+}
+//# sourceMappingURL=unified-team.js.map

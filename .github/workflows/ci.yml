@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint --if-present
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --run
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [lint-and-typecheck, test]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Check dist size
+        run: |
+          DIST_SIZE=$(du -sm dist | cut -f1)
+          echo "📦 Dist size: ${DIST_SIZE}MB"
+          if [ "$DIST_SIZE" -gt 50 ]; then
+            echo "⚠️ Warning: dist folder is larger than 50MB!"
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  version-check:
+    name: Version Consistency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check version consistency
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PLUGIN_VERSION=$(node -p "require('./.copilot-plugin/plugin.json').version")
+          MARKET_VERSION=$(node -p "require('./.copilot-plugin/marketplace.json').version")
+          
+          echo "package.json:              $PKG_VERSION"
+          echo ".copilot-plugin/plugin.json: $PLUGIN_VERSION"
+          echo ".copilot-plugin/marketplace.json: $MARKET_VERSION"
+          
+          if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ] || [ "$PKG_VERSION" != "$MARKET_VERSION" ]; then
+            echo ""
+            echo "❌ Version mismatch!"
+            echo "  package.json: $PKG_VERSION"
+            echo "  plugin.json:  $PLUGIN_VERSION"
+            echo "  marketplace.json: $MARKET_VERSION"
+            echo ""
+            echo "All three files must have the same version."
+            exit 1
+          fi
+          
+          echo "✅ All versions match: $PKG_VERSION"
+
+  npm-pack-test:
+    name: npm pack + install test
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: npm pack test
+        run: |
+          echo "📦 Creating tarball..."
+          npm pack
+          
+          TARBALL=$(ls -t oh-my-copilot-*.tgz | head -1)
+          echo "📦 Tarball: $TARBALL"
+          
+          echo "📦 Testing global install from tarball..."
+          npm install -g ./$TARBALL
+          
+          echo "🔍 Checking omp command..."
+          which omp
+          
+          echo "🔍 Testing omp --version..."
+          omp --version
+          
+          VERSION_OUTPUT=$(omp --version 2>&1)
+          if [ $? -ne 0 ]; then
+            echo "❌ omp --version failed!"
+            echo "$VERSION_OUTPUT"
+            exit 1
+          fi
+          
+          echo "✅ omp --version: $VERSION_OUTPUT"
+          
+          echo "🔍 Testing omp --help..."
+          omp --help
+          
+          HELP_OUTPUT=$(omp --help 2>&1)
+          if [ $? -ne 0 ]; then
+            echo "❌ omp --help failed!"
+            echo "$HELP_OUTPUT"
+            exit 1
+          fi
+          
+          echo "✅ npm pack + install test passed!"

@@ -1,0 +1,8 @@
+{
+  "session_id": "test-session-xyz",
+  "ended_at": "2026-03-11T01:57:57.788Z",
+  "reason": "other",
+  "agents_spawned": 0,
+  "agents_completed": 0,
+  "modes_used": []
+}

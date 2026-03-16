@@ -1,0 +1,283 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { join } from 'path';
+
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs');
+  return {
+    ...actual,
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+    readdirSync: vi.fn(),
+    statSync: vi.fn(),
+    rmSync: vi.fn(),
+    unlinkSync: vi.fn(),
+  };
+});
+
+vi.mock('../utils/config-dir.js', () => ({
+  getConfigDir: vi.fn(() => '/mock/.copilot'),
+}));
+
+import { existsSync, readFileSync, readdirSync, statSync, rmSync } from 'fs';
+import { purgeStalePluginCacheVersions } from '../utils/paths.js';
+
+const mockedExistsSync = vi.mocked(existsSync);
+const mockedReadFileSync = vi.mocked(readFileSync);
+const mockedReaddirSync = vi.mocked(readdirSync);
+const mockedStatSync = vi.mocked(statSync);
+const mockedRmSync = vi.mocked(rmSync);
+
+function dirent(name: string): { name: string; isDirectory: () => boolean } {
+  return { name, isDirectory: () => true };
+}
+
+/** Return a stat result with mtime N ms ago.
+ * Default must exceed STALE_THRESHOLD_MS (24 h) in src/utils/paths.ts. */
+function staleStats(ageMs: number = 25 * 60 * 60 * 1000) {
+  return { mtimeMs: Date.now() - ageMs } as ReturnType<typeof statSync>;
+}
+
+/** Return a stat result modified very recently */
+function freshStats() {
+  return { mtimeMs: Date.now() - 1000 } as ReturnType<typeof statSync>;
+}
+
+describe('purgeStalePluginCacheVersions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Default: statSync returns stale timestamps
+    mockedStatSync.mockReturnValue(staleStats());
+  });
+
+  it('returns early when installed_plugins.json does not exist', () => {
+    mockedExistsSync.mockReturnValue(false);
+    const result = purgeStalePluginCacheVersions();
+    expect(result.removed).toBe(0);
+    expect(result.errors).toHaveLength(0);
+    expect(mockedRmSync).not.toHaveBeenCalled();
+  });
+
+  it('removes stale versions not in installed_plugins.json', () => {
+    const cacheDir = '/mock/.copilot/plugins/cache';
+    const activeVersion = join(cacheDir, 'my-marketplace/my-plugin/2.0.0');
+    const staleVersion = join(cacheDir, 'my-marketplace/my-plugin/1.0.0');
+    // Normalize to forward slashes for cross-platform mock matching
+    const n = (p: string) => p.replace(/\\/g, '/');
+
+    mockedExistsSync.mockImplementation((p) => {
+      const ps = n(String(p));
+      if (ps.includes('installed_plugins.json')) return true;
+      if (ps === n(cacheDir)) return true;
+      if (ps === n(staleVersion)) return true;
+      if (ps === n(activeVersion)) return true;
+      return false;
+    });
+
+    mockedReadFileSync.mockReturnValue(JSON.stringify({
+      version: 2,
+      plugins: {
+        'my-plugin@my-marketplace': [{
+          installPath: activeVersion,
+          version: '2.0.0',
+        }],
+      },
+    }));
+
+    mockedReaddirSync.mockImplementation((p, _opts?) => {
+      const ps = n(String(p));
+      if (ps === n(cacheDir)) return [dirent('my-marketplace')] as any;
+      if (ps.endsWith('my-marketplace')) return [dirent('my-plugin')] as any;
+      if (ps.endsWith('my-plugin')) return [dirent('1.0.0'), dirent('2.0.0')] as any;
+      return [] as any;
+    });
+
+    const result = purgeStalePluginCacheVersions();
+    expect(result.removed).toBe(1);
+    expect(result.removedPaths.map(n)).toEqual([n(staleVersion)]);
+    expect(mockedRmSync).toHaveBeenCalledWith(staleVersion, { recursive: true, force: true });
+    // Active version should NOT be removed
+    expect(mockedRmSync).not.toHaveBeenCalledWith(activeVersion, expect.anything());
+  });
+
+  it('handles multiple marketplaces and plugins', () => {
+    const cacheDir = '/mock/.copilot/plugins/cache';
+    const active1 = join(cacheDir, 'official/hookify/aa11');
+    const active2 = join(cacheDir, 'omp/oh-my-copilot/4.3.0');
+    const stale1 = join(cacheDir, 'official/hookify/bb22');
+    const stale2 = join(cacheDir, 'official/hookify/cc33');
+    // Normalize to forward slashes for cross-platform mock matching
+    const n = (p: string) => p.replace(/\\/g, '/');
+
+    mockedExistsSync.mockImplementation((p) => {
+      const ps = n(String(p));
+      if (ps.includes('installed_plugins.json')) return true;
+      if (ps === n(cacheDir)) return true;
+      if (ps === n(stale1) || ps === n(stale2)) return true;
+      return false;
+    });
+
+    mockedReadFileSync.mockReturnValue(JSON.stringify({
+      version: 2,
+      plugins: {
+        'hookify@official': [{ installPath: active1 }],
+        'oh-my-copilot@omp': [{ installPath: active2 }],
+      },
+    }));
+
+    mockedReaddirSync.mockImplementation((p, _opts?) => {
+      const ps = n(String(p));
+      if (ps === n(cacheDir)) return [dirent('official'), dirent('omg')] as any;
+      if (ps.endsWith('official')) return [dirent('hookify')] as any;
+      if (ps.endsWith('hookify')) return [dirent('aa11'), dirent('bb22'), dirent('cc33')] as any;
+      if (ps.endsWith('omg')) return [dirent('oh-my-copilot')] as any;
+      if (ps.endsWith('oh-my-copilot')) return [dirent('4.3.0')] as any;
+      return [] as any;
+    });
+
+    const result = purgeStalePluginCacheVersions();
+    expect(result.removed).toBe(2);
+    expect(result.removedPaths.map(n)).toContain(n(stale1));
+    expect(result.removedPaths.map(n)).toContain(n(stale2));
+  });
+
+  it('does nothing when all cache versions are active', () => {
+    const cacheDir = '/mock/.copilot/plugins/cache';
+    const active = join(cacheDir, 'omp/oh-my-copilot/4.3.0');
+
+    mockedExistsSync.mockImplementation((p) => {
+      const ps = String(p);
+      if (ps.includes('installed_plugins.json')) return true;
+      if (ps === cacheDir) return true;
+      return false;
+    });
+
+    mockedReadFileSync.mockReturnValue(JSON.stringify({
+      version: 2,
+      plugins: {
+        'oh-my-copilot@omp': [{ installPath: active }],
+      },
+    }));
+
+    mockedReaddirSync.mockImplementation((p, _opts?) => {
+      const ps = String(p);
+      if (ps === cacheDir) return [dirent('omg')] as any;
+      if (ps.endsWith('omg')) return [dirent('oh-my-copilot')] as any;
+      if (ps.endsWith('oh-my-copilot')) return [dirent('4.3.0')] as any;
+      return [] as any;
+    });
+
+    const result = purgeStalePluginCacheVersions();
+    expect(result.removed).toBe(0);
+    expect(mockedRmSync).not.toHaveBeenCalled();
+  });
+
+  it('reports error for malformed installed_plugins.json', () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue('{ invalid json');
+
+    const result = purgeStalePluginCacheVersions();
+    expect(result.removed).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('Failed to parse installed_plugins.json');
+  });
+
+  // --- C2 fix: trailing slash in installPath ---
+  it('matches installPath with trailing slash correctly', () => {
+    const cacheDir = '/mock/.copilot/plugins/cache';
+    const versionDir = join(cacheDir, 'omp/plugin/1.0.0');
+
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({
+      version: 2,
+      plugins: {
+        'plugin@omp': [{
+          // installPath has trailing slash
+          installPath: versionDir + '/',
+        }],
+      },
+    }));
+
+    mockedReaddirSync.mockImplementation((p, _opts?) => {
+      const ps = String(p);
+      if (ps === cacheDir) return [dirent('omg')] as any;
+      if (ps.endsWith('omg')) return [dirent('plugin')] as any;
+      if (ps.endsWith('plugin')) return [dirent('1.0.0')] as any;
+      return [] as any;
+    });
+
+    const result = purgeStalePluginCacheVersions();
+    // Should NOT remove the active version despite trailing slash
+    expect(result.removed).toBe(0);
+    expect(mockedRmSync).not.toHaveBeenCalled();
+  });
+
+  // --- C2 fix: installPath points to subdirectory ---
+  it('preserves version when installPath points to a subdirectory', () => {
+    const cacheDir = '/mock/.copilot/plugins/cache';
+    const versionDir = join(cacheDir, 'omp/plugin/2.0.0');
+
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({
+      version: 2,
+      plugins: {
+        'plugin@omp': [{
+          // installPath points into a subdirectory
+          installPath: versionDir + '/dist',
+        }],
+      },
+    }));
+
+    mockedReaddirSync.mockImplementation((p, _opts?) => {
+      const ps = String(p);
+      if (ps === cacheDir) return [dirent('omg')] as any;
+      if (ps.endsWith('omg')) return [dirent('plugin')] as any;
+      if (ps.endsWith('plugin')) return [dirent('2.0.0')] as any;
+      return [] as any;
+    });
+
+    const result = purgeStalePluginCacheVersions();
+    // Should NOT remove — active installPath is within this version dir
+    expect(result.removed).toBe(0);
+    expect(mockedRmSync).not.toHaveBeenCalled();
+  });
+
+  // --- C3 fix: recently modified directories are skipped ---
+  it('skips recently modified directories (race condition guard)', () => {
+    const cacheDir = '/mock/.copilot/plugins/cache';
+
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({
+      version: 2,
+      plugins: { 'plugin@omp': [{ installPath: '/other/path' }] },
+    }));
+
+    mockedReaddirSync.mockImplementation((p, _opts?) => {
+      const ps = String(p);
+      if (ps === cacheDir) return [dirent('omg')] as any;
+      if (ps.endsWith('omg')) return [dirent('plugin')] as any;
+      if (ps.endsWith('plugin')) return [dirent('1.0.0')] as any;
+      return [] as any;
+    });
+
+    // Directory was just modified (fresh) — should be skipped
+    mockedStatSync.mockReturnValue(freshStats());
+
+    const result = purgeStalePluginCacheVersions();
+    expect(result.removed).toBe(0);
+    expect(mockedRmSync).not.toHaveBeenCalled();
+  });
+
+  // --- S5 fix: unexpected top-level structure ---
+  it('reports error for unexpected plugins structure (array)', () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({
+      version: 2,
+      plugins: [1, 2, 3],
+    }));
+
+    const result = purgeStalePluginCacheVersions();
+    expect(result.removed).toBe(0);
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toContain('unexpected top-level structure');
+  });
+});

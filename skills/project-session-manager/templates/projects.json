@@ -1,0 +1,19 @@
+{
+  "aliases": {
+    "omp": {
+      "repo": "Yeachan-Heo/oh-my-copilot",
+      "local": "~/Workspace/oh-my-copilot",
+      "default_base": "main"
+    },
+    "cc": {
+      "repo": "anthropics/copilot-cli",
+      "local": "~/Workspace/copilot-cli",
+      "default_base": "main"
+    }
+  },
+  "defaults": {
+    "worktree_root": "~/.psm/worktrees",
+    "cleanup_after_days": 14,
+    "auto_cleanup_merged": true
+  }
+}

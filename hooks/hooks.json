@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "description": "OMP orchestration hooks with async capabilities",
+  "hooks": {
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/keyword-detector.mjs\"",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/skill-injector.mjs\"",
+        "timeoutSec": 3
+      }
+    ],
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/session-start.mjs\"",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-session.mjs\"",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/setup-init.mjs\"",
+        "timeoutSec": 30
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/setup-maintenance.mjs\"",
+        "timeoutSec": 60
+      }
+    ],
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/subagent-tracker.mjs\" start",
+        "timeoutSec": 3
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/pre-tool-enforcer.mjs\"",
+        "timeoutSec": 3
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/context-safety.mjs\"",
+        "timeoutSec": 3
+      }
+    ],
+    "postToolUse": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/post-tool-verifier.mjs\"",
+        "timeoutSec": 3
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-posttool.mjs\"",
+        "timeoutSec": 3
+      }
+    ],
+    "errorOccurred": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/post-tool-use-failure.mjs\"",
+        "timeoutSec": 3
+      }
+    ],
+    "subagentStop": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/subagent-tracker.mjs\" stop",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/verify-deliverables.mjs\"",
+        "timeoutSec": 5
+      }
+    ],
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/pre-compact.mjs\"",
+        "timeoutSec": 10
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-precompact.mjs\"",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/context-guard-stop.mjs\"",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/persistent-mode.cjs\"",
+        "timeoutSec": 10
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/code-simplifier.mjs\"",
+        "timeoutSec": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/session-end.mjs\"",
+        "timeoutSec": 10
+      }
+    ]
+  }
+}

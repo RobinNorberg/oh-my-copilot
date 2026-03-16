@@ -1,0 +1,18 @@
+node_modules/
+*.log
+.DS_Store
+.omg/
+.omc/
+.idea/
+.copilot/
+
+# Windows reserved names (prevent accidental creation)
+nul
+NUL
+.omx/
+.env
+benchmarks/harsh-critic/results/
+benchmarks/harsh-critic/scoring/*.js
+benchmarks/harsh-critic/scoring/*.d.ts
+benchmarks/harsh-critic/scoring/*.js.map
+benchmarks/harsh-critic/scoring/*.d.ts.map

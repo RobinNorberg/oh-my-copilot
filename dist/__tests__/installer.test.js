@@ -1,0 +1,511 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { VERSION, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, isRunningAsPlugin, isProjectScopedPlugin, extractOmcVersionFromClaudeMd, syncPersistedSetupVersion, } from '../installer/index.js';
+import { getRuntimePackageVersion } from '../lib/version.js';
+import { join, dirname } from 'path';
+import { tmpdir } from 'os';
+import { homedir } from 'os';
+import { readdirSync, readFileSync, existsSync, mkdtempSync, writeFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+/**
+ * Get the package root directory for testing
+ */
+function getPackageDir() {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    // From src/__tests__/installer.test.ts, go up to package root
+    return join(__dirname, '..', '..');
+}
+/**
+ * Load agent definitions for testing
+ */
+function loadAgentDefinitions() {
+    const agentsDir = join(getPackageDir(), 'agents');
+    const definitions = {};
+    if (!existsSync(agentsDir)) {
+        throw new Error(`agents directory not found: ${agentsDir}`);
+    }
+    for (const file of readdirSync(agentsDir)) {
+        if (file.endsWith('.md')) {
+            // Normalize key: strip .agent suffix so 'architect.agent.md' -> 'architect.md'
+            const key = file.replace(/\.agent\.md$/, '.md');
+            // Normalize line endings to LF for cross-platform test compatibility
+            definitions[key] = readFileSync(join(agentsDir, file), 'utf-8').replace(/\r\n/g, '\n');
+        }
+    }
+    return definitions;
+}
+/**
+ * Load copilot-instructions.md content for testing
+ */
+function loadClaudeMdContent() {
+    const claudeMdPath = join(getPackageDir(), 'docs', 'copilot-instructions.md');
+    if (!existsSync(claudeMdPath)) {
+        throw new Error(`copilot-instructions.md not found: ${claudeMdPath}`);
+    }
+    return readFileSync(claudeMdPath, 'utf-8');
+}
+describe('Installer Constants', () => {
+    // Load definitions once for all tests
+    const AGENT_DEFINITIONS = loadAgentDefinitions();
+    const CLAUDE_MD_CONTENT = loadClaudeMdContent();
+    describe('AGENT_DEFINITIONS', () => {
+        it('should contain expected core agents', () => {
+            const expectedAgents = [
+                'architect.md',
+                'explore.md',
+                'designer.md',
+                'writer.md',
+                'critic.md',
+                'analyst.md',
+                'executor.md',
+                'planner.md',
+                'qa-tester.md',
+                'debugger.md',
+                'verifier.md',
+            ];
+            for (const agent of expectedAgents) {
+                expect(AGENT_DEFINITIONS).toHaveProperty(agent);
+                expect(typeof AGENT_DEFINITIONS[agent]).toBe('string');
+                expect(AGENT_DEFINITIONS[agent].length).toBeGreaterThan(0);
+            }
+        });
+        it('should have valid frontmatter for each agent', () => {
+            for (const [filename, content] of Object.entries(AGENT_DEFINITIONS)) {
+                // Skip non-agent files (AGENTS.md is documentation, not an agent)
+                if (filename === 'AGENTS.md')
+                    continue;
+                // Check for frontmatter delimiters
+                expect(content).toMatch(/^---\n/);
+                expect(content).toMatch(/\n---\n/);
+                // Extract frontmatter
+                const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+                expect(frontmatterMatch).toBeTruthy();
+                const frontmatter = frontmatterMatch[1];
+                // Check required fields (name, description are required; tools is optional)
+                expect(frontmatter).toMatch(/^name:\s+\S+/m);
+                expect(frontmatter).toMatch(/^description:\s+.+/m);
+                // Note: tools field removed - agents use disallowedTools or have all tools by default
+                // Model is optional in some agent definitions
+            }
+        });
+        it('should have unique agent names', () => {
+            const names = new Set();
+            for (const content of Object.values(AGENT_DEFINITIONS)) {
+                const nameMatch = content.match(/^name:\s+(\S+)/m);
+                expect(nameMatch).toBeTruthy();
+                const name = nameMatch[1];
+                expect(names.has(name)).toBe(false);
+                names.add(name);
+            }
+        });
+        it('should have consistent model assignments', () => {
+            const modelExpectations = {
+                'architect.md': 'claude-opus-4-6',
+                'executor.md': 'claude-sonnet-4-6',
+                'designer.md': 'claude-sonnet-4-6',
+                'writer.md': 'claude-haiku-4-5',
+                'critic.md': 'claude-opus-4-6',
+                'analyst.md': 'claude-opus-4-6',
+                'planner.md': 'claude-opus-4-6',
+                'qa-tester.md': 'claude-sonnet-4-6',
+                'debugger.md': 'claude-sonnet-4-6',
+                'verifier.md': 'claude-sonnet-4-6',
+                'test-engineer.md': 'claude-sonnet-4-6',
+                'security-reviewer.md': 'claude-opus-4-6',
+                'git-master.md': 'claude-sonnet-4-6',
+            };
+            for (const [filename, expectedModel] of Object.entries(modelExpectations)) {
+                const content = AGENT_DEFINITIONS[filename];
+                expect(content).toBeTruthy();
+                expect(content).toMatch(new RegExp(`^model:\\s+${expectedModel}`, 'm'));
+            }
+        });
+        it('should not contain duplicate file names', () => {
+            const filenames = Object.keys(AGENT_DEFINITIONS);
+            const uniqueFilenames = new Set(filenames);
+            expect(filenames.length).toBe(uniqueFilenames.size);
+        });
+    });
+    describe('Commands directory removed (#582)', () => {
+        it('should NOT have a commands/ directory in the package root', () => {
+            const commandsDir = join(getPackageDir(), 'commands');
+            expect(existsSync(commandsDir)).toBe(false);
+        });
+    });
+    describe('No self-referential deprecation stubs (#582)', () => {
+        it('should not have any commands/*.md files that redirect to their own skill name', () => {
+            const packageDir = getPackageDir();
+            const commandsDir = join(packageDir, 'commands');
+            // commands/ directory should not exist at all
+            if (!existsSync(commandsDir)) {
+                // This is the expected state - no commands directory
+                expect(true).toBe(true);
+                return;
+            }
+            // If commands/ somehow gets re-added, ensure no self-referential stubs
+            const files = readdirSync(commandsDir).filter(f => f.endsWith('.md'));
+            const selfReferentialStubs = [];
+            for (const file of files) {
+                const commandName = file.replace('.md', '');
+                const content = readFileSync(join(commandsDir, file), 'utf-8');
+                // Detect pattern: command file that tells user to invoke the same-named skill
+                const skillInvokePattern = new RegExp(`/oh-my-copilot:${commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+                if (skillInvokePattern.test(content) && content.toLowerCase().includes('deprecated')) {
+                    selfReferentialStubs.push(file);
+                }
+            }
+            expect(selfReferentialStubs).toEqual([]);
+        });
+        it('should have every skill backed by a SKILL.md (no missing skills)', () => {
+            const skillsDir = join(getPackageDir(), 'skills');
+            if (!existsSync(skillsDir))
+                return;
+            const skillDirs = readdirSync(skillsDir, { withFileTypes: true })
+                .filter(d => d.isDirectory())
+                .map(d => d.name);
+            for (const skillName of skillDirs) {
+                const skillMd = join(skillsDir, skillName, 'SKILL.md');
+                expect(existsSync(skillMd), `skills/${skillName}/SKILL.md should exist`).toBe(true);
+            }
+        });
+    });
+    describe('CLAUDE_MD_CONTENT', () => {
+        it('should be valid markdown', () => {
+            expect(typeof CLAUDE_MD_CONTENT).toBe('string');
+            expect(CLAUDE_MD_CONTENT.length).toBeGreaterThan(100);
+            expect(CLAUDE_MD_CONTENT).toMatch(/^#\s+/m); // Has headers
+        });
+        it('should contain essential sections', () => {
+            const essentialSections = [
+                'Multi-Agent Orchestration',
+                'delegation_rules',
+                'skills',
+                'cancellation',
+            ];
+            for (const section of essentialSections) {
+                expect(CLAUDE_MD_CONTENT).toContain(section);
+            }
+        });
+        it('should reference all core agents', () => {
+            // The new copilot-instructions.md has agents in tables and examples
+            // We'll check for a subset of key agents to ensure the section exists
+            const keyAgents = [
+                'architect',
+                'executor',
+                'explore',
+                'designer',
+                'writer',
+                'planner',
+            ];
+            for (const agent of keyAgents) {
+                // Agents appear in tables and delegation examples
+                expect(CLAUDE_MD_CONTENT).toContain(agent);
+            }
+        });
+        it('should include model routing', () => {
+            // Verify model routing section exists with model names
+            expect(CLAUDE_MD_CONTENT).toContain('model_routing');
+            expect(CLAUDE_MD_CONTENT).toContain('haiku');
+            expect(CLAUDE_MD_CONTENT).toContain('sonnet');
+            expect(CLAUDE_MD_CONTENT).toContain('opus');
+        });
+        it('should document magic keywords and compatibility commands', () => {
+            // Keywords are now in skill trigger columns
+            // Check for key keywords in the skill tables
+            const keywords = [
+                'ralph',
+                'ulw',
+                'plan',
+            ];
+            for (const keyword of keywords) {
+                expect(CLAUDE_MD_CONTENT).toContain(keyword);
+            }
+            // Verify skills section exists with trigger patterns
+            expect(CLAUDE_MD_CONTENT).toContain('skills');
+            expect(CLAUDE_MD_CONTENT).toContain('trigger');
+        });
+        it('should contain XML behavioral tags', () => {
+            // Check for XML tag structure used in best-practices rewrite
+            expect(CLAUDE_MD_CONTENT).toMatch(/<\w+>/); // Contains opening tags
+            expect(CLAUDE_MD_CONTENT).toMatch(/<\/\w+>/); // Contains closing tags
+        });
+    });
+    describe('VERSION', () => {
+        it('should be properly formatted', () => {
+            expect(typeof VERSION).toBe('string');
+            // Semantic versioning pattern (with optional beta suffix)
+            expect(VERSION).toMatch(/^\d+\.\d+\.\d+(-[\w.]+)?$/);
+        });
+        it('should match package.json version', async () => {
+            const { readFileSync } = await import('fs');
+            const { join, dirname } = await import('path');
+            const { fileURLToPath } = await import('url');
+            const __dirname = dirname(fileURLToPath(import.meta.url));
+            const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf-8'));
+            expect(VERSION).toBe(pkg.version);
+        });
+        it('should stay in sync with runtime package version helper', () => {
+            expect(VERSION).toBe(getRuntimePackageVersion());
+        });
+        it('should keep docs/copilot-instructions.md version marker in sync with package version', () => {
+            const versionMatch = CLAUDE_MD_CONTENT.match(/<!-- OMP:VERSION:([^\s]*?) -->/);
+            expect(versionMatch?.[1]).toBe(VERSION);
+        });
+    });
+    describe('extractOmcVersionFromClaudeMd()', () => {
+        it('prefers the OMG version marker', () => {
+            const content = `<!-- OMP:VERSION:4.7.7 -->
+# oh-my-copilot - Intelligent Multi-Agent Orchestration`;
+            expect(extractOmcVersionFromClaudeMd(content)).toBe('v4.7.7');
+        });
+        it('falls back to legacy heading versions', () => {
+            const content = '# oh-my-copilot v4.6.0 - Intelligent Multi-Agent Orchestration';
+            expect(extractOmcVersionFromClaudeMd(content)).toBe('v4.6.0');
+        });
+    });
+    describe('syncPersistedSetupVersion()', () => {
+        it('updates setupVersion for already-configured installs', () => {
+            const tempDir = mkdtempSync(join(tmpdir(), 'omg-installer-test-'));
+            const configPath = join(tempDir, '.omg-config.json');
+            writeFileSync(configPath, JSON.stringify({ setupCompleted: '2026-03-03T17:59:08+09:00', setupVersion: 'v4.6.0' }, null, 2));
+            const changed = syncPersistedSetupVersion({
+                configPath,
+                version: '4.7.7',
+                onlyIfConfigured: true,
+            });
+            const updated = JSON.parse(readFileSync(configPath, 'utf-8'));
+            expect(changed).toBe(true);
+            expect(updated.setupVersion).toBe('v4.7.7');
+            expect(updated.setupCompleted).toBe('2026-03-03T17:59:08+09:00');
+        });
+        it('does not create setupVersion for fresh installs by default', () => {
+            const tempDir = mkdtempSync(join(tmpdir(), 'omg-installer-test-'));
+            const configPath = join(tempDir, '.omg-config.json');
+            writeFileSync(configPath, JSON.stringify({ hudEnabled: true }, null, 2));
+            const changed = syncPersistedSetupVersion({
+                configPath,
+                version: '4.7.7',
+                onlyIfConfigured: true,
+            });
+            const updated = JSON.parse(readFileSync(configPath, 'utf-8'));
+            expect(changed).toBe(false);
+            expect(updated.setupVersion).toBeUndefined();
+            expect(updated.hudEnabled).toBe(true);
+        });
+    });
+    describe('File Paths', () => {
+        it('should define valid directory paths', () => {
+            const expectedBase = join(homedir(), '.copilot');
+            expect(COPILOT_CONFIG_DIR).toBe(expectedBase);
+            expect(AGENTS_DIR).toBe(join(expectedBase, 'agents'));
+            expect(COMMANDS_DIR).toBe(join(expectedBase, 'commands'));
+            expect(SKILLS_DIR).toBe(join(expectedBase, 'skills'));
+            expect(HOOKS_DIR).toBe(join(expectedBase, 'hooks'));
+        });
+        it('should use absolute paths', () => {
+            const paths = [
+                COPILOT_CONFIG_DIR,
+                AGENTS_DIR,
+                COMMANDS_DIR,
+                SKILLS_DIR,
+                HOOKS_DIR,
+            ];
+            for (const path of paths) {
+                // Absolute path: starts with / or ~ (Unix) or drive letter like C: (Windows)
+                expect(path).toMatch(/^([/~]|[A-Za-z]:)/);
+            }
+        });
+    });
+    describe('Content Consistency', () => {
+        it('should not have duplicate agent definitions', () => {
+            const agentKeys = Object.keys(AGENT_DEFINITIONS);
+            const uniqueAgentKeys = new Set(agentKeys);
+            expect(agentKeys.length).toBe(uniqueAgentKeys.size);
+        });
+        it('should have agents referenced in copilot-instructions.md exist in AGENT_DEFINITIONS', () => {
+            const agentMatches = CLAUDE_MD_CONTENT.matchAll(/\`([a-z-]+)\`\s*\|\s*(Opus|Sonnet|Haiku)/g);
+            for (const match of agentMatches) {
+                const agentName = match[1];
+                // Find corresponding agent file
+                const agentFile = Object.keys(AGENT_DEFINITIONS).find(key => {
+                    const content = AGENT_DEFINITIONS[key];
+                    const nameMatch = content.match(/^name:\s+(\S+)/m);
+                    return nameMatch && nameMatch[1] === agentName;
+                });
+                expect(agentFile).toBeTruthy();
+            }
+        });
+        it('should have all agent definitions contain role descriptions', () => {
+            // Agents that use different description formats (not "You are a..." style)
+            const alternateFormatAgents = ['qa-tester.md'];
+            for (const [filename, content] of Object.entries(AGENT_DEFINITIONS)) {
+                // Skip non-agent files
+                if (filename === 'AGENTS.md')
+                    continue;
+                // Skip tiered variants and agents with alternate formats
+                if (!filename.includes('-low') && !filename.includes('-medium') && !filename.includes('-high') && !alternateFormatAgents.includes(filename)) {
+                    // Check for either <Role> tags or role description in various forms
+                    const hasRoleSection = content.includes('<Role>') ||
+                        content.includes('You are a') ||
+                        content.includes('You are an') ||
+                        content.includes('You interpret') ||
+                        content.includes('Named after');
+                    expect(hasRoleSection).toBe(true);
+                }
+            }
+        });
+        it('should have read-only agents not include Edit/Write tools', () => {
+            const readOnlyAgents = ['architect.md', 'critic.md', 'analyst.md'];
+            for (const agent of readOnlyAgents) {
+                const content = AGENT_DEFINITIONS[agent];
+                // Read-only agents use disallowedTools: to block Edit/Write
+                const disallowedMatch = content.match(/^disallowedTools:\s+(.+)/m);
+                expect(disallowedMatch).toBeTruthy();
+                const disallowed = disallowedMatch[1];
+                expect(disallowed).toMatch(/\bEdit\b/);
+                expect(disallowed).toMatch(/\bWrite\b/);
+            }
+        });
+        it('should have implementation agents include Edit/Write tools', () => {
+            const implementationAgents = [
+                'executor.md',
+                'designer.md',
+                'writer.md',
+            ];
+            for (const agent of implementationAgents) {
+                const content = AGENT_DEFINITIONS[agent];
+                // Implementation agents should NOT have Edit/Write in disallowedTools
+                // (If no disallowedTools field exists, all tools are available by default)
+                const disallowedMatch = content.match(/^disallowedTools:\s+(.+)/m);
+                if (disallowedMatch) {
+                    const disallowed = disallowedMatch[1];
+                    // If disallowedTools exists, Edit and Write should NOT be in it
+                    expect(disallowed).not.toMatch(/\bEdit\b/);
+                    expect(disallowed).not.toMatch(/\bWrite\b/);
+                }
+                // If no disallowedTools, all tools including Edit/Write are available - test passes
+            }
+        });
+    });
+    describe('Plugin Detection', () => {
+        let originalEnv;
+        beforeEach(() => {
+            // Save original env var
+            originalEnv = process.env.CLAUDE_PLUGIN_ROOT;
+        });
+        afterEach(() => {
+            // Restore original env var
+            if (originalEnv !== undefined) {
+                process.env.CLAUDE_PLUGIN_ROOT = originalEnv;
+            }
+            else {
+                delete process.env.CLAUDE_PLUGIN_ROOT;
+            }
+        });
+        it('should return false when CLAUDE_PLUGIN_ROOT is not set', () => {
+            delete process.env.CLAUDE_PLUGIN_ROOT;
+            expect(isRunningAsPlugin()).toBe(false);
+        });
+        it('should return true when CLAUDE_PLUGIN_ROOT is set', () => {
+            process.env.CLAUDE_PLUGIN_ROOT = '/home/user/.copilot/plugins/marketplaces/oh-my-copilot';
+            expect(isRunningAsPlugin()).toBe(true);
+        });
+        it('should detect plugin context from environment variable', () => {
+            process.env.CLAUDE_PLUGIN_ROOT = '/any/path';
+            expect(isRunningAsPlugin()).toBe(true);
+        });
+    });
+    describe('Project-Scoped Plugin Detection', () => {
+        let originalEnv;
+        beforeEach(() => {
+            originalEnv = process.env.CLAUDE_PLUGIN_ROOT;
+        });
+        afterEach(() => {
+            if (originalEnv !== undefined) {
+                process.env.CLAUDE_PLUGIN_ROOT = originalEnv;
+            }
+            else {
+                delete process.env.CLAUDE_PLUGIN_ROOT;
+            }
+        });
+        it('should return false when CLAUDE_PLUGIN_ROOT is not set', () => {
+            delete process.env.CLAUDE_PLUGIN_ROOT;
+            expect(isProjectScopedPlugin()).toBe(false);
+        });
+        it('should return false for global plugin installation', () => {
+            // Global plugins are under ~/.copilot/plugins/
+            process.env.CLAUDE_PLUGIN_ROOT = join(homedir(), '.copilot', 'plugins', 'cache', 'omg', 'oh-my-copilot', '3.9.0');
+            expect(isProjectScopedPlugin()).toBe(false);
+        });
+        it('should return true for project-scoped plugin installation', () => {
+            // Project-scoped plugins are in the project's .copilot/plugins/ directory
+            process.env.CLAUDE_PLUGIN_ROOT = '/home/user/myproject/.copilot/plugins/oh-my-copilot';
+            expect(isProjectScopedPlugin()).toBe(true);
+        });
+        it('should return true when plugin is outside global plugin directory', () => {
+            // Any path that's not under ~/.copilot/plugins/ is considered project-scoped
+            process.env.CLAUDE_PLUGIN_ROOT = '/var/projects/app/.copilot/plugins/omg';
+            expect(isProjectScopedPlugin()).toBe(true);
+        });
+        it('should handle Windows-style paths', () => {
+            // Windows paths with backslashes should be normalized
+            process.env.CLAUDE_PLUGIN_ROOT = 'C:\\Users\\user\\project\\.copilot\\plugins\\omp';
+            expect(isProjectScopedPlugin()).toBe(true);
+        });
+        it('should handle trailing slashes in paths', () => {
+            process.env.CLAUDE_PLUGIN_ROOT = join(homedir(), '.copilot', 'plugins', 'cache', 'omg') + '/';
+            expect(isProjectScopedPlugin()).toBe(false);
+        });
+    });
+    describe('Content Quality', () => {
+        it('should not contain unintended placeholder text', () => {
+            const allContent = [
+                ...Object.values(AGENT_DEFINITIONS),
+                CLAUDE_MD_CONTENT,
+            ];
+            // Note: "TODO" appears intentionally in "Todo_Discipline", "TodoWrite" tool, and "TODO OBSESSION"
+            // These are legitimate uses, not placeholder text to be filled in later
+            const placeholders = ['FIXME', 'XXX', '[placeholder]'];
+            // TBD checked with word boundary to avoid matching "JTBD" (Jobs To Be Done)
+            const wordBoundaryPlaceholders = [/\bTBD\b/];
+            for (const content of allContent) {
+                for (const placeholder of placeholders) {
+                    expect(content).not.toContain(placeholder);
+                }
+                for (const pattern of wordBoundaryPlaceholders) {
+                    expect(pattern.test(content)).toBe(false);
+                }
+                // Check for standalone TODO that looks like a placeholder
+                // (e.g., "TODO: implement this" but not "TODO LIST" or "TODO OBSESSION")
+                const todoPlaceholderPattern = /TODO:\s+[a-z]/i;
+                const hasTodoPlaceholder = todoPlaceholderPattern.test(content);
+                expect(hasTodoPlaceholder).toBe(false);
+            }
+        });
+        it('should not contain excessive blank lines', () => {
+            const allContent = [
+                ...Object.values(AGENT_DEFINITIONS),
+            ];
+            for (const content of allContent) {
+                // No more than 3 consecutive blank lines
+                expect(content).not.toMatch(/\n\n\n\n+/);
+            }
+        });
+        it('should have proper markdown formatting in frontmatter', () => {
+            for (const [filename, content] of Object.entries(AGENT_DEFINITIONS)) {
+                // Skip non-agent files
+                if (filename === 'AGENTS.md')
+                    continue;
+                const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
+                expect(frontmatterMatch).toBeTruthy();
+                const frontmatter = frontmatterMatch[1];
+                // Each line should be key: value format (allow camelCase keys like disallowedTools)
+                const lines = frontmatter.split('\n').filter((line) => line.trim());
+                for (const line of lines) {
+                    expect(line).toMatch(/^[a-zA-Z]+:\s+.+/);
+                }
+            }
+        });
+    });
+});
+//# sourceMappingURL=installer.test.js.map

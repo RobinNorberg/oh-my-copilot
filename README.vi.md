@@ -1,0 +1,302 @@
+[English](README.md) | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](README.ja.md) | [Español](README.es.md) | Tiếng Việt | [Português](README.pt.md)
+
+# oh-my-copilot
+
+[![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
+[![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
+[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
+
+> **Dành cho người dùng Codex:** Hãy xem [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) — cùng trải nghiệm điều phối cho OpenAI Codex CLI.
+
+**Điều phối đa tác tử cho Copilot CLI. Không cần thời gian làm quen.**
+
+*Đừng học Copilot CLI. Cứ dùng OMP.*
+
+[Bắt đầu nhanh](#bắt-đầu-nhanh) • [Tài liệu](https://yeachan-heo.github.io/oh-my-copilot-website) • [Tham chiếu CLI](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference) • [Quy trình](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows) • [Hướng dẫn di chuyển](docs/MIGRATION.md)
+
+---
+
+## Bắt đầu nhanh
+
+**Bước 1: Cài đặt**
+```bash
+/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin install oh-my-copilot
+```
+
+**Bước 2: Thiết lập**
+```bash
+/omg-setup
+```
+
+**Bước 3: Xây một thứ gì đó**
+```
+autopilot: build a REST API for managing tasks
+```
+
+Vậy là xong. Mọi thứ còn lại đều tự động.
+
+### Chưa biết bắt đầu từ đâu?
+
+Nếu bạn chưa chắc chắn về yêu cầu, có ý tưởng mơ hồ, hoặc muốn kiểm soát chi tiết thiết kế:
+
+```
+/deep-interview "I want to build a task management app"
+```
+
+Deep interview sử dụng phương pháp hỏi Socratic để làm rõ suy nghĩ của bạn trước khi viết bất kỳ dòng code nào. Nó phát hiện các giả định ẩn và đo lường mức độ rõ ràng theo các chiều có trọng số, đảm bảo bạn biết chính xác cần xây dựng gì trước khi bắt đầu thực thi.
+
+## Team Mode (Khuyến nghị)
+
+Bắt đầu từ **v4.1.7**, **Team** là bề mặt điều phối chuẩn trong OMP. Các điểm vào cũ như **swarm** và **ultrapilot** vẫn được hỗ trợ, nhưng giờ đây chúng **được chuyển sang Team ở tầng bên dưới**.
+
+```bash
+/team 3:executor "fix all TypeScript errors"
+```
+
+Team chạy theo pipeline theo từng giai đoạn:
+
+`team-plan → team-prd → team-exec → team-verify → team-fix (loop)`
+
+Bật Copilot CLI native teams trong `~/.copilot/settings.json`:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+```
+
+> Nếu teams bị tắt, OMP sẽ cảnh báo và chuyển sang chế độ thực thi không dùng team khi có thể.
+
+### Công nhân CLI tmux — Codex & Gemini (v4.4.0+)
+
+**v4.4.0 xóa các máy chủ MCP Codex/Gemini** (nhà cung cấp `x`, `g`). Dùng `/omg-teams` để khởi động tiến trình CLI thực sự trong các pane tmux phân chia:
+
+```bash
+/omg-teams 2:codex   "review auth module for security issues"
+/omg-teams 2:gemini  "redesign UI components for accessibility"
+/omg-teams 1:copilot  "implement the payment flow"
+```
+
+Để xử lý công việc Codex + Gemini trong một lệnh, dùng skill **`/ccg`**:
+
+```bash
+/ccg Review this PR — architecture (Codex) and UI components (Gemini)
+```
+
+| Skill | Công nhân | Tốt nhất cho |
+|-------|---------|----------|
+| `/omg-teams N:codex` | N pane Codex CLI | Xem xét code, phân tích bảo mật, kiến trúc |
+| `/omg-teams N:gemini` | N pane Gemini CLI | Thiết kế UI/UX, tài liệu, tác vụ ngữ cảnh lớn |
+| `/omg-teams N:copilot` | N pane Copilot CLI | Tác vụ chung qua Copilot CLI trong tmux |
+| `/ccg` | 1 Codex + 1 Gemini | Điều phối ba mô hình song song |
+
+Công nhân được tạo theo yêu cầu và tắt khi hoàn thành tác vụ — không lãng phí tài nguyên. Cần cài `codex` / `gemini` CLI và có phiên tmux đang hoạt động.
+
+> **Lưu ý: Tên package** — Dự án được xây dựng thương hiệu là **oh-my-copilot** (repo, plugin, commands), nhưng package npm được phát hành dưới tên [`oh-my-copilot`](https://www.npmjs.com/package/oh-my-copilot). Nếu bạn cài công cụ CLI qua npm/bun, hãy dùng `npm install -g oh-my-copilot`.
+
+### Cập nhật
+
+```bash
+# 1. Cập nhật bản sao marketplace
+/plugin marketplace update omp
+
+# 2. Chạy lại setup để làm mới cấu hình
+/omg-setup
+```
+
+> **Lưu ý:** Nếu tự động cập nhật marketplace chưa được bật, bạn cần chạy `/plugin marketplace update omp` thủ công để đồng bộ phiên bản mới nhất trước khi chạy setup.
+
+Nếu gặp sự cố sau khi cập nhật, hãy xóa cache plugin cũ:
+
+```bash
+/omg-doctor
+```
+
+<h1 align="center">Your Copilot Just Have been Steroided.</h1>
+
+<p align="center">
+  <img src="assets/omg-character.jpg" alt="oh-my-copilot" width="400" />
+</p>
+
+---
+
+## Vì sao chọn oh-my-copilot?
+
+- **Không cần cấu hình** - Hoạt động ngay với các mặc định thông minh
+- **Điều phối ưu tiên Team** - Team là bề mặt đa tác tử chuẩn (swarm/ultrapilot là lớp tương thích)
+- **Giao diện ngôn ngữ tự nhiên** - Không cần nhớ lệnh, chỉ cần mô tả điều bạn muốn
+- **Song song hóa tự động** - Tác vụ phức tạp được phân bổ cho các tác tử chuyên biệt
+- **Thực thi bền bỉ** - Không bỏ cuộc cho đến khi công việc được xác minh hoàn tất
+- **Tối ưu chi phí** - Định tuyến model thông minh giúp tiết kiệm 30-50% token
+- **Học từ kinh nghiệm** - Tự động trích xuất và tái sử dụng các mẫu giải quyết vấn đề
+- **Hiển thị theo thời gian thực** - HUD statusline cho thấy điều gì đang diễn ra phía sau
+
+---
+
+## Tính năng
+
+### Các chế độ điều phối
+Nhiều chiến lược cho nhiều tình huống — từ điều phối dựa trên Team đến refactor tiết kiệm token. [Tìm hiểu thêm →](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#execution-modes)
+
+| Mode | Nó là gì | Dùng cho |
+|------|------------|---------|
+| **Team (khuyến nghị)** | Pipeline chuẩn theo giai đoạn (`team-plan → team-prd → team-exec → team-verify → team-fix`) | Các tác tử phối hợp trên một danh sách nhiệm vụ chung |
+| **omg-teams** | Công nhân CLI tmux — tiến trình `copilot`/`codex`/`gemini` thực trong pane chia | Tác vụ Codex/Gemini CLI; tạo theo yêu cầu, tắt khi xong |
+| **ccg** | Tri-model: Codex (phân tích) + Gemini (thiết kế) song song, Copilot tổng hợp | Công việc backend+UI cần cả Codex và Gemini |
+| **Autopilot** | Thực thi tự động (một tác tử dẫn dắt) | Làm tính năng end-to-end với ít thao tác phụ |
+| **Ultrawork** | Song song tối đa (không dùng team) | Sửa lỗi/refactor kiểu burst song song khi không cần Team |
+| **Ralph** | Chế độ bền bỉ với vòng lặp verify/fix | Tác vụ bắt buộc hoàn tất đầy đủ (không có hoàn thành một phần âm thầm) |
+| **Pipeline** | Xử lý tuần tự theo giai đoạn | Biến đổi nhiều bước cần thứ tự nghiêm ngặt |
+| **Swarm / Ultrapilot (cũ)** | Lớp tương thích chuyển sang **Team** | Quy trình hiện có và tài liệu cũ |
+
+### Điều phối thông minh
+
+- **32 tác tử chuyên biệt** cho kiến trúc, nghiên cứu, thiết kế, kiểm thử, khoa học dữ liệu
+- **Định tuyến model thông minh** - Haiku cho tác vụ đơn giản, Opus cho suy luận phức tạp
+- **Ủy quyền tự động** - Đúng tác tử cho đúng việc, mọi lúc
+
+### Trải nghiệm nhà phát triển
+
+- **Magic keywords** - `ralph`, `ulw`, `plan` để kiểm soát rõ ràng
+- **HUD statusline** - Chỉ số điều phối theo thời gian thực trong status bar
+- **Học kỹ năng** - Trích xuất các mẫu tái sử dụng từ các phiên làm việc
+- **Phân tích & theo dõi chi phí** - Hiểu mức sử dụng token trên mọi phiên
+
+[Danh sách tính năng đầy đủ →](docs/REFERENCE.md)
+
+---
+
+## Magic Keywords
+
+Các phím tắt tùy chọn cho người dùng nâng cao. Không dùng chúng thì ngôn ngữ tự nhiên vẫn hoạt động tốt.
+
+| Keyword | Hiệu ứng | Ví dụ |
+|---------|--------|---------|
+| `team` | Điều phối Team chuẩn | `/team 3:executor "fix all TypeScript errors"` |
+| `omg-teams` | Công nhân CLI tmux (codex/gemini/copilot) | `/omg-teams 2:codex "security review"` |
+| `ccg` | Điều phối tri-model Codex+Gemini | `/ccg review this PR` |
+| `autopilot` | Thực thi tự động toàn phần | `autopilot: build a todo app` |
+| `ralph` | Chế độ bền bỉ | `ralph: refactor auth` |
+| `ulw` | Song song tối đa | `ulw fix all errors` |
+| `plan` | Phỏng vấn lập kế hoạch | `plan the API` |
+| `ralplan` | Đồng thuận lập kế hoạch lặp | `ralplan this feature` |
+| `deep-interview` | Làm rõ yêu cầu theo phương pháp Socratic | `deep-interview "vague idea"` |
+| `swarm` | **Không còn khuyến nghị** — dùng `team` thay thế | `swarm 5 agents: fix lint errors` |
+| `ultrapilot` | **Không còn khuyến nghị** — dùng `team` thay thế | `ultrapilot: build a fullstack app` |
+
+**Ghi chú:**
+- **ralph bao gồm ultrawork**: khi bạn kích hoạt chế độ ralph, nó tự động bao gồm thực thi song song của ultrawork.
+- Cú pháp `swarm N agents` vẫn được nhận diện để trích xuất số lượng tác tử, nhưng runtime ở v4.1.7+ được hỗ trợ bởi Team.
+
+## Tiện ích
+
+### Chờ Rate Limit
+
+Tự động khôi phục phiên Copilot CLI khi rate limit được reset.
+
+```bash
+omp wait          # Check status, get guidance
+omp wait --start  # Enable auto-resume daemon
+omp wait --stop   # Disable daemon
+```
+
+**Yêu cầu:** tmux (để phát hiện phiên)
+
+### Notification Tags (Telegram/Discord/Slack)
+
+Bạn có thể cấu hình ai sẽ được tag khi stop callbacks gửi tóm tắt phiên.
+
+```bash
+# Set/replace tag list
+omp config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omp config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omp config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
+
+# Incremental updates
+omp config-stop-callback telegram --add-tag charlie
+omp config-stop-callback discord --remove-tag @here
+omp config-stop-callback discord --clear-tags
+```
+
+Hành vi tag:
+- Telegram: `alice` trở thành `@alice`
+- Discord: hỗ trợ `@here`, `@everyone`, user ID dạng số, và `role:<id>`
+- Slack: hỗ trợ `<@MEMBER_ID>`, `<!channel>`, `<!here>`, `<!everyone>`, `<!subteam^GROUP_ID>`
+- callbacks kiểu `file` bỏ qua các tùy chọn tag
+
+---
+
+## Tài liệu
+
+- **[Tham chiếu đầy đủ](docs/REFERENCE.md)** - Tài liệu đầy đủ về tính năng
+- **[Tham chiếu CLI](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference)** - Tất cả lệnh, cờ và công cụ `omp`
+- **[Hướng dẫn thông báo](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#notifications)** - Thiết lập Discord, Telegram, Slack và webhook
+- **[Quy trình khuyến nghị](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows)** - Chuỗi skill đã qua thực chiến cho các tác vụ phổ biến
+- **[Ghi chú phát hành](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#release-notes)** - Có gì mới trong mỗi phiên bản
+- **[Website](https://yeachan-heo.github.io/oh-my-copilot-website)** - Hướng dẫn tương tác và ví dụ
+- **[Hướng dẫn di chuyển](docs/MIGRATION.md)** - Nâng cấp từ v2.x
+- **[Kiến trúc](docs/ARCHITECTURE.md)** - Cách nó hoạt động phía sau
+- **[Theo dõi hiệu năng](docs/PERFORMANCE-MONITORING.md)** - Theo dõi tác tử, gỡ lỗi và tối ưu
+
+---
+
+## Yêu cầu
+
+- [Copilot CLI](https://docs.github.com/copilot-cli) CLI
+- Gói thuê bao Copilot Max/Pro HOẶC Anthropic API key
+
+### Tùy chọn: Điều phối Multi-AI
+
+OMP có thể tùy chọn điều phối các nhà cung cấp AI bên ngoài để đối chiếu chéo và nhất quán thiết kế. Đây **không bắt buộc** — OMP vẫn hoạt động đầy đủ mà không cần chúng.
+
+| Provider | Cài đặt | Nó mở ra điều gì |
+|----------|---------|-----------------|
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @google/gemini-cli` | Design review, UI consistency (1M token context) |
+| [Codex CLI](https://github.com/openai/codex) | `npm install -g @openai/codex` | Architecture validation, code review cross-check |
+
+**Chi phí:** 3 gói Pro (Copilot + Gemini + ChatGPT) bao phủ mọi thứ với khoảng $60/tháng.
+
+---
+
+## Giấy phép
+
+MIT
+
+---
+
+<div align="center">
+
+**Lấy cảm hứng từ:** [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) • [copilot-hud](https://github.com/ryanjoachim/copilot-hud) • [Superpowers](https://github.com/obra/superpowers) • [everything-copilot-cli](https://github.com/affaan-m/everything-copilot-cli) • [Ouroboros](https://github.com/Q00/ouroboros)
+
+**Không cần thời gian làm quen. Sức mạnh tối đa.**
+
+</div>
+
+## Lịch sử sao
+
+[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
+
+## 💖 Ủng hộ dự án này
+
+Nếu Oh-My-ClaudeCode giúp ích cho quy trình làm việc của bạn, hãy cân nhắc tài trợ:
+
+[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
+
+### Vì sao nên tài trợ?
+
+- Duy trì phát triển liên tục
+- Hỗ trợ ưu tiên cho nhà tài trợ
+- Ảnh hưởng đến lộ trình & tính năng
+- Góp phần duy trì mã nguồn mở miễn phí
+
+### Những cách khác để hỗ trợ
+
+- ⭐ Star repo
+- 🐛 Báo lỗi
+- 💡 Đề xuất tính năng
+- 📝 Đóng góp code

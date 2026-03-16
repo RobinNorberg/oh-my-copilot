@@ -1,0 +1,232 @@
+import { execSync } from 'child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import { dirname, join } from 'path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+const SCRIPT_PATH = join(process.cwd(), 'scripts', 'pre-tool-enforcer.mjs');
+function runPreToolEnforcer(input) {
+    const stdout = execSync(`node "${SCRIPT_PATH}"`, {
+        input: JSON.stringify(input),
+        encoding: 'utf-8',
+        timeout: 5000,
+        env: { ...process.env, NODE_ENV: 'test' },
+    });
+    return JSON.parse(stdout.trim());
+}
+function writeJson(filePath, data) {
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(filePath, JSON.stringify(data, null, 2));
+}
+function writeTranscriptWithContext(filePath, contextWindow, inputTokens) {
+    mkdirSync(dirname(filePath), { recursive: true });
+    const line = JSON.stringify({
+        usage: { context_window: contextWindow, input_tokens: inputTokens },
+        context_window: contextWindow,
+        input_tokens: inputTokens,
+    });
+    writeFileSync(filePath, `${line}\n`, 'utf-8');
+}
+describe('pre-tool-enforcer fallback gating (issue #970)', () => {
+    let tempDir;
+    beforeEach(() => {
+        tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-'));
+    });
+    afterEach(() => {
+        rmSync(tempDir, { recursive: true, force: true });
+    });
+    it('suppresses unknown-tool fallback when no active mode exists', () => {
+        const output = runPreToolEnforcer({
+            tool_name: 'ToolSearch',
+            cwd: tempDir,
+            session_id: 'session-970',
+        });
+        expect(output).toEqual({ continue: true, suppressOutput: true });
+    });
+    it('emits boulder fallback for unknown tools when session-scoped mode is active', () => {
+        const sessionId = 'session-970';
+        writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json'), {
+            active: true,
+            session_id: sessionId,
+        });
+        const output = runPreToolEnforcer({
+            tool_name: 'ToolSearch',
+            cwd: tempDir,
+            session_id: sessionId,
+        });
+        const hookSpecificOutput = output.hookSpecificOutput;
+        expect(output.continue).toBe(true);
+        expect(hookSpecificOutput.hookEventName).toBe('PreToolUse');
+        expect(hookSpecificOutput.additionalContext).toContain('The boulder never stops');
+    });
+    it('does not fall back to legacy mode files when a valid session_id is provided', () => {
+        writeJson(join(tempDir, '.omg', 'state', 'ralph-state.json'), {
+            active: true,
+        });
+        const output = runPreToolEnforcer({
+            tool_name: 'mcp__omx_state__state_read',
+            cwd: tempDir,
+            session_id: 'session-970',
+        });
+        expect(output).toEqual({ continue: true, suppressOutput: true });
+    });
+    it('uses legacy mode files when session_id is not provided', () => {
+        writeJson(join(tempDir, '.omg', 'state', 'ultrawork-state.json'), {
+            active: true,
+        });
+        const output = runPreToolEnforcer({
+            tool_name: 'mcp__omx_state__state_read',
+            cwd: tempDir,
+        });
+        const hookSpecificOutput = output.hookSpecificOutput;
+        expect(output.continue).toBe(true);
+        expect(hookSpecificOutput.additionalContext).toContain('The boulder never stops');
+    });
+    // === Team-routing enforcement tests (issue #1006) ===
+    it('injects team-routing redirect when Task called without team_name during active team session', () => {
+        const sessionId = 'session-1006';
+        writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), {
+            active: true,
+            session_id: sessionId,
+            team_name: 'fix-ts-errors',
+        });
+        const output = runPreToolEnforcer({
+            tool_name: 'Task',
+            toolInput: {
+                subagent_type: 'oh-my-copilot:executor',
+                description: 'Fix type errors',
+                prompt: 'Fix all type errors in src/auth/',
+            },
+            cwd: tempDir,
+            session_id: sessionId,
+        });
+        const hookSpecificOutput = output.hookSpecificOutput;
+        expect(output.continue).toBe(true);
+        expect(hookSpecificOutput.additionalContext).toContain('TEAM ROUTING REQUIRED');
+        expect(hookSpecificOutput.additionalContext).toContain('fix-ts-errors');
+        expect(hookSpecificOutput.additionalContext).toContain('team_name=');
+    });
+    it('does NOT inject team-routing redirect when Task called WITH team_name', () => {
+        const sessionId = 'session-1006b';
+        writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), {
+            active: true,
+            session_id: sessionId,
+            team_name: 'fix-ts-errors',
+        });
+        const output = runPreToolEnforcer({
+            tool_name: 'Task',
+            toolInput: {
+                subagent_type: 'oh-my-copilot:executor',
+                team_name: 'fix-ts-errors',
+                name: 'worker-1',
+                description: 'Fix type errors',
+                prompt: 'Fix all type errors in src/auth/',
+            },
+            cwd: tempDir,
+            session_id: sessionId,
+        });
+        const hookSpecificOutput = output.hookSpecificOutput;
+        expect(output.continue).toBe(true);
+        // Should be a normal spawn message, not a redirect
+        expect(String(hookSpecificOutput.additionalContext)).not.toContain('TEAM ROUTING REQUIRED');
+        expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent');
+    });
+    it('does NOT inject team-routing redirect when no team state is active', () => {
+        const output = runPreToolEnforcer({
+            tool_name: 'Task',
+            toolInput: {
+                subagent_type: 'oh-my-copilot:executor',
+                description: 'Fix type errors',
+                prompt: 'Fix all type errors in src/auth/',
+            },
+            cwd: tempDir,
+            session_id: 'session-no-team',
+        });
+        const hookSpecificOutput = output.hookSpecificOutput;
+        expect(output.continue).toBe(true);
+        expect(String(hookSpecificOutput.additionalContext)).not.toContain('TEAM ROUTING REQUIRED');
+        expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent');
+    });
+    it('reads team state from legacy path when session_id is absent', () => {
+        writeJson(join(tempDir, '.omg', 'state', 'team-state.json'), {
+            active: true,
+            team_name: 'legacy-team',
+        });
+        const output = runPreToolEnforcer({
+            tool_name: 'Task',
+            toolInput: {
+                subagent_type: 'oh-my-copilot:executor',
+                description: 'Fix something',
+                prompt: 'Fix it',
+            },
+            cwd: tempDir,
+        });
+        const hookSpecificOutput = output.hookSpecificOutput;
+        expect(output.continue).toBe(true);
+        expect(hookSpecificOutput.additionalContext).toContain('TEAM ROUTING REQUIRED');
+        expect(hookSpecificOutput.additionalContext).toContain('legacy-team');
+    });
+    it('respects session isolation — ignores team state from different session', () => {
+        writeJson(join(tempDir, '.omg', 'state', 'sessions', 'other-session', 'team-state.json'), {
+            active: true,
+            session_id: 'other-session',
+            team_name: 'other-team',
+        });
+        const output = runPreToolEnforcer({
+            tool_name: 'Task',
+            toolInput: {
+                subagent_type: 'oh-my-copilot:executor',
+                description: 'Fix something',
+                prompt: 'Fix it',
+            },
+            cwd: tempDir,
+            session_id: 'my-session',
+        });
+        const hookSpecificOutput = output.hookSpecificOutput;
+        expect(output.continue).toBe(true);
+        expect(String(hookSpecificOutput.additionalContext)).not.toContain('TEAM ROUTING REQUIRED');
+    });
+    it('keeps known tool messages unchanged (Bash, Read)', () => {
+        const bash = runPreToolEnforcer({
+            tool_name: 'Bash',
+            cwd: tempDir,
+        });
+        const bashOutput = bash.hookSpecificOutput;
+        expect(bashOutput.additionalContext).toBe('Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests).');
+        const read = runPreToolEnforcer({
+            tool_name: 'Read',
+            cwd: tempDir,
+        });
+        const readOutput = read.hookSpecificOutput;
+        expect(readOutput.additionalContext).toBe('Read multiple files in parallel when possible for faster analysis.');
+    });
+    it('blocks agent-heavy Task preflight when transcript context budget is exhausted', () => {
+        const transcriptPath = join(tempDir, 'transcript.jsonl');
+        writeTranscriptWithContext(transcriptPath, 1000, 800); // 80%
+        const output = runPreToolEnforcer({
+            tool_name: 'Task',
+            toolInput: {
+                subagent_type: 'oh-my-copilot:executor',
+                description: 'High fan-out execution',
+            },
+            cwd: tempDir,
+            transcript_path: transcriptPath,
+            session_id: 'session-1373',
+        });
+        expect(output.decision).toBe('block');
+        expect(String(output.reason)).toContain('Preflight context guard');
+        expect(String(output.reason)).toContain('Safe recovery');
+    });
+    it('allows non-agent-heavy tools even when transcript context is high', () => {
+        const transcriptPath = join(tempDir, 'transcript.jsonl');
+        writeTranscriptWithContext(transcriptPath, 1000, 900); // 90%
+        const output = runPreToolEnforcer({
+            tool_name: 'Read',
+            cwd: tempDir,
+            transcript_path: transcriptPath,
+            session_id: 'session-1373',
+        });
+        expect(output.continue).toBe(true);
+        expect(output.decision).toBeUndefined();
+    });
+});
+//# sourceMappingURL=pre-tool-enforcer.test.js.map
