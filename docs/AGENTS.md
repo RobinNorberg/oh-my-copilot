@@ -72,7 +72,7 @@ This directory contains documentation for end-users and developers:
 
 Use raw GitHub URLs for external accessibility:
 
-[Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md)
+[Migration Guide](https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/MIGRATION.md)
 
 #### Version References
 

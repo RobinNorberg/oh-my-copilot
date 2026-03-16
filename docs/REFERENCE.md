@@ -30,7 +30,7 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 
 ```bash
 # Step 1: Add the marketplace
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 
 # Step 2: Install the plugin
 /plugin install oh-my-copilot
@@ -740,7 +740,7 @@ To manually update, re-run the plugin install command or use Copilot CLI's built
 ### Uninstall
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/scripts/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/scripts/uninstall.sh | bash
 ```
 
 Or manually:

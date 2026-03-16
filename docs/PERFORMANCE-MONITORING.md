@@ -338,7 +338,7 @@ Visit the platform to:
 | Resource | Description | Link |
 |----------|-------------|------|
 | Copilot CLI Discord | Community support and tips | [discord.gg/anthropic](https://discord.gg/anthropic) |
-| OMP GitHub Issues | Bug reports and feature requests | [GitHub Issues](https://github.com/Yeachan-Heo/oh-my-copilot/issues) |
+| OMP GitHub Issues | Bug reports and feature requests | [GitHub Issues](https://github.com/RobinNorberg/oh-my-copilot/issues) |
 | Anthropic Documentation | Official Copilot documentation | [docs.github.com](https://docs.github.com) |
 
 ### Model Performance Benchmarks

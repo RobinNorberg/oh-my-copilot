@@ -1,7 +1,7 @@
 ---
 title: Oh-My-ClaudeCode
 subtitle: Multi-Agent Orchestration for Autonomous Development
-author: Yeachan Heo
+author: Robin Norberg
 theme: night
 ---
 
@@ -1074,7 +1074,7 @@ Note: Analytics help you understand where tokens are going and optimize your usa
 
 **Method 1: Plugin Marketplace (Recommended)**
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -1085,7 +1085,7 @@ npm install -g oh-my-copilot
 
 **Method 3: Manual Git Clone**
 ```bash
-git clone https://github.com/Yeachan-Heo/oh-my-copilot.git
+git clone https://github.com/RobinNorberg/oh-my-copilot.git
 cd oh-my-copilot
 npm install && npm run build
 ```
@@ -1103,7 +1103,7 @@ Note: Plugin marketplace is the easiest - one command and you're done.
 
 **Step 1: Install**
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -1184,12 +1184,12 @@ Note: Matching the right mode to the task type is key to getting the most out of
 
 **GitHub Repository**
 ```
-github.com/Yeachan-Heo/oh-my-copilot
+github.com/RobinNorberg/oh-my-copilot
 ```
 
 **Website & Documentation**
 ```
-yeachan-heo.github.io/oh-my-copilot-website
+docs/REFERENCE.md
 ```
 
 **NPM Package**
@@ -1240,12 +1240,12 @@ Note: Thank you for attending! Feel free to reach out via GitHub issues for any 
 Zero learning curve. Maximum power.
 
 ```
-github.com/Yeachan-Heo/oh-my-copilot
+github.com/RobinNorberg/oh-my-copilot
 ```
 
 **Get Started Now:**
 ```
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 autopilot: build something amazing
 ```

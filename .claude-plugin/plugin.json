@@ -5,8 +5,8 @@
   "author": {
     "name": "oh-my-copilot contributors"
   },
-  "repository": "https://github.com/Yeachan-Heo/oh-my-copilot",
-  "homepage": "https://github.com/Yeachan-Heo/oh-my-copilot",
+  "repository": "https://github.com/RobinNorberg/oh-my-copilot",
+  "homepage": "https://github.com/RobinNorberg/oh-my-copilot",
   "license": "MIT",
   "keywords": [
     "copilot-cli",

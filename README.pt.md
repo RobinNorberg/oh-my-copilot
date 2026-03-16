@@ -4,9 +4,8 @@
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
 
 > **Para usuários do Codex:** Confira [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) — a mesma experiência de orquestração para o OpenAI Codex CLI.
 
@@ -14,7 +13,7 @@
 
 *Não aprenda Copilot CLI. Só use OMP.*
 
-[Começar Rápido](#início-rápido) • [Documentação](https://yeachan-heo.github.io/oh-my-copilot-website) • [Referência CLI](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference) • [Workflows](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows) • [Guia de Migração](docs/MIGRATION.md)
+[Começar Rápido](#início-rápido) • [Documentação](https://docs/REFERENCE.md) • [Referência CLI](https://docs/REFERENCE.md/docs.html#cli-reference) • [Workflows](https://docs/REFERENCE.md/docs.html#workflows) • [Guia de Migração](docs/MIGRATION.md)
 
 ---
 
@@ -22,7 +21,7 @@
 
 **Passo 1: Instale**
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -141,7 +140,7 @@ Se você tiver problemas depois de atualizar, limpe o cache antigo do plugin:
 ## Recursos
 
 ### Modos de Orquestração
-Múltiplas estratégias para diferentes casos de uso — da orquestração com Team até refatoração com eficiência de tokens. [Saiba mais →](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#execution-modes)
+Múltiplas estratégias para diferentes casos de uso — da orquestração com Team até refatoração com eficiência de tokens. [Saiba mais →](https://docs/REFERENCE.md/docs.html#execution-modes)
 
 | Modo | O que é | Usar para |
 |------|---------|-----------|
@@ -234,11 +233,11 @@ Comportamento das tags:
 ## Documentação
 
 - **[Referência Completa](docs/REFERENCE.md)** - Documentação completa de recursos
-- **[Referência CLI](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference)** - Todos os comandos, flags e ferramentas do `omp`
-- **[Guia de Notificações](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#notifications)** - Configuração de Discord, Telegram, Slack e webhooks
-- **[Workflows Recomendados](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows)** - Cadeias de skills testadas em batalha para tarefas comuns
-- **[Notas de Lançamento](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#release-notes)** - Novidades em cada versão
-- **[Website](https://yeachan-heo.github.io/oh-my-copilot-website)** - Guias interativos e exemplos
+- **[Referência CLI](https://docs/REFERENCE.md/docs.html#cli-reference)** - Todos os comandos, flags e ferramentas do `omp`
+- **[Guia de Notificações](https://docs/REFERENCE.md/docs.html#notifications)** - Configuração de Discord, Telegram, Slack e webhooks
+- **[Workflows Recomendados](https://docs/REFERENCE.md/docs.html#workflows)** - Cadeias de skills testadas em batalha para tarefas comuns
+- **[Notas de Lançamento](https://docs/REFERENCE.md/docs.html#release-notes)** - Novidades em cada versão
+- **[Website](https://docs/REFERENCE.md)** - Guias interativos e exemplos
 - **[Guia de Migração](docs/MIGRATION.md)** - Upgrade a partir da v2.x
 - **[Arquitetura](docs/ARCHITECTURE.md)** - Como funciona por baixo dos panos
 - **[Monitoramento de Performance](docs/PERFORMANCE-MONITORING.md)** - Rastreamento de agentes, debugging e otimização
@@ -277,26 +276,3 @@ MIT
 
 </div>
 
-## Histórico de Stars
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
-
-## 💖 Apoie Este Projeto
-
-Se o Oh-My-ClaudeCode ajuda no seu fluxo de trabalho, considere patrocinar:
-
-[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
-
-### Por que patrocinar?
-
-- Manter o desenvolvimento ativo
-- Suporte prioritário para patrocinadores
-- Influenciar o roadmap e os recursos
-- Ajudar a manter o projeto livre e de código aberto
-
-### Outras formas de ajudar
-
-- ⭐ Dar star no repositório
-- 🐛 Reportar bugs
-- 💡 Sugerir recursos
-- 📝 Contribuir com código

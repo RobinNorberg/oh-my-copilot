@@ -42,7 +42,7 @@ if (!target) {
  *      same script name and use that instead.
  *   4. If all else fails, return null (caller exits cleanly).
  *
- * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1007
+ * See: https://github.com/RobinNorberg/oh-my-copilot/issues/1007
  */
 function resolveTarget(targetPath) {
   // Fast path: target exists (common case)

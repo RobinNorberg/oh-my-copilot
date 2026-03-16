@@ -49,7 +49,7 @@ Or reinstall the plugin:
 copilot /install-plugin oh-my-copilot
 ```
 
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.7.7...v4.7.8
+**Full Changelog**: https://github.com/RobinNorberg/oh-my-copilot/compare/v4.7.7...v4.7.8
 
 ---
 
@@ -81,7 +81,7 @@ Or reinstall the plugin:
 copilot /install-plugin oh-my-copilot
 ```
 
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.7.4...v4.7.5
+**Full Changelog**: https://github.com/RobinNorberg/oh-my-copilot/compare/v4.7.4...v4.7.5
 
 ---
 
@@ -112,7 +112,7 @@ Or reinstall the plugin:
 copilot /install-plugin oh-my-copilot
 ```
 
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.7.3...v4.7.4
+**Full Changelog**: https://github.com/RobinNorberg/oh-my-copilot/compare/v4.7.3...v4.7.4
 
 ---
 
@@ -143,7 +143,7 @@ Or reinstall the plugin:
 copilot /install-plugin oh-my-copilot
 ```
 
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.7.0...v4.7.1
+**Full Changelog**: https://github.com/RobinNorberg/oh-my-copilot/compare/v4.7.0...v4.7.1
 
 ---
 
@@ -240,7 +240,7 @@ Or reinstall the plugin:
 copilot /install-plugin oh-my-copilot
 ```
 
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.6.7...v4.7.0
+**Full Changelog**: https://github.com/RobinNorberg/oh-my-copilot/compare/v4.6.7...v4.7.0
 
 ---
 

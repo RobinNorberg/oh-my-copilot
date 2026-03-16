@@ -68,7 +68,7 @@ EXAMPLES:
   /oh-my-copilot:omg-setup --global  # Update all projects
   /oh-my-copilot:omg-setup --force   # Re-run full setup wizard
 
-For more info: https://github.com/Yeachan-Heo/oh-my-copilot
+For more info: https://github.com/RobinNorberg/oh-my-copilot
 ```
 
 ## Pre-Setup Check: Already Configured?

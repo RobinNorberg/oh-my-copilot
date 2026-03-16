@@ -4,9 +4,8 @@
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
 
 > **Codex 用户：** 查看 [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) — 为 OpenAI Codex CLI 提供同样的编排体验。
 
@@ -14,7 +13,7 @@
 
 *无需学习 Copilot CLI，直接使用 OMP。*
 
-[快速开始](#快速开始) • [文档](https://yeachan-heo.github.io/oh-my-copilot-website) • [CLI 参考](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference) • [工作流](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows) • [迁移指南](docs/MIGRATION.md)
+[快速开始](#快速开始) • [文档](https://docs/REFERENCE.md) • [CLI 参考](https://docs/REFERENCE.md/docs.html#cli-reference) • [工作流](https://docs/REFERENCE.md/docs.html#workflows) • [迁移指南](docs/MIGRATION.md)
 
 ---
 
@@ -22,7 +21,7 @@
 
 **第一步：安装**
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -141,7 +140,7 @@ Team 按阶段化流水线运行：
 ## 功能特性
 
 ### 执行模式
-针对不同场景的多种策略 - 从全自动构建到 token 高效重构。[了解更多 →](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#execution-modes)
+针对不同场景的多种策略 - 从全自动构建到 token 高效重构。[了解更多 →](https://docs/REFERENCE.md/docs.html#execution-modes)
 
 | 模式 | 特点 | 适用场景 |
 |------|---------|---------|
@@ -236,11 +235,11 @@ omp config-stop-callback discord --clear-tags
 ## 文档
 
 - **[完整参考](docs/REFERENCE.md)** - 完整功能文档
-- **[CLI 参考](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference)** - 所有 `omp` 命令、标志和工具
-- **[通知指南](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#notifications)** - Discord、Telegram、Slack 和 webhook 设置
-- **[推荐工作流](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows)** - 常见任务的经过实战检验的技能链
-- **[发布说明](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#release-notes)** - 每个版本的新内容
-- **[网站](https://yeachan-heo.github.io/oh-my-copilot-website)** - 交互式指南和示例
+- **[CLI 参考](https://docs/REFERENCE.md/docs.html#cli-reference)** - 所有 `omp` 命令、标志和工具
+- **[通知指南](https://docs/REFERENCE.md/docs.html#notifications)** - Discord、Telegram、Slack 和 webhook 设置
+- **[推荐工作流](https://docs/REFERENCE.md/docs.html#workflows)** - 常见任务的经过实战检验的技能链
+- **[发布说明](https://docs/REFERENCE.md/docs.html#release-notes)** - 每个版本的新内容
+- **[网站](https://docs/REFERENCE.md)** - 交互式指南和示例
 - **[迁移指南](docs/MIGRATION.md)** - 从 v2.x 升级
 - **[架构](docs/ARCHITECTURE.md)** - 底层工作原理
 - **[性能监控](docs/PERFORMANCE-MONITORING.md)** - 智能体追踪、调试和优化
@@ -279,26 +278,3 @@ MIT
 
 </div>
 
-## Star 历史
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
-
-## 💖 支持本项目
-
-如果 Oh-My-ClaudeCode 帮助了你的工作流，请考虑赞助：
-
-[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
-
-### 为什么赞助？
-
-- 保持项目活跃开发
-- 赞助者获得优先支持
-- 影响路线图和功能
-- 帮助维护自由开源
-
-### 其他帮助方式
-
-- ⭐ 为仓库加星
-- 🐛 报告问题
-- 💡 提出功能建议
-- 📝 贡献代码

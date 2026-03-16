@@ -85,7 +85,7 @@ Reference formats:
 
 Examples:
   psm review omp#123
-  psm fix Yeachan-Heo/oh-my-copilot#42
+  psm fix RobinNorberg/oh-my-copilot#42
   psm feature omp add-webhooks
   psm list
   psm attach omp:pr-123

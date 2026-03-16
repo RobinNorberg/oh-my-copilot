@@ -138,7 +138,7 @@ Use Copilot CLI through IDE integrations (VS Code extension) which may handle IM
 ## Related Issues
 
 ### oh-my-copilot
-- [#344](https://github.com/Yeachan-Heo/oh-my-copilot/issues/344) - Korean IME input invisible in input field
+- [#344](https://github.com/RobinNorberg/oh-my-copilot/issues/344) - Korean IME input invisible in input field
 
 ### anthropics/copilot-cli
 - [#22732](https://github.com/anthropics/copilot-cli/issues/22732) - Korean IME: Characters completely invisible during composition

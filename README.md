@@ -4,7 +4,7 @@ English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](READM
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 > oh-my-copilot is a fork of [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo, adapted for GitHub Copilot CLI.
@@ -15,7 +15,7 @@ English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](READM
 
 _Don't learn Copilot CLI. Just use OMP._
 
-[Get Started](#quick-start) • [Documentation](https://yeachan-heo.github.io/oh-my-copilot-website) • [CLI Reference](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference) • [Workflows](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows) • [Migration Guide](docs/MIGRATION.md)
+[Get Started](#quick-start) • [Documentation](https://docs/REFERENCE.md) • [CLI Reference](https://docs/REFERENCE.md/docs.html#cli-reference) • [Workflows](https://docs/REFERENCE.md/docs.html#workflows) • [Migration Guide](docs/MIGRATION.md)
 
 ---
 
@@ -24,7 +24,7 @@ _Don't learn Copilot CLI. Just use OMP._
 **Step 1: Install**
 
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -150,7 +150,7 @@ If you experience issues after updating, clear the old plugin cache:
 
 ### Orchestration Modes
 
-Multiple strategies for different use cases — from Team-backed orchestration to token-efficient refactoring. [Learn more →](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#execution-modes)
+Multiple strategies for different use cases — from Team-backed orchestration to token-efficient refactoring. [Learn more →](https://docs/REFERENCE.md/docs.html#execution-modes)
 
 | Mode                    | What it is                                                                              | Use For                                                |
 | ----------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -354,11 +354,11 @@ Tag behavior:
 ## Documentation
 
 - **[Full Reference](docs/REFERENCE.md)** - Complete feature documentation
-- **[CLI Reference](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference)** - All `omp` commands, flags, and tools
-- **[Notifications Guide](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#notifications)** - Discord, Telegram, Slack, Teams, and webhook setup
-- **[Recommended Workflows](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows)** - Battle-tested skill chains for common tasks
-- **[Release Notes](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#release-notes)** - What's new in each version
-- **[Website](https://yeachan-heo.github.io/oh-my-copilot-website)** - Interactive guides and examples
+- **[CLI Reference](https://docs/REFERENCE.md/docs.html#cli-reference)** - All `omp` commands, flags, and tools
+- **[Notifications Guide](https://docs/REFERENCE.md/docs.html#notifications)** - Discord, Telegram, Slack, Teams, and webhook setup
+- **[Recommended Workflows](https://docs/REFERENCE.md/docs.html#workflows)** - Battle-tested skill chains for common tasks
+- **[Release Notes](https://docs/REFERENCE.md/docs.html#release-notes)** - What's new in each version
+- **[Website](https://docs/REFERENCE.md)** - Interactive guides and examples
 - **[Migration Guide](docs/MIGRATION.md)** - Upgrade from v2.x
 - **[Architecture](docs/ARCHITECTURE.md)** - How it works under the hood
 - **[Performance Monitoring](docs/PERFORMANCE-MONITORING.md)** - Agent tracking, debugging, and optimization
@@ -411,26 +411,3 @@ MIT
 
 </div>
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
-
-## 💖 Support This Project
-
-If Oh-My-ClaudeCode helps your workflow, consider sponsoring:
-
-[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
-
-### Why sponsor?
-
-- Keep development active
-- Priority support for sponsors
-- Influence roadmap & features
-- Help maintain free & open source
-
-### Other ways to help
-
-- ⭐ Star the repo
-- 🐛 Report bugs
-- 💡 Suggest features
-- 📝 Contribute code

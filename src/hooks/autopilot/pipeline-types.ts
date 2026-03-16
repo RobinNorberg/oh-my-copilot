@@ -5,7 +5,7 @@
  * The pipeline unifies autopilot/ultrawork/ultrapilot into a single
  * configurable sequence: RALPLAN -> EXECUTION -> RALPH -> QA.
  *
- * @see https://github.com/Yeachan-Heo/oh-my-copilot/issues/1130
+ * @see https://github.com/RobinNorberg/oh-my-copilot/issues/1130
  */
 
 // ============================================================================

@@ -348,7 +348,7 @@ npm uninstall -g oh-my-copilot
 
 ```bash
 # In Copilot CLI:
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -873,7 +873,7 @@ Expected timeline: Q1 2026
 
 ### Stay Updated
 
-- Watch the [GitHub repository](https://github.com/Yeachan-Heo/oh-my-copilot) for announcements
+- Watch the [GitHub repository](https://github.com/RobinNorberg/oh-my-copilot) for announcements
 - Check [CHANGELOG.md](../CHANGELOG.md) for detailed release notes
 - Join discussions in GitHub Issues
 
@@ -1009,7 +1009,7 @@ A: Keywords are explicit shortcuts. Natural language triggers auto-detection. Bo
 - **See all commands**: Run `/oh-my-copilot:omg-help`
 - **View real-time status**: Run `/oh-my-copilot:hud setup`
 - **Review detailed changelog**: See [CHANGELOG.md](../CHANGELOG.md)
-- **Report bugs**: [GitHub Issues](https://github.com/Yeachan-Heo/oh-my-copilot/issues)
+- **Report bugs**: [GitHub Issues](https://github.com/RobinNorberg/oh-my-copilot/issues)
 
 ---
 

@@ -4,15 +4,14 @@
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
 
 **Orchestrazione multi-agente per Copilot CLI. Zero curva di apprendimento.**
 
 _Non imparare Copilot CLI. Usa semplicemente OMP._
 
-[Inizia](#avvio-rapido) • [Documentazione](https://yeachan-heo.github.io/oh-my-copilot-website) • [Guida alla migrazione](docs/MIGRATION.md)
+[Inizia](#avvio-rapido) • [Documentazione](https://docs/REFERENCE.md) • [Guida alla migrazione](docs/MIGRATION.md)
 
 ---
 
@@ -21,7 +20,7 @@ _Non imparare Copilot CLI. Usa semplicemente OMP._
 **Passo 1: Installazione**
 
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -106,7 +105,7 @@ Se riscontri problemi dopo l'aggiornamento, svuota la vecchia cache del plugin:
 
 ### Modalità di orchestrazione
 
-Strategie multiple per diversi casi d'uso — dall'orchestrazione basata su Team al refactoring efficiente in termini di token. [Scopri di più →](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#execution-modes)
+Strategie multiple per diversi casi d'uso — dall'orchestrazione basata su Team al refactoring efficiente in termini di token. [Scopri di più →](https://docs/REFERENCE.md/docs.html#execution-modes)
 
 | Modalità                        | Descrizione                                                                             | Utilizzo                                                                                 |
 | ------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
@@ -197,7 +196,7 @@ Comportamento dei tag:
 
 - **[Riferimento completo](docs/REFERENCE.md)** — Documentazione completa delle funzionalità
 - **[Monitoraggio delle prestazioni](docs/PERFORMANCE-MONITORING.md)** — Tracciamento degli agenti, debugging e ottimizzazione
-- **[Sito web](https://yeachan-heo.github.io/oh-my-copilot-website)** — Guide interattive ed esempi
+- **[Sito web](https://docs/REFERENCE.md)** — Guide interattive ed esempi
 - **[Guida alla migrazione](docs/MIGRATION.md)** — Aggiornamento dalla v2.x
 - **[Architettura](docs/ARCHITECTURE.md)** — Come funziona dietro le quinte
 
@@ -235,26 +234,3 @@ MIT
 
 </div>
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
-
-## 💖 Supporta questo progetto
-
-Se Oh-My-ClaudeCode migliora il tuo workflow, considera di diventare sponsor:
-
-[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
-
-### Perché sponsorizzare?
-
-- Mantenere lo sviluppo attivo
-- Supporto prioritario per gli sponsor
-- Influenzare la roadmap e le funzionalità
-- Contribuire a mantenere il software libero e open source
-
-### Altri modi per aiutare
-
-- ⭐ Metti una stella al repository
-- 🐛 Segnala bug
-- 💡 Suggerisci funzionalità
-- 📝 Contribuisci al codice

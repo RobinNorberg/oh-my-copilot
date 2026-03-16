@@ -15,13 +15,13 @@ oh-my-copilot is a Copilot CLI plugin that provides multi-agent orchestration ca
 
 ### Installation
 ```bash
-/plugin marketplace add Yeachan-Heo/oh-my-copilot
+/plugin marketplace add RobinNorberg/oh-my-copilot
 ```
 
 ## Code Structure
 
 ```
-.copilot-plugin/          # Plugin metadata
+.claude-plugin/          # Plugin metadata
   plugin.json            # Main plugin config
   marketplace.json       # Marketplace registration
 agents/                  # Agent definitions (YAML)
@@ -36,7 +36,7 @@ tests/                   # Test files
 
 ### Installation Issues
 - Recommend running `/oh-my-copilot:omp-doctor` to diagnose problems
-- Check if user installed via correct method: `/plugin marketplace add Yeachan-Heo/oh-my-copilot`
+- Check if user installed via correct method: `/plugin marketplace add RobinNorberg/oh-my-copilot`
 - Common issues: outdated Copilot CLI version, missing dependencies
 
 ### Bug Reports

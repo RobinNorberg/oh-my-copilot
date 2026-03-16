@@ -314,7 +314,7 @@ npm uninstall -g oh-my-copilot
 
 ```bash
 # Copilot CLI에서:
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -875,7 +875,7 @@ v4.0이 릴리스 후보 단계에 도달하면 상세한 마이그레이션 안
 
 ### 최신 정보 확인
 
-- 공지를 위해 [GitHub 저장소](https://github.com/Yeachan-Heo/oh-my-copilot)를 watch하세요
+- 공지를 위해 [GitHub 저장소](https://github.com/RobinNorberg/oh-my-copilot)를 watch하세요
  상세한 릴리스 노트는 [CHANGELOG.md](../../CHANGELOG.md)를 확인하세요
 - GitHub Issues에서 논의에 참여하세요
 
@@ -1011,7 +1011,7 @@ A: 키워드는 명시적 단축키입니다. 자연어는 자동 감지를 트�
 - **모든 명령어 보기**: `/oh-my-copilot:omg-help` 실행
 - **실시간 상태 보기**: `/oh-my-copilot:hud setup` 실행
  **상세 변경 로그 확인**: [CHANGELOG.md](../../CHANGELOG.md) 참조
-- **버그 보고**: [GitHub Issues](https://github.com/Yeachan-Heo/oh-my-copilot/issues)
+- **버그 보고**: [GitHub Issues](https://github.com/RobinNorberg/oh-my-copilot/issues)
 
 ---
 

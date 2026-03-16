@@ -4,9 +4,8 @@
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
 
 > **Dành cho người dùng Codex:** Hãy xem [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) — cùng trải nghiệm điều phối cho OpenAI Codex CLI.
 
@@ -14,7 +13,7 @@
 
 *Đừng học Copilot CLI. Cứ dùng OMP.*
 
-[Bắt đầu nhanh](#bắt-đầu-nhanh) • [Tài liệu](https://yeachan-heo.github.io/oh-my-copilot-website) • [Tham chiếu CLI](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference) • [Quy trình](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows) • [Hướng dẫn di chuyển](docs/MIGRATION.md)
+[Bắt đầu nhanh](#bắt-đầu-nhanh) • [Tài liệu](https://docs/REFERENCE.md) • [Tham chiếu CLI](https://docs/REFERENCE.md/docs.html#cli-reference) • [Quy trình](https://docs/REFERENCE.md/docs.html#workflows) • [Hướng dẫn di chuyển](docs/MIGRATION.md)
 
 ---
 
@@ -22,7 +21,7 @@
 
 **Bước 1: Cài đặt**
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -141,7 +140,7 @@ Nếu gặp sự cố sau khi cập nhật, hãy xóa cache plugin cũ:
 ## Tính năng
 
 ### Các chế độ điều phối
-Nhiều chiến lược cho nhiều tình huống — từ điều phối dựa trên Team đến refactor tiết kiệm token. [Tìm hiểu thêm →](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#execution-modes)
+Nhiều chiến lược cho nhiều tình huống — từ điều phối dựa trên Team đến refactor tiết kiệm token. [Tìm hiểu thêm →](https://docs/REFERENCE.md/docs.html#execution-modes)
 
 | Mode | Nó là gì | Dùng cho |
 |------|------------|---------|
@@ -234,11 +233,11 @@ Hành vi tag:
 ## Tài liệu
 
 - **[Tham chiếu đầy đủ](docs/REFERENCE.md)** - Tài liệu đầy đủ về tính năng
-- **[Tham chiếu CLI](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#cli-reference)** - Tất cả lệnh, cờ và công cụ `omp`
-- **[Hướng dẫn thông báo](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#notifications)** - Thiết lập Discord, Telegram, Slack và webhook
-- **[Quy trình khuyến nghị](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#workflows)** - Chuỗi skill đã qua thực chiến cho các tác vụ phổ biến
-- **[Ghi chú phát hành](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#release-notes)** - Có gì mới trong mỗi phiên bản
-- **[Website](https://yeachan-heo.github.io/oh-my-copilot-website)** - Hướng dẫn tương tác và ví dụ
+- **[Tham chiếu CLI](https://docs/REFERENCE.md/docs.html#cli-reference)** - Tất cả lệnh, cờ và công cụ `omp`
+- **[Hướng dẫn thông báo](https://docs/REFERENCE.md/docs.html#notifications)** - Thiết lập Discord, Telegram, Slack và webhook
+- **[Quy trình khuyến nghị](https://docs/REFERENCE.md/docs.html#workflows)** - Chuỗi skill đã qua thực chiến cho các tác vụ phổ biến
+- **[Ghi chú phát hành](https://docs/REFERENCE.md/docs.html#release-notes)** - Có gì mới trong mỗi phiên bản
+- **[Website](https://docs/REFERENCE.md)** - Hướng dẫn tương tác và ví dụ
 - **[Hướng dẫn di chuyển](docs/MIGRATION.md)** - Nâng cấp từ v2.x
 - **[Kiến trúc](docs/ARCHITECTURE.md)** - Cách nó hoạt động phía sau
 - **[Theo dõi hiệu năng](docs/PERFORMANCE-MONITORING.md)** - Theo dõi tác tử, gỡ lỗi và tối ưu
@@ -277,26 +276,3 @@ MIT
 
 </div>
 
-## Lịch sử sao
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
-
-## 💖 Ủng hộ dự án này
-
-Nếu Oh-My-ClaudeCode giúp ích cho quy trình làm việc của bạn, hãy cân nhắc tài trợ:
-
-[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
-
-### Vì sao nên tài trợ?
-
-- Duy trì phát triển liên tục
-- Hỗ trợ ưu tiên cho nhà tài trợ
-- Ảnh hưởng đến lộ trình & tính năng
-- Góp phần duy trì mã nguồn mở miễn phí
-
-### Những cách khác để hỗ trợ
-
-- ⭐ Star repo
-- 🐛 Báo lỗi
-- 💡 Đề xuất tính năng
-- 📝 Đóng góp code

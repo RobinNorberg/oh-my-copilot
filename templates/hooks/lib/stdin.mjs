@@ -1,7 +1,7 @@
 /**
  * Shared stdin utilities for OMP hooks
  * Provides timeout-protected stdin reading to prevent hangs on Linux and Windows
- * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/240
+ * See: https://github.com/RobinNorberg/oh-my-copilot/issues/240
  */
 
 /**

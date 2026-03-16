@@ -4,15 +4,14 @@
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
 
 **Мультиагентная оркестрация для Copilot CLI. Нулевой порог вхождения.**
 
 _Не изучайте Copilot CLI. Просто используйте OMP._
 
-[Начать](#быстрый-старт) • [Документация](https://yeachan-heo.github.io/oh-my-copilot-website) • [Руководство по миграции](docs/MIGRATION.md)
+[Начать](#быстрый-старт) • [Документация](https://docs/REFERENCE.md) • [Руководство по миграции](docs/MIGRATION.md)
 
 ---
 
@@ -21,7 +20,7 @@ _Не изучайте Copilot CLI. Просто используйте OMP._
 **Шаг 1: Установка**
 
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -106,7 +105,7 @@ Team работает как поэтапный pipeline:
 
 ### Режимы оркестрации
 
-Множество стратегий для разных сценариев — от оркестрации через Team до рефакторинга с экономией токенов. [Подробнее →](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#execution-modes)
+Множество стратегий для разных сценариев — от оркестрации через Team до рефакторинга с экономией токенов. [Подробнее →](https://docs/REFERENCE.md/docs.html#execution-modes)
 
 | Режим                               | Описание                                                                                      | Применение                                                                        |
 | ----------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
@@ -197,7 +196,7 @@ omp config-stop-callback discord --clear-tags
 
 - **[Полный справочник](docs/REFERENCE.md)** — Полная документация по функциям
 - **[Мониторинг производительности](docs/PERFORMANCE-MONITORING.md)** — Отслеживание агентов, отладка и оптимизация
-- **[Веб-сайт](https://yeachan-heo.github.io/oh-my-copilot-website)** — Интерактивные руководства и примеры
+- **[Веб-сайт](https://docs/REFERENCE.md)** — Интерактивные руководства и примеры
 - **[Руководство по миграции](docs/MIGRATION.md)** — Обновление с v2.x
 - **[Архитектура](docs/ARCHITECTURE.md)** — Как это работает под капотом
 
@@ -235,26 +234,3 @@ MIT
 
 </div>
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
-
-## 💖 Поддержите этот проект
-
-Если Oh-My-ClaudeCode помогает вашему рабочему процессу, рассмотрите спонсорство:
-
-[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
-
-### Зачем спонсировать?
-
-- Поддержание активной разработки
-- Приоритетная поддержка для спонсоров
-- Влияние на дорожную карту и функции
-- Помощь в поддержании свободного и открытого исходного кода
-
-### Другие способы помочь
-
-- ⭐ Поставьте звезду репозиторию
-- 🐛 Сообщайте об ошибках
-- 💡 Предлагайте функции
-- 📝 Вносите вклад в код

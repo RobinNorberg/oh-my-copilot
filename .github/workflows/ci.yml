@@ -94,12 +94,12 @@ jobs:
       - name: Check version consistency
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
-          PLUGIN_VERSION=$(node -p "require('./.copilot-plugin/plugin.json').version")
-          MARKET_VERSION=$(node -p "require('./.copilot-plugin/marketplace.json').version")
-          
+          PLUGIN_VERSION=$(node -p "require('./.claude-plugin/plugin.json').version")
+          MARKET_VERSION=$(node -p "require('./.claude-plugin/marketplace.json').version")
+
           echo "package.json:              $PKG_VERSION"
-          echo ".copilot-plugin/plugin.json: $PLUGIN_VERSION"
-          echo ".copilot-plugin/marketplace.json: $MARKET_VERSION"
+          echo ".claude-plugin/plugin.json: $PLUGIN_VERSION"
+          echo ".claude-plugin/marketplace.json: $MARKET_VERSION"
           
           if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ] || [ "$PKG_VERSION" != "$MARKET_VERSION" ]; then
             echo ""

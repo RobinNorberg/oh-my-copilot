@@ -127,7 +127,7 @@ Examples:
     const modelLow = getDefaultModelLow();
     // Generate config content
     const configContent = `// Oh-My-Copilot Configuration
-// See: https://github.com/Yeachan-Heo/oh-my-copilot for documentation
+// See: https://github.com/RobinNorberg/oh-my-copilot for documentation
 //
 // Model IDs can be overridden via environment variables:
 //   OMC_MODEL_HIGH   (opus-class)

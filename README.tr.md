@@ -4,15 +4,14 @@
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
+[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-[![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
 
 **Copilot CLI için çoklu ajan orkestrasyonu. Sıfır öğrenme eğrisi.**
 
 _Copilot CLI'u öğrenmeyin. Sadece OMP kullanın._
 
-[Başlangıç](#hızlı-başlangıç) • [Dokümantasyon](https://yeachan-heo.github.io/oh-my-copilot-website) • [Geçiş Rehberi](docs/MIGRATION.md)
+[Başlangıç](#hızlı-başlangıç) • [Dokümantasyon](https://docs/REFERENCE.md) • [Geçiş Rehberi](docs/MIGRATION.md)
 
 ---
 
@@ -21,7 +20,7 @@ _Copilot CLI'u öğrenmeyin. Sadece OMP kullanın._
 **Adım 1: Kurulum**
 
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
@@ -106,7 +105,7 @@ Güncellemeden sonra sorun yaşarsanız, eski plugin önbelleğini temizleyin:
 
 ### Orkestrasyon Modları
 
-Farklı kullanım senaryoları için birden fazla strateji — Team destekli orkestrasyondan token-verimli yeniden düzenlemeye. [Daha fazla bilgi →](https://yeachan-heo.github.io/oh-my-copilot-website/docs.html#execution-modes)
+Farklı kullanım senaryoları için birden fazla strateji — Team destekli orkestrasyondan token-verimli yeniden düzenlemeye. [Daha fazla bilgi →](https://docs/REFERENCE.md/docs.html#execution-modes)
 
 | Mod                           | Nedir                                                                                  | Kullanım Alanı                                                    |
 | ----------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
@@ -197,7 +196,7 @@ Etiket davranışı:
 
 - **[Tam Referans](docs/REFERENCE.md)** — Kapsamlı özellik dokümantasyonu
 - **[Performans İzleme](docs/PERFORMANCE-MONITORING.md)** — Ajan takibi, hata ayıklama ve optimizasyon
-- **[Web Sitesi](https://yeachan-heo.github.io/oh-my-copilot-website)** — İnteraktif rehberler ve örnekler
+- **[Web Sitesi](https://docs/REFERENCE.md)** — İnteraktif rehberler ve örnekler
 - **[Geçiş Rehberi](docs/MIGRATION.md)** — v2.x'den yükseltme
 - **[Mimari](docs/ARCHITECTURE.md)** — Arka planda nasıl çalıştığı
 
@@ -235,26 +234,3 @@ MIT
 
 </div>
 
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
-
-## 💖 Bu Projeyi Destekleyin
-
-Oh-My-ClaudeCode iş akışınıza yardımcı oluyorsa, sponsorluk yapmayı düşünün:
-
-[![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
-
-### Neden sponsor olmalı?
-
-- Aktif geliştirmeyi sürdürmek
-- Sponsorlar için öncelikli destek
-- Yol haritası ve özellikleri etkilemek
-- Ücretsiz ve açık kaynak olarak sürdürmeye yardım
-
-### Yardım etmenin diğer yolları
-
-- ⭐ Repoya yıldız verin
-- 🐛 Hata bildirin
-- 💡 Özellik önerin
-- 📝 Koda katkıda bulunun
