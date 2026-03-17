@@ -151,7 +151,7 @@ Examples:
   $ omc init --force             Overwrite existing config`)
   .action(async (options) => {
     console.log(chalk.yellow('⚠️  DEPRECATED: The init command is deprecated.'));
-    console.log(chalk.gray('Configuration is now managed automatically. Use /oh-my-copilot:omg-setup instead.\n'));
+    console.log(chalk.gray('Configuration is now managed automatically. Use /oh-my-copilot:omc-setup instead.\n'));
 
     const paths = getConfigPaths();
     const targetPath = options.global ? paths.user : paths.project;
@@ -179,7 +179,7 @@ Examples:
 
     // Generate config content
     const configContent = `// Oh-My-Copilot Configuration
-// See: https://github.com/RobinNorberg/oh-my-copilot for documentation
+// See: https://github.com/Yeachan-Heo/oh-my-copilot for documentation
 //
 // Model IDs can be overridden via environment variables:
 //   OMC_MODEL_HIGH   (opus-class)
@@ -1319,7 +1319,7 @@ Examples:
   });
 
 /**
- * Setup command - Official CLI entry point for omg-setup
+ * Setup command - Official CLI entry point for omc-setup
  *
  * User-friendly command that syncs all OMG components:
  * - Installs/updates hooks, agents, and skills
@@ -1399,7 +1399,7 @@ Examples:
       if (reportedVersion !== version) {
         console.log(chalk.gray(`CLI package version: ${version}`));
       }
-      console.log(chalk.gray('Start Copilot CLI and use /oh-my-copilot:omg-setup for interactive setup.'));
+      console.log(chalk.gray('Start Copilot CLI and use /oh-my-copilot:omc-setup for interactive setup.'));
     }
   });
 

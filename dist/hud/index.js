@@ -64,13 +64,13 @@ async function main(watchMode = false) {
             stdin = readStdinCache();
             if (!stdin) {
                 // Cache not yet populated (first poll before statusline fires)
-                console.log("[OMP] Starting...");
+                console.log("[OMC] Starting...");
                 return;
             }
         }
         else {
             // Non-watch invocation with no stdin - suggest setup
-            console.log("[OMP] run /omg-setup to install properly");
+            console.log("[OMC] run /omc-setup to install properly");
             return;
         }
         const cwd = resolveToWorktreeRoot(stdin.cwd || undefined);
@@ -240,13 +240,13 @@ async function main(watchMode = false) {
                 error.message.includes("MODULE_NOT_FOUND") ||
                 error.message.includes("Cannot find module"));
         if (isInstallError) {
-            console.log("[OMP] run /omg-setup to install properly");
+            console.log("[OMC] run /omc-setup to install properly");
         }
         else {
             // Output fallback message to stdout for status line visibility
-            console.log("[OMP] HUD error - check stderr");
+            console.log("[OMC] HUD error - check stderr");
             // Log actual runtime errors to stderr for debugging
-            console.error("[OMP HUD Error]", error instanceof Error ? error.message : error);
+            console.error("[OMC HUD Error]", error instanceof Error ? error.message : error);
         }
     }
 }

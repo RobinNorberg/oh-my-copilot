@@ -6,6 +6,7 @@
  * When execution='team', delegates to the /team orchestrator for multi-worker execution.
  * When execution='solo', uses direct executor agents in the current session.
  */
+import { resolveAutopilotPlanPath } from "../../../config/plan-output.js";
 export const EXECUTION_COMPLETION_SIGNAL = 'PIPELINE_EXECUTION_COMPLETE';
 export const executionAdapter = {
     id: 'execution',
@@ -16,8 +17,8 @@ export const executionAdapter = {
         return false;
     },
     getPrompt(context) {
-        const planPath = context.planPath || '.omg/plans/autopilot-impl.md';
-        const isTeam = context.config.execution === 'team';
+        const planPath = context.planPath || resolveAutopilotPlanPath();
+        const isTeam = context.config.execution === "team";
         if (isTeam) {
             return `## PIPELINE STAGE: EXECUTION (Team Mode)
 

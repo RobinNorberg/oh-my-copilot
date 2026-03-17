@@ -81,6 +81,7 @@ const TEAM_API_OPERATION_REQUIRED_FIELDS: Record<TeamApiOperation, string[]> = {
   'write-monitor-snapshot': ['team_name', 'snapshot'],
   'read-task-approval': ['team_name', 'task_id'],
   'write-task-approval': ['team_name', 'task_id', 'status', 'reviewer', 'decision_reason'],
+  'orphan-cleanup': ['team_name'],
 };
 
 const TEAM_API_OPERATION_OPTIONAL_FIELDS: Partial<Record<TeamApiOperation, string[]>> = {

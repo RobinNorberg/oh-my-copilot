@@ -295,7 +295,7 @@ export async function maybeNotifyLeaderWorkerIdle(params) {
     if (!leaderPaneId)
         return;
     // Build notification message
-    const parts = [`[OMP] ${workerName} idle`];
+    const parts = [`[OMC] ${workerName} idle`];
     if (prevState && prevState !== 'unknown')
         parts.push(`(was: ${prevState})`);
     if (currentTaskId)
@@ -372,7 +372,7 @@ export async function maybeNotifyLeaderAllWorkersIdle(params) {
     if (!leaderPaneId)
         return;
     const N = workers.length;
-    const message = `[OMP] All ${N} worker${N === 1 ? '' : 's'} idle. Ready for next instructions. ${DEFAULT_MARKER}`;
+    const message = `[OMC] All ${N} worker${N === 1 ? '' : 's'} idle. Ready for next instructions. ${DEFAULT_MARKER}`;
     try {
         await tmux.sendKeys(leaderPaneId, message, true);
         await new Promise(r => setTimeout(r, 100));

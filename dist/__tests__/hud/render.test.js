@@ -32,9 +32,9 @@ describe('limitOutputLines', () => {
             expect(result).toHaveLength(4);
         });
         it('preserves the first (header) line when truncating', () => {
-            const lines = ['[OMP] Header Line', 'Agents: ...', 'Todos: ...', 'Analytics: ...', 'Extra: ...'];
+            const lines = ['[OMC] Header Line', 'Agents: ...', 'Todos: ...', 'Analytics: ...', 'Extra: ...'];
             const result = limitOutputLines(lines, 3);
-            expect(result[0]).toBe('[OMP] Header Line');
+            expect(result[0]).toBe('[OMC] Header Line');
             expect(result).toHaveLength(3);
             expect(result[2]).toBe('... (+3 lines)');
         });
@@ -128,7 +128,7 @@ describe('limitOutputLines', () => {
     describe('Issue #222 scenario simulation', () => {
         it('prevents input field shrinkage by limiting excessive HUD output', () => {
             const excessiveOutput = [
-                '[OMP] Rate: 45% | Context: 30%',
+                '[OMC] Rate: 45% | Context: 30%',
                 'agents: architect(5m) | executor(2m) | explorer',
                 'todos: [1/5] Implementing feature X',
                 'Analytics: $1.23 | 50k tokens | Cache: 67%',
@@ -139,7 +139,7 @@ describe('limitOutputLines', () => {
             ];
             const result = limitOutputLines(excessiveOutput, 4);
             expect(result).toHaveLength(4);
-            expect(result[0]).toContain('[OMP]');
+            expect(result[0]).toContain('[OMC]');
             expect(result[3]).toBe('... (+5 lines)');
         });
         it('works with DEFAULT_HUD_CONFIG elements.maxOutputLines value of 4', () => {
@@ -227,7 +227,7 @@ describe('gitInfoPosition configuration', () => {
             expect(lines[0]).toContain('repo:my-repo');
             expect(lines[0]).toContain('branch:main');
             // Second line should be the main HUD header (with ANSI codes from bold())
-            expect(lines[1]).toMatch(/\[OMP/);
+            expect(lines[1]).toMatch(/\[OMC/);
         });
         it('maintains traditional layout with git info above', async () => {
             const context = createMockContext();
@@ -238,7 +238,7 @@ describe('gitInfoPosition configuration', () => {
             // Git info comes first
             expect(lines[0]).toContain('~/workspace/project');
             // Main header comes second (with ANSI codes from bold())
-            expect(lines[1]).toMatch(/\[OMP/);
+            expect(lines[1]).toMatch(/\[OMC/);
         });
     });
     describe('render with gitInfoPosition: below', () => {
@@ -248,7 +248,7 @@ describe('gitInfoPosition configuration', () => {
             const result = await render(context, config);
             const lines = result.split('\n');
             // First line should be the main HUD header (with ANSI codes from bold())
-            expect(lines[0]).toMatch(/\[OMP/);
+            expect(lines[0]).toMatch(/\[OMC/);
             // Second line should be git info
             expect(lines[1]).toContain('repo:my-repo');
             expect(lines[1]).toContain('branch:main');
@@ -260,7 +260,7 @@ describe('gitInfoPosition configuration', () => {
             const lines = result.split('\n');
             expect(lines.length).toBeGreaterThanOrEqual(2);
             // Main header comes first (with ANSI codes from bold())
-            expect(lines[0]).toMatch(/\[OMP/);
+            expect(lines[0]).toMatch(/\[OMC/);
             // Git info comes second
             expect(lines[1]).toContain('~/workspace/project');
         });
@@ -280,7 +280,7 @@ describe('gitInfoPosition configuration', () => {
             // Should default to above behavior
             // Git info should be in the first line (if present)
             const firstLineIsGitInfo = lines[0]?.includes('repo:') || lines[0]?.includes('branch:');
-            const firstLineIsHeader = lines[0]?.includes('[OMP]');
+            const firstLineIsHeader = lines[0]?.includes('[OMC]');
             // Either git info is first, or if no git info, header is first
             expect(firstLineIsGitInfo || firstLineIsHeader).toBe(true);
         });
@@ -377,7 +377,7 @@ describe('maxWidth wrapMode behavior', () => {
         const result = await render(context, config);
         const lines = result.split('\n');
         expect(lines.length).toBeGreaterThan(1);
-        expect(lines[0]).toContain('[OMP');
+        expect(lines[0]).toContain('[OMC');
         lines.forEach(line => {
             expect(stringWidth(line)).toBeLessThanOrEqual(24);
         });

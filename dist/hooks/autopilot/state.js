@@ -9,12 +9,13 @@
 import { mkdirSync, statSync } from "fs";
 import { join } from "path";
 import { writeModeState, readModeState, clearModeStateFile, } from "../../lib/mode-state-io.js";
-import { resolveStatePath, resolveSessionStatePath, } from "../../lib/worktree-paths.js";
+import { resolveStatePath, resolveSessionStatePath, getOmcRoot, } from "../../lib/worktree-paths.js";
 import { DEFAULT_CONFIG } from "./types.js";
+import { loadConfig } from "../../config/loader.js";
+import { resolvePlanOutputAbsolutePath } from "../../config/plan-output.js";
 import { readRalphState, clearRalphState, clearLinkedUltraworkState, } from "../ralph/index.js";
 import { startUltraQA, clearUltraQAState, readUltraQAState, } from "../ultraqa/index.js";
 import { canStartMode } from "../mode-registry/index.js";
-import { getOmcRoot } from "../../lib/worktree-paths.js";
 const SPEC_DIR = "autopilot";
 // ============================================================================
 // STATE MANAGEMENT
@@ -237,7 +238,7 @@ export function getSpecPath(directory) {
  * Get the plan file path
  */
 export function getPlanPath(directory) {
-    return join(getOmcRoot(directory), "plans", "autopilot-impl.md");
+    return resolvePlanOutputAbsolutePath(directory, "autopilot-impl", loadConfig());
 }
 /**
  * Transition from Ralph (Phase 2: Execution) to UltraQA (Phase 3: QA)

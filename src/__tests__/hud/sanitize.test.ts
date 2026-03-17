@@ -117,8 +117,8 @@ describe('sanitizeOutput', () => {
   });
 
   it('should handle complex HUD output preserving colors', () => {
-    const input = '\x1b[1m[OMP]\x1b[0m | \x1b[32m████░░░░░░\x1b[0m 40% | agents:3';
-    expect(sanitizeOutput(input)).toBe('\x1b[1m[OMP]\x1b[0m | \x1b[32m####------\x1b[0m 40% | agents:3');
+    const input = '\x1b[1m[OMC]\x1b[0m | \x1b[32m████░░░░░░\x1b[0m 40% | agents:3';
+    expect(sanitizeOutput(input)).toBe('\x1b[1m[OMC]\x1b[0m | \x1b[32m####------\x1b[0m 40% | agents:3');
   });
 
   it('should preserve lines and trim trailing whitespace', () => {
@@ -132,7 +132,7 @@ describe('sanitizeOutput', () => {
   });
 
   it('should handle real HUD multi-line output with colors and newlines preserved', () => {
-    const input = `\x1b[1m[OMP]\x1b[0m | \x1b[2m5h:\x1b[0m\x1b[32m12%\x1b[0m | Ctx: \x1b[32m████░░░░░░\x1b[0m 40%
+    const input = `\x1b[1m[OMC]\x1b[0m | \x1b[2m5h:\x1b[0m\x1b[32m12%\x1b[0m | Ctx: \x1b[32m████░░░░░░\x1b[0m 40%
 \x1b[2m└─\x1b[0m \x1b[35mO\x1b[0m:architect (2m) analyzing code
 \x1b[2m└─\x1b[0m \x1b[33ms\x1b[0m:executor (1m) writing tests`;
 
@@ -142,7 +142,7 @@ describe('sanitizeOutput', () => {
     expect(result).not.toContain('█');
     expect(result).not.toContain('░');
     expect(result).toContain('\n'); // PRESERVE newlines for tree structure
-    expect(result).toContain('[OMP]');
+    expect(result).toContain('[OMC]');
     expect(result).toContain('architect');
     // Colors SHOULD be present (SGR sequences ending with 'm')
     expect(result).toContain('\x1b[32m'); // green
@@ -161,7 +161,7 @@ describe('sanitizeOutput', () => {
   });
 
   it('should handle single line output without modification', () => {
-    const input = '[OMP] | 40% | agents:3';
-    expect(sanitizeOutput(input)).toBe('[OMP] | 40% | agents:3');
+    const input = '[OMC] | 40% | agents:3';
+    expect(sanitizeOutput(input)).toBe('[OMC] | 40% | agents:3');
   });
 });

@@ -17768,12 +17768,13 @@ var StdioServerTransport = class {
 // src/mcp/team-server.ts
 var import_child_process3 = require("child_process");
 var import_path3 = require("path");
-var import_fs2 = require("fs");
+var import_fs3 = require("fs");
 var import_promises2 = require("fs/promises");
 var import_os = require("os");
 
 // src/team/tmux-session.ts
 var import_child_process = require("child_process");
+var import_fs = require("fs");
 var import_path = require("path");
 var import_util5 = require("util");
 var import_promises = __toESM(require("fs/promises"), 1);
@@ -17795,7 +17796,7 @@ var promisifiedExec = (0, import_util5.promisify)(import_child_process.exec);
 var promisifiedExecFile = (0, import_util5.promisify)(import_child_process.execFile);
 async function tmuxAsync(args) {
   if (args.some((a) => a.includes("#{"))) {
-    const escaped = args.map((a) => `"${a.replace(/"/g, '\\"')}"`).join(" ");
+    const escaped = args.map((a) => "'" + a.replace(/'/g, "'\\''") + "'").join(" ");
     return promisifiedExec(`tmux ${escaped}`);
   }
   return promisifiedExecFile("tmux", args);
@@ -17839,7 +17840,7 @@ function paneLooksReady(captured) {
 function paneTailContainsLiteralLine(captured, text) {
   return normalizeTmuxCapture(captured).includes(normalizeTmuxCapture(text));
 }
-async function paneInCopyMode(paneId, execFileAsync) {
+async function paneInCopyMode(paneId) {
   try {
     const result = await tmuxAsync(["display-message", "-t", paneId, "-p", "#{pane_in_mode}"]);
     return result.stdout.trim() === "1";
@@ -17871,7 +17872,7 @@ async function sendToWorker(_sessionName, paneId, message) {
     const sendKey = async (key) => {
       await execFileAsync("tmux", ["send-keys", "-t", paneId, key]);
     };
-    if (await paneInCopyMode(paneId, execFileAsync)) {
+    if (await paneInCopyMode(paneId)) {
       return false;
     }
     const initialCapture = await capturePaneAsync(paneId, execFileAsync);
@@ -17901,11 +17902,11 @@ async function sendToWorker(_sessionName, paneId, message) {
       if (!paneTailContainsLiteralLine(checkCapture, message)) return true;
       await sleep2(140);
     }
-    if (await paneInCopyMode(paneId, execFileAsync)) {
+    if (await paneInCopyMode(paneId)) {
       return false;
     }
     const finalCapture = await capturePaneAsync(paneId, execFileAsync);
-    const paneModeBeforeAdaptiveRetry = await paneInCopyMode(paneId, execFileAsync);
+    const paneModeBeforeAdaptiveRetry = await paneInCopyMode(paneId);
     if (shouldAttemptAdaptiveRetry({
       paneBusy,
       latestCapture: finalCapture,
@@ -17913,12 +17914,12 @@ async function sendToWorker(_sessionName, paneId, message) {
       paneInCopyMode: paneModeBeforeAdaptiveRetry,
       retriesAttempted: 0
     })) {
-      if (await paneInCopyMode(paneId, execFileAsync)) {
+      if (await paneInCopyMode(paneId)) {
         return false;
       }
       await sendKey("C-u");
       await sleep2(80);
-      if (await paneInCopyMode(paneId, execFileAsync)) {
+      if (await paneInCopyMode(paneId)) {
         return false;
       }
       await execFileAsync("tmux", ["send-keys", "-t", paneId, "-l", "--", message]);
@@ -17932,7 +17933,7 @@ async function sendToWorker(_sessionName, paneId, message) {
         if (!paneTailContainsLiteralLine(retryCapture, message)) return true;
       }
     }
-    if (await paneInCopyMode(paneId, execFileAsync)) {
+    if (await paneInCopyMode(paneId)) {
       return false;
     }
     await sendKey("C-m");
@@ -18093,14 +18094,14 @@ var NudgeTracker = class {
 };
 
 // src/mcp/team-job-convergence.ts
-var import_fs = require("fs");
+var import_fs2 = require("fs");
 var import_path2 = require("path");
 function readResultArtifact(omcJobsDir, jobId) {
   const artifactPath = (0, import_path2.join)(omcJobsDir, `${jobId}-result.json`);
-  if (!(0, import_fs.existsSync)(artifactPath)) return { kind: "none" };
+  if (!(0, import_fs2.existsSync)(artifactPath)) return { kind: "none" };
   let raw;
   try {
-    raw = (0, import_fs.readFileSync)(artifactPath, "utf-8");
+    raw = (0, import_fs2.readFileSync)(artifactPath, "utf-8");
   } catch {
     return { kind: "none" };
   }
@@ -18172,10 +18173,10 @@ function clearScopedTeamState(job) {
   }
   const stateDir = (0, import_path2.join)(job.cwd, ".omg", "state", "team", job.teamName);
   try {
-    if (!(0, import_fs.existsSync)(stateDir)) {
+    if (!(0, import_fs2.existsSync)(stateDir)) {
       return `team state dir not found at ${stateDir}.`;
     }
-    (0, import_fs.rmSync)(stateDir, { recursive: true, force: true });
+    (0, import_fs2.rmSync)(stateDir, { recursive: true, force: true });
     return `team state dir removed at ${stateDir}.`;
   } catch (error2) {
     return `team state cleanup failed at ${stateDir}: ${error2 instanceof Error ? error2.message : String(error2)}`;
@@ -18269,14 +18270,14 @@ function createDeprecatedCliOnlyEnvelopeWithArgs(toolName, args) {
 }
 function persistJob(jobId, job) {
   try {
-    if (!(0, import_fs2.existsSync)(OMC_JOBS_DIR)) (0, import_fs2.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
-    (0, import_fs2.writeFileSync)((0, import_path3.join)(OMC_JOBS_DIR, `${jobId}.json`), JSON.stringify(job), "utf-8");
+    if (!(0, import_fs3.existsSync)(OMC_JOBS_DIR)) (0, import_fs3.mkdirSync)(OMC_JOBS_DIR, { recursive: true });
+    (0, import_fs3.writeFileSync)((0, import_path3.join)(OMC_JOBS_DIR, `${jobId}.json`), JSON.stringify(job), "utf-8");
   } catch {
   }
 }
 function loadJobFromDisk(jobId) {
   try {
-    return JSON.parse((0, import_fs2.readFileSync)((0, import_path3.join)(OMC_JOBS_DIR, `${jobId}.json`), "utf-8"));
+    return JSON.parse((0, import_fs3.readFileSync)((0, import_path3.join)(OMC_JOBS_DIR, `${jobId}.json`), "utf-8"));
   } catch {
     return void 0;
   }
@@ -18609,7 +18610,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("OMP Team MCP Server running on stdio");
+  console.error("OMC Team MCP Server running on stdio");
 }
 if (process.env.OMC_TEAM_SERVER_DISABLE_AUTOSTART !== "1" && process.env.NODE_ENV !== "test") {
   main().catch((error2) => {

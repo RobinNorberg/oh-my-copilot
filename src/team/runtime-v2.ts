@@ -18,21 +18,19 @@
 
 import { join, resolve } from 'path';
 import { existsSync } from 'fs';
-import { mkdir, rm, readdir, writeFile } from 'fs/promises';
+import { mkdir, readdir, writeFile } from 'fs/promises';
 import { performance } from 'perf_hooks';
 import { TeamPaths, absPath, teamStateRoot } from './state-paths.js';
+import { allocateTasksToWorkers } from './allocation-policy.js';
+import type { TaskAllocationInput, WorkerAllocationInput } from './allocation-policy.js';
 import {
   readTeamConfig,
-  readTeamManifest,
   readWorkerStatus,
   readWorkerHeartbeat,
   readMonitorSnapshot,
   writeMonitorSnapshot,
-  readTeamPhaseState,
-  writeTeamPhaseState,
   writeShutdownRequest,
   readShutdownAck,
-  writeWorkerIdentity,
   writeWorkerInbox,
   listTasksFromFiles,
   saveTeamConfig,
@@ -45,12 +43,9 @@ import type {
   TeamManifestV2,
   TeamPolicy,
   TeamTask,
-  TeamMonitorSnapshotState,
-  TeamPhaseState,
   WorkerInfo,
   WorkerStatus,
   WorkerHeartbeat,
-  ShutdownAck,
 } from './types.js';
 import type { TeamPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
@@ -184,6 +179,7 @@ export interface StartTeamV2Config {
   tasks: Array<{ subject: string; description: string; owner?: string; blocked_by?: string[] }>;
   cwd: string;
   newWindow?: boolean;
+  workerRoles?: string[];
   roleName?: string;
   rolePrompt?: string;
 }
@@ -214,7 +210,7 @@ function buildV2TaskInstruction(
     `   omc team api transition-task-status --input '{"team_name":"${teamName}","task_id":"${taskId}","from":"in_progress","to":"completed","claim_token":"<claim_token>"}' --json`,
     `4. On failure (use claim_token from step 1):`,
     `   omc team api transition-task-status --input '{"team_name":"${teamName}","task_id":"${taskId}","from":"in_progress","to":"failed","claim_token":"<claim_token>"}' --json`,
-    `5. Exit immediately after transitioning.`,
+    `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
     ``,
     `## Task Assignment`,
     `Task ID: ${taskId}`,
@@ -473,11 +469,42 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     }, null, 2), 'utf-8');
   }
 
-  // Set up worker state dirs and overlays (with v2 CLI API instructions)
-  const workerNames: string[] = [];
+  // Build allocation inputs for the new role-aware allocator
+  const workerNames = Array.from({ length: config.workerCount }, (_, index) => `worker-${index + 1}`);
+  const workerNameSet = new Set(workerNames);
+
+  // Respect explicit owner fields first, then allocate remaining tasks
+  const startupAllocations: Array<{ workerName: string; taskIndex: number }> = [];
+  const unownedTaskIndices: number[] = [];
   for (let i = 0; i < config.tasks.length; i++) {
-    const wName = `worker-${i + 1}`;
-    workerNames.push(wName);
+    const owner = config.tasks[i]?.owner;
+    if (typeof owner === 'string' && workerNameSet.has(owner)) {
+      startupAllocations.push({ workerName: owner, taskIndex: i });
+    } else {
+      unownedTaskIndices.push(i);
+    }
+  }
+
+  if (unownedTaskIndices.length > 0) {
+    const allocationTasks: TaskAllocationInput[] = unownedTaskIndices.map(idx => ({
+      id: String(idx),
+      subject: config.tasks[idx].subject,
+      description: config.tasks[idx].description,
+    }));
+    const allocationWorkers: WorkerAllocationInput[] = workerNames.map((name, i) => ({
+      name,
+      role: config.workerRoles?.[i]
+        ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as string,
+      currentLoad: 0,
+    }));
+    for (const r of allocateTasksToWorkers(allocationTasks, allocationWorkers)) {
+      startupAllocations.push({ workerName: r.workerName, taskIndex: Number(r.taskId) });
+    }
+  }
+
+  // Set up worker state dirs and overlays (with v2 CLI API instructions)
+  for (let i = 0; i < workerNames.length; i++) {
+    const wName = workerNames[i];
     const agentType = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as CliAgentType;
     await ensureWorkerStateDir(sanitized, wName, leaderCwd);
     await writeWorkerOverlay({
@@ -503,7 +530,8 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   const workersInfo: WorkerInfo[] = workerNames.map((wName, i) => ({
     name: wName,
     index: i + 1,
-    role: (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as string,
+    role: config.workerRoles?.[i]
+      ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as string,
     assigned_tasks: [] as string[],
     working_dir: leaderCwd,
   }));
@@ -531,13 +559,22 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   };
   await saveTeamConfig(teamConfig, leaderCwd);
 
-  // Spawn workers for initial tasks (up to workerCount concurrent)
-  const maxConcurrent = Math.min(agentTypes.length, config.tasks.length);
-  for (let i = 0; i < maxConcurrent; i++) {
-    const wName = workerNames[i];
-    const taskId = String(i + 1);
-    const task = config.tasks[i];
-    if (!task) break;
+  // Spawn workers for initial tasks (at most one startup task per worker)
+  const initialStartupAllocations: typeof startupAllocations = [];
+  const seenStartupWorkers = new Set<string>();
+  for (const decision of startupAllocations) {
+    if (seenStartupWorkers.has(decision.workerName)) continue;
+    initialStartupAllocations.push(decision);
+    seenStartupWorkers.add(decision.workerName);
+    if (initialStartupAllocations.length >= config.workerCount) break;
+  }
+
+  for (const decision of initialStartupAllocations) {
+    const wName = decision.workerName;
+    const workerIndex = Number.parseInt(wName.replace('worker-', ''), 10) - 1;
+    const taskId = String(decision.taskIndex + 1);
+    const task = config.tasks[decision.taskIndex];
+    if (!task || workerIndex < 0) continue;
 
     const workerLaunch = await spawnV2Worker({
       sessionName,
@@ -545,8 +582,8 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
       existingWorkerPaneIds: workerPaneIds,
       teamName: sanitized,
       workerName: wName,
-      workerIndex: i,
-      agentType: (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as CliAgentType,
+      workerIndex,
+      agentType: (agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? 'claude') as CliAgentType,
       task,
       taskId,
       cwd: leaderCwd,
@@ -555,7 +592,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
 
     if (workerLaunch.paneId) {
       workerPaneIds.push(workerLaunch.paneId);
-      const workerInfo = workersInfo[i];
+      const workerInfo = workersInfo[workerIndex];
       if (workerInfo) {
         workerInfo.pane_id = workerLaunch.paneId;
         workerInfo.assigned_tasks = workerLaunch.startupAssigned ? [taskId] : [];

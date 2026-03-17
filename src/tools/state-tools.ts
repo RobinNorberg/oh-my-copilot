@@ -39,10 +39,10 @@ const EXECUTION_MODES: [string, ...string[]] = [
 const STATE_TOOL_MODES: [string, ...string[]] = [
   ...EXECUTION_MODES,
   'ralplan',
-  'omg-teams',
+  'omc-teams',
   'deep-interview'
 ];
-const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omg-teams', 'deep-interview'] as const;
+const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omc-teams', 'deep-interview'] as const;
 type StateToolMode = typeof STATE_TOOL_MODES[number];
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 

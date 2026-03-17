@@ -21875,10 +21875,10 @@ var EXECUTION_MODES = [
 var STATE_TOOL_MODES = [
   ...EXECUTION_MODES,
   "ralplan",
-  "omg-teams",
+  "omc-teams",
   "deep-interview"
 ];
-var EXTRA_STATE_ONLY_MODES = ["ralplan", "omg-teams", "deep-interview"];
+var EXTRA_STATE_ONLY_MODES = ["ralplan", "omc-teams", "deep-interview"];
 var CANCEL_SIGNAL_TTL_MS = 3e4;
 function getStatePath(mode, root) {
   if (MODE_CONFIGS[mode]) {
@@ -22725,7 +22725,7 @@ function initNotepad(directory) {
     return true;
   }
   const content = `# Notepad
-<!-- Auto-managed by OMP. Manual edits preserved in MANUAL section. -->
+<!-- Auto-managed by OMC. Manual edits preserved in MANUAL section. -->
 
 ${PRIORITY_HEADER}
 <!-- ALWAYS loaded. Keep under 500 chars. Critical discoveries only. -->
@@ -24435,7 +24435,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function gracefulShutdown(signal) {
   const forceExitTimer = setTimeout(() => process.exit(1), 5e3);
   forceExitTimer.unref();
-  console.error(`OMP MCP Server: received ${signal}, disconnecting LSP servers...`);
+  console.error(`OMC MCP Server: received ${signal}, disconnecting LSP servers...`);
   try {
     await disconnectAll();
   } catch {
@@ -24455,7 +24455,7 @@ process.on("SIGINT", () => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("OMP Tools MCP Server running on stdio");
+  console.error("OMC Tools MCP Server running on stdio");
 }
 main().catch((error2) => {
   console.error("Failed to start server:", error2);

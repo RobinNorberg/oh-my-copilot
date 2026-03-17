@@ -348,6 +348,97 @@ export function cleanupModeStates(directory, sessionId) {
     }
     return { filesRemoved, modesCleaned };
 }
+function extractTeamNameFromState(state) {
+    if (!state || typeof state !== 'object')
+        return null;
+    const rawTeamName = state.team_name ?? state.teamName;
+    return typeof rawTeamName === 'string' && rawTeamName.trim() !== ''
+        ? rawTeamName.trim()
+        : null;
+}
+async function findSessionOwnedTeams(directory, sessionId) {
+    const teamNames = new Set();
+    const teamState = readModeState('team', directory, sessionId);
+    const stateTeamName = extractTeamNameFromState(teamState);
+    if (stateTeamName) {
+        teamNames.add(stateTeamName);
+    }
+    const teamRoot = path.join(getOmcRoot(directory), 'state', 'team');
+    if (!fs.existsSync(teamRoot)) {
+        return [...teamNames];
+    }
+    const { teamReadManifest } = await import('../../team/team-ops.js');
+    try {
+        const entries = fs.readdirSync(teamRoot, { withFileTypes: true });
+        for (const entry of entries) {
+            if (!entry.isDirectory())
+                continue;
+            const teamName = entry.name;
+            try {
+                const manifest = await teamReadManifest(teamName, directory);
+                if (manifest?.leader.session_id === sessionId) {
+                    teamNames.add(teamName);
+                }
+            }
+            catch {
+                // Ignore malformed team state and continue scanning.
+            }
+        }
+    }
+    catch {
+        // Best-effort only — session end must not fail because team discovery failed.
+    }
+    return [...teamNames];
+}
+async function cleanupSessionOwnedTeams(directory, sessionId) {
+    const attempted = [];
+    const cleaned = [];
+    const failed = [];
+    const teamNames = await findSessionOwnedTeams(directory, sessionId);
+    if (teamNames.length === 0) {
+        return { attempted, cleaned, failed };
+    }
+    const { teamReadConfig, teamCleanup } = await import('../../team/team-ops.js');
+    const { shutdownTeamV2 } = await import('../../team/runtime-v2.js');
+    const { shutdownTeam } = await import('../../team/runtime.js');
+    for (const teamName of teamNames) {
+        attempted.push(teamName);
+        try {
+            const config = await teamReadConfig(teamName, directory);
+            if (!config || typeof config !== 'object') {
+                await teamCleanup(teamName, directory);
+                cleaned.push(teamName);
+                continue;
+            }
+            if (Array.isArray(config.workers)) {
+                await shutdownTeamV2(teamName, directory, { force: true, timeoutMs: 0 });
+                cleaned.push(teamName);
+                continue;
+            }
+            if (Array.isArray(config.agentTypes)) {
+                const legacyConfig = config;
+                const sessionName = typeof legacyConfig.tmuxSession === 'string' && legacyConfig.tmuxSession.trim() !== ''
+                    ? legacyConfig.tmuxSession.trim()
+                    : `omc-team-${teamName}`;
+                const leaderPaneId = typeof legacyConfig.leaderPaneId === 'string' && legacyConfig.leaderPaneId.trim() !== ''
+                    ? legacyConfig.leaderPaneId.trim()
+                    : undefined;
+                await shutdownTeam(teamName, sessionName, directory, 0, undefined, leaderPaneId, legacyConfig.tmuxOwnsWindow === true);
+                cleaned.push(teamName);
+                continue;
+            }
+            await teamCleanup(teamName, directory);
+            cleaned.push(teamName);
+        }
+        catch (error) {
+            failed.push({
+                teamName,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
+    return { attempted, cleaned, failed };
+}
 /**
  * Export session summary to .omg/sessions/
  */
@@ -384,6 +475,10 @@ export async function processSessionEnd(input) {
     // Record and export session metrics to disk
     const metrics = recordSessionMetrics(directory, input);
     exportSessionSummary(directory, metrics);
+    // Best-effort cleanup for tmux-backed team workers owned by this Copilot
+    // session. This does not fix upstream signal-forwarding behavior, but it
+    // meaningfully reduces orphaned panes/windows when SessionEnd runs normally.
+    await cleanupSessionOwnedTeams(directory, input.session_id);
     // Clean up transient state files
     cleanupTransientState(directory);
     // Clean up mode state files to prevent stale state issues

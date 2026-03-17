@@ -96,7 +96,7 @@ describe('isOmcStatusLine', () => {
     it('should return true for legacy string with absolute path to omg-hud', () => {
         expect(isOmcStatusLine('/home/user/.copilot/hud/omg-hud.mjs')).toBe(true);
     });
-    it('should return false for non-OMP string', () => {
+    it('should return false for non-OMC string', () => {
         expect(isOmcStatusLine('my-custom-statusline')).toBe(false);
     });
     it('should return false for empty string', () => {
@@ -108,13 +108,13 @@ describe('isOmcStatusLine', () => {
     it('should return false for object with non-string command', () => {
         expect(isOmcStatusLine({ type: 'command', command: 42 })).toBe(false);
     });
-    it('should recognize portable $HOME statusLine as OMP', () => {
+    it('should recognize portable $HOME statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
             command: 'node $HOME/.copilot/hud/omg-hud.mjs'
         })).toBe(true);
     });
-    it('should recognize find-node.sh statusLine as OMP', () => {
+    it('should recognize find-node.sh statusLine as OMC', () => {
         expect(isOmcStatusLine({
             type: 'command',
             command: 'sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omg-hud.mjs'

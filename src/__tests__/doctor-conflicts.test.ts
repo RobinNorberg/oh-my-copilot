@@ -1,7 +1,7 @@
 /**
  * Tests for doctor-conflicts command (issue #606)
  *
- * Verifies that OMP-managed hooks are correctly classified as OMP-owned,
+ * Verifies that OMC-managed hooks are correctly classified as OMC-owned,
  * not falsely flagged as "Other".
  */
 
@@ -56,7 +56,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
     }
   });
 
-  it('classifies real OMG hook commands as OMP-owned (issue #606)', () => {
+  it('classifies real OMG hook commands as OMC-owned (issue #606)', () => {
     // These are the actual commands OMG installs into settings.json
     const settings = {
       hooks: {
@@ -96,14 +96,14 @@ describe('doctor-conflicts: hook ownership classification', () => {
     writeFileSync(join(TEST_CLAUDE_DIR, 'settings.json'), JSON.stringify(settings));
     const conflicts = checkHookConflicts();
 
-    // All hooks should be classified as OMP-owned
+    // All hooks should be classified as OMC-owned
     expect(conflicts.length).toBeGreaterThan(0);
     for (const hook of conflicts) {
       expect(hook.isOmc).toBe(true);
     }
   });
 
-  it('classifies Windows-style OMG hook commands as OMP-owned', () => {
+  it('classifies Windows-style OMG hook commands as OMC-owned', () => {
     const settings = {
       hooks: {
         PreToolUse: [{
@@ -122,7 +122,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
     expect(conflicts[0].isOmc).toBe(true);
   });
 
-  it('classifies non-OMP hooks as not OMP-owned', () => {
+  it('classifies non-OMC hooks as not OMC-owned', () => {
     const settings = {
       hooks: {
         PreToolUse: [{
@@ -141,7 +141,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
     expect(conflicts[0].isOmc).toBe(false);
   });
 
-  it('correctly distinguishes OMG and non-OMP hooks in mixed config', () => {
+  it('correctly distinguishes OMG and non-OMC hooks in mixed config', () => {
     const settings = {
       hooks: {
         PreToolUse: [{
@@ -171,7 +171,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
     expect(postTool?.isOmc).toBe(false);
   });
 
-  it('reports hasConflicts only when non-OMP hooks exist', () => {
+  it('reports hasConflicts only when non-OMC hooks exist', () => {
     // All-OMG config: no conflicts
     const omcOnlySettings = {
       hooks: {
@@ -186,7 +186,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
 
     writeFileSync(join(TEST_CLAUDE_DIR, 'settings.json'), JSON.stringify(omcOnlySettings));
     const omcReport = runConflictCheck();
-    // hasConflicts should be false when all hooks are OMP-owned
+    // hasConflicts should be false when all hooks are OMC-owned
     expect(omcReport.hookConflicts.every(h => h.isOmc)).toBe(true);
     expect(omcReport.hookConflicts.some(h => !h.isOmc)).toBe(false);
   });
@@ -329,8 +329,8 @@ describe('doctor-conflicts: copilot-instructions.md companion file detection (is
   });
 
   it('prefers main file markers over companion file', () => {
-    writeFileSync(join(TEST_CLAUDE_DIR, 'copilot-instructions.md'), '<!-- OMG:START -->\n# OMP\n<!-- OMG:END -->\n');
-    writeFileSync(join(TEST_CLAUDE_DIR, 'CLAUDE-omg.md'), '<!-- OMG:START -->\n# Also OMP\n<!-- OMG:END -->\n');
+    writeFileSync(join(TEST_CLAUDE_DIR, 'copilot-instructions.md'), '<!-- OMG:START -->\n# OMC\n<!-- OMG:END -->\n');
+    writeFileSync(join(TEST_CLAUDE_DIR, 'CLAUDE-omg.md'), '<!-- OMG:START -->\n# Also OMC\n<!-- OMG:END -->\n');
     const status = checkCopilotMdStatus();
     expect(status).not.toBeNull();
     expect(status!.hasMarkers).toBe(true);
@@ -419,7 +419,7 @@ describe('doctor-conflicts: legacy skills collision check (issue #1101)', () => 
     mkdirSync(skillsDir, { recursive: true });
     writeFileSync(join(skillsDir, 'cancel.md'), '# Legacy cancel');
     // Need a copilot-instructions.md for the report to work
-    writeFileSync(join(TEST_CLAUDE_DIR, 'copilot-instructions.md'), '<!-- OMG:START -->\n# OMP\n<!-- OMG:END -->\n');
+    writeFileSync(join(TEST_CLAUDE_DIR, 'copilot-instructions.md'), '<!-- OMG:START -->\n# OMC\n<!-- OMG:END -->\n');
 
     const report = runConflictCheck();
     expect(report.legacySkills).toHaveLength(1);

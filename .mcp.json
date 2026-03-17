@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "t": {
+    "oh-my-copilot": {
       "command": "node",
       "args": ["${PLUGIN_ROOT}/bridge/mcp-server.cjs"]
     }

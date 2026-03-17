@@ -732,8 +732,8 @@ describe('processHook - Routing Matrix', () => {
                 const specific = out.hookSpecificOutput;
                 expect(specific.hookEventName).toBe('Setup');
                 const context = String(specific.additionalContext ?? '');
-                expect(context).toContain('OMP maintenance completed:');
-                expect(context).not.toContain('OMP initialized:');
+                expect(context).toContain('OMC maintenance completed:');
+                expect(context).not.toContain('OMC initialized:');
             }
             finally {
                 rmSync(tempDir, { recursive: true, force: true });

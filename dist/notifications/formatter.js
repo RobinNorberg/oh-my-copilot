@@ -134,12 +134,12 @@ export function formatSessionIdle(payload) {
 const ANSI_ESCAPE_RE = /\x1b(?:[@-Z\\-_]|\[[0-9;]*[a-zA-Z])/g;
 /** Lines starting with these characters are OMG UI chrome, not output. */
 const UI_CHROME_RE = /^[●⎿✻·◼]/;
-/** Matches the "ctrl+o to expand" hint injected by OMP. */
+/** Matches the "ctrl+o to expand" hint injected by OMC. */
 const CTRL_O_RE = /ctrl\+o to expand/i;
 /** Lines composed entirely of box-drawing characters and whitespace. */
 const BOX_DRAWING_RE = /^[\s─═│║┌┐└┘┬┴├┤╔╗╚╝╠╣╦╩╬╟╢╤╧╪━┃┏┓┗┛┣┫┳┻╋┠┨┯┷┿╂]+$/;
-/** OMG HUD status lines: [OMP#...] or [OMP] (unversioned). */
-const OMC_HUD_RE = /\[OMP[#\]]/;
+/** OMG HUD status lines: [OMC#...] or [OMC] (unversioned). */
+const OMC_HUD_RE = /\[OMC[#\]]/;
 /** Bypass-permissions indicator lines starting with ⏵. */
 const BYPASS_PERM_RE = /^⏵/;
 /** Bare shell prompt with no command after it. */

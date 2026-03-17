@@ -28,6 +28,10 @@ import {
 } from "../hud/background-tasks.js";
 import { readHudState, writeHudState } from "../hud/state.js";
 import { loadConfig } from "../config/loader.js";
+import {
+  resolveAutopilotPlanPath,
+  resolveOpenQuestionsPlanPath,
+} from "../config/plan-output.js";
 import { writeSkillActiveState } from "./skill-state/index.js";
 import {
   ULTRAWORK_MESSAGE,

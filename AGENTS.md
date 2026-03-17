@@ -1,6 +1,6 @@
 # oh-my-copilot - Intelligent Multi-Agent Orchestration
 
-You are running with oh-my-copilot (OMG), a multi-agent orchestration layer for Copilot CLI.
+You are running with oh-my-copilot (OMC), a multi-agent orchestration layer for Copilot CLI.
 Your role is to coordinate specialized agents, tools, and skills so work is completed accurately and efficiently.
 
 <guidance_schema_contract>
@@ -15,8 +15,8 @@ Required schema sections and this template's mapping:
 - **Recovery & Lifecycle Overlays**: runtime/team overlays are appended by marker-bounded runtime hooks.
 
 Keep runtime marker contracts stable and non-destructive when overlays are applied:
-- `<!-- OMG:RUNTIME:START --> ... <!-- OMG:RUNTIME:END -->`
-- `<!-- OMG:TEAM:WORKER:START --> ... <!-- OMG:TEAM:WORKER:END -->`
+- `<!-- OMC:RUNTIME:START --> ... <!-- OMC:RUNTIME:END -->`
+- `<!-- OMC:TEAM:WORKER:START --> ... <!-- OMC:TEAM:WORKER:END -->`
 </guidance_schema_contract>
 
 <operating_principles>
@@ -42,6 +42,45 @@ Work directly only for trivial operations where delegation adds disproportionate
 For substantive code changes, delegate to `executor` (default for both standard and complex implementation work).
 For non-trivial SDK/API/framework usage, delegate to `dependency-expert` to check official docs first.
 </delegation_rules>
+
+<agent_naming>
+Always pass the `name` parameter when spawning agents to give users visibility into what each agent does.
+
+Single-AI format: `{role}-{number}`
+Multi-AI format: `{ai}-{model}-{role}-{number}`
+
+Role prefixes:
+
+| Agent Type | Prefix |
+|------------|--------|
+| explore | explorer |
+| executor | executor |
+| architect | architect |
+| planner | planner |
+| analyst | analyst |
+| debugger | debugger |
+| verifier | verifier |
+| critic | critic |
+| test-engineer | tester |
+| code-reviewer | reviewer |
+| security-reviewer | sec-reviewer |
+| code-simplifier | simplifier |
+| designer | designer |
+| writer | writer |
+| document-specialist | doc-specialist |
+| git-master | git-master |
+| scientist | scientist |
+| qa-tester | qa-tester |
+| build-fixer | build-fixer |
+
+Numbers are monotonic across the session (not per type): explorer-1, executor-2, architect-3, executor-4.
+
+Single-AI example: `Agent(subagent_type="oh-my-copilot:executor", name="executor-2", ...)`
+Multi-AI example: `Agent(subagent_type="oh-my-copilot:executor", name="claude-opus-executor-2", ...)`
+
+Use multi-AI format (`{ai}-{model}-{role}-{number}`) when `omc team` involves more than one AI backend (claude, codex, gemini, copilot).
+Use single-AI format (`{role}-{number}`) for all other agent spawning.
+</agent_naming>
 
 <child_agent_protocol>
 Copilot CLI spawns child agents via the `spawn_agent` tool (requires `multi_agent = true`).
@@ -148,6 +187,7 @@ Do not ask for confirmation — just read the skill file and follow its instruct
 | "ralph", "don't stop", "must complete", "keep going" | `$ralph` | Read `~/.agents/skills/ralph/SKILL.md`, execute persistence loop |
 | "autopilot", "build me", "I want a" | `$autopilot` | Read `~/.agents/skills/autopilot/SKILL.md`, execute autonomous pipeline |
 | "ultrawork", "ulw", "parallel" | `$ultrawork` | Read `~/.agents/skills/ultrawork/SKILL.md`, execute parallel agents |
+| "experiment", "experiment loop", "karpathy loop", "try hypotheses", "optimize", "improve performance" | `$ralph-experiment` | Read `~/.agents/skills/ralph-experiment/SKILL.md`, execute hypothesis-driven experiment loop |
 | "plan this", "plan the", "let's plan" | `$plan` | Read `~/.agents/skills/plan/SKILL.md`, start planning workflow |
 | "interview", "deep interview", "gather requirements", "interview me", "don't assume", "ouroboros" | `$deep-interview` | Read `~/.agents/skills/deep-interview/SKILL.md`, run Ouroboros-inspired Socratic ambiguity-gated interview workflow |
 | "ralplan", "consensus plan" | `$ralplan` | Read `~/.agents/skills/ralplan/SKILL.md`, start consensus planning with RALPLAN-DR structured deliberation (short by default, `--deliberate` for high-risk) |

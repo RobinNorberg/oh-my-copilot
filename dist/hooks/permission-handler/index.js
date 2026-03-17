@@ -158,7 +158,7 @@ export function isActiveModeRunning(directory) {
         'ralph-state.json',
         'ultrawork-state.json',
         'team-state.json',
-        'omg-teams-state.json',
+        'omc-teams-state.json',
     ];
     for (const stateFile of activeStateFiles) {
         const statePath = path.join(stateDir, stateFile);

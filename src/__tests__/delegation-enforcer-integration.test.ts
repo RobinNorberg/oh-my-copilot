@@ -184,7 +184,7 @@ describe.skip('delegation-enforcer integration', () => {
       await processHook('pre-tool-use', input);
 
       expect(consoleWarnSpy).toHaveBeenCalledWith(
-        expect.stringContaining('[OMP] Auto-injecting model')
+        expect.stringContaining('[OMC] Auto-injecting model')
       );
       expect(consoleWarnSpy).toHaveBeenCalledWith(
         expect.stringContaining('sonnet')

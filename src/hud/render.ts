@@ -229,13 +229,13 @@ export async function render(context: HudRenderContext, config: HudConfig): Prom
     gitElements.push(bold(`profile:${context.profileName}`));
   }
 
-  // [OMP#X.Y.Z] label with optional update notification
+  // [OMC#X.Y.Z] label with optional update notification
   if (enabledElements.omcLabel) {
     const versionTag = context.omcVersion ? `#${context.omcVersion}` : '';
     if (context.updateAvailable) {
-      elements.push(bold(`[OMP${versionTag}] -> ${context.updateAvailable} omc update`));
+      elements.push(bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`));
     } else {
-      elements.push(bold(`[OMP${versionTag}]`));
+      elements.push(bold(`[OMC${versionTag}]`));
     }
   }
 

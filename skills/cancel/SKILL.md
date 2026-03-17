@@ -71,7 +71,7 @@ Steps under the hood:
 2. `state_clear` runs once per session to drop that session’s files.
 3. A global `state_clear` without `session_id` removes legacy files under `.omg/state/*.json`, `.omg/state/swarm*.db`, and compatibility artifacts (see list).
 4. Team artifacts (`~/.copilot/teams/*/`, `~/.copilot/tasks/*/`, `.omg/state/team-state.json`) are best-effort cleared as part of the legacy fallback.
-   - Cancel for native team does NOT affect omg-teams state, and vice versa.
+   - Cancel for native team does NOT affect omc-teams state, and vice versa.
 
 Every `state_clear` command honors the `session_id` argument, so even force mode still uses the session-aware paths first before deleting legacy files.
 
@@ -90,7 +90,7 @@ Legacy compatibility list (removed only under `--force`/`--all`):
 - `.omg/state/ultrapilot-state.json`
 - `.omg/state/ultrapilot-ownership.json`
 - `.omg/state/pipeline-state.json`
-- `.omg/state/omg-teams-state.json`
+- `.omg/state/omc-teams-state.json`
 - `.omg/state/plan-consensus.json`
 - `.omg/state/ralplan-state.json`
 - `.omg/state/boulder.json`

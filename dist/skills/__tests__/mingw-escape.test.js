@@ -3,7 +3,7 @@
  * contain '!' characters, which MINGW64/Git Bash (Windows) escapes to '\!'
  * causing SyntaxError in the generated JavaScript.
  *
- * Affected files: skills/omg-setup/SKILL.md, skills/hud/SKILL.md
+ * Affected files: skills/omc-setup/SKILL.md, skills/hud/SKILL.md
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
@@ -64,12 +64,12 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
             expect(violations.length).toBe(0);
         });
     });
-    describe('skills/omg-setup/SKILL.md', () => {
-        const filePath = join(REPO_ROOT, 'skills', 'omg-setup', 'SKILL.md');
+    describe('skills/omc-setup/SKILL.md', () => {
+        const filePath = join(REPO_ROOT, 'skills', 'omc-setup', 'SKILL.md');
         const content = readFileSync(filePath, 'utf-8');
         const scripts = extractNodeEScripts(content);
         it('has no node -e scripts (modular phases moved inline scripts to shell scripts)', () => {
-            // After refactor(setup) #1476, omg-setup delegates to phase files and shell scripts
+            // After refactor(setup) #1476, omc-setup delegates to phase files and shell scripts
             expect(scripts.length).toBe(0);
         });
     });
@@ -88,8 +88,8 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
             expect(chmodLine).not.toContain("!=='win32'");
             expect(chmodLine).toContain("==='win32'");
         });
-        it('omg-setup SKILL.md explicitly tells the agent to execute immediately', () => {
-            const content = readFileSync(join(REPO_ROOT, 'skills', 'omg-setup', 'SKILL.md'), 'utf-8');
+        it('omc-setup SKILL.md explicitly tells the agent to execute immediately', () => {
+            const content = readFileSync(join(REPO_ROOT, 'skills', 'omc-setup', 'SKILL.md'), 'utf-8');
             expect(content).toContain('immediately execute the workflow below');
             expect(content).toContain('Do not only restate or summarize');
         });

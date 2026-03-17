@@ -27,7 +27,7 @@ describe('Notepad Module', () => {
             expect(content).toContain(PRIORITY_HEADER);
             expect(content).toContain(WORKING_MEMORY_HEADER);
             expect(content).toContain(MANUAL_HEADER);
-            expect(content).toContain('Auto-managed by OMP');
+            expect(content).toContain('Auto-managed by OMC');
         });
         it('should create .omc directory if not exists', () => {
             const omcDir = join(testDir, '.omg');

@@ -128,3 +128,8 @@ Always end with:
 - **Verification run**
 - **Remaining risks**
 </Final_Report>
+
+<Usage>
+- `/oh-my-copilot:ai-slop-cleaner <target>`
+- `/oh-my-copilot:ai-slop-cleaner <target> --review`
+</Usage>

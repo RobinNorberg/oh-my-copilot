@@ -58,29 +58,29 @@ function createMinimalConfig(overrides: Partial<HudConfig['elements']> = {}): Hu
 }
 
 describe('HUD version display and update notification', () => {
-  describe('OMP label without version', () => {
-    it('renders [OMP] when omcVersion is null', async () => {
+  describe('OMC label without version', () => {
+    it('renders [OMC] when omcVersion is null', async () => {
       const ctx = createMinimalContext({ omcVersion: null });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMP]');
+      expect(output).toContain('[OMC]');
       expect(output).not.toContain('#');
     });
   });
 
-  describe('OMP label with version', () => {
-    it('renders [OMP#X.Y.Z] when omcVersion is set', async () => {
+  describe('OMC label with version', () => {
+    it('renders [OMC#X.Y.Z] when omcVersion is set', async () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10' });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMP#4.1.10]');
+      expect(output).toContain('[OMC#4.1.10]');
     });
 
     it('renders version without update notice when updateAvailable is null', async () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10', updateAvailable: null });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMP#4.1.10]');
+      expect(output).toContain('[OMC#4.1.10]');
       expect(output).not.toContain('->');
       expect(output).not.toContain('omc update');
     });
@@ -91,7 +91,7 @@ describe('HUD version display and update notification', () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10', updateAvailable: '4.2.0' });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMP#4.1.10]');
+      expect(output).toContain('[OMC#4.1.10]');
       expect(output).toContain('-> 4.2.0');
       expect(output).toContain('omc update');
     });
@@ -100,7 +100,7 @@ describe('HUD version display and update notification', () => {
       const ctx = createMinimalContext({ omcVersion: null, updateAvailable: '4.2.0' });
       const config = createMinimalConfig();
       const output = await render(ctx, config);
-      expect(output).toContain('[OMP]');
+      expect(output).toContain('[OMC]');
       expect(output).toContain('-> 4.2.0');
     });
   });
@@ -110,7 +110,7 @@ describe('HUD version display and update notification', () => {
       const ctx = createMinimalContext({ omcVersion: '4.1.10', updateAvailable: '4.2.0' });
       const config = createMinimalConfig({ omcLabel: false });
       const output = await render(ctx, config);
-      expect(output).not.toContain('[OMP');
+      expect(output).not.toContain('[OMC');
       expect(output).not.toContain('omc update');
     });
   });

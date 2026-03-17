@@ -43,8 +43,8 @@ describe('Consolidation contracts', () => {
     it('keeps native-command collisions prefixed to omg-* names', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toContain('omg-plan');
-      expect(names).toContain('omg-doctor');
+      expect(names).toContain('omc-plan');
+      expect(names).toContain('omc-doctor');
       expect(names).not.toContain('plan');
       expect(names).not.toContain('doctor');
       expect(names).not.toContain('help');
@@ -57,7 +57,7 @@ describe('Consolidation contracts', () => {
       expect(names).not.toContain('build-fix');
       expect(names).not.toContain('tdd');
       expect(names).not.toContain('code-review');
-      expect(names).not.toContain('omg-security-review');
+      expect(names).not.toContain('omc-security-review');
     });
 
     it('hides deprecated compatibility aliases from default listings', () => {

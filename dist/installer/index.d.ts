@@ -57,11 +57,11 @@ export declare function isHudEnabledInConfig(): boolean;
  * Detect whether a statusLine config belongs to oh-my-copilot.
  *
  * Checks the command string for known OMG HUD paths so that custom
- * (non-OMP) statusLine configurations are preserved during forced
+ * (non-OMC) statusLine configurations are preserved during forced
  * updates/reconciliation.
  *
  * @param statusLine - The statusLine setting object from settings.json
- * @returns true if the statusLine was set by OMP
+ * @returns true if the statusLine was set by OMC
  */
 export declare function isOmcStatusLine(statusLine: unknown): boolean;
 /**
@@ -73,7 +73,7 @@ export declare function isOmcStatusLine(statusLine: unknown): boolean;
  * 3. Command references a known OMG hook filename inside .copilot/hooks/
  *
  * @param command - The hook command string
- * @returns true if the command belongs to OMP
+ * @returns true if the command belongs to OMC
  */
 export declare function isOmcHook(command: string): boolean;
 /**

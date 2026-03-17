@@ -74,6 +74,7 @@ export interface StartTeamV2Config {
     }>;
     cwd: string;
     newWindow?: boolean;
+    workerRoles?: string[];
     roleName?: string;
     rolePrompt?: string;
 }

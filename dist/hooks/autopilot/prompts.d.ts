@@ -4,16 +4,17 @@
  * Generates phase-specific prompts that include Task tool invocations
  * for Copilot to execute. This is the core of the agent invocation mechanism.
  */
+import type { PluginConfig } from "../../shared/types.js";
 /**
  * Generate the expansion phase prompt (Phase 0)
  * Analyst extracts requirements, Architect creates technical spec
  */
-export declare function getExpansionPrompt(idea: string): string;
+export declare function getExpansionPrompt(idea: string, openQuestionsPathOrConfig?: string | PluginConfig): string;
 /**
  * Generate the direct planning prompt (Phase 1)
  * Uses Architect instead of Planner to create plan directly from spec
  */
-export declare function getDirectPlanningPrompt(specPath: string): string;
+export declare function getDirectPlanningPrompt(specPath: string, planPathOrConfig?: string | PluginConfig): string;
 /**
  * Generate the execution phase prompt (Phase 2)
  */
@@ -33,5 +34,6 @@ export declare function getPhasePrompt(phase: string, context: {
     idea?: string;
     specPath?: string;
     planPath?: string;
+    openQuestionsPath?: string;
 }): string;
 //# sourceMappingURL=prompts.d.ts.map

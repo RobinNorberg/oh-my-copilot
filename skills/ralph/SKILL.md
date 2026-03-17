@@ -124,9 +124,9 @@ Why good: Generic criteria replaced with specific, testable criteria.
 <Good>
 Correct parallel delegation:
 ```
-Task(subagent_type="oh-my-copilot:executor", model="haiku", prompt="Add type export for UserConfig")
-Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="Implement the caching layer for API responses")
-Task(subagent_type="oh-my-copilot:executor", model="opus", prompt="Refactor auth module to support OAuth2 flow")
+Task(subagent_type="oh-my-copilot:executor", model="haiku", name="executor-1", prompt="Add type export for UserConfig")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", name="executor-2", prompt="Implement the caching layer for API responses")
+Task(subagent_type="oh-my-copilot:executor", model="opus", name="executor-3", prompt="Refactor auth module to support OAuth2 flow")
 ```
 Why good: Three independent tasks fired simultaneously at appropriate tiers.
 </Good>

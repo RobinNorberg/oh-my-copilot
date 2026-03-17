@@ -5,7 +5,7 @@
  * The pipeline unifies autopilot/ultrawork/ultrapilot into a single
  * configurable sequence: RALPLAN -> EXECUTION -> RALPH -> QA.
  *
- * @see https://github.com/RobinNorberg/oh-my-copilot/issues/1130
+ * @see https://github.com/Yeachan-Heo/oh-my-copilot/issues/1130
  */
 
 // ============================================================================
@@ -106,6 +106,8 @@ export interface PipelineContext {
   specPath?: string;
   /** Path to the generated implementation plan */
   planPath?: string;
+  /** Path to the shared open questions file */
+  openQuestionsPath?: string;
   /** The full pipeline configuration */
   config: PipelineConfig;
 }

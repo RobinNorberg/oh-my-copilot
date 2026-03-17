@@ -9,7 +9,7 @@ const NODE = process.execPath;
  * Regression tests for run.cjs graceful fallback when CLAUDE_PLUGIN_ROOT
  * points to a stale/deleted/broken plugin cache directory.
  *
- * See: https://github.com/RobinNorberg/oh-my-copilot/issues/1007
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1007
  */
 describe('run.cjs — graceful fallback for stale plugin paths', () => {
     let tmpDir;

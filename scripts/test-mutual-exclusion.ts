@@ -18,8 +18,8 @@ function printTest(testName: string, passed: boolean) {
 async function runTests() {
   console.log('\n=== Testing Mutual Exclusion Between UltraQA and Ralph Loop ===\n');
 
-  // Create temp directory with .omc subfolder
-  const tempDir = mkdtempSync(join(tmpdir(), 'omc-test-'));
+  // Create temp directory with .omp subfolder
+  const tempDir = mkdtempSync(join(tmpdir(), 'omp-test-'));
   const omcDir = join(tempDir, '.omg');
   mkdirSync(omcDir, { recursive: true });
 

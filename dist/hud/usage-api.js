@@ -136,17 +136,8 @@ function getRateLimitedBackoffMs(pollIntervalMs, count) {
     const normalizedPollIntervalMs = sanitizePollIntervalMs(pollIntervalMs);
     return Math.min(normalizedPollIntervalMs * Math.pow(2, Math.max(0, count - 1)), Math.max(MAX_RATE_LIMITED_BACKOFF_MS, normalizedPollIntervalMs));
 }
-function getTransientNetworkBackoffMs(cache) {
-    if (cache.errorReason !== 'network')
-        return CACHE_TTL_FAILURE_MS;
-    return CACHE_TTL_TRANSIENT_NETWORK_MS;
-}
-function hasUsableStaleData(cache) {
-    if (!cache.data)
-        return false;
-    if (!cache.lastSuccessAt)
-        return false;
-    return Date.now() - cache.lastSuccessAt <= MAX_STALE_DATA_MS;
+function getTransientNetworkBackoffMs(pollIntervalMs) {
+    return Math.max(CACHE_TTL_TRANSIENT_NETWORK_MS, sanitizePollIntervalMs(pollIntervalMs));
 }
 function isCacheValid(cache, pollIntervalMs) {
     if (cache.rateLimited) {
@@ -156,13 +147,25 @@ function isCacheValid(cache, pollIntervalMs) {
         const count = cache.rateLimitedCount || 1;
         return Date.now() - cache.timestamp < getRateLimitedBackoffMs(pollIntervalMs, count);
     }
-    const ttl = cache.error ? getTransientNetworkBackoffMs(cache) : sanitizePollIntervalMs(pollIntervalMs);
+    const ttl = cache.error
+        ? cache.errorReason === 'network'
+            ? getTransientNetworkBackoffMs(pollIntervalMs)
+            : CACHE_TTL_FAILURE_MS
+        : sanitizePollIntervalMs(pollIntervalMs);
     return Date.now() - cache.timestamp < ttl;
+}
+function hasUsableStaleData(cache) {
+    if (!cache?.data) {
+        return false;
+    }
+    if (cache.lastSuccessAt && Date.now() - cache.lastSuccessAt > MAX_STALE_DATA_MS) {
+        return false;
+    }
+    return true;
 }
 function getCachedUsageResult(cache) {
     if (cache.rateLimited) {
-        // Discard stale data if lastSuccessAt is older than MAX_STALE_DATA_MS
-        if (cache.lastSuccessAt && Date.now() - cache.lastSuccessAt > MAX_STALE_DATA_MS) {
+        if (!hasUsableStaleData(cache) && cache.data) {
             return { rateLimits: null, error: 'rate_limited' };
         }
         return { rateLimits: cache.data, error: 'rate_limited', stale: cache.data ? true : undefined };
@@ -172,7 +175,7 @@ function getCachedUsageResult(cache) {
         if (hasUsableStaleData(cache)) {
             return { rateLimits: cache.data, error: errorReason, stale: true };
         }
-        return { rateLimits: cache.data ? cache.data : null, error: errorReason };
+        return { rateLimits: null, error: errorReason };
     }
     return { rateLimits: cache.data };
 }
@@ -643,10 +646,15 @@ export async function getUsage() {
                     return { rateLimits: null, error: 'rate_limited' };
                 }
                 if (!result.data) {
-                    const fallbackData = cachedZai?.data || null;
-                    const lastSuccess = cachedZai?.lastSuccessAt;
-                    writeCache({ data: fallbackData, error: true, source: 'zai', errorReason: 'network', lastSuccessAt: lastSuccess });
-                    if (fallbackData && lastSuccess && Date.now() - lastSuccess <= MAX_STALE_DATA_MS) {
+                    const fallbackData = hasUsableStaleData(cachedZai) ? cachedZai.data : null;
+                    writeCache({
+                        data: fallbackData,
+                        error: true,
+                        source: 'zai',
+                        errorReason: 'network',
+                        lastSuccessAt: cachedZai?.lastSuccessAt,
+                    });
+                    if (fallbackData) {
                         return { rateLimits: fallbackData, error: 'network', stale: true };
                     }
                     return { rateLimits: null, error: 'network' };
@@ -699,10 +707,15 @@ export async function getUsage() {
                     return { rateLimits: null, error: 'rate_limited' };
                 }
                 if (!result.data) {
-                    const fallbackData = cachedAnthropic?.data || null;
-                    const lastSuccess = cachedAnthropic?.lastSuccessAt;
-                    writeCache({ data: fallbackData, error: true, source: 'anthropic', errorReason: 'network', lastSuccessAt: lastSuccess });
-                    if (fallbackData && lastSuccess && Date.now() - lastSuccess <= MAX_STALE_DATA_MS) {
+                    const fallbackData = hasUsableStaleData(cachedAnthropic) ? cachedAnthropic.data : null;
+                    writeCache({
+                        data: fallbackData,
+                        error: true,
+                        source: 'anthropic',
+                        errorReason: 'network',
+                        lastSuccessAt: cachedAnthropic?.lastSuccessAt,
+                    });
+                    if (fallbackData) {
                         return { rateLimits: fallbackData, error: 'network', stale: true };
                     }
                     return { rateLimits: null, error: 'network' };

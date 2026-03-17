@@ -45,7 +45,6 @@ function detectComments(content, filePath) {
         return [];
     }
     const comments = [];
-    const _lines = content.split('\n');
     // Reset regex state
     pattern.lastIndex = 0;
     let match;
@@ -161,16 +160,6 @@ export function checkForComments(filePath, content, oldString, newString, edits)
  * Pending calls tracking
  */
 const pendingCalls = new Map();
-const PENDING_CALL_TTL = 60_000;
-function _cleanupOldPendingCalls() {
-    const now = Date.now();
-    for (const [callID, call] of pendingCalls) {
-        if (now - call.timestamp > PENDING_CALL_TTL) {
-            pendingCalls.delete(callID);
-        }
-    }
-}
-let cleanupIntervalStarted = false;
 /**
  * Create comment checker hook for Copilot CLI shell hooks
  *
@@ -179,12 +168,6 @@ let cleanupIntervalStarted = false;
  */
 export function createCommentCheckerHook(config) {
     debugLog('createCommentCheckerHook called', { config });
-    if (!cleanupIntervalStarted) {
-        cleanupIntervalStarted = true;
-        // Note: setInterval is intentionally NOT used here — this module runs in
-        // short-lived hook processes that exit before any timer fires. Pending
-        // calls are cleaned up lazily via TTL checks on the next invocation.
-    }
     return {
         /**
          * PreToolUse - Track pending write/edit calls

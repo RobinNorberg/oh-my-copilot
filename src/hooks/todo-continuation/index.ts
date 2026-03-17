@@ -124,9 +124,9 @@ export interface StopContext {
   tool_input?: unknown;
   /** Tool input from hook payload (camelCase) */
   toolInput?: unknown;
-  /** Transcript path (snake_case) */
+  /** Path to the session transcript file (snake_case) */
   transcript_path?: string;
-  /** Transcript path (camelCase) */
+  /** Path to the session transcript file (camelCase) */
   transcriptPath?: string;
 }
 
@@ -227,7 +227,7 @@ export function isExplicitCancelCommand(context?: StopContext): boolean {
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
  *
- * See: https://github.com/RobinNorberg/oh-my-copilot/issues/213
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 export function isContextLimitStop(context?: StopContext): boolean {
   if (!context) return false;
@@ -250,7 +250,7 @@ export function isContextLimitStop(context?: StopContext): boolean {
  * injects a continuation prompt, Copilot immediately hits the rate limit again,
  * stops again, and the cycle repeats indefinitely.
  *
- * Fix for: https://github.com/RobinNorberg/oh-my-copilot/issues/777
+ * Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
  */
 export function isRateLimitStop(context?: StopContext): boolean {
   if (!context) return false;

@@ -1,6 +1,6 @@
 /**
  * Integration test for rate-limit stop guard in checkPersistentModes
- * Fix for: https://github.com/RobinNorberg/oh-my-copilot/issues/777
+ * Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
  *
  * Verifies that when Copilot CLI stops due to a rate limit (HTTP 429),
  * the persistent-mode hook does NOT block the stop — preventing an

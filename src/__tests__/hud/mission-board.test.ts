@@ -99,7 +99,7 @@ describe('mission board renderer', () => {
       pendingPermission: null,
       thinkingState: null,
       sessionHealth: null,
-      omcVersion: '4.7.8',
+      omcVersion: '4.8.2',
       updateAvailable: null,
       toolCallCount: 0,
       agentCallCount: 0,
@@ -140,7 +140,7 @@ describe('mission board renderer', () => {
     const output = await render(context, config);
     const lines = output.split('\n');
 
-    expect(lines[0]).toContain('[OMP#4.7.8]');
+    expect(lines[0]).toContain('[OMC#4.8.2]');
     expect(lines[1]).toContain('MISSION demo [running]');
     expect(lines[2]).toContain('[run] worker-1');
     expect(lines[4]).toContain('timeline: 07:05 handoff worker-1');

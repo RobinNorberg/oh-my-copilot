@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 describe('Cleanup Validation', () => {
-    it('omg-plan skill resolves correctly', async () => {
+    it('omc-plan skill resolves correctly', async () => {
         const { getBuiltinSkill } = await import('../features/builtin-skills/skills.js');
-        const skill = getBuiltinSkill('omg-plan');
+        const skill = getBuiltinSkill('omc-plan');
         expect(skill).toBeDefined();
     });
     it('plan skill is blocked by CC native denylist', async () => {

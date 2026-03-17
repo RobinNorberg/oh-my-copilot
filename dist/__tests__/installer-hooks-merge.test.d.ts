@@ -2,8 +2,8 @@
  * Tests for omc update --force-hooks protection (issue #722)
  *
  * Verifies that the hook merge logic in install() correctly:
- *   - merges OMG hooks with existing non-OMP hooks during `omc update` (force=true)
- *   - warns when non-OMP hooks are present
+ *   - merges OMG hooks with existing non-OMC hooks during `omc update` (force=true)
+ *   - warns when non-OMC hooks are present
  *   - only fully replaces when --force-hooks is explicitly set
  *
  * Tests exercise isOmcHook() and the merge logic via unit-level helpers

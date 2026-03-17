@@ -540,7 +540,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('OMP Team MCP Server running on stdio');
+  console.error('OMC Team MCP Server running on stdio');
 }
 
 if (process.env.OMC_TEAM_SERVER_DISABLE_AUTOSTART !== '1' && process.env.NODE_ENV !== 'test') {

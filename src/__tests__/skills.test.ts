@@ -70,21 +70,21 @@ describe('Builtin Skills', () => {
         'deep-interview',
         'deepinit',
         'external-context',
-        'hud',
         'learner',
         'mcp-setup',
-        'omg-ado-auto-review',
-        'omg-ado-review',
-        'omg-ado-setup',
-        'omg-ado-sprint',
-        'omg-ado-triage',
-        'omg-doctor',
-        'omg-plan',
-        'omg-setup',
-        'omg-teams',
+        'omc-ado-auto-review',
+        'omc-ado-review',
+        'omc-ado-setup',
+        'omc-ado-sprint',
+        'omc-ado-triage',
+        'omc-doctor',
+        'omc-plan',
+        'omc-setup',
+        'omc-teams',
         'project-session-manager',
         'psm',
         'ralph',
+        'ralph-experiment',
         'ralplan',
         'release',
         'sciomc',
@@ -147,15 +147,15 @@ describe('Builtin Skills', () => {
       expect(names).toContain('configure-notifications');
       expect(names).toContain('ralph');
       expect(names).toContain('ultrawork');
-      expect(names).toContain('omg-plan');
+      expect(names).toContain('omc-plan');
       expect(names).toContain('deepinit');
       expect(names).toContain('release');
-      expect(names).toContain('omg-doctor');
+      expect(names).toContain('omc-doctor');
       expect(names).toContain('setup');
-      expect(names).toContain('hud');
-      expect(names).toContain('omg-setup');
+      expect(names).toContain('omc-setup');
       expect(names).not.toContain('swarm'); // removed in #1131
       expect(names).not.toContain('psm');
+      expect(names).not.toContain('hud'); // removed — Copilot doesn't support custom HUDs
     });
 
     it('should return an array of strings', () => {

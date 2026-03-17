@@ -26,7 +26,7 @@ Update version in all locations:
 - `src/__tests__/installer.test.ts` (expected version)
 - `.copilot-plugin/plugin.json`
 - `.copilot-plugin/marketplace.json` (both `plugins[0].version` and root `version`)
-- `docs/copilot-instructions.md` (`<!-- OMC:VERSION:X.Y.Z -->` marker)
+- `docs/copilot-instructions.md` (`<!-- OMP:VERSION:X.Y.Z -->` marker)
 - `README.md` (version badge and title)
 
 ### 2. Run Tests
@@ -60,7 +60,7 @@ gh release create v<version> --title "v<version> - <title>" --notes "<release no
 
 ### 7. Verify
 - [ ] npm: https://www.npmjs.com/package/oh-my-copilot
-- [ ] GitHub: https://github.com/RobinNorberg/oh-my-copilot/releases
+- [ ] GitHub: https://github.com/Yeachan-Heo/oh-my-copilot/releases
 
 ## Version Files Reference
 
@@ -71,7 +71,7 @@ gh release create v<version> --title "v<version> - <title>" --notes "<release no
 | `src/__tests__/installer.test.ts` | `expect(VERSION).toBe('X.Y.Z')` |
 | `.copilot-plugin/plugin.json` | `"version": "X.Y.Z"` |
 | `.copilot-plugin/marketplace.json` | `plugins[0].version` + root `version` |
-| `docs/copilot-instructions.md` | `<!-- OMC:VERSION:X.Y.Z -->` |
+| `docs/copilot-instructions.md` | `<!-- OMP:VERSION:X.Y.Z -->` |
 | `README.md` | Title + version badge |
 
 ## Semantic Versioning

@@ -61,7 +61,7 @@ function semverCompare(a, b) {
 
 // Extract OMP version from copilot-instructions.md content
 function extractOmcVersion(content) {
-  const match = content.match(/<!-- OMC:VERSION:(\d+\.\d+\.\d+[^\s]*?) -->/);
+  const match = content.match(/<!-- OMP:VERSION:(\d+\.\d+\.\d+[^\s]*?) -->/);
   return match ? match[1] : null;
 }
 
@@ -113,7 +113,7 @@ function detectVersionDrift() {
   const drift = [];
 
   if (npmVersion && npmVersion !== pluginVersion) {
-    drift.push({ component: 'npm package (omc CLI)', current: npmVersion, expected: pluginVersion });
+    drift.push({ component: 'npm package (omp CLI)', current: npmVersion, expected: pluginVersion });
   }
 
   if (claudeMdVersion === 'unknown') {

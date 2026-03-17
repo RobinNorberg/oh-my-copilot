@@ -232,7 +232,7 @@ export function checkConfigIssues() {
             'permissions',
             'magicKeywords',
             'routing',
-            // OMCConfig fields (from auto-update.ts / omg-setup)
+            // OMCConfig fields (from auto-update.ts / omc-setup)
             'silentAutoUpdate',
             'configuredAt',
             'configVersion',
@@ -268,7 +268,7 @@ export function runConflictCheck() {
     const envFlags = checkEnvFlags();
     const configIssues = checkConfigIssues();
     // Determine if there are actual conflicts
-    const hasConflicts = hookConflicts.some(h => !h.isOmc) || // Non-OMP hooks present
+    const hasConflicts = hookConflicts.some(h => !h.isOmc) || // Non-OMC hooks present
         legacySkills.length > 0 || // Legacy skills colliding with plugin
         envFlags.disableOmc || // OMG is disabled
         envFlags.skipHooks.length > 0 || // Hooks are being skipped
@@ -301,7 +301,7 @@ export function formatReport(report, json) {
         lines.push(colors.bold('📌 Hook Configuration'));
         lines.push('');
         for (const hook of report.hookConflicts) {
-            const status = hook.isOmc ? colors.green('✓ OMP') : colors.yellow('⚠ Other');
+            const status = hook.isOmc ? colors.green('✓ OMC') : colors.yellow('⚠ Other');
             lines.push(`  ${hook.event.padEnd(20)} ${status}`);
             lines.push(`    ${colors.gray(hook.command)}`);
         }
@@ -330,7 +330,7 @@ export function formatReport(report, json) {
         }
         else {
             lines.push(`  ${colors.yellow('⚠')} No OMG markers found`);
-            lines.push(`    ${colors.gray('Run /oh-my-copilot:omg-setup to add markers')}`);
+            lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to add markers')}`);
             if (report.claudeMdStatus.hasUserContent) {
                 lines.push(`  ${colors.blue('ℹ')} User content present - will be preserved`);
             }
@@ -384,7 +384,7 @@ export function formatReport(report, json) {
     lines.push(colors.gray('━'.repeat(60)));
     if (report.hasConflicts) {
         lines.push(`${colors.yellow('⚠')} Potential conflicts detected`);
-        lines.push(`${colors.gray('Review the issues above and run /oh-my-copilot:omg-setup if needed')}`);
+        lines.push(`${colors.gray('Review the issues above and run /oh-my-copilot:omc-setup if needed')}`);
     }
     else {
         lines.push(`${colors.green('✓')} No conflicts detected`);

@@ -10,7 +10,7 @@ describe('default MCP config', () => {
     };
 
     expect(parsed.mcpServers).toBeTruthy();
-    expect(parsed.mcpServers?.t).toBeTruthy();
+    expect(parsed.mcpServers?.['oh-my-copilot']).toBeTruthy();
     expect(parsed.mcpServers?.team).toBeUndefined();
   });
 });

@@ -162,7 +162,7 @@ export function extractWebhookFlag(args) {
     return { webhookEnabled, remainingArgs };
 }
 /**
- * Extract the OMP-specific --teams flag from launch args.
+ * Extract the OMC-specific --teams flag from launch args.
  * Purely presence-based:
  *   --teams        -> enable Teams notifications (OMC_MICROSOFT_TEAMS=1)
  *   --teams=true   -> enable
@@ -337,12 +337,12 @@ export async function postLaunch(_cwd, _sessionId) {
  * Orchestrates the 3-phase launch: preLaunch -> run -> postLaunch
  */
 export async function launchCommand(args) {
-    // Extract OMP-specific --notify flag before passing remaining args to Copilot CLI
+    // Extract OMC-specific --notify flag before passing remaining args to Copilot CLI
     const { notifyEnabled, remainingArgs } = extractNotifyFlag(args);
     if (!notifyEnabled) {
         process.env.OMC_NOTIFY = '0';
     }
-    // Extract OMP-specific --telegram flag (presence-based)
+    // Extract OMC-specific --telegram flag (presence-based)
     const { telegramEnabled, remainingArgs: argsAfterTelegram } = extractTelegramFlag(remainingArgs);
     if (telegramEnabled === true) {
         process.env.OMC_TELEGRAM = '1';
@@ -350,7 +350,7 @@ export async function launchCommand(args) {
     else if (telegramEnabled === false) {
         process.env.OMC_TELEGRAM = '0';
     }
-    // Extract OMP-specific --discord flag (presence-based)
+    // Extract OMC-specific --discord flag (presence-based)
     const { discordEnabled, remainingArgs: argsAfterDiscord } = extractDiscordFlag(argsAfterTelegram);
     if (discordEnabled === true) {
         process.env.OMC_DISCORD = '1';
@@ -358,7 +358,7 @@ export async function launchCommand(args) {
     else if (discordEnabled === false) {
         process.env.OMC_DISCORD = '0';
     }
-    // Extract OMP-specific --slack flag (presence-based)
+    // Extract OMC-specific --slack flag (presence-based)
     const { slackEnabled, remainingArgs: argsAfterSlack } = extractSlackFlag(argsAfterDiscord);
     if (slackEnabled === true) {
         process.env.OMC_SLACK = '1';
@@ -366,7 +366,7 @@ export async function launchCommand(args) {
     else if (slackEnabled === false) {
         process.env.OMC_SLACK = '0';
     }
-    // Extract OMP-specific --webhook flag (presence-based)
+    // Extract OMC-specific --webhook flag (presence-based)
     const { webhookEnabled, remainingArgs: argsAfterWebhook } = extractWebhookFlag(argsAfterSlack);
     if (webhookEnabled === true) {
         process.env.OMC_WEBHOOK = '1';
@@ -374,7 +374,7 @@ export async function launchCommand(args) {
     else if (webhookEnabled === false) {
         process.env.OMC_WEBHOOK = '0';
     }
-    // Extract OMP-specific --teams flag (presence-based)
+    // Extract OMC-specific --teams flag (presence-based)
     const { teamsEnabled, remainingArgs: argsAfterTeams } = extractTeamsFlag(argsAfterWebhook);
     if (teamsEnabled === true) {
         process.env.OMC_MICROSOFT_TEAMS = '1';

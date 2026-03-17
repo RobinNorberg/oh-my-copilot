@@ -49,7 +49,7 @@ function resolveFromConfig(agentRole, route) {
     let tool = route.tool;
     // Warn and fall back to claude for deprecated codex/gemini providers
     if (provider === 'codex' || provider === 'gemini') {
-        console.warn('[OMP] Codex/Gemini MCP delegation is deprecated. Use /team to coordinate CLI workers instead.');
+        console.warn('[OMC] Codex/Gemini MCP delegation is deprecated. Use /team to coordinate CLI workers instead.');
         const agentOrModel = route.model || route.agentType || agentRole;
         const fallbackChain = route.fallback;
         return {
@@ -92,7 +92,7 @@ function resolveDefault(agentRole, config) {
     // Fall back to default provider or claude
     const defaultProvider = config?.defaultProvider || 'claude';
     if (defaultProvider === 'codex' || defaultProvider === 'gemini') {
-        console.warn('[OMP] Codex/Gemini MCP delegation is deprecated. Use /team to coordinate CLI workers instead.');
+        console.warn('[OMC] Codex/Gemini MCP delegation is deprecated. Use /team to coordinate CLI workers instead.');
     }
     // Default to Claude Task (codex/gemini default providers fall back to claude)
     return {

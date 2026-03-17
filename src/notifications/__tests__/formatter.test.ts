@@ -257,12 +257,12 @@ describe("parseTmuxTail noise filters", () => {
 
   it("drops OMG HUD versioned status lines", () => {
     expect(
-      parseTmuxTail("[OMP#4.4.5] | thinking | session:510m | ctx:61% | 🔧57"),
+      parseTmuxTail("[OMC#4.4.5] | thinking | session:510m | ctx:61% | 🔧57"),
     ).toBe("");
   });
 
   it("drops unversioned OMG HUD lines", () => {
-    expect(parseTmuxTail("[OMP] | session:5m")).toBe("");
+    expect(parseTmuxTail("[OMC] | session:5m")).toBe("");
   });
 
   it("drops bypass-permissions indicator lines starting with ⏵", () => {
@@ -302,7 +302,7 @@ describe("parseTmuxTail noise filters", () => {
   it("returns empty string when all lines are noise types", () => {
     const input = [
       "────────────────────────",
-      "[OMP#4.4.5] | thinking | session:510m",
+      "[OMC#4.4.5] | thinking | session:510m",
       "⏵⏵ bypass permissions on",
       "❯",
       "@@@@@@@@@@@@@@@@@@@@",
@@ -314,7 +314,7 @@ describe("parseTmuxTail noise filters", () => {
     const input = [
       "────────────────────────",
       "Build complete",
-      "[OMP#4.4.5] | thinking | session:510m",
+      "[OMC#4.4.5] | thinking | session:510m",
       "Tests passed: 42",
       "⏵⏵ bypass permissions on",
       "❯",

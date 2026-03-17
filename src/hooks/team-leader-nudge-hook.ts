@@ -248,7 +248,7 @@ export async function maybeNudgeLeader(params: {
   if (!leaderPaneId) return { nudged: false, reason: 'no_leader_pane_id' };
 
   // Send nudge
-  const message = `[OMP] Leader nudge: ${staleness.idleWorkerCount}/${staleness.totalWorkerCount} workers idle, ${staleness.pendingTaskCount} tasks pending. Please check task assignments. ${INJECT_MARKER}`;
+  const message = `[OMC] Leader nudge: ${staleness.idleWorkerCount}/${staleness.totalWorkerCount} workers idle, ${staleness.pendingTaskCount} tasks pending. Please check task assignments. ${INJECT_MARKER}`;
 
   try {
     await tmux.sendKeys(leaderPaneId, message, true);

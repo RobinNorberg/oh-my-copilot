@@ -46,8 +46,8 @@ describe('skill-state', () => {
     it('returns none for instant/read-only skills', () => {
       expect(getSkillProtection('trace')).toBe('none');
       expect(getSkillProtection('hud')).toBe('none');
-      expect(getSkillProtection('omg-help')).toBe('none');
-      expect(getSkillProtection('omg-doctor')).toBe('none');
+      expect(getSkillProtection('omc-help')).toBe('none');
+      expect(getSkillProtection('omc-doctor')).toBe('none');
     });
 
     it('returns light for simple agent shortcuts', () => {

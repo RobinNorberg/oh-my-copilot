@@ -24,6 +24,26 @@ export interface WorkerPaneConfig {
     cwd: string;
 }
 export declare function getDefaultShell(): string;
+/** Shell + rc file pair used for worker pane launch */
+export interface WorkerLaunchSpec {
+    shell: string;
+    rcFile: string | null;
+}
+/** Try a list of shell paths; return first that exists with its rcFile, or null */
+export declare function resolveShellFromCandidates(paths: string[], rcFile: string): WorkerLaunchSpec | null;
+/** Check if shellPath is a supported shell (zsh/bash) that exists on disk */
+export declare function resolveSupportedShellAffinity(shellPath?: string): WorkerLaunchSpec | null;
+/**
+ * Resolve the shell and rc file to use for worker pane launch.
+ *
+ * Priority:
+ *   1. MSYS2/Windows → /bin/sh (no rcFile)
+ *   2. shellPath (from $SHELL) if zsh or bash and binary exists
+ *   3. ZSH candidates
+ *   4. BASH candidates
+ *   5. Fallback: /bin/sh
+ */
+export declare function buildWorkerLaunchSpec(shellPath?: string): WorkerLaunchSpec;
 export declare function buildWorkerStartCommand(config: WorkerPaneConfig): string;
 /** Validate tmux is available. Throws with install instructions if not. */
 export declare function validateTmux(): void;

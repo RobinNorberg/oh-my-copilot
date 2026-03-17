@@ -6,7 +6,7 @@ describe('default MCP config', () => {
         const raw = readFileSync(join(__dirname, '..', '..', '.mcp.json'), 'utf-8');
         const parsed = JSON.parse(raw);
         expect(parsed.mcpServers).toBeTruthy();
-        expect(parsed.mcpServers?.t).toBeTruthy();
+        expect(parsed.mcpServers?.['oh-my-copilot']).toBeTruthy();
         expect(parsed.mcpServers?.team).toBeUndefined();
     });
 });

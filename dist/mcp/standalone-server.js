@@ -164,7 +164,7 @@ async function gracefulShutdown(signal) {
     // Hard deadline: exit even if cleanup hangs (e.g. unresponsive LSP server)
     const forceExitTimer = setTimeout(() => process.exit(1), 5_000);
     forceExitTimer.unref();
-    console.error(`OMP MCP Server: received ${signal}, disconnecting LSP servers...`);
+    console.error(`OMC MCP Server: received ${signal}, disconnecting LSP servers...`);
     try {
         await disconnectAllLsp();
     }
@@ -185,7 +185,7 @@ process.on('SIGINT', () => { gracefulShutdown('SIGINT'); });
 async function main() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error('OMP Tools MCP Server running on stdio');
+    console.error('OMC Tools MCP Server running on stdio');
 }
 main().catch((error) => {
     console.error('Failed to start server:', error);

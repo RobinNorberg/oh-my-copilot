@@ -32,8 +32,8 @@ export interface RalphLoopState {
     current_story_id?: string;
     /** Whether ultrawork is linked/auto-activated with ralph */
     linked_ultrawork?: boolean;
-    /** Critic mode for verification */
-    critic_mode?: 'codex' | 'critic' | 'architect';
+    /** Which critic mode to use (architect, critic, codex) */
+    critic_mode?: string;
 }
 export interface RalphLoopOptions {
     /** Maximum iterations (default: 10) */

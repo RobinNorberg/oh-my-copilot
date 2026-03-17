@@ -63,13 +63,13 @@ Fire independent stages in parallel via Task tool:
 
 ```
 // Stage 1 - Simple data gathering
-Task(subagent_type="oh-my-copilot:scientist", model="haiku", prompt="[RESEARCH_STAGE:1] Investigate...")
+Task(subagent_type="oh-my-copilot:scientist", model="haiku", name="scientist-1", prompt="[RESEARCH_STAGE:1] Investigate...")
 
 // Stage 2 - Standard analysis
-Task(subagent_type="oh-my-copilot:scientist", model="sonnet", prompt="[RESEARCH_STAGE:2] Analyze...")
+Task(subagent_type="oh-my-copilot:scientist", model="sonnet", name="scientist-2", prompt="[RESEARCH_STAGE:2] Analyze...")
 
 // Stage 3 - Complex reasoning
-Task(subagent_type="oh-my-copilot:scientist", model="opus", prompt="[RESEARCH_STAGE:3] Deep analysis of...")
+Task(subagent_type="oh-my-copilot:scientist", model="opus", name="scientist-3", prompt="[RESEARCH_STAGE:3] Deep analysis of...")
 ```
 
 ### Smart Model Routing
@@ -99,7 +99,7 @@ After parallel execution completes, verify findings:
 
 ```
 // Cross-validation stage
-Task(subagent_type="oh-my-copilot:scientist", model="sonnet", prompt="
+Task(subagent_type="oh-my-copilot:scientist", model="sonnet", name="scientist-1", prompt="
 [RESEARCH_VERIFICATION]
 Cross-validate these findings for consistency:
 
@@ -180,9 +180,9 @@ When stages analyze different data sources:
 
 ```
 // All fire simultaneously
-Task(subagent_type="oh-my-copilot:scientist", model="haiku", prompt="[STAGE:1] Analyze src/api/...")
-Task(subagent_type="oh-my-copilot:scientist", model="haiku", prompt="[STAGE:2] Analyze src/utils/...")
-Task(subagent_type="oh-my-copilot:scientist", model="haiku", prompt="[STAGE:3] Analyze src/components/...")
+Task(subagent_type="oh-my-copilot:scientist", model="haiku", name="scientist-1", prompt="[STAGE:1] Analyze src/api/...")
+Task(subagent_type="oh-my-copilot:scientist", model="haiku", name="scientist-2", prompt="[STAGE:2] Analyze src/utils/...")
+Task(subagent_type="oh-my-copilot:scientist", model="haiku", name="scientist-3", prompt="[STAGE:3] Analyze src/components/...")
 ```
 
 ### Hypothesis Battery (Parallel)
@@ -191,9 +191,9 @@ When testing multiple hypotheses:
 
 ```
 // Test hypotheses simultaneously
-Task(subagent_type="oh-my-copilot:scientist", model="sonnet", prompt="[HYPOTHESIS:A] Test if caching improves...")
-Task(subagent_type="oh-my-copilot:scientist", model="sonnet", prompt="[HYPOTHESIS:B] Test if batching reduces...")
-Task(subagent_type="oh-my-copilot:scientist", model="sonnet", prompt="[HYPOTHESIS:C] Test if lazy loading helps...")
+Task(subagent_type="oh-my-copilot:scientist", model="sonnet", name="scientist-1", prompt="[HYPOTHESIS:A] Test if caching improves...")
+Task(subagent_type="oh-my-copilot:scientist", model="sonnet", name="scientist-2", prompt="[HYPOTHESIS:B] Test if batching reduces...")
+Task(subagent_type="oh-my-copilot:scientist", model="sonnet", name="scientist-3", prompt="[HYPOTHESIS:C] Test if lazy loading helps...")
 ```
 
 ### Cross-Validation (Sequential)
@@ -205,7 +205,7 @@ When verification depends on all findings:
 [stages complete]
 
 // Then sequential verification
-Task(subagent_type="oh-my-copilot:scientist", model="opus", prompt="
+Task(subagent_type="oh-my-copilot:scientist", model="opus", name="scientist-1", prompt="
 [CROSS_VALIDATION]
 Validate consistency across all findings:
 - Finding 1: ...
@@ -464,7 +464,7 @@ Optional settings in `.copilot/settings.json`:
 
 ```json
 {
-  "omc": {
+  "omp": {
     "research": {
       "maxIterations": 10,
       "maxConcurrentScientists": 5,

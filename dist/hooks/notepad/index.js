@@ -10,7 +10,7 @@
  * Structure:
  * ```markdown
  * # Notepad
- * <!-- Auto-managed by OMP. Manual edits preserved in MANUAL section. -->
+ * <!-- Auto-managed by OMC. Manual edits preserved in MANUAL section. -->
  *
  * ## Priority Context
  * <!-- ALWAYS loaded. Keep under 500 chars. Critical discoveries only. -->
@@ -66,7 +66,7 @@ export function initNotepad(directory) {
         return true; // Already exists
     }
     const content = `# Notepad
-<!-- Auto-managed by OMP. Manual edits preserved in MANUAL section. -->
+<!-- Auto-managed by OMC. Manual edits preserved in MANUAL section. -->
 
 ${PRIORITY_HEADER}
 <!-- ALWAYS loaded. Keep under 500 chars. Critical discoveries only. -->

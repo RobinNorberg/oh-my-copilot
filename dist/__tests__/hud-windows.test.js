@@ -126,8 +126,8 @@ describe('HUD Windows Compatibility', () => {
             // Should use join() with configDir for path construction
             expect(content).toContain('join(configDir,');
         });
-        it('omg-doctor skill should use cross-platform Node.js commands', () => {
-            const doctorPath = join(packageRoot, 'skills', 'omg-doctor', 'SKILL.md');
+        it('omc-doctor skill should use cross-platform Node.js commands', () => {
+            const doctorPath = join(packageRoot, 'skills', 'omc-doctor', 'SKILL.md');
             const content = readFileSync(doctorPath, 'utf-8');
             // Should NOT use ~ for plugin cache paths in bash commands
             expect(content).not.toMatch(/ls ~\/\.copilot\/plugins\/cache/);
@@ -136,15 +136,7 @@ describe('HUD Windows Compatibility', () => {
             // Should use path.join for constructing paths
             expect(content).toContain("p.join(d,'plugins','cache','omg','oh-my-copilot')");
         });
-        it('hud skill should use cross-platform Node.js commands for plugin detection', () => {
-            const hudPath = join(packageRoot, 'skills', 'hud', 'SKILL.md');
-            const content = readFileSync(hudPath, 'utf-8');
-            // Step 1 and Step 2 should use node -e instead of ls/sort -V
-            expect(content).not.toMatch(/ls ~\/\.copilot\/plugins\/cache/);
-            expect(content).not.toMatch(/sort -V/);
-            // Should use node for cross-platform path resolution
-            expect(content).toContain("node -e");
-        });
+        // hud skill test removed — skill deleted (Copilot doesn't support custom HUDs)
         it('usage-api should use path.join with separate segments', () => {
             const usageApiPath = join(packageRoot, 'src', 'hud', 'usage-api.ts');
             const content = readFileSync(usageApiPath, 'utf-8');

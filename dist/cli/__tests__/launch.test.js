@@ -564,7 +564,7 @@ describe('launchCommand — env var propagation', () => {
         expect(process.env.OMC_SLACK).toBe('1');
         expect(process.env.OMC_WEBHOOK).toBe('1');
     });
-    it('OMP flags are stripped from args passed to Copilot', async () => {
+    it('OMC flags are stripped from args passed to Copilot', async () => {
         await launchCommand(['--telegram', '--discord', '--slack', '--webhook', '--print']);
         const calls = vi.mocked(execFileSync).mock.calls;
         const claudeCall = calls.find(([cmd]) => cmd === 'copilot');

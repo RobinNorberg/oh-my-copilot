@@ -1,7 +1,7 @@
 /**
  * Tests for doctor-conflicts command (issue #606)
  *
- * Verifies that OMP-managed hooks are correctly classified as OMP-owned,
+ * Verifies that OMC-managed hooks are correctly classified as OMC-owned,
  * not falsely flagged as "Other".
  */
 export {};

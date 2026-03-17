@@ -1,14 +1,20 @@
-/**
- * Autopilot Prompt Generation
- *
- * Generates phase-specific prompts that include Task tool invocations
- * for Copilot to execute. This is the core of the agent invocation mechanism.
- */
+import { resolveAutopilotPlanPath, resolveOpenQuestionsPlanPath, } from "../../config/plan-output.js";
+function resolvePromptPlanPath(planPathOrConfig) {
+    return typeof planPathOrConfig === "string"
+        ? planPathOrConfig
+        : resolveAutopilotPlanPath(planPathOrConfig);
+}
+function resolvePromptOpenQuestionsPath(openQuestionsPathOrConfig) {
+    return typeof openQuestionsPathOrConfig === "string"
+        ? openQuestionsPathOrConfig
+        : resolveOpenQuestionsPlanPath(openQuestionsPathOrConfig);
+}
 /**
  * Generate the expansion phase prompt (Phase 0)
  * Analyst extracts requirements, Architect creates technical spec
  */
-export function getExpansionPrompt(idea) {
+export function getExpansionPrompt(idea, openQuestionsPathOrConfig) {
+    const openQuestionsPath = resolvePromptOpenQuestionsPath(openQuestionsPathOrConfig);
     return `## AUTOPILOT PHASE 0: IDEA EXPANSION
 
 Your task: Expand this product idea into detailed requirements and technical spec.
@@ -58,7 +64,7 @@ Output as structured markdown."
 
 ### Step 2.5: Persist Open Questions
 
-If the Analyst output includes a \`### Open Questions\` section, extract those items and save them to \`.omg/plans/open-questions.md\` using the standard format:
+If the Analyst output includes a \`### Open Questions\` section, extract those items and save them to \`${openQuestionsPath}\` using the standard format:
 
 \`\`\`
 ## [Topic] - [Date]
@@ -81,7 +87,8 @@ When the spec is saved, signal: EXPANSION_COMPLETE
  * Generate the direct planning prompt (Phase 1)
  * Uses Architect instead of Planner to create plan directly from spec
  */
-export function getDirectPlanningPrompt(specPath) {
+export function getDirectPlanningPrompt(specPath, planPathOrConfig) {
+    const planPath = resolvePromptPlanPath(planPathOrConfig);
     return `## AUTOPILOT PHASE 1: DIRECT PLANNING
 
 The spec is complete from Phase 0. Create implementation plan directly (no interview needed).
@@ -122,7 +129,7 @@ Generate a comprehensive implementation plan with:
    - Identified risks
    - Mitigation strategies
 
-Save to: .omg/plans/autopilot-impl.md
+Save to: ${planPath}
 
 Signal completion with: PLAN_CREATED"
 )
@@ -138,7 +145,7 @@ Task(
   model="opus",
   prompt="REVIEW IMPLEMENTATION PLAN
 
-Plan file: .omg/plans/autopilot-impl.md
+Plan file: ${planPath}
 Original spec: ${specPath}
 
 Verify:
@@ -361,18 +368,18 @@ function escapeForPrompt(text) {
  */
 export function getPhasePrompt(phase, context) {
     switch (phase) {
-        case 'expansion':
-            return getExpansionPrompt(context.idea || '');
-        case 'planning':
-            return getDirectPlanningPrompt(context.specPath || '.omg/autopilot/spec.md');
-        case 'execution':
-            return getExecutionPrompt(context.planPath || '.omg/plans/autopilot-impl.md');
-        case 'qa':
+        case "expansion":
+            return getExpansionPrompt(context.idea || "", context.openQuestionsPath || resolveOpenQuestionsPlanPath());
+        case "planning":
+            return getDirectPlanningPrompt(context.specPath || ".omg/autopilot/spec.md", context.planPath || resolveAutopilotPlanPath());
+        case "execution":
+            return getExecutionPrompt(context.planPath || resolveAutopilotPlanPath());
+        case "qa":
             return getQAPrompt();
-        case 'validation':
-            return getValidationPrompt(context.specPath || '.omg/autopilot/spec.md');
+        case "validation":
+            return getValidationPrompt(context.specPath || ".omg/autopilot/spec.md");
         default:
-            return '';
+            return "";
     }
 }
 //# sourceMappingURL=prompts.js.map

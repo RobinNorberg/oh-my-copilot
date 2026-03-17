@@ -6,6 +6,7 @@
  * Sessions are named "omg-team-{teamName}-{workerName}".
  */
 import { exec, execFile, execSync, execFileSync } from 'child_process';
+import { existsSync } from 'fs';
 import { join, basename, isAbsolute, win32 } from 'path';
 import { promisify } from 'util';
 import fs from 'fs/promises';
@@ -29,16 +30,83 @@ export function isUnixLikeOnWindows() {
  */
 async function tmuxAsync(args) {
     if (args.some(a => a.includes('#{'))) {
-        const escaped = args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ');
+        // MSYS2/Git Bash strips curly braces from execFile arguments.
+        // Use shell execution with proper single-quote escaping.
+        const escaped = args.map(a => "'" + a.replace(/'/g, "'\\''") + "'").join(' ');
         return promisifiedExec(`tmux ${escaped}`);
     }
     return promisifiedExecFile('tmux', args);
 }
+/** Shells known to support the `-lc 'exec "$@"'` invocation pattern. */
+const SUPPORTED_POSIX_SHELLS = new Set(['sh', 'bash', 'zsh', 'fish', 'ksh']);
 export function getDefaultShell() {
     if (process.platform === 'win32' && !isUnixLikeOnWindows()) {
         return process.env.COMSPEC || 'cmd.exe';
     }
-    return process.env.SHELL || '/bin/bash';
+    const shell = process.env.SHELL || '/bin/bash';
+    // Validate that the shell supports our launch script syntax.
+    // Unsupported shells (tcsh, csh, etc.) fall back to /bin/sh.
+    const name = basename(shell.replace(/\\/g, '/')).replace(/\.(exe|cmd|bat)$/i, '');
+    if (!SUPPORTED_POSIX_SHELLS.has(name)) {
+        return '/bin/sh';
+    }
+    return shell;
+}
+const ZSH_CANDIDATES = ['/bin/zsh', '/usr/bin/zsh', '/usr/local/bin/zsh', '/opt/homebrew/bin/zsh'];
+const BASH_CANDIDATES = ['/bin/bash', '/usr/bin/bash'];
+/** Try a list of shell paths; return first that exists with its rcFile, or null */
+export function resolveShellFromCandidates(paths, rcFile) {
+    for (const p of paths) {
+        if (existsSync(p))
+            return { shell: p, rcFile };
+    }
+    return null;
+}
+/** Check if shellPath is a supported shell (zsh/bash) that exists on disk */
+export function resolveSupportedShellAffinity(shellPath) {
+    if (!shellPath)
+        return null;
+    const name = basename(shellPath.replace(/\\/g, '/')).replace(/\.(exe|cmd|bat)$/i, '');
+    if (name !== 'zsh' && name !== 'bash')
+        return null;
+    if (!existsSync(shellPath))
+        return null;
+    const home = process.env.HOME ?? '';
+    const rcFile = home ? `${home}/.${name}rc` : null;
+    return { shell: shellPath, rcFile };
+}
+/**
+ * Resolve the shell and rc file to use for worker pane launch.
+ *
+ * Priority:
+ *   1. MSYS2/Windows → /bin/sh (no rcFile)
+ *   2. shellPath (from $SHELL) if zsh or bash and binary exists
+ *   3. ZSH candidates
+ *   4. BASH candidates
+ *   5. Fallback: /bin/sh
+ */
+export function buildWorkerLaunchSpec(shellPath) {
+    // MSYS2 / Windows: short-circuit to /bin/sh
+    if (isUnixLikeOnWindows()) {
+        return { shell: '/bin/sh', rcFile: null };
+    }
+    // Try user's preferred shell if it's supported (zsh or bash)
+    const preferred = resolveSupportedShellAffinity(shellPath);
+    if (preferred)
+        return preferred;
+    // Try zsh candidates
+    const home = process.env.HOME ?? '';
+    const zshRc = home ? `${home}/.zshrc` : null;
+    const zsh = resolveShellFromCandidates(ZSH_CANDIDATES, zshRc ?? '');
+    if (zsh)
+        return { shell: zsh.shell, rcFile: zshRc };
+    // Try bash candidates
+    const bashRc = home ? `${home}/.bashrc` : null;
+    const bash = resolveShellFromCandidates(BASH_CANDIDATES, bashRc ?? '');
+    if (bash)
+        return { shell: bash.shell, rcFile: bashRc };
+    // Final fallback
+    return { shell: '/bin/sh', rcFile: null };
 }
 function escapeForCmdSet(value) {
     return value.replace(/"/g, '""');
@@ -79,12 +147,14 @@ function getLaunchWords(config) {
         return [config.launchBinary, ...(config.launchArgs ?? [])];
     }
     if (config.launchCmd) {
-        return [config.launchCmd];
+        throw new Error('launchCmd is deprecated and has been removed for security reasons. ' +
+            'Use launchBinary + launchArgs instead.');
     }
     throw new Error('Missing worker launch command. Provide launchBinary or launchCmd.');
 }
 export function buildWorkerStartCommand(config) {
     const shell = getDefaultShell();
+    const launchSpec = buildWorkerLaunchSpec(process.env.SHELL);
     const launchWords = getLaunchWords(config);
     const shouldSourceRc = process.env.OMC_TEAM_NO_RC !== '1';
     if (process.platform === 'win32' && !isUnixLikeOnWindows()) {
@@ -108,8 +178,9 @@ export function buildWorkerStartCommand(config) {
         const shellName = shellNameFromPath(shell) || 'bash';
         const isFish = shellName === 'fish';
         const execArgsCommand = isFish ? 'exec $argv' : 'exec "$@"';
-        let rcFile = '';
-        if (process.env.HOME) {
+        // Use rcFile from launchSpec when shell matches; fall back to legacy derivation otherwise
+        let rcFile = (launchSpec.shell === shell ? launchSpec.rcFile : null) ?? '';
+        if (!rcFile && process.env.HOME) {
             rcFile = isFish
                 ? `${process.env.HOME}/.config/fish/config.fish`
                 : `${process.env.HOME}/.${shellName}rc`;
@@ -146,8 +217,9 @@ export function buildWorkerStartCommand(config) {
         .join(' ');
     const shellName = shellNameFromPath(shell) || 'bash';
     const isFish = shellName === 'fish';
-    let rcFile = '';
-    if (process.env.HOME) {
+    // Use rcFile from launchSpec when shell matches; fall back to legacy derivation otherwise
+    let rcFile = (launchSpec.shell === shell ? launchSpec.rcFile : null) ?? '';
+    if (!rcFile && process.env.HOME) {
         rcFile = isFish
             ? `${process.env.HOME}/.config/fish/config.fish`
             : `${process.env.HOME}/.${shellName}rc`;
@@ -232,10 +304,10 @@ export function isSessionAlive(teamName, workerName) {
 export function listActiveSessions(teamName) {
     const prefix = `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-`;
     try {
-        // Use shell execution to prevent MSYS2 from stripping #{} in format strings
-        const fmtArgs = ['list-sessions', '-F', '#{session_name}'];
-        const shellCmd = 'tmux ' + fmtArgs.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ');
-        const output = execSync(shellCmd, {
+        // Use shell execution for format strings containing #{} to prevent
+        // MSYS2/Git Bash from stripping curly braces in execFileSync args.
+        // All arguments here are hardcoded constants, not user input.
+        const output = execSync("tmux list-sessions -F '#{session_name}'", {
             encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe']
         });
         return output.trim().split('\n')
@@ -256,9 +328,6 @@ export function listActiveSessions(teamName) {
 export function spawnBridgeInSession(tmuxSession, bridgeScriptPath, configFilePath) {
     const cmd = `node "${bridgeScriptPath}" --config "${configFilePath}"`;
     execFileSync('tmux', ['send-keys', '-t', tmuxSession, cmd, 'Enter'], { stdio: 'pipe', timeout: 5000 });
-}
-function buildTeamWindowName(teamName) {
-    return (`omg-${sanitizeName(teamName)}`).slice(0, 32) || 'omg-team';
 }
 /**
  * Create a tmux team topology for a team leader/worker layout.
@@ -489,7 +558,7 @@ export async function waitForPaneReady(paneId, opts = {}) {
 function paneTailContainsLiteralLine(captured, text) {
     return normalizeTmuxCapture(captured).includes(normalizeTmuxCapture(text));
 }
-async function paneInCopyMode(paneId, execFileAsync) {
+async function paneInCopyMode(paneId) {
     try {
         const result = await tmuxAsync(['display-message', '-t', paneId, '-p', '#{pane_in_mode}']);
         return result.stdout.trim() === '1';
@@ -538,7 +607,7 @@ export async function sendToWorker(_sessionName, paneId, message) {
             await execFileAsync('tmux', ['send-keys', '-t', paneId, key]);
         };
         // Guard: copy-mode captures keys; skip injection entirely.
-        if (await paneInCopyMode(paneId, execFileAsync)) {
+        if (await paneInCopyMode(paneId)) {
             return false;
         }
         // Check for trust prompt and auto-dismiss before sending our text
@@ -577,12 +646,12 @@ export async function sendToWorker(_sessionName, paneId, message) {
             await sleep(140);
         }
         // Safety gate: copy-mode can turn on while we retry; never send fallback control keys when active.
-        if (await paneInCopyMode(paneId, execFileAsync)) {
+        if (await paneInCopyMode(paneId)) {
             return false;
         }
         // Adaptive fallback: for busy panes, retry once without interrupting active turns.
         const finalCapture = await capturePaneAsync(paneId, execFileAsync);
-        const paneModeBeforeAdaptiveRetry = await paneInCopyMode(paneId, execFileAsync);
+        const paneModeBeforeAdaptiveRetry = await paneInCopyMode(paneId);
         if (shouldAttemptAdaptiveRetry({
             paneBusy,
             latestCapture: finalCapture,
@@ -590,12 +659,12 @@ export async function sendToWorker(_sessionName, paneId, message) {
             paneInCopyMode: paneModeBeforeAdaptiveRetry,
             retriesAttempted: 0,
         })) {
-            if (await paneInCopyMode(paneId, execFileAsync)) {
+            if (await paneInCopyMode(paneId)) {
                 return false;
             }
             await sendKey('C-u');
             await sleep(80);
-            if (await paneInCopyMode(paneId, execFileAsync)) {
+            if (await paneInCopyMode(paneId)) {
                 return false;
             }
             await execFileAsync('tmux', ['send-keys', '-t', paneId, '-l', '--', message]);
@@ -611,7 +680,7 @@ export async function sendToWorker(_sessionName, paneId, message) {
             }
         }
         // Before fallback control keys, re-check copy-mode to avoid mutating scrollback UI state.
-        if (await paneInCopyMode(paneId, execFileAsync)) {
+        if (await paneInCopyMode(paneId)) {
             return false;
         }
         // Fail-open: one last nudge, then continue regardless.
@@ -639,7 +708,7 @@ export async function injectToLeaderPane(sessionName, leaderPaneId, message) {
         const { execFile } = await import('child_process');
         const { promisify } = await import('util');
         const execFileAsync = promisify(execFile);
-        if (await paneInCopyMode(leaderPaneId, execFileAsync)) {
+        if (await paneInCopyMode(leaderPaneId)) {
             return false;
         }
         const captured = await capturePaneAsync(leaderPaneId, execFileAsync);

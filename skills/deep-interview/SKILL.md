@@ -19,7 +19,7 @@ Deep Interview implements Ouroboros-inspired Socratic questioning with mathemati
 
 <Do_Not_Use_When>
 - User has a detailed, specific request with file paths, function names, or acceptance criteria -- execute directly
-- User wants to explore options or brainstorm -- use `omg-plan` skill instead
+- User wants to explore options or brainstorm -- use `omc-plan` skill instead
 - User wants a quick fix or single change -- delegate to executor or ralph
 - User says "just do it" or "skip the questions" -- respect their intent
 - User already has a PRD or plan file -- use ralph or autopilot with that plan
@@ -66,7 +66,8 @@ Inspired by the [Ouroboros project](https://github.com/Q00/ouroboros) which demo
     "current_ambiguity": 1.0,
     "threshold": 0.2,
     "codebase_context": null,
-    "challenge_modes_used": []
+    "challenge_modes_used": [],
+    "ontology_snapshots": []
   }
 }
 ```
@@ -132,23 +133,50 @@ Transcript:
 {all rounds Q&A}
 
 Score each dimension:
-1. Goal Clarity (0.0-1.0): Is the primary objective unambiguous? Can you state it in one sentence without qualifiers?
+1. Goal Clarity (0.0-1.0): Is the primary objective unambiguous? Can you state it in one sentence without qualifiers? Can you name the key entities (nouns) and their relationships (verbs) without ambiguity?
 2. Constraint Clarity (0.0-1.0): Are the boundaries, limitations, and non-goals clear?
 3. Success Criteria Clarity (0.0-1.0): Could you write a test that verifies success? Are acceptance criteria concrete?
-{4. Context Clarity (0.0-1.0): [brownfield only] Do we understand the existing system well enough to modify it safely?}
+{4. Context Clarity (0.0-1.0): [brownfield only] Do we understand the existing system well enough to modify it safely? Do the identified entities map cleanly to existing codebase structures?}
 
 For each dimension provide:
 - score: float (0.0-1.0)
 - justification: one sentence explaining the score
 - gap: what's still unclear (if score < 0.9)
 
-Respond as JSON.
+5. Ontology Extraction: Identify all key entities (nouns) discussed in the transcript.
+
+{If round > 1, inject: "Previous round's entities: {prior_entities_json from state.ontology_snapshots[-1]}. REUSE these entity names where the concept is the same. Only introduce new names for genuinely new concepts."}
+
+For each entity provide:
+- name: string (the entity name, e.g., "User", "Order", "PaymentMethod")
+- type: string (e.g., "core domain", "supporting", "external system")
+- fields: string[] (key attributes mentioned)
+- relationships: string[] (e.g., "User has many Orders")
+
+Respond as JSON. Include an additional "ontology" key containing the entities array alongside the dimension scores.
 ```
 
 **Calculate ambiguity:**
 
 Greenfield: `ambiguity = 1 - (goal × 0.40 + constraints × 0.30 + criteria × 0.30)`
 Brownfield: `ambiguity = 1 - (goal × 0.35 + constraints × 0.25 + criteria × 0.25 + context × 0.15)`
+
+**Calculate ontology stability:**
+
+**Round 1 special case:** For the first round, skip stability comparison. All entities are "new". Set stability_ratio = N/A. If any round produces zero entities, set stability_ratio = N/A (avoids division by zero).
+
+For rounds 2+, compare with the previous round's entity list:
+- `stable_entities`: entities present in both rounds with the same name
+- `changed_entities`: entities with different names but the same type AND >50% field overlap (treated as renamed, not new+removed)
+- `new_entities`: entities in this round not matched by name or fuzzy-match to any previous entity
+- `removed_entities`: entities in the previous round not matched to any current entity
+- `stability_ratio`: (stable + changed) / total_entities (0.0 to 1.0, where 1.0 = fully converged)
+
+This formula counts renamed entities (changed) toward stability. Renamed entities indicate the concept persists even if the name shifted — this is convergence, not instability. Two entities with different names but the same `type` and >50% field overlap should be classified as "changed" (renamed), not as one removed and one added.
+
+**Show your work:** Before reporting stability numbers, briefly list which entities were matched (by name or fuzzy) and which are new/removed. This lets the user sanity-check the matching.
+
+Store the ontology snapshot (entities + stability_ratio + matching_reasoning) in `state.ontology_snapshots[]`.
 
 ### Step 2d: Report Progress
 
@@ -164,6 +192,8 @@ Round {n} complete.
 | Success Criteria | {s} | {w} | {s*w} | {gap or "Clear"} |
 | Context (brownfield) | {s} | {w} | {s*w} | {gap or "Clear"} |
 | **Ambiguity** | | | **{score}%** | |
+
+**Ontology:** {entity_count} entities | Stability: {stability_ratio} | New: {new} | Changed: {changed} | Stable: {stable}
 
 {score <= threshold ? "Clarity threshold met! Ready to proceed." : "Focusing next question on: {weakest_dimension}"}
 ```
@@ -192,7 +222,7 @@ Inject into the question generation prompt:
 
 ### Round 8+: Ontologist Mode (if ambiguity still > 0.3)
 Inject into the question generation prompt:
-> You are now in ONTOLOGIST mode. The ambiguity is still high after 8 rounds, suggesting we may be addressing symptoms rather than the core problem. Ask "What IS this, really?" or "If you could only describe this in one sentence to a colleague, what would you say?" The goal is to find the essence.
+> You are now in ONTOLOGIST mode. The ambiguity is still high after 8 rounds, suggesting we may be addressing symptoms rather than the core problem. The tracked entities so far are: {current_entities_summary from latest ontology snapshot}. Ask "What IS this, really?" or "Looking at these entities, which one is the CORE concept and which are just supporting?" The goal is to find the essence by examining the ontology.
 
 Challenge modes are used ONCE each, then return to normal Socratic questioning. Track which modes have been used in state.
 
@@ -255,9 +285,21 @@ Spec structure:
 {greenfield: technology choices and constraints}
 
 ## Ontology (Key Entities)
-| Entity | Fields | Relationships |
-|--------|--------|---------------|
-| {entity} | {field1, field2} | {relates to...} |
+{Fill from the FINAL round's ontology extraction, not just crystallization-time generation}
+
+| Entity | Type | Fields | Relationships |
+|--------|------|--------|---------------|
+| {entity.name} | {entity.type} | {entity.fields} | {entity.relationships} |
+
+## Ontology Convergence
+{Show how entities stabilized across interview rounds using data from ontology_snapshots in state}
+
+| Round | Entity Count | New | Changed | Stable | Stability Ratio |
+|-------|-------------|-----|---------|--------|----------------|
+| 1 | {n} | {n} | - | - | - |
+| 2 | {n} | {new} | {changed} | {stable} | {ratio}% |
+| ... | ... | ... | ... | ... | ... |
+| {final} | {n} | {new} | {changed} | {stable} | {ratio}% |
 
 ## Interview Transcript
 <details>
@@ -282,8 +324,8 @@ After the spec is written, present execution options via `AskUserQuestion`:
 
 1. **Ralplan → Autopilot (Recommended)**
    - Description: "3-stage pipeline: consensus-refine this spec with Planner/Architect/Critic, then execute with full autopilot. Maximum quality."
-   - Action: Invoke `Skill("oh-my-copilot:omg-plan")` with `--consensus --direct` flags and the spec file path as context. The `--direct` flag skips the omg-plan skill's interview phase (the deep interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omg/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
-   - Pipeline: `deep-interview spec → omg-plan --consensus --direct → autopilot execution`
+   - Action: Invoke `Skill("oh-my-copilot:omc-plan")` with `--consensus --direct` flags and the spec file path as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omg/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
+   - Pipeline: `deep-interview spec → omc-plan --consensus --direct → autopilot execution`
 
 2. **Execute with autopilot (skip ralplan)**
    - Description: "Full autonomous pipeline — planning, parallel implementation, QA, validation. Faster but without consensus refinement."
@@ -391,6 +433,19 @@ Proceeding may require rework. Continue anyway?"
 Why good: Respects user's desire to stop but transparently shows the risk.
 </Good>
 
+<Good>
+Ontology convergence tracking:
+```
+Round 3 entities: User, Task, Project (stability: N/A → 67%)
+Round 4 entities: User, Task, Project, Tag (stability: 75% — 3 stable, 1 new)
+Round 5 entities: User, Task, Project, Tag (stability: 100% — all 4 stable)
+
+"Ontology has converged — the same 4 entities appeared in 2 consecutive rounds
+with no changes. The domain model is stable."
+```
+Why good: Shows entity tracking across rounds with visible convergence. Stability ratio increases as the domain model solidifies, giving mathematical evidence that the interview is converging on a stable understanding.
+</Good>
+
 <Bad>
 Batching multiple questions:
 ```
@@ -435,8 +490,10 @@ Why bad: 45% ambiguity means nearly half the requirements are unclear. The mathe
 - [ ] Spec includes: goal, constraints, acceptance criteria, clarity breakdown, transcript
 - [ ] Execution bridge presented via AskUserQuestion
 - [ ] Selected execution mode invoked via Skill() (never direct implementation)
-- [ ] If 3-stage pipeline selected: omg-plan --consensus --direct invoked, then autopilot with consensus plan
+- [ ] If 3-stage pipeline selected: omc-plan --consensus --direct invoked, then autopilot with consensus plan
 - [ ] State cleaned up after execution handoff
+- [ ] Per-round ambiguity report includes Ontology row with entity count and stability ratio
+- [ ] Spec includes Ontology (Key Entities) table and Ontology Convergence section
 </Final_Checklist>
 
 <Advanced>
@@ -446,7 +503,7 @@ Optional settings in `.copilot/settings.json`:
 
 ```json
 {
-  "omc": {
+  "omp": {
     "deepInterview": {
       "ambiguityThreshold": 0.2,
       "maxRounds": 20,
@@ -486,7 +543,7 @@ The recommended execution path chains three quality gates:
   → Socratic Q&A until ambiguity ≤ 20%
   → Spec written to .omg/specs/deep-interview-{slug}.md
   → User selects "Ralplan → Autopilot"
-  → /omg-plan --consensus --direct (spec as input, skip interview)
+  → /omc-plan --consensus --direct (spec as input, skip interview)
     → Planner creates implementation plan from spec
     → Architect reviews for architectural soundness
     → Critic validates quality and testability
@@ -499,7 +556,7 @@ The recommended execution path chains three quality gates:
     → Phase 5: Cleanup
 ```
 
-**The omg-plan skill receives the spec with `--consensus --direct` flags** because the deep interview already did the requirements gathering. The `--direct` flag (supported by the omg-plan skill, which ralplan aliases) skips the interview phase and goes straight to Planner → Architect → Critic consensus. The consensus plan includes:
+**The omc-plan skill receives the spec with `--consensus --direct` flags** because the deep interview already did the requirements gathering. The `--direct` flag (supported by the omc-plan skill, which ralplan aliases) skips the interview phase and goes straight to Planner → Architect → Critic consensus. The consensus plan includes:
 - RALPLAN-DR summary (Principles, Decision Drivers, Options)
 - ADR (Decision, Drivers, Alternatives, Why chosen, Consequences)
 - Testable acceptance criteria (inherited from deep-interview spec)

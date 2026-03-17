@@ -113,7 +113,7 @@ export function enforceModel(agentInput) {
         const normalizedNote = normalizedModel !== resolvedModel
             ? ` (normalized from ${resolvedModel})`
             : '';
-        warning = `[OMP] Auto-injecting model: ${normalizedModel} for ${agentType}${aliasNote}${normalizedNote}`;
+        warning = `[OMC] Auto-injecting model: ${normalizedModel} for ${agentType}${aliasNote}${normalizedNote}`;
     }
     return {
         originalInput: agentInput,

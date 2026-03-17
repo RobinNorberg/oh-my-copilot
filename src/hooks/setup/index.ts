@@ -222,7 +222,7 @@ export async function processSetupInit(input: SetupInput): Promise<HookOutput> {
   }
 
   const context = [
-    `OMP initialized:`,
+    `OMC initialized:`,
     `- ${result.directories_created.length} directories created`,
     `- ${result.configs_validated.length} configs validated`,
     result.env_vars_set.length > 0 ? `- Environment variables set: ${result.env_vars_set.join(', ')}` : null,
@@ -376,7 +376,7 @@ export async function processSetupMaintenance(input: SetupInput): Promise<HookOu
   }
 
   const context = [
-    `OMP maintenance completed:`,
+    `OMC maintenance completed:`,
     prunedFiles > 0 ? `- ${prunedFiles} old state files pruned` : null,
     orphanedCleaned > 0 ? `- ${orphanedCleaned} orphaned state files cleaned` : null,
     result.errors.length > 0 ? `- Errors: ${result.errors.length}` : null,

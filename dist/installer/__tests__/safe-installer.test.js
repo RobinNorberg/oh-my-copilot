@@ -66,7 +66,7 @@ describe('isOmcHook detection', () => {
         expect(isOmcHook('node "%USERPROFILE%\\.copilot\\hooks\\keyword-detector.mjs"')).toBe(true);
         expect(isOmcHook('node "%USERPROFILE%\\.copilot\\hooks\\pre-tool-use.mjs"')).toBe(true);
     });
-    it('rejects non-OMP hooks correctly', () => {
+    it('rejects non-OMC hooks correctly', () => {
         expect(isOmcHook('eslint --fix')).toBe(false);
         expect(isOmcHook('prettier --write')).toBe(false);
         expect(isOmcHook('node custom-hook.mjs')).toBe(false);
@@ -95,7 +95,7 @@ describe('Safe Installer - Hook Conflict Detection', () => {
         delete process.env.TEST_COPILOT_CONFIG_DIR;
     });
     it('detects conflict when PreToolUse is owned by another plugin', () => {
-        // Create settings.json with non-OMP hook
+        // Create settings.json with non-OMC hook
         const existingSettings = {
             hooks: {
                 PreToolUse: [
@@ -122,7 +122,7 @@ describe('Safe Installer - Hook Conflict Detection', () => {
         expect(conflicts[0].eventType).toBe('PreToolUse');
         expect(conflicts[0].existingCommand).toBe('node ~/.copilot/hooks/beads-hook.mjs');
     });
-    it('does not detect conflict when hook is OMP-owned', () => {
+    it('does not detect conflict when hook is OMC-owned', () => {
         const existingSettings = {
             hooks: {
                 PreToolUse: [

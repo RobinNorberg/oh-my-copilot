@@ -3,7 +3,7 @@
 
 # skills
 
-32 skill directories for workflow automation and specialized behaviors.
+31 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -28,7 +28,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 
 | File | Skill | Purpose |
 |-----------|-------|---------|
-| `plan/SKILL.md` | omg-plan | Strategic planning with interview workflow |
+| `plan/SKILL.md` | omc-plan | Strategic planning with interview workflow |
 | `ralplan/SKILL.md` | ralplan | Iterative planning (Planner+Architect+Critic) with RALPLAN-DR structured deliberation (`--deliberate` for high-risk) |
 | `deep-interview/SKILL.md` | deep-interview | Socratic deep interview with mathematical ambiguity gating (Ouroboros-inspired) |
 | `ralph-init/SKILL.md` | ralph-init | Initialize PRD for structured ralph |
@@ -48,10 +48,9 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `learner/SKILL.md` | learner | Extract reusable skill from session |
 | `ask/SKILL.md` | ask | Ask Copilot, Codex, or Gemini via `omc ask` and capture an artifact |
 | `cancel/SKILL.md` | cancel | Cancel any active OMP mode |
-| `hud/SKILL.md` | hud | Configure HUD display |
-| `omg-doctor/SKILL.md` | omg-doctor | Diagnose installation issues |
+| `omc-doctor/SKILL.md` | omc-doctor | Diagnose installation issues |
 | `setup/SKILL.md` | setup | Unified setup entrypoint for install, diagnostics, and MCP configuration |
-| `omg-setup/SKILL.md` | omg-setup | One-time setup wizard |
+| `omc-setup/SKILL.md` | omc-setup | One-time setup wizard |
 | `mcp-setup/SKILL.md` | mcp-setup | Configure MCP servers |
 | `skill/SKILL.md` | skill | Manage local skills |
 
@@ -162,10 +161,10 @@ None - pure markdown files.
 | Category | Skills | Trigger Keywords |
 |----------|--------|------------------|
 | Execution | autopilot, ultrawork, ralph, team, ultraqa | "autopilot", "ulw", "ralph", "team" |
-| Planning | omg-plan, ralplan, deep-interview, ralph-init | "plan this", "interview me", "ouroboros" |
+| Planning | omc-plan, ralplan, deep-interview, ralph-init | "plan this", "interview me", "ouroboros" |
 | Exploration | deepinit, sciomc, external-context | "deepinit", "research" |
 | Cleanup | ai-slop-cleaner | "deslop", "anti-slop", cleanup/refactor + slop smells |
-| Utility | learner, note, cancel, hud, setup, omg-doctor, omg-setup, omg-help, mcp-setup | "stop", "cancel" |
+| Utility | learner, note, cancel, setup, omc-doctor, omc-setup, omc-help, mcp-setup | "stop", "cancel" |
 | Domain | psm, writer-memory, release | psm context |
 
 ## Auto-Activation

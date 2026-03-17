@@ -3,7 +3,7 @@
  * contain '!' characters, which MINGW64/Git Bash (Windows) escapes to '\!'
  * causing SyntaxError in the generated JavaScript.
  *
- * Affected files: skills/omg-setup/SKILL.md, skills/hud/SKILL.md
+ * Affected files: skills/omc-setup/SKILL.md, skills/hud/SKILL.md
  */
 export {};
 //# sourceMappingURL=mingw-escape.test.d.ts.map

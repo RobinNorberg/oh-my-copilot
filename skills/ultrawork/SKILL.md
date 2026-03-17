@@ -61,9 +61,9 @@ Sequential task execution wastes time when tasks are independent. Ultrawork enab
 <Good>
 Three independent tasks fired simultaneously:
 ```
-Task(subagent_type="oh-my-copilot:executor", model="haiku", prompt="Add missing type export for Config interface")
-Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="Implement the /api/users endpoint with validation")
-Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="Add integration tests for the auth middleware")
+Task(subagent_type="oh-my-copilot:executor", model="haiku", name="executor-1", prompt="Add missing type export for Config interface")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", name="executor-2", prompt="Implement the /api/users endpoint with validation")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", name="executor-3", prompt="Add integration tests for the auth middleware")
 ```
 Why good: Independent tasks at appropriate tiers, all fired at once.
 </Good>
@@ -71,8 +71,8 @@ Why good: Independent tasks at appropriate tiers, all fired at once.
 <Good>
 Correct use of background execution:
 ```
-Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="npm install && npm run build", run_in_background=true)
-Task(subagent_type="oh-my-copilot:executor", model="haiku", prompt="Update the README with new API endpoints")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", name="executor-1", prompt="npm install && npm run build", run_in_background=true)
+Task(subagent_type="oh-my-copilot:executor", model="haiku", name="executor-2", prompt="Update the README with new API endpoints")
 ```
 Why good: Long build runs in background while short task runs in foreground.
 </Good>
@@ -90,7 +90,7 @@ Why bad: These tasks are independent. Running them sequentially wastes time.
 <Bad>
 Wrong tier selection:
 ```
-Task(subagent_type="oh-my-copilot:executor", model="opus", prompt="Add a missing semicolon")
+Task(subagent_type="oh-my-copilot:executor", model="opus", name="executor-1", prompt="Add a missing semicolon")
 ```
 Why bad: Opus is expensive overkill for a trivial fix. Use executor with Haiku instead.
 </Bad>

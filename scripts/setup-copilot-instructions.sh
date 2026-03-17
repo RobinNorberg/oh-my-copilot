@@ -8,7 +8,7 @@
 set -euo pipefail
 
 MODE="${1:?Usage: setup-copilot-instructions.sh <local|global>}"
-DOWNLOAD_URL="https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md"
+DOWNLOAD_URL="https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/copilot-instructions.md"
 
 # Determine target path
 if [ "$MODE" = "local" ]; then

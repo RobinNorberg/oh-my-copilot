@@ -34,8 +34,8 @@ export interface VerificationState {
   requested_at: string;
   /** Original ralph task */
   original_task: string;
-  /** Critic mode for verification */
-  critic_mode?: 'codex' | 'critic' | 'architect';
+  /** Which critic mode to use (architect, critic, codex) */
+  critic_mode?: string;
 }
 
 const DEFAULT_MAX_VERIFICATION_ATTEMPTS = 3;
@@ -118,7 +118,7 @@ export function startVerification(
   directory: string,
   completionClaim: string,
   originalTask: string,
-  criticMode?: 'codex' | 'critic' | 'architect',
+  criticMode?: string,
   sessionId?: string
 ): VerificationState {
   const state: VerificationState = {

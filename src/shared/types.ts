@@ -126,6 +126,14 @@ export interface PluginConfig {
   // Delegation routing configuration
   delegationRouting?: DelegationRoutingConfig;
 
+  // Plan output configuration
+  planOutput?: {
+    /** Relative directory for generated plan artifacts. Default: .omg/plans */
+    directory?: string;
+    /** Filename template. Supported tokens: {{name}}, {{kind}}. Default: {{name}}.md */
+    filenameTemplate?: string;
+  };
+
   // Startup codebase map injection (issue #804)
   startupCodebaseMap?: {
     /** Enable codebase map injection on session start. Default: true */

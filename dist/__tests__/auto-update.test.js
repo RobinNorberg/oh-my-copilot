@@ -178,7 +178,7 @@ describe('auto-update reconciliation', () => {
         expect(mockedWriteFileSync).not.toHaveBeenCalled();
         delete process.env.OMC_UPDATE_RECONCILE;
     });
-    it('preserves non-OMP hooks when refreshing plugin hooks during reconciliation', () => {
+    it('preserves non-OMC hooks when refreshing plugin hooks during reconciliation', () => {
         const existingSettings = {
             hooks: {
                 UserPromptSubmit: [

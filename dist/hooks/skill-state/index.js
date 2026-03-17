@@ -13,7 +13,7 @@
  * 2. Read/write/clear functions for skill-active-state.json
  * 3. A check function for the Stop hook to determine if blocking is needed
  *
- * Fix for: https://github.com/RobinNorberg/oh-my-copilot/issues/1033
+ * Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1033
  */
 import { writeModeState, readModeState, clearModeStateFile } from '../../lib/mode-state-io.js';
 // ---------------------------------------------------------------------------
@@ -32,10 +32,10 @@ const PROTECTION_CONFIGS = {
  * Maps each skill name to its protection level.
  *
  * - 'none': Already has dedicated mode state (ralph, autopilot, etc.) or is
- *   instant/read-only (trace, hud, omg-help, etc.)
+ *   instant/read-only (trace, hud, omc-help, etc.)
  * - 'light': Quick utility skills
  * - 'medium': Review/planning skills that run multiple agents
- * - 'heavy': Long-running skills (deepinit, omg-setup)
+ * - 'heavy': Long-running skills (deepinit, omc-setup)
  */
 const SKILL_PROTECTION = {
     // === Already have mode state → no additional protection ===
@@ -43,14 +43,14 @@ const SKILL_PROTECTION = {
     ralph: 'none',
     ultrawork: 'none',
     team: 'none',
-    'omg-teams': 'none',
+    'omc-teams': 'none',
     ultraqa: 'none',
     cancel: 'none',
     // === Instant / read-only → no protection needed ===
     trace: 'none',
     hud: 'none',
-    'omg-doctor': 'none',
-    'omg-help': 'none',
+    'omc-doctor': 'none',
+    'omc-help': 'none',
     'learn-about-omg': 'none',
     note: 'none',
     // === Light protection (simple shortcuts, 3 reinforcements) ===
@@ -64,7 +64,7 @@ const SKILL_PROTECTION = {
     'external-context': 'medium',
     sciomc: 'medium',
     learner: 'medium',
-    'omg-setup': 'medium',
+    'omc-setup': 'medium',
     'mcp-setup': 'medium',
     'project-session-manager': 'medium',
     'writer-memory': 'medium',

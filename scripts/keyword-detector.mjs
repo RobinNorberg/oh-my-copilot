@@ -133,6 +133,7 @@ function activateState(directory, prompt, stateName, sessionId) {
     started_at: new Date().toISOString(),
     original_prompt: prompt,
     session_id: sessionId || undefined,
+    project_path: directory,
     reinforcement_count: 0,
     last_checked_at: new Date().toISOString()
   };

@@ -176,12 +176,12 @@ describe("sendDiscord", () => {
         const config = {
             enabled: true,
             webhookUrl: "https://discord.com/api/webhooks/123/abc",
-            username: "OMP Bot",
+            username: "OMC Bot",
         };
         await sendDiscord(config, basePayload);
         const call = vi.mocked(fetch).mock.calls[0];
         const body = JSON.parse(call[1].body);
-        expect(body.username).toBe("OMP Bot");
+        expect(body.username).toBe("OMC Bot");
     });
     it("returns error on HTTP failure", async () => {
         vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 403 }));
@@ -493,13 +493,13 @@ describe("sendSlack", () => {
             enabled: true,
             webhookUrl: "https://hooks.slack.com/services/T00/B00/xxx",
             channel: "#alerts",
-            username: "OMP",
+            username: "OMC",
         };
         await sendSlack(config, basePayload);
         const call = vi.mocked(fetch).mock.calls[0];
         const body = JSON.parse(call[1].body);
         expect(body.channel).toBe("#alerts");
-        expect(body.username).toBe("OMP");
+        expect(body.username).toBe("OMC");
     });
     it("prepends user mention to message text", async () => {
         const config = {
@@ -706,12 +706,12 @@ describe("sendSlack input sanitization", () => {
         const config = {
             enabled: true,
             webhookUrl: "https://hooks.slack.com/services/T00/B00/xxx",
-            username: "OMP Bot",
+            username: "OMC Bot",
         };
         await sendSlack(config, basePayload);
         const call = vi.mocked(fetch).mock.calls[0];
         const body = JSON.parse(call[1].body);
-        expect(body.username).toBe("OMP Bot");
+        expect(body.username).toBe("OMC Bot");
     });
     it("drops invalid mention and sends text without prefix", async () => {
         const config = {

@@ -218,7 +218,7 @@ function isStaleSkillState(state) {
 /**
  * Check if a cancel signal is in progress for the session.
  * Cancel signals are written by state_clear and expire after 30 seconds.
- * @param {string} stateDir - The .omg/state directory path
+ * @param {string} stateDir - The .omp/state directory path
  * @param {string} sessionId - Optional session ID
  * @returns {boolean} true if cancel is in progress
  */
@@ -411,7 +411,7 @@ function countIncompleteTodos(sessionId, projectDir) {
 
   // Project-local todos only
   for (const path of [
-    join(projectDir, ".omc", "todos.json"),
+    join(projectDir, ".omp", "todos.json"),
     join(projectDir, ".copilot", "todos.json"),
   ]) {
     try {
@@ -438,7 +438,7 @@ function countIncompleteTodos(sessionId, projectDir) {
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
  *
- * See: https://github.com/RobinNorberg/oh-my-copilot/issues/213
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 function isContextLimitStop(data) {
   const reason = (data.stop_reason || data.stopReason || "").toLowerCase();
@@ -542,12 +542,12 @@ async function main() {
     const sessionIdRaw = data.sessionId || data.session_id || data.sessionid || "";
     const sessionId = sanitizeSessionId(sessionIdRaw);
     const hasValidSessionId = isValidSessionId(sessionIdRaw);
-    const stateDir = join(directory, ".omc", "state");
-    const globalStateDir = join(homedir(), ".omc", "state");
+    const stateDir = join(directory, ".omp", "state");
+    const globalStateDir = join(homedir(), ".omp", "state");
 
     // CRITICAL: Never block context-limit stops.
     // Blocking these causes a deadlock where Copilot CLI cannot compact.
-    // See: https://github.com/RobinNorberg/oh-my-copilot/issues/213
+    // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
     if (isContextLimitStop(data)) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
@@ -833,7 +833,7 @@ async function main() {
       }
     }
 
-    // Priority 6: Team (omc-teams / staged pipeline)
+    // Priority 6: Team (omp-teams / staged pipeline)
     if (
       team.state?.active &&
       !isStaleState(team.state) &&

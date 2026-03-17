@@ -26,7 +26,7 @@ function isPathContained(targetPath, basePath) {
   return normalizedTarget.startsWith(normalizedBase + sep) || normalizedTarget === normalizedBase;
 }
 
-// Initialize .omc directory if needed
+// Initialize .omp directory if needed
 function initOmcDir(directory) {
   const cwd = process.cwd();
   // Validate directory is contained within cwd
@@ -34,7 +34,7 @@ function initOmcDir(directory) {
     // Fallback to cwd if directory attempts traversal
     directory = cwd;
   }
-  const omcDir = join(directory, '.omc');
+  const omcDir = join(directory, '.omp');
   const stateDir = join(omcDir, 'state');
 
   if (!existsSync(omcDir)) {
@@ -140,7 +140,7 @@ async function main() {
       return;
     }
 
-    // Initialize .omg/state directory
+    // Initialize .omp/state directory
     const stateDir = initOmcDir(directory);
     const statePath = join(stateDir, 'last-tool-error.json');
 

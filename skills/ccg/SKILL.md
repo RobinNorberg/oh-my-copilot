@@ -30,11 +30,9 @@ Use this when you want parallel external perspectives without launching tmux tea
    - Codex prompt (analysis/architecture/backend)
    - Gemini prompt (UX/design/docs/alternatives)
 
-2. Copilot runs:
-   - /oh-my-copilot:ask codex "<codex prompt>"
-   - /oh-my-copilot:ask gemini "<gemini prompt>"
-
-   (equivalent CLI path: `omc ask codex ...` + `omc ask gemini ...`)
+2. Copilot runs via CLI (skill nesting not supported):
+   - `omc ask codex "<codex prompt>"`
+   - `omc ask gemini "<gemini prompt>"`
 
 3. Artifacts are written under `.omg/artifacts/ask/`
 
@@ -52,16 +50,11 @@ Split the user request into:
 - **Gemini prompt:** UX/content clarity, alternatives, edge-case usability, docs polish
 - **Synthesis plan:** how to reconcile conflicts
 
-### 2. Invoke ask skills
+### 2. Invoke advisors via CLI
 
-Use skill routing first:
+> **Note:** Skill nesting (invoking a skill from within an active skill) is not supported in Claude Code. Always use the direct CLI path via Bash tool.
 
-```bash
-/oh-my-copilot:ask codex <codex prompt>
-/oh-my-copilot:ask gemini <gemini prompt>
-```
-
-Equivalent direct CLI:
+Run both advisors:
 
 ```bash
 omc ask codex "<codex prompt>"

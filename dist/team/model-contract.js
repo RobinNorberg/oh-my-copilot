@@ -99,8 +99,8 @@ export const _testInternals = {
 const CONTRACTS = {
     claude: {
         agentType: 'claude',
-        binary: 'claude',
-        installInstructions: 'Install Claude Code: https://docs.anthropic.com/en/docs/claude-code',
+        binary: 'copilot',
+        installInstructions: 'Install Copilot CLI: https://docs.github.com/copilot/copilot-cli',
         buildLaunchArgs(model, extraFlags = []) {
             const args = ['--dangerously-skip-permissions'];
             if (model)

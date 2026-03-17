@@ -122,9 +122,9 @@ async function main() {
       console.log(\`[OMP HUD] Plugin HUD load failed. Run: cd "\${pluginCacheDir}" && npm install && npm run build\`);
     }
   } else if (existsSync(pluginCacheBase)) {
-    console.log("[OMP HUD] Plugin cache found but no versions installed. Run: /oh-my-copilot:omg-setup");
+    console.log("[OMP HUD] Plugin cache found but no versions installed. Run: /oh-my-copilot:omc-setup");
   } else {
-    console.log("[OMP HUD] Plugin not installed. Run: /oh-my-copilot:omg-setup");
+    console.log("[OMP HUD] Plugin not installed. Run: /oh-my-copilot:omc-setup");
   }
 }
 

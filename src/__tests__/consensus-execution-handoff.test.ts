@@ -42,7 +42,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
 
   describe('plan skill - consensus mode', () => {
     it('should mandate AskUserQuestion for the approval step', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -51,7 +51,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should mandate Skill invocation for ralph on user approval', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -60,7 +60,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should use MUST language for execution handoff', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -69,7 +69,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should prohibit direct implementation from the planning agent', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -78,7 +78,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should not modify interview mode steps', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const interviewSection = extractSection(skill!.template, 'Interview Mode');
@@ -89,7 +89,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should not modify direct mode steps', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const directSection = extractSection(skill!.template, 'Direct Mode');
@@ -99,7 +99,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should not modify review mode steps', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const reviewSection = extractSection(skill!.template, 'Review Mode');
@@ -109,7 +109,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should reference ralph skill invocation in escalation section', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const escalation = extractTagContent(skill!.template, 'Escalation_And_Stop_Conditions');
@@ -120,7 +120,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should require RALPLAN-DR structured deliberation in consensus mode', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -133,7 +133,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should require ADR fields in final consensus output', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -148,7 +148,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should mention deliberate mode requirements in consensus mode', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -163,7 +163,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
 
   describe('Issue #600: User feedback step between Planner and Architect/Critic', () => {
     it('should have a user feedback step after Planner and before Architect', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -184,7 +184,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should mandate AskUserQuestion for the user feedback step', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -195,7 +195,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should offer Proceed/Request changes/Skip review options in user feedback step', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -207,7 +207,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should place Critic after Architect in the consensus flow', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
@@ -222,7 +222,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
     });
 
     it('should require architect antithesis and critic rejection gates in consensus flow', () => {
-      const skill = getBuiltinSkill('omg-plan');
+      const skill = getBuiltinSkill('omc-plan');
       expect(skill).toBeDefined();
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');

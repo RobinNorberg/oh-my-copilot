@@ -20,21 +20,21 @@ Use `/oh-my-copilot:setup` as the unified setup/configuration entrypoint.
 
 Route by the first argument:
 
-- No argument, `wizard`, `local`, `global`, or `--force` -> run `/oh-my-copilot:omg-setup {{ARGUMENTS}}`
-- `doctor` -> run `/oh-my-copilot:omg-doctor {{ARGUMENTS_AFTER_DOCTOR}}`
+- No argument, `wizard`, `local`, `global`, or `--force` -> run `/oh-my-copilot:omc-setup {{ARGUMENTS}}`
+- `doctor` -> run `/oh-my-copilot:omc-doctor {{ARGUMENTS_AFTER_DOCTOR}}`
 - `mcp` -> run `/oh-my-copilot:mcp-setup {{ARGUMENTS_AFTER_MCP}}`
 
 Examples:
 
 ```bash
-/oh-my-copilot:omg-setup {{ARGUMENTS}}
-/oh-my-copilot:omg-doctor {{ARGUMENTS_AFTER_DOCTOR}}
+/oh-my-copilot:omc-setup {{ARGUMENTS}}
+/oh-my-copilot:omc-doctor {{ARGUMENTS_AFTER_DOCTOR}}
 /oh-my-copilot:mcp-setup {{ARGUMENTS_AFTER_MCP}}
 ```
 
 ## Notes
 
-- `/oh-my-copilot:omg-setup`, `/oh-my-copilot:omg-doctor`, and `/oh-my-copilot:mcp-setup` remain valid compatibility entrypoints.
+- `/oh-my-copilot:omc-setup`, `/oh-my-copilot:omc-doctor`, and `/oh-my-copilot:mcp-setup` remain valid compatibility entrypoints.
 - Prefer `/oh-my-copilot:setup` in new documentation and user guidance.
 
 Task: {{ARGUMENTS}}

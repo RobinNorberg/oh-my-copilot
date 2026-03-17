@@ -20,6 +20,7 @@ import { existsSync } from 'fs';
 import { mkdir, readdir, writeFile } from 'fs/promises';
 import { performance } from 'perf_hooks';
 import { TeamPaths, absPath, teamStateRoot } from './state-paths.js';
+import { allocateTasksToWorkers } from './allocation-policy.js';
 import { readTeamConfig, readWorkerStatus, readWorkerHeartbeat, readMonitorSnapshot, writeMonitorSnapshot, writeShutdownRequest, readShutdownAck, writeWorkerInbox, listTasksFromFiles, saveTeamConfig, cleanupTeamState, } from './monitor.js';
 import { appendTeamEvent, emitMonitorDerivedEvents } from './events.js';
 import { inferPhase } from './phase-controller.js';
@@ -78,7 +79,7 @@ function buildV2TaskInstruction(teamName, workerName, task, taskId) {
         `   omc team api transition-task-status --input '{"team_name":"${teamName}","task_id":"${taskId}","from":"in_progress","to":"completed","claim_token":"<claim_token>"}' --json`,
         `4. On failure (use claim_token from step 1):`,
         `   omc team api transition-task-status --input '{"team_name":"${teamName}","task_id":"${taskId}","from":"in_progress","to":"failed","claim_token":"<claim_token>"}' --json`,
-        `5. Exit immediately after transitioning.`,
+        `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
         ``,
         `## Task Assignment`,
         `Task ID: ${taskId}`,
@@ -279,11 +280,40 @@ export async function startTeamV2(config) {
             created_at: new Date().toISOString(),
         }, null, 2), 'utf-8');
     }
-    // Set up worker state dirs and overlays (with v2 CLI API instructions)
-    const workerNames = [];
+    // Build allocation inputs for the new role-aware allocator
+    const workerNames = Array.from({ length: config.workerCount }, (_, index) => `worker-${index + 1}`);
+    const workerNameSet = new Set(workerNames);
+    // Respect explicit owner fields first, then allocate remaining tasks
+    const startupAllocations = [];
+    const unownedTaskIndices = [];
     for (let i = 0; i < config.tasks.length; i++) {
-        const wName = `worker-${i + 1}`;
-        workerNames.push(wName);
+        const owner = config.tasks[i]?.owner;
+        if (typeof owner === 'string' && workerNameSet.has(owner)) {
+            startupAllocations.push({ workerName: owner, taskIndex: i });
+        }
+        else {
+            unownedTaskIndices.push(i);
+        }
+    }
+    if (unownedTaskIndices.length > 0) {
+        const allocationTasks = unownedTaskIndices.map(idx => ({
+            id: String(idx),
+            subject: config.tasks[idx].subject,
+            description: config.tasks[idx].description,
+        }));
+        const allocationWorkers = workerNames.map((name, i) => ({
+            name,
+            role: config.workerRoles?.[i]
+                ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
+            currentLoad: 0,
+        }));
+        for (const r of allocateTasksToWorkers(allocationTasks, allocationWorkers)) {
+            startupAllocations.push({ workerName: r.workerName, taskIndex: Number(r.taskId) });
+        }
+    }
+    // Set up worker state dirs and overlays (with v2 CLI API instructions)
+    for (let i = 0; i < workerNames.length; i++) {
+        const wName = workerNames[i];
         const agentType = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude');
         await ensureWorkerStateDir(sanitized, wName, leaderCwd);
         await writeWorkerOverlay({
@@ -307,7 +337,8 @@ export async function startTeamV2(config) {
     const workersInfo = workerNames.map((wName, i) => ({
         name: wName,
         index: i + 1,
-        role: (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
+        role: config.workerRoles?.[i]
+            ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
         assigned_tasks: [],
         working_dir: leaderCwd,
     }));
@@ -333,22 +364,32 @@ export async function startTeamV2(config) {
         ...(ownsWindow ? { workspace_mode: 'single' } : {}),
     };
     await saveTeamConfig(teamConfig, leaderCwd);
-    // Spawn workers for initial tasks (up to workerCount concurrent)
-    const maxConcurrent = Math.min(agentTypes.length, config.tasks.length);
-    for (let i = 0; i < maxConcurrent; i++) {
-        const wName = workerNames[i];
-        const taskId = String(i + 1);
-        const task = config.tasks[i];
-        if (!task)
+    // Spawn workers for initial tasks (at most one startup task per worker)
+    const initialStartupAllocations = [];
+    const seenStartupWorkers = new Set();
+    for (const decision of startupAllocations) {
+        if (seenStartupWorkers.has(decision.workerName))
+            continue;
+        initialStartupAllocations.push(decision);
+        seenStartupWorkers.add(decision.workerName);
+        if (initialStartupAllocations.length >= config.workerCount)
             break;
+    }
+    for (const decision of initialStartupAllocations) {
+        const wName = decision.workerName;
+        const workerIndex = Number.parseInt(wName.replace('worker-', ''), 10) - 1;
+        const taskId = String(decision.taskIndex + 1);
+        const task = config.tasks[decision.taskIndex];
+        if (!task || workerIndex < 0)
+            continue;
         const workerLaunch = await spawnV2Worker({
             sessionName,
             leaderPaneId,
             existingWorkerPaneIds: workerPaneIds,
             teamName: sanitized,
             workerName: wName,
-            workerIndex: i,
-            agentType: (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
+            workerIndex,
+            agentType: (agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
             task,
             taskId,
             cwd: leaderCwd,
@@ -356,7 +397,7 @@ export async function startTeamV2(config) {
         });
         if (workerLaunch.paneId) {
             workerPaneIds.push(workerLaunch.paneId);
-            const workerInfo = workersInfo[i];
+            const workerInfo = workersInfo[workerIndex];
             if (workerInfo) {
                 workerInfo.pane_id = workerLaunch.paneId;
                 workerInfo.assigned_tasks = workerLaunch.startupAssigned ? [taskId] : [];

@@ -30,7 +30,7 @@ const MODE_STATE_FILES = [
   'ultraqa-state.json',
   'pipeline-state.json',
   'team-state.json',
-  'omg-teams-state.json',
+  'omc-teams-state.json',
 ];
 const AGENT_HEAVY_TOOLS = new Set(['Task', 'TaskCreate', 'TaskUpdate']);
 const PREFLIGHT_CONTEXT_THRESHOLD = parseInt(process.env.OMC_AGENT_PREFLIGHT_CONTEXT_THRESHOLD || '72', 10);
@@ -338,14 +338,14 @@ const SKILL_PROTECTION_CONFIGS = {
 
 const SKILL_PROTECTION_MAP = {
   autopilot: 'none', ralph: 'none', ultrawork: 'none', team: 'none',
-  'omg-teams': 'none', ultraqa: 'none', cancel: 'none',
-  trace: 'none', hud: 'none', 'omg-doctor': 'none', 'omg-help': 'none',
+  'omc-teams': 'none', ultraqa: 'none', cancel: 'none',
+  trace: 'none', hud: 'none', 'omc-doctor': 'none', 'omc-help': 'none',
   'learn-about-omg': 'none', note: 'none',
   tdd: 'light', 'build-fix': 'light', analyze: 'light', skill: 'light',
   'configure-notifications': 'light',
   'code-review': 'medium', 'security-review': 'medium', plan: 'medium',
   ralplan: 'medium', review: 'medium', 'external-context': 'medium',
-  sciomp: 'medium', learner: 'medium', 'omg-setup': 'medium',
+  sciomp: 'medium', learner: 'medium', 'omc-setup': 'medium',
   'mcp-setup': 'medium', 'project-session-manager': 'medium',
   'writer-memory': 'medium', 'ralph-init': 'medium', ccg: 'medium',
   deepinit: 'heavy',

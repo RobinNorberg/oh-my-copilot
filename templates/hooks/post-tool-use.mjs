@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // OMP Post-Tool-Use Hook (Node.js)
 // Processes <remember> tags from Task agent output
-// Saves to .omg/notepad.md for compaction-resilient memory
+// Saves to .omp/notepad.md for compaction-resilient memory
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
@@ -27,7 +27,7 @@ const NOTEPAD_TEMPLATE = '# Notepad\n' +
 
 // Initialize notepad.md if needed
 function initNotepad(directory) {
-  const omcDir = join(directory, '.omc');
+  const omcDir = join(directory, '.omp');
   const notepadPath = join(omcDir, 'notepad.md');
 
   if (!existsSync(omcDir)) {
@@ -57,13 +57,13 @@ function getInvokedSkillName(toolInput) {
 }
 
 function activateState(directory, stateName, state, sessionId) {
-  const localDir = join(directory, '.omc', 'state');
+  const localDir = join(directory, '.omp', 'state');
   if (!existsSync(localDir)) {
     try { mkdirSync(localDir, { recursive: true }); } catch {}
   }
   try { writeFileSync(join(localDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
 
-  const globalDir = join(homedir(), '.omc', 'state');
+  const globalDir = join(homedir(), '.omp', 'state');
   if (!existsSync(globalDir)) {
     try { mkdirSync(globalDir, { recursive: true }); } catch {}
   }

@@ -8,7 +8,7 @@
  * When planning='ralplan', uses consensus-driven planning with Planner/Architect/Critic.
  * When planning='direct', uses the simpler Architect+Critic approach.
  */
-import type { PipelineStageAdapter } from '../pipeline-types.js';
+import type { PipelineStageAdapter } from "../pipeline-types.js";
 export declare const RALPLAN_COMPLETION_SIGNAL = "PIPELINE_RALPLAN_COMPLETE";
 export declare const ralplanAdapter: PipelineStageAdapter;
 //# sourceMappingURL=ralplan-adapter.d.ts.map

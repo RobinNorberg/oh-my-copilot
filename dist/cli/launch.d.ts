@@ -77,7 +77,7 @@ export declare function extractWebhookFlag(args: string[]): {
     remainingArgs: string[];
 };
 /**
- * Extract the OMP-specific --teams flag from launch args.
+ * Extract the OMC-specific --teams flag from launch args.
  * Purely presence-based:
  *   --teams        -> enable Teams notifications (OMC_MICROSOFT_TEAMS=1)
  *   --teams=true   -> enable

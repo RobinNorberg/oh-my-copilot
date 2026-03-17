@@ -212,11 +212,11 @@ export function isHudEnabledInConfig(): boolean {
  * Detect whether a statusLine config belongs to oh-my-copilot.
  *
  * Checks the command string for known OMG HUD paths so that custom
- * (non-OMP) statusLine configurations are preserved during forced
+ * (non-OMC) statusLine configurations are preserved during forced
  * updates/reconciliation.
  *
  * @param statusLine - The statusLine setting object from settings.json
- * @returns true if the statusLine was set by OMP
+ * @returns true if the statusLine was set by OMC
  */
 export function isOmcStatusLine(statusLine: unknown): boolean {
   if (!statusLine) return false;
@@ -258,7 +258,7 @@ const OMC_HOOK_FILENAMES = new Set([
  * 3. Command references a known OMG hook filename inside .copilot/hooks/
  *
  * @param command - The hook command string
- * @returns true if the command belongs to OMP
+ * @returns true if the command belongs to OMC
  */
 export function isOmcHook(command: string): boolean {
   const lowerCommand = command.toLowerCase();
@@ -865,16 +865,16 @@ export function install(options: InstallOptions = {}): InstallResult {
         '    // Plugin exists but HUD could not be loaded',
         '    const distDir = join(pluginCacheDir, "dist");',
         '    if (!existsSync(distDir)) {',
-        '      console.log(`[OMP HUD] Plugin installed but not built. Run: cd "${pluginCacheDir}" && npm install && npm run build`);',
+        '      console.log(`[OMC HUD] Plugin installed but not built. Run: cd "${pluginCacheDir}" && npm install && npm run build`);',
         '    } else {',
-        '      console.log(`[OMP HUD] Plugin HUD load failed. Run: cd "${pluginCacheDir}" && npm install && npm run build`);',
+        '      console.log(`[OMC HUD] Plugin HUD load failed. Run: cd "${pluginCacheDir}" && npm install && npm run build`);',
         '    }',
         '  } else if (existsSync(pluginCacheBase)) {',
         '    // Plugin cache directory exists but no versions',
-        '    console.log(`[OMP HUD] Plugin cache found but no versions installed. Run: /oh-my-copilot:omg-setup`);',
+        '    console.log(`[OMC HUD] Plugin cache found but no versions installed. Run: /oh-my-copilot:omc-setup`);',
         '  } else {',
         '    // No plugin installation found at all',
-        '    console.log("[OMP HUD] Plugin not installed. Run: /oh-my-copilot:omg-setup");',
+        '    console.log("[OMC HUD] Plugin not installed. Run: /oh-my-copilot:omc-setup");',
         '  }',
         '}',
         '',

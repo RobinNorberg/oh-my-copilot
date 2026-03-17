@@ -31,7 +31,7 @@ describe('truncateLineToMaxWidth', () => {
     });
     describe('ANSI escape code handling', () => {
         it('preserves ANSI codes within truncated output', () => {
-            const line = '\x1b[1m[OMP#4.5.0]\x1b[0m | rate: 45% | ctx: 30% | agents: 3 running';
+            const line = '\x1b[1m[OMC#4.5.0]\x1b[0m | rate: 45% | ctx: 30% | agents: 3 running';
             const result = truncateLineToMaxWidth(line, 30);
             expect(result).toContain('\x1b[1m');
             expect(result).toMatch(/\.\.\.$/);
@@ -43,7 +43,7 @@ describe('truncateLineToMaxWidth', () => {
             expect(truncateLineToMaxWidth(withoutAnsi, 5)).toBe(withoutAnsi);
         });
         it('handles multiple ANSI sequences', () => {
-            const line = '\x1b[1m[OMP]\x1b[0m \x1b[2m|\x1b[0m \x1b[33mrate: 45%\x1b[0m';
+            const line = '\x1b[1m[OMC]\x1b[0m \x1b[2m|\x1b[0m \x1b[33mrate: 45%\x1b[0m';
             const result = truncateLineToMaxWidth(line, 10);
             expect(result).toMatch(/\.\.\.$/);
         });
@@ -122,13 +122,13 @@ describe('truncateLineToMaxWidth', () => {
     });
     describe('realistic HUD scenarios', () => {
         it('truncates a typical HUD header line', () => {
-            const hudLine = '[OMP#4.5.0] | 5h:45% | ctx:30% | ralph:1/10 | agents:OeSe | bg:2';
+            const hudLine = '[OMC#4.5.0] | 5h:45% | ctx:30% | ralph:1/10 | agents:OeSe | bg:2';
             const result = truncateLineToMaxWidth(hudLine, 50);
             expect(result).toMatch(/\.\.\.$/);
             expect(stringWidth(result)).toBeLessThanOrEqual(50);
         });
         it('does not truncate a short HUD line within maxWidth', () => {
-            const hudLine = '[OMP] | ctx:30%';
+            const hudLine = '[OMC] | ctx:30%';
             const result = truncateLineToMaxWidth(hudLine, 80);
             expect(result).toBe(hudLine);
         });
@@ -139,7 +139,7 @@ describe('truncateLineToMaxWidth', () => {
             expect(stringWidth(result)).toBeLessThanOrEqual(30);
         });
         it('handles HUD line with ANSI and CJK mixed', () => {
-            const line = '\x1b[1m[OMP]\x1b[0m \u4f60\u597d hello world long text here';
+            const line = '\x1b[1m[OMC]\x1b[0m \u4f60\u597d hello world long text here';
             const result = truncateLineToMaxWidth(line, 15);
             expect(result).toMatch(/\.\.\.$/);
             expect(stringWidth(result)).toBeLessThanOrEqual(15);

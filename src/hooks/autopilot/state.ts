@@ -17,6 +17,7 @@ import {
 import {
   resolveStatePath,
   resolveSessionStatePath,
+  getOmcRoot,
 } from "../../lib/worktree-paths.js";
 import type {
   AutopilotState,
@@ -24,6 +25,8 @@ import type {
   AutopilotConfig,
 } from "./types.js";
 import { DEFAULT_CONFIG } from "./types.js";
+import { loadConfig } from "../../config/loader.js";
+import { resolvePlanOutputAbsolutePath } from "../../config/plan-output.js";
 import {
   readRalphState,
   clearRalphState,
@@ -35,7 +38,6 @@ import {
   readUltraQAState,
 } from "../ultraqa/index.js";
 import { canStartMode } from "../mode-registry/index.js";
-import { getOmcRoot } from "../../lib/worktree-paths.js";
 
 const SPEC_DIR = "autopilot";
 
@@ -353,7 +355,11 @@ export function getSpecPath(directory: string): string {
  * Get the plan file path
  */
 export function getPlanPath(directory: string): string {
-  return join(getOmcRoot(directory), "plans", "autopilot-impl.md");
+  return resolvePlanOutputAbsolutePath(
+    directory,
+    "autopilot-impl",
+    loadConfig(),
+  );
 }
 
 // ============================================================================

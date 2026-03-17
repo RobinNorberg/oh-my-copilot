@@ -168,6 +168,12 @@ export interface TeamPolicy {
     one_team_per_leader_session: boolean;
     cleanup_requires_all_workers_inactive: boolean;
 }
+/** Transport-specific fields (split from TeamPolicy for governance.ts) */
+export type TeamTransportPolicy = Pick<TeamPolicy, 'display_mode' | 'worker_launch_mode' | 'dispatch_mode' | 'dispatch_ack_timeout_ms'>;
+/** Governance-specific fields (split from TeamPolicy for governance.ts) */
+export type TeamGovernance = Pick<TeamPolicy, 'delegation_only' | 'plan_approval_required' | 'nested_teams_allowed' | 'one_team_per_leader_session' | 'cleanup_requires_all_workers_inactive'>;
+/** Team lifecycle profile */
+export type LifecycleProfile = 'default' | 'linked_ralph';
 /** Permissions snapshot captured at team creation */
 export interface PermissionsSnapshot {
     approval_mode: string;
@@ -181,6 +187,8 @@ export interface TeamManifestV2 {
     task: string;
     leader: TeamLeader;
     policy: TeamPolicy;
+    governance?: Partial<TeamGovernance>;
+    lifecycle_profile?: LifecycleProfile;
     permissions_snapshot: PermissionsSnapshot;
     tmux_session: string;
     worker_count: number;
@@ -232,6 +240,9 @@ export interface TeamConfig {
     resize_hook_name: string | null;
     resize_hook_target: string | null;
     next_worker_index?: number;
+    policy?: Partial<TeamPolicy>;
+    governance?: Partial<TeamGovernance>;
+    lifecycle_profile?: LifecycleProfile;
 }
 /** Dispatch request kinds */
 export type TeamDispatchRequestKind = 'inbox' | 'mailbox' | 'nudge';
