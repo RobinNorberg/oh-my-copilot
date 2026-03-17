@@ -51,7 +51,7 @@ describe('isOmcHook', () => {
   });
 
   it('is case-insensitive', () => {
-    expect(isOmcHook('node ~/.copilot/hooks/OMP-hook.mjs')).toBe(true);
+    expect(isOmcHook('node ~/.copilot/hooks/OMC-hook.mjs')).toBe(true);
     expect(isOmcHook('bash $HOME/.copilot/hooks/OH-MY-COPILOT.sh')).toBe(true);
   });
 });
@@ -87,7 +87,7 @@ describe('isOmcHook detection', () => {
   });
 
   it('uses case-insensitive matching', () => {
-    expect(isOmcHook('node ~/.copilot/hooks/OMP-hook.mjs')).toBe(true);
+    expect(isOmcHook('node ~/.copilot/hooks/OMC-hook.mjs')).toBe(true);
     expect(isOmcHook('OH-MY-COPILOT-detector.sh')).toBe(true);
   });
 });

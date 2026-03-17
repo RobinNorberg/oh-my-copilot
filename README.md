@@ -1,5 +1,3 @@
-English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Tiếng Việt](README.vi.md) | [Português](README.pt.md)
-
 # oh-my-copilot
 
 [![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
@@ -13,7 +11,7 @@ English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](READM
 
 **Multi-agent orchestration for Copilot CLI. Zero learning curve.**
 
-_Don't learn Copilot CLI. Just use OMP._
+_Don't learn Copilot CLI. Just use OMC._
 
 [Get Started](#quick-start) • [Documentation](https://docs/REFERENCE.md) • [CLI Reference](https://docs/REFERENCE.md/docs.html#cli-reference) • [Workflows](https://docs/REFERENCE.md/docs.html#workflows) • [Migration Guide](docs/MIGRATION.md)
 
@@ -54,7 +52,7 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 
 ## Team Mode (Recommended)
 
-Starting in **v4.1.7**, **Team** is the canonical orchestration surface in OMP. The legacy `swarm` keyword/skill has been removed; use `team` directly.
+Starting in **v4.1.7**, **Team** is the canonical orchestration surface in OMC. The legacy `swarm` keyword/skill has been removed; use `team` directly.
 
 ```bash
 /team 3:executor "fix all TypeScript errors"
@@ -74,7 +72,7 @@ Enable Copilot CLI native teams in `~/.copilot/settings.json`:
 }
 ```
 
-> If teams are disabled, OMP will warn you and fall back to non-team execution where possible.
+> If teams are disabled, OMC will warn you and fall back to non-team execution where possible.
 
 ### tmux CLI Workers — Codex & Gemini (v4.4.0+)
 
@@ -198,7 +196,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ultrathink`           | Deep reasoning mode                    | `ultrathink about this architecture`           |
 | `ado triage`           | Azure DevOps work item triage          | `ado triage`                                   |
 | `ado setup`            | Configure Azure DevOps integration     | `ado setup`                                    |
-| `cancelomc`, `stopomc` | Stop active OMP modes                  | `stopomc`                                      |
+| `cancelomc`, `stopomc` | Stop active OMC modes                  | `stopomc`                                      |
 
 **Notes:**
 
@@ -212,7 +210,7 @@ oh-my-copilot supports Azure DevOps natively — auto-detection, work item manag
 
 ### Auto-Detection
 
-When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMP automatically:
+When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC automatically:
 - Detects the ADO platform on session start
 - Injects available `mcp__azure-devops__*` MCP tool context into agent prompts
 - Reads `.omg/config.json` for project-specific settings
@@ -371,7 +369,7 @@ Tag behavior:
 
 ### Platform & tmux
 
-OMP features like `omc team` and rate-limit detection require **tmux**:
+OMC features like `omc team` and rate-limit detection require **tmux**:
 
 | Platform       | tmux provider                                            | Install                |
 | -------------- | -------------------------------------------------------- | ---------------------- |
@@ -386,7 +384,7 @@ OMP features like `omc team` and rate-limit detection require **tmux**:
 
 ### Optional: Multi-AI Orchestration
 
-OMP can optionally orchestrate external AI providers for cross-validation and design consistency. These are **not required** — OMP works fully without them.
+OMC can optionally orchestrate external AI providers for cross-validation and design consistency. These are **not required** — OMC works fully without them.
 
 | Provider                                                  | Install                             | What it enables                                  |
 | --------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
