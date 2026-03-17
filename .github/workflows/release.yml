@@ -37,7 +37,11 @@ jobs:
           if npm view oh-my-copilot@$VERSION version 2>/dev/null; then
             echo "::warning::Version $VERSION already published to npm, skipping publish"
           else
-            npm publish --access public
+            if echo "$VERSION" | grep -qE '(alpha|beta|rc|preview)'; then
+              npm publish --access public --tag preview
+            else
+              npm publish --access public
+            fi
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -47,6 +51,6 @@ jobs:
         with:
           generate_release_notes: true
           draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') || contains(github.ref, 'preview') }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
