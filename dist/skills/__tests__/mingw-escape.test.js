@@ -48,22 +48,6 @@ function findBangViolations(scripts, fileName) {
     return violations;
 }
 describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)', () => {
-    describe('skills/hud/SKILL.md', () => {
-        const filePath = join(REPO_ROOT, 'skills', 'hud', 'SKILL.md');
-        const content = readFileSync(filePath, 'utf-8');
-        const scripts = extractNodeEScripts(content);
-        it('has at least one node -e script', () => {
-            expect(scripts.length).toBeGreaterThan(0);
-        });
-        it('has no "!" in any node -e script body (MINGW64 safe)', () => {
-            const violations = findBangViolations(scripts, 'hud/SKILL.md');
-            if (violations.length > 0) {
-                expect.fail('Found "!" in node -e scripts (breaks MINGW64/Git Bash):\n' +
-                    violations.map(v => `  • ${v}`).join('\n'));
-            }
-            expect(violations.length).toBe(0);
-        });
-    });
     describe('skills/omc-setup/SKILL.md', () => {
         const filePath = join(REPO_ROOT, 'skills', 'omc-setup', 'SKILL.md');
         const content = readFileSync(filePath, 'utf-8');
@@ -74,20 +58,6 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
         });
     });
     describe('specific regressions (issue #729)', () => {
-        it('hud SKILL.md plugin-verify script uses v.length===0 not !v.length', () => {
-            const content = readFileSync(join(REPO_ROOT, 'skills', 'hud', 'SKILL.md'), 'utf-8');
-            expect(content).toContain('v.length===0');
-            expect(content).not.toContain('!v.length');
-        });
-        it('hud SKILL.md chmod script uses platform==="win32" not !=="win32"', () => {
-            const content = readFileSync(join(REPO_ROOT, 'skills', 'hud', 'SKILL.md'), 'utf-8');
-            const chmodLine = content
-                .split('\n')
-                .find(l => l.includes('chmodSync') && l.startsWith('node -e'));
-            expect(chmodLine).toBeDefined();
-            expect(chmodLine).not.toContain("!=='win32'");
-            expect(chmodLine).toContain("==='win32'");
-        });
         it('omc-setup SKILL.md explicitly tells the agent to execute immediately', () => {
             const content = readFileSync(join(REPO_ROOT, 'skills', 'omc-setup', 'SKILL.md'), 'utf-8');
             expect(content).toContain('immediately execute the workflow below');

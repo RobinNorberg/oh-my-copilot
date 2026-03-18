@@ -26,7 +26,7 @@ if (!existsSync(HUD_DIR)) {
 }
 
 // 2. Create HUD wrapper script
-const hudScriptPath = join(HUD_DIR, 'omg-hud.mjs').replace(/\\/g, '/');
+const hudScriptPath = join(HUD_DIR, 'omc-hud.mjs').replace(/\\/g, '/');
 const hudScript = `#!/usr/bin/env node
 /**
  * OMP HUD - Statusline Script
