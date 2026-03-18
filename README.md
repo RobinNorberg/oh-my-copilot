@@ -150,16 +150,25 @@ OMC features like `omc team` and rate-limit detection require **tmux**:
 
 > **Windows users:** [psmux](https://github.com/marlocarlo/psmux) provides a native `tmux` binary for Windows with 76 tmux-compatible commands. No WSL required.
 
-### Optional: Multi-AI Orchestration
+### Multi-AI Orchestration
 
-OMC can optionally orchestrate external AI providers for cross-validation and design consistency. These are **not required** — OMC works fully without them.
+OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validation, design consistency, and parallel execution. All four major CLI tools are supported:
 
-| Provider                                                  | Install                             | What it enables                                  |
-| --------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @google/gemini-cli` | Design review, UI consistency (1M token context) |
-| [Codex CLI](https://github.com/openai/codex)              | `npm install -g @openai/codex`      | Architecture validation, code review cross-check |
+| Provider                                                      | Install                                | What it enables                                  |
+| ------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------ |
+| [Copilot CLI](https://docs.github.com/copilot-cli)            | Built-in (primary)                     | Core orchestration platform                      |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm install -g @anthropic-ai/claude-code` | Deep reasoning, architecture analysis            |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm install -g @google/gemini-cli`    | Design review, UI consistency (1M token context) |
+| [Codex CLI](https://github.com/openai/codex)                  | `npm install -g @openai/codex`         | Architecture validation, code review cross-check |
 
-**Cost:** 3 Pro plans (Copilot + Gemini + ChatGPT) cover everything for ~$60/month.
+```bash
+omc team 2:claude "review auth architecture"
+omc team 2:codex "security analysis"
+omc team 2:gemini "UI consistency check"
+omc team 1:copilot "implement the feature"
+```
+
+Only Copilot CLI is required — the others are optional and add cross-provider validation.
 
 ---
 

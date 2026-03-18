@@ -829,8 +829,8 @@ function resolveCliBinaryPath(binary) {
 var CONTRACTS = {
   claude: {
     agentType: "claude",
-    binary: "copilot",
-    installInstructions: "Install Copilot CLI: https://docs.github.com/copilot/copilot-cli",
+    binary: "claude",
+    installInstructions: "Install Claude Code: https://docs.anthropic.com/en/docs/claude-code",
     buildLaunchArgs(model, extraFlags = []) {
       const args = ["--dangerously-skip-permissions"];
       if (model) args.push("--model", model);

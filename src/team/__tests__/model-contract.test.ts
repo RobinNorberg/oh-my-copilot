@@ -93,7 +93,12 @@ describe('model-contract', () => {
     it('returns contract for claude', () => {
       const c = getContract('claude');
       expect(c.agentType).toBe('claude');
-      expect(c.binary).toBe('copilot');
+      expect(c.binary).toBe('claude');
+    });
+    it('returns contract for copilot', () => {
+      const cp = getContract('copilot');
+      expect(cp.agentType).toBe('copilot');
+      expect(cp.binary).toBe('copilot');
     });
     it('returns contract for codex', () => {
       const c = getContract('codex');

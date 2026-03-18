@@ -29,6 +29,7 @@ Enable Copilot CLI native teams in `~/.copilot/settings.json`:
 **v4.4.0 removes the Codex/Gemini MCP servers** (`x`, `g` providers). Use the CLI-first Team runtime (`omc team ...`) to spawn real tmux worker panes:
 
 ```bash
+omc team 2:claude "review auth architecture"
 omc team 2:codex "review auth module for security issues"
 omc team 2:gemini "redesign UI components for accessibility"
 omc team 1:copilot "implement the payment flow"
@@ -46,14 +47,15 @@ For mixed Codex + Gemini work in one command, use the **`/ccg`** skill (routes v
 
 ## Worker Surface Comparison
 
-| Surface                    | Workers                 | Best For                                     |
-| -------------------------- | ----------------------- | -------------------------------------------- |
-| `omc team N:codex "..."`   | N Codex CLI panes       | Code review, security analysis, architecture |
-| `omc team N:gemini "..."`  | N Gemini CLI panes      | UI/UX design, docs, large-context tasks      |
-| `omc team N:copilot "..."` | N Copilot CLI panes     | General tasks via Copilot CLI in tmux        |
-| `/ccg`                     | ask-codex + ask-gemini  | Tri-model advisor synthesis                  |
+| Surface                    | Workers                 | Best For                                      |
+| -------------------------- | ----------------------- | --------------------------------------------- |
+| `omc team N:claude "..."`  | N Claude Code panes     | Deep reasoning, architecture, complex analysis |
+| `omc team N:codex "..."`   | N Codex CLI panes       | Code review, security analysis                |
+| `omc team N:gemini "..."`  | N Gemini CLI panes      | UI/UX design, docs, large-context tasks       |
+| `omc team N:copilot "..."` | N Copilot CLI panes     | General tasks via Copilot CLI in tmux         |
+| `/ccg`                     | ask-codex + ask-gemini  | Tri-model advisor synthesis                   |
 
-Workers spawn on-demand and die when their task completes — no idle resource usage. Requires `codex` / `gemini` CLIs installed and an active tmux session.
+Workers spawn on-demand and die when their task completes — no idle resource usage. Requires the respective CLI tool installed and an active tmux session.
 
 ## Updating
 
