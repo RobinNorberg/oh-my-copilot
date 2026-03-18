@@ -269,7 +269,7 @@ export function getAgentDefinitions(options?: {
 }
 
 // ============================================================
-// OMG SYSTEM PROMPT
+// OMC SYSTEM PROMPT
 // ============================================================
 
 /**

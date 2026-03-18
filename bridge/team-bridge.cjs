@@ -149,7 +149,7 @@ var import_fs3 = require("fs");
 var import_path3 = require("path");
 var import_util = require("util");
 var import_promises = __toESM(require("fs/promises"), 1);
-var TMUX_SESSION_PREFIX = "omg-team";
+var TMUX_SESSION_PREFIX = "omc-team";
 var promisifiedExec = (0, import_util.promisify)(import_child_process.exec);
 var promisifiedExecFile = (0, import_util.promisify)(import_child_process.execFile);
 function sanitizeName(name) {

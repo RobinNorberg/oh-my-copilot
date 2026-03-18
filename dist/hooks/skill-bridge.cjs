@@ -65,7 +65,7 @@ var USER_SKILLS_DIR = (0, import_path2.join)(
   (0, import_os2.homedir)(),
   ".copilot",
   "skills",
-  "omg-learned"
+  "omc-learned"
 );
 var GLOBAL_SKILLS_DIR = (0, import_path2.join)((0, import_os2.homedir)(), ".omg", "skills");
 var PROJECT_SKILLS_SUBDIR = OmgPaths.SKILLS;

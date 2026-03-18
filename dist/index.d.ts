@@ -32,7 +32,7 @@ export { documentSpecialistAgent as researcherAgent } from './agents/document-sp
 export { expandCommand, expandCommandPrompt, getCommand, getAllCommands, listCommands, commandExists, expandCommands, getCommandsDir, type CommandInfo, type ExpandedCommand } from './commands/index.js';
 export { install, isInstalled, getInstallInfo, isCopilotInstalled, COPILOT_CONFIG_DIR as INSTALLER_COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, VERSION as INSTALLER_VERSION, type InstallResult, type InstallOptions } from './installer/index.js';
 /**
- * Options for creating a OMG session
+ * Options for creating a OMC session
  */
 export interface OmcOptions {
     /** Custom configuration (merged with loaded config) */
@@ -49,7 +49,7 @@ export interface OmcOptions {
     apiKey?: string;
 }
 /**
- * Result of creating a OMG session
+ * Result of creating a OMC session
  */
 export interface OmcSession {
     /** The query options to pass to Copilot Agent SDK */
@@ -107,7 +107,7 @@ export interface OmcSession {
  */
 export declare function createOmcSession(options?: OmcOptions): OmcSession;
 /**
- * Quick helper to process a prompt with OMG enhancements
+ * Quick helper to process a prompt with OMC enhancements
  */
 export declare function enhancePrompt(prompt: string, config?: PluginConfig): string;
 /**

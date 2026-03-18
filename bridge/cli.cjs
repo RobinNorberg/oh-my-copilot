@@ -3778,7 +3778,7 @@ function generateConfigSchema() {
         properties: {
           enabled: { type: "boolean", default: true, description: "Enable intelligent model routing" },
           defaultTier: { type: "string", enum: ["LOW", "MEDIUM", "HIGH"], default: "MEDIUM", description: "Default tier when no rules match" },
-          forceInherit: { type: "boolean", default: false, description: "Force all agents to inherit the parent model, bypassing OMG model routing. When true, no model parameter is passed to Task calls, so agents use the user's Copilot CLI model setting. Auto-enabled for non-Copilot providers (CC Switch, custom ANTHROPIC_BASE_URL), AWS Bedrock, and Google Vertex AI." }
+          forceInherit: { type: "boolean", default: false, description: "Force all agents to inherit the parent model, bypassing OMC model routing. When true, no model parameter is passed to Task calls, so agents use the user's Copilot CLI model setting. Auto-enabled for non-Copilot providers (CC Switch, custom ANTHROPIC_BASE_URL), AWS Bedrock, and Google Vertex AI." }
         }
       },
       externalModels: {
@@ -5334,7 +5334,7 @@ var init_constants = __esm({
     import_os4 = require("os");
     init_paths2();
     init_worktree_paths();
-    USER_SKILLS_DIR = (0, import_path16.join)(getCopilotConfigDir(), "skills", "omg-learned");
+    USER_SKILLS_DIR = (0, import_path16.join)(getCopilotConfigDir(), "skills", "omc-learned");
     GLOBAL_SKILLS_DIR = (0, import_path16.join)((0, import_os4.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmgPaths.SKILLS;
     MAX_RECURSION_DEPTH = 10;
@@ -6925,7 +6925,7 @@ function trimClaudeUserContent(content) {
   return content.replace(/^(?:[ \t]*\r?\n)+/, "").replace(/(?:\r?\n[ \t]*)+$/, "").replace(/(?:\r?\n){3,}/g, "\n\n");
 }
 function isHudEnabledInConfig() {
-  const configPath = (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omg-config.json");
+  const configPath = (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omc-config.json");
   if (!(0, import_fs26.existsSync)(configPath)) {
     return true;
   }
@@ -6940,12 +6940,12 @@ function isHudEnabledInConfig() {
 function isOmcStatusLine(statusLine) {
   if (!statusLine) return false;
   if (typeof statusLine === "string") {
-    return statusLine.includes("omg-hud");
+    return statusLine.includes("omc-hud");
   }
   if (typeof statusLine === "object") {
     const sl = statusLine;
     if (typeof sl.command === "string") {
-      return sl.command.includes("omg-hud");
+      return sl.command.includes("omc-hud");
     }
   }
   return false;
@@ -7055,7 +7055,7 @@ function extractOmcVersionFromClaudeMd(content) {
   return null;
 }
 function syncPersistedSetupVersion(options) {
-  const configPath = options?.configPath ?? (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omg-config.json");
+  const configPath = options?.configPath ?? (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omc-config.json");
   let config2 = {};
   if ((0, import_fs26.existsSync)(configPath)) {
     const rawConfig = (0, import_fs26.readFileSync)(configPath, "utf-8").trim();
@@ -7163,7 +7163,7 @@ function install(options = {}) {
   const targetVersion = options.version ?? VERSION;
   const installedVersionHint = getNewestInstalledVersionHint();
   if (isComparableVersion(targetVersion) && isComparableVersion(installedVersionHint) && compareVersions(targetVersion, installedVersionHint) < 0) {
-    const message = `Skipping install: installed OMG ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omc update" to update the CLI package, then rerun "omc setup".`;
+    const message = `Skipping install: installed OMC ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omc update" to update the CLI package, then rerun "omc setup".`;
     log3(message);
     result.success = true;
     result.message = message;
@@ -7278,7 +7278,7 @@ function install(options = {}) {
     } else if (hudDisabledByOption) {
       log3("Skipping HUD statusline (user opted out)");
     } else if (hudDisabledByConfig) {
-      log3("Skipping HUD statusline (hudEnabled is false in .omg-config.json)");
+      log3("Skipping HUD statusline (hudEnabled is false in .omc-config.json)");
     } else {
       log3("Installing HUD statusline...");
     }
@@ -7286,11 +7286,11 @@ function install(options = {}) {
       if (!(0, import_fs26.existsSync)(HUD_DIR)) {
         (0, import_fs26.mkdirSync)(HUD_DIR, { recursive: true });
       }
-      hudScriptPath = (0, import_path34.join)(HUD_DIR, "omg-hud.mjs").replace(/\\/g, "/");
+      hudScriptPath = (0, import_path34.join)(HUD_DIR, "omc-hud.mjs").replace(/\\/g, "/");
       const hudScriptLines = [
         "#!/usr/bin/env node",
         "/**",
-        " * OMG HUD - Statusline Script",
+        " * OMC HUD - Statusline Script",
         " * Wrapper that imports from dev paths, plugin cache, or npm package",
         " */",
         "",
@@ -7394,7 +7394,7 @@ function install(options = {}) {
       if (!isWindows()) {
         (0, import_fs26.chmodSync)(hudScriptPath, 493);
       }
-      log3("  Installed omg-hud.mjs");
+      log3("  Installed omc-hud.mjs");
     } catch (_e) {
       log3("  Warning: Could not install HUD statusline script (non-fatal)");
       hudScriptPath = null;
@@ -7444,9 +7444,9 @@ function install(options = {}) {
             const findNodeDest = (0, import_path34.join)(HUD_DIR, "find-node.sh");
             (0, import_fs26.copyFileSync)(findNodeSrc, findNodeDest);
             (0, import_fs26.chmodSync)(findNodeDest, 493);
-            statusLineCommand = "sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omg-hud.mjs";
+            statusLineCommand = "sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omc-hud.mjs";
           } catch {
-            statusLineCommand = "node $HOME/.copilot/hud/omg-hud.mjs";
+            statusLineCommand = "node $HOME/.copilot/hud/omc-hud.mjs";
           }
         }
         const needsMigration = typeof existingSettings.statusLine === "string" && isOmcStatusLine(existingSettings.statusLine);
@@ -7469,7 +7469,7 @@ function install(options = {}) {
         }
       }
       try {
-        const configPath = (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omg-config.json");
+        const configPath = (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omc-config.json");
         let omcConfig = {};
         if ((0, import_fs26.existsSync)(configPath)) {
           omcConfig = JSON.parse((0, import_fs26.readFileSync)(configPath, "utf-8"));
@@ -7478,7 +7478,7 @@ function install(options = {}) {
         if (detectedNode !== "node") {
           omcConfig.nodeBinary = detectedNode;
           (0, import_fs26.writeFileSync)(configPath, JSON.stringify(omcConfig, null, 2));
-          log3(`  Saved node binary path to .omg-config.json: ${detectedNode}`);
+          log3(`  Saved node binary path to .omc-config.json: ${detectedNode}`);
         }
       } catch {
         log3("  Warning: Could not save node binary path (non-fatal)");
@@ -7561,7 +7561,7 @@ var init_installer = __esm({
     HOOKS_DIR = (0, import_path34.join)(COPILOT_CONFIG_DIR, "hooks");
     HUD_DIR = (0, import_path34.join)(COPILOT_CONFIG_DIR, "hud");
     SETTINGS_FILE = (0, import_path34.join)(COPILOT_CONFIG_DIR, "settings.json");
-    VERSION_FILE = (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omg-version.json");
+    VERSION_FILE = (0, import_path34.join)(COPILOT_CONFIG_DIR, ".omc-version.json");
     CORE_COMMANDS = [];
     VERSION = getRuntimePackageVersion();
     OMC_VERSION_MARKER_PATTERN = /<!-- OMC:VERSION:([^\s]+) -->/;
@@ -8051,7 +8051,7 @@ async function silentAutoUpdate(config2 = {}) {
   const {
     checkIntervalHours = 24,
     autoApply = true,
-    logFile = (0, import_path35.join)(COPILOT_CONFIG_DIR2, ".omg-update.log"),
+    logFile = (0, import_path35.join)(COPILOT_CONFIG_DIR2, ".omc-update.log"),
     maxRetries = 3
   } = config2;
   if (!isSilentAutoUpdateEnabled()) {
@@ -8151,9 +8151,9 @@ var init_auto_update = __esm({
     GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
     GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
     COPILOT_CONFIG_DIR2 = getConfigDir();
-    VERSION_FILE2 = (0, import_path35.join)(COPILOT_CONFIG_DIR2, ".omg-version.json");
-    CONFIG_FILE = (0, import_path35.join)(COPILOT_CONFIG_DIR2, ".omg-config.json");
-    SILENT_UPDATE_STATE_FILE = (0, import_path35.join)(COPILOT_CONFIG_DIR2, ".omg-silent-update.json");
+    VERSION_FILE2 = (0, import_path35.join)(COPILOT_CONFIG_DIR2, ".omc-version.json");
+    CONFIG_FILE = (0, import_path35.join)(COPILOT_CONFIG_DIR2, ".omc-config.json");
+    SILENT_UPDATE_STATE_FILE = (0, import_path35.join)(COPILOT_CONFIG_DIR2, ".omc-silent-update.json");
   }
 });
 
@@ -15781,7 +15781,7 @@ function getReplyConfig() {
   );
   if (hasDiscordBot && authorizedDiscordUserIds.length === 0) {
     console.warn(
-      "[notifications] Discord reply listening disabled: authorizedDiscordUserIds is empty. Set OMC_REPLY_DISCORD_USER_IDS or add to .omg-config.json notifications.reply.authorizedDiscordUserIds"
+      "[notifications] Discord reply listening disabled: authorizedDiscordUserIds is empty. Set OMC_REPLY_DISCORD_USER_IDS or add to .omc-config.json notifications.reply.authorizedDiscordUserIds"
     );
   }
   return {
@@ -15844,7 +15844,7 @@ var init_config = __esm({
     init_paths2();
     init_hook_config();
     init_validation2();
-    CONFIG_FILE2 = (0, import_path50.join)(getCopilotConfigDir(), ".omg-config.json");
+    CONFIG_FILE2 = (0, import_path50.join)(getCopilotConfigDir(), ".omc-config.json");
     DEFAULT_TMUX_TAIL_LINES = 15;
     VALID_VERBOSITY_LEVELS = /* @__PURE__ */ new Set([
       "verbose",
@@ -17077,7 +17077,7 @@ function getCurrentTmuxSession() {
 function getTeamTmuxSessions(teamName) {
   const sanitized = teamName.replace(/[^a-zA-Z0-9-]/g, "");
   if (!sanitized) return [];
-  const prefix = `omg-team-${sanitized}-`;
+  const prefix = `omc-team-${sanitized}-`;
   try {
     const output = (0, import_child_process15.execSync)("tmux list-sessions -F '#{session_name}'", {
       encoding: "utf-8",
@@ -17610,7 +17610,7 @@ var init_presets = __esm({
     CUSTOM_INTEGRATION_PRESETS = {
       n8n: {
         name: "n8n Webhook",
-        description: "Trigger n8n workflows on OMG events",
+        description: "Trigger n8n workflows on OMC events",
         type: "webhook",
         defaultConfig: {
           method: "POST",
@@ -17777,7 +17777,7 @@ var init_template_variables = __esm({
       },
       // Mode info
       activeMode: {
-        description: "Currently active OMG mode",
+        description: "Currently active OMC mode",
         example: "ralph",
         availableIn: ["*"]
       },
@@ -21426,7 +21426,7 @@ async function createTeamSession(teamName, workerCount, cwd2, options = {}) {
   }
   if (useDedicatedWindow) {
     const targetSession = sessionAndWindow.split(":")[0] ?? sessionAndWindow;
-    const windowName = `omg-${sanitizeName(teamName)}`.slice(0, 32);
+    const windowName = `omc-${sanitizeName(teamName)}`.slice(0, 32);
     const newWindowResult = await execFileAsync5("tmux", [
       "new-window",
       "-d",
@@ -21799,7 +21799,7 @@ var init_tmux_session = __esm({
     import_promises9 = __toESM(require("fs/promises"), 1);
     init_team_name();
     sleep4 = (ms) => new Promise((r) => setTimeout(r, ms));
-    TMUX_SESSION_PREFIX = "omg-team";
+    TMUX_SESSION_PREFIX = "omc-team";
     promisifiedExec = (0, import_util8.promisify)(import_child_process19.exec);
     promisifiedExecFile = (0, import_util8.promisify)(import_child_process19.execFile);
     SUPPORTED_POSIX_SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "fish", "ksh"]);
@@ -23210,7 +23210,7 @@ async function resumeTeamV2(teamName, cwd2) {
     const { execFile: execFile6 } = await import("child_process");
     const { promisify: promisify7 } = await import("util");
     const execFileAsync5 = promisify7(execFile6);
-    const sessionName2 = config2.tmux_session || `omg-team-${sanitized}`;
+    const sessionName2 = config2.tmux_session || `omc-team-${sanitized}`;
     await execFileAsync5("tmux", ["has-session", "-t", sessionName2.split(":")[0]]);
     return {
       teamName: sanitized,
@@ -23290,7 +23290,7 @@ function getWorktreePath(repoRoot, teamName, workerName2) {
   return (0, import_node_path5.join)(repoRoot, ".omg", "worktrees", sanitizeName(teamName), sanitizeName(workerName2));
 }
 function getBranchName(teamName, workerName2) {
-  return `omg-team/${sanitizeName(teamName)}/${sanitizeName(workerName2)}`;
+  return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName2)}`;
 }
 function getMetadataPath(repoRoot, teamName) {
   return (0, import_node_path5.join)(repoRoot, ".omg", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
@@ -24147,7 +24147,7 @@ async function resumeTeam(teamName, cwd2) {
   const { execFile: execFile6 } = await import("child_process");
   const { promisify: promisify7 } = await import("util");
   const execFileAsync5 = promisify7(execFile6);
-  const sName = configData.tmuxSession || `omg-team-${teamName}`;
+  const sName = configData.tmuxSession || `omc-team-${teamName}`;
   try {
     await execFileAsync5("tmux", ["has-session", "-t", sName.split(":")[0]]);
   } catch {
@@ -25553,7 +25553,7 @@ var init_setup = __esm({
       ".omg/plans"
     ];
     CONFIG_FILES = [
-      ".omg-config.json"
+      ".omc-config.json"
     ];
     DEFAULT_STATE_MAX_AGE_DAYS = 7;
   }
@@ -29373,7 +29373,7 @@ var EXECUTOR_PROMPT_METADATA = {
 };
 var executorAgent = {
   name: "executor",
-  description: "Focused task executor. Execute tasks directly. NEVER delegate or spawn other agents. Same discipline as OMG, no delegation.",
+  description: "Focused task executor. Execute tasks directly. NEVER delegate or spawn other agents. Same discipline as OMC, no delegation.",
   prompt: loadAgentPrompt("executor"),
   model: "sonnet",
   defaultModel: "sonnet",
@@ -56518,7 +56518,7 @@ ${formatSkillOutput(projectSkills)}`
 };
 var loadGlobalTool = {
   name: "load_omc_skills_global",
-  description: "Load and list skills from global user directories (~/.omg/skills/ and ~/.copilot/skills/omg-learned/). Returns skill metadata for all discovered user-scoped skills.",
+  description: "Load and list skills from global user directories (~/.omg/skills/ and ~/.copilot/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
   schema: loadGlobalSchema,
   handler: async (_args) => {
     const allSkills = loadAllSkills(null);
@@ -56557,7 +56557,7 @@ ${formatSkillOutput(projectSkills)}
 ${formatSkillOutput(userSkills)}`;
     }
     if (skills.length === 0) {
-      output = "## No Skills Found\n\nNo skill files were discovered in any searched directories.\n\nSearched:\n- Project: .omg/skills/\n- Global: ~/.omg/skills/\n- Legacy: ~/.copilot/skills/omg-learned/";
+      output = "## No Skills Found\n\nNo skill files were discovered in any searched directories.\n\nSearched:\n- Project: .omg/skills/\n- Global: ~/.omg/skills/\n- Legacy: ~/.copilot/skills/omc-learned/";
     }
     return {
       content: [{
@@ -58679,7 +58679,7 @@ init_worktree_paths();
 var import_fs22 = require("fs");
 var import_path30 = require("path");
 init_worktree_paths();
-var CONFIG_FILE_NAME = ".omg-config.json";
+var CONFIG_FILE_NAME = ".omc-config.json";
 function isSharedMemoryEnabled() {
   try {
     const configPath = (0, import_path30.join)(
@@ -58884,7 +58884,7 @@ function listNamespaces(worktreeRoot) {
 }
 
 // src/tools/shared-memory-tools.ts
-var DISABLED_MSG = "Shared memory is disabled. Set agents.sharedMemory.enabled = true in ~/.copilot/.omg-config.json to enable.";
+var DISABLED_MSG = "Shared memory is disabled. Set agents.sharedMemory.enabled = true in ~/.copilot/.omc-config.json to enable.";
 function disabledResponse() {
   return {
     content: [{ type: "text", text: DISABLED_MSG }],
@@ -59781,7 +59781,7 @@ var continuationSystemPromptAddition = `
 
 ### YOU ARE BOUND TO YOUR TODO LIST
 
-Like OMG condemned to roll his boulder eternally, you are BOUND to your task list. Stopping with incomplete work is not a choice - it is a FAILURE. The system will force you back to work if you try to quit early.
+Like OMC condemned to roll his boulder eternally, you are BOUND to your task list. Stopping with incomplete work is not a choice - it is a FAILURE. The system will force you back to work if you try to quit early.
 
 ### THE SACRED RULES OF PERSISTENCE
 
@@ -60424,7 +60424,7 @@ function getEnforcementLevel(directory) {
     return enforcementCache.level;
   }
   const localConfig = path12.join(getOmcRoot(directory), "config.json");
-  const globalConfig2 = path12.join(getCopilotConfigDir(), ".omg-config.json");
+  const globalConfig2 = path12.join(getCopilotConfigDir(), ".omc-config.json");
   let level = "warn";
   for (const configPath of [localConfig, globalConfig2]) {
     if ((0, import_fs37.existsSync)(configPath)) {
@@ -62482,7 +62482,7 @@ var CC_NATIVE_COMMANDS = /* @__PURE__ */ new Set([
 ]);
 function toSafeSkillName(name) {
   const normalized = name.trim();
-  return CC_NATIVE_COMMANDS.has(normalized.toLowerCase()) ? `omg-${normalized}` : normalized;
+  return CC_NATIVE_COMMANDS.has(normalized.toLowerCase()) ? `omc-${normalized}` : normalized;
 }
 function loadSkillFromFile(skillPath, skillName) {
   try {
@@ -63667,7 +63667,7 @@ function checkLegacySkills() {
 }
 function checkConfigIssues() {
   const unknownFields = [];
-  const configPath = (0, import_path92.join)(getCopilotConfigDir(), ".omg-config.json");
+  const configPath = (0, import_path92.join)(getCopilotConfigDir(), ".omc-config.json");
   if (!(0, import_fs79.existsSync)(configPath)) {
     return { unknownFields };
   }
@@ -63713,7 +63713,7 @@ function runConflictCheck() {
   const configIssues = checkConfigIssues();
   const hasConflicts = hookConflicts.some((h) => !h.isOmc) || // Non-OMC hooks present
   legacySkills.length > 0 || // Legacy skills colliding with plugin
-  envFlags.disableOmc || // OMG is disabled
+  envFlags.disableOmc || // OMC is disabled
   envFlags.skipHooks.length > 0 || // Hooks are being skipped
   configIssues.unknownFields.length > 0;
   return {
@@ -63753,16 +63753,16 @@ function formatReport2(report, json) {
     lines.push("");
     if (report.claudeMdStatus.hasMarkers) {
       if (report.claudeMdStatus.companionFile) {
-        lines.push(`  ${colors.green("\u2713")} OMG markers found in companion file`);
+        lines.push(`  ${colors.green("\u2713")} OMC markers found in companion file`);
         lines.push(`    ${colors.gray(`Companion: ${report.claudeMdStatus.companionFile}`)}`);
       } else {
-        lines.push(`  ${colors.green("\u2713")} OMG markers present`);
+        lines.push(`  ${colors.green("\u2713")} OMC markers present`);
       }
       if (report.claudeMdStatus.hasUserContent) {
         lines.push(`  ${colors.green("\u2713")} User content preserved outside markers`);
       }
     } else {
-      lines.push(`  ${colors.yellow("\u26A0")} No OMG markers found`);
+      lines.push(`  ${colors.yellow("\u26A0")} No OMC markers found`);
       lines.push(`    ${colors.gray("Run /oh-my-copilot:omc-setup to add markers")}`);
       if (report.claudeMdStatus.hasUserContent) {
         lines.push(`  ${colors.blue("\u2139")} User content present - will be preserved`);
@@ -63778,7 +63778,7 @@ function formatReport2(report, json) {
   lines.push(colors.bold("\u{1F527} Environment Flags"));
   lines.push("");
   if (report.envFlags.disableOmc) {
-    lines.push(`  ${colors.red("\u2717")} DISABLE_OMC is set - OMG is disabled`);
+    lines.push(`  ${colors.red("\u2717")} DISABLE_OMC is set - OMC is disabled`);
   } else {
     lines.push(`  ${colors.green("\u2713")} DISABLE_OMC not set`);
   }
@@ -63801,7 +63801,7 @@ function formatReport2(report, json) {
   if (report.configIssues.unknownFields.length > 0) {
     lines.push(colors.bold("\u2699\uFE0F  Configuration Issues"));
     lines.push("");
-    lines.push(`  ${colors.yellow("\u26A0")} Unknown fields in .omg-config.json:`);
+    lines.push(`  ${colors.yellow("\u26A0")} Unknown fields in .omc-config.json:`);
     for (const field of report.configIssues.unknownFields) {
       lines.push(`    - ${field}`);
     }
@@ -63813,7 +63813,7 @@ function formatReport2(report, json) {
     lines.push(`${colors.gray("Review the issues above and run /oh-my-copilot:omc-setup if needed")}`);
   } else {
     lines.push(`${colors.green("\u2713")} No conflicts detected`);
-    lines.push(`${colors.gray("OMG is properly configured")}`);
+    lines.push(`${colors.gray("OMC is properly configured")}`);
   }
   lines.push("");
   return lines.join("\n");
@@ -64966,7 +64966,7 @@ async function handleTeamShutdown(teamName, cwd2, force) {
     return;
   }
   const { shutdownTeam: shutdownTeam2 } = await Promise.resolve().then(() => (init_runtime(), runtime_exports));
-  await shutdownTeam2(teamName, `omg-team-${teamName}`, cwd2);
+  await shutdownTeam2(teamName, `omc-team-${teamName}`, cwd2);
   console.log(`Team shutdown complete: ${teamName}`);
 }
 async function handleTeamApi(args, cwd2) {
@@ -65925,7 +65925,7 @@ function getProvider(name) {
 }
 
 // src/cli/commands/teleport.ts
-var DEFAULT_WORKTREE_ROOT = (0, import_path93.join)((0, import_os21.homedir)(), "Workspace", "omg-worktrees");
+var DEFAULT_WORKTREE_ROOT = (0, import_path93.join)((0, import_os21.homedir)(), "Workspace", "omc-worktrees");
 function parseRef(ref) {
   const ghPrUrlMatch = ref.match(/^https?:\/\/[^/]*github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[?#].*)?$/);
   if (ghPrUrlMatch) {
@@ -66422,7 +66422,7 @@ function buildTmuxSessionName(cwd2) {
   const now = /* @__PURE__ */ new Date();
   const pad = (n) => String(n).padStart(2, "0");
   const utcTimestamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}`;
-  const name = `omg-${dirToken}-${branchToken}-${utcTimestamp}`;
+  const name = `omc-${dirToken}-${branchToken}-${utcTimestamp}`;
   return name.length > 120 ? name.slice(0, 120) : name;
 }
 function sanitizeTmuxToken(value) {
@@ -66703,7 +66703,7 @@ async function launchCommand(args) {
     process.exit(1);
   }
   const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);
-  const sessionId = `omg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sessionId = `omc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   try {
     await preLaunch(cwd2, sessionId);
   } catch (err) {
@@ -66930,7 +66930,7 @@ function warnIfWin32() {
   if (process.env.OMC_SKIP_WIN32_WARNING === "1") return;
   if (process.platform === "win32" && !hasTmuxBinary()) {
     console.warn(source_default.yellow.bold("\n\u26A0  WARNING: Native Windows (win32) detected \u2014 no tmux found"));
-    console.warn(source_default.yellow("   OMG features that require tmux will not work."));
+    console.warn(source_default.yellow("   OMC features that require tmux will not work."));
     console.warn(source_default.yellow("   Install psmux for native Windows tmux support: winget install psmux"));
     console.warn(source_default.yellow("   Or use WSL2: https://learn.microsoft.com/en-us/windows/wsl/install"));
     console.warn("");
@@ -66974,7 +66974,7 @@ program2.command("ask [args...]").description("Run provider advisor prompt and w
 ${ASK_USAGE}`).action(async (args) => {
   await askCommand(args || []);
 });
-program2.command("init").description("Initialize OMG configuration in the current directory").option("-g, --global", "Initialize global user configuration").option("-f, --force", "Overwrite existing configuration").addHelpText("after", `
+program2.command("init").description("Initialize OMC configuration in the current directory").option("-g, --global", "Initialize global user configuration").option("-f, --force", "Overwrite existing configuration").addHelpText("after", `
 Examples:
   $ omc init                     Initialize in current directory
   $ omc init --global            Initialize global configuration
@@ -67005,7 +67005,7 @@ Examples:
 //   OMC_MODEL_MEDIUM (sonnet-class)
 //   OMC_MODEL_LOW    (haiku-class)
 {
-  "$schema": "./omg-schema.json",
+  "$schema": "./omc-schema.json",
 
   // Agent model configurations
   "agents": {
@@ -67089,7 +67089,7 @@ Examples:
 `;
   (0, import_fs88.writeFileSync)(targetPath, configContent);
   console.log(source_default.green(`Created configuration: ${targetPath}`));
-  const schemaPath = (0, import_path102.join)(targetDir, "omg-schema.json");
+  const schemaPath = (0, import_path102.join)(targetDir, "omc-schema.json");
   (0, import_fs88.writeFileSync)(schemaPath, JSON.stringify(generateConfigSchema(), null, 2));
   console.log(source_default.green(`Created JSON schema: ${schemaPath}`));
   console.log(source_default.blue("\nSetup complete!"));
@@ -67682,7 +67682,7 @@ Examples:
   console.log(source_default.gray("\n\u2501".repeat(50)));
   console.log(source_default.gray("\nTo check for updates, run: oh-my-copilot update --check"));
 });
-program2.command("install").description("Install OMG agents and commands to Copilot CLI config (~/.copilot/)").option("-f, --force", "Overwrite existing files").option("-q, --quiet", "Suppress output except for errors").option("--skip-copilot-check", "Skip checking if Copilot CLI is installed").addHelpText("after", `
+program2.command("install").description("Install OMC agents and commands to Copilot CLI config (~/.copilot/)").option("-f, --force", "Overwrite existing files").option("-q, --quiet", "Suppress output except for errors").option("--skip-copilot-check", "Skip checking if Copilot CLI is installed").addHelpText("after", `
 Examples:
   $ omc install                  Install to ~/.copilot/
   $ omc install --force          Reinstall, overwriting existing files
@@ -67697,7 +67697,7 @@ Examples:
   if (isInstalled() && !options.force) {
     const info = getInstallInfo();
     if (!options.quiet) {
-      console.log(source_default.yellow("OMG is already installed."));
+      console.log(source_default.yellow("OMC is already installed."));
       if (info) {
         console.log(source_default.gray(`  Version: ${info.version}`));
         console.log(source_default.gray(`  Installed: ${info.installedAt}`));
@@ -67724,9 +67724,9 @@ Examples:
       console.log("  copilot                        # Start Copilot CLI normally");
       console.log("");
       console.log(source_default.yellow("Slash Commands:"));
-      console.log("  /omg <task>              # Activate OMG orchestration mode");
-      console.log("  /omg-default             # Configure for current project");
-      console.log("  /omg-default-global      # Configure globally");
+      console.log("  /omg <task>              # Activate OMC orchestration mode");
+      console.log("  /omc-default             # Configure for current project");
+      console.log("  /omc-default-global      # Configure globally");
       console.log("  /ultrawork <task>             # Maximum performance mode");
       console.log("  /deepsearch <query>           # Thorough codebase search");
       console.log("  /analyze <target>             # Deep analysis mode");
@@ -67756,13 +67756,13 @@ Examples:
       console.log("    designer-low        - Simple styling (Haiku)");
       console.log("");
       console.log(source_default.yellow("After Updates:"));
-      console.log("  Run '/omg-default' (project) or '/omg-default-global' (global)");
+      console.log("  Run '/omc-default' (project) or '/omc-default-global' (global)");
       console.log("  to download the latest copilot-instructions.md configuration.");
       console.log("  This ensures you get the newest features and agent behaviors.");
       console.log("");
       console.log(source_default.blue("Quick Start:"));
       console.log("  1. Run 'copilot' to start Copilot CLI");
-      console.log("  2. Type '/omg-default' for project or '/omg-default-global' for global");
+      console.log("  2. Type '/omc-default' for project or '/omc-default-global' for global");
       console.log("  3. Or use '/omg <task>' for one-time activation");
     }
   } else {
@@ -67809,7 +67809,7 @@ waitCmd.command("detect").description("Scan for blocked Copilot CLI sessions in 
     lines: parseInt(options.lines)
   });
 });
-var teleportCmd = program2.command("teleport [ref]").description("Create git worktree for isolated development (e.g., omc teleport '#123')").option("--worktree", "Create worktree (default behavior, flag kept for compatibility)").option("-p, --path <path>", "Custom worktree path (default: ~/Workspace/omg-worktrees/)").option("-b, --base <branch>", "Base branch to create from (default: main)").option("--json", "Output as JSON").addHelpText("after", `
+var teleportCmd = program2.command("teleport [ref]").description("Create git worktree for isolated development (e.g., omc teleport '#123')").option("--worktree", "Create worktree (default behavior, flag kept for compatibility)").option("-p, --path <path>", "Custom worktree path (default: ~/Workspace/omc-worktrees/)").option("-b, --base <branch>", "Base branch to create from (default: main)").option("--json", "Output as JSON").addHelpText("after", `
 Examples:
   $ omc teleport '#42'           Create worktree for issue/PR #42
   $ omc teleport add-auth        Create worktree for a feature branch
@@ -67847,14 +67847,14 @@ Note:
     json: options.json
   });
 });
-teleportCmd.command("list").description("List existing worktrees in ~/Workspace/omg-worktrees/").option("--json", "Output as JSON").action(async (options) => {
+teleportCmd.command("list").description("List existing worktrees in ~/Workspace/omc-worktrees/").option("--json", "Output as JSON").action(async (options) => {
   await teleportListCommand(options);
 });
 teleportCmd.command("remove <path>").alias("rm").description("Remove a worktree").option("-f, --force", "Force removal even with uncommitted changes").option("--json", "Output as JSON").action(async (path20, options) => {
   const exitCode = await teleportRemoveCommand(path20, options);
   if (exitCode !== 0) process.exit(exitCode);
 });
-var doctorCmd = program2.command("doctor").description("Diagnostic tools for troubleshooting OMG installation").addHelpText("after", `
+var doctorCmd = program2.command("doctor").description("Diagnostic tools for troubleshooting OMC installation").addHelpText("after", `
 Examples:
   $ omc doctor conflicts         Check for plugin conflicts`);
 doctorCmd.command("conflicts").description("Check for plugin coexistence issues and configuration conflicts").option("--json", "Output as JSON").addHelpText("after", `
@@ -67864,9 +67864,9 @@ Examples:
   const exitCode = await doctorConflictsCommand(options);
   process.exit(exitCode);
 });
-program2.command("setup").description("Run OMG setup to sync all components (hooks, agents, skills)").option("-f, --force", "Force reinstall even if already up to date").option("-q, --quiet", "Suppress output except for errors").option("--skip-hooks", "Skip hook installation").option("--force-hooks", "Force reinstall hooks even if unchanged").addHelpText("after", `
+program2.command("setup").description("Run OMC setup to sync all components (hooks, agents, skills)").option("-f, --force", "Force reinstall even if already up to date").option("-q, --quiet", "Suppress output except for errors").option("--skip-hooks", "Skip hook installation").option("--force-hooks", "Force reinstall hooks even if unchanged").addHelpText("after", `
 Examples:
-  $ omc setup                     Sync all OMG components
+  $ omc setup                     Sync all OMC components
   $ omc setup --force             Force reinstall everything
   $ omc setup --quiet             Silent setup for scripts
   $ omc setup --skip-hooks        Install without hooks
@@ -67875,7 +67875,7 @@ Examples:
     console.log(source_default.blue("Oh-My-Copilot Setup\n"));
   }
   if (!options.quiet) {
-    console.log(source_default.gray("Syncing OMG components..."));
+    console.log(source_default.gray("Syncing OMC components..."));
   }
   const result = install({
     force: !!options.force,
@@ -67932,13 +67932,13 @@ program2.command("postinstall", { hidden: true }).description("Run post-install 
   if (result.success) {
     console.log(source_default.green("\u2713 Oh-My-Copilot installed successfully!"));
     console.log(source_default.gray('  Run "oh-my-copilot info" to see available agents.'));
-    console.log(source_default.yellow('  Run "/omg-default" (project) or "/omg-default-global" (global) in Copilot CLI.'));
+    console.log(source_default.yellow('  Run "/omc-default" (project) or "/omc-default-global" (global) in Copilot CLI.'));
   } else {
-    console.warn(source_default.yellow("\u26A0 Could not complete OMG setup:"), result.message);
+    console.warn(source_default.yellow("\u26A0 Could not complete OMC setup:"), result.message);
     console.warn(source_default.gray('  Run "oh-my-copilot install" manually to complete setup.'));
   }
 });
-program2.command("hud").description("Run the OMG HUD statusline renderer").option("--watch", "Run in watch mode (continuous polling for tmux pane)").option("--interval <ms>", "Poll interval in milliseconds", "1000").action(async (options) => {
+program2.command("hud").description("Run the OMC HUD statusline renderer").option("--watch", "Run in watch mode (continuous polling for tmux pane)").option("--interval <ms>", "Poll interval in milliseconds", "1000").action(async (options) => {
   const { main: hudMain } = await Promise.resolve().then(() => (init_hud(), hud_exports));
   if (options.watch) {
     const intervalMs = parseInt(options.interval, 10);

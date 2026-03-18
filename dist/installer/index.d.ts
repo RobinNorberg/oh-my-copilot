@@ -122,7 +122,7 @@ export declare function isProjectScopedPlugin(): boolean;
  */
 export declare function extractOmcVersionFromClaudeMd(content: string): string | null;
 /**
- * Keep persisted setup metadata in sync with the installed OMG runtime version.
+ * Keep persisted setup metadata in sync with the installed OMC runtime version.
  *
  * This intentionally updates only already-configured users by default so
  * installer/reconciliation flows do not accidentally mark fresh installs as if

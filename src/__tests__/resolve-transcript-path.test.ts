@@ -69,7 +69,7 @@ describe('resolveTranscriptPath', () => {
     const realTranscript = join(projectDir, 'session-uuid.jsonl');
     writeFileSync(realTranscript, '{}');
 
-    // Worktree with a path-like name (e.g., from OMG project-session-manager)
+    // Worktree with a path-like name (e.g., from OMC project-session-manager)
     const worktreePath = join(
       tempDir,
       'projects',

@@ -72,22 +72,22 @@ const NEW_OMC_CMD = 'node "$HOME/.copilot/hooks/session-start.mjs"';
 // isOmcHook unit tests
 // ---------------------------------------------------------------------------
 describe('isOmcHook()', () => {
-    it('recognises OMG keyword-detector command', () => {
+    it('recognises OMC keyword-detector command', () => {
         expect(isOmcHook('node "$HOME/.copilot/hooks/keyword-detector.mjs"')).toBe(true);
     });
-    it('recognises OMG session-start command', () => {
+    it('recognises OMC session-start command', () => {
         expect(isOmcHook('node "$HOME/.copilot/hooks/session-start.mjs"')).toBe(true);
     });
-    it('recognises OMG pre-tool-use command', () => {
+    it('recognises OMC pre-tool-use command', () => {
         expect(isOmcHook('node "$HOME/.copilot/hooks/pre-tool-use.mjs"')).toBe(true);
     });
-    it('recognises OMG post-tool-use command', () => {
+    it('recognises OMC post-tool-use command', () => {
         expect(isOmcHook('node "$HOME/.copilot/hooks/post-tool-use.mjs"')).toBe(true);
     });
-    it('recognises OMG persistent-mode command', () => {
+    it('recognises OMC persistent-mode command', () => {
         expect(isOmcHook('node "$HOME/.copilot/hooks/persistent-mode.mjs"')).toBe(true);
     });
-    it('recognises Windows-style OMG path', () => {
+    it('recognises Windows-style OMC path', () => {
         expect(isOmcHook('node "%USERPROFILE%\\.copilot\\hooks\\keyword-detector.mjs"')).toBe(true);
     });
     it('recognises oh-my-copilot in command path', () => {
@@ -145,7 +145,7 @@ describe('Hook merge during omc update', () => {
             const existing = [userGroup(USER_CMD), omcGroup(OMC_CMD)];
             const newOmc = [omcGroup(NEW_OMC_CMD)];
             const { merged, conflicts, logMessages } = mergeEventHooks(existing, newOmc, { force: true });
-            // non-OMC groups come first, then new OMG groups
+            // non-OMC groups come first, then new OMC groups
             expect(merged).toHaveLength(2);
             expect(merged[0].hooks[0].command).toBe(USER_CMD);
             expect(merged[1].hooks[0].command).toBe(NEW_OMC_CMD);
@@ -159,7 +159,7 @@ describe('Hook merge during omc update', () => {
             const existing = [userGroup(USER_CMD), userGroup(userCmd2), omcGroup(OMC_CMD)];
             const newOmc = [omcGroup(NEW_OMC_CMD)];
             const { merged } = mergeEventHooks(existing, newOmc, { force: true });
-            expect(merged).toHaveLength(3); // 2 user groups + 1 new OMG group
+            expect(merged).toHaveLength(3); // 2 user groups + 1 new OMC group
             expect(merged[0].hooks[0].command).toBe(USER_CMD);
             expect(merged[1].hooks[0].command).toBe(userCmd2);
             expect(merged[2].hooks[0].command).toBe(NEW_OMC_CMD);

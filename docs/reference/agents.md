@@ -13,27 +13,21 @@ This directory contains documentation for end-users and developers:
 - **Technical reference**: Architecture, compatibility, migration
 - **Design documents**: Feature design specifications
 
-## Key Files
+## Structure
 
-| File | Description |
+| Path | Description |
 |------|-------------|
+| `index.md` | Documentation home and table of contents |
 | `copilot-instructions.md` | End-user orchestration instructions (installed to user projects) |
-| `FEATURES.md` | Developer API reference for internal features |
-| `REFERENCE.md` | API reference and configuration options |
-| `ARCHITECTURE.md` | System architecture overview |
-| `MIGRATION.md` | Version migration guides |
-| `COMPATIBILITY.md` | Compatibility matrix and requirements |
-| `TIERED_AGENTS_V2.md` | Model routing and tiered agent design |
-| `DELEGATION-ENFORCER.md` | Delegation protocol documentation |
-| `SYNC-SYSTEM.md` | State synchronization system |
-| `ANALYTICS-SYSTEM.md` | Analytics collection documentation |
-| `LOCAL_PLUGIN_INSTALL.md` | Plugin installation guide |
-
-## Subdirectories
-
-| Directory | Purpose |
-|-----------|---------|
+| `REFERENCE.md` | Full API reference and configuration options |
+| `get-started/` | Installation, quick start, configuration |
+| `guides/` | Task-oriented guides (team mode, Azure DevOps, skills, etc.) |
+| `reference/` | Reference docs (agents, CLI, hooks, state, compatibility, features) |
+| `architecture/` | System architecture deep-dives |
+| `migration/` | Version migration and breaking changes |
 | `design/` | Feature design specifications |
+| `agent-templates/` | Reusable agent prompt templates |
+| `shared/` | Shared content referenced by skills |
 
 ## For AI Agents
 
@@ -48,15 +42,15 @@ This directory contains documentation for end-users and developers:
 | Trigger | File to Update |
 |---------|---------------|
 | Agent count or list changes | `REFERENCE.md` (Agents section) |
-| Skill count or list changes | `REFERENCE.md` (Skills section) |
-| Hook count or list changes | `REFERENCE.md` (Hooks System section) |
+| Skill count or list changes | `REFERENCE.md` (Skills section) / `guides/skills-reference.md` |
+| Hook count or list changes | `REFERENCE.md` (Hooks System section) / `reference/hooks.md` |
 | Magic keywords change | `REFERENCE.md` (Magic Keywords section) |
 | Agent tool assignments change | `copilot-instructions.md` (Agent Tool Matrix) |
-| Skill composition or architecture changes | `ARCHITECTURE.md` |
-| New internal API or feature | `FEATURES.md` |
-| Breaking changes or migrations | `MIGRATION.md` |
-| Tiered agent design updates | `TIERED_AGENTS_V2.md` |
-| Platform or version support changes | `COMPATIBILITY.md` |
+| Skill composition or architecture changes | `architecture/overview.md` |
+| New internal API or feature | `reference/features.md` |
+| Breaking changes or migrations | `migration/breaking-changes.md` |
+| Tiered agent design updates | `architecture/tiered-agents.md` |
+| Platform or version support changes | `reference/compatibility.md` |
 | End-user instructions change | `copilot-instructions.md` |
 | Major user-facing features | `../README.md` |
 
@@ -72,7 +66,7 @@ This directory contains documentation for end-users and developers:
 
 Use raw GitHub URLs for external accessibility:
 
-[Migration Guide](https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/MIGRATION.md)
+[Migration Guide](https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/migration/breaking-changes.md)
 
 #### Version References
 

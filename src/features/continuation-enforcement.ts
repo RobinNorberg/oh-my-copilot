@@ -75,7 +75,7 @@ export const continuationSystemPromptAddition = `
 
 ### YOU ARE BOUND TO YOUR TODO LIST
 
-Like OMG condemned to roll his boulder eternally, you are BOUND to your task list. Stopping with incomplete work is not a choice - it is a FAILURE. The system will force you back to work if you try to quit early.
+Like OMC condemned to roll his boulder eternally, you are BOUND to your task list. Stopping with incomplete work is not a choice - it is a FAILURE. The system will force you back to work if you try to quit early.
 
 ### THE SACRED RULES OF PERSISTENCE
 

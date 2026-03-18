@@ -132,7 +132,7 @@ export function formatSessionIdle(payload) {
 }
 /** Matches ANSI escape sequences (CSI and two-character escapes). */
 const ANSI_ESCAPE_RE = /\x1b(?:[@-Z\\-_]|\[[0-9;]*[a-zA-Z])/g;
-/** Lines starting with these characters are OMG UI chrome, not output. */
+/** Lines starting with these characters are OMC UI chrome, not output. */
 const UI_CHROME_RE = /^[●⎿✻·◼]/;
 /** Matches the "ctrl+o to expand" hint injected by OMC. */
 const CTRL_O_RE = /ctrl\+o to expand/i;
@@ -152,7 +152,7 @@ const DEFAULT_MAX_TAIL_LINES = 15;
 /**
  * Parse raw tmux output into clean, human-readable lines.
  * - Strips ANSI escape codes
- * - Drops lines starting with OMG chrome characters (●, ⎿, ✻, ·, ◼)
+ * - Drops lines starting with OMC chrome characters (●, ⎿, ✻, ·, ◼)
  * - Drops "ctrl+o to expand" hint lines
  * - Returns at most `maxLines` non-empty lines (default 10)
  */

@@ -125,7 +125,7 @@ export function createOmcSession(options) {
     for (const serverName of Object.keys(externalMcpServers)) {
         allowedTools.push(`mcp__${serverName}__*`);
     }
-    // Add OMG custom tools in MCP format (LSP, AST, python_repl)
+    // Add OMC custom tools in MCP format (LSP, AST, python_repl)
     const omcTools = getOmcToolNames({
         includeLsp: config.features?.lspTools !== false,
         includeAst: config.features?.astTools !== false,
@@ -164,7 +164,7 @@ export function createOmcSession(options) {
     };
 }
 /**
- * Quick helper to process a prompt with OMG enhancements
+ * Quick helper to process a prompt with OMC enhancements
  */
 export function enhancePrompt(prompt, config) {
     const processor = createMagicKeywordProcessor(config?.magicKeywords);

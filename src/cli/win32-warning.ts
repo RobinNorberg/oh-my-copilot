@@ -22,7 +22,7 @@ export function warnIfWin32(): void {
   if (process.env.OMC_SKIP_WIN32_WARNING === '1') return;
   if (process.platform === 'win32' && !hasTmuxBinary()) {
     console.warn(chalk.yellow.bold('\n⚠  WARNING: Native Windows (win32) detected — no tmux found'));
-    console.warn(chalk.yellow('   OMG features that require tmux will not work.'));
+    console.warn(chalk.yellow('   OMC features that require tmux will not work.'));
     console.warn(chalk.yellow('   Install psmux for native Windows tmux support: winget install psmux'));
     console.warn(chalk.yellow('   Or use WSL2: https://learn.microsoft.com/en-us/windows/wsl/install'));
     console.warn('');

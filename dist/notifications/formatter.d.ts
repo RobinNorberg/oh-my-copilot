@@ -27,7 +27,7 @@ export declare function formatSessionIdle(payload: NotificationPayload): string;
 /**
  * Parse raw tmux output into clean, human-readable lines.
  * - Strips ANSI escape codes
- * - Drops lines starting with OMG chrome characters (●, ⎿, ✻, ·, ◼)
+ * - Drops lines starting with OMC chrome characters (●, ⎿, ✻, ·, ◼)
  * - Drops "ctrl+o to expand" hint lines
  * - Returns at most `maxLines` non-empty lines (default 10)
  */

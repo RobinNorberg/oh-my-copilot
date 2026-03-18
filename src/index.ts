@@ -191,7 +191,7 @@ export {
 } from './installer/index.js';
 
 /**
- * Options for creating a OMG session
+ * Options for creating a OMC session
  */
 export interface OmcOptions {
   /** Custom configuration (merged with loaded config) */
@@ -209,7 +209,7 @@ export interface OmcOptions {
 }
 
 /**
- * Result of creating a OMG session
+ * Result of creating a OMC session
  */
 export interface OmcSession {
   /** The query options to pass to Copilot Agent SDK */
@@ -325,7 +325,7 @@ export function createOmcSession(options?: OmcOptions): OmcSession {
     allowedTools.push(`mcp__${serverName}__*`);
   }
 
-  // Add OMG custom tools in MCP format (LSP, AST, python_repl)
+  // Add OMC custom tools in MCP format (LSP, AST, python_repl)
   const omcTools = getOmcToolNames({
     includeLsp: config.features?.lspTools !== false,
     includeAst: config.features?.astTools !== false,
@@ -373,7 +373,7 @@ export function createOmcSession(options?: OmcOptions): OmcSession {
 }
 
 /**
- * Quick helper to process a prompt with OMG enhancements
+ * Quick helper to process a prompt with OMC enhancements
  */
 export function enhancePrompt(prompt: string, config?: PluginConfig): string {
   const processor = createMagicKeywordProcessor(config?.magicKeywords);

@@ -37,7 +37,7 @@ export {
 // Rules Injector
 createRulesInjectorHook, getRulesForPath, findProjectRoot, findRuleFiles, parseRuleFrontmatter, shouldApplyRule, createContentHash, isDuplicateByRealPath, isDuplicateByContentHash, loadInjectedRules, saveInjectedRules, clearInjectedRules, RULES_INJECTOR_STORAGE, PROJECT_MARKERS, PROJECT_RULE_SUBDIRS, PROJECT_RULE_FILES, USER_RULE_DIR, RULE_EXTENSIONS, TRACKED_TOOLS } from './rules-injector/index.js';
 export { 
-// OMG Orchestrator
+// OMC Orchestrator
 createOmcOrchestratorHook, isAllowedPath, isWriteEditTool, getGitDiffStats, formatFileChanges, buildVerificationReminder, buildOrchestratorReminder, buildBoulderContinuation, checkBoulderContinuation, processOrchestratorPreTool, processOrchestratorPostTool, HOOK_NAME as OMC_ORCHESTRATOR_HOOK_NAME, ALLOWED_PATH_PREFIX, WRITE_EDIT_TOOLS, DIRECT_WORK_REMINDER, ORCHESTRATOR_DELEGATION_REQUIRED, BOULDER_CONTINUATION_PROMPT, VERIFICATION_REMINDER, SINGLE_TASK_DIRECTIVE } from './omc-orchestrator/index.js';
 export { 
 // Auto Slash Command

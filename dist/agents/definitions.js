@@ -225,7 +225,7 @@ export function getAgentDefinitions(options) {
     return result;
 }
 // ============================================================
-// OMG SYSTEM PROMPT
+// OMC SYSTEM PROMPT
 // ============================================================
 /**
  * OMC System Prompt - The main orchestrator

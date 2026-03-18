@@ -58,7 +58,7 @@ describe('resolveTranscriptPath', () => {
         mkdirSync(projectDir, { recursive: true });
         const realTranscript = join(projectDir, 'session-uuid.jsonl');
         writeFileSync(realTranscript, '{}');
-        // Worktree with a path-like name (e.g., from OMG project-session-manager)
+        // Worktree with a path-like name (e.g., from OMC project-session-manager)
         const worktreePath = join(tempDir, 'projects', '-home-bellman-Workspace-myproject--copilot-worktrees-home-bellman-Workspace-omc-worktrees-fix-issue-1094', 'session-uuid.jsonl');
         const resolved = resolveTranscriptPath(worktreePath);
         expect(resolved).toBe(realTranscript);

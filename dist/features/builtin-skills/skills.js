@@ -18,7 +18,7 @@ const __dirname = dirname(__filename);
 const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 const SKILLS_DIR = join(PROJECT_ROOT, 'skills');
 /**
- * Copilot CLI native commands that must not be shadowed by OMG skill short names.
+ * Copilot CLI native commands that must not be shadowed by OMC skill short names.
  * Skills with these names will still load but their name will be prefixed with 'omc-'
  * to avoid overriding built-in /review, /plan, /security-review etc.
  */

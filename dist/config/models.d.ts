@@ -60,7 +60,7 @@ export declare function isBedrock(): boolean;
  */
 export declare function isVertexAI(): boolean;
 /**
- * Detect whether OMG should avoid passing Copilot-specific model tier
+ * Detect whether OMC should avoid passing Copilot-specific model tier
  * names (sonnet/opus/haiku) to the Agent tool.
  *
  * Returns true when:

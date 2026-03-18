@@ -1,5 +1,5 @@
 /**
- * OMG Tools Server - In-process MCP server for custom tools
+ * OMC Tools Server - In-process MCP server for custom tools
  *
  * Exposes 18 custom tools (12 LSP, 2 AST, 1 python_repl, 3 skills) via the Copilot Agent SDK's
  * createSdkMcpServer helper for use by subagents.
@@ -88,7 +88,7 @@ const enabledTools = _startupDisabledGroups.size === 0
 // The SDK's tool() expects a ZodRawShape directly (not wrapped in z.object())
 const sdkTools = enabledTools.map(t => tool(t.name, t.description, t.schema, async (args) => await t.handler(args)));
 /**
- * In-process MCP server exposing all OMG custom tools
+ * In-process MCP server exposing all OMC custom tools
  *
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.

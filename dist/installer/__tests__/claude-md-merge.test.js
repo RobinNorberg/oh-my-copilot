@@ -65,7 +65,7 @@ describe('mergeClaudeMd', () => {
             expect(result).toContain(USER_CUSTOMIZATIONS);
             expect(result).toContain('# My Custom Config');
             expect(result).toContain('Custom settings here.');
-            // Check order: OMG section first, then user customizations header, then existing content
+            // Check order: OMC section first, then user customizations header, then existing content
             const omcIndex = result.indexOf(START_MARKER);
             const customizationsIndex = result.indexOf(USER_CUSTOMIZATIONS);
             const existingIndex = result.indexOf('# My Custom Config');
@@ -223,7 +223,7 @@ New OMC content v2
         });
     });
     describe('issue #1467 regression', () => {
-        it('removes duplicate legacy OMG blocks from preserved user content', () => {
+        it('removes duplicate legacy OMC blocks from preserved user content', () => {
             const existingContent = `${START_MARKER}
 Old OMC content v1
 ${END_MARKER}

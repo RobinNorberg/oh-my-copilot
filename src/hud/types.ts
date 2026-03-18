@@ -123,7 +123,7 @@ export interface TranscriptData {
 }
 
 // ============================================================================
-// OMG State Types (read from existing files)
+// OMC State Types (read from existing files)
 // ============================================================================
 
 export interface RalphStateForHud {

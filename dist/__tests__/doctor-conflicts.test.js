@@ -48,7 +48,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
         }
     });
     it('classifies real OMC hook commands as OMC-owned (issue #606)', () => {
-        // These are the actual commands OMG installs into settings.json
+        // These are the actual commands OMC installs into settings.json
         const settings = {
             hooks: {
                 UserPromptSubmit: [{
@@ -123,7 +123,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
         expect(conflicts).toHaveLength(1);
         expect(conflicts[0].isOmc).toBe(false);
     });
-    it('correctly distinguishes OMG and non-OMC hooks in mixed config', () => {
+    it('correctly distinguishes OMC and non-OMC hooks in mixed config', () => {
         const settings = {
             hooks: {
                 PreToolUse: [{

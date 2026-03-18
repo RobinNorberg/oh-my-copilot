@@ -1,7 +1,7 @@
 /**
  * MCP Bridge for Cross-Tool Interoperability
  *
- * Provides MCP tool definitions for communication between OMG and OMX.
+ * Provides MCP tool definitions for communication between OMC and OMX.
  * Tools allow sending tasks and messages between the two systems.
  */
 import { z } from 'zod';

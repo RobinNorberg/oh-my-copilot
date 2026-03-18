@@ -172,7 +172,7 @@ export {
 } from './rules-injector/index.js';
 
 export {
-  // OMG Orchestrator
+  // OMC Orchestrator
   createOmcOrchestratorHook,
   isAllowedPath,
   isWriteEditTool,

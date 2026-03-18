@@ -1,7 +1,7 @@
 /**
  * Setup Hook Module
  *
- * Handles OMG initialization and maintenance tasks.
+ * Handles OMC initialization and maintenance tasks.
  * Triggers:
  * - init: Create directory structure, validate configs, set environment
  * - maintenance: Prune old state files, cleanup orphaned state, vacuum SQLite
@@ -36,7 +36,7 @@ export declare function ensureDirectoryStructure(directory: string): string[];
  */
 export declare function validateConfigFiles(directory: string): string[];
 /**
- * Set environment variables for OMG initialization
+ * Set environment variables for OMC initialization
  */
 export declare function setEnvironmentVariables(): string[];
 /**

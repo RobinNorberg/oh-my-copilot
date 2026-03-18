@@ -2,7 +2,7 @@
  * Shared State Management for Cross-Tool Interoperability
  *
  * Manages shared state files at .omg/state/interop/ for communication
- * between OMG (Copilot CLI) and OMX (Codex CLI).
+ * between OMC (Copilot CLI) and OMX (Codex CLI).
  *
  * Uses atomic writes for safety and supports task/message passing.
  */

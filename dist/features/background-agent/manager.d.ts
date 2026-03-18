@@ -1,7 +1,7 @@
 /**
  * Background Agent Manager
  *
- * Manages background tasks for the OMG system.
+ * Manages background tasks for the OMC system.
  * This is a simplified version that tracks tasks launched via Copilot CLI's
  * native Task tool with run_in_background: true.
  *
@@ -9,7 +9,7 @@
  */
 import type { BackgroundTask, BackgroundTaskStatus, BackgroundTaskConfig, LaunchInput, ResumeInput, TaskProgress, ResumeContext } from './types.js';
 /**
- * Manages background tasks for the OMG system.
+ * Manages background tasks for the OMC system.
  */
 export declare class BackgroundManager {
     private tasks;

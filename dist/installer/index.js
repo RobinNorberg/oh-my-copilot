@@ -386,7 +386,7 @@ export function extractOmcVersionFromClaudeMd(content) {
     return null;
 }
 /**
- * Keep persisted setup metadata in sync with the installed OMG runtime version.
+ * Keep persisted setup metadata in sync with the installed OMC runtime version.
  *
  * This intentionally updates only already-configured users by default so
  * installer/reconciliation flows do not accidentally mark fresh installs as if
@@ -501,7 +501,7 @@ export function install(options = {}) {
     if (isComparableVersion(targetVersion)
         && isComparableVersion(installedVersionHint)
         && compareVersions(targetVersion, installedVersionHint) < 0) {
-        const message = `Skipping install: installed OMG ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omc update" to update the CLI package, then rerun "omc setup".`;
+        const message = `Skipping install: installed OMC ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omc update" to update the CLI package, then rerun "omc setup".`;
         log(message);
         result.success = true;
         result.message = message;

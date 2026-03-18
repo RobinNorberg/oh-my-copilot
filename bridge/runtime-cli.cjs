@@ -361,7 +361,7 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
   }
   if (useDedicatedWindow) {
     const targetSession = sessionAndWindow.split(":")[0] ?? sessionAndWindow;
-    const windowName = `omg-${sanitizeName(teamName)}`.slice(0, 32);
+    const windowName = `omc-${sanitizeName(teamName)}`.slice(0, 32);
     const newWindowResult = await execFileAsync("tmux", [
       "new-window",
       "-d",
@@ -734,7 +734,7 @@ var init_tmux_session = __esm({
     import_promises = __toESM(require("fs/promises"), 1);
     init_team_name();
     sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    TMUX_SESSION_PREFIX = "omg-team";
+    TMUX_SESSION_PREFIX = "omc-team";
     promisifiedExec = (0, import_util.promisify)(import_child_process2.exec);
     promisifiedExecFile = (0, import_util.promisify)(import_child_process2.execFile);
     SUPPORTED_POSIX_SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "fish", "ksh"]);
@@ -1294,7 +1294,7 @@ function getWorktreePath(repoRoot, teamName, workerName2) {
   return (0, import_node_path.join)(repoRoot, ".omg", "worktrees", sanitizeName(teamName), sanitizeName(workerName2));
 }
 function getBranchName(teamName, workerName2) {
-  return `omg-team/${sanitizeName(teamName)}/${sanitizeName(workerName2)}`;
+  return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName2)}`;
 }
 function getMetadataPath(repoRoot, teamName) {
   return (0, import_node_path.join)(repoRoot, ".omg", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
@@ -2818,7 +2818,7 @@ var DEFAULT_FACTCHECK_POLICY = {
   mode: "quick",
   strict_project_patterns: [],
   forbidden_path_prefixes: ["${HOME}/.copilot/plugins/cache/omg/"],
-  forbidden_path_substrings: ["/.omg/", ".omg-config.json"],
+  forbidden_path_substrings: ["/.omg/", ".omc-config.json"],
   readonly_command_prefixes: [
     "ls ",
     "cat ",

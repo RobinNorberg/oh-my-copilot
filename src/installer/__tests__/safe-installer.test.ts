@@ -65,7 +65,7 @@ describe('isOmcHook detection', () => {
   });
 
   it('detects actual OMC hook commands from settings.json (issue #606)', () => {
-    // These are the real commands OMG installs into settings.json
+    // These are the real commands OMC installs into settings.json
     expect(isOmcHook('node "$HOME/.copilot/hooks/keyword-detector.mjs"')).toBe(true);
     expect(isOmcHook('node "$HOME/.copilot/hooks/session-start.mjs"')).toBe(true);
     expect(isOmcHook('node "$HOME/.copilot/hooks/pre-tool-use.mjs"')).toBe(true);

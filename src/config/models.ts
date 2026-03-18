@@ -70,7 +70,7 @@ export const BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
  * Resolve the default model ID for a tier.
  *
  * Resolution order:
- * 1. OMG tier env vars (OMC_MODEL_HIGH / OMC_MODEL_MEDIUM / OMC_MODEL_LOW)
+ * 1. OMC tier env vars (OMC_MODEL_HIGH / OMC_MODEL_MEDIUM / OMC_MODEL_LOW)
  * 2. Copilot CLI provider env vars (for example Bedrock app-profile model IDs)
  * 3. Anthropic family-default env vars
  * 4. Built-in fallback
@@ -206,7 +206,7 @@ export function isVertexAI(): boolean {
 }
 
 /**
- * Detect whether OMG should avoid passing Copilot-specific model tier
+ * Detect whether OMC should avoid passing Copilot-specific model tier
  * names (sonnet/opus/haiku) to the Agent tool.
  *
  * Returns true when:

@@ -1,7 +1,7 @@
 /**
  * OMC HUD - State Readers
  *
- * Read ralph, ultrawork, and PRD state from existing OMG files.
+ * Read ralph, ultrawork, and PRD state from existing OMC files.
  * These are read-only functions that don't modify the state files.
  */
 

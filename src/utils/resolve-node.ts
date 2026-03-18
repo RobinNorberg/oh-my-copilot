@@ -22,7 +22,7 @@ import { homedir } from 'os';
  * @returns Absolute path to the node binary, or 'node' as a last-resort fallback.
  */
 export function resolveNodeBinary(): string {
-  // 1. Current process's node — same binary that is running OMG right now.
+  // 1. Current process's node — same binary that is running OMC right now.
   if (process.execPath && existsSync(process.execPath)) {
     return process.execPath;
   }
