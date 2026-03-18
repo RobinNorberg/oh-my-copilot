@@ -18,6 +18,16 @@ Ralplan is a shorthand alias for `/oh-my-copilot:omc-plan --consensus`. It trigg
 - `--interactive`: Enables user prompts at key decision points (draft review in step 2 and final approval in step 6). Without this flag the workflow runs fully automated — Planner → Architect → Critic loop — and outputs the final plan without asking for confirmation.
 - `--deliberate`: Forces deliberate mode for high-risk work. Adds pre-mortem (3 scenarios) and expanded test planning (unit/integration/e2e/observability). Without this flag, deliberate mode can still auto-enable when the request explicitly signals high risk (auth/security, migrations, destructive changes, production incidents, compliance/PII, public API breakage).
 
+## Complexity Gate
+
+Before the Planner/Architect/Critic loop, task complexity is classified:
+
+- **SIMPLE**: Single Planner pass (no Architect/Critic loop). Produces a lightweight plan directly.
+- **STANDARD**: Normal consensus flow (Planner → Architect → Critic loop)
+- **COMPLEX**: Forces `--deliberate` mode automatically (adds pre-mortem + expanded test planning)
+
+The complexity classifier uses heuristic patterns first (zero-cost). If inconclusive, an `explore` agent (haiku) assesses complexity. The model used for AI assessment defaults to haiku but is configurable via `/omc-setup`.
+
 ## Usage with interactive mode
 
 ```

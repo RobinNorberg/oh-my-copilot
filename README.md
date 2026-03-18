@@ -5,13 +5,9 @@
 [![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-> oh-my-copilot is a fork of [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo, adapted for GitHub Copilot CLI.
+> This work is based on [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo.
 
-> **For Codex users:** Check out [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) — the same orchestration experience for OpenAI Codex CLI.
-
-**Multi-agent orchestration for Copilot CLI. Zero learning curve.**
-
-_Don't learn Copilot CLI. Just use OMC._
+**Turbocharge your Copilot CLI with multi-agent orchestration.**
 
 ---
 
@@ -106,6 +102,8 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ralplan`              | Iterative planning consensus            | `ralplan this feature`                         |
 | `experiment`           | Hypothesis-driven experiment loop       | `experiment: optimize API latency`             |
 | `deep-interview`       | Socratic requirements clarification     | `deep-interview "vague idea"`                  |
+| `deep-review`          | Multi-pass code review (4 passes)       | `/deep-review` or `--deep` on code-reviewer    |
+| `discover`             | Parallel codebase quality scan          | `/discover src/hooks/`                         |
 | `deepsearch`           | Codebase-focused search routing         | `deepsearch for auth middleware`               |
 | `ultrathink`           | Deep reasoning mode                     | `ultrathink about this architecture`           |
 | `ado triage`           | Azure DevOps work item triage           | `ado triage`                                   |

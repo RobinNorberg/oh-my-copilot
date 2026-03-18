@@ -1,6 +1,6 @@
 # OMC Analytics CLI
 
-Command-line interface for Oh-My-ClaudeCode analytics, token tracking, cost reports, and session management.
+Command-line interface for Oh-My-Copilot analytics, token tracking, cost reports, and session management.
 
 ## Installation
 

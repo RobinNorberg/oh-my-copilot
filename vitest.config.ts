@@ -22,7 +22,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': '/home/bellman/Workspace/Oh-My-ClaudeCode-OMC-b2.0.0/src',
+      '@': '/home/bellman/Workspace/oh-my-copilot/src',
     },
   },
 });

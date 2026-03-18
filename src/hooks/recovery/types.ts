@@ -218,3 +218,86 @@ export const TRUNCATE_CONFIG = {
   /** Average characters per token estimate */
   charsPerToken: 4,
 } as const;
+
+// ============================================================================
+// Orchestration Recovery Types (Feature 4)
+// ============================================================================
+
+/**
+ * Orchestration-level failure types for multi-agent workflows.
+ * These classify errors at the orchestration level (ralph, ultrawork, team)
+ * rather than the individual tool level.
+ */
+export type OrchestrationFailureType =
+  | 'rate_limited'
+  | 'auth_failure'
+  | 'tool_execution_error'
+  | 'build_error'
+  | 'verification_failed'
+  | 'context_exhausted'
+  | 'network_error'
+  | 'circular_fix'
+  | 'unknown';
+
+/**
+ * Recovery action to take for a given failure type
+ */
+export type RecoveryAction = 'retry' | 'retry_with_backoff' | 'retry_with_context' | 'skip' | 'escalate';
+
+/**
+ * A single attempt record for tracking retry history
+ */
+export interface AttemptRecord {
+  /** Task/story ID */
+  taskId: string;
+  /** Classified failure type */
+  failureType: OrchestrationFailureType;
+  /** Original error message (truncated) */
+  errorMessage: string;
+  /** Timestamp of attempt */
+  timestamp: string;
+  /** Recovery action taken */
+  actionTaken: RecoveryAction;
+}
+
+/**
+ * Persisted attempt history for a session
+ */
+export interface AttemptHistory {
+  /** Attempts keyed by taskId */
+  attempts: Record<string, AttemptRecord[]>;
+  /** Last updated timestamp */
+  lastUpdated: string;
+}
+
+/**
+ * Result of determining a recovery action
+ */
+export interface RecoveryActionResult {
+  /** The action to take */
+  action: RecoveryAction;
+  /** Human-readable reason */
+  reason: string;
+  /** Suggested backoff delay in ms (for retry_with_backoff) */
+  backoffMs?: number;
+  /** Whether this is a circular fix (integrates with Feature 2) */
+  isCircularFix?: boolean;
+}
+
+/**
+ * Configuration for orchestration recovery
+ */
+export const ORCHESTRATION_RECOVERY_CONFIG = {
+  /** Max retry attempts per task before escalating */
+  maxRetries: 3,
+  /** Initial backoff delay in ms */
+  initialBackoffMs: 2000,
+  /** Backoff multiplier */
+  backoffMultiplier: 2,
+  /** Max backoff delay in ms */
+  maxBackoffMs: 30000,
+  /** Rolling window for attempt history in ms (2 hours) */
+  rollingWindowMs: 2 * 60 * 60 * 1000,
+  /** Max attempt records per task */
+  maxAttemptsPerTask: 20,
+} as const;

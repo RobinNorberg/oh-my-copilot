@@ -713,6 +713,17 @@ if (status.taskSummary.pending === 0 && status.taskSummary.inProgress === 0) {
 
 This approach complements the existing `SendMessage`-based communication by providing a pull-based mechanism for MCP workers that cannot use Copilot CLI's team messaging tools.
 
+## Failure Recovery
+
+When a teammate agent fails, the structured recovery manager classifies the failure and determines the action:
+- **rate_limited**: Retry with exponential backoff
+- **auth_failure**: Escalate immediately (needs user credentials/permissions)
+- **build_error**: Retry with additional context about the error
+- **circular_fix**: Stop retrying and generate escalation report
+- **unknown**: Retry up to 3 times, then escalate
+
+The recovery manager integrates with the circular fix detector — if the same error recurs 3+ times across iterations, it escalates rather than continuing to retry.
+
 ## Error Handling
 
 ### Teammate Fails a Task

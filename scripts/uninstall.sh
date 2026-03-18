@@ -1,5 +1,5 @@
 #!/bin/bash
-# Oh-My-ClaudeCode Uninstaller
+# Oh-My-Copilot Uninstaller
 # Completely removes all OMC-installed files and configurations
 
 set -e
@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${BLUE}Oh-My-ClaudeCode Uninstaller${NC}"
+echo -e "${BLUE}Oh-My-Copilot Uninstaller${NC}"
 echo ""
 
 # Copilot CLI config directory (always ~/.copilot)

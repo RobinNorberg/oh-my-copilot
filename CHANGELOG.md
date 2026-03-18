@@ -2,6 +2,18 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [4.8.2-preview.4] - 2026-03-18
+
+### Added
+- **Complexity-first phase selection**: Heuristic classifier (`src/hooks/complexity-classifier/`) classifies tasks as SIMPLE/STANDARD/COMPLEX before autopilot/ralplan runs planning. SIMPLE skips planning phases, COMPLEX adds Critic review. AI fallback model configurable via `/omc-setup` (defaults to haiku).
+- **Circular fix detection**: Error hash tracking (`src/hooks/circular-fix-detector/`) detects when the same error recurs 3+ times in ultraqa/ralph QA loops. Generates structured escalation report at `.omc/escalation-report.md` instead of retrying endlessly.
+- **Stagger delay for parallel launches**: Advisory stagger hook (`src/hooks/stagger-launch/`) injects 1-second delay guidance between rapid-fire agent launches in ultrawork to prevent thundering herd rate limits. Configurable via `stagger_delay_ms` on UltraworkState.
+- **Structured recovery manager**: Orchestration-level failure classification (`src/hooks/recovery/orchestration-recovery.ts`) with mapped recovery actions (retry, retry with backoff, skip, escalate). Per-task attempt tracking with 2-hour rolling window. Integrates with circular fix detector for escalation path.
+- **Multi-pass deep review** (`/deep-review`): New skill that runs 3 parallel review passes (Security, Quality, Structural) followed by a validation pass that confirms/dismisses findings. Also accessible via `--deep` flag on code-reviewer agent.
+- **Context accumulation between phases**: Hook (`src/hooks/context-accumulator/`) captures key outputs after each autopilot phase or ralph story and injects them into the next phase's agent prompt as `<prior-phase-context>`. Truncated to 12KB per phase, session-scoped.
+- **Ideation/discovery skill** (`/discover`): Spawns 6 parallel specialist agents (Security, Quality, Tests, Performance, Documentation, Architecture) to scan a codebase and produce a prioritized improvement backlog at `.omc/discover/backlog.md`. Supports scoping to subdirectories.
+- **Semantic merge resolution**: Extended git-master agent with `<Merge_Conflict_Resolution>` protocol for AI-assisted merge conflict resolution — reads full file context, resolves semantically, verifies with build/tests.
+
 ## [4.8.2-preview.3] - 2026-03-18
 
 ### Added
@@ -38,13 +50,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 ## [4.8.2-preview.1] - 2026-03-17
 
 ### Changed
-- Initial fork release as oh-my-copilot
-- Dual copyright in LICENSE (Yeachan Heo + Robin Norberg)
-- All `Yeachan-Heo/oh-my-copilot` URLs replaced with `RobinNorberg/oh-my-copilot`
+- Initial release as oh-my-copilot
+- All URLs updated to `RobinNorberg/oh-my-copilot`
 - Preview versions publish to npm under `preview` tag
 - `.copilot-plugin/` references corrected to `.claude-plugin/` in CI
-
----
-
-> oh-my-copilot is a fork of [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) by Yeachan Heo.
-> For upstream changelog prior to the fork, see the [original repository](https://github.com/Yeachan-Heo/oh-my-claudecode/blob/main/CHANGELOG.md).

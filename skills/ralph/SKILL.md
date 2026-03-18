@@ -45,6 +45,7 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
 - Always pass the `model` parameter explicitly when delegating to agents
 - Read `docs/shared/agent-tiers.md` before first delegation to select correct agent tiers
 - Deliver the full implementation: no scope reduction, no partial completion, no deleting tests to make them pass
+- When a task fails, use the structured recovery manager to classify the failure and determine the recovery action (retry, retry with backoff, skip, or escalate). Do not blindly retry — classify first.
 </Execution_Policy>
 
 <Steps>
@@ -77,7 +78,8 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
 5. **Mark story complete**:
    a. When ALL acceptance criteria are verified, set `passes: true` for this story in `prd.json`
    b. Record progress in `progress.txt`: what was implemented, files changed, learnings for future iterations
-   c. Add any discovered codebase patterns to `progress.txt`
+   c. **Carry context forward**: Key learnings and patterns from progress.txt are automatically carried to the next story's agent prompt via `<prior-phase-context>` injection. This includes implementation details, files changed, and discovered codebase patterns.
+   d. Add any discovered codebase patterns to `progress.txt`
 
 6. **Check PRD completion**:
    a. Read `prd.json` -- are ALL stories marked `passes: true`?
@@ -172,7 +174,7 @@ Why bad: Did not refine scaffold criteria into task-specific ones. This is PRD t
 - Stop when the user says "stop", "cancel", or "abort" -- run `/oh-my-copilot:cancel`
 - Continue working when the hook system sends "The boulder never stops" -- this means the iteration continues
 - If architect rejects verification, fix the issues and re-verify (do not stop)
-- If the same issue recurs across 3+ iterations, report it as a potential fundamental problem
+- If the same issue recurs across 3+ iterations, the circular fix detector triggers automatically. It generates a structured escalation report at `.omc/escalation-report.md` with error pattern analysis, occurrence timeline, and recommended manual interventions. The report includes the error hash, occurrence count, and affected files. Stop iteration and present the report.
 </Escalation_And_Stop_Conditions>
 
 <Final_Checklist>
@@ -189,6 +191,15 @@ Why bad: Did not refine scaffold criteria into task-specific ones. This is PRD t
 </Final_Checklist>
 
 <Advanced>
+## Context Accumulation
+
+Ralph captures learnings from each completed story and injects them into the next story's agent prompt as a `<prior-phase-context>` block. This ensures subsequent stories benefit from discoveries made in earlier iterations.
+
+- Context from progress.txt is carried forward between stories
+- Each phase output is truncated to 12KB
+- Context is session-scoped and cleared on `/cancel`
+- Stored in `.omc/state/sessions/{sessionId}/phase-context.json`
+
 ## Background Execution Rules
 
 **Run in background** (`run_in_background: true`):

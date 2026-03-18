@@ -26,6 +26,20 @@ Autopilot takes a brief product idea and autonomously handles the full lifecycle
 Most non-trivial software tasks require coordinated phases: understanding requirements, designing a solution, implementing in parallel, testing, and validating quality. Autopilot orchestrates all of these phases automatically so the user can describe what they want and receive working code without managing each step.
 </Why_This_Exists>
 
+<Complexity_Gate>
+Before starting Phase 0, classify the task complexity:
+
+1. **Heuristic check** (zero-cost): The system's complexity classifier runs pattern matching on your prompt
+2. **AI assessment** (if heuristic inconclusive): Spawn an `explore` agent (haiku) to assess complexity
+
+**Routing by complexity:**
+- **SIMPLE** (e.g., "fix typo", "rename variable", "bump version"): Skip Phase 0 and Phase 1 entirely. Jump directly to Phase 2 (Execution) with a minimal plan.
+- **STANDARD** (default): Run the normal autopilot flow (all phases)
+- **COMPLEX** (e.g., auth systems, migrations, distributed architecture): Run all phases AND add Critic review after Phase 0 and Phase 1 for additional quality gates
+
+Complexity result is stored in `.omc/state/sessions/{sessionId}/complexity.json` for downstream phases to reference.
+</Complexity_Gate>
+
 <Execution_Policy>
 - Each phase must complete before the next begins
 - Parallel execution is used within phases where possible (Phase 2 and Phase 4)
@@ -41,23 +55,27 @@ Most non-trivial software tasks require coordinated phases: understanding requir
    - **If input is vague** (no file paths, function names, or concrete anchors): Offer redirect to `/deep-interview` for Socratic clarification before expanding
    - **Otherwise**: Analyst (Opus) extracts requirements, Architect (Opus) creates technical specification
    - Output: `.omg/autopilot/spec.md`
+   - **Context capture**: Phase 0 output (spec summary) is captured for injection into Phase 1
 
 2. **Phase 1 - Planning**: Create an implementation plan from the spec
    - **If ralplan consensus plan exists**: Skip — already done in the 3-stage pipeline
    - Architect (Opus): Create plan (direct mode, no interview)
    - Critic (Opus): Validate plan
    - Output: `.omg/plans/autopilot-impl.md`
+   - **Context capture**: Phase 1 output (plan summary) is captured for injection into Phase 2
 
 3. **Phase 2 - Execution**: Implement the plan using Ralph + Ultrawork
    - Executor (Haiku): Simple tasks
    - Executor (Sonnet): Standard tasks
    - Executor (Opus): Complex tasks
    - Run independent tasks in parallel
+   - **Context capture**: Phase 2 output (implementation summary: files changed, decisions made) is captured for injection into Phase 3
 
 4. **Phase 3 - QA**: Cycle until all tests pass (UltraQA mode)
    - Build, lint, test, fix failures
    - Repeat up to 5 cycles
    - Stop early if the same error repeats 3 times (indicates a fundamental issue)
+   - **Context capture**: Phase 3 output (QA results) is captured for injection into Phase 4
 
 5. **Phase 4 - Validation**: Multi-perspective review in parallel
    - Architect: Functional completeness
@@ -117,6 +135,15 @@ Why bad: This is an exploration/brainstorming request. Respond conversationally 
 </Final_Checklist>
 
 <Advanced>
+## Context Accumulation
+
+Autopilot captures key outputs from each phase and injects them into the next phase's agent prompt as a `<prior-phase-context>` block. This ensures downstream agents have context from earlier phases without needing to re-read files.
+
+- Phase outputs are truncated to 12KB each
+- Context is session-scoped and cleared on `/cancel`
+- Includes: spec summaries, plan summaries, implementation decisions, QA results
+- Stored in `.omc/state/sessions/{sessionId}/phase-context.json`
+
 ## Configuration
 
 Optional settings in `.copilot/settings.json`:

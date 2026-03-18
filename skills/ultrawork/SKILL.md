@@ -27,6 +27,7 @@ Sequential task execution wastes time when tasks are independent. Ultrawork enab
 
 <Execution_Policy>
 - Fire all independent agent calls simultaneously -- never serialize independent work
+- **Stagger parallel launches**: When firing N parallel tasks, stagger launches by 1 second between each (e.g., fire task 1, wait 1s, fire task 2, wait 1s, fire task 3). This prevents thundering herd rate limits. The system will inject stagger advisories if launches are too rapid.
 - Always pass the `model` parameter explicitly when delegating
 - Read `docs/shared/agent-tiers.md` before first delegation for agent selection guidance
 - Use `run_in_background: true` for operations over ~30 seconds (installs, builds, tests)
@@ -99,7 +100,7 @@ Why bad: Opus is expensive overkill for a trivial fix. Use executor with Haiku i
 <Escalation_And_Stop_Conditions>
 - When ultrawork is invoked directly (not via ralph), apply lightweight verification only -- build passes, tests pass, no new errors
 - For full persistence and comprehensive architect verification, recommend switching to `ralph` mode
-- If a task fails repeatedly across retries, report the issue rather than retrying indefinitely
+- If a task fails, use the structured recovery manager: classify the failure (rate_limited, auth_failure, build_error, etc.) and follow the mapped recovery action (retry with backoff, escalate, retry with context). After 3 retries for the same task, escalate rather than continuing. If the circular fix detector triggers, stop immediately and generate an escalation report.
 - Escalate to the user when tasks have unclear dependencies or conflicting requirements
 </Escalation_And_Stop_Conditions>
 
@@ -124,4 +125,10 @@ autopilot (autonomous execution)
 ```
 
 Ultrawork is the parallelism layer. Ralph adds persistence and verification. Autopilot adds the full lifecycle pipeline.
+
+## Stagger Delay
+
+When launching multiple parallel agents, a 1-second stagger delay is applied between launches to prevent rate limiting. This is advisory — the system injects guidance when rapid-fire Task calls are detected.
+
+Configuration: The stagger delay can be customized via the `stagger_delay_ms` field in ultrawork state (default: 1000ms).
 </Advanced>
