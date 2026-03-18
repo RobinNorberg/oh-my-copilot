@@ -4,10 +4,16 @@
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
 [![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+<br/>This work is based on [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo.
 
-> This work is based on [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo.
 
-**Turbocharge your Copilot CLI with multi-agent orchestration.**
+
+<h1 align="center">Turbocharge your Copilot CLI with multi-agent orchestration.</h1>
+<p align="center">    
+  <img src="assets/omc-character.png" alt="oh-my-copilot" width="400" />
+  </br>
+  <strong><i>Your Copilot has just been steroided.</i></strong>
+</p>
 
 ---
 
@@ -113,7 +119,6 @@ Optional shortcuts for power users. Natural language works fine without them.
 **Notes:**
 
 - **ralph includes ultrawork**: when you activate ralph mode, it automatically includes ultrawork's parallel execution.
-- `swarm` compatibility alias has been removed; migrate existing prompts to `/team` syntax.
 
 ---
 
@@ -154,7 +159,7 @@ OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validati
 
 | Provider                                                      | Install                                | What it enables                                  |
 | ------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------ |
-| [Copilot CLI](https://docs.github.com/copilot-cli)            | Built-in (primary)                     | Core orchestration platform                      |
+| [Copilot CLI](https://docs.github.com/copilot-cli)            | `npm install -g @github/copilot`                     | Core orchestration platform                      |
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm install -g @anthropic-ai/claude-code` | Deep reasoning, architecture analysis            |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm install -g @google/gemini-cli`    | Design review, UI consistency (1M token context) |
 | [Codex CLI](https://github.com/openai/codex)                  | `npm install -g @openai/codex`         | Architecture validation, code review cross-check |
@@ -163,7 +168,7 @@ OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validati
 omc team 2:claude "review auth architecture"
 omc team 2:codex "security analysis"
 omc team 2:gemini "UI consistency check"
-omc team 1:copilot "implement the feature"
+omc team 1:copilot "review existing tests"
 ```
 
 Only Copilot CLI is required — the others are optional and add cross-provider validation.
