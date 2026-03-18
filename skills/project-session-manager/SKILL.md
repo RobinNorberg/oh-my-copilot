@@ -1,12 +1,9 @@
 ---
 name: project-session-manager
 description: Manage isolated dev environments with git worktrees and tmux sessions
-aliases: [psm]
 ---
 
-# Project Session Manager (PSM) Skill
-
-`psm` is the compatibility alias for this canonical skill entrypoint.
+# Project Session Manager Skill
 
 > **Quick Start:** For simple worktree creation without tmux sessions, use `omc teleport`:
 > ```bash

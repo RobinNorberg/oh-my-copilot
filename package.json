@@ -20,7 +20,6 @@
     "bridge",
     "bridge/mcp-server.cjs",
     "bridge/team-bridge.cjs",
-    "bridge/team-mcp.cjs",
     "bridge/team.js",
     "bridge/cli.cjs",
     "bridge/runtime-cli.cjs",
@@ -36,14 +35,13 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && node scripts/build-skill-bridge.mjs && node scripts/build-mcp-server.mjs && node scripts/build-bridge-entry.mjs && npm run compose-docs && npm run build:runtime-cli && npm run build:team-server && npm run build:cli",
+    "build": "tsc && node scripts/build-skill-bridge.mjs && node scripts/build-mcp-server.mjs && node scripts/build-bridge-entry.mjs && npm run compose-docs && npm run build:runtime-cli && npm run build:cli",
     "build:bridge": "node scripts/build-skill-bridge.mjs",
     "build:codex": "echo '[deprecated] Codex MCP server removed in v5.0 - use tmux team workers instead'",
     "build:gemini": "echo '[deprecated] Gemini MCP server removed in v5.0 - use tmux team workers instead'",
     "build:bridge-entry": "node scripts/build-bridge-entry.mjs",
     "build:cli": "node scripts/build-cli.mjs",
     "build:runtime-cli": "node scripts/build-runtime-cli.mjs",
-    "build:team-server": "node scripts/build-team-server.mjs",
     "ask:codex": "./scripts/ask-codex.sh",
     "ask:gemini": "./scripts/ask-gemini.sh",
     "compose-docs": "node scripts/compose-docs.mjs",

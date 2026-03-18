@@ -33,7 +33,6 @@ export const ROLE_CATEGORY_DEFAULTS: Record<string, string> = {
   explore: 'explore',
   'document-specialist': 'document-specialist',
   researcher: 'document-specialist',
-  'tdd-guide': 'test-engineer',
 
   // Advisory roles (high complexity)
   architect: 'architect',
@@ -63,7 +62,6 @@ export const ROLE_CATEGORY_DEFAULTS: Record<string, string> = {
  */
 export const DEPRECATED_ROLE_ALIASES: Readonly<Record<string, string>> = {
   researcher: 'document-specialist',
-  'tdd-guide': 'test-engineer',
   'api-reviewer': 'code-reviewer',
   'performance-reviewer': 'code-reviewer',
   'dependency-expert': 'document-specialist',

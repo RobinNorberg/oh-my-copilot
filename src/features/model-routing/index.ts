@@ -70,7 +70,6 @@ export {
 // Re-export router
 export {
   routeTask,
-  routeWithEscalation,
   getRoutingRecommendation,
   getModelForTask,
   analyzeTaskComplexity,
@@ -99,10 +98,10 @@ export function routeAndAdaptTask(
   agentType?: string,
   previousFailures?: number
 ): { decision: import('./types.js').RoutingDecision; adaptedPrompt: string } {
-  const { routeWithEscalation } = require('./router.js');
+  const { routeTask } = require('./router.js');
   const { adaptPromptForTier } = require('./prompts/index.js');
 
-  const decision = routeWithEscalation({
+  const decision = routeTask({
     taskPrompt,
     agentType,
     previousFailures,

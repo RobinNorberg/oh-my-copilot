@@ -329,30 +329,6 @@ describe('omc ask command', () => {
     }
   });
 
-  it('accepts OMX advisor env alias in Phase-1 and emits deprecation warning', () => {
-    const wd = mkdtempSync(join(tmpdir(), 'omc-ask-alias-'));
-    try {
-      const stubPath = writeAdvisorStub(wd);
-      const result = runCli(
-        ['ask', 'gemini', 'legacy', 'path'],
-        wd,
-        { OMX_ASK_ADVISOR_SCRIPT: stubPath },
-      );
-
-      expect(result.error).toBeUndefined();
-      expect(result.status).toBe(0);
-      expect(result.stderr).toContain('DEPRECATED');
-      expect(result.stderr).toContain('OMX_ASK_ADVISOR_SCRIPT');
-
-      const payload = JSON.parse(result.stdout);
-      expect(payload.provider).toBe('gemini');
-      expect(payload.prompt).toBe('legacy path');
-      expect(payload.originalTask).toBe('legacy path');
-    } finally {
-      rmSync(wd, { recursive: true, force: true });
-    }
-  });
-
   it('allows codex ask inside a Copilot CLI session', () => {
     const wd = mkdtempSync(join(tmpdir(), 'omc-ask-cli-codex-nested-'));
     try {
@@ -462,32 +438,6 @@ describe('run-provider-advisor script contract', () => {
 
       const artifact = readFileSync(artifactPath, 'utf8');
       expect(artifact).toContain('FAKE_PROVIDER_OK:artifact-contract');
-    } finally {
-      rmSync(wd, { recursive: true, force: true });
-    }
-  });
-
-  it('accepts OMX original-task alias in Phase-1 with deprecation warning', () => {
-    const wd = mkdtempSync(join(tmpdir(), 'omc-ask-original-alias-'));
-    try {
-      const binDir = writeFakeProviderBinary(wd, 'gemini');
-      const result = runAdvisorScript(
-        ['gemini', '--prompt', 'fallback task'],
-        wd,
-        {
-          PATH: `${binDir}${PATH_SEP}${process.env.PATH || ''}`,
-          OMX_ASK_ORIGINAL_TASK: 'legacy original task',
-        },
-      );
-
-      expect(result.error).toBeUndefined();
-      expect(result.status).toBe(0);
-      expect(result.stderr).toContain('DEPRECATED');
-      expect(result.stderr).toContain('OMX_ASK_ORIGINAL_TASK');
-
-      const artifactPath = result.stdout.trim();
-      const artifact = readFileSync(artifactPath, 'utf8');
-      expect(artifact).toContain('## Original task\n\nlegacy original task');
     } finally {
       rmSync(wd, { recursive: true, force: true });
     }

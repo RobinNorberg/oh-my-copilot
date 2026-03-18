@@ -134,7 +134,6 @@ export {
 export {
   // Main functions
   routeTask,
-  routeWithEscalation,
   routeAndAdaptTask,
   escalateModel,
   canEscalate,
@@ -233,12 +232,10 @@ export {
   createStateManager,
   // Functions
   getStatePath,
-  getLegacyPaths,
   ensureStateDir,
   readState,
   writeState,
   clearState,
-  migrateState,
   listStates,
   cleanupOrphanedStates,
   // Enums/Constants
@@ -250,7 +247,6 @@ export {
   type StateReadResult,
   type StateWriteResult,
   type StateClearResult,
-  type StateMigrationResult,
   type StateFileInfo,
   type ListStatesOptions,
   type CleanupOptions,

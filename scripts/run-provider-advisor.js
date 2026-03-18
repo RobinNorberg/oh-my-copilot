@@ -29,7 +29,6 @@ function buildProviderArgs(provider, prompt) {
 }
 
 const ASK_ORIGINAL_TASK_ENV = 'OMC_ASK_ORIGINAL_TASK';
-const ASK_ORIGINAL_TASK_ENV_ALIAS = 'OMX_ASK_ORIGINAL_TASK';
 
 function usage() {
   console.error('Usage: omp ask <claude|codex|gemini> "<prompt>"');
@@ -147,12 +146,6 @@ function resolveOriginalTask(prompt) {
   const canonical = process.env[ASK_ORIGINAL_TASK_ENV];
   if (canonical && canonical.trim()) {
     return canonical;
-  }
-
-  const alias = process.env[ASK_ORIGINAL_TASK_ENV_ALIAS];
-  if (alias && alias.trim()) {
-    console.error(`[ask] DEPRECATED: ${ASK_ORIGINAL_TASK_ENV_ALIAS} is deprecated; use ${ASK_ORIGINAL_TASK_ENV} instead.`);
-    return alias;
   }
 
   return prompt;

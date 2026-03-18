@@ -8,10 +8,9 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (35 including aliases)', () => {
+    it('should return correct number of skills (34 canonical skills)', () => {
       const skills = createBuiltinSkills();
-      // 35 entries: 34 canonical skills + 1 deprecated alias (psm)
-      expect(skills).toHaveLength(35);
+      expect(skills).toHaveLength(34);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -84,7 +83,6 @@ describe('Builtin Skills', () => {
         'omc-setup',
         'omc-teams',
         'project-session-manager',
-        'psm',
         'ralph',
         'ralph-experiment',
         'ralplan',
@@ -170,10 +168,10 @@ describe('Builtin Skills', () => {
     it('should include aliases when explicitly requested', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
-      // swarm alias removed in #1131, psm still exists
-      expect(names).toHaveLength(35);
+      // swarm alias removed in #1131, psm alias removed in Phase 4 cleanup
+      expect(names).toHaveLength(34);
       expect(names).not.toContain('swarm');
-      expect(names).toContain('psm');
+      expect(names).not.toContain('psm');
     });
   });
 

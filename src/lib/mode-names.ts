@@ -15,16 +15,6 @@ export const MODE_NAMES = {
   ULTRAQA: 'ultraqa',
 } as const;
 
-/**
- * Deprecated mode names removed in #1131 (pipeline unification).
- * Kept as constants for deprecation warnings and migration paths.
- */
-export const DEPRECATED_MODE_NAMES = {
-  ULTRAPILOT: 'ultrapilot',
-  SWARM: 'swarm',
-  PIPELINE: 'pipeline',
-} as const;
-
 /** Union type derived from the constant map. */
 export type ModeName = typeof MODE_NAMES[keyof typeof MODE_NAMES];
 

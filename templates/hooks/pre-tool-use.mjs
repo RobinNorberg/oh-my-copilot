@@ -68,7 +68,7 @@ const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
 const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
 
 function teamWorkerIdentity() {
-  return (process.env.OMP_TEAM_WORKER || process.env.OMX_TEAM_WORKER || '').trim();
+  return (process.env.OMC_TEAM_WORKER || '').trim();
 }
 
 function workerCommandViolation(command) {

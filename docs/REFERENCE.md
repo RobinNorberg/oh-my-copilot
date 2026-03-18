@@ -9,9 +9,8 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [CLI Commands: ask/team](#cli-commands-askteam)
-- [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated)
 - [Agents (18 Total)](#agents-18-total)
-- [Skills (33 Total)](#skills-33-total)
+- [Skills (34 Total)](#skills-34-total)
 - [Slash Commands](#slash-commands)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -204,7 +203,6 @@ omc ask copilot --agent-prompt executor --prompt "create an implementation plan"
 - Provider matrix: `copilot | codex | gemini`
 - Artifacts: `.omg/artifacts/ask/{provider}-{slug}-{timestamp}.md`
 - Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
-- Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
 - Skill shortcuts: `/oh-my-copilot:ask-codex` and `/oh-my-copilot:ask-gemini` route to this command
 
 ### `omc team` (CLI runtime surface)
@@ -219,45 +217,6 @@ omc team api claim-task --input '{"team_name":"auth-review","task_id":"1","worke
 Supported entrypoints: direct start (`omc team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
 
 ---
-
-## Legacy MCP Team Runtime Tools (Deprecated, Opt-In Only)
-
-The Team MCP runtime server is **not enabled by default**. If manually enabled, runtime tools are still **CLI-only deprecated** and return a deterministic error envelope:
-
-```json
-{
-  "code": "deprecated_cli_only",
-  "message": "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead."
-}
-```
-
-Use `omc team ...` replacements instead:
-
-| Tool                   | Purpose                                                    |
-| ---------------------- | ---------------------------------------------------------- |
-| `omc_run_team_start`   | **Deprecated** → `omc team [N:agent-type] "<task>"`        |
-| `omc_run_team_status`  | **Deprecated** → `omc team status <team-name>`             |
-| `omc_run_team_wait`    | **Deprecated** → monitor via `omc team status <team-name>` |
-| `omc_run_team_cleanup` | **Deprecated** → `omc team shutdown <team-name> [--force]` |
-
-Optional compatibility enablement (manual only):
-
-```json
-{
-  "mcpServers": {
-    "team": {
-      "command": "node",
-      "args": ["${PLUGIN_ROOT}/bridge/team-mcp.cjs"]
-    }
-  }
-}
-```
-
-### Runtime status semantics
-
-- **Artifact-first terminal convergence**: team monitors prefer finalized state artifacts when present.
-- **Deterministic parse-failure handling**: malformed result artifacts are treated as terminal `failed`.
-- **Cleanup scope**: shutdown/cleanup only clears `.omg/state/team/{teamName}` for the target team (never sibling teams).
 
 ## Agents (18 Total)
 
@@ -319,9 +278,9 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 
 ---
 
-## Skills (33 Total)
+## Skills (34 Total)
 
-Includes **32 canonical skills + 1 deprecated alias** (`psm`).
+Includes **34 canonical skills**.
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
@@ -332,9 +291,10 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 | `ccg`                     | Tri-model workflow via `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:ccg`                     |
 | `configure-notifications` | Configure notifications (Teams/Discord/Telegram/Slack)           | `/oh-my-copilot:configure-notifications` |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                    | `/oh-my-copilot:deep-interview`          |
+| `deep-review`             | Multi-pass code review (security, quality, structural + validation)  | `/oh-my-copilot:deep-review`             |
+| `discover`                | Parallel codebase quality scan with prioritized backlog              | `/oh-my-copilot:discover`                |
 | `deepinit`                | Generate hierarchical AGENTS.md docs                             | `/oh-my-copilot:deepinit`                |
 | `external-context`        | Parallel document-specialist research                            | `/oh-my-copilot:external-context`        |
-| `hud`                     | Configure HUD/statusline                                         | `/oh-my-copilot:hud`                     |
 | `learn-about-omc`         | Analyze OMC usage patterns                                       | `/oh-my-copilot:learn-about-omc`         |
 | `learner`                 | Extract reusable skill from session                              | `/oh-my-copilot:learner`                 |
 | `mcp-setup`               | Configure MCP servers                                            | `/oh-my-copilot:mcp-setup`               |
@@ -345,7 +305,6 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 | `omc-setup`               | One-time setup wizard                                            | `/oh-my-copilot:omc-setup`               |
 | `omc-teams`               | Legacy compatibility wrapper for `omc team` CLI                  | `/oh-my-copilot:omc-teams`               |
 | `project-session-manager` | Manage isolated dev environments (git worktrees + tmux)          | `/oh-my-copilot:project-session-manager` |
-| `psm`                     | **Deprecated** compatibility alias for `project-session-manager` | `/oh-my-copilot:psm`                     |
 | `ralph`                   | Persistence loop until verified completion                       | `/oh-my-copilot:ralph`                   |
 | `ralph-init`              | Initialize PRD for structured ralph execution                    | `/oh-my-copilot:ralph-init`              |
 | `ralplan`                 | Consensus planning alias for `/omc-plan --consensus`             | `/oh-my-copilot:ralplan`                 |
@@ -357,8 +316,6 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 | `ultraqa`                 | QA cycle until goal is met                                       | `/oh-my-copilot:ultraqa`                 |
 | `ultrawork`               | Maximum parallel throughput mode                                 | `/oh-my-copilot:ultrawork`               |
 | `writer-memory`           | Agentic memory system for writing projects                       | `/oh-my-copilot:writer-memory`           |
-
-`psm` | **Deprecated** compatibility alias for `project-session-manager`
 
 ---
 
@@ -377,6 +334,8 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 | `/oh-my-copilot:omc-plan <description>`  | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-copilot:ralplan <description>`   | Iterative planning with consensus structured deliberation (`--deliberate` for high-risk mode) |
 | `/oh-my-copilot:deep-interview <idea>`   | Socratic interview with ambiguity scoring before execution                                    |
+| `/oh-my-copilot:deep-review`           | Multi-pass code review with validation                                            |
+| `/oh-my-copilot:discover [scope]`      | Parallel specialist scan with prioritized backlog                                 |
 | `/oh-my-copilot:deepinit [path]`         | Index codebase with hierarchical AGENTS.md files                                              |
 | `/oh-my-copilot:sciomc <topic>`          | Parallel research orchestration                                                               |
 | `/oh-my-copilot:learner`                 | Extract reusable skill from session                                                           |
@@ -385,11 +344,9 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 | `/oh-my-copilot:omc-setup`               | One-time setup wizard                                                                         |
 | `/oh-my-copilot:omc-doctor`              | Diagnose and fix installation issues                                                          |
 | `/oh-my-copilot:omc-help`                | Show OMC usage guide                                                                          |
-| `/oh-my-copilot:hud`                     | Configure HUD statusline                                                                      |
 | `/oh-my-copilot:release`                 | Automated release workflow                                                                    |
 | `/oh-my-copilot:mcp-setup`               | Configure MCP servers                                                                         |
 | `/oh-my-copilot:trace`                   | Show orchestration trace timeline                                                             |
-| `/oh-my-copilot:psm <arguments>`         | Deprecated alias for project session manager                                                  |
 
 ---
 
