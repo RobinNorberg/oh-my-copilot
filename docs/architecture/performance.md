@@ -85,7 +85,7 @@ Agent Observatory (3 active, 85% efficiency)
 
 ### Token & Cost Analytics
 
-OMP automatically tracks token usage and costs across all sessions.
+OMC automatically tracks token usage and costs across all sessions.
 
 #### CLI Commands
 
@@ -266,7 +266,7 @@ conflicts.forEach(c => {
 
 ### Intervention System
 
-OMP automatically detects problematic agents:
+OMC automatically detects problematic agents:
 
 | Intervention | Trigger | Action |
 |--------------|---------|--------|
@@ -338,7 +338,7 @@ Visit the platform to:
 | Resource | Description | Link |
 |----------|-------------|------|
 | Copilot CLI Discord | Community support and tips | [discord.gg/anthropic](https://discord.gg/anthropic) |
-| OMP GitHub Issues | Bug reports and feature requests | [GitHub Issues](https://github.com/RobinNorberg/oh-my-copilot/issues) |
+| OMC GitHub Issues | Bug reports and feature requests | [GitHub Issues](https://github.com/RobinNorberg/oh-my-copilot/issues) |
 | Anthropic Documentation | Official Copilot documentation | [docs.github.com](https://docs.github.com) |
 
 ### Model Performance Benchmarks

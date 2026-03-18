@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * OMP Persistent Mode Hook (Node.js)
- * Minimal continuation enforcer for all OMP modes.
+ * OMC Persistent Mode Hook (Node.js)
+ * Minimal continuation enforcer for all OMC modes.
  * Stripped down for reliability — no optional imports, no PRD, no notepad pruning.
  *
  * Supported modes: ralph, autopilot, ultrapilot, swarm, ultrawork, ultraqa, pipeline, team
@@ -218,7 +218,7 @@ function isStaleSkillState(state) {
 /**
  * Check if a cancel signal is in progress for the session.
  * Cancel signals are written by state_clear and expire after 30 seconds.
- * @param {string} stateDir - The .omp/state directory path
+ * @param {string} stateDir - The .omg/state directory path
  * @param {string} sessionId - Optional session ID
  * @returns {boolean} true if cancel is in progress
  */
@@ -411,7 +411,7 @@ function countIncompleteTodos(sessionId, projectDir) {
 
   // Project-local todos only
   for (const path of [
-    join(projectDir, ".omp", "todos.json"),
+    join(projectDir, ".omg", "todos.json"),
     join(projectDir, ".copilot", "todos.json"),
   ]) {
     try {
@@ -542,8 +542,8 @@ async function main() {
     const sessionIdRaw = data.sessionId || data.session_id || data.sessionid || "";
     const sessionId = sanitizeSessionId(sessionIdRaw);
     const hasValidSessionId = isValidSessionId(sessionIdRaw);
-    const stateDir = join(directory, ".omp", "state");
-    const globalStateDir = join(homedir(), ".omp", "state");
+    const stateDir = join(directory, ".omg", "state");
+    const globalStateDir = join(homedir(), ".omg", "state");
 
     // CRITICAL: Never block context-limit stops.
     // Blocking these causes a deadlock where Copilot CLI cannot compact.
@@ -833,7 +833,7 @@ async function main() {
       }
     }
 
-    // Priority 6: Team (omp-teams / staged pipeline)
+    // Priority 6: Team (omc-teams / staged pipeline)
     if (
       team.state?.active &&
       !isStaleState(team.state) &&

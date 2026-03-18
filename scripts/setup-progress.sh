@@ -9,7 +9,7 @@
 set -euo pipefail
 
 STATE_FILE=".omg/state/setup-state.json"
-CONFIG_FILE="$HOME/.copilot/.omp-config.json"
+CONFIG_FILE="$HOME/.copilot/.omg-config.json"
 
 # Cross-platform ISO date to epoch conversion
 iso_to_epoch() {

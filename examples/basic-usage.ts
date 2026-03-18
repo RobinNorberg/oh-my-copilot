@@ -14,7 +14,7 @@ import { createOmcSession, enhancePrompt } from '../src/index.js';
 async function main() {
   console.log('=== Oh-My-ClaudeCode Example ===\n');
 
-  // Create a OMP session
+  // Create a OMC session
   const session = createOmcSession({
     // Optional: custom configuration overrides
     config: {

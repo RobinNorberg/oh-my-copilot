@@ -6,7 +6,7 @@ description: >
   DO NOT USE FOR: Creating PRs (use git-master agent), sprint planning (use omc-ado-sprint), work item triage (use omc-ado-triage), or non-ADO repositories.
 ---
 
-# OMP ADO Review
+# OMC ADO Review
 
 Perform a full Azure DevOps pull request review cycle. Reads `.omg/config.json` for connection settings, lists open PRs, surfaces existing review threads, and supports adding comments, managing reviewers, and updating PR status.
 

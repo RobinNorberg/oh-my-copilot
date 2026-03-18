@@ -6,7 +6,7 @@ description: >
   DO NOT USE FOR: Sprint planning (use omc-ado-sprint), PR code review (use omc-ado-review), initial ADO setup (use omc-ado-setup), or non-ADO projects.
 ---
 
-# OMP ADO Triage
+# OMC ADO Triage
 
 Perform a full Azure DevOps triage cycle for the current project. Reads `.omg/config.json` for connection settings, queries all relevant ADO surfaces (work items, PRs, pipelines, security), and presents a prioritized summary with recommended actions.
 

@@ -1,13 +1,13 @@
 ---
 name: cancel
-description: Cancel any active OMP mode (autopilot, ralph, ultrawork, ultraqa, swarm, ultrapilot, pipeline, team)
+description: Cancel any active OMC mode (autopilot, ralph, ultrawork, ultraqa, swarm, ultrapilot, pipeline, team)
 ---
 
 # Cancel Skill
 
-Intelligent cancellation that detects and cancels the active OMP mode.
+Intelligent cancellation that detects and cancels the active OMC mode.
 
-**The cancel skill is the standard way to complete and exit any OMP mode.**
+**The cancel skill is the standard way to complete and exit any OMC mode.**
 When the stop hook detects work is complete, it instructs the LLM to invoke
 this skill for proper state cleanup. If cancel fails or is interrupted,
 retry with `--force` flag, or wait for the 2-hour staleness timeout as
@@ -51,7 +51,7 @@ Active modes are still cancelled in dependency order:
 6. Ultrapilot (standalone)
 7. Pipeline (standalone)
 8. Team (Copilot CLI native)
-9. OMP Teams (tmux CLI workers)
+9. OMC Teams (tmux CLI workers)
 10. Plan Consensus (standalone)
 
 ## Force Clear All
@@ -243,7 +243,7 @@ Clear directly: `state_clear(mode="ultraqa", session_id)`
 
 #### No Active Modes
 
-Report: "No active OMP modes detected. Use --force to clear all state files anyway."
+Report: "No active OMC modes detected. Use --force to clear all state files anyway."
 
 ## Implementation Notes
 
@@ -270,8 +270,8 @@ Mode-specific subsections below describe what extra cleanup each handler perform
 | Pipeline | "Pipeline cancelled. Sequential agent chain stopped." |
 | Team | "Team cancelled. Teammates shut down and cleaned up." |
 | Plan Consensus | "Plan Consensus cancelled. Planning session ended." |
-| Force | "All OMP modes cleared. You are free to start fresh." |
-| None | "No active OMP modes detected." |
+| Force | "All OMC modes cleared. You are free to start fresh." |
+| None | "No active OMC modes detected." |
 
 ## What Gets Preserved
 

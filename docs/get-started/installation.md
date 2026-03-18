@@ -211,7 +211,7 @@ When distributing to colleagues for hardening, share this checklist:
 - [ ] Skills are discoverable (try typing `autopilot: hello world`)
 - [ ] Agent delegation works (try `/oh-my-copilot:team 1:executor "echo hello"`)
 - [ ] State persistence works (`.omg/` directory created in project root)
-- [ ] Hooks fire on session start (look for OMP banner/context in prompt)
+- [ ] Hooks fire on session start (look for OMC banner/context in prompt)
 - [ ] Report any errors, unexpected behavior, or missing functionality
 
 ---

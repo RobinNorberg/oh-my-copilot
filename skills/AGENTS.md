@@ -47,7 +47,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
 | `learner/SKILL.md` | learner | Extract reusable skill from session |
 | `ask/SKILL.md` | ask | Ask Copilot, Codex, or Gemini via `omc ask` and capture an artifact |
-| `cancel/SKILL.md` | cancel | Cancel any active OMP mode |
+| `cancel/SKILL.md` | cancel | Cancel any active OMC mode |
 | `omc-doctor/SKILL.md` | omc-doctor | Diagnose installation issues |
 | `setup/SKILL.md` | setup | Unified setup entrypoint for install, diagnostics, and MCP configuration |
 | `omc-setup/SKILL.md` | omc-setup | One-time setup wizard |

@@ -4,7 +4,7 @@ description: Spawn copilot, codex, or gemini CLI workers in tmux panes for paral
 aliases: []
 ---
 
-# OMP Teams Skill
+# OMC Teams Skill
 
 Spawn N CLI worker processes in tmux panes to execute tasks in parallel. Supports `copilot`, `codex`, and `gemini` agent types.
 

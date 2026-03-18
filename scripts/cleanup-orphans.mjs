@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OMP Orphan Agent Cleanup
+ * OMC Orphan Agent Cleanup
  *
  * Detects and terminates orphan agent processes — agents whose team
  * config has been deleted (via TeamDelete) but whose OS processes

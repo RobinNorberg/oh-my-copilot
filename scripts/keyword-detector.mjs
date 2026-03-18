@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OMP Keyword Detector Hook (Node.js)
+ * OMC Keyword Detector Hook (Node.js)
  * Detects magic keywords and invokes skill tools
  * Cross-platform: Windows, macOS, Linux
  *

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * PreToolUse Hook: OMP Reminder Enforcer (Node.js)
+ * PreToolUse Hook: OMC Reminder Enforcer (Node.js)
  * Injects contextual reminders before every tool execution
  * Cross-platform: Windows, macOS, Linux
  */
@@ -124,7 +124,7 @@ function estimateContextPercent(transcriptPath) {
 }
 
 function buildPreflightRecoveryAdvice(contextPercent) {
-  return `[OMP] Preflight context guard: ${contextPercent}% used ` +
+  return `[OMC] Preflight context guard: ${contextPercent}% used ` +
     `(threshold: ${PREFLIGHT_CONTEXT_THRESHOLD}%). Avoid spawning additional agent-heavy tasks ` +
     `until context is reduced. Safe recovery: (1) pause new Task fan-out, (2) run /compact now, ` +
     `(3) if compact fails, open a fresh session and continue from .omg/state + .omg/notepad.md.`;

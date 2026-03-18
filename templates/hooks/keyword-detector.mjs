@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OMP Keyword Detector Hook (Node.js)
+ * OMC Keyword Detector Hook (Node.js)
  * Detects magic keywords and invokes skill tools
  * Cross-platform: Windows, macOS, Linux
  *
@@ -114,15 +114,15 @@ function activateState(directory, prompt, stateName, sessionId) {
     last_checked_at: new Date().toISOString()
   };
 
-  // Write to local .omp/state directory
-  const localDir = join(directory, '.omp', 'state');
+  // Write to local .omg/state directory
+  const localDir = join(directory, '.omg', 'state');
   if (!existsSync(localDir)) {
     try { mkdirSync(localDir, { recursive: true }); } catch {}
   }
   try { writeFileSync(join(localDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
 
-  // Write to global .omp/state directory
-  const globalDir = join(homedir(), '.omp', 'state');
+  // Write to global .omg/state directory
+  const globalDir = join(homedir(), '.omg', 'state');
   if (!existsSync(globalDir)) {
     try { mkdirSync(globalDir, { recursive: true }); } catch {}
   }
@@ -134,8 +134,8 @@ function activateState(directory, prompt, stateName, sessionId) {
  */
 function clearStateFiles(directory, modeNames) {
   for (const name of modeNames) {
-    const localPath = join(directory, '.omp', 'state', `${name}-state.json`);
-    const globalPath = join(homedir(), '.omp', 'state', `${name}-state.json`);
+    const localPath = join(directory, '.omg', 'state', `${name}-state.json`);
+    const globalPath = join(homedir(), '.omg', 'state', `${name}-state.json`);
     try { if (existsSync(localPath)) unlinkSync(localPath); } catch {}
     try { if (existsSync(globalPath)) unlinkSync(globalPath); } catch {}
   }
@@ -148,9 +148,9 @@ function clearStateFiles(directory, modeNames) {
 function linkRalphTeam(directory, sessionId) {
   const getStatePath = (modeName) => {
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      return join(directory, '.omp', 'state', 'sessions', sessionId, `${modeName}-state.json`);
+      return join(directory, '.omg', 'state', 'sessions', sessionId, `${modeName}-state.json`);
     }
-    return join(directory, '.omp', 'state', `${modeName}-state.json`);
+    return join(directory, '.omg', 'state', `${modeName}-state.json`);
   };
 
   // Update ralph state with linked_team

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OMP Code Simplifier Stop Hook (Node.js)
+ * OMC Code Simplifier Stop Hook (Node.js)
  *
  * Intercepts Stop events to automatically delegate recently modified source files
  * to the code-simplifier agent for cleanup and simplification.

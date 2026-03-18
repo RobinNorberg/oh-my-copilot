@@ -24,7 +24,7 @@ bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" save 3 "$CONFIG_TYPE"
 ## Step 2.2: Clear Stale Plugin Cache
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.copilot'),b=p.join(d,'plugins','cache','omp','oh-my-copilot');try{const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(v.length<=1){console.log('Cache is clean');process.exit()}v.slice(0,-1).forEach(x=>{f.rmSync(p.join(b,x),{recursive:true,force:true})});console.log('Cleared',v.length-1,'stale cache version(s)')}catch{console.log('No cache directory found (normal for new installs)')}"
+node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.copilot'),b=p.join(d,'plugins','cache','omc','oh-my-copilot');try{const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(v.length<=1){console.log('Cache is clean');process.exit()}v.slice(0,-1).forEach(x=>{f.rmSync(p.join(b,x),{recursive:true,force:true})});console.log('Cleared',v.length-1,'stale cache version(s)')}catch{console.log('No cache directory found (normal for new installs)')}"
 ```
 
 ## Step 2.3: Check for Updates
@@ -38,7 +38,7 @@ const p=require('path'),f=require('fs'),h=require('os').homedir();
 const d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.copilot');
 let v='';
 // Try cache directory first
-const b=p.join(d,'plugins','cache','omp','oh-my-copilot');
+const b=p.join(d,'plugins','cache','omc','oh-my-copilot');
 try{const vs=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(vs.length)v=vs[vs.length-1]}catch{}
 // Try .omc-version.json second
 if(v==='')try{const j=JSON.parse(f.readFileSync('.omc-version.json','utf-8'));v=j.version||''}catch{}
@@ -94,16 +94,16 @@ echo "Default execution mode set to: USER_CHOICE"
 
 **Note**: This preference ONLY affects generic keywords ("fast", "parallel"). Explicit keywords ("ulw") always override this preference.
 
-## Step 2.5: Install OMP CLI Tool
+## Step 2.5: Install OMC CLI Tool
 
-The OMP CLI (`omp` command) provides standalone monitoring and analytics commands.
+The OMC CLI (`omc` command) provides standalone monitoring and analytics commands.
 
 First, check if the CLI is already installed:
 
 ```bash
 if command -v omc &>/dev/null; then
   OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
-  echo "OMP CLI already installed: $OMC_CLI_VERSION"
+  echo "OMC CLI already installed: $OMC_CLI_VERSION"
   OMC_CLI_INSTALLED="true"
 else
   OMC_CLI_INSTALLED="false"
@@ -114,7 +114,7 @@ If `OMC_CLI_INSTALLED` is `"true"`, skip the rest of this step.
 
 If `OMC_CLI_INSTALLED` is `"false"`, use AskUserQuestion:
 
-**Question:** "Would you like to install the OMP CLI globally for standalone monitoring and analytics? (`omp`, `omc cost`, `omc sessions`)"
+**Question:** "Would you like to install the OMC CLI globally for standalone monitoring and analytics? (`omc`, `omc cost`, `omc sessions`)"
 
 **Options:**
 1. **Yes (Recommended)** - Install `oh-my-copilot` via `npm install -g`
@@ -124,19 +124,19 @@ If user chooses **Yes**:
 
 ```bash
 if ! command -v npm &>/dev/null; then
-  echo "WARNING: npm not found. Cannot install OMP CLI automatically."
+  echo "WARNING: npm not found. Cannot install OMC CLI automatically."
   echo "Install Node.js/npm first, then run: npm install -g oh-my-copilot"
 else
   if npm install -g oh-my-copilot 2>&1; then
-    echo "OMP CLI installed successfully."
+    echo "OMC CLI installed successfully."
     if command -v omc &>/dev/null; then
       OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
       echo "Verified: omc $OMC_CLI_VERSION"
     else
-      echo "Installed but 'omp' not on PATH. You may need to restart your shell."
+      echo "Installed but 'omc' not on PATH. You may need to restart your shell."
     fi
   else
-    echo "WARNING: Failed to install OMP CLI (permission issue or network error)."
+    echo "WARNING: Failed to install OMC CLI (permission issue or network error)."
     echo "You can install manually later: npm install -g oh-my-copilot"
     echo "Or with sudo: sudo npm install -g oh-my-copilot"
   fi

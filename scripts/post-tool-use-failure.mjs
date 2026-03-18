@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// OMP Post-Tool-Use-Failure Hook (Node.js)
+// OMC Post-Tool-Use-Failure Hook (Node.js)
 // Tracks tool failures for retry guidance in Stop hook
 // Writes last-tool-error.json with tool name, input preview, error, and retry count
 

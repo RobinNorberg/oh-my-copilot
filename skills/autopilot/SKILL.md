@@ -123,7 +123,7 @@ Optional settings in `.copilot/settings.json`:
 
 ```json
 {
-  "omp": {
+  "omc": {
     "autopilot": {
       "maxIterations": 10,
       "maxQaCycles": 5,

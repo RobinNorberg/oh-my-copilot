@@ -98,18 +98,18 @@ If both configurations exist, **project-scoped takes precedence** over global:
 
 | Variable                   | Default              | Description                                                                                                                                                                                                                                                                 |
 | -------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMP stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omg/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
+| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omg/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
 | `OMC_BRIDGE_SCRIPT`        | _(auto-detected)_    | Path to the Python bridge script                                                                                                                                                                                                                                            |
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
 | `OMC_CODEX_DEFAULT_MODEL`  | _(provider default)_ | Default model for Codex CLI workers                                                                                                                                                                                                                                         |
 | `OMC_GEMINI_DEFAULT_MODEL` | _(provider default)_ | Default model for Gemini CLI workers                                                                                                                                                                                                                                        |
 | `OMC_LSP_TIMEOUT_MS`       | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
-| `DISABLE_OMC`              | _(unset)_            | Set to any value to disable all OMP hooks                                                                                                                                                                                                                                   |
+| `DISABLE_OMC`              | _(unset)_            | Set to any value to disable all OMC hooks                                                                                                                                                                                                                                   |
 | `OMC_SKIP_HOOKS`           | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
 
 #### Centralized State with `OMC_STATE_DIR`
 
-By default, OMP stores state in `{worktree}/.omg/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
+By default, OMC stores state in `{worktree}/.omg/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
 
 ```bash
 # In your shell profile (~/.bashrc, ~/.zshrc, etc.)
@@ -118,7 +118,7 @@ export OMC_STATE_DIR="$HOME/.copilot/omc"
 
 This resolves to `~/.copilot/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
 
-If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMP logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
+If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
 
 ### When to Re-run Setup
 
@@ -335,12 +335,12 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 | `deepinit`                | Generate hierarchical AGENTS.md docs                             | `/oh-my-copilot:deepinit`                |
 | `external-context`        | Parallel document-specialist research                            | `/oh-my-copilot:external-context`        |
 | `hud`                     | Configure HUD/statusline                                         | `/oh-my-copilot:hud`                     |
-| `learn-about-omc`         | Analyze OMP usage patterns                                       | `/oh-my-copilot:learn-about-omc`         |
+| `learn-about-omc`         | Analyze OMC usage patterns                                       | `/oh-my-copilot:learn-about-omc`         |
 | `learner`                 | Extract reusable skill from session                              | `/oh-my-copilot:learner`                 |
 | `mcp-setup`               | Configure MCP servers                                            | `/oh-my-copilot:mcp-setup`               |
 | `note`                    | Save notes to notepad                                            | `/oh-my-copilot:note`                    |
 | `omc-doctor`              | Diagnose and fix installation issues                             | `/oh-my-copilot:omc-doctor`              |
-| `omc-help`                | Show OMP usage guide                                             | `/oh-my-copilot:omc-help`                |
+| `omc-help`                | Show OMC usage guide                                             | `/oh-my-copilot:omc-help`                |
 | `omc-plan`                | Planning workflow (`/plan` safe alias)                           | `/oh-my-copilot:omc-plan`                |
 | `omc-setup`               | One-time setup wizard                                            | `/oh-my-copilot:omc-setup`               |
 | `omc-teams`               | Legacy compatibility wrapper for `omc team` CLI                  | `/oh-my-copilot:omc-teams`               |
@@ -384,7 +384,7 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 | `/oh-my-copilot:cancel`                  | Unified cancellation                                                                          |
 | `/oh-my-copilot:omc-setup`               | One-time setup wizard                                                                         |
 | `/oh-my-copilot:omc-doctor`              | Diagnose and fix installation issues                                                          |
-| `/oh-my-copilot:omc-help`                | Show OMP usage guide                                                                          |
+| `/oh-my-copilot:omc-help`                | Show OMC usage guide                                                                          |
 | `/oh-my-copilot:hud`                     | Configure HUD statusline                                                                      |
 | `/oh-my-copilot:release`                 | Automated release workflow                                                                    |
 | `/oh-my-copilot:mcp-setup`               | Configure MCP servers                                                                         |
@@ -561,7 +561,7 @@ stopomc
 
 > **Note**: Bash hooks are fully portable across macOS and Linux (no GNU-specific dependencies).
 
-> **Windows**: Native Windows (win32) support is experimental. OMP requires tmux, which is not available on native Windows. **WSL2 is strongly recommended** for Windows users. See the [WSL2 installation guide](https://learn.microsoft.com/en-us/windows/wsl/install). Native Windows issues may have limited support.
+> **Windows**: Native Windows (win32) support is experimental. OMC requires tmux, which is not available on native Windows. **WSL2 is strongly recommended** for Windows users. See the [WSL2 installation guide](https://learn.microsoft.com/en-us/windows/wsl/install). Native Windows issues may have limited support.
 
 > **Advanced**: Set `OMC_USE_NODE_HOOKS=1` to use Node.js hooks on macOS/Linux.
 
@@ -699,7 +699,7 @@ Configure HUD elements in `~/.copilot/settings.json`:
 | `cwd`        | Show current working directory | `false` |
 | `gitRepo`    | Show git repository name       | `false` |
 | `gitBranch`  | Show current git branch        | `false` |
-| `omcLabel`   | Show [OMP] label               | `true`  |
+| `omcLabel`   | Show [OMC] label               | `true`  |
 | `contextBar` | Show context window usage      | `true`  |
 | `agents`     | Show active agents count       | `true`  |
 | `todos`      | Show todo progress             | `true`  |

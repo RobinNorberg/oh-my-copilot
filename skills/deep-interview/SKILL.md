@@ -26,7 +26,7 @@ Deep Interview implements Ouroboros-inspired Socratic questioning with mathemati
 </Do_Not_Use_When>
 
 <Why_This_Exists>
-AI can build anything. The hard part is knowing what to build. OMP's autopilot Phase 0 expands ideas into specs via analyst + architect, but this single-pass approach struggles with genuinely vague inputs. It asks "what do you want?" instead of "what are you assuming?" Deep Interview applies Socratic methodology to iteratively expose assumptions and mathematically gate readiness, ensuring the AI has genuine clarity before spending execution cycles.
+AI can build anything. The hard part is knowing what to build. OMC's autopilot Phase 0 expands ideas into specs via analyst + architect, but this single-pass approach struggles with genuinely vague inputs. It asks "what do you want?" instead of "what are you assuming?" Deep Interview applies Socratic methodology to iteratively expose assumptions and mathematically gate readiness, ensuring the AI has genuine clarity before spending execution cycles.
 
 Inspired by the [Ouroboros project](https://github.com/Q00/ouroboros) which demonstrated that specification quality is the primary bottleneck in AI-assisted development.
 </Why_This_Exists>
@@ -503,7 +503,7 @@ Optional settings in `.copilot/settings.json`:
 
 ```json
 {
-  "omp": {
+  "omc": {
     "deepInterview": {
       "ambiguityThreshold": 0.2,
       "maxRounds": 20,

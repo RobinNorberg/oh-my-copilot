@@ -1,7 +1,7 @@
 /**
  * Interop CLI Command - Split-pane tmux session with OMC and OMX
  *
- * Creates a tmux split-pane layout with Copilot CLI (OMP) on the left
+ * Creates a tmux split-pane layout with Copilot CLI (OMC) on the left
  * and Codex CLI (OMX) on the right, with shared interop state.
  */
 export type InteropMode = 'off' | 'observe' | 'active';

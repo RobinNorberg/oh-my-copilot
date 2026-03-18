@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OMP Context Safety Hook (PreToolUse)
+ * OMC Context Safety Hook (PreToolUse)
  *
  * Blocks expensive operations (TeamCreate, ExitPlanMode) when context usage
  * exceeds a safe threshold. Spawning teams or exiting plan mode at high
@@ -149,7 +149,7 @@ async function main() {
 
     if (pct >= THRESHOLD) {
       process.stderr.write(
-        `[OMP] Context at ${pct}% (threshold: ${THRESHOLD}%). ` +
+        `[OMC] Context at ${pct}% (threshold: ${THRESHOLD}%). ` +
         `Too high for ${toolName}. Run /compact or start a fresh session to free context.\n`
       );
       process.exit(2);

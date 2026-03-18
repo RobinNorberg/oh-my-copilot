@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * OMP Persistent Mode Hook (Node.js)
- * Minimal continuation enforcer for all OMP modes.
+ * OMC Persistent Mode Hook (Node.js)
+ * Minimal continuation enforcer for all OMC modes.
  * Stripped down for reliability — no optional imports, no PRD, no notepad pruning.
  *
  * Supported modes: ralph, autopilot, ultrapilot, swarm, ultrawork, ultraqa, pipeline, team
@@ -57,7 +57,7 @@ function writeJsonFile(path, data) {
 }
 
 /**
- * Read the session-idle notification cooldown in seconds from ~/.omp/config.json.
+ * Read the session-idle notification cooldown in seconds from ~/.omg/config.json.
  * Default: 60. 0 = disabled.
  */
 function getIdleCooldownSeconds() {
@@ -242,7 +242,7 @@ function writeStopBreaker(stateDir, name, count, sessionId) {
 /**
  * Check if a cancel signal is in progress for the session.
  * Cancel signals are written by state_clear and expire after 30 seconds.
- * @param {string} stateDir - The .omp/state directory path
+ * @param {string} stateDir - The .omg/state directory path
  * @param {string} sessionId - Optional session ID
  * @returns {boolean} true if cancel is in progress
  */
@@ -414,7 +414,7 @@ function countIncompleteTodos(sessionId, projectDir) {
 
   // Project-local todos only
   for (const path of [
-    join(projectDir, ".omp", "todos.json"),
+    join(projectDir, ".omg", "todos.json"),
     join(projectDir, ".copilot", "todos.json"),
   ]) {
     try {
@@ -602,7 +602,7 @@ async function main() {
     const pipeline = readStateFileWithSession(stateDir, "pipeline-state.json", sessionId);
     const team = readStateFileWithSession(stateDir, "team-state.json", sessionId);
     const ralplan = readStateFileWithSession(stateDir, "ralplan-state.json", sessionId);
-    const omcTeams = readStateFileWithSession(stateDir, "omp-teams-state.json", sessionId);
+    const omcTeams = readStateFileWithSession(stateDir, "omc-teams-state.json", sessionId);
 
     // Swarm uses swarm-summary.json (not swarm-state.json) + marker file
     const swarmMarker = existsSync(join(stateDir, "swarm-active.marker"));
@@ -874,7 +874,7 @@ async function main() {
       }
     }
 
-    // Priority 6.5: OMP Teams (tmux CLI workers — independent of native team state)
+    // Priority 6.5: OMC Teams (tmux CLI workers — independent of native team state)
     if (omcTeams.state?.active && !isStaleState(omcTeams.state) && isSessionMatch(omcTeams.state, sessionId)) {
       const phase = normalizeTeamPhase(omcTeams.state);
       if (phase) {
@@ -885,13 +885,13 @@ async function main() {
           writeJsonFile(omcTeams.path, omcTeams.state);
 
           // Fire-and-forget notification
-          sendStopNotification('omp-teams', omcTeams.state, sessionId, directory).catch(() => {});
+          sendStopNotification('omc-teams', omcTeams.state, sessionId, directory).catch(() => {});
 
           console.log(
             JSON.stringify({
               continue: false,
               decision: "block",
-              reason: `[OMP TEAMS - Phase: ${phase}] OMP Teams workers active. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
+              reason: `[OMC TEAMS - Phase: ${phase}] OMC Teams workers active. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
           );
           return;

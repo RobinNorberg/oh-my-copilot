@@ -1,11 +1,11 @@
 # Setup Hook
 
-Handles OMP initialization and maintenance tasks.
+Handles OMC initialization and maintenance tasks.
 
 ## Triggers
 
 ### `init`
-Initializes OMP directory structure and environment on first run or explicit setup.
+Initializes OMC directory structure and environment on first run or explicit setup.
 
 **What it does:**
 - Creates required directories: `.omg/state/`, `.omg/logs/`, `.omg/notepads/`, `.omg/state/checkpoints/`, `.omg/plans/`
@@ -30,13 +30,13 @@ Initializes OMP directory structure and environment on first run or explicit set
   "continue": true,
   "hookSpecificOutput": {
     "hookEventName": "Setup",
-    "additionalContext": "OMP initialized:\n- 5 directories created\n- 1 configs validated\n- Environment variables set: OMC_INITIALIZED"
+    "additionalContext": "OMC initialized:\n- 5 directories created\n- 1 configs validated\n- Environment variables set: OMC_INITIALIZED"
   }
 }
 ```
 
 ### `maintenance`
-Performs periodic maintenance tasks to keep OMP state clean.
+Performs periodic maintenance tasks to keep OMC state clean.
 
 **What it does:**
 - Prunes old state files (default: 7 days old)
@@ -68,7 +68,7 @@ Performs periodic maintenance tasks to keep OMP state clean.
   "continue": true,
   "hookSpecificOutput": {
     "hookEventName": "Setup",
-    "additionalContext": "OMP maintenance completed:\n- 3 old state files pruned\n- 1 orphaned state files cleaned\n- Swarm database vacuumed"
+    "additionalContext": "OMC maintenance completed:\n- 3 old state files pruned\n- 1 orphaned state files cleaned\n- Swarm database vacuumed"
   }
 }
 ```
@@ -78,7 +78,7 @@ Performs periodic maintenance tasks to keep OMP state clean.
 ### Directory Management
 
 #### `ensureDirectoryStructure(directory: string): string[]`
-Creates all required OMP directories.
+Creates all required OMC directories.
 
 **Returns:** Array of created directory paths.
 
@@ -100,7 +100,7 @@ const validated = validateConfigFiles('/path/to/project');
 ### Environment Variables
 
 #### `setEnvironmentVariables(): string[]`
-Sets environment variables for OMP initialization.
+Sets environment variables for OMC initialization.
 
 **Returns:** Array of environment variable names set.
 
@@ -214,7 +214,7 @@ interface HookOutput {
 ```typescript
 import { processSetup } from './hooks/setup';
 
-// Initialize OMP
+// Initialize OMC
 const initResult = await processSetup({
   session_id: 'session-123',
   transcript_path: '/tmp/transcript.md',
@@ -244,7 +244,7 @@ console.log(maintenanceResult.hookSpecificOutput.additionalContext);
 ```bash
 #!/bin/bash
 
-# Initialize OMP
+# Initialize OMC
 INPUT=$(cat <<EOF
 {
   "session_id": "session-123",
