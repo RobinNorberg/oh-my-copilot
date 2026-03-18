@@ -26,7 +26,7 @@ export function getBeadsInstructions(tool: Exclude<TaskTool, 'builtin'>): string
 }
 
 /**
- * Read beads context config from omg-config.json.
+ * Read beads context config from omc-config.json.
  */
 export function getBeadsContextConfig(): BeadsContextConfig {
   const config = getOMCConfig();

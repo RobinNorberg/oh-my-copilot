@@ -64,7 +64,7 @@ describe('runtime v2 startup inbox dispatch', () => {
             await rm(cwd, { recursive: true, force: true });
     });
     it('writes durable inbox dispatch evidence when startup worker notification succeeds', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omg-runtime-v2-dispatch-'));
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-dispatch-'));
         const { startTeamV2 } = await import('../runtime-v2.js');
         const runtime = await startTeamV2({
             teamName: 'dispatch-team',
@@ -94,7 +94,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         }));
     });
     it('passes through dedicated-window startup requests', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omg-runtime-v2-new-window-'));
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-new-window-'));
         const { startTeamV2 } = await import('../runtime-v2.js');
         await startTeamV2({
             teamName: 'dispatch-team',
@@ -107,7 +107,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(mocks.createTeamSession).toHaveBeenCalledWith('dispatch-team', 0, cwd, { newWindow: true });
     });
     it('does not auto-kill a worker pane when startup readiness fails', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omg-runtime-v2-no-autokill-ready-'));
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-no-autokill-ready-'));
         mocks.waitForPaneReady.mockResolvedValue(false);
         const { startTeamV2 } = await import('../runtime-v2.js');
         const runtime = await startTeamV2({
@@ -122,7 +122,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(mocks.execFile.mock.calls.some((call) => call[1]?.[0] === 'kill-pane')).toBe(false);
     });
     it('does not auto-kill a worker pane when startup notification fails', async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omg-runtime-v2-no-autokill-notify-'));
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-no-autokill-notify-'));
         mocks.sendToWorker.mockResolvedValue(false);
         const { startTeamV2 } = await import('../runtime-v2.js');
         const runtime = await startTeamV2({

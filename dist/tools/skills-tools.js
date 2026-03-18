@@ -105,7 +105,7 @@ export const loadLocalTool = {
 // Tool 2: load_omc_skills_global
 export const loadGlobalTool = {
     name: 'load_omc_skills_global',
-    description: 'Load and list skills from global user directories (~/.omg/skills/ and ~/.copilot/skills/omg-learned/). Returns skill metadata for all discovered user-scoped skills.',
+    description: 'Load and list skills from global user directories (~/.omg/skills/ and ~/.copilot/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.',
     schema: loadGlobalSchema,
     handler: async (_args) => {
         const allSkills = loadAllSkills(null);
@@ -136,7 +136,7 @@ export const listSkillsTool = {
             output += `### User Skills (${userSkills.length})\n\n${formatSkillOutput(userSkills)}`;
         }
         if (skills.length === 0) {
-            output = '## No Skills Found\n\nNo skill files were discovered in any searched directories.\n\nSearched:\n- Project: .omg/skills/\n- Global: ~/.omg/skills/\n- Legacy: ~/.copilot/skills/omg-learned/';
+            output = '## No Skills Found\n\nNo skill files were discovered in any searched directories.\n\nSearched:\n- Project: .omg/skills/\n- Global: ~/.omg/skills/\n- Legacy: ~/.copilot/skills/omc-learned/';
         }
         return {
             content: [{
@@ -146,6 +146,6 @@ export const listSkillsTool = {
         };
     },
 };
-/** All skills tools for registration in omg-tools-server */
+/** All skills tools for registration in omc-tools-server */
 export const skillsTools = [loadLocalTool, loadGlobalTool, listSkillsTool];
 //# sourceMappingURL=skills-tools.js.map

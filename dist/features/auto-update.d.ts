@@ -83,7 +83,7 @@ export interface StopHookCallbacksConfig {
     teams?: StopCallbackTeamsConfig;
 }
 /**
- * OMG configuration (stored in .omg-config.json)
+ * OMC configuration (stored in .omc-config.json)
  */
 export interface OMCConfig {
     /** Whether silent auto-updates are enabled (opt-in for security) */
@@ -121,7 +121,7 @@ export interface OMCConfig {
     nodeBinary?: string;
 }
 /**
- * Read the OMG configuration
+ * Read the OMC configuration
  */
 export declare function getOMCConfig(): OMCConfig;
 /**

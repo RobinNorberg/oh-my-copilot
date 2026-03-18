@@ -33,7 +33,7 @@ describe('team api working-directory resolution', () => {
         return base;
     }
     beforeEach(async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omg-team-api-resolution-'));
+        cwd = await mkdtemp(join(tmpdir(), 'omc-team-api-resolution-'));
     });
     afterEach(async () => {
         delete process.env.OMC_TEAM_STATE_ROOT;

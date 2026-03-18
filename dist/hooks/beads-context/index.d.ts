@@ -6,7 +6,7 @@ export { BEADS_INSTRUCTIONS, BEADS_RUST_INSTRUCTIONS } from './constants.js';
  */
 export declare function getBeadsInstructions(tool: Exclude<TaskTool, 'builtin'>): string;
 /**
- * Read beads context config from omg-config.json.
+ * Read beads context config from omc-config.json.
  */
 export declare function getBeadsContextConfig(): BeadsContextConfig;
 /**

@@ -2,7 +2,7 @@
  * Factcheck Guard - Main Entry Point
  *
  * Portable factcheck engine that validates a claims payload against
- * configurable policies. Ported from rolldav/portable-omg-guards (issue #1155).
+ * configurable policies. Ported from rolldav/portable-omc-guards (issue #1155).
  *
  * Modes:
  *   - strict:   All gates must be true, cwd mismatch is FAIL

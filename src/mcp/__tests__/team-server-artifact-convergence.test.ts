@@ -26,7 +26,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
   let jobsDir: string;
 
   beforeEach(() => {
-    testRoot = join(tmpdir(), `omg-team-server-test-${process.pid}-${Date.now()}`);
+    testRoot = join(tmpdir(), `omc-team-server-test-${process.pid}-${Date.now()}`);
     jobsDir = join(testRoot, 'jobs');
     mkdirSync(jobsDir, { recursive: true });
   });
@@ -40,7 +40,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
   it('handleStatus converges to terminal artifact before pid liveness', async () => {
     const { handleStatus } = await importTeamServerWithJobsDir(jobsDir);
 
-    const jobId = 'omg-art1';
+    const jobId = 'omc-art1';
     writeFileSync(
       join(jobsDir, `${jobId}.json`),
       JSON.stringify({
@@ -70,7 +70,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
   it('handleWait deterministically fails on parse-failed artifact and persists failure', async () => {
     const { handleWait } = await importTeamServerWithJobsDir(jobsDir);
 
-    const jobId = 'omg-art2';
+    const jobId = 'omc-art2';
     writeFileSync(
       join(jobsDir, `${jobId}.json`),
       JSON.stringify({
@@ -98,7 +98,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
   it('handleCleanup removes only scoped .omg/state/team/<teamName> directory', async () => {
     const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
 
-    const jobId = 'omg-art3';
+    const jobId = 'omc-art3';
     const cwd = join(testRoot, 'workspace');
     const teamOneDir = join(cwd, '.omg', 'state', 'team', 'team-one');
     const teamTwoDir = join(cwd, '.omg', 'state', 'team', 'team-two');

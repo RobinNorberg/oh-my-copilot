@@ -8,7 +8,7 @@ describe('team api compatibility (task + mailbox legacy formats)', () => {
     let cwd;
     const teamName = 'compat-team';
     beforeEach(async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omg-team-api-compat-'));
+        cwd = await mkdtemp(join(tmpdir(), 'omc-team-api-compat-'));
         const base = join(cwd, '.omg', 'state', 'team', teamName);
         await mkdir(join(base, 'tasks'), { recursive: true });
         await mkdir(join(base, 'mailbox'), { recursive: true });

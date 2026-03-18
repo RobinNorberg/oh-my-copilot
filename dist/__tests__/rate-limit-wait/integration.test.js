@@ -21,7 +21,7 @@ import { getUsage } from '../../hud/usage-api.js';
 import { execSync, spawnSync } from 'child_process';
 import { checkRateLimitStatus, analyzePaneContent, scanForBlockedPanes, formatDaemonState, } from '../../features/rate-limit-wait/index.js';
 describe('Rate Limit Wait Integration Tests', () => {
-    const testDir = join(tmpdir(), 'omg-integration-test-' + Date.now());
+    const testDir = join(tmpdir(), 'omc-integration-test-' + Date.now());
     beforeEach(() => {
         vi.clearAllMocks();
         mkdirSync(testDir, { recursive: true });

@@ -59,7 +59,7 @@ export declare function hasModeState(cwd: string, mode: ExecutionMode, sessionId
  */
 export declare function getActiveModes(cwd: string, sessionId?: string): ExecutionMode[];
 /**
- * Check if any OMG mode is currently active
+ * Check if any OMC mode is currently active
  *
  * @param cwd - Working directory
  * @returns true if any mode is active

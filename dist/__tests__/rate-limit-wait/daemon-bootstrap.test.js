@@ -22,7 +22,7 @@ vi.mock('../../features/rate-limit-wait/tmux-detector.js', async () => {
 });
 describe('daemon bootstrap', () => {
     const originalEnv = { ...process.env };
-    const testDir = join(tmpdir(), `omg-daemon-bootstrap-test-${Date.now()}`);
+    const testDir = join(tmpdir(), `omc-daemon-bootstrap-test-${Date.now()}`);
     let startDaemon;
     beforeEach(async () => {
         vi.resetModules();

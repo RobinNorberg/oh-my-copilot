@@ -17,7 +17,7 @@ import { resolveTranscriptPath } from '../lib/worktree-paths.js';
 describe('resolveTranscriptPath', () => {
     let tempDir;
     beforeEach(() => {
-        tempDir = join(tmpdir(), `omg-test-transcript-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        tempDir = join(tmpdir(), `omc-test-transcript-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(tempDir, { recursive: true });
     });
     afterEach(() => {
@@ -59,7 +59,7 @@ describe('resolveTranscriptPath', () => {
         const realTranscript = join(projectDir, 'session-uuid.jsonl');
         writeFileSync(realTranscript, '{}');
         // Worktree with a path-like name (e.g., from OMG project-session-manager)
-        const worktreePath = join(tempDir, 'projects', '-home-bellman-Workspace-myproject--copilot-worktrees-home-bellman-Workspace-omg-worktrees-fix-issue-1094', 'session-uuid.jsonl');
+        const worktreePath = join(tempDir, 'projects', '-home-bellman-Workspace-myproject--copilot-worktrees-home-bellman-Workspace-omc-worktrees-fix-issue-1094', 'session-uuid.jsonl');
         const resolved = resolveTranscriptPath(worktreePath);
         expect(resolved).toBe(realTranscript);
     });

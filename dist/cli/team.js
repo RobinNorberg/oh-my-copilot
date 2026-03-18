@@ -9,7 +9,7 @@ import { killWorkerPanes, killTeamSession } from '../team/tmux-session.js';
 import { validateTeamName } from '../team/team-name.js';
 import { monitorTeam, resumeTeam, shutdownTeam } from '../team/runtime.js';
 import { readTeamConfig } from '../team/monitor.js';
-const JOB_ID_PATTERN = /^omg-[a-z0-9]{1,12}$/;
+const JOB_ID_PATTERN = /^omc-[a-z0-9]{1,12}$/;
 const VALID_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemini']);
 const SUBCOMMANDS = new Set(['start', 'status', 'wait', 'cleanup', 'resume', 'shutdown', 'api', 'help', '--help', '-h']);
 const SUPPORTED_API_OPERATIONS = new Set([
@@ -122,7 +122,7 @@ function buildStatus(jobId, job) {
     };
 }
 function generateJobId(now = Date.now()) {
-    return `omg-${now.toString(36)}`;
+    return `omc-${now.toString(36)}`;
 }
 function convergeWithResultArtifact(jobId, job, jobsDir) {
     try {
@@ -177,7 +177,7 @@ function autoTeamName(task) {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 24) || 'task';
-    return `omg-${slug}-${Date.now().toString(36).slice(-4)}`;
+    return `omc-${slug}-${Date.now().toString(36).slice(-4)}`;
 }
 function parseJsonInput(inputRaw) {
     if (!inputRaw || !inputRaw.trim())
@@ -506,7 +506,7 @@ Usage:
 
 Examples:
   omc team start --agent codex --count 2 --task "review auth flow" --new-window
-  omc team status omg-abc123
+  omc team status omc-abc123
   omc team status auth-review
   omc team resume auth-review
   omc team shutdown auth-review --force

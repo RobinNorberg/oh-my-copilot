@@ -21,7 +21,7 @@ function defaultPolicy(): FactcheckPolicy {
     mode: 'quick',
     strict_project_patterns: [],
     forbidden_path_prefixes: [join(homedir(), '.copilot/plugins/cache/omg/')],
-    forbidden_path_substrings: ['/.omg/', '.omg-config.json'],
+    forbidden_path_substrings: ['/.omg/', '.omc-config.json'],
     readonly_command_prefixes: [
       'ls ', 'cat ', 'find ', 'grep ', 'head ', 'tail ', 'stat ', 'echo ', 'wc ',
     ],

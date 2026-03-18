@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Ralph Element
+ * OMC HUD - Ralph Element
  *
  * Renders Ralph loop iteration display.
  */

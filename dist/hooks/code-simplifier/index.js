@@ -16,7 +16,7 @@ const DEFAULT_MAX_FILES = 10;
 /** Marker filename used to prevent re-triggering within the same turn cycle */
 export const TRIGGER_MARKER_FILENAME = 'code-simplifier-triggered.marker';
 /**
- * Read the global OMG config from ~/.omg/config.json.
+ * Read the global OMC config from ~/.omg/config.json.
  * Returns null if the file does not exist or cannot be parsed.
  */
 export function readOmcConfig() {

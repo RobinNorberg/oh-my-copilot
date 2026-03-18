@@ -40,7 +40,7 @@ describe('Consolidation contracts', () => {
       expect(swarm).toBeUndefined();
     });
 
-    it('keeps native-command collisions prefixed to omg-* names', () => {
+    it('keeps native-command collisions prefixed to omc-* names', () => {
       const names = listBuiltinSkillNames();
 
       expect(names).toContain('omc-plan');

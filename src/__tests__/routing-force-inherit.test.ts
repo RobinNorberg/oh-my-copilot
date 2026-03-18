@@ -2,7 +2,7 @@
  * Tests for routing.forceInherit feature (issue #1135)
  *
  * When routing.forceInherit is true, all agents should inherit the parent
- * model instead of using OMG's per-agent model routing.
+ * model instead of using OMC's per-agent model routing.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

@@ -1,5 +1,5 @@
 /**
- * OMG HUD Type Definitions
+ * OMC HUD Type Definitions
  *
  * Type definitions for the HUD state, configuration, and rendering.
  */

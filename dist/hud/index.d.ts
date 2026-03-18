@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OMG HUD - Main Entry Point
+ * OMC HUD - Main Entry Point
  *
  * Statusline command that visualizes oh-my-copilot state.
  * Receives stdin JSON from Copilot CLI and outputs formatted statusline.

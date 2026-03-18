@@ -15,7 +15,7 @@ const COPILOT_CONFIG_DIR = getCopilotConfigDir();
 /**
  * Copilot CLI native commands that must not be shadowed by user skills.
  * Skills whose canonical name or alias matches one of these will be prefixed
- * with `omg-` to avoid overriding built-in CC slash commands.
+ * with `omc-` to avoid overriding built-in CC slash commands.
  */
 const CC_NATIVE_COMMANDS = new Set([
     'review',
@@ -32,7 +32,7 @@ const CC_NATIVE_COMMANDS = new Set([
 function toSafeSkillName(name) {
     const normalized = name.trim();
     return CC_NATIVE_COMMANDS.has(normalized.toLowerCase())
-        ? `omg-${normalized}`
+        ? `omc-${normalized}`
         : normalized;
 }
 function getFrontmatterString(data, key) {

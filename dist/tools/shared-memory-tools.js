@@ -7,7 +7,7 @@
  * session group or pipeline run.
  *
  * Storage: .omg/state/shared-memory/{namespace}/{key}.json
- * Config gate: agents.sharedMemory.enabled in ~/.copilot/.omg-config.json
+ * Config gate: agents.sharedMemory.enabled in ~/.copilot/.omc-config.json
  *
  * @see https://github.com/anthropics/oh-my-copilot/issues/1119
  */
@@ -17,7 +17,7 @@ import { isSharedMemoryEnabled, writeEntry, readEntry, listEntries, deleteEntry,
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const DISABLED_MSG = 'Shared memory is disabled. Set agents.sharedMemory.enabled = true in ~/.copilot/.omg-config.json to enable.';
+const DISABLED_MSG = 'Shared memory is disabled. Set agents.sharedMemory.enabled = true in ~/.copilot/.omc-config.json to enable.';
 function disabledResponse() {
     return {
         content: [{ type: 'text', text: DISABLED_MSG }],

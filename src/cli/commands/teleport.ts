@@ -2,7 +2,7 @@
  * Teleport Command - Quick worktree creation for development
  *
  * Creates a git worktree for working on issues/PRs/features in isolation.
- * Default worktree location: ~/Workspace/omg-worktrees/
+ * Default worktree location: ~/Workspace/omc-worktrees/
  */
 
 import chalk from 'chalk';
@@ -29,7 +29,7 @@ export interface TeleportResult {
 }
 
 // Default worktree root directory
-const DEFAULT_WORKTREE_ROOT = join(homedir(), 'Workspace', 'omg-worktrees');
+const DEFAULT_WORKTREE_ROOT = join(homedir(), 'Workspace', 'omc-worktrees');
 
 /**
  * Parse a reference string into components

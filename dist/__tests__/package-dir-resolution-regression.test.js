@@ -44,14 +44,14 @@ describe('package dir resolution regression (#1322, #1324)', () => {
         expect(snippet.indexOf('typeof __dirname !== "undefined"')).toBeLessThan(snippet.indexOf('fileURLToPath)(import_meta.url)'));
     });
     it('loadAgentPrompt resolves prompts even when cwd is unrelated', () => {
-        const sandboxDir = mkdtempSync(join(tmpdir(), 'omg-agents-path-resolution-'));
+        const sandboxDir = mkdtempSync(join(tmpdir(), 'omc-agents-path-resolution-'));
         process.chdir(sandboxDir);
         const prompt = loadAgentPrompt('architect');
         expect(prompt).not.toContain('Prompt unavailable');
         expect(prompt.length).toBeGreaterThan(100);
     });
     it('getValidAgentRoles resolves agents directory even when cwd is unrelated', async () => {
-        const sandboxDir = mkdtempSync(join(tmpdir(), 'omg-agent-roles-path-resolution-'));
+        const sandboxDir = mkdtempSync(join(tmpdir(), 'omc-agent-roles-path-resolution-'));
         process.chdir(sandboxDir);
         const { getValidAgentRoles } = await import('../agents/prompt-helpers.js');
         const roles = getValidAgentRoles();

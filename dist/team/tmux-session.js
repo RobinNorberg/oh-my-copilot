@@ -3,7 +3,7 @@
  * Tmux Session Management for MCP Team Bridge
  *
  * Create, kill, list, and manage tmux sessions for MCP worker bridge daemons.
- * Sessions are named "omg-team-{teamName}-{workerName}".
+ * Sessions are named "omc-team-{teamName}-{workerName}".
  */
 import { exec, execFile, execSync, execFileSync } from 'child_process';
 import { existsSync } from 'fs';
@@ -12,7 +12,7 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import { validateTeamName } from './team-name.js';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const TMUX_SESSION_PREFIX = 'omg-team';
+const TMUX_SESSION_PREFIX = 'omc-team';
 const promisifiedExec = promisify(exec);
 const promisifiedExecFile = promisify(execFile);
 /**
@@ -258,7 +258,7 @@ export function sanitizeName(name) {
     // Truncate to safe length for tmux session names
     return sanitized.slice(0, 50);
 }
-/** Build session name: "omg-team-{teamName}-{workerName}" */
+/** Build session name: "omc-team-{teamName}-{workerName}" */
 export function sessionName(teamName, workerName) {
     return `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-${sanitizeName(workerName)}`;
 }
@@ -398,7 +398,7 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     }
     if (useDedicatedWindow) {
         const targetSession = sessionAndWindow.split(':')[0] ?? sessionAndWindow;
-        const windowName = `omg-${sanitizeName(teamName)}`.slice(0, 32);
+        const windowName = `omc-${sanitizeName(teamName)}`.slice(0, 32);
         const newWindowResult = await execFileAsync('tmux', [
             'new-window', '-d', '-P', '-F', '#S:#I #{pane_id}',
             '-t', targetSession,

@@ -49,13 +49,13 @@ ls -la ~/.copilot/hooks/*.sh 2>/dev/null
 # Check if copilot-instructions.md exists
 ls -la ~/.copilot/copilot-instructions.md 2>/dev/null
 
-# Check for OMG markers (<!-- OMG:START --> is the canonical marker)
-grep -q "<!-- OMG:START -->" ~/.copilot/copilot-instructions.md 2>/dev/null && echo "Has OMG config" || echo "Missing OMG config in copilot-instructions.md"
+# Check for OMC markers (<!-- OMG:START --> is the canonical marker)
+grep -q "<!-- OMG:START -->" ~/.copilot/copilot-instructions.md 2>/dev/null && echo "Has OMC config" || echo "Missing OMC config in copilot-instructions.md"
 
 # Check companion files for file-split pattern (e.g. copilot-omg.md)
 ls ~/.copilot/copilot-*.md 2>/dev/null
 for f in ~/.copilot/copilot-*.md; do
-  [ -f "$f" ] && grep -q "<!-- OMG:START -->" "$f" 2>/dev/null && echo "Has OMG config in companion: $f"
+  [ -f "$f" ] && grep -q "<!-- OMG:START -->" "$f" 2>/dev/null && echo "Has OMC config in companion: $f"
 done
 
 # Check if copilot-instructions.md references a companion file
@@ -66,7 +66,7 @@ grep -o "copilot-[^ )]*\.md" ~/.copilot/copilot-instructions.md 2>/dev/null
 - If copilot-instructions.md missing: CRITICAL - copilot-instructions.md not configured
 - If `<!-- OMG:START -->` found in copilot-instructions.md: OK
 - If `<!-- OMG:START -->` found in a companion file (e.g. `copilot-omg.md`): OK - file-split pattern detected
-- If no OMG markers in copilot-instructions.md or any companion file: WARN - outdated copilot-instructions.md
+- If no OMC markers in copilot-instructions.md or any companion file: WARN - outdated copilot-instructions.md
 
 ### Step 5: Check for Stale Plugin Cache
 

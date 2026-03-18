@@ -29,7 +29,7 @@ describe('Consolidation contracts', () => {
             // swarm alias removed from team/SKILL.md in #1131
             expect(swarm).toBeUndefined();
         });
-        it('keeps native-command collisions prefixed to omg-* names', () => {
+        it('keeps native-command collisions prefixed to omc-* names', () => {
             const names = listBuiltinSkillNames();
             expect(names).toContain('omc-plan');
             expect(names).toContain('omc-doctor');

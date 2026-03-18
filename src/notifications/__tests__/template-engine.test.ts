@@ -74,12 +74,12 @@ describe("interpolateTemplate", () => {
 
 describe("{{#if}} conditionals", () => {
   it("shows content when variable is truthy", () => {
-    const payload = makePayload({ tmuxSession: "omg-session" });
+    const payload = makePayload({ tmuxSession: "omc-session" });
     const result = interpolateTemplate(
       "{{#if tmuxSession}}tmux: {{tmuxSession}}{{/if}}",
       payload,
     );
-    expect(result).toBe("tmux: omg-session");
+    expect(result).toBe("tmux: omc-session");
   });
 
   it("hides content when variable is empty", () => {
@@ -237,11 +237,11 @@ describe("computed variables", () => {
 
   it("footer includes tmux and project", () => {
     const payload = makePayload({
-      tmuxSession: "omg-1",
+      tmuxSession: "omc-1",
       projectName: "proj",
     });
     const vars = computeTemplateVariables(payload);
-    expect(vars.footer).toBe("**tmux:** `omg-1` | **project:** `proj`");
+    expect(vars.footer).toBe("**tmux:** `omc-1` | **project:** `proj`");
   });
 
   it("footer omits tmux when not set", () => {
@@ -333,7 +333,7 @@ describe("default template parity with formatter.ts", () => {
     event: "session-end",
     sessionId: "test-session-abc",
     timestamp: "2026-02-25T10:30:00.000Z",
-    tmuxSession: "omg-test",
+    tmuxSession: "omc-test",
     projectName: "my-project",
     projectPath: "/home/user/my-project",
     durationMs: 323000,

@@ -10,7 +10,7 @@ describe('session-start.mjs regression #1386', () => {
     let fakeHome;
     let fakeProject;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'omg-session-start-script-'));
+        tempDir = mkdtempSync(join(tmpdir(), 'omc-session-start-script-'));
         fakeHome = join(tempDir, 'home');
         fakeProject = join(tempDir, 'project');
         mkdirSync(join(fakeProject, '.omg', 'state', 'sessions', 'session-1386'), { recursive: true });

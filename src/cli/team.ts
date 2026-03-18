@@ -10,7 +10,7 @@ import { validateTeamName } from '../team/team-name.js';
 import { monitorTeam, resumeTeam, shutdownTeam } from '../team/runtime.js';
 import { readTeamConfig } from '../team/monitor.js';
 
-const JOB_ID_PATTERN = /^omg-[a-z0-9]{1,12}$/;
+const JOB_ID_PATTERN = /^omc-[a-z0-9]{1,12}$/;
 const VALID_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemini']);
 const SUBCOMMANDS = new Set(['start', 'status', 'wait', 'cleanup', 'resume', 'shutdown', 'api', 'help', '--help', '-h']);
 
@@ -234,7 +234,7 @@ function buildStatus(jobId: string, job: TeamJobRecord): TeamJobStatus {
 }
 
 function generateJobId(now = Date.now()): string {
-  return `omg-${now.toString(36)}`;
+  return `omc-${now.toString(36)}`;
 }
 
 function convergeWithResultArtifact(jobId: string, job: TeamJobRecord, jobsDir: string): TeamJobRecord {
@@ -294,7 +294,7 @@ function autoTeamName(task: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 24) || 'task';
-  return `omg-${slug}-${Date.now().toString(36).slice(-4)}`;
+  return `omc-${slug}-${Date.now().toString(36).slice(-4)}`;
 }
 
 function parseJsonInput(inputRaw: string | undefined): Record<string, unknown> {
@@ -696,7 +696,7 @@ Usage:
 
 Examples:
   omc team start --agent codex --count 2 --task "review auth flow" --new-window
-  omc team status omg-abc123
+  omc team status omc-abc123
   omc team status auth-review
   omc team resume auth-review
   omc team shutdown auth-review --force

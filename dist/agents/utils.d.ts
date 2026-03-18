@@ -27,7 +27,7 @@ export declare function createAgentToolRestrictions(blockedTools: string[]): {
  */
 export declare function mergeAgentConfig(base: AgentConfig, override: AgentOverrideConfig): AgentConfig;
 /**
- * Build delegation table section for OMG prompt
+ * Build delegation table section for OMC prompt
  */
 export declare function buildDelegationTable(availableAgents: AvailableAgent[]): string;
 /**
@@ -43,7 +43,7 @@ export declare function createEnvContext(): string;
  */
 export declare function getAvailableAgents(agents: Record<string, AgentConfig>): AvailableAgent[];
 /**
- * Build key triggers section for OMG prompt
+ * Build key triggers section for OMC prompt
  */
 export declare function buildKeyTriggersSection(availableAgents: AvailableAgent[]): string;
 /**

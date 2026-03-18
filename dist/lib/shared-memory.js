@@ -23,11 +23,11 @@ import { getOmcRoot } from './worktree-paths.js';
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-const CONFIG_FILE_NAME = '.omg-config.json';
+const CONFIG_FILE_NAME = '.omc-config.json';
 /**
  * Check if shared memory is enabled via config.
  *
- * Reads `agents.sharedMemory.enabled` from ~/.copilot/.omg-config.json.
+ * Reads `agents.sharedMemory.enabled` from ~/.copilot/.omc-config.json.
  * Defaults to true when the config key is absent (opt-out rather than opt-in
  * once the feature ships, but tools check this gate).
  */

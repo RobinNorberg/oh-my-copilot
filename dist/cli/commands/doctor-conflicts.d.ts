@@ -36,13 +36,13 @@ export interface ConflictReport {
  */
 export declare function checkHookConflicts(): ConflictReport['hookConflicts'];
 /**
- * Check copilot-instructions.md for OMG markers and user content.
+ * Check copilot-instructions.md for OMC markers and user content.
  * Also checks companion files (CLAUDE-omg.md, etc.) for the file-split pattern
- * where users keep OMG config in a separate file.
+ * where users keep OMC config in a separate file.
  */
 export declare function checkCopilotMdStatus(): ConflictReport['claudeMdStatus'];
 /**
- * Check environment flags that affect OMG behavior
+ * Check environment flags that affect OMC behavior
  */
 export declare function checkEnvFlags(): ConflictReport['envFlags'];
 /**

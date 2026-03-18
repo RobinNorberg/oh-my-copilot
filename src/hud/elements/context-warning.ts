@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Context Limit Warning Element
+ * OMC HUD - Context Limit Warning Element
  *
  * Renders a prominent warning banner when context usage exceeds the configured
  * threshold. Supports an autoCompact mode that queues a /compact request.

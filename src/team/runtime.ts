@@ -990,7 +990,7 @@ export async function resumeTeam(teamName: string, cwd: string): Promise<TeamRun
   const { execFile } = await import('child_process');
   const { promisify } = await import('util');
   const execFileAsync = promisify(execFile);
-  const sName = configData.tmuxSession || `omg-team-${teamName}`;
+  const sName = configData.tmuxSession || `omc-team-${teamName}`;
 
   try {
     await execFileAsync('tmux', ['has-session', '-t', sName.split(':')[0]]);

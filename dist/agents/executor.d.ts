@@ -2,7 +2,7 @@
  * Executor Agent - Focused Task Executor
  *
  * Executes tasks directly without delegation capabilities.
- * Same discipline as OMG, but works alone.
+ * Same discipline as OMC, but works alone.
  *
  * Ported from oh-my-opencode's executor agent.
  * Prompt loaded from: agents/executor.md

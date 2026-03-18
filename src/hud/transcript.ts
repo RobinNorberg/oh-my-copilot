@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Transcript Parser
+ * OMC HUD - Transcript Parser
  *
  * Parse JSONL transcript from Copilot CLI to extract agents and todos.
  * Based on copilot-hud reference implementation.

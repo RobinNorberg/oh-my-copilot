@@ -9,7 +9,7 @@
  */
 export declare function getCurrentTmuxSession(): string | null;
 /**
- * List active omg-team tmux sessions for a given team.
+ * List active omc-team tmux sessions for a given team.
  */
 export declare function getTeamTmuxSessions(teamName: string): string[];
 /**

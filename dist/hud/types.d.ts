@@ -1,5 +1,5 @@
 /**
- * OMG HUD Type Definitions
+ * OMC HUD Type Definitions
  *
  * Type definitions for the HUD state, configuration, and rendering.
  */
@@ -243,7 +243,7 @@ export interface HudRenderContext {
     thinkingState: ThinkingState | null;
     /** Session health metrics */
     sessionHealth: SessionHealth | null;
-    /** Installed OMG version (e.g. "4.1.10") */
+    /** Installed OMC version (e.g. "4.1.10") */
     omcVersion: string | null;
     /** Latest available version from npm registry (null if up to date or unknown) */
     updateAvailable: string | null;

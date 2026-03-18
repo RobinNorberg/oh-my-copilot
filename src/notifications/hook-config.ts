@@ -90,8 +90,8 @@ export function resolveEventTemplate(
  * Merge hook config event enabled/disabled flags into a NotificationConfig.
  *
  * Hook config takes precedence for event gating:
- * - hook event `enabled: false` overrides `.omg-config.json` event `enabled: true`
- * - Platform credentials are NOT affected (they stay in .omg-config.json)
+ * - hook event `enabled: false` overrides `.omc-config.json` event `enabled: true`
+ * - Platform credentials are NOT affected (they stay in .omc-config.json)
  */
 export function mergeHookConfigIntoNotificationConfig(
   hookConfig: HookNotificationConfig,

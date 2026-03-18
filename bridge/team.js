@@ -983,7 +983,7 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
   }
   if (useDedicatedWindow) {
     const targetSession = sessionAndWindow.split(":")[0] ?? sessionAndWindow;
-    const windowName = `omg-${sanitizeName(teamName)}`.slice(0, 32);
+    const windowName = `omc-${sanitizeName(teamName)}`.slice(0, 32);
     const newWindowResult = await execFileAsync("tmux", [
       "new-window",
       "-d",
@@ -1351,7 +1351,7 @@ var init_tmux_session = __esm({
     "use strict";
     init_team_name();
     sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    TMUX_SESSION_PREFIX = "omg-team";
+    TMUX_SESSION_PREFIX = "omc-team";
     promisifiedExec = promisify(exec);
     promisifiedExecFile = promisify(execFile);
     SUPPORTED_POSIX_SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "fish", "ksh"]);
@@ -2824,7 +2824,7 @@ async function resumeTeamV2(teamName, cwd) {
     const { execFile: execFile2 } = await import("child_process");
     const { promisify: promisify2 } = await import("util");
     const execFileAsync = promisify2(execFile2);
-    const sessionName2 = config.tmux_session || `omg-team-${sanitized}`;
+    const sessionName2 = config.tmux_session || `omc-team-${sanitized}`;
     await execFileAsync("tmux", ["has-session", "-t", sessionName2.split(":")[0]]);
     return {
       teamName: sanitized,
@@ -3559,7 +3559,7 @@ function getWorktreePath(repoRoot, teamName, workerName) {
   return join9(repoRoot, ".omg", "worktrees", sanitizeName(teamName), sanitizeName(workerName));
 }
 function getBranchName(teamName, workerName) {
-  return `omg-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
+  return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
 }
 function getMetadataPath(repoRoot, teamName) {
   return join9(repoRoot, ".omg", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
@@ -3777,7 +3777,7 @@ async function resumeTeam(teamName, cwd) {
   const { execFile: execFile2 } = await import("child_process");
   const { promisify: promisify2 } = await import("util");
   const execFileAsync = promisify2(execFile2);
-  const sName = configData.tmuxSession || `omg-team-${teamName}`;
+  const sName = configData.tmuxSession || `omc-team-${teamName}`;
   try {
     await execFileAsync("tmux", ["has-session", "-t", sName.split(":")[0]]);
   } catch {
@@ -4519,7 +4519,7 @@ async function executeTeamApiOperation(operation, args, fallbackCwd) {
 init_tmux_session();
 init_team_name();
 init_monitor();
-var JOB_ID_PATTERN = /^omg-[a-z0-9]{1,12}$/;
+var JOB_ID_PATTERN = /^omc-[a-z0-9]{1,12}$/;
 var VALID_CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "copilot", "codex", "gemini"]);
 var SUBCOMMANDS = /* @__PURE__ */ new Set(["start", "status", "wait", "cleanup", "resume", "shutdown", "api", "help", "--help", "-h"]);
 var SUPPORTED_API_OPERATIONS = /* @__PURE__ */ new Set([
@@ -4627,7 +4627,7 @@ function buildStatus(jobId, job) {
   };
 }
 function generateJobId(now = Date.now()) {
-  return `omg-${now.toString(36)}`;
+  return `omc-${now.toString(36)}`;
 }
 function convergeWithResultArtifact(jobId, job, jobsDir) {
   try {
@@ -4675,7 +4675,7 @@ function normalizeAgentType(value) {
 }
 function autoTeamName(task) {
   const slug = task.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 24) || "task";
-  return `omg-${slug}-${Date.now().toString(36).slice(-4)}`;
+  return `omc-${slug}-${Date.now().toString(36).slice(-4)}`;
 }
 function parseJsonInput(inputRaw) {
   if (!inputRaw || !inputRaw.trim()) return {};
@@ -4965,7 +4965,7 @@ Usage:
 
 Examples:
   omc team start --agent codex --count 2 --task "review auth flow" --new-window
-  omc team status omg-abc123
+  omc team status omc-abc123
   omc team status auth-review
   omc team resume auth-review
   omc team shutdown auth-review --force

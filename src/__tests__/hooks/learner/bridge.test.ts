@@ -28,7 +28,7 @@ describe("Skill Bridge Module", () => {
   beforeEach(() => {
     clearSkillMetadataCache();
     originalCwd = process.cwd();
-    testProjectRoot = join(tmpdir(), `omg-bridge-test-${Date.now()}`);
+    testProjectRoot = join(tmpdir(), `omc-bridge-test-${Date.now()}`);
     mkdirSync(testProjectRoot, { recursive: true });
     process.chdir(testProjectRoot);
   });

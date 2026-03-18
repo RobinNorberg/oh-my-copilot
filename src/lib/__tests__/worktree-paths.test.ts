@@ -413,7 +413,7 @@ describe('worktree-paths', () => {
     });
 
     it('should return centralized path when OMC_STATE_DIR is set', () => {
-      const stateDir = mkdtempSync(join(tmpdir(), 'omg-state-dir-'));
+      const stateDir = mkdtempSync(join(tmpdir(), 'omc-state-dir-'));
       try {
         process.env.OMC_STATE_DIR = stateDir;
         const result = getOmcRoot(TEST_DIR);
@@ -426,7 +426,7 @@ describe('worktree-paths', () => {
     });
 
     it('should log warning when both legacy and centralized dirs exist', () => {
-      const stateDir = mkdtempSync(join(tmpdir(), 'omg-state-dir-'));
+      const stateDir = mkdtempSync(join(tmpdir(), 'omc-state-dir-'));
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       try {
         process.env.OMC_STATE_DIR = stateDir;
@@ -452,7 +452,7 @@ describe('worktree-paths', () => {
     });
 
     it('should not log warning when only centralized dir exists', () => {
-      const stateDir = mkdtempSync(join(tmpdir(), 'omg-state-dir-'));
+      const stateDir = mkdtempSync(join(tmpdir(), 'omc-state-dir-'));
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       try {
         process.env.OMC_STATE_DIR = stateDir;
@@ -472,7 +472,7 @@ describe('worktree-paths', () => {
     });
 
     it('should only log dual-dir warning once per path pair', () => {
-      const stateDir = mkdtempSync(join(tmpdir(), 'omg-state-dir-'));
+      const stateDir = mkdtempSync(join(tmpdir(), 'omc-state-dir-'));
       const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
       try {
         process.env.OMC_STATE_DIR = stateDir;
@@ -499,7 +499,7 @@ describe('worktree-paths', () => {
     let stateDir: string;
 
     beforeEach(() => {
-      stateDir = mkdtempSync(join(tmpdir(), 'omg-state-dir-paths-'));
+      stateDir = mkdtempSync(join(tmpdir(), 'omc-state-dir-paths-'));
       process.env.OMC_STATE_DIR = stateDir;
     });
 

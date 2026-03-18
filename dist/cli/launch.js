@@ -15,7 +15,7 @@ const SLACK_FLAG = '--slack';
 const WEBHOOK_FLAG = '--webhook';
 const TEAMS_FLAG = '--teams';
 /**
- * Extract the OMG-specific --notify flag from launch args.
+ * Extract the OMC-specific --notify flag from launch args.
  * --notify false  → disable notifications (OMC_NOTIFY=0)
  * --notify true   → enable notifications (default)
  * This flag must be stripped before passing args to Copilot CLI.
@@ -46,7 +46,7 @@ export function extractNotifyFlag(args) {
     return { notifyEnabled, remainingArgs };
 }
 /**
- * Extract the OMG-specific --telegram flag from launch args.
+ * Extract the OMC-specific --telegram flag from launch args.
  * Purely presence-based:
  *   --telegram        -> enable Telegram notifications (OMC_TELEGRAM=1)
  *   --telegram=true   -> enable
@@ -75,7 +75,7 @@ export function extractTelegramFlag(args) {
     return { telegramEnabled, remainingArgs };
 }
 /**
- * Extract the OMG-specific --discord flag from launch args.
+ * Extract the OMC-specific --discord flag from launch args.
  * Purely presence-based:
  *   --discord        -> enable Discord notifications (OMC_DISCORD=1)
  *   --discord=true   -> enable
@@ -104,7 +104,7 @@ export function extractDiscordFlag(args) {
     return { discordEnabled, remainingArgs };
 }
 /**
- * Extract the OMG-specific --slack flag from launch args.
+ * Extract the OMC-specific --slack flag from launch args.
  * Purely presence-based:
  *   --slack        -> enable Slack notifications (OMC_SLACK=1)
  *   --slack=true   -> enable
@@ -133,7 +133,7 @@ export function extractSlackFlag(args) {
     return { slackEnabled, remainingArgs };
 }
 /**
- * Extract the OMG-specific --webhook flag from launch args.
+ * Extract the OMC-specific --webhook flag from launch args.
  * Purely presence-based:
  *   --webhook        -> enable Webhook notifications (OMC_WEBHOOK=1)
  *   --webhook=true   -> enable
@@ -395,7 +395,7 @@ export async function launchCommand(args) {
         process.exit(1);
     }
     const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);
-    const sessionId = `omg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = `omc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     // Phase 1: preLaunch
     try {
         await preLaunch(cwd, sessionId);

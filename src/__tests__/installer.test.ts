@@ -318,7 +318,7 @@ describe('Installer Constants', () => {
 
 
   describe('extractOmcVersionFromClaudeMd()', () => {
-    it('prefers the OMG version marker', () => {
+    it('prefers the OMC version marker', () => {
       const content = `<!-- OMC:VERSION:4.7.7 -->
 # oh-my-copilot - Intelligent Multi-Agent Orchestration`;
       expect(extractOmcVersionFromClaudeMd(content)).toBe('v4.7.7');
@@ -332,8 +332,8 @@ describe('Installer Constants', () => {
 
   describe('syncPersistedSetupVersion()', () => {
     it('updates setupVersion for already-configured installs', () => {
-      const tempDir = mkdtempSync(join(tmpdir(), 'omg-installer-test-'));
-      const configPath = join(tempDir, '.omg-config.json');
+      const tempDir = mkdtempSync(join(tmpdir(), 'omc-installer-test-'));
+      const configPath = join(tempDir, '.omc-config.json');
       writeFileSync(configPath, JSON.stringify({ setupCompleted: '2026-03-03T17:59:08+09:00', setupVersion: 'v4.6.0' }, null, 2));
 
       const changed = syncPersistedSetupVersion({
@@ -349,8 +349,8 @@ describe('Installer Constants', () => {
     });
 
     it('does not create setupVersion for fresh installs by default', () => {
-      const tempDir = mkdtempSync(join(tmpdir(), 'omg-installer-test-'));
-      const configPath = join(tempDir, '.omg-config.json');
+      const tempDir = mkdtempSync(join(tmpdir(), 'omc-installer-test-'));
+      const configPath = join(tempDir, '.omc-config.json');
       writeFileSync(configPath, JSON.stringify({ hudEnabled: true }, null, 2));
 
       const changed = syncPersistedSetupVersion({

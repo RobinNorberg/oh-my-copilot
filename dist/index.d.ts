@@ -84,7 +84,7 @@ export interface OmcSession {
     shouldRunInBackground: (command: string) => TaskExecutionDecision;
 }
 /**
- * Create a OMG orchestration session
+ * Create a OMC orchestration session
  *
  * This prepares all the configuration and options needed
  * to run a query with the Copilot Agent SDK.

@@ -10,7 +10,7 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [Configuration](#configuration)
 - [CLI Commands: ask/team](#cli-commands-askteam)
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated)
-- [Agents (28 Total)](#agents-28-total)
+- [Agents (18 Total)](#agents-18-total)
 - [Skills (33 Total)](#skills-33-total)
 - [Slash Commands](#slash-commands)
 - [Hooks System](#hooks-system)
@@ -56,7 +56,7 @@ This integrates directly with Copilot CLI's plugin system and uses Node.js hooks
 Configure omc for the current project only:
 
 ```
-/oh-my-copilot:omg-setup --local
+/oh-my-copilot:omc-setup --local
 ```
 
 - Creates `./.copilot/copilot-instructions.md` in your current project
@@ -69,7 +69,7 @@ Configure omc for the current project only:
 Configure omc for all Copilot CLI sessions:
 
 ```
-/oh-my-copilot:omg-setup
+/oh-my-copilot:omc-setup
 ```
 
 - Creates `~/.copilot/copilot-instructions.md` globally
@@ -125,9 +125,9 @@ If both a legacy `{worktree}/.omg/` directory and a centralized directory exist,
 - **First time**: Run after installation (choose project or global)
 - **After updates**: Re-run to get the latest configuration
 - **Different machines**: Run on each machine where you use Copilot CLI
-- **New projects**: Run `/oh-my-copilot:omg-setup --local` in each project that needs omc
+- **New projects**: Run `/oh-my-copilot:omc-setup --local` in each project that needs omc
 
-> **NOTE**: After updating the plugin (via `npm update`, `git pull`, or Copilot CLI's plugin update), you MUST re-run `/oh-my-copilot:omg-setup` to apply the latest copilot-instructions.md changes.
+> **NOTE**: After updating the plugin (via `npm update`, `git pull`, or Copilot CLI's plugin update), you MUST re-run `/oh-my-copilot:omc-setup` to apply the latest copilot-instructions.md changes.
 
 ### Agent Customization
 
@@ -259,7 +259,7 @@ Optional compatibility enablement (manual only):
 - **Deterministic parse-failure handling**: malformed result artifacts are treated as terminal `failed`.
 - **Cleanup scope**: shutdown/cleanup only clears `.omg/state/team/{teamName}` for the target team (never sibling teams).
 
-## Agents (28 Total)
+## Agents (18 Total)
 
 Always use `oh-my-copilot:` prefix when calling via Task tool.
 
@@ -339,16 +339,16 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 | `learner`                 | Extract reusable skill from session                              | `/oh-my-copilot:learner`                 |
 | `mcp-setup`               | Configure MCP servers                                            | `/oh-my-copilot:mcp-setup`               |
 | `note`                    | Save notes to notepad                                            | `/oh-my-copilot:note`                    |
-| `omg-doctor`              | Diagnose and fix installation issues                             | `/oh-my-copilot:omg-doctor`              |
-| `omg-help`                | Show OMP usage guide                                             | `/oh-my-copilot:omg-help`                |
-| `omg-plan`                | Planning workflow (`/plan` safe alias)                           | `/oh-my-copilot:omg-plan`                |
-| `omg-setup`               | One-time setup wizard                                            | `/oh-my-copilot:omg-setup`               |
-| `omg-teams`               | Legacy compatibility wrapper for `omc team` CLI                  | `/oh-my-copilot:omg-teams`               |
+| `omc-doctor`              | Diagnose and fix installation issues                             | `/oh-my-copilot:omc-doctor`              |
+| `omc-help`                | Show OMP usage guide                                             | `/oh-my-copilot:omc-help`                |
+| `omc-plan`                | Planning workflow (`/plan` safe alias)                           | `/oh-my-copilot:omc-plan`                |
+| `omc-setup`               | One-time setup wizard                                            | `/oh-my-copilot:omc-setup`               |
+| `omc-teams`               | Legacy compatibility wrapper for `omc team` CLI                  | `/oh-my-copilot:omc-teams`               |
 | `project-session-manager` | Manage isolated dev environments (git worktrees + tmux)          | `/oh-my-copilot:project-session-manager` |
 | `psm`                     | **Deprecated** compatibility alias for `project-session-manager` | `/oh-my-copilot:psm`                     |
 | `ralph`                   | Persistence loop until verified completion                       | `/oh-my-copilot:ralph`                   |
 | `ralph-init`              | Initialize PRD for structured ralph execution                    | `/oh-my-copilot:ralph-init`              |
-| `ralplan`                 | Consensus planning alias for `/omg-plan --consensus`             | `/oh-my-copilot:ralplan`                 |
+| `ralplan`                 | Consensus planning alias for `/omc-plan --consensus`             | `/oh-my-copilot:ralplan`                 |
 | `release`                 | Automated release workflow                                       | `/oh-my-copilot:release`                 |
 | `sciomc`                  | Parallel scientist orchestration                                 | `/oh-my-copilot:sciomc`                  |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                | `/oh-my-copilot:skill`                   |
@@ -374,7 +374,7 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 | `/oh-my-copilot:ralph-init <task>`       | Initialize PRD for structured task tracking                                                   |
 | `/oh-my-copilot:ralph <task>`            | Self-referential loop until task completion                                                   |
 | `/oh-my-copilot:ultraqa <goal>`          | Autonomous QA cycling workflow                                                                |
-| `/oh-my-copilot:omg-plan <description>`  | Start planning session (supports consensus structured deliberation)                           |
+| `/oh-my-copilot:omc-plan <description>`  | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-copilot:ralplan <description>`   | Iterative planning with consensus structured deliberation (`--deliberate` for high-risk mode) |
 | `/oh-my-copilot:deep-interview <idea>`   | Socratic interview with ambiguity scoring before execution                                    |
 | `/oh-my-copilot:deepinit [path]`         | Index codebase with hierarchical AGENTS.md files                                              |
@@ -382,9 +382,9 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 | `/oh-my-copilot:learner`                 | Extract reusable skill from session                                                           |
 | `/oh-my-copilot:note <content>`          | Save notes to notepad.md                                                                      |
 | `/oh-my-copilot:cancel`                  | Unified cancellation                                                                          |
-| `/oh-my-copilot:omg-setup`               | One-time setup wizard                                                                         |
-| `/oh-my-copilot:omg-doctor`              | Diagnose and fix installation issues                                                          |
-| `/oh-my-copilot:omg-help`                | Show OMP usage guide                                                                          |
+| `/oh-my-copilot:omc-setup`               | One-time setup wizard                                                                         |
+| `/oh-my-copilot:omc-doctor`              | Diagnose and fix installation issues                                                          |
+| `/oh-my-copilot:omc-help`                | Show OMP usage guide                                                                          |
 | `/oh-my-copilot:hud`                     | Configure HUD statusline                                                                      |
 | `/oh-my-copilot:release`                 | Automated release workflow                                                                    |
 | `/oh-my-copilot:mcp-setup`               | Configure MCP servers                                                                         |
@@ -414,7 +414,7 @@ Oh-my-copilot-cli includes 31 lifecycle hooks that enhance Copilot CLI's behavio
 | Hook                 | Description                                           |
 | -------------------- | ----------------------------------------------------- |
 | `rules-injector`     | Dynamic rules injection with YAML frontmatter parsing |
-| `omg-orchestrator`   | Enforces orchestrator behavior and delegation         |
+| `omc-orchestrator`   | Enforces orchestrator behavior and delegation         |
 | `auto-slash-command` | Automatic slash command detection and execution       |
 | `keyword-detector`   | Magic keyword detection (ultrawork, ralph, etc.)      |
 | `todo-continuation`  | Ensures todo list completion                          |
@@ -658,7 +658,7 @@ Enable detailed cost tracking in your status line:
 ### Diagnose Installation Issues
 
 ```bash
-/oh-my-copilot:omg-doctor
+/oh-my-copilot:omc-doctor
 ```
 
 Checks for:
@@ -719,7 +719,7 @@ Available presets: `minimal`, `focused`, `full`, `dense`, `analytics`, `opencode
 
 | Issue                 | Solution                                                                         |
 | --------------------- | -------------------------------------------------------------------------------- |
-| Commands not found    | Re-run `/oh-my-copilot:omg-setup`                                             |
+| Commands not found    | Re-run `/oh-my-copilot:omc-setup`                                             |
 | Hooks not executing   | Check hook permissions: `chmod +x ~/.copilot/hooks/**/*.sh`                       |
 | Agents not delegating | Verify copilot-instructions.md is loaded: check `./.copilot/copilot-instructions.md` or `~/.copilot/copilot-instructions.md` |
 | LSP tools not working | Install language servers: `npm install -g typescript-language-server`            |

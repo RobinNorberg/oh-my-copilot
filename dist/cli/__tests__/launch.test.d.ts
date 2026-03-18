@@ -3,7 +3,7 @@
  *
  * Covers:
  * - Exit code propagation (runCopilot direct / inside-tmux)
- * - No OMG HUD pane spawning in tmux launch paths
+ * - No OMC HUD pane spawning in tmux launch paths
  */
 export {};
 //# sourceMappingURL=launch.test.d.ts.map

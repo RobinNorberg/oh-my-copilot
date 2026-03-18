@@ -73,7 +73,7 @@ export function checkHookConflicts() {
     return merged;
 }
 /**
- * Check a single file for OMG markers.
+ * Check a single file for OMC markers.
  * Returns { hasMarkers, hasUserContent } or null on error.
  */
 function checkFileForOmcMarkers(filePath) {
@@ -104,7 +104,7 @@ function checkFileForOmcMarkers(filePath) {
 /**
  * Find companion CLAUDE-*.md files in the config directory.
  * These are files like CLAUDE-omg.md that users create as part of a
- * file-split pattern to keep OMG config separate from their own copilot-instructions.md.
+ * file-split pattern to keep OMC config separate from their own copilot-instructions.md.
  */
 function findCompanionInstructionFiles(configDir) {
     try {
@@ -117,9 +117,9 @@ function findCompanionInstructionFiles(configDir) {
     }
 }
 /**
- * Check copilot-instructions.md for OMG markers and user content.
+ * Check copilot-instructions.md for OMC markers and user content.
  * Also checks companion files (CLAUDE-omg.md, etc.) for the file-split pattern
- * where users keep OMG config in a separate file.
+ * where users keep OMC config in a separate file.
  */
 export function checkCopilotMdStatus() {
     const configDir = getCopilotConfigDir();
@@ -176,7 +176,7 @@ export function checkCopilotMdStatus() {
     }
 }
 /**
- * Check environment flags that affect OMG behavior
+ * Check environment flags that affect OMC behavior
  */
 export function checkEnvFlags() {
     const disableOmc = process.env.DISABLE_OMC === 'true' || process.env.DISABLE_OMC === '1';
@@ -217,7 +217,7 @@ export function checkLegacySkills() {
  */
 export function checkConfigIssues() {
     const unknownFields = [];
-    const configPath = join(getCopilotConfigDir(), '.omg-config.json');
+    const configPath = join(getCopilotConfigDir(), '.omc-config.json');
     if (!existsSync(configPath)) {
         return { unknownFields };
     }
@@ -270,10 +270,10 @@ export function runConflictCheck() {
     // Determine if there are actual conflicts
     const hasConflicts = hookConflicts.some(h => !h.isOmc) || // Non-OMC hooks present
         legacySkills.length > 0 || // Legacy skills colliding with plugin
-        envFlags.disableOmc || // OMG is disabled
+        envFlags.disableOmc || // OMC is disabled
         envFlags.skipHooks.length > 0 || // Hooks are being skipped
         configIssues.unknownFields.length > 0; // Unknown config fields
-    // Note: Missing OMG markers is informational (normal for fresh install), not a conflict
+    // Note: Missing OMC markers is informational (normal for fresh install), not a conflict
     return {
         hookConflicts,
         claudeMdStatus,
@@ -318,18 +318,18 @@ export function formatReport(report, json) {
         lines.push('');
         if (report.claudeMdStatus.hasMarkers) {
             if (report.claudeMdStatus.companionFile) {
-                lines.push(`  ${colors.green('✓')} OMG markers found in companion file`);
+                lines.push(`  ${colors.green('✓')} OMC markers found in companion file`);
                 lines.push(`    ${colors.gray(`Companion: ${report.claudeMdStatus.companionFile}`)}`);
             }
             else {
-                lines.push(`  ${colors.green('✓')} OMG markers present`);
+                lines.push(`  ${colors.green('✓')} OMC markers present`);
             }
             if (report.claudeMdStatus.hasUserContent) {
                 lines.push(`  ${colors.green('✓')} User content preserved outside markers`);
             }
         }
         else {
-            lines.push(`  ${colors.yellow('⚠')} No OMG markers found`);
+            lines.push(`  ${colors.yellow('⚠')} No OMC markers found`);
             lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to add markers')}`);
             if (report.claudeMdStatus.hasUserContent) {
                 lines.push(`  ${colors.blue('ℹ')} User content present - will be preserved`);
@@ -347,7 +347,7 @@ export function formatReport(report, json) {
     lines.push(colors.bold('🔧 Environment Flags'));
     lines.push('');
     if (report.envFlags.disableOmc) {
-        lines.push(`  ${colors.red('✗')} DISABLE_OMC is set - OMG is disabled`);
+        lines.push(`  ${colors.red('✗')} DISABLE_OMC is set - OMC is disabled`);
     }
     else {
         lines.push(`  ${colors.green('✓')} DISABLE_OMC not set`);
@@ -374,7 +374,7 @@ export function formatReport(report, json) {
     if (report.configIssues.unknownFields.length > 0) {
         lines.push(colors.bold('⚙️  Configuration Issues'));
         lines.push('');
-        lines.push(`  ${colors.yellow('⚠')} Unknown fields in .omg-config.json:`);
+        lines.push(`  ${colors.yellow('⚠')} Unknown fields in .omc-config.json:`);
         for (const field of report.configIssues.unknownFields) {
             lines.push(`    - ${field}`);
         }
@@ -388,7 +388,7 @@ export function formatReport(report, json) {
     }
     else {
         lines.push(`${colors.green('✓')} No conflicts detected`);
-        lines.push(`${colors.gray('OMG is properly configured')}`);
+        lines.push(`${colors.gray('OMC is properly configured')}`);
     }
     lines.push('');
     return lines.join('\n');

@@ -7,7 +7,7 @@ import { getPluginCacheBase, getCopilotConfigDir } from '../utils/paths.js';
  * HUD Windows Compatibility Tests
  *
  * These tests verify Windows compatibility fixes for HUD:
- * - File naming (omg-hud.mjs)
+ * - File naming (omc-hud.mjs)
  * - Windows dynamic import() requires file:// URLs (pathToFileURL)
  * - Version sorting (numeric vs lexicographic)
  * - Cross-platform plugin cache path resolution (#670)
@@ -19,19 +19,19 @@ const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..');
 describe('HUD Windows Compatibility', () => {
     describe('File Naming', () => {
-        it('session-start.mjs should reference omg-hud.mjs', () => {
+        it('session-start.mjs should reference omc-hud.mjs', () => {
             const sessionStartPath = join(packageRoot, 'scripts', 'session-start.mjs');
             expect(existsSync(sessionStartPath)).toBe(true);
             const content = readFileSync(sessionStartPath, 'utf-8');
-            expect(content).toContain('omg-hud.mjs');
-            // Note: May also contain 'omg-hud.mjs' for backward compatibility (dual naming)
+            expect(content).toContain('omc-hud.mjs');
+            // Note: May also contain 'omc-hud.mjs' for backward compatibility (dual naming)
         });
-        it('installer should create omg-hud.mjs', () => {
+        it('installer should create omc-hud.mjs', () => {
             const installerPath = join(packageRoot, 'src', 'installer', 'index.ts');
             expect(existsSync(installerPath)).toBe(true);
             const content = readFileSync(installerPath, 'utf-8');
-            expect(content).toContain('omg-hud.mjs');
-            // Note: May also contain 'omg-hud.mjs' for legacy support
+            expect(content).toContain('omc-hud.mjs');
+            // Note: May also contain 'omc-hud.mjs' for legacy support
         });
     });
     describe('pathToFileURL for Dynamic Import', () => {

@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Stdin Parser
+ * OMC HUD - Stdin Parser
  *
  * Parse stdin JSON from Copilot CLI statusline interface.
  * Based on copilot-hud reference implementation.

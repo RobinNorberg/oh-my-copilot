@@ -7,7 +7,7 @@
  * session group or pipeline run.
  *
  * Storage: .omg/state/shared-memory/{namespace}/{key}.json
- * Config gate: agents.sharedMemory.enabled in ~/.copilot/.omg-config.json
+ * Config gate: agents.sharedMemory.enabled in ~/.copilot/.omc-config.json
  *
  * @see https://github.com/anthropics/oh-my-copilot/issues/1119
  */

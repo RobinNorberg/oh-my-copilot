@@ -50,7 +50,7 @@ describe('watchdog done.json parsing recovery', () => {
 
     const runtime: TeamRuntime = {
       teamName,
-      sessionName: 'omg-team-test',
+      sessionName: 'omc-team-test',
       leaderPaneId: '%0',
       ownsWindow: false,
       config: {

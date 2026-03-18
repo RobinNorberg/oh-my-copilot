@@ -50,7 +50,7 @@ export { expandCommand, expandCommandPrompt, getCommand, getAllCommands, listCom
 // Installer exports
 export { install, isInstalled, getInstallInfo, isCopilotInstalled, COPILOT_CONFIG_DIR as INSTALLER_COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, VERSION as INSTALLER_VERSION } from './installer/index.js';
 /**
- * Create a OMG orchestration session
+ * Create a OMC orchestration session
  *
  * This prepares all the configuration and options needed
  * to run a query with the Copilot Agent SDK.

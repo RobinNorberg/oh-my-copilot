@@ -31,7 +31,7 @@ import { warnIfWin32 } from './win32-warning.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const version = getRuntimePackageVersion();
 const program = new Command();
-// Win32 platform warning - OMG requires tmux which is not available on native Windows
+// Win32 platform warning - OMC requires tmux which is not available on native Windows
 warnIfWin32();
 // Default action when running 'omc' with no subcommand
 // Forwards all args to launchCommand so 'omc --notify false --madmax' etc. work directly
@@ -95,7 +95,7 @@ program
  */
 program
     .command('init')
-    .description('Initialize OMG configuration in the current directory')
+    .description('Initialize OMC configuration in the current directory')
     .option('-g, --global', 'Initialize global user configuration')
     .option('-f, --force', 'Overwrite existing configuration')
     .addHelpText('after', `
@@ -134,7 +134,7 @@ Examples:
 //   OMC_MODEL_MEDIUM (sonnet-class)
 //   OMC_MODEL_LOW    (haiku-class)
 {
-  "$schema": "./omg-schema.json",
+  "$schema": "./omc-schema.json",
 
   // Agent model configurations
   "agents": {
@@ -219,7 +219,7 @@ Examples:
     writeFileSync(targetPath, configContent);
     console.log(chalk.green(`Created configuration: ${targetPath}`));
     // Also create the JSON schema for editor support
-    const schemaPath = join(targetDir, 'omg-schema.json');
+    const schemaPath = join(targetDir, 'omc-schema.json');
     writeFileSync(schemaPath, JSON.stringify(generateConfigSchema(), null, 2));
     console.log(chalk.green(`Created JSON schema: ${schemaPath}`));
     console.log(chalk.blue('\nSetup complete!'));
@@ -934,7 +934,7 @@ Examples:
  */
 program
     .command('install')
-    .description('Install OMG agents and commands to Copilot CLI config (~/.copilot/)')
+    .description('Install OMC agents and commands to Copilot CLI config (~/.copilot/)')
     .option('-f, --force', 'Overwrite existing files')
     .option('-q, --quiet', 'Suppress output except for errors')
     .option('--skip-copilot-check', 'Skip checking if Copilot CLI is installed')
@@ -955,7 +955,7 @@ Examples:
     if (isInstalled() && !options.force) {
         const info = getInstallInfo();
         if (!options.quiet) {
-            console.log(chalk.yellow('OMG is already installed.'));
+            console.log(chalk.yellow('OMC is already installed.'));
             if (info) {
                 console.log(chalk.gray(`  Version: ${info.version}`));
                 console.log(chalk.gray(`  Installed: ${info.installedAt}`));
@@ -983,9 +983,9 @@ Examples:
             console.log('  copilot                        # Start Copilot CLI normally');
             console.log('');
             console.log(chalk.yellow('Slash Commands:'));
-            console.log('  /omg <task>              # Activate OMG orchestration mode');
-            console.log('  /omg-default             # Configure for current project');
-            console.log('  /omg-default-global      # Configure globally');
+            console.log('  /omg <task>              # Activate OMC orchestration mode');
+            console.log('  /omc-default             # Configure for current project');
+            console.log('  /omc-default-global      # Configure globally');
             console.log('  /ultrawork <task>             # Maximum performance mode');
             console.log('  /deepsearch <query>           # Thorough codebase search');
             console.log('  /analyze <target>             # Deep analysis mode');
@@ -1015,13 +1015,13 @@ Examples:
             console.log('    designer-low        - Simple styling (Haiku)');
             console.log('');
             console.log(chalk.yellow('After Updates:'));
-            console.log('  Run \'/omg-default\' (project) or \'/omg-default-global\' (global)');
+            console.log('  Run \'/omc-default\' (project) or \'/omc-default-global\' (global)');
             console.log('  to download the latest copilot-instructions.md configuration.');
             console.log('  This ensures you get the newest features and agent behaviors.');
             console.log('');
             console.log(chalk.blue('Quick Start:'));
             console.log('  1. Run \'copilot\' to start Copilot CLI');
-            console.log('  2. Type \'/omg-default\' for project or \'/omg-default-global\' for global');
+            console.log('  2. Type \'/omc-default\' for project or \'/omc-default-global\' for global');
             console.log('  3. Or use \'/omg <task>\' for one-time activation');
         }
     }
@@ -1114,7 +1114,7 @@ const teleportCmd = program
     .command('teleport [ref]')
     .description("Create git worktree for isolated development (e.g., omc teleport '#123')")
     .option('--worktree', 'Create worktree (default behavior, flag kept for compatibility)')
-    .option('-p, --path <path>', 'Custom worktree path (default: ~/Workspace/omg-worktrees/)')
+    .option('-p, --path <path>', 'Custom worktree path (default: ~/Workspace/omc-worktrees/)')
     .option('-b, --base <branch>', 'Base branch to create from (default: main)')
     .option('--json', 'Output as JSON')
     .addHelpText('after', `
@@ -1158,7 +1158,7 @@ Note:
 });
 teleportCmd
     .command('list')
-    .description('List existing worktrees in ~/Workspace/omg-worktrees/')
+    .description('List existing worktrees in ~/Workspace/omc-worktrees/')
     .option('--json', 'Output as JSON')
     .action(async (options) => {
     await teleportListCommand(options);
@@ -1179,7 +1179,7 @@ teleportCmd
  */
 const doctorCmd = program
     .command('doctor')
-    .description('Diagnostic tools for troubleshooting OMG installation')
+    .description('Diagnostic tools for troubleshooting OMC installation')
     .addHelpText('after', `
 Examples:
   $ omc doctor conflicts         Check for plugin conflicts`);
@@ -1198,21 +1198,21 @@ Examples:
 /**
  * Setup command - Official CLI entry point for omc-setup
  *
- * User-friendly command that syncs all OMG components:
+ * User-friendly command that syncs all OMC components:
  * - Installs/updates hooks, agents, and skills
  * - Reconciles runtime state after updates
  * - Shows clear summary of what was installed/updated
  */
 program
     .command('setup')
-    .description('Run OMG setup to sync all components (hooks, agents, skills)')
+    .description('Run OMC setup to sync all components (hooks, agents, skills)')
     .option('-f, --force', 'Force reinstall even if already up to date')
     .option('-q, --quiet', 'Suppress output except for errors')
     .option('--skip-hooks', 'Skip hook installation')
     .option('--force-hooks', 'Force reinstall hooks even if unchanged')
     .addHelpText('after', `
 Examples:
-  $ omc setup                     Sync all OMG components
+  $ omc setup                     Sync all OMC components
   $ omc setup --force             Force reinstall everything
   $ omc setup --quiet             Silent setup for scripts
   $ omc setup --skip-hooks        Install without hooks
@@ -1223,7 +1223,7 @@ Examples:
     }
     // Step 1: Run installation (which handles hooks, agents, skills)
     if (!options.quiet) {
-        console.log(chalk.gray('Syncing OMG components...'));
+        console.log(chalk.gray('Syncing OMC components...'));
     }
     const result = installOmc({
         force: !!options.force,
@@ -1288,21 +1288,21 @@ program
     if (result.success) {
         console.log(chalk.green('✓ Oh-My-Copilot installed successfully!'));
         console.log(chalk.gray('  Run "oh-my-copilot info" to see available agents.'));
-        console.log(chalk.yellow('  Run "/omg-default" (project) or "/omg-default-global" (global) in Copilot CLI.'));
+        console.log(chalk.yellow('  Run "/omc-default" (project) or "/omc-default-global" (global) in Copilot CLI.'));
     }
     else {
         // Don't fail the npm install, just warn
-        console.warn(chalk.yellow('⚠ Could not complete OMG setup:'), result.message);
+        console.warn(chalk.yellow('⚠ Could not complete OMC setup:'), result.message);
         console.warn(chalk.gray('  Run "oh-my-copilot install" manually to complete setup.'));
     }
 });
 /**
- * HUD command - Run the OMG HUD statusline renderer
+ * HUD command - Run the OMC HUD statusline renderer
  * In --watch mode, loops continuously for use in a tmux pane.
  */
 program
     .command('hud')
-    .description('Run the OMG HUD statusline renderer')
+    .description('Run the OMC HUD statusline renderer')
     .option('--watch', 'Run in watch mode (continuous polling for tmux pane)')
     .option('--interval <ms>', 'Poll interval in milliseconds', '1000')
     .action(async (options) => {
@@ -1340,7 +1340,7 @@ program
 });
 /**
  * Team command - CLI API for team worker lifecycle operations
- * Exposes OMG's `omc team api` interface.
+ * Exposes OMC's `omc team api` interface.
  *
  * helpOption(false) prevents commander from intercepting --help;
  * our teamCommand handler provides its own help output.

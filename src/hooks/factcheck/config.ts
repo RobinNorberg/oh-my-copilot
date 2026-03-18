@@ -1,7 +1,7 @@
 /**
  * Factcheck Guard Configuration
  *
- * Loads guard config from the OMG config system with token expansion
+ * Loads guard config from the OMC config system with token expansion
  * and deep merge over sensible defaults.
  */
 
@@ -18,7 +18,7 @@ const DEFAULT_FACTCHECK_POLICY: FactcheckPolicy = {
   mode: 'quick',
   strict_project_patterns: [],
   forbidden_path_prefixes: ['${HOME}/.copilot/plugins/cache/omg/'],
-  forbidden_path_substrings: ['/.omg/', '.omg-config.json'],
+  forbidden_path_substrings: ['/.omg/', '.omc-config.json'],
   readonly_command_prefixes: [
     'ls ', 'cat ', 'find ', 'grep ', 'head ', 'tail ', 'stat ', 'echo ', 'wc ',
   ],
@@ -110,9 +110,9 @@ function deepMergeGuards(
 // ---------------------------------------------------------------------------
 
 /**
- * Load guards config from the OMG config system.
+ * Load guards config from the OMC config system.
  *
- * Reads the `guards` key from the merged OMG config, deep-merges over
+ * Reads the `guards` key from the merged OMC config, deep-merges over
  * defaults, and expands ${HOME}/${WORKSPACE} tokens.
  */
 export function loadGuardsConfig(workspace?: string): GuardsConfig {

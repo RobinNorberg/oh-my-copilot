@@ -24,7 +24,7 @@ import {
 import type { HookNotificationConfig } from "../hook-config-types.js";
 import type { NotificationConfig } from "../types.js";
 
-const TEST_DIR = join(tmpdir(), `omg-hook-config-test-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `omc-hook-config-test-${process.pid}`);
 const TEST_CONFIG_PATH = join(TEST_DIR, "omp_config.hook.json");
 
 function writeTestConfig(config: object): void {

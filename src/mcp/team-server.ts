@@ -176,8 +176,8 @@ async function loadPaneIds(jobId: string): Promise<{ paneIds: string[]; leaderPa
 }
 
 function validateJobId(job_id: string): void {
-  if (!/^omg-[a-z0-9]{1,12}$/.test(job_id)) {
-    throw new Error(`Invalid job_id: "${job_id}". Must match /^omg-[a-z0-9]{1,12}$/`);
+  if (!/^omc-[a-z0-9]{1,12}$/.test(job_id)) {
+    throw new Error(`Invalid job_id: "${job_id}". Must match /^omc-[a-z0-9]{1,12}$/`);
   }
 }
 
@@ -236,7 +236,7 @@ async function handleStart(args: unknown): Promise<{ content: Array<{ type: 'tex
 
   const input = startSchema.parse(args);
   validateTeamName(input.teamName);
-  const jobId = `omg-${Date.now().toString(36)}`;
+  const jobId = `omc-${Date.now().toString(36)}`;
   const runtimeCliPath = join(__dirname, 'runtime-cli.cjs');
 
   const job: OmcTeamJob = { status: 'running', startedAt: Date.now(), teamName: input.teamName, cwd: input.cwd };

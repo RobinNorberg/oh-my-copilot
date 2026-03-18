@@ -8,7 +8,7 @@ vi.mock('child_process', async (importOriginal) => {
     const runMockExec = (args) => {
         mockedCalls.execFileArgs.push(args);
         if (args[0] === 'new-session') {
-            return { stdout: 'omg-team-race-team-detached:0 %91\n', stderr: '' };
+            return { stdout: 'omc-team-race-team-detached:0 %91\n', stderr: '' };
         }
         if (args[0] === 'new-window') {
             return { stdout: 'omx:5 %99\n', stderr: '' };
@@ -84,7 +84,7 @@ describe('createTeamSession context resolution', () => {
         const detachedCreateCall = mockedCalls.execFileArgs.find((args) => args[0] === 'new-session' && args.includes('-d') && args.includes('-P'));
         expect(detachedCreateCall).toBeDefined();
         expect(session.leaderPaneId).toBe('%91');
-        expect(session.sessionName).toBe('omg-team-race-team-detached:0');
+        expect(session.sessionName).toBe('omc-team-race-team-detached:0');
         expect(session.workerPaneIds).toEqual([]);
         expect(session.sessionMode).toBe('detached-session');
     });
@@ -114,7 +114,7 @@ describe('createTeamSession context resolution', () => {
         vi.stubEnv('TMUX_PANE', '%732');
         const session = await createTeamSession('race-team', 1, '/tmp', { newWindow: true });
         const newWindowCall = mockedCalls.execFileArgs.find((args) => args[0] === 'new-window');
-        expect(newWindowCall).toEqual(expect.arrayContaining(['new-window', '-d', '-P', '-t', 'omx', '-n', 'omg-race-team']));
+        expect(newWindowCall).toEqual(expect.arrayContaining(['new-window', '-d', '-P', '-t', 'omx', '-n', 'omc-race-team']));
         const firstSplitCall = mockedCalls.execFileArgs.find((args) => args[0] === 'split-window');
         expect(firstSplitCall).toEqual(expect.arrayContaining(['split-window', '-h', '-t', '%99']));
         expect(mockedCalls.execFileArgs.some((args) => args[0] === 'select-pane' && args.includes('%99'))).toBe(false);

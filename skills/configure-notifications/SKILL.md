@@ -47,12 +47,12 @@ Set up Telegram notifications so OMP can message you when sessions end, need inp
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `~/.copilot/.omg-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `~/.copilot/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   HAS_TELEGRAM=$(jq -r '.notifications.telegram.enabled // false' "$CONFIG_FILE" 2>/dev/null)
@@ -155,7 +155,7 @@ Default selection: session-end + ask-user-question.
 Read the existing config, merge the new Telegram settings, and write back:
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -243,7 +243,7 @@ Telegram Notifications Configured!
   Format:     Markdown
   Events:     session-end, ask-user-question
 
-Config saved to: ~/.copilot/.omg-config.json
+Config saved to: ~/.copilot/.omc-config.json
 
 You can also set these via environment variables:
   OMC_TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
@@ -264,7 +264,7 @@ export OMC_TELEGRAM_BOT_TOKEN="123456789:ABCdefGHIjklMNOpqrsTUVwxyz"
 export OMC_TELEGRAM_CHAT_ID="123456789"
 ```
 
-Env vars are auto-detected by the notification system without needing `.omg-config.json`.
+Env vars are auto-detected by the notification system without needing `.omc-config.json`.
 
 ---
 
@@ -274,12 +274,12 @@ Set up Discord notifications so OMP can ping you when sessions end, need input, 
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `~/.copilot/.omg-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `~/.copilot/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   # Check for existing discord config
@@ -390,7 +390,7 @@ Use AskUserQuestion:
 Read the existing config, merge the new Discord settings, and write back:
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -402,7 +402,7 @@ fi
 
 #### For Webhook method:
 
-Build the notifications object with the collected values and merge into `.omg-config.json` using jq:
+Build the notifications object with the collected values and merge into `.omc-config.json` using jq:
 
 ```bash
 # WEBHOOK_URL, MENTION, USERNAME are collected from user
@@ -486,7 +486,7 @@ Discord Notifications Configured!
   Events:   session-end, ask-user-question
   Username: OMP
 
-Config saved to: ~/.copilot/.omg-config.json
+Config saved to: ~/.copilot/.omc-config.json
 
 You can also set these via environment variables:
   OMC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
@@ -515,7 +515,7 @@ export OMC_DISCORD_NOTIFIER_CHANNEL="your-channel-id"
 export OMC_DISCORD_MENTION="<@1465264645320474637>"  # optional
 ```
 
-Env vars are auto-detected by the notification system without needing `.omg-config.json`.
+Env vars are auto-detected by the notification system without needing `.omc-config.json`.
 
 ---
 
@@ -525,12 +525,12 @@ Set up Slack notifications so OMP can message you when sessions end, need input,
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `~/.copilot/.omg-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `~/.copilot/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   HAS_SLACK=$(jq -r '.notifications.slack.enabled // false' "$CONFIG_FILE" 2>/dev/null)
@@ -651,7 +651,7 @@ Use AskUserQuestion:
 Read the existing config, merge the new Slack settings, and write back:
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -734,7 +734,7 @@ Slack Notifications Configured!
   Events:   session-end, ask-user-question
   Username: OMP
 
-Config saved to: ~/.copilot/.omg-config.json
+Config saved to: ~/.copilot/.omc-config.json
 
 You can also set these via environment variables:
   OMC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
@@ -755,7 +755,7 @@ export OMC_SLACK_WEBHOOK_URL="https://hooks.slack.com/services/T00/B00/xxx"
 export OMC_SLACK_MENTION="<@U1234567890>"  # optional
 ```
 
-Env vars are auto-detected by the notification system without needing `.omg-config.json`.
+Env vars are auto-detected by the notification system without needing `.omc-config.json`.
 
 ### Slack Mention Formats
 
@@ -775,12 +775,12 @@ Set up Microsoft Teams notifications so OMP can message you when sessions end, n
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `~/.copilot/.omg-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `~/.copilot/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   HAS_TEAMS=$(jq -r '.notifications.teams.enabled // false' "$CONFIG_FILE" 2>/dev/null)
@@ -854,7 +854,7 @@ Default selection: session-end + ask-user-question.
 Read the existing config, merge the new Teams settings, and write back:
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -921,7 +921,7 @@ Microsoft Teams Notifications Configured!
   Webhook:  https://...logic.azure.com/...
   Events:   session-end, ask-user-question
 
-Config saved to: ~/.copilot/.omg-config.json
+Config saved to: ~/.copilot/.omc-config.json
 
 You can also set these via environment variables:
   OMC_MICROSOFT_TEAMS_WEBHOOK_URL=https://...
@@ -940,7 +940,7 @@ Users can skip this wizard entirely by setting env vars in their shell profile:
 export OMC_MICROSOFT_TEAMS_WEBHOOK_URL="https://prod-xx.westus.logic.azure.com/workflows/..."
 ```
 
-Env vars are auto-detected by the notification system without needing `.omg-config.json`.
+Env vars are auto-detected by the notification system without needing `.omc-config.json`.
 
 ---
 
@@ -1193,7 +1193,7 @@ Show result (HTTP status, any error).
 
 **Step 6: Write Configuration**
 
-Merge into `.omg-config.json`:
+Merge into `.omc-config.json`:
 
 ```json
 {

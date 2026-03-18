@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Prompt Time Element
+ * OMC HUD - Prompt Time Element
  *
  * Renders the timestamp of the last user prompt submission.
  * Recorded by the keyword-detector hook on UserPromptSubmit.

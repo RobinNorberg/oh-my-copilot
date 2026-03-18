@@ -52,7 +52,7 @@ describe('auto-update reconciliation', () => {
     mockedExistsSync.mockReturnValue(true);
     mockedIsProjectScopedPlugin.mockReturnValue(false);
     mockedReadFileSync.mockImplementation((path: Parameters<typeof readFileSync>[0]) => {
-      if (String(path).includes('.omg-version.json')) {
+      if (String(path).includes('.omc-version.json')) {
         return JSON.stringify({
           version: '4.1.5',
           installedAt: '2026-02-09T00:00:00.000Z',

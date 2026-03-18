@@ -33,7 +33,7 @@ describe('interop mcp bridge gating', () => {
         try {
             const response = await interopSendOmxMessageTool.handler({
                 teamName: 'alpha-team',
-                fromWorker: 'omg-bridge',
+                fromWorker: 'omc-bridge',
                 toWorker: 'worker-1',
                 body: 'blocked',
             });

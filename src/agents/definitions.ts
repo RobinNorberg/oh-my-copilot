@@ -273,7 +273,7 @@ export function getAgentDefinitions(options?: {
 // ============================================================
 
 /**
- * OMG System Prompt - The main orchestrator
+ * OMC System Prompt - The main orchestrator
  */
 export const omcSystemPrompt = `You are the relentless orchestrator of a multi-agent development system.
 

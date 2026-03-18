@@ -2,7 +2,7 @@
  * Tests for omc update --force-hooks protection (issue #722)
  *
  * Verifies that the hook merge logic in install() correctly:
- *   - merges OMG hooks with existing non-OMC hooks during `omc update` (force=true)
+ *   - merges OMC hooks with existing non-OMC hooks during `omc update` (force=true)
  *   - warns when non-OMC hooks are present
  *   - only fully replaces when --force-hooks is explicitly set
  *
@@ -37,7 +37,7 @@ function mergeEventHooks(existingGroups, newOmcGroups, options) {
     else if (options.force) {
         merged = [...nonOmcGroups, ...newOmcGroups];
         if (hasNonOmcHook) {
-            logMessages.push(`Merged ${eventType} hooks (updated OMG hooks, preserved non-OMC hook: ${nonOmcCommand})`);
+            logMessages.push(`Merged ${eventType} hooks (updated OMC hooks, preserved non-OMC hook: ${nonOmcCommand})`);
             conflicts.push({ eventType, existingCommand: nonOmcCommand });
         }
         else {
@@ -132,7 +132,7 @@ describe('Hook merge during omc update', () => {
         });
     });
     describe('force=true — merge behaviour (omc update path)', () => {
-        it('replaces OMG hooks when event type has only OMG hooks', () => {
+        it('replaces OMC hooks when event type has only OMC hooks', () => {
             const existing = [omcGroup(OMC_CMD)];
             const newOmc = [omcGroup(NEW_OMC_CMD)];
             const { merged, conflicts } = mergeEventHooks(existing, newOmc, { force: true });
@@ -141,7 +141,7 @@ describe('Hook merge during omc update', () => {
             expect(merged[0].hooks[0].command).toBe(NEW_OMC_CMD);
             expect(conflicts).toHaveLength(0);
         });
-        it('preserves non-OMC hook and adds updated OMG hook', () => {
+        it('preserves non-OMC hook and adds updated OMC hook', () => {
             const existing = [userGroup(USER_CMD), omcGroup(OMC_CMD)];
             const newOmc = [omcGroup(NEW_OMC_CMD)];
             const { merged, conflicts, logMessages } = mergeEventHooks(existing, newOmc, { force: true });
@@ -164,7 +164,7 @@ describe('Hook merge during omc update', () => {
             expect(merged[1].hooks[0].command).toBe(userCmd2);
             expect(merged[2].hooks[0].command).toBe(NEW_OMC_CMD);
         });
-        it('does not carry over old OMG hook groups', () => {
+        it('does not carry over old OMC hook groups', () => {
             const existing = [omcGroup(OMC_CMD)];
             const newOmc = [omcGroup(NEW_OMC_CMD)];
             const { merged } = mergeEventHooks(existing, newOmc, { force: true });
@@ -179,7 +179,7 @@ describe('Hook merge during omc update', () => {
             expect(conflicts).toHaveLength(1);
             expect(conflicts[0].existingCommand).toBe(USER_CMD);
         });
-        it('records no conflict when only OMG hooks existed', () => {
+        it('records no conflict when only OMC hooks existed', () => {
             const existing = [omcGroup(OMC_CMD)];
             const newOmc = [omcGroup(NEW_OMC_CMD)];
             const { conflicts } = mergeEventHooks(existing, newOmc, { force: true });

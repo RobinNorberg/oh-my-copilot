@@ -821,7 +821,7 @@ export async function resumeTeamV2(teamName, cwd) {
         const { execFile } = await import('child_process');
         const { promisify } = await import('util');
         const execFileAsync = promisify(execFile);
-        const sessionName = config.tmux_session || `omg-team-${sanitized}`;
+        const sessionName = config.tmux_session || `omc-team-${sanitized}`;
         await execFileAsync('tmux', ['has-session', '-t', sessionName.split(':')[0]]);
         return {
             teamName: sanitized,

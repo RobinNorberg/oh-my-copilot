@@ -1,7 +1,7 @@
 /**
  * Factcheck Guard Configuration
  *
- * Loads guard config from the OMG config system with token expansion
+ * Loads guard config from the OMC config system with token expansion
  * and deep merge over sensible defaults.
  */
 import type { GuardsConfig } from './types.js';
@@ -11,9 +11,9 @@ export declare const DEFAULT_GUARDS_CONFIG: GuardsConfig;
  */
 export declare function expandTokens(value: string, workspace?: string): string;
 /**
- * Load guards config from the OMG config system.
+ * Load guards config from the OMC config system.
  *
- * Reads the `guards` key from the merged OMG config, deep-merges over
+ * Reads the `guards` key from the merged OMC config, deep-merges over
  * defaults, and expands ${HOME}/${WORKSPACE} tokens.
  */
 export declare function loadGuardsConfig(workspace?: string): GuardsConfig;

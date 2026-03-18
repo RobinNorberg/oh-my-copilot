@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Git Elements
+ * OMC HUD - Git Elements
  *
  * Renders git repository name and branch information.
  */

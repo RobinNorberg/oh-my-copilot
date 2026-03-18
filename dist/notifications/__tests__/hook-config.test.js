@@ -15,7 +15,7 @@ import { writeFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import { getHookConfig, resetHookConfigCache, resolveEventTemplate, mergeHookConfigIntoNotificationConfig, } from "../hook-config.js";
-const TEST_DIR = join(tmpdir(), `omg-hook-config-test-${process.pid}`);
+const TEST_DIR = join(tmpdir(), `omc-hook-config-test-${process.pid}`);
 const TEST_CONFIG_PATH = join(TEST_DIR, "omp_config.hook.json");
 function writeTestConfig(config) {
     mkdirSync(TEST_DIR, { recursive: true });

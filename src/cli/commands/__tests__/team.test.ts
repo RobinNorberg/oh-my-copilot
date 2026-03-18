@@ -89,7 +89,7 @@ describe('teamCommand api operations', () => {
   });
 
   it('executes send-message with stable JSON envelope', async () => {
-    wd = await mkdtemp(join(tmpdir(), 'omg-team-cli-'));
+    wd = await mkdtemp(join(tmpdir(), 'omc-team-cli-'));
     previousCwd = process.cwd();
     process.chdir(wd);
     await initTeamState('cli-test', wd);
@@ -115,7 +115,7 @@ describe('teamCommand api operations', () => {
   });
 
   it('supports claim-safe lifecycle: create -> claim -> transition', async () => {
-    wd = await mkdtemp(join(tmpdir(), 'omg-team-lifecycle-'));
+    wd = await mkdtemp(join(tmpdir(), 'omc-team-lifecycle-'));
     previousCwd = process.cwd();
     process.chdir(wd);
     await initTeamState('lifecycle', wd);

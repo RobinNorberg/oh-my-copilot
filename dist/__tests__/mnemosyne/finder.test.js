@@ -44,7 +44,7 @@ describe('Skill Finder', () => {
     it('should get skills directory for user scope', () => {
         const userDir = getSkillsDir('user');
         expect(userDir).toContain('.copilot');
-        expect(userDir).toContain('omg-learned');
+        expect(userDir).toContain('omc-learned');
     });
     it('should get skills directory for project scope', () => {
         const projectDir = getSkillsDir('project', projectRoot);

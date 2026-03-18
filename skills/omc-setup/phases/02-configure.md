@@ -11,7 +11,7 @@ The HUD shows real-time status in Copilot CLI's status bar. Invoke the hud skill
 Use the Skill tool to invoke: `hud` with args: `setup`
 
 This will:
-1. Install the HUD wrapper script to `~/.copilot/hud/omg-hud.mjs`
+1. Install the HUD wrapper script to `~/.copilot/hud/omc-hud.mjs`
 2. Configure `statusLine` in `~/.copilot/settings.json`
 3. Report status and prompt to restart if needed
 
@@ -40,8 +40,8 @@ let v='';
 // Try cache directory first
 const b=p.join(d,'plugins','cache','omp','oh-my-copilot');
 try{const vs=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(vs.length)v=vs[vs.length-1]}catch{}
-// Try .omg-version.json second
-if(v==='')try{const j=JSON.parse(f.readFileSync('.omg-version.json','utf-8'));v=j.version||''}catch{}
+// Try .omc-version.json second
+if(v==='')try{const j=JSON.parse(f.readFileSync('.omc-version.json','utf-8'));v=j.version||''}catch{}
 // Try copilot-instructions.md header third
 if(v==='')for(const c of['.copilot/copilot-instructions.md',p.join(d,'copilot-instructions.md')]){try{const m=f.readFileSync(c,'utf-8').match(/^# oh-my-copilot.*?(v?\d+\.\d+\.\d+)/m);if(m){v=m[1].replace(/^v/,'');break}}catch{}}
 console.log('Installed:',v||'(not found)');
@@ -75,10 +75,10 @@ Use the AskUserQuestion tool to prompt the user:
 **Options:**
 1. **ultrawork (maximum capability)** - Uses all agent tiers including Opus for complex tasks. Best for challenging work where quality matters most. (Recommended)
 
-Store the preference in `~/.copilot/.omg-config.json`:
+Store the preference in `~/.copilot/.omc-config.json`:
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -187,7 +187,7 @@ If beads or beads-rust is detected, use AskUserQuestion:
 Store the preference:
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then

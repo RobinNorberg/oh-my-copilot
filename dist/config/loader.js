@@ -543,7 +543,7 @@ export function generateConfigSchema() {
                 properties: {
                     enabled: { type: 'boolean', default: true, description: 'Enable intelligent model routing' },
                     defaultTier: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'], default: 'MEDIUM', description: 'Default tier when no rules match' },
-                    forceInherit: { type: 'boolean', default: false, description: 'Force all agents to inherit the parent model, bypassing OMG model routing. When true, no model parameter is passed to Task calls, so agents use the user\'s Copilot CLI model setting. Auto-enabled for non-Copilot providers (CC Switch, custom ANTHROPIC_BASE_URL), AWS Bedrock, and Google Vertex AI.' },
+                    forceInherit: { type: 'boolean', default: false, description: 'Force all agents to inherit the parent model, bypassing OMC model routing. When true, no model parameter is passed to Task calls, so agents use the user\'s Copilot CLI model setting. Auto-enabled for non-Copilot providers (CC Switch, custom ANTHROPIC_BASE_URL), AWS Bedrock, and Google Vertex AI.' },
                 }
             },
             externalModels: {

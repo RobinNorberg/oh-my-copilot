@@ -38,7 +38,7 @@ export interface DelegationTrigger {
 
 /**
  * Metadata about an agent for dynamic prompt generation
- * This enables OMG to build delegation tables automatically
+ * This enables OMC to build delegation tables automatically
  */
 export interface AgentPromptMetadata {
   /** Agent category */
@@ -123,7 +123,7 @@ export type AgentOverrides = Partial<Record<string, AgentOverrideConfig>>;
 export type AgentFactory = (model?: string) => AgentConfig;
 
 /**
- * Available agent descriptor for OMG prompt building
+ * Available agent descriptor for OMC prompt building
  */
 export interface AvailableAgent {
   name: string;

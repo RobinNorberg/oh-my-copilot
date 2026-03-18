@@ -140,7 +140,7 @@ describe('TCP port file integration', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-tcp-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-tcp-test-'));
   });
 
   afterEach(() => {

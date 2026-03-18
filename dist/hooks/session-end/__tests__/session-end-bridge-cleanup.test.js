@@ -22,7 +22,7 @@ describe('processSessionEnd python bridge cleanup', () => {
     let tmpDir;
     let transcriptPath;
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-session-end-bridge-'));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-session-end-bridge-'));
         transcriptPath = path.join(tmpDir, 'transcript.jsonl');
     });
     afterEach(() => {

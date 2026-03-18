@@ -138,7 +138,7 @@ const UI_CHROME_RE = /^[●⎿✻·◼]/;
 const CTRL_O_RE = /ctrl\+o to expand/i;
 /** Lines composed entirely of box-drawing characters and whitespace. */
 const BOX_DRAWING_RE = /^[\s─═│║┌┐└┘┬┴├┤╔╗╚╝╠╣╦╩╬╟╢╤╧╪━┃┏┓┗┛┣┫┳┻╋┠┨┯┷┿╂]+$/;
-/** OMG HUD status lines: [OMC#...] or [OMC] (unversioned). */
+/** OMC HUD status lines: [OMC#...] or [OMC] (unversioned). */
 const OMC_HUD_RE = /\[OMC[#\]]/;
 /** Bypass-permissions indicator lines starting with ⏵. */
 const BYPASS_PERM_RE = /^⏵/;

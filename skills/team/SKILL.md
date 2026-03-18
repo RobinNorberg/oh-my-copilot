@@ -870,7 +870,7 @@ When `OMC_TEAM_SCALING_ENABLED=1` is set, the team supports mid-session scaling:
 
 ## Configuration
 
-Optional settings via `.omg-config.json`:
+Optional settings via `.omc-config.json`:
 
 ```json
 {
@@ -915,7 +915,7 @@ MCP workers can operate in isolated git worktrees to prevent file conflicts betw
 
 ### How It Works
 
-1. **Worktree creation**: Before spawning a worker, call `createWorkerWorktree(teamName, workerName, repoRoot)` to create an isolated worktree at `.omg/worktrees/{team}/{worker}` with branch `omg-team/{teamName}/{workerName}`.
+1. **Worktree creation**: Before spawning a worker, call `createWorkerWorktree(teamName, workerName, repoRoot)` to create an isolated worktree at `.omg/worktrees/{team}/{worker}` with branch `omc-team/{teamName}/{workerName}`.
 
 2. **Worker isolation**: Pass the worktree path as the `workingDirectory` in the worker's `BridgeConfig`. The worker operates exclusively in its own worktree.
 

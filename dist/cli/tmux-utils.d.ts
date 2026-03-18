@@ -25,8 +25,8 @@ export declare function isCopilotAvailable(): boolean;
 export declare function resolveLaunchPolicy(env?: NodeJS.ProcessEnv): ClaudeLaunchPolicy;
 /**
  * Build tmux session name from directory, git branch, and UTC timestamp
- * Format: omg-{dir}-{branch}-{utctimestamp}
- * e.g.  omg-myproject-dev-20260221143052
+ * Format: omc-{dir}-{branch}-{utctimestamp}
+ * e.g.  omc-myproject-dev-20260221143052
  */
 export declare function buildTmuxSessionName(cwd: string): string;
 /**

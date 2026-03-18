@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Custom Rate Limit Provider
+ * OMC HUD - Custom Rate Limit Provider
  *
  * Executes a user-supplied command (omcHud.rateLimitsProvider) to fetch
  * rate limit / quota data and maps the output to CustomProviderResult.

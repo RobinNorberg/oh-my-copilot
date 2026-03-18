@@ -40,7 +40,7 @@ describe('watchdog done.json parsing recovery', () => {
         mocks.isWorkerAlive.mockResolvedValue(false);
         const runtime = {
             teamName,
-            sessionName: 'omg-team-test',
+            sessionName: 'omc-team-test',
             leaderPaneId: '%0',
             ownsWindow: false,
             config: {

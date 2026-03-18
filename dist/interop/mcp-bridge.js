@@ -327,7 +327,7 @@ export const interopSendOmxMessageTool = {
     description: 'Send a message to an OMX team worker mailbox using the native omx format. Supports direct messages and broadcasts.',
     schema: {
         teamName: z.string().describe('OMX team name'),
-        fromWorker: z.string().describe('Sender worker name (e.g., "omg-bridge")'),
+        fromWorker: z.string().describe('Sender worker name (e.g., "omc-bridge")'),
         toWorker: z.string().describe('Target worker name (ignored if broadcast=true)'),
         body: z.string().describe('Message body'),
         broadcast: z.boolean().optional().describe('Broadcast to all workers (default: false)'),

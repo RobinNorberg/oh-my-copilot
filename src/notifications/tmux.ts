@@ -45,13 +45,13 @@ export function getCurrentTmuxSession(): string | null {
 }
 
 /**
- * List active omg-team tmux sessions for a given team.
+ * List active omc-team tmux sessions for a given team.
  */
 export function getTeamTmuxSessions(teamName: string): string[] {
   const sanitized = teamName.replace(/[^a-zA-Z0-9-]/g, "");
   if (!sanitized) return [];
 
-  const prefix = `omg-team-${sanitized}-`;
+  const prefix = `omc-team-${sanitized}-`;
   try {
     const output = execSync("tmux list-sessions -F '#{session_name}'", {
       encoding: "utf-8",

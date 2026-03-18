@@ -16,8 +16,8 @@ afterEach(() => {
     }
 });
 describe('HUD marketplace resolution', () => {
-    it('omg-hud.mjs loads a marketplace install when plugin cache is unavailable', () => {
-        const configDir = mkdtempSync(join(tmpdir(), 'omg-hud-marketplace-'));
+    it('omc-hud.mjs loads a marketplace install when plugin cache is unavailable', () => {
+        const configDir = mkdtempSync(join(tmpdir(), 'omc-hud-marketplace-'));
         tempDirs.push(configDir);
         const fakeHome = join(configDir, 'home');
         mkdirSync(fakeHome, { recursive: true });
@@ -36,7 +36,7 @@ describe('HUD marketplace resolution', () => {
             },
             stdio: 'pipe',
         });
-        const hudScriptPath = join(configDir, 'hud', 'omg-hud.mjs');
+        const hudScriptPath = join(configDir, 'hud', 'omc-hud.mjs');
         expect(existsSync(hudScriptPath)).toBe(true);
         execFileSync(process.execPath, [hudScriptPath], {
             cwd: root,

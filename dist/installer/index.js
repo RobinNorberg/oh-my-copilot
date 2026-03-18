@@ -1,7 +1,7 @@
 /**
  * Installer Module
  *
- * Handles installation of OMG agents, commands, and configuration
+ * Handles installation of OMC agents, commands, and configuration
  * into the Copilot CLI config directory (~/.copilot/).
  *
  * Cross-platform support via Node.js-based hook scripts (.mjs).
@@ -24,7 +24,7 @@ export const SKILLS_DIR = join(COPILOT_CONFIG_DIR, 'skills');
 export const HOOKS_DIR = join(COPILOT_CONFIG_DIR, 'hooks');
 export const HUD_DIR = join(COPILOT_CONFIG_DIR, 'hud');
 export const SETTINGS_FILE = join(COPILOT_CONFIG_DIR, 'settings.json');
-export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omg-version.json');
+export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
 /**
  * Core commands - DISABLED for v3.0+
  * All commands are now plugin-scoped skills managed by Copilot CLI.
@@ -35,7 +35,7 @@ export const CORE_COMMANDS = [];
 export const VERSION = getRuntimePackageVersion();
 const OMC_VERSION_MARKER_PATTERN = /<!-- OMC:VERSION:([^\s]+) -->/;
 /**
- * Detects the newest installed OMG version from persistent metadata or
+ * Detects the newest installed OMC version from persistent metadata or
  * existing copilot-instructions.md markers so an older CLI package cannot overwrite a
  * newer installation during `omc setup`.
  */
@@ -141,11 +141,11 @@ function trimClaudeUserContent(content) {
         .replace(/(?:\r?\n){3,}/g, '\n\n');
 }
 /**
- * Read hudEnabled from .omg-config.json without importing auto-update
+ * Read hudEnabled from .omc-config.json without importing auto-update
  * (avoids circular dependency since auto-update imports from installer)
  */
 export function isHudEnabledInConfig() {
-    const configPath = join(COPILOT_CONFIG_DIR, '.omg-config.json');
+    const configPath = join(COPILOT_CONFIG_DIR, '.omc-config.json');
     if (!existsSync(configPath)) {
         return true; // default: enabled
     }
@@ -162,7 +162,7 @@ export function isHudEnabledInConfig() {
 /**
  * Detect whether a statusLine config belongs to oh-my-copilot.
  *
- * Checks the command string for known OMG HUD paths so that custom
+ * Checks the command string for known OMC HUD paths so that custom
  * (non-OMC) statusLine configurations are preserved during forced
  * updates/reconciliation.
  *
@@ -172,21 +172,21 @@ export function isHudEnabledInConfig() {
 export function isOmcStatusLine(statusLine) {
     if (!statusLine)
         return false;
-    // Legacy string format (pre-v4.5): "~/.copilot/hud/omg-hud.mjs"
+    // Legacy string format (pre-v4.5): "~/.copilot/hud/omc-hud.mjs"
     if (typeof statusLine === 'string') {
-        return statusLine.includes('omg-hud');
+        return statusLine.includes('omc-hud');
     }
-    // Current object format: { type: "command", command: "node ...omg-hud.mjs" }
+    // Current object format: { type: "command", command: "node ...omc-hud.mjs" }
     if (typeof statusLine === 'object') {
         const sl = statusLine;
         if (typeof sl.command === 'string') {
-            return sl.command.includes('omg-hud');
+            return sl.command.includes('omc-hud');
         }
     }
     return false;
 }
 /**
- * Known OMG hook script filenames installed into .copilot/hooks/.
+ * Known OMC hook script filenames installed into .copilot/hooks/.
  * Must be kept in sync with getHookScripts() in hooks.ts and
  * HOOKS_SETTINGS_CONFIG_NODE command entries.
  */
@@ -203,9 +203,9 @@ const OMC_HOOK_FILENAMES = new Set([
  * Detect whether a hook command belongs to oh-my-copilot.
  *
  * Recognition strategy (any match is sufficient):
- * 1. Command path contains "omg" as a path/word segment (e.g. `omg-hook.mjs`, `/omg/`)
+ * 1. Command path contains "omg" as a path/word segment (e.g. `omc-hook.mjs`, `/omg/`)
  * 2. Command path contains "oh-my-copilot"
- * 3. Command references a known OMG hook filename inside .copilot/hooks/
+ * 3. Command references a known OMC hook filename inside .copilot/hooks/
  *
  * @param command - The hook command string
  * @returns true if the command belongs to OMC
@@ -219,7 +219,7 @@ export function isOmcHook(command) {
     if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
         return true;
     }
-    // Check for known OMG hook filenames in .copilot/hooks/ path.
+    // Check for known OMC hook filenames in .copilot/hooks/ path.
     // Handles both Unix (.copilot/hooks/) and Windows (.copilot\hooks\) paths.
     const hookPathMatch = lowerCommand.match(/\.copilot[/\\]hooks[/\\]([a-z0-9-]+\.mjs)/);
     if (hookPathMatch && OMC_HOOK_FILENAMES.has(hookPathMatch[1])) {
@@ -367,7 +367,7 @@ function loadClaudeMdContent() {
     return readFileSync(claudeMdPath, 'utf-8');
 }
 /**
- * Extract the embedded OMG version from a copilot-instructions.md file.
+ * Extract the embedded OMC version from a copilot-instructions.md file.
  *
  * Primary source of truth is the injected `<!-- OMC:VERSION:x.y.z -->` marker.
  * Falls back to legacy headings that may include a version string inline.
@@ -393,7 +393,7 @@ export function extractOmcVersionFromClaudeMd(content) {
  * the interactive setup wizard had been completed.
  */
 export function syncPersistedSetupVersion(options) {
-    const configPath = options?.configPath ?? join(COPILOT_CONFIG_DIR, '.omg-config.json');
+    const configPath = options?.configPath ?? join(COPILOT_CONFIG_DIR, '.omc-config.json');
     let config = {};
     if (existsSync(configPath)) {
         const rawConfig = readFileSync(configPath, 'utf-8').trim();
@@ -425,9 +425,9 @@ export function syncPersistedSetupVersion(options) {
     return true;
 }
 /**
- * Merge OMG content into existing copilot-instructions.md using markers
+ * Merge OMC content into existing copilot-instructions.md using markers
  * @param existingContent - Existing copilot-instructions.md content (null if file doesn't exist)
- * @param omcContent - New OMG content to inject
+ * @param omcContent - New OMC content to inject
  * @returns Merged content with markers
  */
 export function mergeClaudeMd(existingContent, omcContent, version) {
@@ -467,11 +467,11 @@ export function mergeClaudeMd(existingContent, omcContent, version) {
     if (!preservedUserContent) {
         return `${START_MARKER}\n${versionMarker}${cleanOmcContent}\n${END_MARKER}\n`;
     }
-    // Case 3: Preserve only user-authored content that lives outside OMG markers
+    // Case 3: Preserve only user-authored content that lives outside OMC markers
     return `${START_MARKER}\n${versionMarker}${cleanOmcContent}\n${END_MARKER}\n\n${USER_CUSTOMIZATIONS}\n${preservedUserContent}`;
 }
 /**
- * Install OMG agents, commands, skills, and hooks
+ * Install OMC agents, commands, skills, and hooks
  */
 export function install(options = {}) {
     const result = {
@@ -620,7 +620,7 @@ export function install(options = {}) {
                     writeFileSync(backupPath, existingContent);
                     log(`Backed up existing copilot-instructions.md to ${backupPath}`);
                 }
-                // Merge OMG content with existing content
+                // Merge OMC content with existing content
                 const mergedContent = mergeClaudeMd(existingContent, omcContent, targetVersion);
                 writeFileSync(claudeMdPath, mergedContent);
                 if (existingContent) {
@@ -653,7 +653,7 @@ export function install(options = {}) {
             log('Skipping HUD statusline (user opted out)');
         }
         else if (hudDisabledByConfig) {
-            log('Skipping HUD statusline (hudEnabled is false in .omg-config.json)');
+            log('Skipping HUD statusline (hudEnabled is false in .omc-config.json)');
         }
         else {
             log('Installing HUD statusline...');
@@ -665,11 +665,11 @@ export function install(options = {}) {
                 }
                 // Build the HUD script content (compiled from src/hud/index.ts)
                 // Create a wrapper that checks multiple locations for the HUD module
-                hudScriptPath = join(HUD_DIR, 'omg-hud.mjs').replace(/\\/g, '/');
+                hudScriptPath = join(HUD_DIR, 'omc-hud.mjs').replace(/\\/g, '/');
                 const hudScriptLines = [
                     '#!/usr/bin/env node',
                     '/**',
-                    ' * OMG HUD - Statusline Script',
+                    ' * OMC HUD - Statusline Script',
                     ' * Wrapper that imports from dev paths, plugin cache, or npm package',
                     ' */',
                     '',
@@ -773,7 +773,7 @@ export function install(options = {}) {
                 if (!isWindows()) {
                     chmodSync(hudScriptPath, 0o755);
                 }
-                log('  Installed omg-hud.mjs');
+                log('  Installed omc-hud.mjs');
             }
             catch (_e) {
                 log('  Warning: Could not install HUD statusline script (non-fatal)');
@@ -835,11 +835,11 @@ export function install(options = {}) {
                             const findNodeDest = join(HUD_DIR, 'find-node.sh');
                             copyFileSync(findNodeSrc, findNodeDest);
                             chmodSync(findNodeDest, 0o755);
-                            statusLineCommand = 'sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omg-hud.mjs';
+                            statusLineCommand = 'sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omc-hud.mjs';
                         }
                         catch {
                             // Fallback to bare node if find-node.sh copy fails
-                            statusLineCommand = 'node $HOME/.copilot/hud/omg-hud.mjs';
+                            statusLineCommand = 'node $HOME/.copilot/hud/omc-hud.mjs';
                         }
                     }
                     // Auto-migrate legacy string format (pre-v4.5) to object format
@@ -868,11 +868,11 @@ export function install(options = {}) {
                         log('  statusLine already configured, skipping (use --force to override)');
                     }
                 }
-                // 3. Persist the detected node binary path into .omg-config.json so that
+                // 3. Persist the detected node binary path into .omc-config.json so that
                 //    find-node.sh (used in hooks/hooks.json) can locate it at hook runtime
                 //    even when node is not on PATH (nvm/fnm users, issue #892).
                 try {
-                    const configPath = join(COPILOT_CONFIG_DIR, '.omg-config.json');
+                    const configPath = join(COPILOT_CONFIG_DIR, '.omc-config.json');
                     let omcConfig = {};
                     if (existsSync(configPath)) {
                         omcConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
@@ -881,7 +881,7 @@ export function install(options = {}) {
                     if (detectedNode !== 'node') {
                         omcConfig.nodeBinary = detectedNode;
                         writeFileSync(configPath, JSON.stringify(omcConfig, null, 2));
-                        log(`  Saved node binary path to .omg-config.json: ${detectedNode}`);
+                        log(`  Saved node binary path to .omc-config.json: ${detectedNode}`);
                     }
                 }
                 catch {
@@ -933,7 +933,7 @@ export function install(options = {}) {
     return result;
 }
 /**
- * Check if OMG is already installed
+ * Check if OMC is already installed
  */
 export function isInstalled() {
     return existsSync(VERSION_FILE) && existsSync(AGENTS_DIR);

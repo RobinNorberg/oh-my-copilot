@@ -141,8 +141,8 @@ async function loadPaneIds(jobId) {
     }
 }
 function validateJobId(job_id) {
-    if (!/^omg-[a-z0-9]{1,12}$/.test(job_id)) {
-        throw new Error(`Invalid job_id: "${job_id}". Must match /^omg-[a-z0-9]{1,12}$/`);
+    if (!/^omc-[a-z0-9]{1,12}$/.test(job_id)) {
+        throw new Error(`Invalid job_id: "${job_id}". Must match /^omc-[a-z0-9]{1,12}$/`);
     }
 }
 function saveJobState(jobId, job) {
@@ -197,7 +197,7 @@ async function handleStart(args) {
     }
     const input = startSchema.parse(args);
     validateTeamName(input.teamName);
-    const jobId = `omg-${Date.now().toString(36)}`;
+    const jobId = `omc-${Date.now().toString(36)}`;
     const runtimeCliPath = join(__dirname, 'runtime-cli.cjs');
     const job = { status: 'running', startedAt: Date.now(), teamName: input.teamName, cwd: input.cwd };
     omcTeamJobs.set(jobId, job);

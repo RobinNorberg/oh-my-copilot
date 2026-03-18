@@ -49,7 +49,7 @@ export declare function buildWorkerStartCommand(config: WorkerPaneConfig): strin
 export declare function validateTmux(): void;
 /** Sanitize name to prevent tmux command injection (alphanum + hyphen only) */
 export declare function sanitizeName(name: string): string;
-/** Build session name: "omg-team-{teamName}-{workerName}" */
+/** Build session name: "omc-team-{teamName}-{workerName}" */
 export declare function sessionName(teamName: string, workerName: string): string;
 /** @deprecated Use createTeamSession() instead for split-pane topology */
 /** Create a detached tmux session. Kills stale session with same name first. */

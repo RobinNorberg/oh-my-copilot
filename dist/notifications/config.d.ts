@@ -1,7 +1,7 @@
 /**
  * Notification Configuration Reader
  *
- * Reads notification config from .omg-config.json and provides
+ * Reads notification config from .omc-config.json and provides
  * backward compatibility with the old stopHookCallbacks format.
  */
 import type { NotificationConfig, NotificationEvent, NotificationPlatform, VerbosityLevel } from "./types.js";
@@ -81,7 +81,7 @@ export declare function shouldIncludeTmuxTail(verbosity: VerbosityLevel): boolea
  * the corresponding named profile from `notificationProfiles` is used.
  * Falls back to the default `notifications` config if the profile is not found.
  *
- * Reads from .omg-config.json, looking for the `notifications` key.
+ * Reads from .omc-config.json, looking for the `notifications` key.
  * When file config exists, env-derived platforms are merged in to fill
  * missing platform blocks (file fields take precedence).
  * Falls back to migrating old `stopHookCallbacks` if present.
@@ -120,7 +120,7 @@ export declare function getReplyListenerPlatformConfig(config: NotificationConfi
  * - No reply-capable bot platform (discord-bot or telegram) is configured
  * - Notifications are globally disabled
  *
- * Reads from .omg-config.json notifications.reply section.
+ * Reads from .omc-config.json notifications.reply section.
  * Environment variables override config file values:
  * - OMC_REPLY_ENABLED: enable reply listening (default: false)
  * - OMC_REPLY_POLL_INTERVAL_MS: polling interval in ms (default: 3000)
@@ -133,7 +133,7 @@ export declare function getReplyListenerPlatformConfig(config: NotificationConfi
 export declare function getReplyConfig(): import("./types.js").ReplyConfig | null;
 import type { CustomIntegration, CustomIntegrationsConfig } from "./types.js";
 /**
- * Read custom integrations configuration from .omg-config.json.
+ * Read custom integrations configuration from .omc-config.json.
  */
 export declare function getCustomIntegrationsConfig(): CustomIntegrationsConfig | null;
 /**

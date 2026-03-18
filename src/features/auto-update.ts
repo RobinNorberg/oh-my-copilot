@@ -70,8 +70,8 @@ function syncMarketplaceClone(verbose: boolean = false): { ok: boolean; message:
 
 /** Installation paths (respects COPILOT_CONFIG_DIR env var) */
 export const COPILOT_CONFIG_DIR = getConfigDir();
-export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omg-version.json');
-export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, '.omg-config.json');
+export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
+export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, '.omc-config.json');
 
 /**
  * Stop hook callback configuration for file logging
@@ -142,7 +142,7 @@ export interface StopHookCallbacksConfig {
 }
 
 /**
- * OMG configuration (stored in .omg-config.json)
+ * OMC configuration (stored in .omc-config.json)
  */
 export interface OMCConfig {
   /** Whether silent auto-updates are enabled (opt-in for security) */
@@ -181,7 +181,7 @@ export interface OMCConfig {
 }
 
 /**
- * Read the OMG configuration
+ * Read the OMC configuration
  */
 export function getOMCConfig(): OMCConfig {
   if (!existsSync(CONFIG_FILE)) {
@@ -775,7 +775,7 @@ export interface SilentUpdateConfig {
 }
 
 /** State file for tracking silent update status */
-const SILENT_UPDATE_STATE_FILE = join(COPILOT_CONFIG_DIR, '.omg-silent-update.json');
+const SILENT_UPDATE_STATE_FILE = join(COPILOT_CONFIG_DIR, '.omc-silent-update.json');
 
 interface SilentUpdateState {
   lastAttempt?: string;
@@ -850,7 +850,7 @@ export async function silentAutoUpdate(config: SilentUpdateConfig = {}): Promise
   const {
     checkIntervalHours = 24,
     autoApply = true,
-    logFile = join(COPILOT_CONFIG_DIR, '.omg-update.log'),
+    logFile = join(COPILOT_CONFIG_DIR, '.omc-update.log'),
     maxRetries = 3
   } = config;
 

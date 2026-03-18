@@ -12,7 +12,7 @@ let WORK_DIR;
 // Canonical tasks dir: {WORK_DIR}/.omg/state/team/{TEST_TEAM}/tasks/
 let TASKS_DIR;
 beforeEach(() => {
-    WORK_DIR = join(tmpdir(), `omg-team-status-test-${Date.now()}`);
+    WORK_DIR = join(tmpdir(), `omc-team-status-test-${Date.now()}`);
     TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
     mkdirSync(TASKS_DIR, { recursive: true });
     mkdirSync(join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
@@ -41,7 +41,7 @@ function makeWorker(name, provider = 'codex') {
         agentType: `mcp-${provider}`,
         model: 'test-model',
         joinedAt: Date.now(),
-        tmuxPaneId: `omg-team-${TEST_TEAM}-${name}`,
+        tmuxPaneId: `omc-team-${TEST_TEAM}-${name}`,
         cwd: WORK_DIR,
         backendType: 'tmux',
         subscriptions: [],

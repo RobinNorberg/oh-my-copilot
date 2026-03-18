@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Model Element
+ * OMC HUD - Model Element
  *
  * Renders the current model name.
  */

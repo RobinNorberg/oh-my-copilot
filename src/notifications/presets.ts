@@ -26,7 +26,7 @@ export interface PresetConfig {
 export const CUSTOM_INTEGRATION_PRESETS: Record<string, PresetConfig> = {
   n8n: {
     name: 'n8n Webhook',
-    description: 'Trigger n8n workflows on OMG events',
+    description: 'Trigger n8n workflows on OMC events',
     type: 'webhook',
     defaultConfig: {
       method: 'POST',

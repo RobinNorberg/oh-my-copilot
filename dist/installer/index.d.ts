@@ -1,7 +1,7 @@
 /**
  * Installer Module
  *
- * Handles installation of OMG agents, commands, and configuration
+ * Handles installation of OMC agents, commands, and configuration
  * into the Copilot CLI config directory (~/.copilot/).
  *
  * Cross-platform support via Node.js-based hook scripts (.mjs).
@@ -49,14 +49,14 @@ export interface InstallOptions {
     skipHud?: boolean;
 }
 /**
- * Read hudEnabled from .omg-config.json without importing auto-update
+ * Read hudEnabled from .omc-config.json without importing auto-update
  * (avoids circular dependency since auto-update imports from installer)
  */
 export declare function isHudEnabledInConfig(): boolean;
 /**
  * Detect whether a statusLine config belongs to oh-my-copilot.
  *
- * Checks the command string for known OMG HUD paths so that custom
+ * Checks the command string for known OMC HUD paths so that custom
  * (non-OMC) statusLine configurations are preserved during forced
  * updates/reconciliation.
  *
@@ -68,9 +68,9 @@ export declare function isOmcStatusLine(statusLine: unknown): boolean;
  * Detect whether a hook command belongs to oh-my-copilot.
  *
  * Recognition strategy (any match is sufficient):
- * 1. Command path contains "omg" as a path/word segment (e.g. `omg-hook.mjs`, `/omg/`)
+ * 1. Command path contains "omg" as a path/word segment (e.g. `omc-hook.mjs`, `/omg/`)
  * 2. Command path contains "oh-my-copilot"
- * 3. Command references a known OMG hook filename inside .copilot/hooks/
+ * 3. Command references a known OMC hook filename inside .copilot/hooks/
  *
  * @param command - The hook command string
  * @returns true if the command belongs to OMC
@@ -115,7 +115,7 @@ export declare function isRunningAsPlugin(): boolean;
  */
 export declare function isProjectScopedPlugin(): boolean;
 /**
- * Extract the embedded OMG version from a copilot-instructions.md file.
+ * Extract the embedded OMC version from a copilot-instructions.md file.
  *
  * Primary source of truth is the injected `<!-- OMC:VERSION:x.y.z -->` marker.
  * Falls back to legacy headings that may include a version string inline.
@@ -135,18 +135,18 @@ export declare function syncPersistedSetupVersion(options?: {
     onlyIfConfigured?: boolean;
 }): boolean;
 /**
- * Merge OMG content into existing copilot-instructions.md using markers
+ * Merge OMC content into existing copilot-instructions.md using markers
  * @param existingContent - Existing copilot-instructions.md content (null if file doesn't exist)
- * @param omcContent - New OMG content to inject
+ * @param omcContent - New OMC content to inject
  * @returns Merged content with markers
  */
 export declare function mergeClaudeMd(existingContent: string | null, omcContent: string, version?: string): string;
 /**
- * Install OMG agents, commands, skills, and hooks
+ * Install OMC agents, commands, skills, and hooks
  */
 export declare function install(options?: InstallOptions): InstallResult;
 /**
- * Check if OMG is already installed
+ * Check if OMC is already installed
  */
 export declare function isInstalled(): boolean;
 /**

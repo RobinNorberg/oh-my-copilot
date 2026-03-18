@@ -37,7 +37,7 @@ describe('team api working-directory resolution', () => {
   }
 
   beforeEach(async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omg-team-api-resolution-'));
+    cwd = await mkdtemp(join(tmpdir(), 'omc-team-api-resolution-'));
   });
 
   afterEach(async () => {

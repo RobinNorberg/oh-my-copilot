@@ -96,7 +96,7 @@ export const TEMPLATE_VARIABLES: Record<string, TemplateVariable> = {
 
   // Mode info
   activeMode: {
-    description: 'Currently active OMG mode',
+    description: 'Currently active OMC mode',
     example: 'ralph',
     availableIn: ['*']
   },

@@ -24,7 +24,7 @@ describe('Tier-0 contract: skill aliases and canonical entrypoints', () => {
 
     for (const name of TIER0_SKILLS) {
       expect(names).toContain(name);
-      expect(names).not.toContain(`omg-${name}`);
+      expect(names).not.toContain(`omc-${name}`);
     }
   });
 

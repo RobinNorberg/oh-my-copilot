@@ -30,7 +30,7 @@ let tmpClaudeDir: string;
 let originalClaudeConfigDir: string | undefined;
 
 beforeEach(() => {
-  const base = join(tmpdir(), `omg-auto-cleanup-${Date.now()}`);
+  const base = join(tmpdir(), `omc-auto-cleanup-${Date.now()}`);
   tmpClaudeDir = join(base, 'copilot');
   TEAMS_DIR = join(tmpClaudeDir, 'teams', TEST_TEAM);
   TASKS_DIR = join(tmpClaudeDir, 'tasks', TEST_TEAM);
@@ -71,7 +71,7 @@ function makeWorker(name: string): McpWorkerMember {
     agentType: 'mcp-codex',
     model: 'test-model',
     joinedAt: Date.now(),
-    tmuxPaneId: `omg-team-${TEST_TEAM}-${name}`,
+    tmuxPaneId: `omc-team-${TEST_TEAM}-${name}`,
     cwd: WORK_DIR,
     backendType: 'tmux',
     subscriptions: [],

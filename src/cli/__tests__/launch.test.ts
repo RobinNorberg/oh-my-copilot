@@ -3,7 +3,7 @@
  *
  * Covers:
  * - Exit code propagation (runCopilot direct / inside-tmux)
- * - No OMG HUD pane spawning in tmux launch paths
+ * - No OMC HUD pane spawning in tmux launch paths
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
@@ -219,9 +219,9 @@ describe('runCopilot — exit code propagation', () => {
 });
 
 // ---------------------------------------------------------------------------
-// runCopilot — OMG HUD pane spawning disabled
+// runCopilot — OMC HUD pane spawning disabled
 // ---------------------------------------------------------------------------
-describe('runCopilot OMG HUD behavior', () => {
+describe('runCopilot OMC HUD behavior', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     (execFileSync as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from(''));

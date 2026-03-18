@@ -262,7 +262,7 @@ describe('permission-handler', () => {
   });
 
   describe('isActiveModeRunning', () => {
-    const testDir = '/tmp/omg-permission-test';
+    const testDir = '/tmp/omc-permission-test';
     const stateDir = path.join(testDir, '.omg', 'state');
 
     beforeEach(() => {
@@ -358,7 +358,7 @@ describe('permission-handler', () => {
   });
 
   describe('processPermissionRequest', () => {
-    const testDir = '/tmp/omg-permission-test';
+    const testDir = '/tmp/omc-permission-test';
     const stateDir = path.join(testDir, '.omg', 'state');
 
     beforeEach(() => {

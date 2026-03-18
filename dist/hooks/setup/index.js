@@ -20,7 +20,7 @@ const REQUIRED_DIRECTORIES = [
     '.omg/plans',
 ];
 const CONFIG_FILES = [
-    '.omg-config.json',
+    '.omc-config.json',
 ];
 const DEFAULT_STATE_MAX_AGE_DAYS = 7;
 // ============================================================================

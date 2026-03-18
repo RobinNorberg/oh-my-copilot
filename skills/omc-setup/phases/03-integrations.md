@@ -100,7 +100,7 @@ jq --arg mode "TEAMMATE_MODE" '. + {teammateMode: $mode}' "$SETTINGS_FILE" > "${
 echo "Teammate display mode set to: TEAMMATE_MODE"
 ```
 
-#### 3.3.3: Configure Team Defaults in omg-config
+#### 3.3.3: Configure Team Defaults in omc-config
 
 Use AskUserQuestion with multiple questions:
 
@@ -118,10 +118,10 @@ Use AskUserQuestion with multiple questions:
 2. **debugger** - Specialized for build/type error fixing and debugging
 3. **designer** - Specialized for UI/frontend work
 
-Store the team configuration in `~/.copilot/.omg-config.json`:
+Store the team configuration in `~/.copilot/.omc-config.json`:
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_FILE="$HOME/.copilot/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then

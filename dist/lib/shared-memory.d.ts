@@ -36,7 +36,7 @@ export interface SharedMemoryListItem {
 /**
  * Check if shared memory is enabled via config.
  *
- * Reads `agents.sharedMemory.enabled` from ~/.copilot/.omg-config.json.
+ * Reads `agents.sharedMemory.enabled` from ~/.copilot/.omc-config.json.
  * Defaults to true when the config key is absent (opt-out rather than opt-in
  * once the feature ships, but tools check this gate).
  */

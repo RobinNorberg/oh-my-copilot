@@ -8,7 +8,7 @@ oh-my-copilot enables Copilot CLI to orchestrate specialized agents through a sk
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         OH-MY-CLAUDECODE                                 │
+│                          OH-MY-COPILOT                                   │
 │                     Intelligent Skill Activation                         │
 └─────────────────────────────────────────────────────────────────────────┘
 
@@ -54,7 +54,7 @@ Skills: ultrawork + default + git-master
 
 ### Agents
 
-32 specialized agents organized by complexity tier:
+18 specialized agents organized by complexity tier:
 
 | Tier | Model | Use For |
 |------|-------|---------|

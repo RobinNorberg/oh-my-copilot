@@ -194,7 +194,7 @@ Inside an interactive session:
 
 ```bash
 # Run setup
-/oh-my-copilot:omg-setup
+/oh-my-copilot:omc-setup
 
 # Test a skill
 /oh-my-copilot:hud
@@ -271,7 +271,7 @@ copilot plugin install .
 
 **Skills not found:**
 - Skills use the full prefix: `/oh-my-copilot:hud`, not `/hud`
-- Run `/oh-my-copilot:omg-doctor` to diagnose issues
+- Run `/oh-my-copilot:omc-doctor` to diagnose issues
 
 **MCP tools not responding:**
 - Ensure `node` is on PATH

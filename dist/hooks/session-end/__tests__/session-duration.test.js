@@ -30,7 +30,7 @@ function makeInput(overrides) {
     };
 }
 beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-duration-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-duration-test-'));
 });
 afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });

@@ -97,7 +97,7 @@ describe('HUD version display and update notification', () => {
         });
     });
     describe('omcLabel disabled', () => {
-        it('does not render OMG label when omcLabel is false', async () => {
+        it('does not render OMC label when omcLabel is false', async () => {
             const ctx = createMinimalContext({ omcVersion: '4.1.10', updateAvailable: '4.2.0' });
             const config = createMinimalConfig({ omcLabel: false });
             const output = await render(ctx, config);

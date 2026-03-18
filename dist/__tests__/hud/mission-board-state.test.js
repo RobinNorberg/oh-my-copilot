@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readMissionBoardState, recordMissionAgentStart, recordMissionAgentStop, refreshMissionBoardState, } from '../../hud/mission-board.js';
 const tempDirs = [];
 function makeTempDir() {
-    const dir = mkdtempSync(join(tmpdir(), 'omg-mission-board-'));
+    const dir = mkdtempSync(join(tmpdir(), 'omc-mission-board-'));
     tempDirs.push(dir);
     mkdirSync(join(dir, '.omg', 'state'), { recursive: true });
     return dir;

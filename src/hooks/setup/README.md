@@ -9,7 +9,7 @@ Initializes OMP directory structure and environment on first run or explicit set
 
 **What it does:**
 - Creates required directories: `.omg/state/`, `.omg/logs/`, `.omg/notepads/`, `.omg/state/checkpoints/`, `.omg/plans/`
-- Validates existing config files (`.omg-config.json`)
+- Validates existing config files (`.omc-config.json`)
 - Sets environment variables (`OMC_INITIALIZED=true`) if `CLAUDE_ENV_FILE` is available
 
 **Example Input:**
@@ -94,7 +94,7 @@ Validates that config files exist and are readable.
 
 ```typescript
 const validated = validateConfigFiles('/path/to/project');
-// => ['/path/to/project/.omg-config.json']
+// => ['/path/to/project/.omc-config.json']
 ```
 
 ### Environment Variables

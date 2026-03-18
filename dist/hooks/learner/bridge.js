@@ -12,7 +12,7 @@ import { join, dirname, basename } from "path";
 import { homedir } from "os";
 import { OmgPaths } from "../../lib/worktree-paths.js";
 // Re-export constants
-export const USER_SKILLS_DIR = join(homedir(), ".copilot", "skills", "omg-learned");
+export const USER_SKILLS_DIR = join(homedir(), ".copilot", "skills", "omc-learned");
 export const GLOBAL_SKILLS_DIR = join(homedir(), ".omg", "skills");
 export const PROJECT_SKILLS_SUBDIR = OmgPaths.SKILLS;
 export const SKILL_EXTENSION = ".md";

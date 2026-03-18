@@ -104,7 +104,7 @@ describe('sendSocketRequest TCP fallback', () => {
 describe('TCP port file integration', () => {
     let tmpDir;
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-tcp-test-'));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-tcp-test-'));
     });
     afterEach(() => {
         fs.rmSync(tmpDir, { recursive: true, force: true });

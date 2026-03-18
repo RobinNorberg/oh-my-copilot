@@ -6,7 +6,7 @@
 
 import { OmgPaths } from '../../lib/worktree-paths.js';
 
-/** OMG state directory */
+/** OMC state directory */
 export const BOULDER_DIR = OmgPaths.ROOT;
 
 /** Boulder state file name */

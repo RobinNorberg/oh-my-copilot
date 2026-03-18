@@ -36,10 +36,10 @@ const DEFAULT_CONFIG: InvocationConfig = {
 };
 
 /**
- * Load auto-invocation config from ~/.copilot/.omg-config.json
+ * Load auto-invocation config from ~/.copilot/.omc-config.json
  */
 export function loadInvocationConfig(): InvocationConfig {
-  const configPath = path.join(getCopilotConfigDir(), '.omg-config.json');
+  const configPath = path.join(getCopilotConfigDir(), '.omc-config.json');
 
   try {
     if (!fs.existsSync(configPath)) {

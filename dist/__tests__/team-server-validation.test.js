@@ -41,10 +41,10 @@ vi.mock('../team/tmux-session.js', () => ({
 // mirroring the production code, so tests remain deterministic without
 // re-exporting internals.
 // ---------------------------------------------------------------------------
-const VALID_JOB_ID_RE = /^omg-[a-z0-9]{1,12}$/;
+const VALID_JOB_ID_RE = /^omc-[a-z0-9]{1,12}$/;
 function validateJobId(job_id) {
     if (!VALID_JOB_ID_RE.test(job_id)) {
-        throw new Error(`Invalid job_id: "${job_id}". Must match /^omg-[a-z0-9]{1,12}$/`);
+        throw new Error(`Invalid job_id: "${job_id}". Must match /^omc-[a-z0-9]{1,12}$/`);
     }
 }
 describe('validateJobId', () => {
@@ -52,18 +52,18 @@ describe('validateJobId', () => {
         const traversalPayloads = [
             '../etc/passwd',
             '../../etc/shadow',
-            'omg-../secret',
-            'omg-abc/../def',
+            'omc-../secret',
+            'omc-abc/../def',
             '/etc/passwd',
-            'omg-abc/def',
+            'omc-abc/def',
             '',
-            'omg-',
-            'omg-UPPERCASE',
-            'omg-has spaces',
-            'omg-' + 'a'.repeat(13), // 13 chars — exceeds 12-char limit
+            'omc-',
+            'omc-UPPERCASE',
+            'omc-has spaces',
+            'omc-' + 'a'.repeat(13), // 13 chars — exceeds 12-char limit
             'notprefixed',
             'omc_underscore',
-            'omg-abc!@#',
+            'omc-abc!@#',
         ];
         for (const payload of traversalPayloads) {
             it(`rejects "${payload}"`, () => {
@@ -73,11 +73,11 @@ describe('validateJobId', () => {
     });
     describe('accepts valid job IDs', () => {
         const validIds = [
-            'omg-abc123',
-            'omg-a',
-            'omg-123456789012', // exactly 12 chars
-            'omg-1',
-            'omg-abcdefghijkl', // 12 lowercase letters
+            'omc-abc123',
+            'omc-a',
+            'omc-123456789012', // exactly 12 chars
+            'omc-1',
+            'omc-abcdefghijkl', // 12 lowercase letters
         ];
         for (const id of validIds) {
             it(`accepts "${id}"`, () => {
@@ -96,7 +96,7 @@ describe('team-server handler validation integration', () => {
     it('production validateJobId regex matches test regex', async () => {
         const nodeFs = (await vi.importActual('fs'));
         const src = nodeFs.readFileSync(SOURCE_PATH, 'utf-8');
-        expect(src).toContain('/^omg-[a-z0-9]{1,12}$/');
+        expect(src).toContain('/^omc-[a-z0-9]{1,12}$/');
     });
     it('handleStatus and handleWait both call validateJobId before disk access', async () => {
         const nodeFs = (await vi.importActual('fs'));

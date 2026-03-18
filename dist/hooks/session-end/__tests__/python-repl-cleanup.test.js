@@ -7,7 +7,7 @@ describe('session-end python_repl transcript extraction', () => {
     let tmpDir;
     let transcriptPath;
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-session-end-python-'));
+        tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-session-end-python-'));
         transcriptPath = path.join(tmpDir, 'transcript.jsonl');
     });
     afterEach(() => {

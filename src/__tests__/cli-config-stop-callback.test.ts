@@ -66,8 +66,8 @@ function readConfig(configPath: string) {
 
 describe('omc config-stop-callback tag options', () => {
   it('updates telegram tagList options and preserves existing config fields', () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'omg-cli-stop-callback-home-'));
-    const configPath = join(homeDir, '.copilot', '.omg-config.json');
+    const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
+    const configPath = join(homeDir, '.copilot', '.omc-config.json');
     mkdirSync(join(homeDir, '.copilot'), { recursive: true });
 
     writeFileSync(configPath, JSON.stringify({
@@ -109,8 +109,8 @@ describe('omc config-stop-callback tag options', () => {
   });
 
   it('applies and clears discord tags and ignores tag options for file callback', () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'omg-cli-stop-callback-home-'));
-    const configPath = join(homeDir, '.copilot', '.omg-config.json');
+    const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
+    const configPath = join(homeDir, '.copilot', '.omc-config.json');
     mkdirSync(join(homeDir, '.copilot'), { recursive: true });
 
     writeFileSync(configPath, JSON.stringify({
@@ -153,8 +153,8 @@ describe('omc config-stop-callback tag options', () => {
   });
 
   it('configures slack stop-callback with webhook and tags', () => {
-    const homeDir = mkdtempSync(join(tmpdir(), 'omg-cli-stop-callback-home-'));
-    const configPath = join(homeDir, '.copilot', '.omg-config.json');
+    const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
+    const configPath = join(homeDir, '.copilot', '.omc-config.json');
     mkdirSync(join(homeDir, '.copilot'), { recursive: true });
 
     writeFileSync(configPath, JSON.stringify({

@@ -53,8 +53,8 @@ export function resolveLaunchPolicy(env: NodeJS.ProcessEnv = process.env): Claud
 
 /**
  * Build tmux session name from directory, git branch, and UTC timestamp
- * Format: omg-{dir}-{branch}-{utctimestamp}
- * e.g.  omg-myproject-dev-20260221143052
+ * Format: omc-{dir}-{branch}-{utctimestamp}
+ * e.g.  omc-myproject-dev-20260221143052
  */
 export function buildTmuxSessionName(cwd: string): string {
   const dirToken = sanitizeTmuxToken(basename(cwd));
@@ -83,7 +83,7 @@ export function buildTmuxSessionName(cwd: string): string {
     `${pad(now.getUTCMinutes())}` +
     `${pad(now.getUTCSeconds())}`;
 
-  const name = `omg-${dirToken}-${branchToken}-${utcTimestamp}`;
+  const name = `omc-${dirToken}-${branchToken}-${utcTimestamp}`;
   return name.length > 120 ? name.slice(0, 120) : name;
 }
 

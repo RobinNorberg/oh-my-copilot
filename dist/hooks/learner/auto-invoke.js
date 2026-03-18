@@ -10,10 +10,10 @@ const DEFAULT_CONFIG = {
     cooldownMs: 30000,
 };
 /**
- * Load auto-invocation config from ~/.copilot/.omg-config.json
+ * Load auto-invocation config from ~/.copilot/.omc-config.json
  */
 export function loadInvocationConfig() {
-    const configPath = path.join(getCopilotConfigDir(), '.omg-config.json');
+    const configPath = path.join(getCopilotConfigDir(), '.omc-config.json');
     try {
         if (!fs.existsSync(configPath)) {
             return { ...DEFAULT_CONFIG };

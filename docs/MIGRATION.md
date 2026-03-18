@@ -42,7 +42,7 @@ Use CLI commands instead:
 ### How to Migrate
 
 1. Replace MCP runtime tool calls with CLI equivalents.
-2. Update skills/prompts from `/omg-teams ...` to `omc team ...` syntax.
+2. Update skills/prompts from `/omc-teams ...` to `omc team ...` syntax.
 3. Legacy Team MCP runtime is now opt-in only (not enabled by default). If you enable it manually, treat responses as deprecation-only compatibility output.
 
 ### Example mapping
@@ -99,7 +99,7 @@ If you were depending on deprecated `cancel-*` skills, update to use the unified
 
 ### TL;DR
 
-8 deprecated skills have been removed. The unified `/cancel` and `/omg-setup` commands replace them.
+8 deprecated skills have been removed. The unified `/cancel` and `/omc-setup` commands replace them.
 
 ### Removed Skills
 
@@ -111,8 +111,8 @@ The following skills have been **completely removed** in v3.5.3:
 | `cancel-ralph`       | `/oh-my-copilot:cancel`             |
 | `cancel-ultrawork`   | `/oh-my-copilot:cancel`             |
 | `cancel-ultraqa`     | `/oh-my-copilot:cancel`             |
-| `omg-default`        | `/oh-my-copilot:omg-setup --local`  |
-| `omg-default-global` | `/oh-my-copilot:omg-setup --global` |
+| `omc-default`        | `/oh-my-copilot:omc-setup --local`  |
+| `omc-default-global` | `/oh-my-copilot:omc-setup --global` |
 | `planner`            | `/oh-my-copilot:plan`               |
 
 ### What Changed
@@ -121,7 +121,7 @@ The following skills have been **completely removed** in v3.5.3:
 
 ```bash
 /oh-my-copilot:cancel-ralph      # Cancel ralph specifically
-/oh-my-copilot:omg-default       # Configure local project
+/oh-my-copilot:omc-default       # Configure local project
 /oh-my-copilot:planner "task"    # Start planning
 ```
 
@@ -129,7 +129,7 @@ The following skills have been **completely removed** in v3.5.3:
 
 ```bash
 /oh-my-copilot:cancel            # Auto-detects and cancels any active mode
-/oh-my-copilot:omg-setup --local # Configure local project
+/oh-my-copilot:omc-setup --local # Configure local project
 /oh-my-copilot:plan "task"       # Start planning (includes interview mode)
 ```
 
@@ -152,7 +152,7 @@ The following skills have been **completely removed** in v3.5.3:
 
 1. **No action required** - The unified `/cancel` command already worked in v3.5
 2. **Update any scripts** that reference removed commands
-3. **Re-run `/omg-setup`** if you want to update your copilot-instructions.md configuration
+3. **Re-run `/omc-setup`** if you want to update your copilot-instructions.md configuration
 
 ### Skill Count
 
@@ -239,8 +239,8 @@ Directory structures have been renamed for consistency with the new package name
 
 #### Skills Directory
 
-- **Old**: `~/.copilot/skills/omg-learned/`
-- **New**: `~/.copilot/skills/omg-learned/`
+- **Old**: `~/.copilot/skills/omc-learned/`
+- **New**: `~/.copilot/skills/omc-learned/`
 
 #### Config Files
 
@@ -282,7 +282,7 @@ All 2.x commands continue to work. Here's what changed:
 | `/oh-my-copilot:frontend-ui-ux`     | Say "UI", "styling", "component", "design"         | ✅ YES (auto-detect)   |
 | `/oh-my-copilot:note "content"`     | Say "remember this" or "save this"                 | ✅ YES (auto-detect)   |
 | `/oh-my-copilot:cancel-ralph`       | Say "stop", "cancel", or "abort"                   | ✅ YES (auto-detect)   |
-| `/oh-my-copilot:omg-doctor`         | Invoke normally                                    | ✅ YES (unchanged)     |
+| `/oh-my-copilot:omc-doctor`         | Invoke normally                                    | ✅ YES (unchanged)     |
 | All other commands                     | Work exactly as before                             | ✅ YES                 |
 
 ### Magic Keywords
@@ -370,7 +370,7 @@ mv .omc .omc
 mv ~/.omc ~/.omc
 
 # Skills directory
-mv ~/.copilot/skills/omg-learned ~/.copilot/skills/omg-learned
+mv ~/.copilot/skills/omc-learned ~/.copilot/skills/omc-learned
 
 # Config directory
 mv ~/.copilot/omc ~/.copilot/omc
@@ -426,7 +426,7 @@ After migration, verify your setup:
    ```
 
 3. **Test a simple command**:
-   Run `/oh-my-copilot:omg-help` in Copilot CLI to ensure the plugin is loaded correctly.
+   Run `/oh-my-copilot:omc-help` in Copilot CLI to ensure the plugin is loaded correctly.
 
 ### New Features in 3.0
 
@@ -473,7 +473,7 @@ Next time keywords match → Solution auto-injects
 Storage:
 
 - **Project-level**: `.omg/skills/` (version-controlled)
-- **User-level**: `~/.copilot/skills/omg-learned/` (portable)
+- **User-level**: `~/.copilot/skills/omc-learned/` (portable)
 
 #### 4. HUD Statusline (Real-Time Orchestration)
 
@@ -736,7 +736,7 @@ When multiple execution mode keywords are present:
 **Explicit mode keywords:** `ulw`, `ultrawork`
 **Generic keywords:** `fast`, `parallel`
 
-Users set their default mode preference via `/oh-my-copilot:omg-setup`.
+Users set their default mode preference via `/oh-my-copilot:omc-setup`.
 
 ### Migration Steps
 
@@ -752,7 +752,7 @@ All existing configurations, plans, and workflows continue working unchanged.
 
 #### Default Execution Mode
 
-Set your preferred execution mode in `~/.copilot/.omg-config.json`:
+Set your preferred execution mode in `~/.copilot/.omc-config.json`:
 
 ```json
 {
@@ -962,7 +962,7 @@ Interview begins automatically
 Apply oh-my-copilot to current project only:
 
 ```
-/oh-my-copilot:omg-default
+/oh-my-copilot:omc-default
 ```
 
 Creates: `./.copilot/copilot-instructions.md`
@@ -972,7 +972,7 @@ Creates: `./.copilot/copilot-instructions.md`
 Apply to all Copilot CLI sessions:
 
 ```
-/oh-my-copilot:omg-default-global
+/oh-my-copilot:omc-default-global
 ```
 
 Creates: `~/.copilot/copilot-instructions.md`
@@ -1005,8 +1005,8 @@ A: Keywords are explicit shortcuts. Natural language triggers auto-detection. Bo
 
 ## Need Help?
 
-- **Diagnose issues**: Run `/oh-my-copilot:omg-doctor`
-- **See all commands**: Run `/oh-my-copilot:omg-help`
+- **Diagnose issues**: Run `/oh-my-copilot:omc-doctor`
+- **See all commands**: Run `/oh-my-copilot:omc-help`
 - **View real-time status**: Run `/oh-my-copilot:hud setup`
 - **Review detailed changelog**: See [CHANGELOG.md](../CHANGELOG.md)
 - **Report bugs**: [GitHub Issues](https://github.com/RobinNorberg/oh-my-copilot/issues)

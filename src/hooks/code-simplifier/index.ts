@@ -22,7 +22,7 @@ export interface CodeSimplifierConfig {
   maxFiles?: number;
 }
 
-/** Global OMG config shape (subset relevant to code-simplifier) */
+/** Global OMC config shape (subset relevant to code-simplifier) */
 interface OmcGlobalConfig {
   codeSimplifier?: CodeSimplifierConfig;
 }
@@ -40,7 +40,7 @@ const DEFAULT_MAX_FILES = 10;
 export const TRIGGER_MARKER_FILENAME = 'code-simplifier-triggered.marker';
 
 /**
- * Read the global OMG config from ~/.omg/config.json.
+ * Read the global OMC config from ~/.omg/config.json.
  * Returns null if the file does not exist or cannot be parsed.
  */
 export function readOmcConfig(): OmcGlobalConfig | null {

@@ -9,7 +9,7 @@
 export const CUSTOM_INTEGRATION_PRESETS = {
     n8n: {
         name: 'n8n Webhook',
-        description: 'Trigger n8n workflows on OMG events',
+        description: 'Trigger n8n workflows on OMC events',
         type: 'webhook',
         defaultConfig: {
             method: 'POST',

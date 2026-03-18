@@ -245,7 +245,7 @@ export function getActiveModes(
 }
 
 /**
- * Check if any OMG mode is currently active
+ * Check if any OMC mode is currently active
  *
  * @param cwd - Working directory
  * @returns true if any mode is active

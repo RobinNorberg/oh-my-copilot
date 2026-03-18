@@ -488,14 +488,14 @@ omc teleport remove --force feat/my-repo-my-feature
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--worktree` | Create worktree (default, kept for compatibility) | `true` |
-| `--path <path>` | Custom worktree root directory | `~/Workspace/omg-worktrees/` |
+| `--path <path>` | Custom worktree root directory | `~/Workspace/omc-worktrees/` |
 | `--base <branch>` | Base branch to create from | `main` |
 | `--json` | Output as JSON | `false` |
 
 ### Worktree Layout
 
 ```
-~/Workspace/omg-worktrees/
+~/Workspace/omc-worktrees/
 ├── issue/
 │   └── my-repo-123/        # Issue worktrees
 ├── pr/

@@ -301,7 +301,7 @@ When cancelling modes that may have spawned MCP workers (team bridge daemons), t
 
 1. **Check for active MCP workers**: Look for heartbeat files at `.omg/state/team-bridge/{team}/*.heartbeat.json`
 2. **Send shutdown signals**: Write shutdown signal files for each active worker
-3. **Kill tmux sessions**: Run `tmux kill-session -t omg-team-{team}-{worker}` for each worker
+3. **Kill tmux sessions**: Run `tmux kill-session -t omc-team-{team}-{worker}` for each worker
 4. **Clean up heartbeat files**: Remove all heartbeat files for the team
 5. **Clean up shadow registry**: Remove `.omg/state/team-mcp-workers.json`
 
@@ -311,6 +311,6 @@ When `--force` is used, also clean up:
 ```bash
 rm -rf .omg/state/team-bridge/       # Heartbeat files
 rm -f .omg/state/team-mcp-workers.json  # Shadow registry
-# Kill all omg-team-* tmux sessions
-tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^omg-team-' | while read s; do tmux kill-session -t "$s" 2>/dev/null; done
+# Kill all omc-team-* tmux sessions
+tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^omc-team-' | while read s; do tmux kill-session -t "$s" 2>/dev/null; done
 ```

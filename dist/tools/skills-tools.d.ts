@@ -46,7 +46,7 @@ export declare const listSkillsTool: {
         }[];
     }>;
 };
-/** All skills tools for registration in omg-tools-server */
+/** All skills tools for registration in omc-tools-server */
 export declare const skillsTools: ({
     name: string;
     description: string;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * OMG HUD - Main Entry Point
+ * OMC HUD - Main Entry Point
  *
  * Statusline command that visualizes oh-my-copilot state.
  * Receives stdin JSON from Copilot CLI and outputs formatted statusline.
@@ -82,7 +82,7 @@ async function main(watchMode = false) {
         const transcriptData = await parseTranscript(resolvedTranscriptPath, {
             staleTaskThresholdMinutes: config.staleTaskThresholdMinutes,
         });
-        // Read OMG state files
+        // Read OMC state files
         const ralph = readRalphStateForHud(cwd);
         const ultrawork = readUltraworkStateForHud(cwd);
         const prd = readPrdStateForHud(cwd);
@@ -120,7 +120,7 @@ async function main(watchMode = false) {
         const customBuckets = config.rateLimitsProvider?.type === 'custom'
             ? await executeCustomProvider(config.rateLimitsProvider)
             : null;
-        // Read OMG version and update check cache
+        // Read OMC version and update check cache
         let omcVersion = null;
         let updateAvailable = null;
         try {
@@ -252,6 +252,6 @@ async function main(watchMode = false) {
 }
 // Export for programmatic use (e.g., omg hud --watch loop)
 export { main };
-// Auto-run (unconditional so dynamic import() via omg-hud.mjs wrapper works correctly)
+// Auto-run (unconditional so dynamic import() via omc-hud.mjs wrapper works correctly)
 main();
 //# sourceMappingURL=index.js.map

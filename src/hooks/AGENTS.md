@@ -78,7 +78,7 @@ Hooks intercept Copilot CLI events to enable:
 | Directory | Purpose |
 |-----------|---------|
 | `todo-continuation/` | Enforces task completion |
-| `omg-orchestrator/` | Orchestrator behavior |
+| `omc-orchestrator/` | Orchestrator behavior |
 | `subagent-tracker/` | Tracks spawned sub-agents |
 | `session-end/` | Session termination handling |
 | `background-notification/` | Background task notifications |

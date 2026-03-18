@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Main Renderer
+ * OMC HUD - Main Renderer
  *
  * Composes statusline output from render context.
  */

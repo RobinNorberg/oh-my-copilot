@@ -3,9 +3,9 @@
  *
  * Message templates and configuration for orchestrator behavior enforcement.
  *
- * Adapted from oh-my-opencode's omg-orchestrator hook.
+ * Adapted from oh-my-opencode's omc-orchestrator hook.
  */
-export declare const HOOK_NAME = "omg-orchestrator";
+export declare const HOOK_NAME = "omc-orchestrator";
 /** @deprecated Use ALLOWED_PATH_PATTERNS instead. Legacy single prefix. */
 export declare const ALLOWED_PATH_PREFIX = ".omg/";
 /** Path patterns that orchestrator IS allowed to modify directly.

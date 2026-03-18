@@ -1,5 +1,5 @@
 /**
- * OMG HUD - CWD Element
+ * OMC HUD - CWD Element
  *
  * Renders current working directory with configurable format.
  */

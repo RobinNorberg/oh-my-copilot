@@ -71,7 +71,7 @@ describe('killWorkerPanes', () => {
         expect(killedPanes).toContain('%3');
     });
     it('writes shutdown sentinel before force-killing', async () => {
-        const cwd = join(tmpdir(), `omg-cleanup-test-${process.pid}`);
+        const cwd = join(tmpdir(), `omc-cleanup-test-${process.pid}`);
         const stateDir = join(cwd, '.omg', 'state', 'team', 'myteam');
         mkdirSync(stateDir, { recursive: true });
         try {
@@ -95,7 +95,7 @@ describe('killWorkerPanes', () => {
         await expect(killWorkerPanes({
             paneIds: ['%2'],
             teamName: 'nonexistent-team',
-            cwd: '/tmp/does-not-exist-omg-test',
+            cwd: '/tmp/does-not-exist-omc-test',
             graceMs: 0,
         })).resolves.toBeUndefined();
         expect(killedPanes).toContain('%2');
@@ -128,33 +128,33 @@ describe('killTeamSession', () => {
         expect(killedSessions).toHaveLength(0);
     });
     it('calls kill-session for session-mode sessions (no ":" in name)', async () => {
-        await killTeamSession('omg-team-myteam-worker1');
-        expect(killedSessions).toContain('omg-team-myteam-worker1');
+        await killTeamSession('omc-team-myteam-worker1');
+        expect(killedSessions).toContain('omc-team-myteam-worker1');
     });
 });
 // ─── validateJobId regex ──────────────────────────────────────────────────────
-// Re-test the regex rule from team-server.ts (spec: /^omg-[a-z0-9]{1,12}$/)
-const JOB_ID_RE = /^omg-[a-z0-9]{1,12}$/;
-describe('validateJobId regex (/^omg-[a-z0-9]{1,12}$/)', () => {
+// Re-test the regex rule from team-server.ts (spec: /^omc-[a-z0-9]{1,12}$/)
+const JOB_ID_RE = /^omc-[a-z0-9]{1,12}$/;
+describe('validateJobId regex (/^omc-[a-z0-9]{1,12}$/)', () => {
     it('accepts valid job IDs', () => {
-        expect(JOB_ID_RE.test('omg-abc123')).toBe(true);
-        expect(JOB_ID_RE.test('omg-a')).toBe(true);
-        expect(JOB_ID_RE.test('omg-mlytzz5w')).toBe(true);
+        expect(JOB_ID_RE.test('omc-abc123')).toBe(true);
+        expect(JOB_ID_RE.test('omc-a')).toBe(true);
+        expect(JOB_ID_RE.test('omc-mlytzz5w')).toBe(true);
     });
     it('rejects path traversal attempts', () => {
-        expect(JOB_ID_RE.test('omg-../../etc/passwd')).toBe(false);
-        expect(JOB_ID_RE.test('../omg-abc')).toBe(false);
-        expect(JOB_ID_RE.test('omg-abc/../../x')).toBe(false);
+        expect(JOB_ID_RE.test('omc-../../etc/passwd')).toBe(false);
+        expect(JOB_ID_RE.test('../omc-abc')).toBe(false);
+        expect(JOB_ID_RE.test('omc-abc/../../x')).toBe(false);
     });
-    it('rejects IDs without the omg- prefix', () => {
+    it('rejects IDs without the omc- prefix', () => {
         expect(JOB_ID_RE.test('abc123')).toBe(false);
         expect(JOB_ID_RE.test('job-abc123')).toBe(false);
     });
     it('rejects IDs longer than 12 chars after prefix', () => {
-        expect(JOB_ID_RE.test('omg-' + 'a'.repeat(13))).toBe(false);
+        expect(JOB_ID_RE.test('omc-' + 'a'.repeat(13))).toBe(false);
     });
     it('rejects empty suffix', () => {
-        expect(JOB_ID_RE.test('omg-')).toBe(false);
+        expect(JOB_ID_RE.test('omc-')).toBe(false);
     });
 });
 describe('team start validation wiring', () => {

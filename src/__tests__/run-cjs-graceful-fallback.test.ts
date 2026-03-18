@@ -18,7 +18,7 @@ describe('run.cjs — graceful fallback for stale plugin paths', () => {
   let fakeCacheBase: string;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'omg-run-cjs-test-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'omc-run-cjs-test-'));
     fakeCacheBase = join(tmpDir, 'plugins', 'cache', 'omg', 'oh-my-copilot');
     mkdirSync(fakeCacheBase, { recursive: true });
   });

@@ -116,7 +116,7 @@ describe('delegation-enforcement-levels', () => {
                 const s = String(p);
                 if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s))
                     return true;
-                if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omg-config\.json$/.test(s))
+                if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omc-config\.json$/.test(s))
                     return true;
                 return false;
             });
@@ -125,7 +125,7 @@ describe('delegation-enforcement-levels', () => {
                 if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s)) {
                     return JSON.stringify({ delegationEnforcementLevel: 'off' });
                 }
-                if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omg-config\.json$/.test(s)) {
+                if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omc-config\.json$/.test(s)) {
                     return JSON.stringify({ delegationEnforcementLevel: 'strict' });
                 }
                 return '';
@@ -138,13 +138,13 @@ describe('delegation-enforcement-levels', () => {
         it('falls back to global config when no local config', () => {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omg-config\.json$/.test(s))
+                if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omc-config\.json$/.test(s))
                     return true;
                 return false;
             });
             mockReadFileSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omg-config\.json$/.test(s)) {
+                if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omc-config\.json$/.test(s)) {
                     return JSON.stringify({ delegationEnforcementLevel: 'strict' });
                 }
                 return '';

@@ -28,7 +28,7 @@ describe('patchHooksJsonForWindows', () => {
     let hooksDir;
     let hooksJsonPath;
     beforeEach(() => {
-        pluginRoot = mkdtempSync(join(tmpdir(), 'omg-win-patch-'));
+        pluginRoot = mkdtempSync(join(tmpdir(), 'omc-win-patch-'));
         hooksDir = join(pluginRoot, 'hooks');
         mkdirSync(hooksDir, { recursive: true });
         hooksJsonPath = join(hooksDir, 'hooks.json');

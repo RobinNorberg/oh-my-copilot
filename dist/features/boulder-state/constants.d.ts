@@ -3,7 +3,7 @@
  *
  * Ported from oh-my-opencode's boulder-state.
  */
-/** OMG state directory */
+/** OMC state directory */
 export declare const BOULDER_DIR: ".omg";
 /** Boulder state file name */
 export declare const BOULDER_FILE = "boulder.json";

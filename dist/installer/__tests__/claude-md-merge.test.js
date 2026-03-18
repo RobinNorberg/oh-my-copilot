@@ -9,7 +9,7 @@ const END_MARKER = '<!-- OMG:END -->';
 const USER_CUSTOMIZATIONS = '<!-- User customizations -->';
 const USER_CUSTOMIZATIONS_RECOVERED = '<!-- User customizations (recovered from corrupted markers) -->';
 describe('mergeClaudeMd', () => {
-    const omcContent = '# OMG Configuration\n\nThis is the OMG content.';
+    const omcContent = '# OMC Configuration\n\nThis is the OMC content.';
     describe('Fresh install (no existing content)', () => {
         it('wraps omcContent in markers', () => {
             const result = mergeClaudeMd(null, omcContent);
@@ -27,13 +27,13 @@ describe('mergeClaudeMd', () => {
     });
     describe('Update existing content with markers', () => {
         it('removes all marker blocks and preserves only user content outside them', () => {
-            const existingContent = `Some header content\n\n${START_MARKER}\n# Old OMG Content\nOld stuff here.\n${END_MARKER}\n\nUser's custom content\nMore custom stuff`;
+            const existingContent = `Some header content\n\n${START_MARKER}\n# Old OMC Content\nOld stuff here.\n${END_MARKER}\n\nUser's custom content\nMore custom stuff`;
             const result = mergeClaudeMd(existingContent, omcContent);
             expect(result).toContain(omcContent);
             expect(result).toContain(USER_CUSTOMIZATIONS);
             expect(result).toContain('Some header content');
             expect(result).toContain('User\'s custom content');
-            expect(result).not.toContain('Old OMG Content');
+            expect(result).not.toContain('Old OMC Content');
             expect(result).not.toContain('Old stuff here');
             expect((result.match(/<!-- OMG:START -->/g) || []).length).toBe(1);
             expect((result.match(/<!-- OMG:END -->/g) || []).length).toBe(1);
@@ -157,7 +157,7 @@ describe('mergeClaudeMd', () => {
         });
         it('handles typical update scenario with user customizations', () => {
             const existingContent = `${START_MARKER}
-# Old OMG Config v1.0
+# Old OMC Config v1.0
 Old instructions here.
 ${END_MARKER}
 
@@ -165,9 +165,9 @@ ${USER_CUSTOMIZATIONS}
 # My Project-Specific Instructions
 - Use TypeScript strict mode
 - Follow company coding standards`;
-            const newOmcContent = '# OMG Config v2.0\nNew instructions with updates.';
+            const newOmcContent = '# OMC Config v2.0\nNew instructions with updates.';
             const result = mergeClaudeMd(existingContent, newOmcContent);
-            expect(result).toContain('# OMG Config v2.0');
+            expect(result).toContain('# OMC Config v2.0');
             expect(result).not.toContain('Old instructions here');
             expect(result).toContain('# My Project-Specific Instructions');
             expect(result).toContain('Follow company coding standards');
@@ -179,7 +179,7 @@ ${USER_CUSTOMIZATIONS}
 Some old configuration
 User added custom stuff here`;
             const result = mergeClaudeMd(oldContent, omcContent);
-            // New OMG content should be at the top with markers
+            // New OMC content should be at the top with markers
             expect(result.indexOf(START_MARKER)).toBeLessThan(result.indexOf('# Legacy copilot-instructions.md'));
             expect(result).toContain(omcContent);
             expect(result).toContain(oldContent);
@@ -203,13 +203,13 @@ Agent instructions here
         });
         it('handles omcContent with markers when merging into existing content', () => {
             const existingContent = `<!-- OMG:START -->
-Old OMG content
+Old OMC content
 <!-- OMG:END -->
 
 <!-- User customizations -->
 My custom stuff`;
             const omcWithMarkers = `<!-- OMG:START -->
-New OMG content v2
+New OMC content v2
 <!-- OMG:END -->`;
             const result = mergeClaudeMd(existingContent, omcWithMarkers);
             // Should have exactly one pair of markers
@@ -217,15 +217,15 @@ New OMG content v2
             const endCount = (result.match(/<!-- OMG:END -->/g) || []).length;
             expect(startCount).toBe(1);
             expect(endCount).toBe(1);
-            expect(result).toContain('New OMG content v2');
-            expect(result).not.toContain('Old OMG content');
+            expect(result).toContain('New OMC content v2');
+            expect(result).not.toContain('Old OMC content');
             expect(result).toContain('My custom stuff');
         });
     });
     describe('issue #1467 regression', () => {
         it('removes duplicate legacy OMG blocks from preserved user content', () => {
             const existingContent = `${START_MARKER}
-Old OMG content v1
+Old OMC content v1
 ${END_MARKER}
 
 ${USER_CUSTOMIZATIONS}
@@ -242,12 +242,12 @@ My note after duplicate block`;
             expect(result).toContain(USER_CUSTOMIZATIONS);
             expect(result).toContain('My note before duplicate block');
             expect(result).toContain('My note after duplicate block');
-            expect(result).not.toContain('Old OMG content v1');
+            expect(result).not.toContain('Old OMC content v1');
             expect(result).not.toContain('Older duplicate block');
         });
         it('removes autogenerated user customization headers while preserving real user text', () => {
             const existingContent = `${START_MARKER}
-Old OMG content
+Old OMC content
 ${END_MARKER}
 
 <!-- User customizations (migrated from previous copilot-instructions.md) -->

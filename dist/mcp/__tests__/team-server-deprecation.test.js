@@ -40,17 +40,17 @@ describe('team-server MCP deprecation envelope CLI argument mapping', () => {
     });
     it('maps wait/cleanup tool args to timeout/grace flags', () => {
         const waitEnvelope = createDeprecatedCliOnlyEnvelopeWithArgs('omc_run_team_wait', {
-            job_id: 'omg-abc123',
+            job_id: 'omc-abc123',
             timeout_ms: 120000,
         });
         const cleanupEnvelope = createDeprecatedCliOnlyEnvelopeWithArgs('omc_run_team_cleanup', {
-            job_id: 'omg-abc123',
+            job_id: 'omc-abc123',
             grace_ms: 5000,
         });
         const waitPayload = JSON.parse(waitEnvelope.content[0].text);
         const cleanupPayload = JSON.parse(cleanupEnvelope.content[0].text);
-        expect(waitPayload.cli_replacement).toBe('omc team wait --job-id "omg-abc123" --timeout-ms 120000');
-        expect(cleanupPayload.cli_replacement).toBe('omc team cleanup --job-id "omg-abc123" --grace-ms 5000');
+        expect(waitPayload.cli_replacement).toBe('omc team wait --job-id "omc-abc123" --timeout-ms 120000');
+        expect(cleanupPayload.cli_replacement).toBe('omc team cleanup --job-id "omc-abc123" --grace-ms 5000');
     });
 });
 //# sourceMappingURL=team-server-deprecation.test.js.map

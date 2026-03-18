@@ -14,7 +14,7 @@ describe('Directory Context Injector - AGENTS.md support (issue #613)', () => {
     let testDir;
     let sessionId;
     beforeEach(() => {
-        testDir = join(tmpdir(), `omg-test-context-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        testDir = join(tmpdir(), `omc-test-context-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(testDir, { recursive: true });
         sessionId = `test-session-${Date.now()}`;
     });

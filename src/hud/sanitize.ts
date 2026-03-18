@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Output Sanitizer
+ * OMC HUD - Output Sanitizer
  *
  * Sanitizes HUD output to prevent terminal rendering corruption
  * when Copilot CLI's Ink renderer is concurrently updating the display.

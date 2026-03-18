@@ -14,7 +14,7 @@ import { homedir } from 'os';
  * 6. Fallback: bare 'node' (lets the shell resolve at runtime)
  *
  * This is used at setup time to embed the absolute node path into the HUD
- * statusLine command and into .omg-config.json so that hook scripts can
+ * statusLine command and into .omc-config.json so that hook scripts can
  * locate node even when it is not on PATH (nvm/fnm users, non-interactive
  * shells, issue #892).
  *

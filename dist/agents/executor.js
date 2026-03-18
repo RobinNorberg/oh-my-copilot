@@ -2,7 +2,7 @@
  * Executor Agent - Focused Task Executor
  *
  * Executes tasks directly without delegation capabilities.
- * Same discipline as OMG, but works alone.
+ * Same discipline as OMC, but works alone.
  *
  * Ported from oh-my-opencode's executor agent.
  * Prompt loaded from: agents/executor.md
@@ -31,7 +31,7 @@ export const EXECUTOR_PROMPT_METADATA = {
 };
 export const executorAgent = {
     name: 'executor',
-    description: 'Focused task executor. Execute tasks directly. NEVER delegate or spawn other agents. Same discipline as OMG, no delegation.',
+    description: 'Focused task executor. Execute tasks directly. NEVER delegate or spawn other agents. Same discipline as OMC, no delegation.',
     prompt: loadAgentPrompt('executor'),
     model: 'sonnet',
     defaultModel: 'sonnet',

@@ -47,7 +47,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
             }
         }
     });
-    it('classifies real OMG hook commands as OMC-owned (issue #606)', () => {
+    it('classifies real OMC hook commands as OMC-owned (issue #606)', () => {
         // These are the actual commands OMG installs into settings.json
         const settings = {
             hooks: {
@@ -91,7 +91,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
             expect(hook.isOmc).toBe(true);
         }
     });
-    it('classifies Windows-style OMG hook commands as OMC-owned', () => {
+    it('classifies Windows-style OMC hook commands as OMC-owned', () => {
         const settings = {
             hooks: {
                 PreToolUse: [{
@@ -149,7 +149,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
         expect(postTool?.isOmc).toBe(false);
     });
     it('reports hasConflicts only when non-OMC hooks exist', () => {
-        // All-OMG config: no conflicts
+        // All-OMC config: no conflicts
         const omcOnlySettings = {
             hooks: {
                 PreToolUse: [{
@@ -255,16 +255,16 @@ describe('doctor-conflicts: copilot-instructions.md companion file detection (is
             }
         }
     });
-    it('detects OMG markers in main copilot-instructions.md', () => {
-        writeFileSync(join(TEST_CLAUDE_DIR, 'copilot-instructions.md'), '<!-- OMG:START -->\n# OMG Config\n<!-- OMG:END -->\n');
+    it('detects OMC markers in main copilot-instructions.md', () => {
+        writeFileSync(join(TEST_CLAUDE_DIR, 'copilot-instructions.md'), '<!-- OMG:START -->\n# OMC Config\n<!-- OMG:END -->\n');
         const status = checkCopilotMdStatus();
         expect(status).not.toBeNull();
         expect(status.hasMarkers).toBe(true);
         expect(status.companionFile).toBeUndefined();
     });
-    it('detects OMG markers in companion file when main copilot-instructions.md lacks them', () => {
+    it('detects OMC markers in companion file when main copilot-instructions.md lacks them', () => {
         writeFileSync(join(TEST_CLAUDE_DIR, 'copilot-instructions.md'), '# My custom config\n');
-        writeFileSync(join(TEST_CLAUDE_DIR, 'CLAUDE-omg.md'), '<!-- OMG:START -->\n# OMG Config\n<!-- OMG:END -->\n');
+        writeFileSync(join(TEST_CLAUDE_DIR, 'CLAUDE-omg.md'), '<!-- OMG:START -->\n# OMC Config\n<!-- OMG:END -->\n');
         const status = checkCopilotMdStatus();
         expect(status).not.toBeNull();
         expect(status.hasMarkers).toBe(true);

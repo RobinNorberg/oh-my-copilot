@@ -12,7 +12,7 @@ describe('team api dispatch-aware messaging', () => {
   const teamName = 'dispatch-team';
 
   beforeEach(async () => {
-    cwd = await mkdtemp(join(tmpdir(), 'omg-team-api-dispatch-'));
+    cwd = await mkdtemp(join(tmpdir(), 'omc-team-api-dispatch-'));
     const base = join(cwd, '.omg', 'state', 'team', teamName);
     await mkdir(join(base, 'tasks'), { recursive: true });
     await mkdir(join(base, 'mailbox'), { recursive: true });

@@ -19,7 +19,7 @@ const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 const SKILLS_DIR = join(PROJECT_ROOT, 'skills');
 /**
  * Copilot CLI native commands that must not be shadowed by OMG skill short names.
- * Skills with these names will still load but their name will be prefixed with 'omg-'
+ * Skills with these names will still load but their name will be prefixed with 'omc-'
  * to avoid overriding built-in /review, /plan, /security-review etc.
  */
 const CC_NATIVE_COMMANDS = new Set([
@@ -37,7 +37,7 @@ const CC_NATIVE_COMMANDS = new Set([
 function toSafeSkillName(name) {
     const normalized = name.trim();
     return CC_NATIVE_COMMANDS.has(normalized.toLowerCase())
-        ? `omg-${normalized}`
+        ? `omc-${normalized}`
         : normalized;
 }
 /**

@@ -1,5 +1,5 @@
 /**
- * OMG HUD - ANSI Color Utilities
+ * OMC HUD - ANSI Color Utilities
  *
  * Terminal color codes for statusline rendering.
  * Based on copilot-hud reference implementation.

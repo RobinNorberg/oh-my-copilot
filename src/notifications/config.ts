@@ -1,7 +1,7 @@
 /**
  * Notification Configuration Reader
  *
- * Reads notification config from .omg-config.json and provides
+ * Reads notification config from .omc-config.json and provides
  * backward compatibility with the old stopHookCallbacks format.
  */
 
@@ -25,12 +25,12 @@ import {
   mergeHookConfigIntoNotificationConfig,
 } from "./hook-config.js";
 
-const CONFIG_FILE = join(getCopilotConfigDir(), ".omg-config.json");
+const CONFIG_FILE = join(getCopilotConfigDir(), ".omc-config.json");
 const DEFAULT_TMUX_TAIL_LINES = 15;
 
 
 /**
- * Read raw config from .omg-config.json
+ * Read raw config from .omc-config.json
  */
 function readRawConfig(): Record<string, unknown> | null {
   if (!existsSync(CONFIG_FILE)) return null;
@@ -519,7 +519,7 @@ export function shouldIncludeTmuxTail(verbosity: VerbosityLevel): boolean {
  * the corresponding named profile from `notificationProfiles` is used.
  * Falls back to the default `notifications` config if the profile is not found.
  *
- * Reads from .omg-config.json, looking for the `notifications` key.
+ * Reads from .omc-config.json, looking for the `notifications` key.
  * When file config exists, env-derived platforms are merged in to fill
  * missing platform blocks (file fields take precedence).
  * Falls back to migrating old `stopHookCallbacks` if present.
@@ -547,7 +547,7 @@ export function getNotificationConfig(profileName?: string): NotificationConfig 
     );
   }
 
-  // Priority 2: Explicit notifications config in .omg-config.json
+  // Priority 2: Explicit notifications config in .omc-config.json
   if (raw) {
     const notifications = raw.notifications as NotificationConfig | undefined;
     if (notifications) {
@@ -828,7 +828,7 @@ function parseDiscordUserIds(
  * - No reply-capable bot platform (discord-bot or telegram) is configured
  * - Notifications are globally disabled
  *
- * Reads from .omg-config.json notifications.reply section.
+ * Reads from .omc-config.json notifications.reply section.
  * Environment variables override config file values:
  * - OMC_REPLY_ENABLED: enable reply listening (default: false)
  * - OMC_REPLY_POLL_INTERVAL_MS: polling interval in ms (default: 3000)
@@ -874,7 +874,7 @@ export function getReplyConfig(): import("./types.js").ReplyConfig | null {
   if (hasDiscordBot && authorizedDiscordUserIds.length === 0) {
     console.warn(
       "[notifications] Discord reply listening disabled: authorizedDiscordUserIds is empty. " +
-      "Set OMC_REPLY_DISCORD_USER_IDS or add to .omg-config.json notifications.reply.authorizedDiscordUserIds"
+      "Set OMC_REPLY_DISCORD_USER_IDS or add to .omc-config.json notifications.reply.authorizedDiscordUserIds"
     );
   }
 
@@ -899,7 +899,7 @@ import type {
 import { validateCustomIntegration, checkDuplicateIds } from "./validation.js";
 
 /**
- * Read custom integrations configuration from .omg-config.json.
+ * Read custom integrations configuration from .omc-config.json.
  */
 export function getCustomIntegrationsConfig(): CustomIntegrationsConfig | null {
   const raw = readRawConfig();

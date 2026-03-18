@@ -13,7 +13,7 @@ describe('auto-slash command skill aliases', () => {
         return import('../hooks/auto-slash-command/executor.js');
     }
     beforeEach(() => {
-        tempRoot = mkdtempSync(join(tmpdir(), 'omg-auto-slash-aliases-'));
+        tempRoot = mkdtempSync(join(tmpdir(), 'omc-auto-slash-aliases-'));
         tempConfigDir = join(tempRoot, 'copilot-config');
         tempProjectDir = join(tempRoot, 'project');
         mkdirSync(join(tempConfigDir, 'skills', 'team'), { recursive: true });

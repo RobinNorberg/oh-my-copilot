@@ -240,7 +240,7 @@ describe('parseAskArgs', () => {
 });
 describe('omc ask command', () => {
     it('accepts canonical advisor env and forwards prompt/task to advisor', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-canonical-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-canonical-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const result = runCli(['ask', 'claude', '--print', 'hello world'], wd, { OMC_ASK_ADVISOR_SCRIPT: stubPath });
@@ -260,7 +260,7 @@ describe('omc ask command', () => {
         }
     });
     it('accepts OMX advisor env alias in Phase-1 and emits deprecation warning', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-alias-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-alias-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const result = runCli(['ask', 'gemini', 'legacy', 'path'], wd, { OMX_ASK_ADVISOR_SCRIPT: stubPath });
@@ -278,7 +278,7 @@ describe('omc ask command', () => {
         }
     });
     it('allows codex ask inside a Copilot CLI session', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-cli-codex-nested-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-cli-codex-nested-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const result = runCli(['ask', 'codex', '--prompt', 'cli nested codex prompt'], wd, {
@@ -301,7 +301,7 @@ describe('omc ask command', () => {
         }
     });
     it('allows gemini ask inside a Copilot CLI session', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-cli-gemini-nested-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-cli-gemini-nested-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const result = runCli(['ask', 'gemini', '--prompt', 'cli nested gemini prompt'], wd, {
@@ -322,7 +322,7 @@ describe('omc ask command', () => {
         }
     });
     it('loads --agent-prompt role from resolved prompts dir and prepends role content', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-agent-prompt-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-agent-prompt-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             mkdirSync(join(wd, '.omx'), { recursive: true });
@@ -345,7 +345,7 @@ describe('omc ask command', () => {
 const PATH_SEP = process.platform === 'win32' ? ';' : ':';
 describe('run-provider-advisor script contract', () => {
     it('writes artifact to .omg/artifacts/ask/{provider}-{slug}-{timestamp}.md', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-artifact-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-artifact-'));
         try {
             const binDir = writeFakeProviderBinary(wd, 'claude');
             // Use single-word prompt to avoid shell arg-splitting on Windows (shell:true + cmd.exe)
@@ -363,7 +363,7 @@ describe('run-provider-advisor script contract', () => {
         }
     });
     it('accepts OMX original-task alias in Phase-1 with deprecation warning', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-original-alias-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-original-alias-'));
         try {
             const binDir = writeFakeProviderBinary(wd, 'gemini');
             const result = runAdvisorScript(['gemini', '--prompt', 'fallback task'], wd, {
@@ -383,7 +383,7 @@ describe('run-provider-advisor script contract', () => {
         }
     });
     it('sanitizes Rust env vars for codex so artifacts do not capture Rust stderr logs', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-codex-rust-env-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-codex-rust-env-'));
         try {
             const binDir = writeFakeCodexBinary(wd);
             // Use single-word prompt to avoid shell arg-splitting on Windows
@@ -408,7 +408,7 @@ describe('run-provider-advisor script contract', () => {
         }
     });
     it('uses shell:true for Windows codex binary probe and execution', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-codex-win32-shell-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-codex-win32-shell-'));
         try {
             const capturePath = join(wd, 'spawn-sync-calls.json');
             const preludePath = writeSpawnSyncCapturePrelude(wd);
@@ -433,7 +433,7 @@ describe('run-provider-advisor script contract', () => {
         }
     });
     it('shows install guidance when a Windows codex binary is missing under shell:true', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-codex-win32-missing-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-codex-win32-missing-'));
         try {
             const capturePath = join(wd, 'spawn-sync-calls.json');
             const preludePath = writeSpawnSyncCapturePrelude(wd);
@@ -476,7 +476,7 @@ describe('resolveAskAdvisorScriptPath', () => {
 });
 describe.skipIf(process.platform === 'win32')('ask wrapper scripts contract', () => {
     it('ask-codex wrapper dispatches provider, forwards prompt, and ignores PATH omc shadow', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-wrapper-codex-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-wrapper-codex-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const fakePathBin = writeFakeOmcBinary(wd);
@@ -501,7 +501,7 @@ describe.skipIf(process.platform === 'win32')('ask wrapper scripts contract', ()
         }
     });
     it('ask-codex wrapper still works inside a Copilot CLI session', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-wrapper-codex-nested-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-wrapper-codex-nested-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const result = runWrapperScript(ASK_CODEX_WRAPPER, ['--prompt', 'nested codex prompt'], wd, {
@@ -524,7 +524,7 @@ describe.skipIf(process.platform === 'win32')('ask wrapper scripts contract', ()
         }
     });
     it('ask-gemini wrapper still works inside a Copilot CLI session', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-wrapper-gemini-nested-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-wrapper-gemini-nested-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const result = runWrapperScript(ASK_GEMINI_WRAPPER, ['--prompt', 'nested gemini prompt'], wd, {
@@ -544,7 +544,7 @@ describe.skipIf(process.platform === 'win32')('ask wrapper scripts contract', ()
         }
     });
     it('ask-gemini wrapper dispatches provider and forwards positional prompt text', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-wrapper-gemini-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-wrapper-gemini-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const result = runWrapperScript(ASK_GEMINI_WRAPPER, ['ship', 'this', 'feature'], wd, { OMC_ASK_ADVISOR_SCRIPT: stubPath });
@@ -560,7 +560,7 @@ describe.skipIf(process.platform === 'win32')('ask wrapper scripts contract', ()
         }
     });
     it('wrapper propagates non-zero advisor exit code', () => {
-        const wd = mkdtempSync(join(tmpdir(), 'omg-ask-wrapper-exit-'));
+        const wd = mkdtempSync(join(tmpdir(), 'omc-ask-wrapper-exit-'));
         try {
             const stubPath = writeAdvisorStub(wd);
             const result = runWrapperScript(ASK_CODEX_WRAPPER, ['--prompt', 'should fail'], wd, {

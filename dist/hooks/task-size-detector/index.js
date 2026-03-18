@@ -3,7 +3,7 @@
  *
  * Classifies user prompts as small/medium/large to prevent over-orchestration.
  *
- * Issue #790: OMG orchestration modes (ralph, autopilot, team) are overkill for small tasks.
+ * Issue #790: OMC orchestration modes (ralph, autopilot, team) are overkill for small tasks.
  * This module provides a pre-execution gate that routes small tasks to lightweight paths.
  */
 export const DEFAULT_THRESHOLDS = {

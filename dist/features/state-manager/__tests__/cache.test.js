@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 // Hoist test state dir so it's available inside vi.mock factories
 const { TEST_STATE_DIR } = vi.hoisted(() => ({
-    TEST_STATE_DIR: '/tmp/omg-cache-test-state',
+    TEST_STATE_DIR: '/tmp/omc-cache-test-state',
 }));
 vi.mock('../../../lib/atomic-write.js', () => ({
     atomicWriteJsonSync: vi.fn((filePath, data) => {
@@ -113,7 +113,7 @@ describe('cleanupStaleStates', () => {
     let tmpDir;
     let consoleWarnSpy;
     beforeEach(() => {
-        tmpDir = fs.mkdtempSync(path.join('/tmp', 'omg-cleanup-test-'));
+        tmpDir = fs.mkdtempSync(path.join('/tmp', 'omc-cleanup-test-'));
         const stateDir = path.join(tmpDir, '.omg', 'state');
         fs.mkdirSync(stateDir, { recursive: true });
         clearStateCache();

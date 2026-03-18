@@ -15,7 +15,7 @@ export interface CodeSimplifierConfig {
     /** Maximum number of files to simplify per stop event (default: 10) */
     maxFiles?: number;
 }
-/** Global OMG config shape (subset relevant to code-simplifier) */
+/** Global OMC config shape (subset relevant to code-simplifier) */
 interface OmcGlobalConfig {
     codeSimplifier?: CodeSimplifierConfig;
 }
@@ -27,7 +27,7 @@ export interface CodeSimplifierHookResult {
 /** Marker filename used to prevent re-triggering within the same turn cycle */
 export declare const TRIGGER_MARKER_FILENAME = "code-simplifier-triggered.marker";
 /**
- * Read the global OMG config from ~/.omg/config.json.
+ * Read the global OMC config from ~/.omg/config.json.
  * Returns null if the file does not exist or cannot be parsed.
  */
 export declare function readOmcConfig(): OmcGlobalConfig | null;

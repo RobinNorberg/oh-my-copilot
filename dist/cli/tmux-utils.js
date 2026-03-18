@@ -42,8 +42,8 @@ export function resolveLaunchPolicy(env = process.env) {
 }
 /**
  * Build tmux session name from directory, git branch, and UTC timestamp
- * Format: omg-{dir}-{branch}-{utctimestamp}
- * e.g.  omg-myproject-dev-20260221143052
+ * Format: omc-{dir}-{branch}-{utctimestamp}
+ * e.g.  omc-myproject-dev-20260221143052
  */
 export function buildTmuxSessionName(cwd) {
     const dirToken = sanitizeTmuxToken(basename(cwd));
@@ -69,7 +69,7 @@ export function buildTmuxSessionName(cwd) {
         `${pad(now.getUTCHours())}` +
         `${pad(now.getUTCMinutes())}` +
         `${pad(now.getUTCSeconds())}`;
-    const name = `omg-${dirToken}-${branchToken}-${utcTimestamp}`;
+    const name = `omc-${dirToken}-${branchToken}-${utcTimestamp}`;
     return name.length > 120 ? name.slice(0, 120) : name;
 }
 /**

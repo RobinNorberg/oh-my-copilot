@@ -20,7 +20,7 @@ export function getBeadsInstructions(tool) {
     return instructions;
 }
 /**
- * Read beads context config from omg-config.json.
+ * Read beads context config from omc-config.json.
  */
 export function getBeadsContextConfig() {
     const config = getOMCConfig();

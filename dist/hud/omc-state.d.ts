@@ -1,5 +1,5 @@
 /**
- * OMG HUD - State Readers
+ * OMC HUD - State Readers
  *
  * Read ralph, ultrawork, and PRD state from existing OMG files.
  * These are read-only functions that don't modify the state files.
@@ -27,7 +27,7 @@ export declare function readPrdStateForHud(directory: string): PrdStateForHud | 
  */
 export declare function readAutopilotStateForHud(directory: string): AutopilotStateForHud | null;
 /**
- * Check if any OMG mode is currently active
+ * Check if any OMC mode is currently active
  */
 export declare function isAnyModeActive(directory: string): boolean;
 /**

@@ -36,7 +36,7 @@ function makeInput(overrides?: Partial<SessionEndInput>): SessionEndInput {
 }
 
 beforeEach(() => {
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-duration-test-'));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-duration-test-'));
 });
 
 afterEach(() => {

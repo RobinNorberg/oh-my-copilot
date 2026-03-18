@@ -64,10 +64,10 @@ function syncMarketplaceClone(verbose = false) {
 }
 /** Installation paths (respects COPILOT_CONFIG_DIR env var) */
 export const COPILOT_CONFIG_DIR = getConfigDir();
-export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omg-version.json');
-export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, '.omg-config.json');
+export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
+export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, '.omc-config.json');
 /**
- * Read the OMG configuration
+ * Read the OMC configuration
  */
 export function getOMCConfig() {
     if (!existsSync(CONFIG_FILE)) {
@@ -541,7 +541,7 @@ export async function interactiveUpdate() {
     }
 }
 /** State file for tracking silent update status */
-const SILENT_UPDATE_STATE_FILE = join(COPILOT_CONFIG_DIR, '.omg-silent-update.json');
+const SILENT_UPDATE_STATE_FILE = join(COPILOT_CONFIG_DIR, '.omc-silent-update.json');
 /**
  * Read silent update state
  */
@@ -602,7 +602,7 @@ function silentLog(message, logFile) {
  * @returns Promise resolving to update result or null if skipped
  */
 export async function silentAutoUpdate(config = {}) {
-    const { checkIntervalHours = 24, autoApply = true, logFile = join(COPILOT_CONFIG_DIR, '.omg-update.log'), maxRetries = 3 } = config;
+    const { checkIntervalHours = 24, autoApply = true, logFile = join(COPILOT_CONFIG_DIR, '.omc-update.log'), maxRetries = 3 } = config;
     // SECURITY: Check if silent auto-update is enabled in configuration
     // Default is disabled - users must explicitly opt-in during installation
     if (!isSilentAutoUpdateEnabled()) {

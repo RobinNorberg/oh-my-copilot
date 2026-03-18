@@ -57,14 +57,14 @@ describe('isOmcHook', () => {
 });
 
 describe('isOmcHook detection', () => {
-  it('detects real OMG hooks correctly', () => {
+  it('detects real OMC hooks correctly', () => {
     expect(isOmcHook('node ~/.copilot/hooks/omc-hook.mjs')).toBe(true);
     expect(isOmcHook('node ~/.copilot/hooks/oh-my-copilot-hook.mjs')).toBe(true);
     expect(isOmcHook('node ~/.copilot/hooks/omc-pre-tool-use.mjs')).toBe(true);
     expect(isOmcHook('/usr/local/bin/omc')).toBe(true);
   });
 
-  it('detects actual OMG hook commands from settings.json (issue #606)', () => {
+  it('detects actual OMC hook commands from settings.json (issue #606)', () => {
     // These are the real commands OMG installs into settings.json
     expect(isOmcHook('node "$HOME/.copilot/hooks/keyword-detector.mjs"')).toBe(true);
     expect(isOmcHook('node "$HOME/.copilot/hooks/session-start.mjs"')).toBe(true);
@@ -74,7 +74,7 @@ describe('isOmcHook detection', () => {
     expect(isOmcHook('node "$HOME/.copilot/hooks/persistent-mode.mjs"')).toBe(true);
   });
 
-  it('detects Windows-style OMG hook commands (issue #606)', () => {
+  it('detects Windows-style OMC hook commands (issue #606)', () => {
     expect(isOmcHook('node "%USERPROFILE%\\.copilot\\hooks\\keyword-detector.mjs"')).toBe(true);
     expect(isOmcHook('node "%USERPROFILE%\\.copilot\\hooks\\pre-tool-use.mjs"')).toBe(true);
   });

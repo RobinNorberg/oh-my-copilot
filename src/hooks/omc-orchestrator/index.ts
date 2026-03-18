@@ -5,7 +5,7 @@
  * When an orchestrator agent tries to directly modify files outside .omg/,
  * this hook injects reminders to delegate to subagents instead.
  *
- * Adapted from oh-my-opencode's omg-orchestrator hook for shell-based hooks.
+ * Adapted from oh-my-opencode's omc-orchestrator hook for shell-based hooks.
  */
 
 import * as path from 'path';
@@ -55,7 +55,7 @@ export function clearEnforcementCache(): void {
 
 /**
  * Read enforcement level from config
- * Checks: .omg/config.json → ~/.copilot/.omg-config.json → default (warn)
+ * Checks: .omg/config.json → ~/.copilot/.omc-config.json → default (warn)
  */
 function getEnforcementLevel(directory: string): EnforcementLevel {
   const now = Date.now();
@@ -68,7 +68,7 @@ function getEnforcementLevel(directory: string): EnforcementLevel {
   }
 
   const localConfig = path.join(getOmcRoot(directory), 'config.json');
-  const globalConfig = path.join(getCopilotConfigDir(), '.omg-config.json');
+  const globalConfig = path.join(getCopilotConfigDir(), '.omc-config.json');
 
   let level: EnforcementLevel = 'warn'; // Default
 

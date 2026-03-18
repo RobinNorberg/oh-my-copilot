@@ -7,7 +7,7 @@ const withoutAst = 38;
 const withoutPython = 39;
 const withoutSkills = 37;
 
-describe('omg-tools-server', () => {
+describe('omc-tools-server', () => {
   describe('omcToolNames', () => {
     it('should export expected tools total', () => {
       expect(omcToolNames).toHaveLength(totalTools);

@@ -12,7 +12,7 @@ import {
 const tempDirs: string[] = [];
 
 function makeTempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'omg-mission-board-'));
+  const dir = mkdtempSync(join(tmpdir(), 'omc-mission-board-'));
   tempDirs.push(dir);
   mkdirSync(join(dir, '.omg', 'state'), { recursive: true });
   return dir;

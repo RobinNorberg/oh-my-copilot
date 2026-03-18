@@ -243,11 +243,11 @@ describe("validateSlackChannel", () => {
 
 describe("validateSlackUsername", () => {
   it("accepts simple username", () => {
-    expect(validateSlackUsername("OMG Bot")).toBe("OMG Bot");
+    expect(validateSlackUsername("OMC Bot")).toBe("OMC Bot");
   });
 
   it("accepts username with hyphens and underscores", () => {
-    expect(validateSlackUsername("omg-notify_bot")).toBe("omg-notify_bot");
+    expect(validateSlackUsername("omc-notify_bot")).toBe("omc-notify_bot");
   });
 
   it("accepts username with periods", () => {
@@ -291,7 +291,7 @@ describe("validateSlackUsername", () => {
   });
 
   it("trims whitespace and validates", () => {
-    expect(validateSlackUsername("  OMG Bot  ")).toBe("OMG Bot");
+    expect(validateSlackUsername("  OMC Bot  ")).toBe("OMC Bot");
   });
 
   it("rejects username exceeding 80 chars", () => {

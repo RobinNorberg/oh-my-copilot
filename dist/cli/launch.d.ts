@@ -3,7 +3,7 @@
  * Launches Copilot CLI with tmux session management
  */
 /**
- * Extract the OMG-specific --notify flag from launch args.
+ * Extract the OMC-specific --notify flag from launch args.
  * --notify false  → disable notifications (OMC_NOTIFY=0)
  * --notify true   → enable notifications (default)
  * This flag must be stripped before passing args to Copilot CLI.
@@ -13,7 +13,7 @@ export declare function extractNotifyFlag(args: string[]): {
     remainingArgs: string[];
 };
 /**
- * Extract the OMG-specific --telegram flag from launch args.
+ * Extract the OMC-specific --telegram flag from launch args.
  * Purely presence-based:
  *   --telegram        -> enable Telegram notifications (OMC_TELEGRAM=1)
  *   --telegram=true   -> enable
@@ -29,7 +29,7 @@ export declare function extractTelegramFlag(args: string[]): {
     remainingArgs: string[];
 };
 /**
- * Extract the OMG-specific --discord flag from launch args.
+ * Extract the OMC-specific --discord flag from launch args.
  * Purely presence-based:
  *   --discord        -> enable Discord notifications (OMC_DISCORD=1)
  *   --discord=true   -> enable
@@ -45,7 +45,7 @@ export declare function extractDiscordFlag(args: string[]): {
     remainingArgs: string[];
 };
 /**
- * Extract the OMG-specific --slack flag from launch args.
+ * Extract the OMC-specific --slack flag from launch args.
  * Purely presence-based:
  *   --slack        -> enable Slack notifications (OMC_SLACK=1)
  *   --slack=true   -> enable
@@ -61,7 +61,7 @@ export declare function extractSlackFlag(args: string[]): {
     remainingArgs: string[];
 };
 /**
- * Extract the OMG-specific --webhook flag from launch args.
+ * Extract the OMC-specific --webhook flag from launch args.
  * Purely presence-based:
  *   --webhook        -> enable Webhook notifications (OMC_WEBHOOK=1)
  *   --webhook=true   -> enable

@@ -32,7 +32,7 @@ import {
 } from '../../features/rate-limit-wait/index.js';
 
 describe('Rate Limit Wait Integration Tests', () => {
-  const testDir = join(tmpdir(), 'omg-integration-test-' + Date.now());
+  const testDir = join(tmpdir(), 'omc-integration-test-' + Date.now());
 
   beforeEach(() => {
     vi.clearAllMocks();

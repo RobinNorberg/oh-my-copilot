@@ -23,7 +23,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
   let fakeProject: string;
 
   beforeEach(() => {
-    tmpDir = mkdtempSync(join(tmpdir(), 'omg-cache-test-'));
+    tmpDir = mkdtempSync(join(tmpdir(), 'omc-cache-test-'));
     fakeHome = join(tmpDir, 'home');
     fakeCacheBase = join(fakeHome, '.copilot', 'plugins', 'cache', 'omg', 'oh-my-copilot');
     fakeProject = join(tmpDir, 'project');

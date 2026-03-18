@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Rate Limits Element
+ * OMC HUD - Rate Limits Element
  *
  * Renders 5-hour and weekly rate limit usage display (built-in providers),
  * and custom rate limit buckets from the rateLimitsProvider command.

@@ -20,7 +20,7 @@ export interface AutoInvokeState {
     lastInvokeTime: number;
 }
 /**
- * Load auto-invocation config from ~/.copilot/.omg-config.json
+ * Load auto-invocation config from ~/.copilot/.omc-config.json
  */
 export declare function loadInvocationConfig(): InvocationConfig;
 /**

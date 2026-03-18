@@ -1,5 +1,5 @@
 /**
- * OMG HUD - Usage API
+ * OMC HUD - Usage API
  *
  * Fetches rate limit usage from Anthropic's OAuth API.
  * Based on copilot-hud implementation by jarrodwatts.

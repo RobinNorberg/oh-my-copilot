@@ -13,7 +13,7 @@
 
 _Don't learn Copilot CLI. Just use OMC._
 
-[Get Started](#quick-start) • [Documentation](https://docs/REFERENCE.md) • [CLI Reference](https://docs/REFERENCE.md/docs.html#cli-reference) • [Workflows](https://docs/REFERENCE.md/docs.html#workflows) • [Migration Guide](docs/MIGRATION.md)
+[Get Started](#quick-start) • [Documentation](docs/REFERENCE.md) • [CLI Reference](docs/REFERENCE.md) • [Workflows](docs/REFERENCE.md) • [Migration Guide](docs/MIGRATION.md)
 
 ---
 
@@ -29,7 +29,7 @@ _Don't learn Copilot CLI. Just use OMC._
 **Step 2: Setup**
 
 ```bash
-/omg-setup
+/omc-setup
 ```
 
 **Step 3: Build something**
@@ -86,7 +86,7 @@ omc team status auth-review
 omc team shutdown auth-review
 ```
 
-`/omg-teams` remains as a legacy compatibility skill and now routes to `omc team ...`.
+`/omc-teams` remains as a legacy compatibility skill and now routes to `omc team ...`.
 
 For mixed Codex + Gemini work in one command, use the **`/ccg`** skill (routes via `ask-codex` + `ask-gemini`, then Copilot synthesizes):
 
@@ -112,7 +112,7 @@ Workers spawn on-demand and die when their task completes — no idle resource u
 /plugin marketplace update omc
 
 # 2. Re-run setup to refresh configuration
-/omg-setup
+/omc-setup
 ```
 
 > **Note:** If marketplace auto-update is not enabled, you must manually run `/plugin marketplace update omc` to sync the latest version before running setup.
@@ -120,13 +120,13 @@ Workers spawn on-demand and die when their task completes — no idle resource u
 If you experience issues after updating, clear the old plugin cache:
 
 ```bash
-/omg-doctor
+/omc-doctor
 ```
 
 <h1 align="center">Your Copilot In Overdrive.</h1>
 
 <p align="center">
-  <img src="assets/omg-character.png" alt="oh-my-copilot" width="400" />
+  <img src="assets/omc-character.png" alt="oh-my-copilot" width="400" />
 </p>
 
 ---
@@ -148,7 +148,7 @@ If you experience issues after updating, clear the old plugin cache:
 
 ### Orchestration Modes
 
-Multiple strategies for different use cases — from Team-backed orchestration to token-efficient refactoring. [Learn more →](https://docs/REFERENCE.md/docs.html#execution-modes)
+Multiple strategies for different use cases — from Team-backed orchestration to token-efficient refactoring. [Learn more →](docs/REFERENCE.md)
 
 | Mode                    | What it is                                                                              | Use For                                                |
 | ----------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -163,7 +163,7 @@ Multiple strategies for different use cases — from Team-backed orchestration t
 
 ### Intelligent Orchestration
 
-- **32 specialized agents** for architecture, research, design, testing, data science
+- **18 specialized agents** for architecture, research, design, testing, data science
 - **Smart model routing** - Haiku for simple tasks, Opus for complex reasoning
 - **Automatic delegation** - Right agent for the job, every time
 
@@ -202,7 +202,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 
 - **ralph includes ultrawork**: when you activate ralph mode, it automatically includes ultrawork's parallel execution.
 - `swarm` compatibility alias has been removed; migrate existing prompts to `/team` syntax.
-- `plan this` / `plan the` keyword triggers were removed; use `ralplan` or explicit `/oh-my-copilot:omg-plan`.
+- `plan this` / `plan the` keyword triggers were removed; use `ralplan` or explicit `/oh-my-copilot:omc-plan`.
 
 ## Azure DevOps Integration
 
@@ -218,7 +218,7 @@ When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto
 ### Setup
 
 ```bash
-/oh-my-copilot:omg-ado-setup
+/oh-my-copilot:omc-ado-setup
 ```
 
 This configures your ADO connection — verifies `az` CLI auth, auto-detects org/project from git remote, and writes `.omg/config.json`:
@@ -242,7 +242,7 @@ Cross-project support: when code and work items live in different ADO projects, 
 ### Triage
 
 ```bash
-/oh-my-copilot:omg-ado-triage
+/oh-my-copilot:omc-ado-triage
 ```
 
 Scans 5 ADO surfaces in parallel and produces a prioritized summary:
@@ -352,11 +352,10 @@ Tag behavior:
 ## Documentation
 
 - **[Full Reference](docs/REFERENCE.md)** - Complete feature documentation
-- **[CLI Reference](https://docs/REFERENCE.md/docs.html#cli-reference)** - All `omc` commands, flags, and tools
-- **[Notifications Guide](https://docs/REFERENCE.md/docs.html#notifications)** - Discord, Telegram, Slack, Teams, and webhook setup
-- **[Recommended Workflows](https://docs/REFERENCE.md/docs.html#workflows)** - Battle-tested skill chains for common tasks
-- **[Release Notes](https://docs/REFERENCE.md/docs.html#release-notes)** - What's new in each version
-- **[Website](https://docs/REFERENCE.md)** - Interactive guides and examples
+- **[CLI Reference](docs/REFERENCE.md)** - All `omc` commands, flags, and tools
+- **[Notifications Guide](docs/REFERENCE.md)** - Discord, Telegram, Slack, Teams, and webhook setup
+- **[Recommended Workflows](docs/REFERENCE.md)** - Battle-tested skill chains for common tasks
+- **[Release Notes](docs/REFERENCE.md)** - What's new in each version
 - **[Migration Guide](docs/MIGRATION.md)** - Upgrade from v2.x
 - **[Architecture](docs/ARCHITECTURE.md)** - How it works under the hood
 - **[Performance Monitoring](docs/PERFORMANCE-MONITORING.md)** - Agent tracking, debugging, and optimization

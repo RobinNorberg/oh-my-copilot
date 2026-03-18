@@ -51,7 +51,7 @@ describe('processSessionEnd cwd normalization (issue #891)', () => {
   let subdirectory: string;
 
   beforeEach(() => {
-    worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'omg-891-root-'));
+    worktreeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-891-root-'));
     subdirectory = path.join(worktreeRoot, 'src', 'deep', 'nested');
     fs.mkdirSync(subdirectory, { recursive: true });
 

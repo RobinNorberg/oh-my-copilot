@@ -208,10 +208,10 @@ describe("parseTmuxTail noise filters", () => {
         const result = parseTmuxTail("Table ─── Header\n────────────");
         expect(result).toBe("Table ─── Header");
     });
-    it("drops OMG HUD versioned status lines", () => {
+    it("drops OMC HUD versioned status lines", () => {
         expect(parseTmuxTail("[OMC#4.4.5] | thinking | session:510m | ctx:61% | 🔧57")).toBe("");
     });
-    it("drops unversioned OMG HUD lines", () => {
+    it("drops unversioned OMC HUD lines", () => {
         expect(parseTmuxTail("[OMC] | session:5m")).toBe("");
     });
     it("drops bypass-permissions indicator lines starting with ⏵", () => {

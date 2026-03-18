@@ -4,7 +4,7 @@
  *
  * Each MCP worker gets its own git worktree at:
  *   {repoRoot}/.omg/worktrees/{team}/{worker}
- * Branch naming: omg-team/{teamName}/{workerName}
+ * Branch naming: omc-team/{teamName}/{workerName}
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,7 +17,7 @@ function getWorktreePath(repoRoot, teamName, workerName) {
 }
 /** Get branch name for a worker */
 function getBranchName(teamName, workerName) {
-    return `omg-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
+    return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
 }
 /** Get worktree metadata path */
 function getMetadataPath(repoRoot, teamName) {
@@ -46,7 +46,7 @@ function writeMetadata(repoRoot, teamName, entries) {
 /**
  * Create a git worktree for a team worker.
  * Path: {repoRoot}/.omg/worktrees/{team}/{worker}
- * Branch: omg-team/{teamName}/{workerName}
+ * Branch: omc-team/{teamName}/{workerName}
  */
 export function createWorkerWorktree(teamName, workerName, repoRoot, baseBranch) {
     const wtPath = getWorktreePath(repoRoot, teamName, workerName);

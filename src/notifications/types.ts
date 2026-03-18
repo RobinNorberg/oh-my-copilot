@@ -133,7 +133,7 @@ export interface EventNotificationConfig {
   webhook?: WebhookNotificationConfig;
 }
 
-/** Top-level notification configuration (stored in .omg-config.json) */
+/** Top-level notification configuration (stored in .omc-config.json) */
 export interface NotificationConfig {
   /** Global enable/disable for all notifications */
   enabled: boolean;
@@ -180,7 +180,7 @@ export interface NotificationPayload {
   projectPath?: string;
   /** Basename of the project directory */
   projectName?: string;
-  /** Active OMG modes during this session */
+  /** Active OMC modes during this session */
   modesUsed?: string[];
   /** Context summary of what was done */
   contextSummary?: string;

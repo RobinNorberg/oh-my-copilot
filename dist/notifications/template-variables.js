@@ -85,7 +85,7 @@ export const TEMPLATE_VARIABLES = {
     },
     // Mode info
     activeMode: {
-        description: 'Currently active OMG mode',
+        description: 'Currently active OMC mode',
         example: 'ralph',
         availableIn: ['*']
     },

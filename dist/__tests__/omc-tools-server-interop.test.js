@@ -4,7 +4,7 @@ async function importFresh() {
     vi.resetModules();
     return import('../mcp/omc-tools-server.js');
 }
-describe('omg-tools-server interop gating', () => {
+describe('omc-tools-server interop gating', () => {
     beforeEach(() => {
         delete process.env.OMG_INTEROP_TOOLS_ENABLED;
     });

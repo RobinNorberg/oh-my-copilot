@@ -2,7 +2,7 @@
  * Factcheck Guard Types
  *
  * TypeScript types for the portable factcheck guard and sentinel health analyzer.
- * Ported from rolldav/portable-omg-guards (issue #1155).
+ * Ported from rolldav/portable-omc-guards (issue #1155).
  */
 export interface FactcheckGates {
     selftest_ran: boolean;

@@ -444,7 +444,7 @@ describe('Team staged workflow integration', () => {
     let testDir;
     const sessionId = 'team-session-test';
     beforeEach(() => {
-        testDir = join(tmpdir(), `omg-team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        testDir = join(tmpdir(), `omc-team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(join(testDir, '.omg', 'state', 'sessions', sessionId), { recursive: true });
         execSync('git init', { cwd: testDir });
     });
@@ -610,8 +610,8 @@ describe('Persistent-mode reply cleanup behavior', () => {
     let tempHome;
     const sessionId = 'reply-cleanup-session';
     beforeEach(() => {
-        testDir = join(tmpdir(), `omg-reply-cleanup-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        tempHome = join(tmpdir(), `omg-reply-home-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        testDir = join(tmpdir(), `omc-reply-cleanup-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        tempHome = join(tmpdir(), `omc-reply-home-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(testDir, { recursive: true });
         mkdirSync(tempHome, { recursive: true });
         execSync('git init', { cwd: testDir });
@@ -1184,7 +1184,7 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
     let testDir;
     beforeEach(() => {
         // Create a unique temp directory for each test
-        testDir = join(tmpdir(), `omg-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        testDir = join(tmpdir(), `omc-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(testDir, { recursive: true });
         mkdirSync(join(testDir, '.omg'), { recursive: true });
         mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });

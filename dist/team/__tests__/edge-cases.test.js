@@ -62,7 +62,7 @@ function makeHeartbeat(overrides) {
 // ============================================================
 describe('task-file-ops edge cases', () => {
     beforeEach(() => {
-        TASK_TEST_CWD = join(tmpdir(), `omg-edge-tasks-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        TASK_TEST_CWD = join(tmpdir(), `omc-edge-tasks-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         TASKS_DIR = join(TASK_TEST_CWD, '.omg', 'state', 'team', EDGE_TEAM_TASKS, 'tasks');
         mkdirSync(TASKS_DIR, { recursive: true });
     });
@@ -593,9 +593,9 @@ describe('tmux-session edge cases', () => {
         it('each part is truncated to 50 chars independently', () => {
             const longName = 'a'.repeat(100);
             const result = sessionName(longName, longName);
-            // 'omg-team-' + 50 chars + '-' + 50 chars = 110 total
+            // 'omc-team-' + 50 chars + '-' + 50 chars = 110 total
             expect(result.length).toBe(110);
-            expect(result).toBe(`omg-team-${'a'.repeat(50)}-${'a'.repeat(50)}`);
+            expect(result).toBe(`omc-team-${'a'.repeat(50)}-${'a'.repeat(50)}`);
         });
     });
     describe('sanitizeName preserves case', () => {
