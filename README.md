@@ -97,24 +97,24 @@ When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto
 
 Optional shortcuts for power users. Natural language works fine without them.
 
-| Keyword                | Effect                                  | Example                                        |
-| ---------------------- | --------------------------------------- | ---------------------------------------------- |
-| `team`                 | Canonical Team orchestration            | `/team 3:executor "fix all TypeScript errors"` |
-| `omc team`             | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"`           |
-| `ccg`                  | ask-codex + ask-gemini synthesis        | `/ccg review this PR`                          |
-| `autopilot`            | Full autonomous execution               | `autopilot: build a todo app`                  |
-| `ralph`                | Persistence mode                        | `ralph: refactor auth`                         |
-| `ulw`                  | Maximum parallelism                     | `ulw fix all errors`                           |
-| `ralplan`              | Iterative planning consensus            | `ralplan this feature`                         |
-| `experiment`           | Hypothesis-driven experiment loop       | `experiment: optimize API latency`             |
-| `deep-interview`       | Socratic requirements clarification     | `deep-interview "vague idea"`                  |
-| `deep-review`          | Multi-pass code review (4 passes)       | `/deep-review` or `--deep` on code-reviewer    |
-| `discover`             | Parallel codebase quality scan          | `/discover src/hooks/`                         |
-| `deepsearch`           | Codebase-focused search routing         | `deepsearch for auth middleware`               |
-| `ultrathink`           | Deep reasoning mode                     | `ultrathink about this architecture`           |
-| `ado triage`           | Azure DevOps work item triage           | `ado triage`                                   |
-| `ado setup`            | Configure Azure DevOps integration      | `ado setup`                                    |
-| `cancelomc`, `stopomc` | Stop active OMC modes                   | `stopomc`                                      |
+| Keyword                | Effect                                  | Example                                     |
+| ---------------------- | --------------------------------------- | ------------------------------------------- |
+| `team`                 | Canonical Team orchestration            | `team 3:executor "fix all TypeScript errors"` |
+| `omc team`             | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"`        |
+| `ccg`                  | ask-codex + ask-gemini synthesis        | `ccg review this PR`                        |
+| `autopilot`            | Full autonomous execution               | `autopilot: build a todo app`               |
+| `ralph`                | Persistence mode                        | `ralph: refactor auth`                      |
+| `ulw`                  | Maximum parallelism                     | `ulw fix all errors`                        |
+| `ralplan`              | Iterative planning consensus            | `ralplan this feature`                      |
+| `experiment`           | Hypothesis-driven experiment loop       | `experiment: optimize API latency`          |
+| `deep-interview`       | Socratic requirements clarification     | `deep-interview "vague idea"`               |
+| `deep-review`          | Multi-pass code review (4 passes)       | `deep-review this PR`                       |
+| `discover`             | Parallel codebase quality scan          | `discover src/hooks/`                       |
+| `deepsearch`           | Codebase-focused search routing         | `deepsearch for auth middleware`            |
+| `ultrathink`           | Deep reasoning mode                     | `ultrathink about this architecture`        |
+| `ado triage`           | Azure DevOps work item triage           | `ado triage`                                |
+| `ado setup`            | Configure Azure DevOps integration      | `ado setup`                                 |
+| `cancelomc`, `stopomc` | Stop active OMC modes                   | `stopomc`                                   |
 
 **Notes:**
 
