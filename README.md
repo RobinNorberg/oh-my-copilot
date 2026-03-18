@@ -104,6 +104,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ralph`                | Persistence mode                        | `ralph: refactor auth`                         |
 | `ulw`                  | Maximum parallelism                     | `ulw fix all errors`                           |
 | `ralplan`              | Iterative planning consensus            | `ralplan this feature`                         |
+| `experiment`           | Hypothesis-driven experiment loop       | `experiment: optimize API latency`             |
 | `deep-interview`       | Socratic requirements clarification     | `deep-interview "vague idea"`                  |
 | `deepsearch`           | Codebase-focused search routing         | `deepsearch for auth middleware`               |
 | `ultrathink`           | Deep reasoning mode                     | `ultrathink about this architecture`           |
