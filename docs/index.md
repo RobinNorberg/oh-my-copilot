@@ -22,7 +22,6 @@
 - [Hooks](reference/hooks.md)
 - [State Management](reference/state-management.md)
 - [Compatibility](reference/compatibility.md)
-- [Features](reference/features.md)
 
 ## Architecture
 
@@ -39,6 +38,5 @@
 
 ## Other
 
-- [CJK IME Known Issues](CJK-IME-KNOWN-ISSUES.md)
 - [Design Documents](design/)
 - [Agent Templates](agent-templates/)
