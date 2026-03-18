@@ -97,24 +97,24 @@ When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto
 
 Optional shortcuts for power users. Natural language works fine without them.
 
-| Keyword                | Effect                                  | Example                                     |
-| ---------------------- | --------------------------------------- | ------------------------------------------- |
-| `team`                 | Canonical Team orchestration            | `team 3:executor "fix all TypeScript errors"` |
-| `omc team`             | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"`        |
-| `ccg`                  | ask-codex + ask-gemini synthesis        | `ccg review this PR`                        |
-| `autopilot`            | Full autonomous execution               | `autopilot: build a todo app`               |
-| `ralph`                | Persistence mode                        | `ralph: refactor auth`                      |
-| `ulw`                  | Maximum parallelism                     | `ulw fix all errors`                        |
-| `ralplan`              | Iterative planning consensus            | `ralplan this feature`                      |
-| `experiment`           | Hypothesis-driven experiment loop       | `experiment: optimize API latency`          |
-| `deep-interview`       | Socratic requirements clarification     | `deep-interview "vague idea"`               |
-| `deep-review`          | Multi-pass code review (4 passes)       | `deep-review this PR`                       |
-| `discover`             | Parallel codebase quality scan          | `discover src/hooks/`                       |
-| `deepsearch`           | Codebase-focused search routing         | `deepsearch for auth middleware`            |
-| `ultrathink`           | Deep reasoning mode                     | `ultrathink about this architecture`        |
-| `ado triage`           | Azure DevOps work item triage           | `ado triage`                                |
-| `ado setup`            | Configure Azure DevOps integration      | `ado setup`                                 |
-| `cancelomc`, `stopomc` | Stop active OMC modes                   | `stopomc`                                   |
+| Keyword | Category | Effect | Example |
+| ------- | -------- | ------ | ------- |
+| `team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Canonical Team orchestration | `team 3:executor "fix all TypeScript errors"` |
+| `omc team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"` |
+| `ccg` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `ccg review this PR` |
+| `autopilot` | ![execution](https://img.shields.io/badge/execution-green) | Full autonomous execution | `autopilot: build a todo app` |
+| `ralph` | ![execution](https://img.shields.io/badge/execution-green) | Persistence mode | `ralph: refactor auth` |
+| `ulw` | ![execution](https://img.shields.io/badge/execution-green) | Maximum parallelism | `ulw fix all errors` |
+| `ralplan` | ![planning](https://img.shields.io/badge/planning-orange) | Iterative planning consensus | `ralplan this feature` |
+| `experiment` | ![planning](https://img.shields.io/badge/planning-orange) | Hypothesis-driven experiment loop | `experiment: optimize API latency` |
+| `deep-interview` | ![analysis](https://img.shields.io/badge/analysis-purple) | Socratic requirements clarification | `deep-interview "vague idea"` |
+| `deep-review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Multi-pass code review (4 passes) | `deep-review this PR` |
+| `discover` | ![analysis](https://img.shields.io/badge/analysis-purple) | Parallel codebase quality scan | `discover src/hooks/` |
+| `deepsearch` | ![analysis](https://img.shields.io/badge/analysis-purple) | Codebase-focused search routing | `deepsearch for auth middleware` |
+| `ultrathink` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep reasoning mode | `ultrathink about this architecture` |
+| `ado triage` | ![devops](https://img.shields.io/badge/devops-gray) | Azure DevOps work item triage | `ado triage` |
+| `ado setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure Azure DevOps integration | `ado setup` |
+| `cancelomc`, `stopomc` | ![control](https://img.shields.io/badge/control-gray) | Stop active OMC modes | `stopomc` |
 
 **Notes:**
 
