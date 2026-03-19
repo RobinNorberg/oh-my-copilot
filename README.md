@@ -102,16 +102,23 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Canonical Team orchestration | `team 3:executor "fix all TypeScript errors"` |
 | `omc team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"` |
 | `ccg` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `ccg review this PR` |
+| `ask claude` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Claude Code CLI | `ask claude "review auth architecture"` |
+| `ask codex` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Codex CLI | `ask codex "security analysis"` |
+| `ask gemini` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Gemini CLI | `ask gemini "suggest UX improvements"` |
 | `autopilot` | ![execution](https://img.shields.io/badge/execution-green) | Full autonomous execution | `autopilot: build a todo app` |
 | `ralph` | ![execution](https://img.shields.io/badge/execution-green) | Persistence mode | `ralph: refactor auth` |
 | `ulw` | ![execution](https://img.shields.io/badge/execution-green) | Maximum parallelism | `ulw fix all errors` |
-| `ralplan` | ![planning](https://img.shields.io/badge/planning-orange) | Iterative planning consensus | `ralplan this feature` |
 | `experiment` | ![execution](https://img.shields.io/badge/execution-green) | Hypothesis-driven experiment loop | `experiment: optimize API latency` |
 | `deep-interview` | ![analysis](https://img.shields.io/badge/analysis-purple) | Socratic requirements clarification | `deep-interview "vague idea"` |
 | `deep-review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Multi-pass code review (4 passes) | `deep-review this PR` |
 | `discover` | ![analysis](https://img.shields.io/badge/analysis-purple) | Parallel codebase quality scan | `discover src/hooks/` |
 | `deepsearch` | ![analysis](https://img.shields.io/badge/analysis-purple) | Codebase-focused search routing | `deepsearch for auth middleware` |
+| `deep-analyze` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep analysis mode | `deep-analyze why tests are failing` |
 | `ultrathink` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep reasoning mode | `ultrathink about this architecture` |
+| `tdd`, `test first` | ![analysis](https://img.shields.io/badge/analysis-purple) | TDD workflow enforcement | `tdd: implement password validation` |
+| `code review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Code review mode | `code review the auth module` |
+| `security review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Security review mode | `security review the API endpoints` |
+| `ralplan` | ![planning](https://img.shields.io/badge/planning-orange) | Iterative planning consensus | `ralplan this feature` |
 | `ado triage` | ![devops](https://img.shields.io/badge/devops-gray) | Azure DevOps work item triage | `ado triage` |
 | `ado setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure Azure DevOps integration | `ado setup` |
 | `cancelomc`, `stopomc` | ![control](https://img.shields.io/badge/control-gray) | Stop active OMC modes | `stopomc` |

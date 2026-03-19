@@ -1,11 +1,11 @@
 ---
 name: ask
-description: Ask Copilot, Codex, or Gemini via local CLI and capture a reusable artifact
+description: Ask Claude, Codex, or Gemini via local CLI and capture a reusable artifact
 ---
 
 # Ask
 
-Use OMC's canonical advisor skill to route a prompt through the local Copilot, Codex, or Gemini CLI and persist the result as an ask artifact.
+Use OMC's canonical advisor skill to route a prompt through the local Claude, Codex, or Gemini CLI and persist the result as an ask artifact.
 
 ## Usage
 
