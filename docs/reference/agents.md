@@ -1,5 +1,4 @@
 <!-- Parent: ../AGENTS.md -->
-<!-- Generated: 2026-01-31 | Updated: 2026-02-24 -->
 
 # docs
 
@@ -10,7 +9,7 @@ User documentation and technical guides for oh-my-copilot.
 This directory contains documentation for end-users and developers:
 
 - **End-user guides**: How to use oh-my-copilot features
-- **Technical reference**: Architecture, compatibility, migration
+- **Technical reference**: Architecture, compatibility
 - **Design documents**: Feature design specifications
 
 ## Structure
@@ -24,7 +23,6 @@ This directory contains documentation for end-users and developers:
 | `guides/` | Task-oriented guides (team mode, Azure DevOps, skills, etc.) |
 | `reference/` | Reference docs (agents, CLI, hooks, state, compatibility, features) |
 | `architecture/` | System architecture deep-dives |
-| `migration/` | Version migration and breaking changes |
 | `design/` | Feature design specifications |
 | `agent-templates/` | Reusable agent prompt templates |
 | `shared/` | Shared content referenced by skills |
@@ -48,7 +46,6 @@ This directory contains documentation for end-users and developers:
 | Agent tool assignments change | `copilot-instructions.md` (Agent Tool Matrix) |
 | Skill composition or architecture changes | `architecture/overview.md` |
 | New internal API or feature | `reference/features.md` |
-| Breaking changes or migrations | `migration/breaking-changes.md` |
 | Tiered agent design updates | `architecture/tiered-agents.md` |
 | Platform or version support changes | `reference/compatibility.md` |
 | End-user instructions change | `copilot-instructions.md` |
@@ -66,18 +63,7 @@ This directory contains documentation for end-users and developers:
 
 Use raw GitHub URLs for external accessibility:
 
-[Migration Guide](https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/migration/breaking-changes.md)
-
-#### Version References
-
-Use consistent version heading format with blank line after heading:
-
-```markdown
-## v3.8.17 Changes
-
-- Feature A
-- Feature B
-```
+[Full Reference](https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/REFERENCE.md)
 
 ## Dependencies
 

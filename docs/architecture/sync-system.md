@@ -159,7 +159,7 @@ npm run sync-metadata
 
 # 3. Commit everything together
 git add .
-git commit -m "chore: release v3.5.0"
+git commit -m "chore: release"
 ```
 
 ### Automated Workflow (Recommended)
@@ -463,49 +463,6 @@ Document complex regex:
 After any change to package.json:
 ```bash
 npm run sync-metadata -- --verify
-```
-
-## Migration Guide
-
-If you're adding this to an existing project:
-
-### Step 1: Audit Current State
-
-Find all hardcoded versions:
-```bash
-grep -r "3\.4\.0" docs/ README.md .github/
-```
-
-### Step 2: Standardize Format
-
-Choose consistent badge format:
-```markdown
-[![Version](https://img.shields.io/badge/version-3.4.0-ff6b6b)]
-```
-
-Update all instances manually.
-
-### Step 3: Run Initial Sync
-
-```bash
-npm run sync-metadata
-```
-
-Should report "All files are already in sync".
-
-### Step 4: Add to Workflow
-
-Add npm script, pre-commit hook, CI verification.
-
-### Step 5: Document for Team
-
-Update CONTRIBUTING.md:
-```markdown
-## Releasing
-
-1. Bump version: `npm version patch`
-2. Sync metadata: `npm run sync-metadata`
-3. Commit and tag
 ```
 
 ## Future Enhancements

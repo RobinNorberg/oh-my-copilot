@@ -32,10 +32,6 @@
 - [Sync System](architecture/sync-system.md)
 - [Tiered Agents](architecture/tiered-agents.md)
 
-## Migration
-
-- [Breaking Changes](migration/breaking-changes.md)
-
 ## Other
 
 - [Design Documents](design/)

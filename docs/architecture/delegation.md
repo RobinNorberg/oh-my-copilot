@@ -263,14 +263,6 @@ npx tsx examples/delegation-enforcer-demo.ts
 4. **Transparency**: Debug mode shows when models are injected
 5. **Zero Config**: Works automatically with existing agent definitions
 
-## Migration
-
-No migration needed! The enforcer is backward compatible:
-
-- Existing code with explicit models continues working
-- New code can omit model parameter
-- No breaking changes
-
 ## Related
 
 - [Agent Definitions](./AGENTS.md) - Complete agent reference
