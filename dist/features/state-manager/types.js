@@ -25,6 +25,5 @@ export function isStateLocation(value) {
  */
 export const DEFAULT_STATE_CONFIG = {
     createDirs: true,
-    checkLegacy: true
 };
 //# sourceMappingURL=types.js.map

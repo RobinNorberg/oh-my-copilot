@@ -8,9 +8,10 @@ import type { AutopilotStateForHud } from './elements/autopilot.js';
 import type { ApiKeySource } from './elements/api-key-source.js';
 import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
 import { DEFAULT_MISSION_BOARD_CONFIG } from './mission-board.js';
+import type { SessionSummaryState } from './elements/session-summary.js';
 
 // Re-export for convenience
-export type { AutopilotStateForHud, ApiKeySource };
+export type { AutopilotStateForHud, ApiKeySource, SessionSummaryState };
 
 // ============================================================================
 // HUD State
@@ -344,6 +345,9 @@ export interface HudRenderContext {
 
   /** Active profile name (derived from COPILOT_CONFIG_DIR), null if default */
   profileName: string | null;
+
+  /** Session summary state (AI-generated brief summary) */
+  sessionSummary: SessionSummaryState | null;
 }
 
 // ============================================================================
@@ -425,6 +429,7 @@ export interface HudElementConfig {
   showCallCounts?: boolean;   // Show tool/agent/skill call counts on the right of the status line (default: true)
   maxOutputLines: number;     // Max total output lines to prevent input field shrinkage
   safeMode: boolean;          // Strip ANSI codes and use ASCII-only output to prevent terminal rendering corruption (Issue #346)
+  sessionSummary: boolean;    // Show AI-generated session summary
 }
 
 export interface HudThresholds {
@@ -501,6 +506,7 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     showCallCounts: true,  // Show tool/agent/skill call counts by default (Issue #710)
     maxOutputLines: 4,
     safeMode: true,  // Enabled by default to prevent terminal rendering corruption (Issue #346)
+    sessionSummary: false,
   },
   thresholds: {
     contextWarning: 70,
@@ -552,6 +558,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showCallCounts: false,
     maxOutputLines: 2,
     safeMode: true,
+    sessionSummary: false,
   },
   focused: {
     cwd: false,
@@ -586,6 +593,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showCallCounts: true,
     maxOutputLines: 4,
     safeMode: true,
+    sessionSummary: false,
   },
   full: {
     cwd: false,
@@ -620,6 +628,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showCallCounts: true,
     maxOutputLines: 12,
     safeMode: true,
+    sessionSummary: false,
   },
   opencode: {
     cwd: false,
@@ -654,6 +663,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showCallCounts: true,
     maxOutputLines: 4,
     safeMode: true,
+    sessionSummary: false,
   },
   dense: {
     cwd: false,
@@ -688,5 +698,6 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showCallCounts: true,
     maxOutputLines: 6,
     safeMode: true,
+    sessionSummary: false,
   },
 };

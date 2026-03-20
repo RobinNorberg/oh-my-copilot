@@ -22,6 +22,8 @@ export interface UltraworkState {
     last_checked_at: string;
     /** Whether this ultrawork session is linked to a ralph-loop session */
     linked_to_ralph?: boolean;
+    /** Stagger delay in ms between parallel agent launches (default: 1000) */
+    stagger_delay_ms?: number;
 }
 /**
  * Read Ultrawork state from disk (local only)

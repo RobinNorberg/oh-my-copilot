@@ -37,10 +37,9 @@ describe('Tier-0 contract docs consistency', () => {
     it('keeps ralplan documented as a keyword trigger', () => {
         expect(claudeDoc).toContain('"ralplan"→ralplan');
     });
-    it('keeps deprecated compatibility aliases documented for project session manager', () => {
-        // swarm alias removed in #1131
+    it('keeps project-session-manager documented', () => {
+        // swarm alias removed in #1131, psm alias removed in Phase 4 cleanup
         expect(referenceDoc).toContain('project-session-manager');
-        expect(referenceDoc).toContain('`psm` | **Deprecated** compatibility alias for `project-session-manager`');
     });
     it('does not document removed wrapper slash commands as installed skills', () => {
         expect(referenceDoc).not.toContain('/oh-my-copilot:analyze <target>');

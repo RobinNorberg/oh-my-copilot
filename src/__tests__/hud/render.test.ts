@@ -198,6 +198,7 @@ describe('gitInfoPosition configuration', () => {
     promptTime: null,
     apiKeySource: null,
     profileName: null,
+    sessionSummary: null,
   });
 
   const createMockConfig = (gitInfoPosition: 'above' | 'below'): HudConfig => ({
@@ -381,6 +382,7 @@ describe('maxWidth wrapMode behavior', () => {
     promptTime: null,
     apiKeySource: null,
     profileName: null,
+    sessionSummary: null,
   });
 
   const createWrapConfig = (

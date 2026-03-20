@@ -1,5 +1,6 @@
 import { spawnSync } from 'child_process';
 import { isAbsolute, normalize, win32 as win32Path } from 'path';
+import { isProviderSpecificModelId } from '../config/models.js';
 import { validateTeamName } from './team-name.js';
 
 export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini';
@@ -389,4 +390,12 @@ export function getPromptModeArgs(agentType: CliAgentType, instruction: string):
     return [contract.promptModeFlag, instruction];
   }
   return [instruction];
+}
+
+export function resolveClaudeWorkerModel(): string | undefined {
+  const explicitModel = process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL;
+  if (explicitModel && isProviderSpecificModelId(explicitModel)) {
+    return explicitModel;
+  }
+  return undefined;
 }

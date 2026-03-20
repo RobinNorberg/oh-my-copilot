@@ -206,6 +206,33 @@ export function isVertexAI(): boolean {
 }
 
 /**
+ * Check whether a model ID string is a provider-specific identifier that
+ * should NOT be normalized to a bare alias (sonnet/opus/haiku).
+ *
+ * Provider-specific IDs include:
+ *   - Bedrock prefixed: us.anthropic.claude-*, global.anthropic.claude-*, anthropic.claude-*
+ *   - Bedrock ARN: arn:aws:bedrock:...
+ *   - Vertex AI: vertex_ai/...
+ *
+ * These IDs must be passed through to the CLI as-is because normalizing them
+ * would produce invalid model names on the target provider. (issue #1695)
+ */
+export function isProviderSpecificModelId(modelId: string): boolean {
+  return isBedrockModelId(modelId) || isVertexModelId(modelId);
+}
+
+/** Check if a model ID string matches Bedrock patterns */
+export function isBedrockModelId(modelId: string): boolean {
+  return /^(us\.|global\.|eu\.|ap\.)?anthropic\.claude-/.test(modelId)
+    || modelId.startsWith('arn:aws:bedrock:');
+}
+
+/** Check if a model ID string matches Vertex AI patterns */
+export function isVertexModelId(modelId: string): boolean {
+  return modelId.startsWith('vertex_ai/');
+}
+
+/**
  * Detect whether OMC should avoid passing Copilot-specific model tier
  * names (sonnet/opus/haiku) to the Agent tool.
  *

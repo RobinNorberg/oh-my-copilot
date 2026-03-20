@@ -6,7 +6,8 @@
 import type { AutopilotStateForHud } from './elements/autopilot.js';
 import type { ApiKeySource } from './elements/api-key-source.js';
 import type { MissionBoardConfig, MissionBoardState } from './mission-board.js';
-export type { AutopilotStateForHud, ApiKeySource };
+import type { SessionSummaryState } from './elements/session-summary.js';
+export type { AutopilotStateForHud, ApiKeySource, SessionSummaryState };
 export interface BackgroundTask {
     id: string;
     description: string;
@@ -259,6 +260,8 @@ export interface HudRenderContext {
     apiKeySource: ApiKeySource | null;
     /** Active profile name (derived from COPILOT_CONFIG_DIR), null if default */
     profileName: string | null;
+    /** Session summary state (AI-generated brief summary) */
+    sessionSummary: SessionSummaryState | null;
 }
 export type HudPreset = 'minimal' | 'focused' | 'full' | 'opencode' | 'dense';
 /**
@@ -330,6 +333,7 @@ export interface HudElementConfig {
     showCallCounts?: boolean;
     maxOutputLines: number;
     safeMode: boolean;
+    sessionSummary: boolean;
 }
 export interface HudThresholds {
     /** Context percentage that triggers warning color (default: 70) */

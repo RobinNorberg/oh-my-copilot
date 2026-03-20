@@ -25,8 +25,8 @@ import { readTeamConfig, readWorkerStatus, readWorkerHeartbeat, readMonitorSnaps
 import { appendTeamEvent, emitMonitorDerivedEvents } from './events.js';
 import { inferPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
-import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, } from './model-contract.js';
-import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, } from './tmux-session.js';
+import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, } from './model-contract.js';
+import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, resolveSplitPaneWorkerPaneIds, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
 // ---------------------------------------------------------------------------
@@ -161,7 +161,7 @@ async function spawnV2Worker(opts) {
                 || process.env.OMC_GEMINI_DEFAULT_MODEL
                 || undefined;
         }
-        return undefined;
+        return resolveClaudeWorkerModel();
     })();
     const [launchBinary, ...launchArgs] = buildWorkerArgv(opts.agentType, {
         teamName: opts.teamName,
@@ -773,9 +773,10 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
     // 4. Force kill remaining tmux panes
     try {
         const { killWorkerPanes, killTeamSession } = await import('./tmux-session.js');
-        const workerPaneIds = config.workers
+        const configPaneIds = config.workers
             .map((w) => w.pane_id)
             .filter((p) => typeof p === 'string' && p.trim().length > 0);
+        const workerPaneIds = await resolveSplitPaneWorkerPaneIds(config.tmux_session ?? '', configPaneIds, config.leader_pane_id ?? undefined);
         const ownsWindow = config.tmux_window_owned === true;
         await killWorkerPanes({
             paneIds: workerPaneIds,

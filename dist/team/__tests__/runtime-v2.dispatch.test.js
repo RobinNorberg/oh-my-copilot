@@ -20,6 +20,7 @@ vi.mock('../model-contract.js', () => ({
     getWorkerEnv: vi.fn(() => ({ OMC_TEAM_WORKER: 'dispatch-team/worker-1' })),
     isPromptModeAgent: vi.fn(() => false),
     getPromptModeArgs: vi.fn(() => []),
+    resolveClaudeWorkerModel: vi.fn(() => undefined),
 }));
 vi.mock('../tmux-session.js', () => ({
     createTeamSession: mocks.createTeamSession,

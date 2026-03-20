@@ -61,7 +61,7 @@ describe('Agent Registry Validation', () => {
     test('all registry agents are exported from index.ts', async () => {
         const registryAgents = Object.keys(getAgentDefinitions());
         const exports = await import('../agents/index.js');
-        const deprecatedAliases = ['researcher', 'tdd-guide'];
+        const deprecatedAliases = ['researcher'];
         for (const name of registryAgents) {
             if (deprecatedAliases.includes(name))
                 continue;

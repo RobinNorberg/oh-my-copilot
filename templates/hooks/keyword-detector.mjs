@@ -66,6 +66,48 @@ Write or update tests first when practical, confirm they fail for the right reas
 ---
 `;
 
+const SEARCH_MESSAGE = `<deepsearch-mode>
+[DEEPSEARCH MODE ACTIVATED]
+Conduct a thorough codebase search before responding:
+1. Search broadly first, then narrow to relevant areas
+2. Cross-reference findings across multiple files
+3. Synthesize a comprehensive answer from your search results
+</deepsearch-mode>
+
+---
+`;
+
+// Informational intent patterns — prompts that ask "what is X" or "how does X work"
+// should NOT trigger keyword-based skill invocations.
+const INFORMATIONAL_INTENT_PATTERNS = [
+  /\bwhat\s+is\b/i,
+  /\bwhat\s+are\b/i,
+  /\bhow\s+does\b/i,
+  /\bhow\s+do\b/i,
+  /\bexplain\b/i,
+  /\bdescribe\b/i,
+  /\btell\s+me\s+about\b/i,
+  /\bcan\s+you\s+explain\b/i,
+];
+
+/**
+ * Returns true when the prompt appears to be asking for information about a keyword
+ * rather than requesting that keyword's action be performed.
+ */
+function isInformationalKeywordContext(prompt) {
+  return INFORMATIONAL_INTENT_PATTERNS.some(p => p.test(prompt));
+}
+
+/**
+ * Check if a prompt contains an actionable keyword match.
+ * Skips detection when the surrounding context is purely informational.
+ */
+function hasActionableKeyword(prompt, pattern) {
+  if (!pattern.test(prompt)) return false;
+  if (isInformationalKeywordContext(prompt)) return false;
+  return true;
+}
+
 // Extract prompt from various JSON structures
 function extractPrompt(input) {
   try {
@@ -337,12 +379,12 @@ async function main() {
     }
 
     // Ralph keywords
-    if (/\b(ralph)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ralph)\b/i)) {
       matches.push({ name: 'ralph', args: '' });
     }
 
     // Autopilot keywords
-    if (/\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b/i)) {
       matches.push({ name: 'autopilot', args: '' });
     }
 
@@ -350,47 +392,47 @@ async function main() {
     // This prevents infinite spawning when Copilot workers receive prompts containing "team".
 
     // Ultrawork keywords
-    if (/\b(ultrawork|ulw)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ultrawork|ulw)\b/i)) {
       matches.push({ name: 'ultrawork', args: '' });
     }
 
 
     // CCG keywords (Copilot-Codex-Gemini tri-model orchestration)
-    if (/\b(ccg|copilot-clix-gemini)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ccg|copilot-clix-gemini)\b/i)) {
       matches.push({ name: 'ccg', args: '' });
     }
 
     // Ralplan keyword
-    if (/\b(ralplan)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ralplan)\b/i)) {
       matches.push({ name: 'ralplan', args: '' });
     }
 
     // Deep interview keywords
-    if (/\b(deep[\s-]interview|ouroboros)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(deep[\s-]interview|ouroboros)\b/i)) {
       matches.push({ name: 'deep-interview', args: '' });
     }
 
     // TDD keywords
-    if (/\b(tdd)\b/i.test(cleanPrompt) ||
-        /\btest\s+first\b/i.test(cleanPrompt) ||
-        /\bred\s+green\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(tdd)\b/i) ||
+        hasActionableKeyword(cleanPrompt, /\btest\s+first\b/i) ||
+        hasActionableKeyword(cleanPrompt, /\bred\s+green\b/i)) {
       matches.push({ name: 'tdd', args: '' });
     }
 
     // Ultrathink keywords
-    if (/\b(ultrathink)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ultrathink)\b/i)) {
       matches.push({ name: 'ultrathink', args: '' });
     }
 
     // Deepsearch keywords
-    if (/\b(deepsearch)\b/i.test(cleanPrompt) ||
-        /\bsearch\s+the\s+codebase\b/i.test(cleanPrompt) ||
-        /\bfind\s+in\s+(the\s+)?codebase\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(deepsearch)\b/i) ||
+        hasActionableKeyword(cleanPrompt, /\bsearch\s+the\s+codebase\b/i) ||
+        hasActionableKeyword(cleanPrompt, /\bfind\s+in\s+(the\s+)?codebase\b/i)) {
       matches.push({ name: 'deepsearch', args: '' });
     }
 
     // Analyze keywords
-    if (/\b(deep[\s-]?analyze|deepanalyze)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(deep[\s-]?analyze|deepanalyze)\b/i)) {
       matches.push({ name: 'analyze', args: '' });
     }
 
@@ -439,6 +481,7 @@ async function main() {
       ['ultrathink', ULTRATHINK_MESSAGE],
       ['analyze', ANALYZE_MESSAGE],
       ['tdd', TDD_MESSAGE],
+      ['deepsearch', SEARCH_MESSAGE],
     ]) {
       const index = resolved.findIndex(m => m.name === keywordName);
       if (index !== -1) {

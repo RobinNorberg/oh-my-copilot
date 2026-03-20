@@ -60,5 +60,6 @@ export declare function isPromptModeAgent(agentType: CliAgentType): boolean;
  * Returns empty array if the agent does not support prompt mode.
  */
 export declare function getPromptModeArgs(agentType: CliAgentType, instruction: string): string[];
+export declare function resolveClaudeWorkerModel(): string | undefined;
 export {};
 //# sourceMappingURL=model-contract.d.ts.map

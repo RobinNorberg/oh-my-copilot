@@ -27,12 +27,6 @@ export declare function canEscalate(currentTier: ComplexityTier): boolean;
  */
 export declare function getRoutingRecommendation(context: RoutingContext, config?: Partial<RoutingConfig>): RoutingDecision;
 /**
- * Legacy: Route with escalation support
- * @deprecated Use getRoutingRecommendation for proactive routing instead.
- * The orchestrator should analyze complexity upfront, not escalate reactively.
- */
-export declare function routeWithEscalation(context: RoutingContext, config?: Partial<RoutingConfig>): RoutingDecision;
-/**
  * Get routing explanation for debugging/logging
  */
 export declare function explainRouting(context: RoutingContext, config?: Partial<RoutingConfig>): string;

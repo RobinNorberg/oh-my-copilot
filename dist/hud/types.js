@@ -40,6 +40,7 @@ export const DEFAULT_HUD_CONFIG = {
         showCallCounts: true, // Show tool/agent/skill call counts by default (Issue #710)
         maxOutputLines: 4,
         safeMode: true, // Enabled by default to prevent terminal rendering corruption (Issue #346)
+        sessionSummary: false,
     },
     thresholds: {
         contextWarning: 70,
@@ -90,6 +91,7 @@ export const PRESET_CONFIGS = {
         showCallCounts: false,
         maxOutputLines: 2,
         safeMode: true,
+        sessionSummary: false,
     },
     focused: {
         cwd: false,
@@ -124,6 +126,7 @@ export const PRESET_CONFIGS = {
         showCallCounts: true,
         maxOutputLines: 4,
         safeMode: true,
+        sessionSummary: false,
     },
     full: {
         cwd: false,
@@ -158,6 +161,7 @@ export const PRESET_CONFIGS = {
         showCallCounts: true,
         maxOutputLines: 12,
         safeMode: true,
+        sessionSummary: false,
     },
     opencode: {
         cwd: false,
@@ -192,6 +196,7 @@ export const PRESET_CONFIGS = {
         showCallCounts: true,
         maxOutputLines: 4,
         safeMode: true,
+        sessionSummary: false,
     },
     dense: {
         cwd: false,
@@ -226,6 +231,7 @@ export const PRESET_CONFIGS = {
         showCallCounts: true,
         maxOutputLines: 6,
         safeMode: true,
+        sessionSummary: false,
     },
 };
 //# sourceMappingURL=types.js.map

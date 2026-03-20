@@ -16,6 +16,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync, mkdirS
 import { getCopilotConfigDir } from '../utils/paths.js';
 import { join, dirname } from 'path';
 import { execSync } from 'child_process';
+import { userInfo } from 'os';
 import { createHash } from 'crypto';
 import https from 'https';
 import { validateAnthropicBaseUrl } from '../utils/ssrf-guard.js';
@@ -308,38 +309,69 @@ function getKeychainServiceName(): string {
 }
 
 /**
- * Read OAuth credentials from macOS Keychain
+ * Read OAuth credentials from macOS Keychain, preferring the freshest (non-expired) entry.
  */
 function readKeychainCredentials(): OAuthCredentials | null {
   if (process.platform !== 'darwin') return null;
 
-  try {
-    const serviceName = getKeychainServiceName();
-    const result = execSync(
-      `/usr/bin/security find-generic-password -s "${serviceName}" -w 2>/dev/null`,
-      { encoding: 'utf-8', timeout: 2000 }
-    ).trim();
+  // Try current-user keychain entry first, then fall back to generic lookup
+  const serviceName = getKeychainServiceName();
+  const attempts: Array<() => string | null> = [
+    // Attempt 1: find by service name and current account
+    () => {
+      try {
+        const account = userInfo().username;
+        return execSync(
+          `/usr/bin/security find-generic-password -s "${serviceName}" -a "${account}" -w 2>/dev/null`,
+          { encoding: 'utf-8', timeout: 2000 }
+        ).trim() || null;
+      } catch { return null; }
+    },
+    // Attempt 2: find by service name only (original behavior)
+    () => {
+      try {
+        return execSync(
+          `/usr/bin/security find-generic-password -s "${serviceName}" -w 2>/dev/null`,
+          { encoding: 'utf-8', timeout: 2000 }
+        ).trim() || null;
+      } catch { return null; }
+    },
+  ];
 
-    if (!result) return null;
+  let freshest: OAuthCredentials | null = null;
 
-    const parsed = JSON.parse(result);
+  for (const attempt of attempts) {
+    const result = attempt();
+    if (!result) continue;
 
-    // Handle nested structure (claudeAiOauth wrapper)
-    const creds = parsed.claudeAiOauth || parsed;
+    try {
+      const parsed = JSON.parse(result);
+      // Handle nested structure (claudeAiOauth wrapper)
+      const creds = parsed.claudeAiOauth || parsed;
 
-    if (creds.accessToken) {
-      return {
-        accessToken: creds.accessToken,
-        expiresAt: creds.expiresAt,
-        refreshToken: creds.refreshToken,
-        source: 'keychain' as const,
-      };
+      if (creds.accessToken) {
+        const candidate: OAuthCredentials = {
+          accessToken: creds.accessToken,
+          expiresAt: creds.expiresAt,
+          refreshToken: creds.refreshToken,
+          source: 'keychain' as const,
+        };
+        // Prefer non-expired credentials; among those, prefer freshest expiresAt
+        if (!isCredentialExpired(candidate)) {
+          if (!freshest || (candidate.expiresAt ?? 0) > (freshest.expiresAt ?? 0)) {
+            freshest = candidate;
+          }
+        } else if (!freshest) {
+          // Keep expired as fallback if nothing better found
+          freshest = candidate;
+        }
+      }
+    } catch {
+      // JSON parse failed — skip
     }
-  } catch {
-    // Keychain access failed
   }
 
-  return null;
+  return freshest;
 }
 
 /**
@@ -384,17 +416,19 @@ function getCredentials(): OAuthCredentials | null {
 }
 
 /**
+ * Check if a credential entry is expired.
+ */
+function isCredentialExpired(creds: { accessToken?: string; expiresAt?: number }): boolean {
+  if (!creds.accessToken) return true;
+  if (creds.expiresAt != null && creds.expiresAt <= Date.now()) return true;
+  return false;
+}
+
+/**
  * Validate credentials are not expired
  */
 function validateCredentials(creds: OAuthCredentials): boolean {
-  if (!creds.accessToken) return false;
-
-  if (creds.expiresAt != null) {
-    const now = Date.now();
-    if (creds.expiresAt <= now) return false;
-  }
-
-  return true;
+  return !isCredentialExpired(creds);
 }
 
 /**

@@ -23,8 +23,6 @@ export interface StateConfig {
     location: StateLocation;
     /** Whether to create directories if they don't exist */
     createDirs?: boolean;
-    /** Whether to check legacy locations when reading */
-    checkLegacy?: boolean;
 }
 /**
  * Result of a state read operation

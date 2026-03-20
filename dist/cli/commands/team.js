@@ -103,10 +103,7 @@ function slugifyTask(task) {
 }
 function getTeamWorkerIdentityFromEnv(env = process.env) {
     const omg = typeof env.OMC_TEAM_WORKER === 'string' ? env.OMC_TEAM_WORKER.trim() : '';
-    if (omg)
-        return omg;
-    const omx = typeof env.OMX_TEAM_WORKER === 'string' ? env.OMX_TEAM_WORKER.trim() : '';
-    return omx || null;
+    return omg || null;
 }
 function assertTeamSpawnAllowed(env = process.env) {
     const workerIdentity = getTeamWorkerIdentityFromEnv(env);

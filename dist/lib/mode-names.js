@@ -14,15 +14,6 @@ export const MODE_NAMES = {
     ULTRAQA: 'ultraqa',
 };
 /**
- * Deprecated mode names removed in #1131 (pipeline unification).
- * Kept as constants for deprecation warnings and migration paths.
- */
-export const DEPRECATED_MODE_NAMES = {
-    ULTRAPILOT: 'ultrapilot',
-    SWARM: 'swarm',
-    PIPELINE: 'pipeline',
-};
-/**
  * All mode names as an array (useful for iteration).
  * Order matches the canonical ExecutionMode union in mode-registry/types.ts.
  */

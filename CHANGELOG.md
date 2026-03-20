@@ -2,6 +2,45 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [4.9.0-preview.1] - 2026-03-20
+
+### Added
+- **Autoresearch module** (`src/autoresearch/`): Thin-supervisor autoresearch with keep/discard/reset parity, guided interview flow, and Claude session setup
+- **Ralphthon module** (`src/ralphthon/`): Autonomous hackathon lifecycle mode with PRD-driven phases, tmux interaction, and idle detection
+- **Deep-dive skill**: 2-stage pipeline combining trace (causal investigation) with deep-interview (requirements crystallization) and 3-point injection
+- **Deepinit manifest tool** (`src/tools/deepinit-manifest.ts`): Manifest-based incremental deepinit for hierarchical AGENTS.md documentation
+- **HUD session summary element**: AI-generated session summary (<20 chars) displayed in HUD, opt-in via `sessionSummary: true`
+- **Skill resources guidance**: Bundled skill resources discovery and rendering for better skill context
+- **MCP standalone shutdown handler**: Parent-PID polling and signal-based shutdown for orphaned MCP servers
+- **CLI commands**: `omc autoresearch`, `omc ralphthon`, HUD watch loop extraction
+- **Deepsearch magic keyword**: Enhanced codebase search mode with parallel agent orchestration
+- **cmux multiplexer support**: Team sessions can now launch from cmux surfaces alongside tmux
+
+### Fixed
+- **Security: ReDoS guards** — `safe-regex` validation on user-supplied regex patterns in live-data deny/allow lists
+- **Informational keyword filtering** — Questions like "what is ralph?" no longer trigger execution modes (supports EN, KO, JA, ZH)
+- **Skill-state collision prevention** — OMC built-in skills no longer collide with project custom skills of the same name (#1581)
+- **Session-end fire-and-forget** — Notification and cleanup promises no longer block the SessionEnd hook timeout (#1700)
+- **Orchestrator idle allowance** — Orchestrators can go idle while delegated subagents are still running (#1721)
+- **Bridge/MCP child process cleanup** — Orphaned bridge and MCP child processes are cleaned up on shutdown (#1724)
+- **Bedrock/Vertex model passthrough** — Provider-specific model IDs passed as-is to team workers instead of normalizing to invalid aliases (#1695, #1415)
+- **Team split-pane cleanup** — Shutdown now discovers and removes split-pane workers after metadata drift (#1751)
+- **LSP singleton protection** — Process-global singleton prevents duplicate LSP client managers across module reloads
+- **LSP idle deadline management** — Per-client idle deadlines with configurable timeout via `OMC_LSP_IDLE_TIMEOUT_MS`
+- **Kotlin LSP update** — Updated to official JetBrains kotlin-lsp implementation (#1710)
+- **Task router fix** — `build-fix` intent now maps to `code-edit` capability instead of `testing`
+- **Marketplace clone protection** — Auto-update no longer runs destructive resets on marketplace clones (#1755)
+- **Legacy state cleanup consolidation** — Unified ghost-legacy cleanup across multiple candidate paths
+- **Project memory preservation** — customNotes and userDirectives preserved when re-detecting project environment (#1689)
+- **Print mode tmux bypass** — `--print`/`-p` flag bypasses tmux wrapping so stdout flows to parent process (#1666, #1685)
+- **Orphaned tmux session cleanup** — Failed tmux attach now kills the orphaned detached session
+- **Keychain credential freshness** — HUD prefers the freshest non-expired Keychain entry when multiple exist (#1684)
+
+### Changed
+- Agent tool model parameter denial extended to cover both Task and Agent tools on Bedrock/Vertex (#1415)
+- Learner now scans `.agents/skills/` directory alongside `.claude/skills/` for skill discovery
+- Bridge manager tracks owned sessions and passes `OMC_PARENT_PID` env var for orphan detection
+
 ## [4.8.2-preview.4] - 2026-03-18
 
 ### Added

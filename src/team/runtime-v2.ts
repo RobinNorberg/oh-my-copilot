@@ -53,10 +53,11 @@ import type { CliAgentType } from './model-contract.js';
 import {
   buildWorkerArgv, resolveValidatedBinaryPath,
   getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs,
+  resolveClaudeWorkerModel,
 } from './model-contract.js';
 import {
   createTeamSession, spawnWorkerInPane, sendToWorker,
-  waitForPaneReady, type WorkerPaneConfig,
+  waitForPaneReady, resolveSplitPaneWorkerPaneIds, type WorkerPaneConfig,
 } from './tmux-session.js';
 import {
   composeInitialInbox,
@@ -335,7 +336,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
         || process.env.OMC_GEMINI_DEFAULT_MODEL
         || undefined;
     }
-    return undefined;
+    return resolveClaudeWorkerModel();
   })();
 
   const [launchBinary, ...launchArgs] = buildWorkerArgv(opts.agentType, {
@@ -1033,9 +1034,14 @@ export async function shutdownTeamV2(
   // 4. Force kill remaining tmux panes
   try {
     const { killWorkerPanes, killTeamSession } = await import('./tmux-session.js');
-    const workerPaneIds = config.workers
+    const configPaneIds = config.workers
       .map((w) => w.pane_id)
       .filter((p): p is string => typeof p === 'string' && p.trim().length > 0);
+    const workerPaneIds = await resolveSplitPaneWorkerPaneIds(
+      config.tmux_session ?? '',
+      configPaneIds,
+      config.leader_pane_id ?? undefined,
+    );
     const ownsWindow = config.tmux_window_owned === true;
     await killWorkerPanes({
       paneIds: workerPaneIds,

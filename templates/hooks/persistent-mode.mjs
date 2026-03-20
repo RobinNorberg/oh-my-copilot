@@ -350,6 +350,21 @@ function readStateFileWithSession(stateDir, globalStateDir, filename, sessionId)
 }
 
 /**
+ * Get the count of active subagents from subagent-tracking.json.
+ * Returns 0 if the file doesn't exist or can't be read.
+ */
+function getActiveSubagentCount(stateDir) {
+  const trackingPath = join(stateDir, 'subagent-tracking.json');
+  try {
+    const data = readJsonFile(trackingPath);
+    if (!data || !Array.isArray(data.agents)) return 0;
+    return data.agents.filter(a => a.status === 'running' || a.status === 'active').length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Count incomplete Tasks from Copilot CLI's native Task system.
  */
 function countIncompleteTasks(sessionId) {
@@ -621,6 +636,14 @@ async function main() {
 
     // Check if cancel is in progress - if so, allow stop immediately
     if (isSessionCancelInProgress(stateDir, sessionId)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    // If active subagents are running, allow the stop so the orchestrator can coordinate.
+    // Blocking here would cause the orchestrator to deadlock while waiting for subagents.
+    const activeSubagents = getActiveSubagentCount(stateDir);
+    if (activeSubagents > 0) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }

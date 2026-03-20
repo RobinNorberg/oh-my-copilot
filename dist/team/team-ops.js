@@ -32,15 +32,6 @@ function canonicalTaskFilePath(teamName, taskId, cwd) {
     const normalizedTaskId = normalizeTaskId(taskId);
     return join(absPath(cwd, TeamPaths.tasks(teamName)), `task-${normalizedTaskId}.json`);
 }
-function legacyTaskFilePath(teamName, taskId, cwd) {
-    const normalizedTaskId = normalizeTaskId(taskId);
-    return join(absPath(cwd, TeamPaths.tasks(teamName)), `${normalizedTaskId}.json`);
-}
-function taskFileCandidates(teamName, taskId, cwd) {
-    const canonical = canonicalTaskFilePath(teamName, taskId, cwd);
-    const legacy = legacyTaskFilePath(teamName, taskId, cwd);
-    return canonical === legacy ? [canonical] : [canonical, legacy];
-}
 async function writeAtomic(path, data) {
     const tmp = `${path}.${process.pid}.tmp`;
     await mkdir(dirname(path), { recursive: true });
@@ -215,13 +206,11 @@ export async function teamCreateTask(teamName, task, cwd) {
     return created;
 }
 export async function teamReadTask(teamName, taskId, cwd) {
-    for (const candidate of taskFileCandidates(teamName, taskId, cwd)) {
-        const task = await readJsonSafe(candidate);
-        if (!task || !isTeamTask(task))
-            continue;
-        return normalizeTask(task);
-    }
-    return null;
+    const filePath = canonicalTaskFilePath(teamName, taskId, cwd);
+    const task = await readJsonSafe(filePath);
+    if (!task || !isTeamTask(task))
+        return null;
+    return normalizeTask(task);
 }
 export async function teamListTasks(teamName, cwd) {
     return listTasksImpl(teamName, cwd, {
@@ -291,72 +280,13 @@ export async function teamReleaseTaskClaim(teamName, taskId, claimToken, workerN
 // ---------------------------------------------------------------------------
 // Messaging
 // ---------------------------------------------------------------------------
-function normalizeLegacyMailboxMessage(raw) {
-    if (raw.type === 'notified')
-        return null;
-    const messageId = typeof raw.message_id === 'string' && raw.message_id.trim() !== ''
-        ? raw.message_id
-        : (typeof raw.id === 'string' && raw.id.trim() !== '' ? raw.id : '');
-    const fromWorker = typeof raw.from_worker === 'string' && raw.from_worker.trim() !== ''
-        ? raw.from_worker
-        : (typeof raw.from === 'string' ? raw.from : '');
-    const toWorker = typeof raw.to_worker === 'string' && raw.to_worker.trim() !== ''
-        ? raw.to_worker
-        : (typeof raw.to === 'string' ? raw.to : '');
-    const body = typeof raw.body === 'string' ? raw.body : '';
-    const createdAt = typeof raw.created_at === 'string' && raw.created_at.trim() !== ''
-        ? raw.created_at
-        : (typeof raw.createdAt === 'string' ? raw.createdAt : '');
-    if (!messageId || !fromWorker || !toWorker || !body || !createdAt)
-        return null;
-    return {
-        message_id: messageId,
-        from_worker: fromWorker,
-        to_worker: toWorker,
-        body,
-        created_at: createdAt,
-        ...(typeof raw.notified_at === 'string' ? { notified_at: raw.notified_at } : {}),
-        ...(typeof raw.notifiedAt === 'string' ? { notified_at: raw.notifiedAt } : {}),
-        ...(typeof raw.delivered_at === 'string' ? { delivered_at: raw.delivered_at } : {}),
-        ...(typeof raw.deliveredAt === 'string' ? { delivered_at: raw.deliveredAt } : {}),
-    };
-}
-async function readLegacyMailboxJsonl(teamName, workerName, cwd) {
-    const legacyPath = absPath(cwd, TeamPaths.mailbox(teamName, workerName).replace(/\.json$/i, '.jsonl'));
-    if (!existsSync(legacyPath))
-        return { worker: workerName, messages: [] };
-    try {
-        const raw = await readFile(legacyPath, 'utf8');
-        const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
-        const byMessageId = new Map();
-        for (const line of lines) {
-            let parsed;
-            try {
-                parsed = JSON.parse(line);
-            }
-            catch {
-                continue;
-            }
-            if (!parsed || typeof parsed !== 'object')
-                continue;
-            const normalized = normalizeLegacyMailboxMessage(parsed);
-            if (!normalized)
-                continue;
-            byMessageId.set(normalized.message_id, normalized);
-        }
-        return { worker: workerName, messages: [...byMessageId.values()] };
-    }
-    catch {
-        return { worker: workerName, messages: [] };
-    }
-}
 async function readMailbox(teamName, workerName, cwd) {
     const p = absPath(cwd, TeamPaths.mailbox(teamName, workerName));
     const mailbox = await readJsonSafe(p);
     if (mailbox && Array.isArray(mailbox.messages)) {
         return { worker: workerName, messages: mailbox.messages };
     }
-    return readLegacyMailboxJsonl(teamName, workerName, cwd);
+    return { worker: workerName, messages: [] };
 }
 async function writeMailbox(teamName, workerName, mailbox, cwd) {
     const p = absPath(cwd, TeamPaths.mailbox(teamName, workerName));

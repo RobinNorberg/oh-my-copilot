@@ -2,11 +2,11 @@ import { mkdir, writeFile, readFile, rm, rename } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
 import type { CliAgentType } from './model-contract.js';
-import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs } from './model-contract.js';
+import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
 import {
   createTeamSession, spawnWorkerInPane, sendToWorker,
-  isWorkerAlive, killTeamSession, waitForPaneReady,
+  isWorkerAlive, killTeamSession, waitForPaneReady, resolveSplitPaneWorkerPaneIds,
   type TeamSession, type WorkerPaneConfig,
 } from './tmux-session.js';
 import {
@@ -739,7 +739,7 @@ export async function spawnWorkerForTask(
         || process.env.OMC_GEMINI_DEFAULT_MODEL
         || undefined;
     }
-    return undefined;
+    return resolveClaudeWorkerModel();
   })();
 
   const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
@@ -959,7 +959,12 @@ export async function shutdownTeam(
   const sessionMode = (ownsWindow ?? Boolean(configData?.tmuxOwnsWindow))
     ? (sessionName.includes(':') ? 'dedicated-window' : 'detached-session')
     : 'split-pane';
-  await killTeamSession(sessionName, workerPaneIds, leaderPaneId, { sessionMode });
+  const resolvedWorkerPaneIds = await resolveSplitPaneWorkerPaneIds(
+    sessionName,
+    workerPaneIds ?? [],
+    leaderPaneId,
+  );
+  await killTeamSession(sessionName, resolvedWorkerPaneIds, leaderPaneId, { sessionMode });
 
   // Clean up team worktrees (best-effort before state directory removal)
   try {

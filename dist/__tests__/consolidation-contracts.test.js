@@ -58,7 +58,6 @@ describe('Consolidation contracts', () => {
             expect(agents['test-engineer']).toBeDefined();
             expect(agents['document-specialist']).toBeDefined();
             expect(agents['researcher']).toBeUndefined();
-            expect(agents['tdd-guide']).toBeUndefined();
             // Agent consolidation: absorbed agents removed from registry
             expect(agents['quality-reviewer']).toBeUndefined();
             expect(agents['deep-executor']).toBeUndefined();
@@ -72,13 +71,9 @@ describe('Consolidation contracts', () => {
         });
         it('normalizes deprecated agent aliases in delegation routing', () => {
             const researcherRoute = resolveDelegation({ agentRole: 'researcher' });
-            const tddGuideRoute = resolveDelegation({ agentRole: 'tdd-guide' });
             expect(researcherRoute.provider).toBe('claude');
             expect(researcherRoute.tool).toBe('Task');
             expect(researcherRoute.agentOrModel).toBe('document-specialist');
-            expect(tddGuideRoute.provider).toBe('claude');
-            expect(tddGuideRoute.tool).toBe('Task');
-            expect(tddGuideRoute.agentOrModel).toBe('test-engineer');
         });
         it('normalizes consolidated agent aliases in delegation routing', () => {
             const qualityReviewerRoute = resolveDelegation({ agentRole: 'quality-reviewer' });

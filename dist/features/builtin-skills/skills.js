@@ -12,6 +12,7 @@ import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { parseFrontmatter, parseFrontmatterAliases } from '../../utils/frontmatter.js';
+import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
 // Get the project root directory (go up from src/features/builtin-skills/)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -60,6 +61,11 @@ function loadSkillFromFile(skillPath, skillName) {
             if (seen.has(key))
                 continue;
             seen.add(key);
+            const resourcesGuidance = renderSkillResourcesGuidance(skillPath);
+            const templateParts = [body.trim()];
+            if (resourcesGuidance) {
+                templateParts.push('\n\n---\n' + resourcesGuidance);
+            }
             skillEntries.push({
                 name,
                 aliases: name === safePrimaryName ? safeAliases : undefined,
@@ -69,7 +75,7 @@ function loadSkillFromFile(skillPath, skillName) {
                     ? undefined
                     : `Skill alias "${name}" is deprecated. Use "${safePrimaryName}" instead.`,
                 description: metadata.description || '',
-                template: body.trim(),
+                template: templateParts.join(''),
                 // Optional fields from frontmatter
                 model: metadata.model,
                 agent: metadata.agent,

@@ -163,4 +163,9 @@ export function detectEditErrorInText(text) {
 export function isSessionRecoverable(error) {
     return isRecoverableError(error);
 }
+export { ORCHESTRATION_RECOVERY_CONFIG } from './types.js';
+// Re-export orchestration recovery functions
+export { classifyOrchestrationFailure, determineRecoveryAction, } from './orchestration-recovery.js';
+// Re-export attempt tracker functions
+export { recordAttempt, getAttemptCount, readAttemptHistory, writeAttemptHistory, clearAttemptHistory, } from './attempt-tracker.js';
 //# sourceMappingURL=index.js.map

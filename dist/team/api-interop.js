@@ -6,40 +6,9 @@ import { queueBroadcastMailboxMessage, queueDirectMailboxMessage } from './mcp-c
 import { injectToLeaderPane, sendToWorker } from './tmux-session.js';
 import { listDispatchRequests, markDispatchRequestDelivered, markDispatchRequestNotified } from './dispatch-queue.js';
 import { generateMailboxTriggerMessage } from './worker-bootstrap.js';
-import { shutdownTeam } from './runtime.js';
 import { shutdownTeamV2 } from './runtime-v2.js';
 const TEAM_UPDATE_TASK_MUTABLE_FIELDS = new Set(['subject', 'description', 'blocked_by', 'requires_code_change']);
 const TEAM_UPDATE_TASK_REQUEST_FIELDS = new Set(['team_name', 'task_id', 'workingDirectory', ...TEAM_UPDATE_TASK_MUTABLE_FIELDS]);
-export const LEGACY_TEAM_MCP_TOOLS = [
-    'team_send_message',
-    'team_broadcast',
-    'team_mailbox_list',
-    'team_mailbox_mark_delivered',
-    'team_mailbox_mark_notified',
-    'team_create_task',
-    'team_read_task',
-    'team_list_tasks',
-    'team_update_task',
-    'team_claim_task',
-    'team_transition_task_status',
-    'team_release_task_claim',
-    'team_read_config',
-    'team_read_manifest',
-    'team_read_worker_status',
-    'team_read_worker_heartbeat',
-    'team_update_worker_heartbeat',
-    'team_write_worker_inbox',
-    'team_write_worker_identity',
-    'team_append_event',
-    'team_get_summary',
-    'team_cleanup',
-    'team_write_shutdown_request',
-    'team_read_shutdown_ack',
-    'team_read_monitor_snapshot',
-    'team_write_monitor_snapshot',
-    'team_read_task_approval',
-    'team_write_task_approval',
-];
 export const TEAM_API_OPERATIONS = [
     'send-message',
     'broadcast',
@@ -106,32 +75,19 @@ function parseTeamWorkerEnv(raw) {
     return { teamName: match[1], workerName: match[2] };
 }
 function parseTeamWorkerContextFromEnv(env = process.env) {
-    return parseTeamWorkerEnv(env.OMC_TEAM_WORKER) ?? parseTeamWorkerEnv(env.OMX_TEAM_WORKER);
+    return parseTeamWorkerEnv(env.OMC_TEAM_WORKER);
 }
 function readTeamStateRootFromEnv(env = process.env) {
     const candidate = typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== ''
         ? env.OMC_TEAM_STATE_ROOT.trim()
-        : (typeof env.OMX_TEAM_STATE_ROOT === 'string' && env.OMX_TEAM_STATE_ROOT.trim() !== ''
-            ? env.OMX_TEAM_STATE_ROOT.trim()
-            : '');
+        : '';
     return candidate || null;
 }
-export function resolveTeamApiCliCommand(env = process.env) {
-    const hasOmcContext = ((typeof env.OMC_TEAM_WORKER === 'string' && env.OMC_TEAM_WORKER.trim() !== '')
-        || (typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== ''));
-    if (hasOmcContext)
-        return 'omc team api';
-    const hasOmxContext = ((typeof env.OMX_TEAM_WORKER === 'string' && env.OMX_TEAM_WORKER.trim() !== '')
-        || (typeof env.OMX_TEAM_STATE_ROOT === 'string' && env.OMX_TEAM_STATE_ROOT.trim() !== ''));
-    if (hasOmxContext)
-        return 'omx team api';
+export function resolveTeamApiCliCommand(_env = process.env) {
     return 'omc team api';
 }
 function isRuntimeV2Config(config) {
     return !!config && typeof config === 'object' && Array.isArray(config.workers);
-}
-function isLegacyRuntimeConfig(config) {
-    return !!config && typeof config === 'object' && Array.isArray(config.agentTypes);
 }
 async function executeTeamCleanupViaRuntime(teamName, cwd) {
     const config = await teamReadConfig(teamName, cwd);
@@ -141,17 +97,6 @@ async function executeTeamCleanupViaRuntime(teamName, cwd) {
     }
     if (isRuntimeV2Config(config)) {
         await shutdownTeamV2(teamName, cwd);
-        return;
-    }
-    if (isLegacyRuntimeConfig(config)) {
-        const legacyConfig = config;
-        const sessionName = typeof legacyConfig.tmuxSession === 'string' && legacyConfig.tmuxSession.trim() !== ''
-            ? legacyConfig.tmuxSession.trim()
-            : `omc-team-${teamName}`;
-        const leaderPaneId = typeof legacyConfig.leaderPaneId === 'string' && legacyConfig.leaderPaneId.trim() !== ''
-            ? legacyConfig.leaderPaneId.trim()
-            : undefined;
-        await shutdownTeam(teamName, sessionName, cwd, 30_000, undefined, leaderPaneId, legacyConfig.tmuxOwnsWindow === true);
         return;
     }
     await teamCleanup(teamName, cwd);

@@ -10,7 +10,7 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [Configuration](#configuration)
 - [CLI Commands: ask/team](#cli-commands-askteam)
 - [Agents (18 Total)](#agents-18-total)
-- [Skills (34 Total)](#skills-34-total)
+- [Skills (37 Total)](#skills-37-total)
 - [Slash Commands](#slash-commands)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -80,7 +80,7 @@ Configure omc for all Copilot CLI sessions:
 | Feature           | Without     | With omc Config            |
 | ----------------- | ----------- | -------------------------- |
 | Agent delegation  | Manual only | Automatic based on task    |
-| Keyword detection | Disabled    | ultrawork, search |
+| Keyword detection | Disabled    | ultrawork, search, with informational-query filtering |
 | Todo continuation | Basic       | Enforced completion        |
 | Model routing     | Default     | Smart tier selection       |
 | Skill composition | None        | Auto-combines skills       |
@@ -102,9 +102,11 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
 | `OMC_CODEX_DEFAULT_MODEL`  | _(provider default)_ | Default model for Codex CLI workers                                                                                                                                                                                                                                         |
 | `OMC_GEMINI_DEFAULT_MODEL` | _(provider default)_ | Default model for Gemini CLI workers                                                                                                                                                                                                                                        |
-| `OMC_LSP_TIMEOUT_MS`       | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
-| `DISABLE_OMC`              | _(unset)_            | Set to any value to disable all OMC hooks                                                                                                                                                                                                                                   |
-| `OMC_SKIP_HOOKS`           | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
+| `OMC_LSP_TIMEOUT_MS`                | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
+| `OMC_LSP_IDLE_TIMEOUT_MS`           | `300000` (5 min)     | Idle timeout before evicting unused LSP clients                                                                                                                                                                                                                             |
+| `OMC_LSP_IDLE_CHECK_INTERVAL_MS`    | `60000` (1 min)      | Interval for checking idle LSP clients                                                                                                                                                                                                                                      |
+| `DISABLE_OMC`                       | _(unset)_            | Set to any value to disable all OMC hooks                                                                                                                                                                                                                                   |
+| `OMC_SKIP_HOOKS`                    | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
 
 #### Centralized State with `OMC_STATE_DIR`
 
@@ -216,6 +218,24 @@ omc team api claim-task --input '{"team_name":"auth-review","task_id":"1","worke
 
 Supported entrypoints: direct start (`omc team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
 
+### `omc autoresearch`
+
+```bash
+omc autoresearch <topic>
+omc autoresearch guided <topic>
+omc autoresearch intake <topic>
+```
+
+Thin-supervisor autoresearch with keep/discard/reset parity. Supports guided and intake flows.
+
+### `omc ralphthon`
+
+```bash
+omc ralphthon <task>
+```
+
+Autonomous hackathon lifecycle mode with PRD-driven phases and idle detection.
+
 ---
 
 ## Agents (18 Total)
@@ -278,19 +298,21 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 
 ---
 
-## Skills (34 Total)
+## Skills (37 Total)
 
-Includes **34 canonical skills**.
+Includes **37 canonical skills**.
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
 | `ask-codex`               | Ask Codex via `omc ask codex` and store an ask artifact          | `/oh-my-copilot:ask-codex`               |
 | `ask-gemini`              | Ask Gemini via `omc ask gemini` and store an ask artifact        | `/oh-my-copilot:ask-gemini`              |
+| `autoresearch`            | Thin-supervisor autoresearch with keep/discard/reset             | `/oh-my-copilot:autoresearch`            |
 | `autopilot`               | Full autonomous execution from idea to working code              | `/oh-my-copilot:autopilot`               |
 | `cancel`                  | Unified cancellation for active modes                            | `/oh-my-copilot:cancel`                  |
 | `ccg`                     | Tri-model workflow via `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:ccg`                     |
 | `configure-notifications` | Configure notifications (Teams/Discord/Telegram/Slack)           | `/oh-my-copilot:configure-notifications` |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                    | `/oh-my-copilot:deep-interview`          |
+| `deep-dive`               | 2-stage pipeline: trace → deep-interview with 3-point injection  | `/oh-my-copilot:deep-dive`               |
 | `deep-review`             | Multi-pass code review (security, quality, structural + validation)  | `/oh-my-copilot:deep-review`             |
 | `discover`                | Parallel codebase quality scan with prioritized backlog              | `/oh-my-copilot:discover`                |
 | `deepinit`                | Generate hierarchical AGENTS.md docs                             | `/oh-my-copilot:deepinit`                |
@@ -308,6 +330,7 @@ Includes **34 canonical skills**.
 | `ralph`                   | Persistence loop until verified completion                       | `/oh-my-copilot:ralph`                   |
 | `ralph-init`              | Initialize PRD for structured ralph execution                    | `/oh-my-copilot:ralph-init`              |
 | `ralplan`                 | Consensus planning alias for `/omc-plan --consensus`             | `/oh-my-copilot:ralplan`                 |
+| `ralphthon`               | Autonomous hackathon lifecycle mode                              | `/oh-my-copilot:ralphthon`               |
 | `release`                 | Automated release workflow                                       | `/oh-my-copilot:release`                 |
 | `sciomc`                  | Parallel scientist orchestration                                 | `/oh-my-copilot:sciomc`                  |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                | `/oh-my-copilot:skill`                   |
@@ -325,6 +348,7 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 
 | Command                                     | Description                                                                                   |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `/oh-my-copilot:autoresearch <topic>`    | Launch thin-supervisor autoresearch                                                           |
 | `/oh-my-copilot:autopilot <task>`        | Full autonomous execution                                                                     |
 | `/oh-my-copilot:ultrawork <task>`        | Maximum performance mode with parallel agents                                                 |
 | `/oh-my-copilot:team <N>:<agent> <task>` | Coordinated native team workflow                                                              |
@@ -333,6 +357,8 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 | `/oh-my-copilot:ultraqa <goal>`          | Autonomous QA cycling workflow                                                                |
 | `/oh-my-copilot:omc-plan <description>`  | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-copilot:ralplan <description>`   | Iterative planning with consensus structured deliberation (`--deliberate` for high-risk mode) |
+| `/oh-my-copilot:ralphthon <task>`        | Autonomous hackathon lifecycle                                                                |
+| `/oh-my-copilot:deep-dive <issue>`       | Trace → deep-interview pipeline                                                               |
 | `/oh-my-copilot:deep-interview <idea>`   | Socratic interview with ambiguity scoring before execution                                    |
 | `/oh-my-copilot:deep-review`           | Multi-pass code review with validation                                            |
 | `/oh-my-copilot:discover [scope]`      | Parallel specialist scan with prioritized backlog                                 |
@@ -373,7 +399,8 @@ Oh-my-copilot-cli includes 31 lifecycle hooks that enhance Copilot CLI's behavio
 | `rules-injector`     | Dynamic rules injection with YAML frontmatter parsing |
 | `omc-orchestrator`   | Enforces orchestrator behavior and delegation         |
 | `auto-slash-command` | Automatic slash command detection and execution       |
-| `keyword-detector`   | Magic keyword detection (ultrawork, ralph, etc.)      |
+| `keyword-detector`   | Magic keyword detection (ultrawork, ralph, etc.) (with informational intent filtering — questions like "what is ralph?" won't trigger modes) |
+| `skill-state`        | Skill active-state management with collision prevention |
 | `todo-continuation`  | Ensures todo list completion                          |
 | `notepad`            | Compaction-resilient memory system                    |
 | `learner`            | Skill extraction from conversations                   |
@@ -465,10 +492,11 @@ Use these trigger phrases in natural language prompts to activate enhanced modes
 | `ccg`, `copilot-clix-gemini`                            | Copilot-Codex-Gemini orchestration                                                             |
 | `ralplan`                                               | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |
 | `deep interview`, `ouroboros`                           | Deep Socratic interview with mathematical clarity gating                                      |
-| `deepsearch`, `search the codebase`, `find in codebase` | Codebase-focused search mode                                                                  |
+| `deepsearch`, `search the codebase`, `find in codebase` | Codebase-focused search mode (with informational intent filtering — questions like "what is ralph?" won't trigger the keyword) |
 | `deepanalyze`, `deep-analyze`                           | Deep analysis mode                                                                            |
 | `ultrathink`                                            | Deep reasoning mode                                                                           |
 | `tdd`, `test first`, `red green`                        | TDD workflow enforcement                                                                      |
+| `ralphthon`                                             | Autonomous hackathon lifecycle mode                                                           |
 | `cancelomc`, `stopomc`                                  | Unified cancellation                                                                          |
 
 ### Examples
@@ -661,7 +689,8 @@ Configure HUD elements in `~/.copilot/settings.json`:
 | `agents`     | Show active agents count       | `true`  |
 | `todos`      | Show todo progress             | `true`  |
 | `ralph`      | Show ralph loop status         | `true`  |
-| `autopilot`  | Show autopilot status          | `true`  |
+| `autopilot`      | Show autopilot status              | `true`  |
+| `sessionSummary` | Show AI-generated session summary  | `false` |
 
 Additional `omcHud` layout options (top-level):
 

@@ -54,8 +54,11 @@ __export(tmux_session_exports, {
   buildWorkerStartCommand: () => buildWorkerStartCommand,
   createSession: () => createSession,
   createTeamSession: () => createTeamSession,
+  dedupeWorkerPaneIds: () => dedupeWorkerPaneIds,
+  detectTeamMultiplexerContext: () => detectTeamMultiplexerContext,
   getDefaultShell: () => getDefaultShell,
   injectToLeaderPane: () => injectToLeaderPane,
+  isPaneId: () => isPaneId,
   isSessionAlive: () => isSessionAlive,
   isUnixLikeOnWindows: () => isUnixLikeOnWindows,
   isWorkerAlive: () => isWorkerAlive,
@@ -66,6 +69,7 @@ __export(tmux_session_exports, {
   paneHasActiveTask: () => paneHasActiveTask,
   paneLooksReady: () => paneLooksReady,
   resolveShellFromCandidates: () => resolveShellFromCandidates,
+  resolveSplitPaneWorkerPaneIds: () => resolveSplitPaneWorkerPaneIds,
   resolveSupportedShellAffinity: () => resolveSupportedShellAffinity,
   sanitizeName: () => sanitizeName,
   sendToWorker: () => sendToWorker,
@@ -85,6 +89,11 @@ async function tmuxAsync(args) {
     return promisifiedExec(`tmux ${escaped}`);
   }
   return promisifiedExecFile("tmux", args);
+}
+function detectTeamMultiplexerContext(env = process.env) {
+  if (env.TMUX) return "tmux";
+  if (env.CMUX_SURFACE_ID) return "cmux";
+  return "none";
 }
 function getDefaultShell() {
   if (process.platform === "win32" && !isUnixLikeOnWindows()) {
@@ -302,7 +311,8 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
   const { execFile: execFile2 } = await import("child_process");
   const { promisify: promisify2 } = await import("util");
   const execFileAsync = promisify2(execFile2);
-  const inTmux = Boolean(process.env.TMUX);
+  const muxContext = detectTeamMultiplexerContext();
+  const inTmux = muxContext === "tmux";
   const useDedicatedWindow = Boolean(options.newWindow && inTmux);
   const envPaneIdRaw = (process.env.TMUX_PANE ?? "").trim();
   const envPaneId = /^%\d+$/.test(envPaneIdRaw) ? envPaneIdRaw : "";
@@ -723,6 +733,47 @@ async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, option
   } catch {
   }
 }
+function isPaneId(value) {
+  return /^%\d+$/.test(value.trim());
+}
+function dedupeWorkerPaneIds(paneIds) {
+  const seen = /* @__PURE__ */ new Set();
+  const result = [];
+  for (const id of paneIds) {
+    const trimmed = id.trim();
+    if (isPaneId(trimmed) && !seen.has(trimmed)) {
+      seen.add(trimmed);
+      result.push(trimmed);
+    }
+  }
+  return result;
+}
+async function resolveSplitPaneWorkerPaneIds(sessionName2, configPaneIds, leaderPaneId) {
+  const deduped = dedupeWorkerPaneIds(configPaneIds);
+  if (!sessionName2 || deduped.length === 0) return deduped;
+  try {
+    const { execFile: execFile2 } = await import("child_process");
+    const { promisify: promisify2 } = await import("util");
+    const execFileAsync = promisify2(execFile2);
+    const target = sessionName2.includes(":") ? sessionName2 : sessionName2.split(":")[0];
+    const result = await execFileAsync("tmux", [
+      "list-panes",
+      "-t",
+      target,
+      "-F",
+      "#{pane_id}"
+    ]);
+    const livePaneIds = new Set(
+      result.stdout.trim().split("\n").map((l) => l.trim()).filter(isPaneId)
+    );
+    const resolved = deduped.filter(
+      (id) => livePaneIds.has(id) && id !== leaderPaneId
+    );
+    return resolved.length > 0 ? resolved : deduped;
+  } catch {
+    return deduped;
+  }
+}
 var import_child_process2, import_fs, import_path2, import_util, import_promises, sleep, TMUX_SESSION_PREFIX, promisifiedExec, promisifiedExecFile, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
@@ -764,6 +815,211 @@ var import_fs7 = require("fs");
 // src/team/model-contract.ts
 var import_child_process = require("child_process");
 var import_path = require("path");
+
+// src/utils/ssrf-guard.ts
+var BLOCKED_HOST_PATTERNS = [
+  // Exact matches
+  /^localhost$/i,
+  /^127\.[0-9]+\.[0-9]+\.[0-9]+$/,
+  // Loopback
+  /^10\.[0-9]+\.[0-9]+\.[0-9]+$/,
+  // Class A private
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.[0-9]+$/,
+  // Class B private
+  /^192\.168\.[0-9]+\.[0-9]+$/,
+  // Class C private
+  /^169\.254\.[0-9]+\.[0-9]+$/,
+  // Link-local
+  /^(0|22[4-9]|23[0-9])\.[0-9]+\.[0-9]+\.[0-9]+$/,
+  // Multicast, reserved
+  /^\[?::1\]?$/,
+  // IPv6 loopback
+  /^\[?fc00:/i,
+  // IPv6 unique local
+  /^\[?fe80:/i
+  // IPv6 link-local
+];
+var ALLOWED_SCHEMES = ["https:", "http:"];
+function validateUrlForSSRF(urlString) {
+  if (!urlString || typeof urlString !== "string") {
+    return { allowed: false, reason: "URL is empty or invalid" };
+  }
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    return { allowed: false, reason: "Invalid URL format" };
+  }
+  if (!ALLOWED_SCHEMES.includes(parsed.protocol)) {
+    return { allowed: false, reason: `Protocol '${parsed.protocol}' is not allowed` };
+  }
+  const hostname = parsed.hostname.toLowerCase();
+  for (const pattern of BLOCKED_HOST_PATTERNS) {
+    if (pattern.test(hostname)) {
+      return {
+        allowed: false,
+        reason: `Hostname '${hostname}' resolves to a blocked internal/private address`
+      };
+    }
+  }
+  if (parsed.username || parsed.password) {
+    return { allowed: false, reason: "URLs with embedded credentials are not allowed" };
+  }
+  const dangerousPaths = [
+    "/metadata",
+    "/meta-data",
+    "/latest/meta-data",
+    "/computeMetadata"
+  ];
+  const pathLower = parsed.pathname.toLowerCase();
+  for (const dangerous of dangerousPaths) {
+    if (pathLower.startsWith(dangerous)) {
+      return {
+        allowed: false,
+        reason: `Path '${parsed.pathname}' is blocked (cloud metadata access)`
+      };
+    }
+  }
+  return { allowed: true };
+}
+function validateAnthropicBaseUrl(urlString) {
+  const result = validateUrlForSSRF(urlString);
+  if (!result.allowed) {
+    return result;
+  }
+  let parsed;
+  try {
+    parsed = new URL(urlString);
+  } catch {
+    return { allowed: false, reason: "Invalid URL" };
+  }
+  if (parsed.protocol === "http:") {
+    console.warn("[SSRF Guard] Warning: Using HTTP instead of HTTPS for ANTHROPIC_BASE_URL");
+  }
+  return { allowed: true };
+}
+
+// src/config/models.ts
+var TIER_ENV_KEYS = {
+  LOW: [
+    "OMC_MODEL_LOW",
+    "CLAUDE_CODE_BEDROCK_HAIKU_MODEL",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL"
+  ],
+  MEDIUM: [
+    "OMC_MODEL_MEDIUM",
+    "CLAUDE_CODE_BEDROCK_SONNET_MODEL",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL"
+  ],
+  HIGH: [
+    "OMC_MODEL_HIGH",
+    "CLAUDE_CODE_BEDROCK_OPUS_MODEL",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL"
+  ]
+};
+var COPILOT_FAMILY_DEFAULTS = {
+  HAIKU: "claude-haiku-4-5",
+  SONNET: "claude-sonnet-4-6",
+  OPUS: "claude-opus-4-6"
+};
+var BUILTIN_TIER_MODEL_DEFAULTS = {
+  LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
+  MEDIUM: COPILOT_FAMILY_DEFAULTS.SONNET,
+  HIGH: COPILOT_FAMILY_DEFAULTS.OPUS
+};
+var COPILOT_FAMILY_HIGH_VARIANTS = {
+  HAIKU: `${COPILOT_FAMILY_DEFAULTS.HAIKU}-high`,
+  SONNET: `${COPILOT_FAMILY_DEFAULTS.SONNET}-high`,
+  OPUS: `${COPILOT_FAMILY_DEFAULTS.OPUS}-high`
+};
+var BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
+  codexModel: "gpt-5.3-codex",
+  geminiModel: "gemini-3.1-pro-preview"
+};
+function resolveTierModelFromEnv(tier) {
+  for (const key of TIER_ENV_KEYS[tier]) {
+    const value = process.env[key]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return void 0;
+}
+function getDefaultModelHigh() {
+  return resolveTierModelFromEnv("HIGH") || BUILTIN_TIER_MODEL_DEFAULTS.HIGH;
+}
+function getDefaultModelMedium() {
+  return resolveTierModelFromEnv("MEDIUM") || BUILTIN_TIER_MODEL_DEFAULTS.MEDIUM;
+}
+function getDefaultModelLow() {
+  return resolveTierModelFromEnv("LOW") || BUILTIN_TIER_MODEL_DEFAULTS.LOW;
+}
+function getDefaultTierModels() {
+  return {
+    LOW: getDefaultModelLow(),
+    MEDIUM: getDefaultModelMedium(),
+    HIGH: getDefaultModelHigh()
+  };
+}
+function isBedrock() {
+  if (process.env.CLAUDE_CODE_USE_BEDROCK === "1") {
+    return true;
+  }
+  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || "";
+  if (modelId && /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) {
+    return true;
+  }
+  return false;
+}
+function isVertexAI() {
+  if (process.env.CLAUDE_CODE_USE_VERTEX === "1") {
+    return true;
+  }
+  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || "";
+  if (modelId && modelId.toLowerCase().startsWith("vertex_ai/")) {
+    return true;
+  }
+  return false;
+}
+function isProviderSpecificModelId(modelId) {
+  return isBedrockModelId(modelId) || isVertexModelId(modelId);
+}
+function isBedrockModelId(modelId) {
+  return /^(us\.|global\.|eu\.|ap\.)?anthropic\.claude-/.test(modelId) || modelId.startsWith("arn:aws:bedrock:");
+}
+function isVertexModelId(modelId) {
+  return modelId.startsWith("vertex_ai/");
+}
+function isNonCopilotProvider() {
+  if (process.env.OMC_ROUTING_FORCE_INHERIT === "true") {
+    return true;
+  }
+  if (isBedrock()) {
+    return true;
+  }
+  if (isVertexAI()) {
+    return true;
+  }
+  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || "";
+  const modelLower = modelId.toLowerCase();
+  if (modelId && !modelLower.includes("claude") && !modelLower.includes("copilot")) {
+    return true;
+  }
+  const baseUrl = process.env.ANTHROPIC_BASE_URL || "";
+  if (baseUrl) {
+    const validation = validateAnthropicBaseUrl(baseUrl);
+    if (!validation.allowed) {
+      console.error(`[SSRF Guard] Rejecting ANTHROPIC_BASE_URL: ${validation.reason}`);
+      return true;
+    }
+    if (!baseUrl.includes("anthropic.com")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// src/team/model-contract.ts
 init_team_name();
 var resolvedPathCache = /* @__PURE__ */ new Map();
 var UNTRUSTED_PATH_PATTERNS = [
@@ -990,6 +1246,13 @@ function getPromptModeArgs(agentType, instruction) {
     return [contract.promptModeFlag, instruction];
   }
   return [instruction];
+}
+function resolveClaudeWorkerModel() {
+  const explicitModel = process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL;
+  if (explicitModel && isProviderSpecificModelId(explicitModel)) {
+    return explicitModel;
+  }
+  return void 0;
 }
 
 // src/team/runtime.ts
@@ -2025,7 +2288,7 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     if (agentType === "gemini") {
       return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
     }
-    return void 0;
+    return resolveClaudeWorkerModel();
   })();
   const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
     teamName: runtime.teamName,
@@ -2131,7 +2394,12 @@ async function shutdownTeam(teamName, sessionName2, cwd, timeoutMs = 3e4, worker
     }
   }
   const sessionMode = ownsWindow ?? Boolean(configData?.tmuxOwnsWindow) ? sessionName2.includes(":") ? "dedicated-window" : "detached-session" : "split-pane";
-  await killTeamSession(sessionName2, workerPaneIds, leaderPaneId, { sessionMode });
+  const resolvedWorkerPaneIds = await resolveSplitPaneWorkerPaneIds(
+    sessionName2,
+    workerPaneIds ?? [],
+    leaderPaneId
+  );
+  await killTeamSession(sessionName2, resolvedWorkerPaneIds, leaderPaneId, { sessionMode });
   try {
     cleanupTeamWorktrees(teamName, cwd);
   } catch {
@@ -2317,200 +2585,6 @@ function stripJsoncComments(content) {
     i++;
   }
   return result;
-}
-
-// src/utils/ssrf-guard.ts
-var BLOCKED_HOST_PATTERNS = [
-  // Exact matches
-  /^localhost$/i,
-  /^127\.[0-9]+\.[0-9]+\.[0-9]+$/,
-  // Loopback
-  /^10\.[0-9]+\.[0-9]+\.[0-9]+$/,
-  // Class A private
-  /^172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.[0-9]+$/,
-  // Class B private
-  /^192\.168\.[0-9]+\.[0-9]+$/,
-  // Class C private
-  /^169\.254\.[0-9]+\.[0-9]+$/,
-  // Link-local
-  /^(0|22[4-9]|23[0-9])\.[0-9]+\.[0-9]+\.[0-9]+$/,
-  // Multicast, reserved
-  /^\[?::1\]?$/,
-  // IPv6 loopback
-  /^\[?fc00:/i,
-  // IPv6 unique local
-  /^\[?fe80:/i
-  // IPv6 link-local
-];
-var ALLOWED_SCHEMES = ["https:", "http:"];
-function validateUrlForSSRF(urlString) {
-  if (!urlString || typeof urlString !== "string") {
-    return { allowed: false, reason: "URL is empty or invalid" };
-  }
-  let parsed;
-  try {
-    parsed = new URL(urlString);
-  } catch {
-    return { allowed: false, reason: "Invalid URL format" };
-  }
-  if (!ALLOWED_SCHEMES.includes(parsed.protocol)) {
-    return { allowed: false, reason: `Protocol '${parsed.protocol}' is not allowed` };
-  }
-  const hostname = parsed.hostname.toLowerCase();
-  for (const pattern of BLOCKED_HOST_PATTERNS) {
-    if (pattern.test(hostname)) {
-      return {
-        allowed: false,
-        reason: `Hostname '${hostname}' resolves to a blocked internal/private address`
-      };
-    }
-  }
-  if (parsed.username || parsed.password) {
-    return { allowed: false, reason: "URLs with embedded credentials are not allowed" };
-  }
-  const dangerousPaths = [
-    "/metadata",
-    "/meta-data",
-    "/latest/meta-data",
-    "/computeMetadata"
-  ];
-  const pathLower = parsed.pathname.toLowerCase();
-  for (const dangerous of dangerousPaths) {
-    if (pathLower.startsWith(dangerous)) {
-      return {
-        allowed: false,
-        reason: `Path '${parsed.pathname}' is blocked (cloud metadata access)`
-      };
-    }
-  }
-  return { allowed: true };
-}
-function validateAnthropicBaseUrl(urlString) {
-  const result = validateUrlForSSRF(urlString);
-  if (!result.allowed) {
-    return result;
-  }
-  let parsed;
-  try {
-    parsed = new URL(urlString);
-  } catch {
-    return { allowed: false, reason: "Invalid URL" };
-  }
-  if (parsed.protocol === "http:") {
-    console.warn("[SSRF Guard] Warning: Using HTTP instead of HTTPS for ANTHROPIC_BASE_URL");
-  }
-  return { allowed: true };
-}
-
-// src/config/models.ts
-var TIER_ENV_KEYS = {
-  LOW: [
-    "OMC_MODEL_LOW",
-    "CLAUDE_CODE_BEDROCK_HAIKU_MODEL",
-    "ANTHROPIC_DEFAULT_HAIKU_MODEL"
-  ],
-  MEDIUM: [
-    "OMC_MODEL_MEDIUM",
-    "CLAUDE_CODE_BEDROCK_SONNET_MODEL",
-    "ANTHROPIC_DEFAULT_SONNET_MODEL"
-  ],
-  HIGH: [
-    "OMC_MODEL_HIGH",
-    "CLAUDE_CODE_BEDROCK_OPUS_MODEL",
-    "ANTHROPIC_DEFAULT_OPUS_MODEL"
-  ]
-};
-var COPILOT_FAMILY_DEFAULTS = {
-  HAIKU: "claude-haiku-4-5",
-  SONNET: "claude-sonnet-4-6",
-  OPUS: "claude-opus-4-6"
-};
-var BUILTIN_TIER_MODEL_DEFAULTS = {
-  LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
-  MEDIUM: COPILOT_FAMILY_DEFAULTS.SONNET,
-  HIGH: COPILOT_FAMILY_DEFAULTS.OPUS
-};
-var COPILOT_FAMILY_HIGH_VARIANTS = {
-  HAIKU: `${COPILOT_FAMILY_DEFAULTS.HAIKU}-high`,
-  SONNET: `${COPILOT_FAMILY_DEFAULTS.SONNET}-high`,
-  OPUS: `${COPILOT_FAMILY_DEFAULTS.OPUS}-high`
-};
-var BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
-  codexModel: "gpt-5.3-codex",
-  geminiModel: "gemini-3.1-pro-preview"
-};
-function resolveTierModelFromEnv(tier) {
-  for (const key of TIER_ENV_KEYS[tier]) {
-    const value = process.env[key]?.trim();
-    if (value) {
-      return value;
-    }
-  }
-  return void 0;
-}
-function getDefaultModelHigh() {
-  return resolveTierModelFromEnv("HIGH") || BUILTIN_TIER_MODEL_DEFAULTS.HIGH;
-}
-function getDefaultModelMedium() {
-  return resolveTierModelFromEnv("MEDIUM") || BUILTIN_TIER_MODEL_DEFAULTS.MEDIUM;
-}
-function getDefaultModelLow() {
-  return resolveTierModelFromEnv("LOW") || BUILTIN_TIER_MODEL_DEFAULTS.LOW;
-}
-function getDefaultTierModels() {
-  return {
-    LOW: getDefaultModelLow(),
-    MEDIUM: getDefaultModelMedium(),
-    HIGH: getDefaultModelHigh()
-  };
-}
-function isBedrock() {
-  if (process.env.CLAUDE_CODE_USE_BEDROCK === "1") {
-    return true;
-  }
-  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || "";
-  if (modelId && /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) {
-    return true;
-  }
-  return false;
-}
-function isVertexAI() {
-  if (process.env.CLAUDE_CODE_USE_VERTEX === "1") {
-    return true;
-  }
-  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || "";
-  if (modelId && modelId.toLowerCase().startsWith("vertex_ai/")) {
-    return true;
-  }
-  return false;
-}
-function isNonCopilotProvider() {
-  if (process.env.OMC_ROUTING_FORCE_INHERIT === "true") {
-    return true;
-  }
-  if (isBedrock()) {
-    return true;
-  }
-  if (isVertexAI()) {
-    return true;
-  }
-  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || "";
-  const modelLower = modelId.toLowerCase();
-  if (modelId && !modelLower.includes("claude") && !modelLower.includes("copilot")) {
-    return true;
-  }
-  const baseUrl = process.env.ANTHROPIC_BASE_URL || "";
-  if (baseUrl) {
-    const validation = validateAnthropicBaseUrl(baseUrl);
-    if (!validation.allowed) {
-      console.error(`[SSRF Guard] Rejecting ANTHROPIC_BASE_URL: ${validation.reason}`);
-      return true;
-    }
-    if (!baseUrl.includes("anthropic.com")) {
-      return true;
-    }
-  }
-  return false;
 }
 
 // src/config/loader.ts
@@ -3894,7 +3968,7 @@ async function spawnV2Worker(opts) {
     if (opts.agentType === "gemini") {
       return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
     }
-    return void 0;
+    return resolveClaudeWorkerModel();
   })();
   const [launchBinary, ...launchArgs] = buildWorkerArgv(opts.agentType, {
     teamName: opts.teamName,
@@ -4362,7 +4436,12 @@ Then exit your session.
   }
   try {
     const { killWorkerPanes: killWorkerPanes2, killTeamSession: killTeamSession2 } = await Promise.resolve().then(() => (init_tmux_session(), tmux_session_exports));
-    const workerPaneIds = config.workers.map((w) => w.pane_id).filter((p) => typeof p === "string" && p.trim().length > 0);
+    const configPaneIds = config.workers.map((w) => w.pane_id).filter((p) => typeof p === "string" && p.trim().length > 0);
+    const workerPaneIds = await resolveSplitPaneWorkerPaneIds(
+      config.tmux_session ?? "",
+      configPaneIds,
+      config.leader_pane_id ?? void 0
+    );
     const ownsWindow = config.tmux_window_owned === true;
     await killWorkerPanes2({
       paneIds: workerPaneIds,

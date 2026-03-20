@@ -18,6 +18,7 @@ import type {
 } from './types.js';
 import { resolveLiveData } from './live-data.js';
 import { parseFrontmatter, parseFrontmatterAliases, stripOptionalQuotes } from '../../utils/frontmatter.js';
+import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
 
 /** Copilot config directory */
 const COPILOT_CONFIG_DIR = getCopilotConfigDir();
@@ -252,6 +253,13 @@ function formatCommandTemplate(cmd: CommandInfo, args: string): string {
   const resolvedContent = resolveArguments(cmd.content || '', args);
   const injectedContent = resolveLiveData(resolvedContent);
   sections.push(injectedContent.trim());
+
+  // Add skill resources guidance (bundled files in skill directory)
+  const resourcesGuidance = cmd.path ? renderSkillResourcesGuidance(cmd.path) : '';
+  if (resourcesGuidance) {
+    sections.push('\n\n---\n');
+    sections.push(resourcesGuidance);
+  }
 
   if (args && !cmd.content?.includes('$ARGUMENTS')) {
     sections.push('\n\n---\n');
