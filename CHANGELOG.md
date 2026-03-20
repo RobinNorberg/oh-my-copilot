@@ -2,7 +2,7 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
-## [4.9.0-preview.1] - 2026-03-20
+## [4.9.0] - 2026-03-20
 
 ### Added
 - **Autoresearch module** (`src/autoresearch/`): Thin-supervisor autoresearch with keep/discard/reset parity, guided interview flow, and Claude session setup
