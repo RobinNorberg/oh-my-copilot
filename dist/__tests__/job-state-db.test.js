@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, existsSync, rmSync } from 'fs';
 import { join } from 'path';
-import { initJobDb, closeJobDb, isJobDbInitialized, getJobDb, upsertJob, getJob, getJobsByStatus, getActiveJobs, getRecentJobs, updateJobStatus, deleteJob, migrateFromJsonFiles, cleanupOldJobs, getJobStats, getJobSummaryForPreCompact, } from '../mcp/job-state-db.js';
+import { initJobDb, closeJobDb, isJobDbInitialized, getJobDb, upsertJob, getJob, getJobsByStatus, getActiveJobs, getRecentJobs, updateJobStatus, deleteJob, migrateFromJsonFiles, cleanupOldJobs, getJobStats, getJobSummaryForPreCompact, } from '../lib/job-state-db.js';
 // Test fixtures
 const TEST_DIR = join(process.cwd(), '.test-job-state-db-' + process.pid);
 const PROMPTS_DIR = join(TEST_DIR, '.omg', 'prompts');

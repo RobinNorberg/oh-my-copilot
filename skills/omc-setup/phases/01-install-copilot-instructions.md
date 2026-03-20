@@ -37,7 +37,7 @@ https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/copilot-in
 
 If `CONFIG_TARGET` is `local`:
 ```
-OMP Project Configuration Complete
+OMC Project Configuration Complete
 - copilot-instructions.md: Updated with latest configuration from GitHub at ./.copilot/copilot-instructions.md
 - Backup: Previous copilot-instructions.md backed up (if existed)
 - Scope: PROJECT - applies only to this project
@@ -50,7 +50,7 @@ Note: This configuration is project-specific and won't affect other projects or 
 
 If `CONFIG_TARGET` is `global`:
 ```
-OMP Global Configuration Complete
+OMC Global Configuration Complete
 - copilot-instructions.md: Updated with latest configuration from GitHub at ~/.copilot/copilot-instructions.md
 - Backup: Previous copilot-instructions.md backed up (if existed)
 - Scope: GLOBAL - applies to all Copilot CLI sessions

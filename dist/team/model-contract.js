@@ -1,5 +1,6 @@
 import { spawnSync } from 'child_process';
 import { isAbsolute, normalize, win32 as win32Path } from 'path';
+import { isProviderSpecificModelId } from '../config/models.js';
 import { validateTeamName } from './team-name.js';
 const resolvedPathCache = new Map();
 const UNTRUSTED_PATH_PATTERNS = [
@@ -99,8 +100,8 @@ export const _testInternals = {
 const CONTRACTS = {
     claude: {
         agentType: 'claude',
-        binary: 'copilot',
-        installInstructions: 'Install Copilot CLI: https://docs.github.com/copilot/copilot-cli',
+        binary: 'claude',
+        installInstructions: 'Install Claude Code: https://docs.anthropic.com/en/docs/claude-code',
         buildLaunchArgs(model, extraFlags = []) {
             const args = ['--dangerously-skip-permissions'];
             if (model)
@@ -319,5 +320,12 @@ export function getPromptModeArgs(agentType, instruction) {
         return [contract.promptModeFlag, instruction];
     }
     return [instruction];
+}
+export function resolveClaudeWorkerModel() {
+    const explicitModel = process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL;
+    if (explicitModel && isProviderSpecificModelId(explicitModel)) {
+        return explicitModel;
+    }
+    return undefined;
 }
 //# sourceMappingURL=model-contract.js.map

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "OMP orchestration hooks with async capabilities",
+  "description": "OMC orchestration hooks with async capabilities",
   "hooks": {
     "userPromptSubmitted": [
       {

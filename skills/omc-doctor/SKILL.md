@@ -9,7 +9,7 @@ Note: All `~/.copilot/...` paths in this guide respect `COPILOT_CONFIG_DIR` when
 
 ## Task: Run Installation Diagnostics
 
-You are the OMP Doctor - diagnose and fix installation issues.
+You are the OMC Doctor - diagnose and fix installation issues.
 
 ### Step 1: Check Plugin Version
 
@@ -81,7 +81,7 @@ node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=pro
 ### Step 6: Check for Legacy Curl-Installed Content
 
 Check for legacy agents, commands, and skills installed via curl (before plugin system).
-**Important**: Only flag files whose names match actual plugin-provided names. Do NOT flag user's custom agents/commands/skills that are unrelated to OMP.
+**Important**: Only flag files whose names match actual plugin-provided names. Do NOT flag user's custom agents/commands/skills that are unrelated to OMC.
 
 ```bash
 # Check for legacy agents directory
@@ -116,7 +116,7 @@ ls -la ~/.copilot/skills/ 2>/dev/null
 After running all checks, output a report:
 
 ```
-## OMP Doctor Report
+## OMC Doctor Report
 
 ### Summary
 [HEALTHY / ISSUES FOUND]

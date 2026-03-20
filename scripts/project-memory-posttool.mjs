@@ -9,7 +9,7 @@ import { readStdin } from './lib/stdin.mjs';
 
 // Debug logging helper - gated behind OMC_DEBUG env var
 const debugLog = (...args) => {
-  if (process.env.OMC_DEBUG) console.error('[omp:debug:project-memory]', ...args);
+  if (process.env.OMC_DEBUG) console.error('[omc:debug:project-memory]', ...args);
 };
 
 // Dynamic imports with graceful fallback (separate try-catch for partial availability)

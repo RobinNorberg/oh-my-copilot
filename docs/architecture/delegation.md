@@ -165,7 +165,7 @@ export OMC_DEBUG=true
 When enabled, you'll see warnings like:
 
 ```
-[OMP] Auto-injecting model: sonnet for executor
+[OMC] Auto-injecting model: sonnet for executor
 ```
 
 **Important:** Warnings are ONLY shown when `OMC_DEBUG=true`. Without this flag, enforcement happens silently.
@@ -262,14 +262,6 @@ npx tsx examples/delegation-enforcer-demo.ts
 3. **Safety**: Explicit models always preserved
 4. **Transparency**: Debug mode shows when models are injected
 5. **Zero Config**: Works automatically with existing agent definitions
-
-## Migration
-
-No migration needed! The enforcer is backward compatible:
-
-- Existing code with explicit models continues working
-- New code can omit model parameter
-- No breaking changes
 
 ## Related
 

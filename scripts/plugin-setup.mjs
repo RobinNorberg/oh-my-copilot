@@ -18,7 +18,7 @@ const CLAUDE_DIR = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot')
 const HUD_DIR = join(CLAUDE_DIR, 'hud');
 const SETTINGS_FILE = join(CLAUDE_DIR, 'settings.json');
 
-console.log('[OMP] Running post-install setup...');
+console.log('[OMC] Running post-install setup...');
 
 // 1. Create HUD directory
 if (!existsSync(HUD_DIR)) {
@@ -29,7 +29,7 @@ if (!existsSync(HUD_DIR)) {
 const hudScriptPath = join(HUD_DIR, 'omc-hud.mjs').replace(/\\/g, '/');
 const hudScript = `#!/usr/bin/env node
 /**
- * OMP HUD - Statusline Script
+ * OMC HUD - Statusline Script
  * Wrapper that imports from plugin cache or development paths
  */
 
@@ -117,14 +117,14 @@ async function main() {
   if (pluginCacheDir && existsSync(pluginCacheDir)) {
     const distDir = join(pluginCacheDir, "dist");
     if (!existsSync(distDir)) {
-      console.log(\`[OMP HUD] Plugin installed but not built. Run: cd "\${pluginCacheDir}" && npm install && npm run build\`);
+      console.log(\`[OMC HUD] Plugin installed but not built. Run: cd "\${pluginCacheDir}" && npm install && npm run build\`);
     } else {
-      console.log(\`[OMP HUD] Plugin HUD load failed. Run: cd "\${pluginCacheDir}" && npm install && npm run build\`);
+      console.log(\`[OMC HUD] Plugin HUD load failed. Run: cd "\${pluginCacheDir}" && npm install && npm run build\`);
     }
   } else if (existsSync(pluginCacheBase)) {
-    console.log("[OMP HUD] Plugin cache found but no versions installed. Run: /oh-my-copilot:omc-setup");
+    console.log("[OMC HUD] Plugin cache found but no versions installed. Run: /oh-my-copilot:omc-setup");
   } else {
-    console.log("[OMP HUD] Plugin not installed. Run: /oh-my-copilot:omc-setup");
+    console.log("[OMC HUD] Plugin not installed. Run: /oh-my-copilot:omc-setup");
   }
 }
 
@@ -135,7 +135,7 @@ writeFileSync(hudScriptPath, hudScript);
 try {
   chmodSync(hudScriptPath, 0o755);
 } catch { /* Windows doesn't need this */ }
-console.log('[OMP] Installed HUD wrapper script');
+console.log('[OMC] Installed HUD wrapper script');
 
 // 3. Configure settings.json
 try {
@@ -152,7 +152,7 @@ try {
     command: `"${nodeBin}" "${hudScriptPath.replace(/\\/g, "/")}"`
   };
   writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
-  console.log('[OMP] Configured HUD statusLine in settings.json');
+  console.log('[OMC] Configured HUD statusLine in settings.json');
 
   // Persist the node binary path to .omg-config.json for use by find-node.sh
   try {
@@ -164,13 +164,13 @@ try {
     if (nodeBin !== 'node') {
       omcConfig.nodeBinary = nodeBin;
       writeFileSync(configPath, JSON.stringify(omcConfig, null, 2));
-      console.log(`[OMP] Saved node binary path: ${nodeBin}`);
+      console.log(`[OMC] Saved node binary path: ${nodeBin}`);
     }
   } catch (e) {
-    console.log('[OMP] Warning: Could not save node binary path (non-fatal):', e.message);
+    console.log('[OMC] Warning: Could not save node binary path (non-fatal):', e.message);
   }
 } catch (e) {
-  console.log('[OMP] Warning: Could not configure settings.json:', e.message);
+  console.log('[OMC] Warning: Could not configure settings.json:', e.message);
 }
 
 // Patch hooks.json to use the absolute node binary path so hooks work on all
@@ -227,11 +227,11 @@ try {
 
     if (patched) {
       writeFileSync(hooksJsonPath, JSON.stringify(data, null, 2) + '\n');
-      console.log(`[OMP] Patched hooks.json with absolute node path (${nodeBin}), fixes issues #909, #899, #892`);
+      console.log(`[OMC] Patched hooks.json with absolute node path (${nodeBin}), fixes issues #909, #899, #892`);
     }
   }
 } catch (e) {
-  console.log('[OMP] Warning: Could not patch hooks.json:', e.message);
+  console.log('[OMC] Warning: Could not patch hooks.json:', e.message);
 }
 
 // 5. Ensure runtime dependencies are installed in the plugin cache directory.
@@ -244,19 +244,19 @@ try {
 const packageDir = join(__dirname, '..');
 const commanderCheck = join(packageDir, 'node_modules', 'commander');
 if (!existsSync(commanderCheck)) {
-  console.log('[OMP] Installing runtime dependencies...');
+  console.log('[OMC] Installing runtime dependencies...');
   try {
     execSync('npm install --omit=dev --ignore-scripts', {
       cwd: packageDir,
       stdio: 'pipe',
       timeout: 60000,
     });
-    console.log('[OMP] Runtime dependencies installed successfully');
+    console.log('[OMC] Runtime dependencies installed successfully');
   } catch (e) {
-    console.log('[OMP] Warning: Could not install dependencies:', e.message);
+    console.log('[OMC] Warning: Could not install dependencies:', e.message);
   }
 } else {
-  console.log('[OMP] Runtime dependencies already present');
+  console.log('[OMC] Runtime dependencies already present');
 }
 
-console.log('[OMP] Setup complete! Restart Copilot CLI to activate HUD.');
+console.log('[OMC] Setup complete! Restart Copilot CLI to activate HUD.');

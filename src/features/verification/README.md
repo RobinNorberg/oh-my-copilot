@@ -4,7 +4,7 @@ Reusable verification protocol logic extracted from ralph, ultrawork, and autopi
 
 ## Overview
 
-This module provides a single source of truth for verification requirements and execution across all major OMP workflows. It standardizes the verification process and ensures consistent evidence collection.
+This module provides a single source of truth for verification requirements and execution across all major OMC workflows. It standardizes the verification process and ensures consistent evidence collection.
 
 ## Key Features
 

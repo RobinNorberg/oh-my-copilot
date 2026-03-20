@@ -33,7 +33,7 @@ try {
 
 // Debug logging helper - gated behind OMC_DEBUG env var
 const debugLog = (...args) => {
-  if (process.env.OMC_DEBUG) console.error('[omp:debug:post-tool-verifier]', ...args);
+  if (process.env.OMC_DEBUG) console.error('[omc:debug:post-tool-verifier]', ...args);
 };
 
 // State file for session tracking
@@ -236,7 +236,7 @@ function clipToolOutputForAnalysis(toolName, output) {
   }
 
   return {
-    clipped: `${output.slice(0, AGENT_OUTPUT_ANALYSIS_LIMIT)}\n...[agent output truncated by OMP context guard]`,
+    clipped: `${output.slice(0, AGENT_OUTPUT_ANALYSIS_LIMIT)}\n...[agent output truncated by OMC context guard]`,
     wasTruncated: true,
   };
 }

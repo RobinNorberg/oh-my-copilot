@@ -20,7 +20,6 @@ export const ROLE_CATEGORY_DEFAULTS = {
     explore: 'explore',
     'document-specialist': 'document-specialist',
     researcher: 'document-specialist',
-    'tdd-guide': 'test-engineer',
     // Advisory roles (high complexity)
     architect: 'architect',
     planner: 'planner',
@@ -45,7 +44,6 @@ export const ROLE_CATEGORY_DEFAULTS = {
  */
 export const DEPRECATED_ROLE_ALIASES = {
     researcher: 'document-specialist',
-    'tdd-guide': 'test-engineer',
     'api-reviewer': 'code-reviewer',
     'performance-reviewer': 'code-reviewer',
     'dependency-expert': 'document-specialist',

@@ -1,7 +1,7 @@
 /**
  * Basic Usage Example
  *
- * This example demonstrates how to use Oh-My-ClaudeCode
+ * This example demonstrates how to use Oh-My-Copilot
  * with the Copilot Agent SDK.
  */
 
@@ -12,9 +12,9 @@ import { createOmcSession, enhancePrompt } from '../src/index.js';
 // import { query } from '@anthropic-ai/copilot-agent-sdk';
 
 async function main() {
-  console.log('=== Oh-My-ClaudeCode Example ===\n');
+  console.log('=== Oh-My-Copilot Example ===\n');
 
-  // Create a OMP session
+  // Create a OMC session
   const session = createOmcSession({
     // Optional: custom configuration overrides
     config: {

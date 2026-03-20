@@ -16,13 +16,6 @@ export const MODES = {
 } as const;
 export type ModeName = typeof MODES[keyof typeof MODES];
 
-// Deprecated mode names (removed in #1131)
-export const DEPRECATED_MODES = {
-  ULTRAPILOT: 'ultrapilot',
-  SWARM: 'swarm',
-  PIPELINE: 'pipeline',
-} as const;
-
 // Tool categories
 export const TOOL_CATEGORIES = {
   LSP: 'lsp',
@@ -36,6 +29,7 @@ export const TOOL_CATEGORIES = {
   CODEX: 'codex',
   GEMINI: 'gemini',
   SHARED_MEMORY: 'shared-memory',
+  DEEPINIT: 'deepinit',
 } as const;
 export type ToolCategory = typeof TOOL_CATEGORIES[keyof typeof TOOL_CATEGORIES];
 

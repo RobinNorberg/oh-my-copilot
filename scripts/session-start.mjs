@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OMP Session Start Hook (Node.js)
+ * OMC Session Start Hook (Node.js)
  * Restores persistent mode states when session starts
  * Cross-platform: Windows, macOS, Linux
  */
@@ -59,9 +59,9 @@ function semverCompare(a, b) {
   return 0;
 }
 
-// Extract OMP version from copilot-instructions.md content
+// Extract OMC version from copilot-instructions.md content
 function extractOmcVersion(content) {
-  const match = content.match(/<!-- OMP:VERSION:(\d+\.\d+\.\d+[^\s]*?) -->/);
+  const match = content.match(/<!-- OMC:VERSION:(\d+\.\d+\.\d+[^\s]*?) -->/);
   return match ? match[1] : null;
 }
 
@@ -249,7 +249,7 @@ async function checkHudInstallation(retryCount = 0) {
           ? settings.statusLine.command
           : null);
 
-      // If OMP HUD wrapper is configured, ensure at least one plugin cache version is built.
+      // If OMC HUD wrapper is configured, ensure at least one plugin cache version is built.
       if (statusLineCommand?.includes('omc-hud')) {
         const pluginCacheBase = join(configDir, 'plugins', 'cache', 'omg', 'oh-my-copilot');
         if (existsSync(pluginCacheBase)) {
@@ -330,7 +330,7 @@ async function main() {
     // Check for version drift between components
     const driftInfo = detectVersionDrift();
     if (driftInfo && shouldNotifyDrift(driftInfo)) {
-      let driftMsg = `[OMP VERSION DRIFT DETECTED]\n\nPlugin version: ${driftInfo.pluginVersion}\n`;
+      let driftMsg = `[OMC VERSION DRIFT DETECTED]\n\nPlugin version: ${driftInfo.pluginVersion}\n`;
       for (const d of driftInfo.drift) {
         driftMsg += `${d.component}: ${d.current} (expected ${d.expected})\n`;
       }
@@ -345,7 +345,7 @@ async function main() {
       if (pluginVersion) {
         const updateInfo = await checkNpmUpdate(pluginVersion);
         if (updateInfo) {
-          messages.push(`<session-restore>\n\n[OMP UPDATE AVAILABLE]\n\nA new version of oh-my-copilot is available: v${updateInfo.latestVersion} (current: v${updateInfo.currentVersion})\n\nTo update, run: omc update\n(This syncs plugin, npm package, and copilot-instructions.md together)\n\n</session-restore>\n\n---\n`);
+          messages.push(`<session-restore>\n\n[OMC UPDATE AVAILABLE]\n\nA new version of oh-my-copilot is available: v${updateInfo.latestVersion} (current: v${updateInfo.currentVersion})\n\nTo update, run: omc update\n(This syncs plugin, npm package, and copilot-instructions.md together)\n\n</session-restore>\n\n---\n`);
         }
       }
     } catch {}
@@ -354,7 +354,7 @@ async function main() {
     const hudCheck = await checkHudInstallation();
     if (!hudCheck.installed) {
       messages.push(`<system-reminder>
-[OMP] HUD not configured (${hudCheck.reason}). Run /hud setup then restart Copilot CLI.
+[OMC] HUD not configured (${hudCheck.reason}). Run /hud setup then restart Copilot CLI.
 </system-reminder>`);
     }
 

@@ -78,7 +78,6 @@ export const verifierAgent: AgentConfig = {
 
 /**
  * Test-Engineer Agent - Test Strategy & Coverage (Sonnet)
- * Replaces: tdd-guide agent
  */
 export const testEngineerAgent: AgentConfig = {
   name: 'test-engineer',
@@ -136,15 +135,6 @@ export const codeSimplifierAgent: AgentConfig = {
   model: 'opus',
   defaultModel: 'opus'
 };
-
-// ============================================================
-// DEPRECATED ALIASES (Backward Compatibility)
-// ============================================================
-
-/**
- * @deprecated Use test-engineer agent instead
- */
-export const tddGuideAgentAlias = testEngineerAgent;
 
 const AGENT_CONFIG_KEY_MAP = {
   explore: 'explore',
@@ -319,7 +309,6 @@ You coordinate specialized subagents to accomplish complex software engineering 
 - **quality-strategist** → code-reviewer
 - **dependency-expert** → document-specialist
 - **researcher** → document-specialist
-- **tdd-guide** → test-engineer
 - **deep-executor** → executor
 - **build-fixer** → debugger
 - **harsh-critic** → critic

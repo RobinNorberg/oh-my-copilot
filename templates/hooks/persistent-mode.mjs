@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * OMP Persistent Mode Hook (Node.js)
- * Minimal continuation enforcer for all OMP modes.
+ * OMC Persistent Mode Hook (Node.js)
+ * Minimal continuation enforcer for all OMC modes.
  * Stripped down for reliability — no optional imports, no PRD, no notepad pruning.
  *
  * Supported modes: ralph, autopilot, ultrapilot, swarm, ultrawork, ultraqa, pipeline, team
@@ -218,7 +218,7 @@ function isStaleSkillState(state) {
 /**
  * Check if a cancel signal is in progress for the session.
  * Cancel signals are written by state_clear and expire after 30 seconds.
- * @param {string} stateDir - The .omp/state directory path
+ * @param {string} stateDir - The .omg/state directory path
  * @param {string} sessionId - Optional session ID
  * @returns {boolean} true if cancel is in progress
  */
@@ -350,6 +350,21 @@ function readStateFileWithSession(stateDir, globalStateDir, filename, sessionId)
 }
 
 /**
+ * Get the count of active subagents from subagent-tracking.json.
+ * Returns 0 if the file doesn't exist or can't be read.
+ */
+function getActiveSubagentCount(stateDir) {
+  const trackingPath = join(stateDir, 'subagent-tracking.json');
+  try {
+    const data = readJsonFile(trackingPath);
+    if (!data || !Array.isArray(data.agents)) return 0;
+    return data.agents.filter(a => a.status === 'running' || a.status === 'active').length;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Count incomplete Tasks from Copilot CLI's native Task system.
  */
 function countIncompleteTasks(sessionId) {
@@ -411,7 +426,7 @@ function countIncompleteTodos(sessionId, projectDir) {
 
   // Project-local todos only
   for (const path of [
-    join(projectDir, ".omp", "todos.json"),
+    join(projectDir, ".omg", "todos.json"),
     join(projectDir, ".copilot", "todos.json"),
   ]) {
     try {
@@ -542,8 +557,8 @@ async function main() {
     const sessionIdRaw = data.sessionId || data.session_id || data.sessionid || "";
     const sessionId = sanitizeSessionId(sessionIdRaw);
     const hasValidSessionId = isValidSessionId(sessionIdRaw);
-    const stateDir = join(directory, ".omp", "state");
-    const globalStateDir = join(homedir(), ".omp", "state");
+    const stateDir = join(directory, ".omg", "state");
+    const globalStateDir = join(homedir(), ".omg", "state");
 
     // CRITICAL: Never block context-limit stops.
     // Blocking these causes a deadlock where Copilot CLI cannot compact.
@@ -621,6 +636,14 @@ async function main() {
 
     // Check if cancel is in progress - if so, allow stop immediately
     if (isSessionCancelInProgress(stateDir, sessionId)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    // If active subagents are running, allow the stop so the orchestrator can coordinate.
+    // Blocking here would cause the orchestrator to deadlock while waiting for subagents.
+    const activeSubagents = getActiveSubagentCount(stateDir);
+    if (activeSubagents > 0) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
@@ -833,7 +856,7 @@ async function main() {
       }
     }
 
-    // Priority 6: Team (omp-teams / staged pipeline)
+    // Priority 6: Team (omc-teams / staged pipeline)
     if (
       team.state?.active &&
       !isStaleState(team.state) &&

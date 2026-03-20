@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// OMP Stop Continuation Hook (Simplified)
+// OMC Stop Continuation Hook (Simplified)
 // Always allows stop - soft enforcement via message injection only.
 
 import { readStdin } from './lib/stdin.mjs';

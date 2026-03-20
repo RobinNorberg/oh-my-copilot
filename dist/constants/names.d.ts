@@ -13,11 +13,6 @@ export declare const MODES: {
     readonly RALPLAN: "ralplan";
 };
 export type ModeName = typeof MODES[keyof typeof MODES];
-export declare const DEPRECATED_MODES: {
-    readonly ULTRAPILOT: "ultrapilot";
-    readonly SWARM: "swarm";
-    readonly PIPELINE: "pipeline";
-};
 export declare const TOOL_CATEGORIES: {
     readonly LSP: "lsp";
     readonly AST: "ast";
@@ -30,6 +25,7 @@ export declare const TOOL_CATEGORIES: {
     readonly CODEX: "codex";
     readonly GEMINI: "gemini";
     readonly SHARED_MEMORY: "shared-memory";
+    readonly DEEPINIT: "deepinit";
 };
 export type ToolCategory = typeof TOOL_CATEGORIES[keyof typeof TOOL_CATEGORIES];
 export declare const HOOK_EVENTS: {

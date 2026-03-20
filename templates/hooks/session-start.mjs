@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// OMP Session Start Hook (Node.js)
+// OMC Session Start Hook (Node.js)
 // Restores persistent mode states when session starts
 // Cross-platform: Windows, macOS, Linux
 
@@ -54,7 +54,7 @@ function writeJsonFile(path, data) {
 }
 
 async function checkForUpdates(currentVersion) {
-  const cacheFile = join(homedir(), '.omp', 'update-check.json');
+  const cacheFile = join(homedir(), '.omg', 'update-check.json');
   const now = Date.now();
   const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -119,10 +119,10 @@ const PRIORITY_HEADER = '## Priority Context';
 const WORKING_MEMORY_HEADER = '## Working Memory';
 
 /**
- * Get notepad path in .omp directory
+ * Get notepad path in .omg directory
  */
 function getNotepadPath(directory) {
-  return join(directory, '.omp', NOTEPAD_FILENAME);
+  return join(directory, '.omg', NOTEPAD_FILENAME);
 }
 
 /**
@@ -195,7 +195,7 @@ async function main() {
     const messages = [];
 
     // Check for updates (non-blocking)
-    // Read version from OMP's own package.json, not the project's (fixes #516)
+    // Read version from OMC's own package.json, not the project's (fixes #516)
     let currentVersion = null;
     for (let i = 1; i <= 4; i++) {
       const candidate = join(__dirname, ...Array(i).fill('..'), 'package.json');
@@ -209,21 +209,21 @@ async function main() {
     const updateInfo = currentVersion ? await checkForUpdates(currentVersion) : null;
     if (updateInfo) {
       // Read config to check autoUpgradePrompt preference
-      const configPath = join(homedir(), '.copilot', '.omp-config.json');
+      const configPath = join(homedir(), '.copilot', '.omg-config.json');
       const omcConfig = readJsonFile(configPath) || {};
       const autoUpgradePrompt = omcConfig.autoUpgradePrompt !== false; // default: true
 
       if (autoUpgradePrompt) {
         messages.push(`<session-restore>
 
-[OMP AUTO-UPGRADE AVAILABLE]
+[OMC AUTO-UPGRADE AVAILABLE]
 
 oh-my-copilot v${updateInfo.latestVersion} is available (current: v${updateInfo.currentVersion}).
 
 ACTION: Use AskUserQuestion to ask the user if they want to upgrade now. Offer these options:
-- "Upgrade now" (Recommended): Run \`npm install -g oh-my-copilot@latest\` via Bash, then run \`omp install --force --skip-copilot-check --refresh-hooks\` to reconcile hooks and copilot-instructions.md
+- "Upgrade now" (Recommended): Run \`npm install -g oh-my-copilot@latest\` via Bash, then run \`omc install --force --skip-copilot-check --refresh-hooks\` to reconcile hooks and copilot-instructions.md
 - "Skip this time": Continue the session without upgrading
-- "Don't ask again": Tell the user to set "autoUpgradePrompt": false in ~/.copilot/.omp-config.json to disable future prompts
+- "Don't ask again": Tell the user to set "autoUpgradePrompt": false in ~/.copilot/.omg-config.json to disable future prompts
 
 Keep the prompt brief. If the user accepts, execute the upgrade commands and report the result.
 
@@ -234,11 +234,11 @@ Keep the prompt brief. If the user accepts, execute the upgrade commands and rep
       } else {
         messages.push(`<session-restore>
 
-[OMP UPDATE AVAILABLE]
+[OMC UPDATE AVAILABLE]
 
 A new version of oh-my-copilot is available: v${updateInfo.latestVersion} (current: ${updateInfo.currentVersion})
 
-To update, run: omp update
+To update, run: omc update
 
 </session-restore>
 
@@ -248,8 +248,8 @@ To update, run: omp update
     }
 
     // Check for ultrawork state - only restore if session matches (issue #311)
-    const ultraworkState = readJsonFile(join(directory, '.omp', 'state', 'ultrawork-state.json'))
-      || readJsonFile(join(homedir(), '.omp', 'state', 'ultrawork-state.json'));
+    const ultraworkState = readJsonFile(join(directory, '.omg', 'state', 'ultrawork-state.json'))
+      || readJsonFile(join(homedir(), '.omg', 'state', 'ultrawork-state.json'));
 
     if (ultraworkState?.active && (!ultraworkState.session_id || ultraworkState.session_id === sessionId)) {
       messages.push(`<session-restore>
@@ -272,7 +272,7 @@ Continue working in ultrawork mode until all tasks are complete.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [
-      join(directory, '.omp', 'todos.json'),
+      join(directory, '.omg', 'todos.json'),
       join(directory, '.copilot', 'todos.json')
     ];
     let incompleteCount = 0;

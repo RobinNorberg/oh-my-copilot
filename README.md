@@ -4,14 +4,16 @@
 [![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
 [![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+<br/>This work is based on [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo.
 
-> oh-my-copilot is a fork of [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo, adapted for GitHub Copilot CLI.
 
-> **For Codex users:** Check out [oh-my-codex](https://github.com/Yeachan-Heo/oh-my-codex) — the same orchestration experience for OpenAI Codex CLI.
 
-**Multi-agent orchestration for Copilot CLI. Zero learning curve.**
-
-_Don't learn Copilot CLI. Just use OMC._
+<h1 align="center">Turbocharge your Copilot CLI with multi-agent orchestration.</h1>
+<p align="center">    
+  <img src="assets/omc-character.png" alt="oh-my-copilot" width="400" />
+  </br>
+  <strong><i>Your Copilot has just been steroided.</i></strong>
+</p>
 
 ---
 
@@ -95,26 +97,38 @@ When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto
 
 Optional shortcuts for power users. Natural language works fine without them.
 
-| Keyword                | Effect                                  | Example                                        |
-| ---------------------- | --------------------------------------- | ---------------------------------------------- |
-| `team`                 | Canonical Team orchestration            | `/team 3:executor "fix all TypeScript errors"` |
-| `omc team`             | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"`           |
-| `ccg`                  | ask-codex + ask-gemini synthesis        | `/ccg review this PR`                          |
-| `autopilot`            | Full autonomous execution               | `autopilot: build a todo app`                  |
-| `ralph`                | Persistence mode                        | `ralph: refactor auth`                         |
-| `ulw`                  | Maximum parallelism                     | `ulw fix all errors`                           |
-| `ralplan`              | Iterative planning consensus            | `ralplan this feature`                         |
-| `deep-interview`       | Socratic requirements clarification     | `deep-interview "vague idea"`                  |
-| `deepsearch`           | Codebase-focused search routing         | `deepsearch for auth middleware`               |
-| `ultrathink`           | Deep reasoning mode                     | `ultrathink about this architecture`           |
-| `ado triage`           | Azure DevOps work item triage           | `ado triage`                                   |
-| `ado setup`            | Configure Azure DevOps integration      | `ado setup`                                    |
-| `cancelomc`, `stopomc` | Stop active OMC modes                   | `stopomc`                                      |
+| Keyword | Category | Effect | Example |
+| ------- | -------- | ------ | ------- |
+| `ask claude` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Claude Code CLI | `ask claude "review auth architecture"` |
+| `ask codex` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Codex CLI | `ask codex "security analysis"` |
+| `ask gemini` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Gemini CLI | `ask gemini "suggest UX improvements"` |
+| `ccg` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `ccg review this PR` |
+| `omc team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"` |
+| `team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Canonical Team orchestration | `team 3:executor "fix all TypeScript errors"` |
+| `code review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Code review mode | `code review the auth module` |
+| `deep-analyze` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep analysis mode | `deep-analyze why tests are failing` |
+| `deep-dive` | ![analysis](https://img.shields.io/badge/analysis-purple) | Trace → interview pipeline | `deep-dive why auth is slow` |
+| `deep-interview` | ![analysis](https://img.shields.io/badge/analysis-purple) | Socratic requirements clarification | `deep-interview "vague idea"` |
+| `deep-review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Multi-pass code review (4 passes) | `deep-review this PR` |
+| `deepsearch` | ![analysis](https://img.shields.io/badge/analysis-purple) | Codebase-focused search routing | `deepsearch for auth middleware` |
+| `discover` | ![analysis](https://img.shields.io/badge/analysis-purple) | Parallel codebase quality scan | `discover src/hooks/` |
+| `security review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Security review mode | `security review the API endpoints` |
+| `tdd`, `test first` | ![analysis](https://img.shields.io/badge/analysis-purple) | TDD workflow enforcement | `tdd: implement password validation` |
+| `ultrathink` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep reasoning mode | `ultrathink about this architecture` |
+| `ralplan` | ![planning](https://img.shields.io/badge/planning-orange) | Iterative planning consensus | `ralplan this feature` |
+| `autopilot` | ![execution](https://img.shields.io/badge/execution-green) | Full autonomous execution | `autopilot: build a todo app` |
+| `experiment` | ![execution](https://img.shields.io/badge/execution-green) | Hypothesis-driven experiment loop | `experiment: optimize API latency` |
+| `ralph` | ![execution](https://img.shields.io/badge/execution-green) | Persistence mode | `ralph: refactor auth` |
+| `ralphthon` | ![execution](https://img.shields.io/badge/execution-green) | Autonomous hackathon mode | `ralphthon: build MVP in 2 hours` |
+| `ulw` | ![execution](https://img.shields.io/badge/execution-green) | Maximum parallelism | `ulw fix all errors` |
+| `ado setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure Azure DevOps integration | `ado setup` |
+| `ado triage` | ![devops](https://img.shields.io/badge/devops-gray) | Azure DevOps work item triage | `ado triage` |
+| `cancelomc`, `stopomc` | ![control](https://img.shields.io/badge/control-gray) | Stop active OMC modes | `stopomc` |
 
 **Notes:**
 
 - **ralph includes ultrawork**: when you activate ralph mode, it automatically includes ultrawork's parallel execution.
-- `swarm` compatibility alias has been removed; migrate existing prompts to `/team` syntax.
+- **Informational filtering**: Asking "what is ralph?" or "explain ultrawork" won't trigger execution — only actionable uses activate keywords. Supports English, Korean, Japanese, and Chinese.
 
 ---
 
@@ -149,16 +163,25 @@ OMC features like `omc team` and rate-limit detection require **tmux**:
 
 > **Windows users:** [psmux](https://github.com/marlocarlo/psmux) provides a native `tmux` binary for Windows with 76 tmux-compatible commands. No WSL required.
 
-### Optional: Multi-AI Orchestration
+### Multi-AI Orchestration
 
-OMC can optionally orchestrate external AI providers for cross-validation and design consistency. These are **not required** — OMC works fully without them.
+OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validation, design consistency, and parallel execution. All four major CLI tools are supported:
 
-| Provider                                                  | Install                             | What it enables                                  |
-| --------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `npm install -g @google/gemini-cli` | Design review, UI consistency (1M token context) |
-| [Codex CLI](https://github.com/openai/codex)              | `npm install -g @openai/codex`      | Architecture validation, code review cross-check |
+| Provider                                                      | Install                                | What it enables                                  |
+| ------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------ |
+| [Copilot CLI](https://docs.github.com/copilot-cli)            | `npm install -g @github/copilot`                     | Core orchestration platform                      |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm install -g @anthropic-ai/claude-code` | Deep reasoning, architecture analysis            |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm install -g @google/gemini-cli`    | Design review, UI consistency (1M token context) |
+| [Codex CLI](https://github.com/openai/codex)                  | `npm install -g @openai/codex`         | Architecture validation, code review cross-check |
 
-**Cost:** 3 Pro plans (Copilot + Gemini + ChatGPT) cover everything for ~$60/month.
+```bash
+omc team 2:claude "review auth architecture"
+omc team 2:codex "security analysis"
+omc team 2:gemini "UI consistency check"
+omc team 1:copilot "review existing tests"
+```
+
+Only Copilot CLI is required — the others are optional and add cross-provider validation.
 
 ---
 

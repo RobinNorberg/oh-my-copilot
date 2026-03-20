@@ -195,11 +195,6 @@ export {
   buildLaunchArgs,
   buildWorkerCommand,
   parseCliOutput,
-  // Deprecated backward-compat exports kept for downstream consumers.
-  shouldLoadShellRc,
-  validateCliBinaryPath,
-  resolveCliBinaryPath,
-  clearResolvedPathCache,
 } from './model-contract.js';
 export type { CliBinaryValidation } from './model-contract.js';
 
@@ -227,10 +222,6 @@ export {
   readMailbox,
 } from './tmux-comm.js';
 
-// Deprecated backward-compat exports for older layout APIs.
-export { LayoutStabilizer } from './layout-stabilizer.js';
-export type { LayoutStabilizerOptions } from './layout-stabilizer.js';
-
 // phase-controller
 export type { TeamPhase, PhaseableTask } from './phase-controller.js';
 export { inferPhase, getPhaseTransitionLog, isTerminalPhase } from './phase-controller.js';
@@ -250,7 +241,6 @@ export { injectToLeaderPane } from './tmux-session.js';
 // api-interop (CLI API for workers)
 export {
   TEAM_API_OPERATIONS,
-  LEGACY_TEAM_MCP_TOOLS,
   resolveTeamApiOperation,
   executeTeamApiOperation,
   buildLegacyTeamDeprecationHint,

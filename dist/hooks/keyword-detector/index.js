@@ -27,6 +27,7 @@ const KEYWORD_PATTERNS = {
     analyze: /\b(deep[\s-]?analyze|deepanalyze)\b/i,
     'deep-interview': /\b(deep[\s-]interview|ouroboros)\b/i,
     ccg: /\b(ccg|copilot-clix-gemini)\b/i,
+    claude: /\b(ask|use|delegate\s+to)\s+claude\b/i,
     codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
     gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i
 };
@@ -36,7 +37,7 @@ const KEYWORD_PATTERNS = {
 const KEYWORD_PRIORITY = [
     'cancel', 'ralph', 'autopilot', 'team', 'ultrawork',
     'ccg', 'ralplan', 'tdd', 'code-review', 'security-review',
-    'ultrathink', 'deepsearch', 'analyze', 'deep-interview', 'codex', 'gemini'
+    'ultrathink', 'deepsearch', 'analyze', 'deep-interview', 'claude', 'codex', 'gemini'
 ];
 /**
  * Remove code blocks from text to prevent false positives

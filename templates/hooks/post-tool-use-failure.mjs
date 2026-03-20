@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// OMP Post-Tool-Use-Failure Hook (Node.js)
+// OMC Post-Tool-Use-Failure Hook (Node.js)
 // Tracks tool failures for retry guidance in Stop hook
 // Writes last-tool-error.json with tool name, input preview, error, and retry count
 
@@ -26,7 +26,7 @@ function isPathContained(targetPath, basePath) {
   return normalizedTarget.startsWith(normalizedBase + sep) || normalizedTarget === normalizedBase;
 }
 
-// Initialize .omp directory if needed
+// Initialize .omg directory if needed
 function initOmcDir(directory) {
   const cwd = process.cwd();
   // Validate directory is contained within cwd
@@ -34,7 +34,7 @@ function initOmcDir(directory) {
     // Fallback to cwd if directory attempts traversal
     directory = cwd;
   }
-  const omcDir = join(directory, '.omp');
+  const omcDir = join(directory, '.omg');
   const stateDir = join(omcDir, 'state');
 
   if (!existsSync(omcDir)) {
@@ -140,7 +140,7 @@ async function main() {
       return;
     }
 
-    // Initialize .omp/state directory
+    // Initialize .omg/state directory
     const stateDir = initOmcDir(directory);
     const statePath = join(stateDir, 'last-tool-error.json');
 

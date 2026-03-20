@@ -1,9 +1,9 @@
 import { mkdir, writeFile, readFile, rm, rename } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
-import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs } from './model-contract.js';
+import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
-import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, waitForPaneReady, } from './tmux-session.js';
+import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, waitForPaneReady, resolveSplitPaneWorkerPaneIds, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, } from './worker-bootstrap.js';
 import { cleanupTeamWorktrees } from './git-worktree.js';
 import { withTaskLock, writeTaskFailure, DEFAULT_MAX_TASK_RETRIES, } from './task-file-ops.js';
@@ -563,7 +563,7 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
                 || process.env.OMC_GEMINI_DEFAULT_MODEL
                 || undefined;
         }
-        return undefined;
+        return resolveClaudeWorkerModel();
     })();
     const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
         teamName: runtime.teamName,
@@ -737,7 +737,8 @@ export async function shutdownTeam(teamName, sessionName, cwd, timeoutMs = 30_00
     const sessionMode = (ownsWindow ?? Boolean(configData?.tmuxOwnsWindow))
         ? (sessionName.includes(':') ? 'dedicated-window' : 'detached-session')
         : 'split-pane';
-    await killTeamSession(sessionName, workerPaneIds, leaderPaneId, { sessionMode });
+    const resolvedWorkerPaneIds = await resolveSplitPaneWorkerPaneIds(sessionName, workerPaneIds ?? [], leaderPaneId);
+    await killTeamSession(sessionName, resolvedWorkerPaneIds, leaderPaneId, { sessionMode });
     // Clean up team worktrees (best-effort before state directory removal)
     try {
         cleanupTeamWorktrees(teamName, cwd);

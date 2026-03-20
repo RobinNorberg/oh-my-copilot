@@ -37,6 +37,13 @@ async function tmuxAsync(args) {
     }
     return promisifiedExecFile('tmux', args);
 }
+export function detectTeamMultiplexerContext(env = process.env) {
+    if (env.TMUX)
+        return 'tmux';
+    if (env.CMUX_SURFACE_ID)
+        return 'cmux';
+    return 'none';
+}
 /** Shells known to support the `-lc 'exec "$@"'` invocation pattern. */
 const SUPPORTED_POSIX_SHELLS = new Set(['sh', 'bash', 'zsh', 'fish', 'ksh']);
 export function getDefaultShell() {
@@ -345,7 +352,8 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     const { execFile } = await import('child_process');
     const { promisify } = await import('util');
     const execFileAsync = promisify(execFile);
-    const inTmux = Boolean(process.env.TMUX);
+    const muxContext = detectTeamMultiplexerContext();
+    const inTmux = muxContext === 'tmux';
     const useDedicatedWindow = Boolean(options.newWindow && inTmux);
     // Prefer the invoking pane from environment to avoid focus races when users
     // switch tmux windows during startup (issue #966).
@@ -821,6 +829,62 @@ export async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, 
     }
     catch {
         // Session may already be dead.
+    }
+}
+/**
+ * Return true if `value` looks like a tmux pane ID (e.g. "%12").
+ */
+export function isPaneId(value) {
+    return /^%\d+$/.test(value.trim());
+}
+/**
+ * Deduplicate pane IDs, preserving first-seen order and filtering invalid entries.
+ */
+export function dedupeWorkerPaneIds(paneIds) {
+    const seen = new Set();
+    const result = [];
+    for (const id of paneIds) {
+        const trimmed = id.trim();
+        if (isPaneId(trimmed) && !seen.has(trimmed)) {
+            seen.add(trimmed);
+            result.push(trimmed);
+        }
+    }
+    return result;
+}
+/**
+ * Resolve the definitive list of worker pane IDs for split-pane cleanup.
+ *
+ * For split-pane sessions the tmux server is the source of truth — pane IDs
+ * stored in config may be stale (worker already exited, pane recycled).
+ * This function queries tmux for the live pane list and intersects it with
+ * the config-stored IDs so we never kill panes that belong to other windows.
+ *
+ * Falls back to the config-stored IDs when tmux is unreachable.
+ */
+export async function resolveSplitPaneWorkerPaneIds(sessionName, configPaneIds, leaderPaneId) {
+    const deduped = dedupeWorkerPaneIds(configPaneIds);
+    if (!sessionName || deduped.length === 0)
+        return deduped;
+    try {
+        const { execFile } = await import('child_process');
+        const { promisify } = await import('util');
+        const execFileAsync = promisify(execFile);
+        // Query live panes in the session/window
+        const target = sessionName.includes(':') ? sessionName : sessionName.split(':')[0];
+        const result = await execFileAsync('tmux', [
+            'list-panes', '-t', target, '-F', '#{pane_id}',
+        ]);
+        const livePaneIds = new Set(result.stdout.trim().split('\n').map(l => l.trim()).filter(isPaneId));
+        // Intersect: only kill panes still alive in this session, excluding leader
+        const resolved = deduped.filter(id => livePaneIds.has(id) && id !== leaderPaneId);
+        // If intersection is empty (all workers already exited), return deduped
+        // config list so callers still attempt best-effort kill.
+        return resolved.length > 0 ? resolved : deduped;
+    }
+    catch {
+        // tmux unavailable or session already gone — fall back to config IDs
+        return deduped;
     }
 }
 //# sourceMappingURL=tmux-session.js.map

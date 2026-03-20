@@ -21,7 +21,7 @@ The `swarm` compatibility alias was removed in #1131.
 ### Parameters
 
 - **N** - Number of teammate agents (1-20). Optional; defaults to auto-sizing based on task decomposition.
-- **agent-type** - OMP agent to spawn for the `team-exec` stage (e.g., executor, debugger, designer, codex, gemini). Optional; defaults to stage-aware routing. Use `codex` to spawn Codex CLI workers or `gemini` for Gemini CLI workers (requires respective CLIs installed). See Stage Agent Routing below.
+- **agent-type** - OMC agent to spawn for the `team-exec` stage (e.g., executor, debugger, designer, codex, gemini). Optional; defaults to stage-aware routing. Use `codex` to spawn Codex CLI workers or `gemini` for Gemini CLI workers (requires respective CLIs installed). See Stage Agent Routing below.
 - **task** - High-level task to decompose and distribute among teammates
 - **ralph** - Optional modifier. When present, wraps the team pipeline in Ralph's persistence loop (retry on failure, architect verification before completion). See Team + Ralph Composition below.
 
@@ -193,7 +193,7 @@ The lead writes handoffs to `.omg/handoffs/<stage-name>.md`.
 ### Phase 1: Parse Input
 
 - Extract **N** (agent count), validate 1-20
-- Extract **agent-type**, validate it maps to a known OMP subagent
+- Extract **agent-type**, validate it maps to a known OMC subagent
 - Extract **task** description
 
 ### Phase 2: Analyze & Decompose
@@ -227,7 +227,7 @@ Call `TeamCreate` with a slug derived from the task:
 
 The current session becomes the team lead (`team-lead@fix-ts-errors`).
 
-Write OMP state using the `state_write` MCP tool for proper session-scoped persistence:
+Write OMC state using the `state_write` MCP tool for proper session-scoped persistence:
 
 ```
 state_write(mode="team", active=true, current_phase="team-plan", state={
@@ -381,7 +381,7 @@ Monitor for stuck or failed teammates:
 
 ### Phase 6.5: Stage Transitions (State Persistence)
 
-On every stage transition, update OMP state:
+On every stage transition, update OMC state:
 
 ```
 // Entering team-exec after planning
@@ -429,7 +429,7 @@ When all real tasks (non-internal) are completed or failed:
      "team_name": "fix-ts-errors"
    }
    ```
-5. **Clean OMP state** -- Remove `.omg/state/team-state.json`
+5. **Clean OMC state** -- Remove `.omg/state/team-state.json`
 6. **Report summary** -- Present results to the user
 
 ## Agent Preamble
@@ -713,6 +713,17 @@ if (status.taskSummary.pending === 0 && status.taskSummary.inProgress === 0) {
 
 This approach complements the existing `SendMessage`-based communication by providing a pull-based mechanism for MCP workers that cannot use Copilot CLI's team messaging tools.
 
+## Failure Recovery
+
+When a teammate agent fails, the structured recovery manager classifies the failure and determines the action:
+- **rate_limited**: Retry with exponential backoff
+- **auth_failure**: Escalate immediately (needs user credentials/permissions)
+- **build_error**: Retry with additional context about the error
+- **circular_fix**: Stop retrying and generate escalation report
+- **unknown**: Retry up to 3 times, then escalate
+
+The recovery manager integrates with the circular fix detector — if the same error recurs 3+ times across iterations, it escalates rather than continuing to retry.
+
 ## Error Handling
 
 ### Teammate Fails a Task
@@ -897,7 +908,7 @@ On successful completion:
 1. `TeamDelete` handles all Copilot CLI state:
    - Removes `~/.copilot/teams/{team_name}/` (config)
    - Removes `~/.copilot/tasks/{team_name}/` (all task files + lock)
-2. OMP state cleanup via MCP tools:
+2. OMC state cleanup via MCP tools:
    ```
    state_clear(mode="team")
    ```

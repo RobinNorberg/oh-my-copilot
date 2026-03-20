@@ -1,247 +1,95 @@
-# oh-my-copilot v4.7.8: Stop-Hook Hardening & CLI Reliability Fixes
-
-## Release Notes
-
-Patch release focused on post-v4.7.7 stabilization on `dev`: stop-hook hardening, agent consolidation follow-up, LSP/session cleanup, and reliability fixes across routing, notifications, HUD polling, wait-state handling, ask-skill session behavior, status line portability, and fish-shell worker launches.
-
-### Highlights
-
-- **Stop-hook hardening for persistent flows** — Adds standalone protection for `team` and `ralplan`, fixes false-blocking after skill completion, and extends protection coverage to `deep-interview`. (#1424, #1432, #1435)
-- **Agent consolidation follow-up** — Consolidates 4 overlapping agent pairs (22→18 agents), removes 5 thin wrapper skills, and adds benchmark coverage for all 4 consolidated agents to make prompt tuning measurable. (#1425, #1426, #1437)
-- **Runtime cleanup and stability** — Cleans session-scoped mode state on exit and force-kills orphaned LSP server processes when the MCP bridge shuts down. (#1428, #1429)
-- **CLI and environment reliability** — Preserves `ask-codex` / `ask-gemini` behavior inside Copilot CLI sessions, makes `statusLine` paths portable across machines, and fixes Team worker pane launch commands for Fish shell users. (#1438, #1404, #1377)
-
-### Bug Fixes
-
-- **fix(platform): replace win32 hard-blocks with tmux capability checks** — Removes platform-level hard denial in favor of capability detection so supported Windows environments can proceed when tmux interoperability is available. (#1423)
-- **fix(stop-hook): add hard-blocking for standalone team and ralplan** — Adds first-class protection paths for standalone Team and Ralplan flows to prevent premature interruption of long-running orchestration. (#1424)
-- **fix(session-end): clean session-scoped mode state on exit** — Ensures session-local state is removed when execution ends so stale mode markers do not leak into later sessions. (#1428)
-- **fix(lsp): kill orphaned LSP server processes on MCP bridge exit** — Terminates managed child language servers during bridge shutdown to prevent orphan buildup and memory pressure. (#1429)
-- **fix(routing): respect env-configured Copilot family models** — Keeps runtime model selection aligned with environment overrides instead of falling back to stale defaults. (#1430)
-- **fix(notifications): pass tmuxTailLines config to formatter parseTmuxTail** — Makes notification tail rendering honor the configured tmux line limit end to end. (#1431)
-- **fix(hud): reduce usage API polling to avoid 429s** — Lowers polling pressure and improves stale-cache behavior under rate limiting. (#1418)
-- **fix(wait): handle stale cached rate limit status** — Prevents misleading wait-state behavior when cached rate-limit data has expired. (#1433)
-- **fix: preserve ask-codex and ask-gemini inside Copilot CLI sessions** — Keeps ask-skill flows working correctly when invoked from inside Copilot CLI sessions instead of losing behavior to session context drift. (#1438)
-- **fix: use portable $HOME path in statusLine for multi-machine sync** — Replaces machine-specific status line paths with a portable home-based path better suited for synced dotfiles and multi-machine setups. (#1404)
-- **fix(team): support fish shell in worker pane launch commands** — Corrects Team worker pane launch behavior for Fish shell environments. (#1377)
-
-### Refactor & Testing
-
-- **refactor(skills): eliminate 5 thin wrapper skills + copilot-instructions.md diet** — Removes redundant thin wrappers and trims docs to reduce maintenance overhead. (#1425)
-- **refactor(agents): consolidate 4 overlapping agent pairs (22→18 agents)** — Simplifies the registry while preserving compatibility aliases and downstream routing behavior. (#1426)
-- **test(skill-state): align ralplan expectations with stop-hook** — Updates test expectations to match the hardened stop-hook enforcement model. (#1435)
-- **feat(benchmarks): add per-agent prompt benchmark suite for all 4 consolidated agents** — Extends prompt benchmarking infrastructure so merged agents can be compared against archived pre-consolidation prompts. (#1437)
-
-### Build
-
-- **fix(release): add marketplace.json and docs/copilot-instructions.md to version checklist** — Closes the release-process gap that allowed version drift in non-package metadata files.
-- **fix: bump marketplace.json version to 4.7.7** — Corrects the missed marketplace version bump required by version consistency checks.
-- **chore: bump version to 4.7.7** — Final version cut from the previous release lineage before this patch cycle.
-
-### Install / Update
-
-```bash
-npm install -g oh-my-copilot@4.7.8
-```
-
-Or reinstall the plugin:
-```bash
-copilot /install-plugin oh-my-copilot
-```
-
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.7.7...v4.7.8
-
----
-
-# oh-my-copilot v4.7.5: Runtime Guardrails & Model Default Cleanup
-
-## Release Notes
-
-Patch release that lands the post-v4.7.4 stabilization work on `dev`: safer orchestration guardrails, fail-open team stop enforcement, and centralized model defaults.
-
-### Bug Fixes
-
-- **fix(models): centralize defaults and remove outdated hardcoded mappings** — Consolidates model defaults into a single source of truth so runtime, config, and team flows stop drifting on stale hardcoded values. (#1376)
-- **fix: add context guardrails for agent orchestration** — Adds stronger orchestration context checks so agent/runtime flows fail earlier and more predictably when state is invalid. (#1373)
-- **fix(hooks): fail-open team stop enforcement and add breaker** — Makes team stop-hook enforcement safer under failure by failing open and adding a breaker to avoid deadlocks or runaway blocking. (#1374)
-- **test: fix no-undef process in post-tool-verifier test** — Repairs the verifier regression test so CI stays green with the updated orchestration guardrails.
-
-### Build
-
-- **chore: sync `main` into `dev` and rebuild dist artifacts** — Merged the v4.7.4 release lineage back into `dev`, then rebuilt committed bridge/runtime/dist outputs for v4.7.5.
-
-### Install / Update
-
-```bash
-npm install -g oh-my-copilot@4.7.5
-```
-
-Or reinstall the plugin:
-```bash
-copilot /install-plugin oh-my-copilot
-```
-
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.7.4...v4.7.5
-
----
-
-# oh-my-copilot v4.7.4: Team Worker Hardening & CI Improvements
-
-## Release Notes
-
-Patch release focused on hardening Team worker orchestration, mailbox/task interop, and release validation ergonomics.
-
-### Features
-
-- **feat(team): harden worker guardrails and task/mailbox interop** — Strengthens worker lifecycle protections, mailbox/task handling, CLI interop, and state-path coverage for tmux-backed Team execution.
-
-### CI & Release
-
-- **chore(ci): retrigger PR workflows** — Refreshes CI after the worker-hardening changes landed.
-- **chore(ci): add manual workflow_dispatch triggers** — Adds manual triggers for CI workflows so maintainers can rerun validation on demand during release prep.
-- **chore: rebuild dist artifacts** — Rebuilt committed bridge/runtime/team outputs for the worker-hardening release cut.
-
-### Install / Update
-
-```bash
-npm install -g oh-my-copilot@4.7.4
-```
-
-Or reinstall the plugin:
-```bash
-copilot /install-plugin oh-my-copilot
-```
-
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.7.3...v4.7.4
-
----
-
-# oh-my-copilot v4.7.1: Team Stability Fixes
-
-## Release Notes
-
-Patch release with critical stability fixes for team orchestration — prevents infinite agent spawning and fixes Gemini CLI worker launch failures.
-
-### Bug Fixes
-
-- **fix(hooks): prevent infinite team spawning** — Disabled automatic team keyword detection in hooks to prevent recursive agent spawning loops. Team mode now requires explicit `/team` invocation only, eliminating the risk of infinite spawn cascades when the keyword "team" appears in natural conversation. (#1355)
-- **fix(team): gemini worker launch with correct approval mode** — Fixed Gemini CLI worker spawning by using `--approval-mode yolo -i` flags, matching the expected Gemini CLI interface for non-interactive autonomous execution. Previously, workers would fail to launch due to missing approval mode configuration. (#1356)
-- **fix(tests): update tier0 contract test** — Aligned tier0 contract tests with the new explicit-only team mode behavior to prevent false test failures.
-
-### Build
-
-- **chore: rebuild dist artifacts** — Rebuilt `bridge/cli.cjs` and `dist/cli/` with `--json` flag support for `omp team start`, enabling structured JSON output for programmatic team orchestration. Tests for `--json` envelope, `--count` expansion, and non-JSON fallback included.
-
-### Install / Update
-
-```bash
-npm install -g oh-my-copilot@4.7.1
-```
-
-Or reinstall the plugin:
-```bash
-copilot /install-plugin oh-my-copilot
-```
-
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.7.0...v4.7.1
-
----
-
-# oh-my-copilot v4.7.0: Event-Driven Team Runtime & Multi-Model Flexibility
-
-## Release Notes
-
-Major release featuring a completely redesigned team orchestration runtime, restored non-tmux Codex/Gemini skills for maximum flexibility, comprehensive security hardening, and 50+ merged PRs.
-
-### Highlights
-
-- **Event-Driven Team Runtime v2** — Complete architectural redesign matching OMX patterns. Direct tmux spawn with CLI API inbox replaces watchdog/done.json polling. Dispatch queues, monitoring, and scaling modules provide production-grade orchestration. (#1348)
-- **Ask-Codex & Ask-Gemini Skills** — Restored non-tmux Codex and Gemini integration via `ask-codex` and `ask-gemini` skills. Users now have maximum flexibility: use `/ccg` for tri-model fan-out, `/omp-teams` for tmux pane workers, or the new ask skills for lightweight single-query dispatch — no tmux required. (#1350)
-- **OMX CLI Integration** — Unified `ask` and `team` CLI commands from OMX into OMP core. The team MCP runtime is deprecated in favor of the new CLI-native approach. (#1346)
-
-### Features
-
-- **feat(team): event-driven team redesign** — New `runtime-v2.ts` with `api-interop.ts`, `dispatch-queue.ts`, `events.ts`, `monitor.ts`, `scaling.ts`, `mcp-comm.ts`, and `team-ops.ts` modules. 5,000+ lines of new orchestration infrastructure. (#1348)
-- **feat(team): v2 runtime direct tmux spawn** — CLI API inbox replaces done.json and watchdog patterns for more reliable worker lifecycle management.
-- **feat(ask): add ask-codex and ask-gemini skills** — Non-tmux skills that invoke Codex/Gemini via wrapper scripts using `PLUGIN_ROOT` for portable path resolution. (#1350, #1351)
-- **feat(cli): integrate omx ask/team into omp** — Unified CLI surface; deprecate team MCP runtime in favor of CLI-native team operations. (#1346)
-- **feat(notifications): custom integration system** — Webhook and CLI dispatch support for notifications beyond built-in Telegram/Discord/Slack presets. Template variables, validation, and integration tests included.
-- **feat(agents): harsh-critic v2** — Plan-specific protocol with adaptive harshness levels and reproducible benchmark pack. (#1335)
-- **feat(hud): configurable git info position** — Place git info above or below the HUD via config. (#1302)
-- **feat(hud): wrap mode for maxWidth** — New `wrap` alternative to truncation for long output lines. (#1331, #1319)
-- **feat(hud): API error indicator** — Explicit error display when rate limit API fetch fails. (#1255, #1259)
-- **feat(hud): active profile name** — Display current profile name for multi-profile setups. (#1246)
-- **feat(benchmark): deterministic keyword thresholds** — Calibrated keyword matcher with reproducible thresholds. (#1300)
-
-### Bug Fixes
-
-- **fix: infinite OAuth loop** — Stop 401/403 loops in Team persistent mode. (#1308, #1330)
-- **fix(cli): duplicate 'team' command** — Remove duplicate command registration that caused CLI boot failures.
-- **fix(cli): bundle CLI entry point** — Eliminate `node_modules` dependency for plugin marketplace installs. (#1293)
-- **fix(cli): bare --notify handling** — Prevent `--notify` from consuming the next positional argument.
-- **fix(team): CLI worker model passthrough** — `OMP_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL` now correctly propagates to workers. (#1291, #1294)
-- **fix(team-mcp): wait hang prevention** — Artifact convergence prevents indefinite blocking. (#1241)
-- **fix(team-runtime): readiness startup** — Restore startup sequence for non-prompt workers. (#1243)
-- **fix(team-runtime): done.json parse recovery** — Robust JSON parsing with fallback for corrupted watchdog files. (#1231, #1234)
-- **fix(team-runtime): paths with spaces** — Allow valid `launchBinary` paths containing spaces. (#1232, #1236)
-- **fix(team-security): CLI path trust** — Tightened trust validation and RC-loading behavior. (#1230, #1237)
-- **fix(hud): documentation and error handling** — Resolve slop in HUD docs and error paths. (#1307)
-- **fix(hud): async file I/O** — Prevent event loop blocking in HUD render hot path. (#1273, #1305)
-- **fix(persistent-mode): cancel signal check** — Check cancellation before blocking stop hook. (#1306)
-- **fix(deep-interview): state mode alignment** — Align with state tools enum for correct persistence. (#1233, #1235)
-- **fix(python-repl): Windows cleanup** — Fix orphan process and session cleanup on Windows. (#1239)
-- **fix(config): auto-detect Bedrock/Vertex AI** — Correct `forceInherit` detection for cloud providers. (#1292)
-- **fix: Fish shell worker spawn** — Use `$argv` instead of `$@` for Fish compatibility. (#1326, #1329)
-- **fix: duplicate shebang in CLI build** — Remove double shebang in bundled CLI entry. (#1309)
-- **fix: bundled path resolution** — Hardened `getPackageDir()` across agent loaders, daemon bootstrap, and reply listener. (#1322, #1323, #1324, #1325)
-
-### Security
-
-- **SSRF protection for ANTHROPIC_BASE_URL** — Validate base URL to prevent server-side request forgery. (#1298, #1304)
-- **Default-deny in checkSecurity()** — Critical fix: `live-data.ts` now denies by default instead of allowing unknown paths. (#1281)
-- **Shell injection prevention** — Validate model name and provider in `spawnCliProcess`. (#1285)
-- **Prompt injection mitigation** — Sanitize AGENTS.md content before session injection. (#1284)
-- **Environment credential isolation** — Filter sensitive env vars from child processes. (#1284, #1296)
-- **Path traversal fixes** — Harden session-end hook against directory traversal. (#1282)
-- **Shell/config injection** — Fix injection vectors in teleport and daemon modules. (#1283)
-- **TOCTOU race conditions** — Replace `existsSync+readFileSync` with atomic `try/catch ENOENT`. (#1288)
-- **Memory leak prevention** — Add max-size caps to unbounded Maps and caches. (#1287, #1274)
-- **Null safety** — Replace unsafe non-null assertions with defensive checks. (#1286, #1277)
-- **Silent catch logging** — Add error logging to 19+ silent catch blocks. (#1297, #1303)
-
-### Documentation & i18n
-
-- **Korean translations** — Full ARCHITECTURE, FEATURES, MIGRATION, and REFERENCE docs in Korean. (#1260, #1262, #1264)
-- **5 new language READMEs** — Expanded international documentation coverage. (#1289)
-- **Remove deprecated CLI docs** — Removed references to non-existent `omp stats`, `omp agents`, `omp tui` commands. (#1336, #1341)
-- **Team/Ask skill docs** — Aligned team and ask documentation with CCG routing. (#1353)
-
-### Testing & CI
-
-- **CLI boot regression tests** — Prevent duplicate command registration regressions.
-- **Edge/smoke coverage expansion** — Runtime and integration edge-case tests. (#1345)
-- **npm pack + install CI test** — Verify published package installs correctly. (#1318)
-- **Stop-hook cooldown assertion fix** — Correct OpenClaw test timing. (#1344)
-- **Harsh-critic parser hardening** — Handle markdown formatting variants in benchmark. (#1301)
-
-### Stats
-
-- **50+ PRs merged** | **30,000+ lines changed** | **268 files touched**
-- **15 security fixes** | **20+ bug fixes** | **10+ new features**
-
-### Install / Update
-
-```bash
-npm install -g oh-my-copilot@4.7.0
-```
-
-Or reinstall the plugin:
-```bash
-copilot /install-plugin oh-my-copilot
-```
-
-**Full Changelog**: https://github.com/Yeachan-Heo/oh-my-copilot/compare/v4.6.7...v4.7.0
-
----
-
-# oh-my-copilot v4.6.7: Bundled Path Resolution & Daemon Startup Fixes
+# Changelog
+
+All notable changes to oh-my-copilot will be documented in this file.
+
+## [4.9.0-preview.1] - 2026-03-20
+
+### Added
+- **Autoresearch module** (`src/autoresearch/`): Thin-supervisor autoresearch with keep/discard/reset parity, guided interview flow, and Claude session setup
+- **Ralphthon module** (`src/ralphthon/`): Autonomous hackathon lifecycle mode with PRD-driven phases, tmux interaction, and idle detection
+- **Deep-dive skill**: 2-stage pipeline combining trace (causal investigation) with deep-interview (requirements crystallization) and 3-point injection
+- **Deepinit manifest tool** (`src/tools/deepinit-manifest.ts`): Manifest-based incremental deepinit for hierarchical AGENTS.md documentation
+- **HUD session summary element**: AI-generated session summary (<20 chars) displayed in HUD, opt-in via `sessionSummary: true`
+- **Skill resources guidance**: Bundled skill resources discovery and rendering for better skill context
+- **MCP standalone shutdown handler**: Parent-PID polling and signal-based shutdown for orphaned MCP servers
+- **CLI commands**: `omc autoresearch`, `omc ralphthon`, HUD watch loop extraction
+- **Deepsearch magic keyword**: Enhanced codebase search mode with parallel agent orchestration
+- **cmux multiplexer support**: Team sessions can now launch from cmux surfaces alongside tmux
+
+### Fixed
+- **Security: ReDoS guards** — `safe-regex` validation on user-supplied regex patterns in live-data deny/allow lists
+- **Informational keyword filtering** — Questions like "what is ralph?" no longer trigger execution modes (supports EN, KO, JA, ZH)
+- **Skill-state collision prevention** — OMC built-in skills no longer collide with project custom skills of the same name (#1581)
+- **Session-end fire-and-forget** — Notification and cleanup promises no longer block the SessionEnd hook timeout (#1700)
+- **Orchestrator idle allowance** — Orchestrators can go idle while delegated subagents are still running (#1721)
+- **Bridge/MCP child process cleanup** — Orphaned bridge and MCP child processes are cleaned up on shutdown (#1724)
+- **Bedrock/Vertex model passthrough** — Provider-specific model IDs passed as-is to team workers instead of normalizing to invalid aliases (#1695, #1415)
+- **Team split-pane cleanup** — Shutdown now discovers and removes split-pane workers after metadata drift (#1751)
+- **LSP singleton protection** — Process-global singleton prevents duplicate LSP client managers across module reloads
+- **LSP idle deadline management** — Per-client idle deadlines with configurable timeout via `OMC_LSP_IDLE_TIMEOUT_MS`
+- **Kotlin LSP update** — Updated to official JetBrains kotlin-lsp implementation (#1710)
+- **Task router fix** — `build-fix` intent now maps to `code-edit` capability instead of `testing`
+- **Marketplace clone protection** — Auto-update no longer runs destructive resets on marketplace clones (#1755)
+- **Legacy state cleanup consolidation** — Unified ghost-legacy cleanup across multiple candidate paths
+- **Project memory preservation** — customNotes and userDirectives preserved when re-detecting project environment (#1689)
+- **Print mode tmux bypass** — `--print`/`-p` flag bypasses tmux wrapping so stdout flows to parent process (#1666, #1685)
+- **Orphaned tmux session cleanup** — Failed tmux attach now kills the orphaned detached session
+- **Keychain credential freshness** — HUD prefers the freshest non-expired Keychain entry when multiple exist (#1684)
+
+### Changed
+- Agent tool model parameter denial extended to cover both Task and Agent tools on Bedrock/Vertex (#1415)
+- Learner now scans `.agents/skills/` directory alongside `.claude/skills/` for skill discovery
+- Bridge manager tracks owned sessions and passes `OMC_PARENT_PID` env var for orphan detection
+
+## [4.8.2-preview.4] - 2026-03-18
+
+### Added
+- **Complexity-first phase selection**: Heuristic classifier (`src/hooks/complexity-classifier/`) classifies tasks as SIMPLE/STANDARD/COMPLEX before autopilot/ralplan runs planning. SIMPLE skips planning phases, COMPLEX adds Critic review. AI fallback model configurable via `/omc-setup` (defaults to haiku).
+- **Circular fix detection**: Error hash tracking (`src/hooks/circular-fix-detector/`) detects when the same error recurs 3+ times in ultraqa/ralph QA loops. Generates structured escalation report at `.omc/escalation-report.md` instead of retrying endlessly.
+- **Stagger delay for parallel launches**: Advisory stagger hook (`src/hooks/stagger-launch/`) injects 1-second delay guidance between rapid-fire agent launches in ultrawork to prevent thundering herd rate limits. Configurable via `stagger_delay_ms` on UltraworkState.
+- **Structured recovery manager**: Orchestration-level failure classification (`src/hooks/recovery/orchestration-recovery.ts`) with mapped recovery actions (retry, retry with backoff, skip, escalate). Per-task attempt tracking with 2-hour rolling window. Integrates with circular fix detector for escalation path.
+- **Multi-pass deep review** (`/deep-review`): New skill that runs 3 parallel review passes (Security, Quality, Structural) followed by a validation pass that confirms/dismisses findings. Also accessible via `--deep` flag on code-reviewer agent.
+- **Context accumulation between phases**: Hook (`src/hooks/context-accumulator/`) captures key outputs after each autopilot phase or ralph story and injects them into the next phase's agent prompt as `<prior-phase-context>`. Truncated to 12KB per phase, session-scoped.
+- **Ideation/discovery skill** (`/discover`): Spawns 6 parallel specialist agents (Security, Quality, Tests, Performance, Documentation, Architecture) to scan a codebase and produce a prioritized improvement backlog at `.omc/discover/backlog.md`. Supports scoping to subdirectories.
+- **Semantic merge resolution**: Extended git-master agent with `<Merge_Conflict_Resolution>` protocol for AI-assisted merge conflict resolution — reads full file context, resolves semantically, verifies with build/tests.
+
+## [4.8.2-preview.3] - 2026-03-18
+
+### Added
+- Claude Code CLI as a supported team worker provider (`omc team N:claude "..."`)
+- `ralph-experiment` skill documented in README and copilot-instructions
+- Hierarchical docs/ structure (get-started, guides, reference, architecture, migration)
+- `docs/index.md` as documentation table of contents
+
+### Changed
+- README trimmed to gateway document (~180 lines), detailed content moved to docs/guides/
+- All `omg-*` commands renamed to `omc-*` (omc-setup, omc-doctor, omc-plan, etc.)
+- All `OMP`/`OMG` abbreviations standardized to `OMC`
+- Agent tiers reference updated to reflect actual 18 agents (from 32 pre-consolidation)
+- Multi-AI Orchestration section lists all 4 providers (Copilot, Claude, Gemini, Codex)
+
+### Fixed
+- `claude` agent type: binary corrected from `copilot` to `claude`
+- Broken `https://docs/REFERENCE.md` URLs in README
+- Phantom agent entries removed from AGENTS.md (11 non-existent roles)
+- Agent counts updated from 28/32 to actual 18 across all docs
+- `OMP:VERSION` markers renamed to `OMC:VERSION` in installer
+
+### Removed
+- 11 translated README files (English-only going forward)
+- 7 stale root markdown files (ANALYSIS.md, IMPLEMENTATION_SUMMARY.md, etc.)
+- `docs/partials/` (duplicate of docs/shared/)
+- `docs/ko/` Korean translations
+- `seminar/` presentation materials
+- `benchmark/` SWE-bench (empty results)
+- `skills/hud/` (Copilot doesn't support custom HUDs)
+- `.github/SPONSOR_TIERS.md` and sponsor badges
+- Star history charts
+
+## [4.8.2-preview.1] - 2026-03-17
+
+### Changed
+- Initial release as oh-my-copilot
+- All URLs updated to `RobinNorberg/oh-my-copilot`
+- Preview versions publish to npm under `preview` tag
+- `.copilot-plugin/` references corrected to `.claude-plugin/` in CI

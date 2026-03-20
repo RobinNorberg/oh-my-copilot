@@ -186,20 +186,6 @@ export function getRoutingRecommendation(
 }
 
 /**
- * Legacy: Route with escalation support
- * @deprecated Use getRoutingRecommendation for proactive routing instead.
- * The orchestrator should analyze complexity upfront, not escalate reactively.
- */
-export function routeWithEscalation(
-  context: RoutingContext,
-  config: Partial<RoutingConfig> = {}
-): RoutingDecision {
-  // Simply return the routing recommendation
-  // Reactive escalation is deprecated - orchestrator decides upfront
-  return routeTask(context, config);
-}
-
-/**
  * Get routing explanation for debugging/logging
  */
 export function explainRouting(
@@ -256,7 +242,6 @@ export function quickTierForAgent(agentType: string): ComplexityTier | null {
     'document-specialist': 'MEDIUM',
     researcher: 'MEDIUM',
     'test-engineer': 'MEDIUM',
-    'tdd-guide': 'MEDIUM',
     'executor': 'MEDIUM',
     'designer': 'MEDIUM',
     'vision': 'MEDIUM',

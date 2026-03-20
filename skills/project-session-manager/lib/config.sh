@@ -16,7 +16,7 @@ psm_init() {
         cat > "$PSM_PROJECTS" << 'EOF'
 {
   "aliases": {
-    "omp": {
+    "omc": {
       "repo": "Yeachan-Heo/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
@@ -40,7 +40,7 @@ EOF
 }
 
 # Get project config by alias
-# Usage: psm_get_project "omp"
+# Usage: psm_get_project "omc"
 # Returns: repo|local|default_base
 psm_get_project() {
     local alias="$1"

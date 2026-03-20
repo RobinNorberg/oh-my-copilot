@@ -22,9 +22,9 @@ else
 fi
 
 # Extract old version before download
-OLD_VERSION=$(grep -m1 'OMP:VERSION:' "$TARGET_PATH" 2>/dev/null | sed -E 's/.*OMP:VERSION:([^ ]+).*/\1/' || true)
+OLD_VERSION=$(grep -m1 'OMC:VERSION:' "$TARGET_PATH" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 if [ -z "$OLD_VERSION" ]; then
-  OLD_VERSION=$(omp --version 2>/dev/null | head -1 || true)
+  OLD_VERSION=$(omc --version 2>/dev/null | head -1 || true)
 fi
 if [ -z "$OLD_VERSION" ]; then
   OLD_VERSION="none"
@@ -38,8 +38,8 @@ if [ -f "$TARGET_PATH" ]; then
   echo "Backed up existing copilot-instructions.md to $BACKUP_PATH"
 fi
 
-# Download fresh OMP content to temp file
-TEMP_OMP=$(mktemp /tmp/omp-copilot-XXXXXX.md)
+# Download fresh OMC content to temp file
+TEMP_OMP=$(mktemp /tmp/omc-copilot-XXXXXX.md)
 trap 'rm -f "$TEMP_OMP"' EXIT
 curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_OMP"
 
@@ -52,35 +52,35 @@ fi
 
 # Strip existing markers from downloaded content (idempotency)
 # Use awk for cross-platform compatibility (GNU/BSD)
-if grep -q '<!-- OMP:START -->' "$TEMP_OMP"; then
-  awk '/<!-- OMP:END -->/{p=0} p; /<!-- OMP:START -->/{p=1}' "$TEMP_OMP" > "${TEMP_OMP}.clean"
+if grep -q '<!-- OMC:START -->' "$TEMP_OMP"; then
+  awk '/<!-- OMC:END -->/{p=0} p; /<!-- OMC:START -->/{p=1}' "$TEMP_OMP" > "${TEMP_OMP}.clean"
   mv "${TEMP_OMP}.clean" "$TEMP_OMP"
 fi
 
 if [ ! -f "$TARGET_PATH" ]; then
   # Fresh install: wrap in markers
   {
-    echo '<!-- OMP:START -->'
+    echo '<!-- OMC:START -->'
     cat "$TEMP_OMP"
-    echo '<!-- OMP:END -->'
+    echo '<!-- OMC:END -->'
   } > "$TARGET_PATH"
   rm -f "$TEMP_OMP"
   echo "Installed copilot-instructions.md (fresh)"
 else
-  # Merge: preserve user content outside OMP markers
-  if grep -q '<!-- OMP:START -->' "$TARGET_PATH"; then
-    # Has markers: remove ALL complete OMP blocks, preserve only real user text
+  # Merge: preserve user content outside OMC markers
+  if grep -q '<!-- OMC:START -->' "$TARGET_PATH"; then
+    # Has markers: remove ALL complete OMC blocks, preserve only real user text
     # Use perl -0 for a global multiline regex replace (portable across GNU/BSD environments)
-    perl -0pe 's/^<!-- OMP:START -->\R[\s\S]*?^<!-- OMP:END -->(?:\R)?//msg; s/^<!-- User customizations(?: \([^)]+\))? -->\R?//mg; s/\A(?:[ \t]*\R)+//; s/(?:\R[ \t]*)+\z//;' \
+    perl -0pe 's/^<!-- OMC:START -->\R[\s\S]*?^<!-- OMC:END -->(?:\R)?//msg; s/^<!-- User customizations(?: \([^)]+\))? -->\R?//mg; s/\A(?:[ \t]*\R)+//; s/(?:\R[ \t]*)+\z//;' \
       "$TARGET_PATH" > "${TARGET_PATH}.preserved"
 
-    if grep -Eq '^<!-- OMP:(START|END) -->$' "${TARGET_PATH}.preserved"; then
+    if grep -Eq '^<!-- OMC:(START|END) -->$' "${TARGET_PATH}.preserved"; then
       # Corrupted/unmatched markers remain: preserve the whole original file for manual recovery
       OLD_CONTENT=$(cat "$TARGET_PATH")
       {
-        echo '<!-- OMP:START -->'
+        echo '<!-- OMC:START -->'
         cat "$TEMP_OMP"
-        echo '<!-- OMP:END -->'
+        echo '<!-- OMC:END -->'
         echo ""
         echo "<!-- User customizations (recovered from corrupted markers) -->"
         printf '%s\n' "$OLD_CONTENT"
@@ -88,9 +88,9 @@ else
     else
       PRESERVED_CONTENT=$(cat "${TARGET_PATH}.preserved")
       {
-        echo '<!-- OMP:START -->'
+        echo '<!-- OMC:START -->'
         cat "$TEMP_OMP"
-        echo '<!-- OMP:END -->'
+        echo '<!-- OMC:END -->'
         if printf '%s' "$PRESERVED_CONTENT" | grep -q '[^[:space:]]'; then
           echo ""
           echo "<!-- User customizations -->"
@@ -101,28 +101,28 @@ else
 
     mv "${TARGET_PATH}.tmp" "$TARGET_PATH"
     rm -f "${TARGET_PATH}.preserved"
-    echo "Updated OMP section (user customizations preserved)"
+    echo "Updated OMC section (user customizations preserved)"
   else
     # No markers: wrap new content in markers, append old content as user section
     OLD_CONTENT=$(cat "$TARGET_PATH")
     {
-      echo '<!-- OMP:START -->'
+      echo '<!-- OMC:START -->'
       cat "$TEMP_OMP"
-      echo '<!-- OMP:END -->'
+      echo '<!-- OMC:END -->'
       echo ""
       echo "<!-- User customizations (migrated from previous copilot-instructions.md) -->"
       printf '%s\n' "$OLD_CONTENT"
     } > "${TARGET_PATH}.tmp"
     mv "${TARGET_PATH}.tmp" "$TARGET_PATH"
-    echo "Migrated existing copilot-instructions.md (added OMP markers, preserved old content)"
+    echo "Migrated existing copilot-instructions.md (added OMC markers, preserved old content)"
   fi
   rm -f "$TEMP_OMP"
 fi
 
 # Extract new version and report
-NEW_VERSION=$(grep -m1 'OMP:VERSION:' "$TARGET_PATH" 2>/dev/null | sed -E 's/.*OMP:VERSION:([^ ]+).*/\1/' || true)
+NEW_VERSION=$(grep -m1 'OMC:VERSION:' "$TARGET_PATH" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 if [ -z "$NEW_VERSION" ]; then
-  NEW_VERSION=$(omp --version 2>/dev/null | head -1 || true)
+  NEW_VERSION=$(omc --version 2>/dev/null | head -1 || true)
 fi
 if [ -z "$NEW_VERSION" ]; then
   NEW_VERSION="unknown"

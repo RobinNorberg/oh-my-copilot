@@ -37,7 +37,7 @@ createBuiltinSkills, getBuiltinSkill, listBuiltinSkillNames } from './builtin-sk
 // Model Routing - intelligent model tier routing
 export { 
 // Main functions
-routeTask, routeWithEscalation, routeAndAdaptTask, escalateModel, canEscalate, explainRouting, quickTierForAgent, 
+routeTask, routeAndAdaptTask, escalateModel, canEscalate, explainRouting, quickTierForAgent, 
 // Signal extraction
 extractLexicalSignals, extractStructuralSignals, extractContextSignals, extractAllSignals, 
 // Scoring
@@ -63,7 +63,7 @@ export {
 // Classes
 StateManager, createStateManager, 
 // Functions
-getStatePath, getLegacyPaths, ensureStateDir, readState, writeState, clearState, migrateState, listStates, cleanupOrphanedStates, 
+getStatePath, ensureStateDir, readState, writeState, clearState, listStates, cleanupOrphanedStates, 
 // Enums/Constants
 StateLocation, isStateLocation, DEFAULT_STATE_CONFIG } from './state-manager/index.js';
 // Verification - verification protocol for ralph, ultrawork, autopilot

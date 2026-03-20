@@ -1,12 +1,9 @@
 ---
 name: project-session-manager
 description: Manage isolated dev environments with git worktrees and tmux sessions
-aliases: [psm]
 ---
 
-# Project Session Manager (PSM) Skill
-
-`psm` is the compatibility alias for this canonical skill entrypoint.
+# Project Session Manager Skill
 
 > **Quick Start:** For simple worktree creation without tmux sessions, use `omc teleport`:
 > ```bash
@@ -24,19 +21,19 @@ Canonical slash command: `/oh-my-copilot:project-session-manager` (alias: `/oh-m
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `review <ref>` | PR review session | `/psm review omp#123` |
-| `fix <ref>` | Issue fix session | `/psm fix omp#42` |
-| `feature <proj> <name>` | Feature development | `/psm feature omp add-webhooks` |
+| `review <ref>` | PR review session | `/psm review "omc#123` |
+| `fix <ref>` | Issue fix session | `/psm fix "omc#42` |
+| `feature <proj> <name>` | Feature development | `/psm feature omc add-webhooks` |
 | `list [project]` | List active sessions | `/psm list` |
-| `attach <session>` | Attach to session | `/psm attach omp:pr-123` |
-| `kill <session>` | Kill session | `/psm kill omp:pr-123` |
+| `attach <session>` | Attach to session | `/psm attach omc:pr-123` |
+| `kill <session>` | Kill session | `/psm kill omc:pr-123` |
 | `cleanup` | Clean merged/closed | `/psm cleanup` |
 | `status` | Current session info | `/psm status` |
 
 ## Project References
 
 Supported formats:
-- **Alias**: `omp#123` (requires `~/.psm/projects.json`)
+- **Alias**: `"omc#123` (requires `~/.psm/projects.json`)
 - **Full**: `owner/repo#123`
 - **URL**: `https://github.com/owner/repo/pull/123`
 - **Current**: `#123` (uses current directory's repo)
@@ -48,7 +45,7 @@ Supported formats:
 ```json
 {
   "aliases": {
-    "omp": {
+    "omc": {
       "repo": "Yeachan-Heo/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
@@ -155,9 +152,9 @@ The Jira CLI handles authentication separately from PSM.
 
 | Type | Tmux Session | Worktree Dir |
 |------|--------------|--------------|
-| PR Review | `psm:omp:pr-123` | `~/.psm/worktrees/omp/pr-123` |
-| Issue Fix | `psm:omp:issue-42` | `~/.psm/worktrees/omp/issue-42` |
-| Feature | `psm:omp:feat-auth` | `~/.psm/worktrees/omp/feat-auth` |
+| PR Review | `psm:omc:pr-123` | `~/.psm/worktrees/omc/pr-123` |
+| Issue Fix | `psm:omc:issue-42` | `~/.psm/worktrees/omc/issue-42` |
+| Feature | `psm:omc:feat-auth` | `~/.psm/worktrees/omc/feat-auth` |
 
 ---
 
@@ -256,11 +253,11 @@ Parse `{{ARGUMENTS}}` to determine:
    ```
    Session ready!
 
-     ID: omp:pr-123
-     Worktree: ~/.psm/worktrees/omp/pr-123
-     Tmux: psm:omp:pr-123
+     ID: omc:pr-123
+     Worktree: ~/.psm/worktrees/omc/pr-123
+     Tmux: psm:omc:pr-123
 
-   To attach: tmux attach -t psm:omp:pr-123
+   To attach: tmux attach -t psm:omc:pr-123
    ```
 
 ### Subcommand: `fix <ref>`
@@ -345,8 +342,8 @@ Parse `{{ARGUMENTS}}` to determine:
 
    ID                 | Type    | Status   | Worktree
    -------------------|---------|----------|---------------------------
-   omp:pr-123        | review  | active   | ~/.psm/worktrees/omp/pr-123
-   omp:issue-42      | fix     | detached | ~/.psm/worktrees/omp/issue-42
+   omc:pr-123        | review  | active   | ~/.psm/worktrees/omc/pr-123
+   omc:issue-42      | fix     | detached | ~/.psm/worktrees/omc/issue-42
    ```
 
 ### Subcommand: `attach <session>`
@@ -418,9 +415,9 @@ Parse `{{ARGUMENTS}}` to determine:
 5. **Report**:
    ```
    Cleanup complete:
-     Removed: omp:pr-123 (merged)
-     Removed: omp:issue-42 (closed)
-     Kept: omp:feat-auth (active)
+     Removed: omc:pr-123 (merged)
+     Removed: omc:issue-42 (closed)
+     Kept: omc:feat-auth (active)
    ```
 
 ### Subcommand: `status`
@@ -442,7 +439,7 @@ Parse `{{ARGUMENTS}}` to determine:
 
 3. **Show status**:
    ```
-   Current Session: omp:pr-123
+   Current Session: omc:pr-123
    Type: review
    PR: #123 - Add webhook support
    Branch: feature/webhooks
@@ -542,7 +539,7 @@ if [[ ! -f ~/.psm/projects.json ]]; then
   cat > ~/.psm/projects.json << 'EOF'
 {
   "aliases": {
-    "omp": {
+    "omc": {
       "repo": "Yeachan-Heo/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"

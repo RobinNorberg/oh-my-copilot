@@ -1,6 +1,6 @@
 # Local Plugin Installation & Distribution
 
-How to install, package, and distribute oh-my-copilot for local teams using Copilot CLI (v1.0.2+).
+How to install, package, and distribute oh-my-copilot for local teams using Copilot CLI.
 
 ## Quick Install (Direct from Local Path)
 
@@ -14,7 +14,7 @@ Copilot copies the plugin into `~/.copilot/installed-plugins/_direct/oh-my-copil
 
 ```bash
 copilot plugin list
-# Should show: oh-my-copilot (v4.7.8)
+# Should show: oh-my-copilot
 ```
 
 ## Marketplace Install (Local Directory as Marketplace)
@@ -102,7 +102,7 @@ npm install && npm run build
 copilot plugin install .
 ```
 
-To update after upstream changes:
+To update:
 
 ```bash
 cd oh-my-copilot
@@ -123,7 +123,7 @@ cd /path/to/oh-my-copilot
 npm install && npm run build
 
 # Create distributable tarball (includes pre-built artifacts)
-tar czf oh-my-copilot-4.7.8.tar.gz \
+tar czf oh-my-copilot.tar.gz \
   --exclude='node_modules/.cache' \
   --exclude='.git' \
   --exclude='.omc' \
@@ -136,7 +136,7 @@ tar czf oh-my-copilot-4.7.8.tar.gz \
 
 ```bash
 mkdir oh-my-copilot && cd oh-my-copilot
-tar xzf /path/to/oh-my-copilot-4.7.8.tar.gz
+tar xzf /path/to/oh-my-copilot.tar.gz
 copilot plugin install .
 ```
 
@@ -150,14 +150,14 @@ Use npm's built-in packaging, which respects `.npmignore` and `files` in `packag
 cd /path/to/oh-my-copilot
 npm install && npm run build
 npm pack
-# Creates oh-my-copilot-4.7.8.tgz
+# Creates oh-my-copilot-<version>.tgz
 ```
 
 **Colleagues (from the .tgz):**
 
 ```bash
 mkdir oh-my-copilot && cd oh-my-copilot
-tar xzf /path/to/oh-my-copilot-4.7.8.tgz --strip-components=1
+tar xzf /path/to/oh-my-copilot-<version>.tgz --strip-components=1
 npm install --production
 copilot plugin install .
 ```
@@ -181,7 +181,7 @@ After installing, verify the plugin works correctly:
 ```bash
 # 1. Check plugin is listed
 copilot plugin list
-# Expected: oh-my-copilot (v4.7.8)
+# Expected: oh-my-copilot
 
 # 2. Test MCP server starts (non-interactive)
 copilot -p "Call the t-notepad_stats tool" --allow-tool "t" --yolo
@@ -197,7 +197,7 @@ Inside an interactive session:
 /oh-my-copilot:omc-setup
 
 # Test a skill
-/oh-my-copilot:hud
+/oh-my-copilot:omc-setup
 ```
 
 ---
@@ -207,11 +207,11 @@ Inside an interactive session:
 When distributing to colleagues for hardening, share this checklist:
 
 - [ ] `copilot plugin list` shows oh-my-copilot installed
-- [ ] MCP tools respond (try `/oh-my-copilot:hud`)
+- [ ] MCP tools respond (try `/oh-my-copilot:omc-doctor`)
 - [ ] Skills are discoverable (try typing `autopilot: hello world`)
 - [ ] Agent delegation works (try `/oh-my-copilot:team 1:executor "echo hello"`)
 - [ ] State persistence works (`.omg/` directory created in project root)
-- [ ] Hooks fire on session start (look for OMP banner/context in prompt)
+- [ ] Hooks fire on session start (look for OMC banner/context in prompt)
 - [ ] Report any errors, unexpected behavior, or missing functionality
 
 ---
@@ -223,7 +223,7 @@ The plugin manifest at `.claude-plugin/plugin.json`:
 ```json
 {
   "name": "oh-my-copilot",
-  "version": "4.7.8",
+  "version": "<current>",
   "description": "Multi-agent orchestration system for Copilot CLI",
   "agents": "./agents/",
   "skills": ["skills/*/SKILL.md"],

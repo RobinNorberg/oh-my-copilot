@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * OMP Persistent Mode Hook (Node.js)
- * Minimal continuation enforcer for all OMP modes.
+ * OMC Persistent Mode Hook (Node.js)
+ * Minimal continuation enforcer for all OMC modes.
  * Stripped down for reliability — no optional imports, no PRD, no notepad pruning.
  *
  * Supported modes: ralph, autopilot, ultrapilot, swarm, ultrawork, ultraqa, pipeline, team
@@ -789,7 +789,7 @@ async function main() {
       }
     }
 
-    // Priority 6.5: OMP Teams (tmux CLI workers — independent of native team state)
+    // Priority 6.5: OMC Teams (tmux CLI workers — independent of native team state)
     if (
       omcTeams.state?.active &&
       !isStaleState(omcTeams.state) &&
@@ -810,7 +810,7 @@ async function main() {
             omcTeams.state.last_checked_at = new Date().toISOString();
             writeJsonFile(omcTeams.path, omcTeams.state);
 
-            let reason = `[OMP TEAMS - Phase: ${phase}] OMP Teams workers active. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+            let reason = `[OMC TEAMS - Phase: ${phase}] OMC Teams workers active. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
             if (errorGuidance) {
               reason = errorGuidance + reason;
             }

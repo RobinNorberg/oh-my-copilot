@@ -6,7 +6,7 @@ description: >
   DO NOT USE FOR: Manual interactive PR review (use omc-ado-review), creating PRs (use git-master agent), sprint planning (use omc-ado-sprint), or non-ADO repositories.
 ---
 
-# OMP ADO Auto Review
+# OMC ADO Auto Review
 
 Automatically review Azure DevOps pull requests where the current user is assigned as a reviewer. Reads `.omg/config.json` for connection settings, discovers pending PRs, fetches diffs, spawns a code-reviewer agent to analyse changes, and posts structured inline comments back to each PR.
 

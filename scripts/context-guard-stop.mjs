@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OMP Context Guard Hook (Stop)
+ * OMC Context Guard Hook (Stop)
  *
  * Suggests session refresh when context usage exceeds a warning threshold.
  * This complements persistent-mode.cjs — it fires BEFORE modes like Ralph
@@ -194,7 +194,7 @@ function incrementBlockCount(sessionId) {
 
 function buildStopRecoveryAdvice(contextPercent, blockCount) {
   const severity = contextPercent >= 90 ? 'CRITICAL' : 'HIGH';
-  return `[OMP ${severity}] Context at ${contextPercent}% (threshold: ${THRESHOLD}%). ` +
+  return `[OMC ${severity}] Context at ${contextPercent}% (threshold: ${THRESHOLD}%). ` +
     `Run /compact immediately before continuing. If /compact cannot complete, ` +
     `stop spawning new agents and recover in a fresh session using existing checkpoints ` +
     `(.omg/state, .omg/notepad.md). (Block ${blockCount}/${MAX_BLOCKS})`;

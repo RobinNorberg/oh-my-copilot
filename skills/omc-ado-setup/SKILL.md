@@ -8,7 +8,7 @@ role: config-writer
 scope: .omg/**
 ---
 
-# OMP ADO Setup
+# OMC ADO Setup
 
 Configure Azure DevOps integration for the current project. Detects the ADO org and project from the git remote URL, verifies authentication, and writes `.omg/config.json` with all required settings.
 
@@ -152,7 +152,7 @@ Create or update the config file. Preserve any existing non-ADO keys.
 First, ensure the `.omg/` directory exists:
 
 ```bash
-mkdir -p .omp
+mkdir -p .omg
 ```
 
 Write `.omg/config.json` using the Write (or Edit) tool. The schema is:

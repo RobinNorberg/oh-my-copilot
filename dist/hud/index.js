@@ -18,11 +18,25 @@ import { sanitizeOutput } from "./sanitize.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
 import { compareVersions } from "../features/auto-update.js";
 import { resolveToWorktreeRoot, resolveTranscriptPath } from "../lib/worktree-paths.js";
-import { writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { access, readFile } from "fs/promises";
 import { join, basename } from "path";
 import { homedir } from "os";
 import { getOmcRoot } from "../lib/worktree-paths.js";
+/**
+ * Read session summary state from state directory.
+ */
+function readSessionSummary(stateDir, sessionId) {
+    const statePath = join(stateDir, `session-summary-${sessionId}.json`);
+    if (!existsSync(statePath))
+        return null;
+    try {
+        return JSON.parse(readFileSync(statePath, 'utf-8'));
+    }
+    catch {
+        return null;
+    }
+}
 /**
  * Extract session ID (UUID) from a transcript path.
  */
@@ -186,6 +200,9 @@ async function main(watchMode = false) {
                 : null,
             profileName: process.env.COPILOT_CONFIG_DIR
                 ? basename(process.env.COPILOT_CONFIG_DIR).replace(/^\./, '')
+                : null,
+            sessionSummary: currentSessionId
+                ? readSessionSummary(join(getOmcRoot(cwd), 'state'), currentSessionId)
                 : null,
         };
         // Debug: log data if OMC_DEBUG is set

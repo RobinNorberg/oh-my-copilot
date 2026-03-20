@@ -1,4 +1,4 @@
-# OMP Analytics System
+# OMC Analytics System
 
 ## Overview
 

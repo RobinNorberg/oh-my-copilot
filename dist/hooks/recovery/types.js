@@ -29,4 +29,21 @@ export const TRUNCATE_CONFIG = {
     /** Average characters per token estimate */
     charsPerToken: 4,
 };
+/**
+ * Configuration for orchestration recovery
+ */
+export const ORCHESTRATION_RECOVERY_CONFIG = {
+    /** Max retry attempts per task before escalating */
+    maxRetries: 3,
+    /** Initial backoff delay in ms */
+    initialBackoffMs: 2000,
+    /** Backoff multiplier */
+    backoffMultiplier: 2,
+    /** Max backoff delay in ms */
+    maxBackoffMs: 30000,
+    /** Rolling window for attempt history in ms (2 hours) */
+    rollingWindowMs: 2 * 60 * 60 * 1000,
+    /** Max attempt records per task */
+    maxAttemptsPerTask: 20,
+};
 //# sourceMappingURL=types.js.map

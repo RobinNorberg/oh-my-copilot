@@ -128,9 +128,7 @@ export interface ParsedTeamArgs {
 
 function getTeamWorkerIdentityFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
   const omg = typeof env.OMC_TEAM_WORKER === 'string' ? env.OMC_TEAM_WORKER.trim() : '';
-  if (omg) return omg;
-  const omx = typeof env.OMX_TEAM_WORKER === 'string' ? env.OMX_TEAM_WORKER.trim() : '';
-  return omx || null;
+  return omg || null;
 }
 
 function assertTeamSpawnAllowed(env: NodeJS.ProcessEnv = process.env): void {

@@ -12,12 +12,12 @@ if [[ -f "$LOCAL_CLI" ]]; then
     exit $status
   fi
 
-  >&2 echo "[ask-gemini] DEPRECATED fallback: local OMP CLI launch failed (exit $status); falling back to run-provider-advisor.js"
+  >&2 echo "[ask-gemini] DEPRECATED fallback: local OMC CLI launch failed (exit $status); falling back to run-provider-advisor.js"
 elif [[ ! -f "$FALLBACK_ADVISOR" ]]; then
-  >&2 echo "[ask-gemini] Error: local OMP CLI and fallback advisor script are both unavailable."
+  >&2 echo "[ask-gemini] Error: local OMC CLI and fallback advisor script are both unavailable."
   exit 1
 else
-  >&2 echo "[ask-gemini] DEPRECATED fallback: local OMP CLI entrypoint not found; using run-provider-advisor.js"
+  >&2 echo "[ask-gemini] DEPRECATED fallback: local OMC CLI entrypoint not found; using run-provider-advisor.js"
 fi
 
 node "$FALLBACK_ADVISOR" gemini "$@"

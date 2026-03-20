@@ -13,7 +13,7 @@
 import { readJobStatus, readCompletedResponse, listActiveJobs, writeJobStatus, getPromptsDir, getJobWorkingDir, } from './prompt-persistence.js';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { isJobDbInitialized, getJob, getActiveJobs as getActiveJobsFromDb, getJobsByStatus, updateJobStatus } from './job-state-db.js';
+import { isJobDbInitialized, getJob, getActiveJobs as getActiveJobsFromDb, getJobsByStatus, updateJobStatus } from '../lib/job-state-db.js';
 /**
  * PID ownership check - codex/gemini MCP servers no longer spawn background
  * processes, so we accept any valid PID within a recorded job's status file.

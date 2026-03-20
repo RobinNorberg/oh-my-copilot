@@ -1,6 +1,6 @@
 #!/bin/bash
-# Oh-My-ClaudeCode Uninstaller
-# Completely removes all OMP-installed files and configurations
+# Oh-My-Copilot Uninstaller
+# Completely removes all OMC-installed files and configurations
 
 set -e
 
@@ -10,18 +10,18 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${BLUE}Oh-My-ClaudeCode Uninstaller${NC}"
+echo -e "${BLUE}Oh-My-Copilot Uninstaller${NC}"
 echo ""
 
 # Copilot CLI config directory (always ~/.copilot)
 COPILOT_CONFIG_DIR="$HOME/.copilot"
 
-echo "This will remove ALL OMP components from:"
+echo "This will remove ALL OMC components from:"
 echo "  $COPILOT_CONFIG_DIR"
 echo ""
 echo "Components to be removed:"
 echo "  - Agents (architect, document-specialist, explore, etc. + legacy aliases)"
-echo "  - Commands (omp, ultrawork, plan, etc.)"
+echo "  - Commands (omc, ultrawork, plan, etc.)"
 echo "  - Skills (ultrawork, git-master, frontend-ui-ux)"
 echo "  - Hooks (keyword-detector, silent-auto-update, stop-continuation)"
 echo "  - Version and state files"
@@ -63,7 +63,7 @@ rm -f "$COPILOT_CONFIG_DIR/agents/planner.md"
 # Remove commands
 echo -e "${BLUE}Removing commands...${NC}"
 rm -f "$COPILOT_CONFIG_DIR/commands/coordinator.md"
-rm -f "$COPILOT_CONFIG_DIR/commands/omp.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/omc.md"
 rm -f "$COPILOT_CONFIG_DIR/commands/ultrawork.md"
 rm -f "$COPILOT_CONFIG_DIR/commands/deepsearch.md"
 rm -f "$COPILOT_CONFIG_DIR/commands/analyze.md"
@@ -87,10 +87,10 @@ rm -f "$COPILOT_CONFIG_DIR/hooks/silent-auto-update.sh"
 
 # Remove version, state, and config files
 echo -e "${BLUE}Removing state and config files...${NC}"
-rm -f "$COPILOT_CONFIG_DIR/.omp-version.json"
-rm -f "$COPILOT_CONFIG_DIR/.omp-silent-update.json"
-rm -f "$COPILOT_CONFIG_DIR/.omp-update.log"
-rm -f "$COPILOT_CONFIG_DIR/.omp-config.json"
+rm -f "$COPILOT_CONFIG_DIR/.omg-version.json"
+rm -f "$COPILOT_CONFIG_DIR/.omg-silent-update.json"
+rm -f "$COPILOT_CONFIG_DIR/.omg-update.log"
+rm -f "$COPILOT_CONFIG_DIR/.omg-config.json"
 
 # Remove hook configurations from settings.json
 SETTINGS_FILE="$COPILOT_CONFIG_DIR/settings.json"
@@ -100,13 +100,13 @@ if [ -f "$SETTINGS_FILE" ] && command -v jq &> /dev/null; then
     # Create a backup
     cp "$SETTINGS_FILE" "$SETTINGS_FILE.bak"
 
-    # Remove OMP-specific hooks from settings.json
-    # This removes hooks that reference omp hook scripts
+    # Remove OMC-specific hooks from settings.json
+    # This removes hooks that reference omc hook scripts
     TEMP_SETTINGS=$(mktemp)
 
-    # Use jq to filter out OMP hooks
+    # Use jq to filter out OMC hooks
     jq '
-      # Remove OMP hooks from UserPromptSubmit
+      # Remove OMC hooks from UserPromptSubmit
       if .hooks.UserPromptSubmit then
         .hooks.UserPromptSubmit |= map(
           if .hooks then
@@ -116,7 +116,7 @@ if [ -f "$SETTINGS_FILE" ] && command -v jq &> /dev/null; then
         ) | .hooks.UserPromptSubmit |= map(select(.hooks | length > 0))
       else . end |
 
-      # Remove OMP hooks from Stop
+      # Remove OMC hooks from Stop
       if .hooks.Stop then
         .hooks.Stop |= map(
           if .hooks then
@@ -134,12 +134,12 @@ if [ -f "$SETTINGS_FILE" ] && command -v jq &> /dev/null; then
 
     if [ $? -eq 0 ] && [ -s "$TEMP_SETTINGS" ]; then
         mv "$TEMP_SETTINGS" "$SETTINGS_FILE"
-        echo -e "${GREEN}✓ Removed OMP hooks from settings.json${NC}"
+        echo -e "${GREEN}✓ Removed OMC hooks from settings.json${NC}"
         echo -e "${YELLOW}  Backup saved to: $SETTINGS_FILE.bak${NC}"
     else
         rm -f "$TEMP_SETTINGS"
         echo -e "${YELLOW}⚠ Could not modify settings.json automatically${NC}"
-        echo "  Please manually remove OMP hooks from the 'hooks' section"
+        echo "  Please manually remove OMC hooks from the 'hooks' section"
     fi
 else
     if [ -f "$SETTINGS_FILE" ]; then
@@ -151,11 +151,11 @@ else
     fi
 fi
 
-# Remove .omp directory if it exists (plans, notepads, drafts)
-if [ -d "$COPILOT_CONFIG_DIR/../.omp" ] || [ -d ".omp" ]; then
-    echo -e "${YELLOW}Note: .omp directory (plans/notepads) was not removed.${NC}"
+# Remove .omg directory if it exists (plans, notepads, drafts)
+if [ -d "$COPILOT_CONFIG_DIR/../.omg" ] || [ -d ".omg" ]; then
+    echo -e "${YELLOW}Note: .omg directory (plans/notepads) was not removed.${NC}"
     echo "  To remove project plans and notepads, run:"
-    echo "    rm -rf .omp"
+    echo "    rm -rf .omg"
 fi
 
 echo ""

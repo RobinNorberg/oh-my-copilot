@@ -9,9 +9,8 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [CLI Commands: ask/team](#cli-commands-askteam)
-- [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated)
 - [Agents (18 Total)](#agents-18-total)
-- [Skills (33 Total)](#skills-33-total)
+- [Skills (37 Total)](#skills-37-total)
 - [Slash Commands](#slash-commands)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -81,7 +80,7 @@ Configure omc for all Copilot CLI sessions:
 | Feature           | Without     | With omc Config            |
 | ----------------- | ----------- | -------------------------- |
 | Agent delegation  | Manual only | Automatic based on task    |
-| Keyword detection | Disabled    | ultrawork, search |
+| Keyword detection | Disabled    | ultrawork, search, with informational-query filtering |
 | Todo continuation | Basic       | Enforced completion        |
 | Model routing     | Default     | Smart tier selection       |
 | Skill composition | None        | Auto-combines skills       |
@@ -98,18 +97,20 @@ If both configurations exist, **project-scoped takes precedence** over global:
 
 | Variable                   | Default              | Description                                                                                                                                                                                                                                                                 |
 | -------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMP stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omg/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
+| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omg/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
 | `OMC_BRIDGE_SCRIPT`        | _(auto-detected)_    | Path to the Python bridge script                                                                                                                                                                                                                                            |
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
 | `OMC_CODEX_DEFAULT_MODEL`  | _(provider default)_ | Default model for Codex CLI workers                                                                                                                                                                                                                                         |
 | `OMC_GEMINI_DEFAULT_MODEL` | _(provider default)_ | Default model for Gemini CLI workers                                                                                                                                                                                                                                        |
-| `OMC_LSP_TIMEOUT_MS`       | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
-| `DISABLE_OMC`              | _(unset)_            | Set to any value to disable all OMP hooks                                                                                                                                                                                                                                   |
-| `OMC_SKIP_HOOKS`           | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
+| `OMC_LSP_TIMEOUT_MS`                | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
+| `OMC_LSP_IDLE_TIMEOUT_MS`           | `300000` (5 min)     | Idle timeout before evicting unused LSP clients                                                                                                                                                                                                                             |
+| `OMC_LSP_IDLE_CHECK_INTERVAL_MS`    | `60000` (1 min)      | Interval for checking idle LSP clients                                                                                                                                                                                                                                      |
+| `DISABLE_OMC`                       | _(unset)_            | Set to any value to disable all OMC hooks                                                                                                                                                                                                                                   |
+| `OMC_SKIP_HOOKS`                    | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
 
 #### Centralized State with `OMC_STATE_DIR`
 
-By default, OMP stores state in `{worktree}/.omg/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
+By default, OMC stores state in `{worktree}/.omg/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
 
 ```bash
 # In your shell profile (~/.bashrc, ~/.zshrc, etc.)
@@ -118,7 +119,7 @@ export OMC_STATE_DIR="$HOME/.copilot/omc"
 
 This resolves to `~/.copilot/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
 
-If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMP logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
+If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
 
 ### When to Re-run Setup
 
@@ -204,7 +205,6 @@ omc ask copilot --agent-prompt executor --prompt "create an implementation plan"
 - Provider matrix: `copilot | codex | gemini`
 - Artifacts: `.omg/artifacts/ask/{provider}-{slug}-{timestamp}.md`
 - Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
-- Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
 - Skill shortcuts: `/oh-my-copilot:ask-codex` and `/oh-my-copilot:ask-gemini` route to this command
 
 ### `omc team` (CLI runtime surface)
@@ -218,46 +218,25 @@ omc team api claim-task --input '{"team_name":"auth-review","task_id":"1","worke
 
 Supported entrypoints: direct start (`omc team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
 
+### `omc autoresearch`
+
+```bash
+omc autoresearch <topic>
+omc autoresearch guided <topic>
+omc autoresearch intake <topic>
+```
+
+Thin-supervisor autoresearch with keep/discard/reset parity. Supports guided and intake flows.
+
+### `omc ralphthon`
+
+```bash
+omc ralphthon <task>
+```
+
+Autonomous hackathon lifecycle mode with PRD-driven phases and idle detection.
+
 ---
-
-## Legacy MCP Team Runtime Tools (Deprecated, Opt-In Only)
-
-The Team MCP runtime server is **not enabled by default**. If manually enabled, runtime tools are still **CLI-only deprecated** and return a deterministic error envelope:
-
-```json
-{
-  "code": "deprecated_cli_only",
-  "message": "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead."
-}
-```
-
-Use `omc team ...` replacements instead:
-
-| Tool                   | Purpose                                                    |
-| ---------------------- | ---------------------------------------------------------- |
-| `omc_run_team_start`   | **Deprecated** → `omc team [N:agent-type] "<task>"`        |
-| `omc_run_team_status`  | **Deprecated** → `omc team status <team-name>`             |
-| `omc_run_team_wait`    | **Deprecated** → monitor via `omc team status <team-name>` |
-| `omc_run_team_cleanup` | **Deprecated** → `omc team shutdown <team-name> [--force]` |
-
-Optional compatibility enablement (manual only):
-
-```json
-{
-  "mcpServers": {
-    "team": {
-      "command": "node",
-      "args": ["${PLUGIN_ROOT}/bridge/team-mcp.cjs"]
-    }
-  }
-}
-```
-
-### Runtime status semantics
-
-- **Artifact-first terminal convergence**: team monitors prefer finalized state artifacts when present.
-- **Deterministic parse-failure handling**: malformed result artifacts are treated as terminal `failed`.
-- **Cleanup scope**: shutdown/cleanup only clears `.omg/state/team/{teamName}` for the target team (never sibling teams).
 
 ## Agents (18 Total)
 
@@ -319,36 +298,39 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 
 ---
 
-## Skills (33 Total)
+## Skills (37 Total)
 
-Includes **32 canonical skills + 1 deprecated alias** (`psm`).
+Includes **37 canonical skills**.
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
 | `ask-codex`               | Ask Codex via `omc ask codex` and store an ask artifact          | `/oh-my-copilot:ask-codex`               |
 | `ask-gemini`              | Ask Gemini via `omc ask gemini` and store an ask artifact        | `/oh-my-copilot:ask-gemini`              |
+| `autoresearch`            | Thin-supervisor autoresearch with keep/discard/reset             | `/oh-my-copilot:autoresearch`            |
 | `autopilot`               | Full autonomous execution from idea to working code              | `/oh-my-copilot:autopilot`               |
 | `cancel`                  | Unified cancellation for active modes                            | `/oh-my-copilot:cancel`                  |
 | `ccg`                     | Tri-model workflow via `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:ccg`                     |
 | `configure-notifications` | Configure notifications (Teams/Discord/Telegram/Slack)           | `/oh-my-copilot:configure-notifications` |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                    | `/oh-my-copilot:deep-interview`          |
+| `deep-dive`               | 2-stage pipeline: trace → deep-interview with 3-point injection  | `/oh-my-copilot:deep-dive`               |
+| `deep-review`             | Multi-pass code review (security, quality, structural + validation)  | `/oh-my-copilot:deep-review`             |
+| `discover`                | Parallel codebase quality scan with prioritized backlog              | `/oh-my-copilot:discover`                |
 | `deepinit`                | Generate hierarchical AGENTS.md docs                             | `/oh-my-copilot:deepinit`                |
 | `external-context`        | Parallel document-specialist research                            | `/oh-my-copilot:external-context`        |
-| `hud`                     | Configure HUD/statusline                                         | `/oh-my-copilot:hud`                     |
-| `learn-about-omc`         | Analyze OMP usage patterns                                       | `/oh-my-copilot:learn-about-omc`         |
+| `learn-about-omc`         | Analyze OMC usage patterns                                       | `/oh-my-copilot:learn-about-omc`         |
 | `learner`                 | Extract reusable skill from session                              | `/oh-my-copilot:learner`                 |
 | `mcp-setup`               | Configure MCP servers                                            | `/oh-my-copilot:mcp-setup`               |
 | `note`                    | Save notes to notepad                                            | `/oh-my-copilot:note`                    |
 | `omc-doctor`              | Diagnose and fix installation issues                             | `/oh-my-copilot:omc-doctor`              |
-| `omc-help`                | Show OMP usage guide                                             | `/oh-my-copilot:omc-help`                |
+| `omc-help`                | Show OMC usage guide                                             | `/oh-my-copilot:omc-help`                |
 | `omc-plan`                | Planning workflow (`/plan` safe alias)                           | `/oh-my-copilot:omc-plan`                |
 | `omc-setup`               | One-time setup wizard                                            | `/oh-my-copilot:omc-setup`               |
 | `omc-teams`               | Legacy compatibility wrapper for `omc team` CLI                  | `/oh-my-copilot:omc-teams`               |
 | `project-session-manager` | Manage isolated dev environments (git worktrees + tmux)          | `/oh-my-copilot:project-session-manager` |
-| `psm`                     | **Deprecated** compatibility alias for `project-session-manager` | `/oh-my-copilot:psm`                     |
 | `ralph`                   | Persistence loop until verified completion                       | `/oh-my-copilot:ralph`                   |
 | `ralph-init`              | Initialize PRD for structured ralph execution                    | `/oh-my-copilot:ralph-init`              |
 | `ralplan`                 | Consensus planning alias for `/omc-plan --consensus`             | `/oh-my-copilot:ralplan`                 |
+| `ralphthon`               | Autonomous hackathon lifecycle mode                              | `/oh-my-copilot:ralphthon`               |
 | `release`                 | Automated release workflow                                       | `/oh-my-copilot:release`                 |
 | `sciomc`                  | Parallel scientist orchestration                                 | `/oh-my-copilot:sciomc`                  |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                | `/oh-my-copilot:skill`                   |
@@ -358,8 +340,6 @@ Includes **32 canonical skills + 1 deprecated alias** (`psm`).
 | `ultrawork`               | Maximum parallel throughput mode                                 | `/oh-my-copilot:ultrawork`               |
 | `writer-memory`           | Agentic memory system for writing projects                       | `/oh-my-copilot:writer-memory`           |
 
-`psm` | **Deprecated** compatibility alias for `project-session-manager`
-
 ---
 
 ## Slash Commands
@@ -368,6 +348,7 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 
 | Command                                     | Description                                                                                   |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `/oh-my-copilot:autoresearch <topic>`    | Launch thin-supervisor autoresearch                                                           |
 | `/oh-my-copilot:autopilot <task>`        | Full autonomous execution                                                                     |
 | `/oh-my-copilot:ultrawork <task>`        | Maximum performance mode with parallel agents                                                 |
 | `/oh-my-copilot:team <N>:<agent> <task>` | Coordinated native team workflow                                                              |
@@ -376,7 +357,11 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 | `/oh-my-copilot:ultraqa <goal>`          | Autonomous QA cycling workflow                                                                |
 | `/oh-my-copilot:omc-plan <description>`  | Start planning session (supports consensus structured deliberation)                           |
 | `/oh-my-copilot:ralplan <description>`   | Iterative planning with consensus structured deliberation (`--deliberate` for high-risk mode) |
+| `/oh-my-copilot:ralphthon <task>`        | Autonomous hackathon lifecycle                                                                |
+| `/oh-my-copilot:deep-dive <issue>`       | Trace → deep-interview pipeline                                                               |
 | `/oh-my-copilot:deep-interview <idea>`   | Socratic interview with ambiguity scoring before execution                                    |
+| `/oh-my-copilot:deep-review`           | Multi-pass code review with validation                                            |
+| `/oh-my-copilot:discover [scope]`      | Parallel specialist scan with prioritized backlog                                 |
 | `/oh-my-copilot:deepinit [path]`         | Index codebase with hierarchical AGENTS.md files                                              |
 | `/oh-my-copilot:sciomc <topic>`          | Parallel research orchestration                                                               |
 | `/oh-my-copilot:learner`                 | Extract reusable skill from session                                                           |
@@ -384,12 +369,10 @@ All installed skills are available as slash commands with the prefix `/oh-my-cop
 | `/oh-my-copilot:cancel`                  | Unified cancellation                                                                          |
 | `/oh-my-copilot:omc-setup`               | One-time setup wizard                                                                         |
 | `/oh-my-copilot:omc-doctor`              | Diagnose and fix installation issues                                                          |
-| `/oh-my-copilot:omc-help`                | Show OMP usage guide                                                                          |
-| `/oh-my-copilot:hud`                     | Configure HUD statusline                                                                      |
+| `/oh-my-copilot:omc-help`                | Show OMC usage guide                                                                          |
 | `/oh-my-copilot:release`                 | Automated release workflow                                                                    |
 | `/oh-my-copilot:mcp-setup`               | Configure MCP servers                                                                         |
 | `/oh-my-copilot:trace`                   | Show orchestration trace timeline                                                             |
-| `/oh-my-copilot:psm <arguments>`         | Deprecated alias for project session manager                                                  |
 
 ---
 
@@ -416,7 +399,8 @@ Oh-my-copilot-cli includes 31 lifecycle hooks that enhance Copilot CLI's behavio
 | `rules-injector`     | Dynamic rules injection with YAML frontmatter parsing |
 | `omc-orchestrator`   | Enforces orchestrator behavior and delegation         |
 | `auto-slash-command` | Automatic slash command detection and execution       |
-| `keyword-detector`   | Magic keyword detection (ultrawork, ralph, etc.)      |
+| `keyword-detector`   | Magic keyword detection (ultrawork, ralph, etc.) (with informational intent filtering — questions like "what is ralph?" won't trigger modes) |
+| `skill-state`        | Skill active-state management with collision prevention |
 | `todo-continuation`  | Ensures todo list completion                          |
 | `notepad`            | Compaction-resilient memory system                    |
 | `learner`            | Skill extraction from conversations                   |
@@ -508,10 +492,11 @@ Use these trigger phrases in natural language prompts to activate enhanced modes
 | `ccg`, `copilot-clix-gemini`                            | Copilot-Codex-Gemini orchestration                                                             |
 | `ralplan`                                               | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |
 | `deep interview`, `ouroboros`                           | Deep Socratic interview with mathematical clarity gating                                      |
-| `deepsearch`, `search the codebase`, `find in codebase` | Codebase-focused search mode                                                                  |
+| `deepsearch`, `search the codebase`, `find in codebase` | Codebase-focused search mode (with informational intent filtering — questions like "what is ralph?" won't trigger the keyword) |
 | `deepanalyze`, `deep-analyze`                           | Deep analysis mode                                                                            |
 | `ultrathink`                                            | Deep reasoning mode                                                                           |
 | `tdd`, `test first`, `red green`                        | TDD workflow enforcement                                                                      |
+| `ralphthon`                                             | Autonomous hackathon lifecycle mode                                                           |
 | `cancelomc`, `stopomc`                                  | Unified cancellation                                                                          |
 
 ### Examples
@@ -561,7 +546,7 @@ stopomc
 
 > **Note**: Bash hooks are fully portable across macOS and Linux (no GNU-specific dependencies).
 
-> **Windows**: Native Windows (win32) support is experimental. OMP requires tmux, which is not available on native Windows. **WSL2 is strongly recommended** for Windows users. See the [WSL2 installation guide](https://learn.microsoft.com/en-us/windows/wsl/install). Native Windows issues may have limited support.
+> **Windows**: Native Windows (win32) support is experimental. OMC requires tmux, which is not available on native Windows. **WSL2 is strongly recommended** for Windows users. See the [WSL2 installation guide](https://learn.microsoft.com/en-us/windows/wsl/install). Native Windows issues may have limited support.
 
 > **Advanced**: Set `OMC_USE_NODE_HOOKS=1` to use Node.js hooks on macOS/Linux.
 
@@ -699,12 +684,13 @@ Configure HUD elements in `~/.copilot/settings.json`:
 | `cwd`        | Show current working directory | `false` |
 | `gitRepo`    | Show git repository name       | `false` |
 | `gitBranch`  | Show current git branch        | `false` |
-| `omcLabel`   | Show [OMP] label               | `true`  |
+| `omcLabel`   | Show [OMC] label               | `true`  |
 | `contextBar` | Show context window usage      | `true`  |
 | `agents`     | Show active agents count       | `true`  |
 | `todos`      | Show todo progress             | `true`  |
 | `ralph`      | Show ralph loop status         | `true`  |
-| `autopilot`  | Show autopilot status          | `true`  |
+| `autopilot`      | Show autopilot status              | `true`  |
+| `sessionSummary` | Show AI-generated session summary  | `false` |
 
 Additional `omcHud` layout options (top-level):
 

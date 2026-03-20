@@ -11,11 +11,11 @@ import { getDataDir } from '../../utils/paths.js';
 /**
  * Get the Copilot CLI storage directory
  */
-function getClaudeCodeStorageDir(): string {
+function getCopilotStorageDir(): string {
   return join(getDataDir(), 'copilot-cli', 'storage');
 }
 
-export const COPILOT_CODE_STORAGE = getClaudeCodeStorageDir();
+export const COPILOT_CODE_STORAGE = getCopilotStorageDir();
 export const MESSAGE_STORAGE = join(COPILOT_CODE_STORAGE, 'message');
 export const PART_STORAGE = join(COPILOT_CODE_STORAGE, 'part');
 

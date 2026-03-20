@@ -15,7 +15,7 @@ If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
 ### For New Users (IS_UPGRADE is not true):
 
 ```
-OMP Setup Complete!
+OMC Setup Complete!
 
 You don't need to learn any commands. I now have intelligent behaviors that activate automatically.
 
@@ -48,13 +48,13 @@ MCP SERVERS:
 Run /oh-my-copilot:mcp-setup to add tools like web search, GitHub, etc.
 
 HUD STATUSLINE:
-The status bar now shows OMP state. Restart Copilot CLI to see it.
+The status bar now shows OMC state. Restart Copilot CLI to see it.
 
 CLI ANALYTICS (if installed):
-- omp           - Default analytics dashboard
-- omp cost      - View cost reports (daily/weekly/monthly)
-- omp sessions  - Inspect session history
-- omp backfill  - Import transcript analytics
+- omc           - Default analytics dashboard
+- omc cost      - View cost reports (daily/weekly/monthly)
+- omc sessions  - Inspect session history
+- omc backfill  - Import transcript analytics
 
 That's it! Just use Copilot CLI normally.
 ```
@@ -62,7 +62,7 @@ That's it! Just use Copilot CLI normally.
 ### For Users Upgrading from 2.x (IS_UPGRADE is true):
 
 ```
-OMP Setup Complete! (Upgraded from 2.x)
+OMC Setup Complete! (Upgraded from 2.x)
 
 GOOD NEWS: Your existing commands still work!
 - /ralph, /ultrawork, /omc-plan, etc. all still function
@@ -89,20 +89,20 @@ Spawn coordinated agents with shared task lists and real-time messaging:
 - Uses Copilot CLI native tools (TeamCreate/SendMessage/TaskCreate)
 
 HUD STATUSLINE:
-The status bar now shows OMP state. Restart Copilot CLI to see it.
+The status bar now shows OMC state. Restart Copilot CLI to see it.
 
 CLI ANALYTICS (if installed):
-- omp           - Default analytics dashboard
-- omp cost      - View cost reports (daily/weekly/monthly)
-- omp sessions  - Inspect session history
-- omp backfill  - Import transcript analytics
+- omc           - Default analytics dashboard
+- omc cost      - View cost reports (daily/weekly/monthly)
+- omc sessions  - Inspect session history
+- omc backfill  - Import transcript analytics
 
 Your workflow won't break - it just got easier!
 ```
 
 ## Optional Rule Templates
 
-OMP includes rule templates you can copy to your project's `.copilot/rules/` directory for automatic context injection:
+OMC includes rule templates you can copy to your project's `.copilot/rules/` directory for automatic context injection:
 
 | Template | Purpose |
 |----------|---------|
@@ -171,18 +171,18 @@ echo ""
 
 ## Mark Completion
 
-Get the current OMP version and mark setup complete:
+Get the current OMC version and mark setup complete:
 
 ```bash
-# Get current OMP version from copilot-instructions.md
+# Get current OMC version from copilot-instructions.md
 OMC_VERSION=""
 if [ -f ".copilot/copilot-instructions.md" ]; then
-  OMC_VERSION=$(grep -m1 'OMP:VERSION:' .copilot/copilot-instructions.md 2>/dev/null | sed -E 's/.*OMP:VERSION:([^ ]+).*/\1/' || true)
+  OMC_VERSION=$(grep -m1 'OMC:VERSION:' .copilot/copilot-instructions.md 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 elif [ -f "$HOME/.copilot/copilot-instructions.md" ]; then
-  OMC_VERSION=$(grep -m1 'OMP:VERSION:' "$HOME/.copilot/copilot-instructions.md" 2>/dev/null | sed -E 's/.*OMP:VERSION:([^ ]+).*/\1/' || true)
+  OMC_VERSION=$(grep -m1 'OMC:VERSION:' "$HOME/.copilot/copilot-instructions.md" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 fi
 if [ -z "$OMC_VERSION" ]; then
-  OMC_VERSION=$(omp --version 2>/dev/null | head -1 || true)
+  OMC_VERSION=$(omc --version 2>/dev/null | head -1 || true)
 fi
 if [ -z "$OMC_VERSION" ]; then
   OMC_VERSION="unknown"

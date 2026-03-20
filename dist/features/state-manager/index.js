@@ -8,14 +8,13 @@
  * Features:
  * - Type-safe read/write operations
  * - Auto-create directories
- * - Legacy location support (for migration)
  * - State cleanup utilities
  */
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { atomicWriteJsonSync } from "../../lib/atomic-write.js";
-import { OmgPaths, getWorktreeRoot, validateWorkingDirectory, } from "../../lib/worktree-paths.js";
+import { OmgPaths, validateWorkingDirectory, } from "../../lib/worktree-paths.js";
 import { StateLocation, DEFAULT_STATE_CONFIG, } from "./types.js";
 // Standard state directories
 /** Get the absolute path to the local state directory, resolved from the git worktree root. */
@@ -40,33 +39,12 @@ const stateCache = new Map();
 export function clearStateCache() {
     stateCache.clear();
 }
-// Legacy state locations (for backward compatibility)
-const LEGACY_LOCATIONS = {
-    boulder: [".omg/state/boulder.json"],
-    autopilot: [".omg/state/autopilot-state.json"],
-    "autopilot-state": [".omg/state/autopilot-state.json"],
-    ralph: [".omg/state/ralph-state.json"],
-    "ralph-state": [".omg/state/ralph-state.json"],
-    "ralph-verification": [".omg/state/ralph-verification.json"],
-    ultrawork: [".omg/state/ultrawork-state.json"],
-    "ultrawork-state": [".omg/state/ultrawork-state.json"],
-    ultraqa: [".omg/state/ultraqa-state.json"],
-    "ultraqa-state": [".omg/state/ultraqa-state.json"],
-    "hud-state": [".omg/state/hud-state.json"],
-    prd: [".omg/state/prd.json"],
-};
 /**
  * Get the standard path for a state file
  */
 export function getStatePath(name, location) {
     const baseDir = location === StateLocation.LOCAL ? getLocalStateDir() : GLOBAL_STATE_DIR;
     return path.join(baseDir, `${name}.json`);
-}
-/**
- * Get legacy paths for a state file (for migration)
- */
-export function getLegacyPaths(name) {
-    return LEGACY_LOCATIONS[name] || [];
 }
 /**
  * Ensure state directory exists
@@ -80,14 +58,11 @@ export function ensureStateDir(location) {
 /**
  * Read state from file
  *
- * Checks standard location first, then legacy locations if enabled.
+ * Reads from the standard location only.
  * Returns both the data and where it was found.
  */
-export function readState(name, location = StateLocation.LOCAL, options) {
-    const checkLegacy = options?.checkLegacy ?? DEFAULT_STATE_CONFIG.checkLegacy;
+export function readState(name, location = StateLocation.LOCAL) {
     const standardPath = getStatePath(name, location);
-    const legacyPaths = checkLegacy ? getLegacyPaths(name) : [];
-    // Try standard location first
     if (fs.existsSync(standardPath)) {
         try {
             // Get mtime BEFORE reading to prevent TOCTOU cache poisoning.
@@ -143,33 +118,9 @@ export function readState(name, location = StateLocation.LOCAL, options) {
             console.warn(`Failed to read state from ${standardPath}:`, error);
         }
     }
-    // Try legacy locations
-    if (checkLegacy) {
-        for (const legacyPath of legacyPaths) {
-            // Resolve relative paths
-            const resolvedPath = path.isAbsolute(legacyPath)
-                ? legacyPath
-                : path.join(getWorktreeRoot() || process.cwd(), legacyPath);
-            if (fs.existsSync(resolvedPath)) {
-                try {
-                    const content = fs.readFileSync(resolvedPath, "utf-8");
-                    const data = JSON.parse(content);
-                    return {
-                        exists: true,
-                        data: structuredClone(data),
-                        foundAt: resolvedPath,
-                        legacyLocations: legacyPaths,
-                    };
-                }
-                catch (error) {
-                    console.warn(`Failed to read legacy state from ${resolvedPath}:`, error);
-                }
-            }
-        }
-    }
     return {
         exists: false,
-        legacyLocations: checkLegacy ? legacyPaths : [],
+        legacyLocations: [],
     };
 }
 /**
@@ -244,80 +195,7 @@ export function clearState(name, location) {
             });
         }
     }
-    // Remove from legacy locations
-    const legacyPaths = getLegacyPaths(name);
-    for (const legacyPath of legacyPaths) {
-        const resolvedPath = path.isAbsolute(legacyPath)
-            ? legacyPath
-            : path.join(getWorktreeRoot() || process.cwd(), legacyPath);
-        try {
-            if (fs.existsSync(resolvedPath)) {
-                fs.unlinkSync(resolvedPath);
-                result.removed.push(resolvedPath);
-            }
-            else {
-                result.notFound.push(resolvedPath);
-            }
-        }
-        catch (error) {
-            result.errors.push({
-                path: resolvedPath,
-                error: error instanceof Error ? error.message : String(error),
-            });
-        }
-    }
     return result;
-}
-/**
- * Migrate state from legacy location to standard location
- *
- * Finds state in legacy locations and moves it to the standard location.
- * Deletes the legacy file after successful migration.
- */
-export function migrateState(name, location = StateLocation.LOCAL) {
-    // Check if already in standard location
-    const standardPath = getStatePath(name, location);
-    if (fs.existsSync(standardPath)) {
-        return {
-            migrated: false,
-        };
-    }
-    // Look for legacy state
-    const readResult = readState(name, location, { checkLegacy: true });
-    if (!readResult.exists || !readResult.foundAt || !readResult.data) {
-        return {
-            migrated: false,
-            error: "No legacy state found",
-        };
-    }
-    // Check if it's actually from a legacy location
-    const isLegacy = readResult.foundAt !== standardPath;
-    if (!isLegacy) {
-        return {
-            migrated: false,
-        };
-    }
-    // Write to standard location
-    const writeResult = writeState(name, readResult.data, location);
-    if (!writeResult.success) {
-        return {
-            migrated: false,
-            error: `Failed to write to standard location: ${writeResult.error}`,
-        };
-    }
-    // Delete legacy file
-    try {
-        fs.unlinkSync(readResult.foundAt);
-    }
-    catch (error) {
-        // Migration succeeded but cleanup failed - not critical
-        console.warn(`Failed to delete legacy state at ${readResult.foundAt}:`, error);
-    }
-    return {
-        migrated: true,
-        from: readResult.foundAt,
-        to: writeResult.path,
-    };
 }
 /**
  * List all state files
@@ -612,7 +490,7 @@ function withFileLock(filePath, fn) {
  *
  * Object-oriented interface for managing a specific state.
  *
- * @deprecated For mode state (autopilot, ralph, ultrawork, etc.), use `writeModeState`/`readModeState` from `src/lib/mode-state-io.ts` instead. StateManager is retained for non-mode state only.
+ * @deprecated For mode state (autopilot, ralph, ultrawork, etc.), use `writeModeState`/`readModeState` from `src/lib/mode-state-io.ts` instead. StateManager is retained for non-mode state (analytics, daemon, etc.) only.
  */
 export class StateManager {
     name;
@@ -621,8 +499,8 @@ export class StateManager {
         this.name = name;
         this.location = location;
     }
-    read(options) {
-        return readState(this.name, this.location, options);
+    read() {
+        return readState(this.name, this.location);
     }
     write(data, options) {
         return writeState(this.name, data, this.location, options);
@@ -630,11 +508,8 @@ export class StateManager {
     clear() {
         return clearState(this.name, this.location);
     }
-    migrate() {
-        return migrateState(this.name, this.location);
-    }
     exists() {
-        return this.read({ checkLegacy: false }).exists;
+        return this.read().exists;
     }
     get() {
         return this.read().data;

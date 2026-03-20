@@ -25,8 +25,6 @@ export interface StateConfig {
   location: StateLocation;
   /** Whether to create directories if they don't exist */
   createDirs?: boolean;
-  /** Whether to check legacy locations when reading */
-  checkLegacy?: boolean;
 }
 
 /**
@@ -154,5 +152,4 @@ export function isStateLocation(value: unknown): value is StateLocation {
  */
 export const DEFAULT_STATE_CONFIG: Partial<StateConfig> = {
   createDirs: true,
-  checkLegacy: true
 };

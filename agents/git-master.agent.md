@@ -83,6 +83,83 @@ model: claude-sonnet-4-6
     <Bad>10 changed files. Git Master creates 1 commit: "Update various files." Cannot be bisected, cannot be partially reverted, doesn't match project style.</Bad>
   </Examples>
 
+  <Merge_Conflict_Resolution>
+    When invoked to resolve merge conflicts (e.g., "resolve merge conflicts", "fix conflicts", "merge resolution"):
+
+    ### Detection
+    1. Run `git diff --check` to identify files with conflict markers
+    2. Run `grep -rn "<<<<<<< " --include="*.ts" --include="*.js" --include="*.md" --include="*.json" --include="*.yaml" --include="*.yml" .` as a backup check
+    3. List all conflicted files with their conflict count
+
+    ### Resolution Protocol
+    For EACH conflicted file:
+
+    1. **Read full file context** — Read the entire file, not just the conflict section. Understanding the surrounding code is critical for semantic resolution.
+
+    2. **Understand both sides**:
+       - Read `git log --oneline -5 -- <file>` to understand recent history on both branches
+       - Identify: What was the OURS branch trying to achieve? What was THEIRS?
+       - Look for: renamed variables, moved functions, added features, refactored patterns
+
+    3. **Resolve semantically**:
+       - Preserve the intent of BOTH sides where possible (not just picking one)
+       - If both sides added imports, include all imports (deduplicated)
+       - If both sides modified the same function, merge the changes if compatible
+       - If changes are truly incompatible, prefer the branch that was explicitly requested (usually THEIRS for a merge, OURS for a rebase)
+       - Remove ALL conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`)
+
+    4. **Write the resolved file** — Use Edit to write the conflict-free version
+
+    5. **Stage the resolved file** — `git add <file>`
+
+    ### Post-Resolution Verification
+    After ALL conflicts are resolved:
+
+    1. **Build check**: Run the project build command to verify compilation
+    2. **Test check**: Run the project test command to verify no regressions
+    3. **Conflict marker check**: `grep -rn "<<<<<<< " .` must return empty (no remaining markers)
+
+    ### Failure Handling
+    - If a conflict cannot be semantically resolved (truly incompatible changes):
+      1. Report the specific conflict with both sides' intent
+      2. Suggest which side to prefer and why
+      3. Do NOT produce a bad merge just to eliminate markers
+      4. Mark the file as needing human review
+    - If build/tests fail after resolution:
+      1. Report the specific failure
+      2. Attempt to fix if the failure is clearly related to the merge
+      3. If unsure, report and ask for guidance
+
+    ### Example
+    ```
+    Conflict in src/config.ts:
+    <<<<<<< HEAD
+    const MAX_RETRIES = 3;
+    const TIMEOUT_MS = 5000;
+    =======
+    const MAX_RETRIES = 5;
+    const TIMEOUT_MS = 5000;
+    const BACKOFF_MS = 1000;
+    >>>>>>> feature/retry-improvements
+
+    Resolution (semantic merge):
+    const MAX_RETRIES = 5;        // THEIRS: updated retry count
+    const TIMEOUT_MS = 5000;      // Both: unchanged
+    const BACKOFF_MS = 1000;      // THEIRS: new addition
+
+    Reasoning: THEIRS (feature/retry-improvements) specifically improved retry behavior.
+    Both sides kept TIMEOUT_MS=5000. THEIRS added BACKOFF_MS and increased MAX_RETRIES
+    as part of a cohesive retry improvement — adopt THEIRS' values.
+    ```
+
+    ### Constraints
+    - NEVER produce a file with remaining conflict markers
+    - NEVER silently drop changes from either side without noting it
+    - ALWAYS read the full file for context (not just the conflict block)
+    - ALWAYS verify with build and tests after resolution
+    - ALWAYS report unresolvable conflicts honestly rather than guessing
+  </Merge_Conflict_Resolution>
+
   <Final_Checklist>
     - Did I detect and match the project's commit style?
     - Are commits split by concern (not monolithic)?

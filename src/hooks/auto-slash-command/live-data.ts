@@ -19,6 +19,7 @@ import { execSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { getWorktreeRoot, getOmcRoot } from "../../lib/worktree-paths.js";
+import safe from "safe-regex";
 
 const TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_BYTES = 50 * 1024;
@@ -168,6 +169,7 @@ function checkSecurity(command: string): { allowed: boolean; reason?: string } {
   // Check denied patterns first (always enforced)
   if (policy.denied_patterns) {
     for (const pat of policy.denied_patterns) {
+      if (!safe(pat)) { return { allowed: false, reason: 'unsafe regex rejected: ' + pat }; }
       try {
         if (new RegExp(pat).test(command)) {
           return { allowed: false, reason: `denied by pattern: ${pat}` };
@@ -207,6 +209,7 @@ function checkSecurity(command: string): { allowed: boolean; reason?: string } {
 
   if (policy.allowed_patterns) {
     for (const pat of policy.allowed_patterns) {
+      if (!safe(pat)) { continue; }
       try {
         if (new RegExp(pat).test(command)) {
           patternAllowed = true;

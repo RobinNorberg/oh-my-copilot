@@ -3,6 +3,8 @@
  * Tmux panes run bash in this environment, not cmd.exe.
  */
 export declare function isUnixLikeOnWindows(): boolean;
+export type TeamMultiplexerContext = 'tmux' | 'cmux' | 'none';
+export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): TeamMultiplexerContext;
 export type TeamSessionMode = 'split-pane' | 'dedicated-window' | 'detached-session';
 export interface TeamSession {
     sessionName: string;
@@ -146,4 +148,23 @@ export declare function killWorkerPanes(opts: {
 export declare function killTeamSession(sessionName: string, workerPaneIds?: string[], leaderPaneId?: string, options?: {
     sessionMode?: TeamSessionMode;
 }): Promise<void>;
+/**
+ * Return true if `value` looks like a tmux pane ID (e.g. "%12").
+ */
+export declare function isPaneId(value: string): boolean;
+/**
+ * Deduplicate pane IDs, preserving first-seen order and filtering invalid entries.
+ */
+export declare function dedupeWorkerPaneIds(paneIds: string[]): string[];
+/**
+ * Resolve the definitive list of worker pane IDs for split-pane cleanup.
+ *
+ * For split-pane sessions the tmux server is the source of truth — pane IDs
+ * stored in config may be stale (worker already exited, pane recycled).
+ * This function queries tmux for the live pane list and intersects it with
+ * the config-stored IDs so we never kill panes that belong to other windows.
+ *
+ * Falls back to the config-stored IDs when tmux is unreachable.
+ */
+export declare function resolveSplitPaneWorkerPaneIds(sessionName: string, configPaneIds: string[], leaderPaneId?: string): Promise<string[]>;
 //# sourceMappingURL=tmux-session.d.ts.map

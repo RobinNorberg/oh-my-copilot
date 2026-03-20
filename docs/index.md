@@ -22,7 +22,6 @@
 - [Hooks](reference/hooks.md)
 - [State Management](reference/state-management.md)
 - [Compatibility](reference/compatibility.md)
-- [Features](reference/features.md)
 
 ## Architecture
 
@@ -33,12 +32,7 @@
 - [Sync System](architecture/sync-system.md)
 - [Tiered Agents](architecture/tiered-agents.md)
 
-## Migration
-
-- [Breaking Changes](migration/breaking-changes.md)
-
 ## Other
 
-- [CJK IME Known Issues](CJK-IME-KNOWN-ISSUES.md)
 - [Design Documents](design/)
 - [Agent Templates](agent-templates/)

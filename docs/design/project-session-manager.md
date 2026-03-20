@@ -377,7 +377,7 @@ User Command
 ├── .psm-session.json        # Session metadata
 ├── .psm-context.md          # Pre-loaded Copilot context
 ├── <project files>          # Actual code
-└── .omg/                    # OMP state (if applicable)
+└── .omg/                    # OMC state (if applicable)
 ```
 
 ### 5.3 Session Metadata File
@@ -732,9 +732,9 @@ def cleanup(options):
 
 ## 10. Integration Points
 
-### 10.1 OMP Skill Integration
+### 10.1 OMC Skill Integration
 
-| OMP Skill | PSM Integration |
+| OMC Skill | PSM Integration |
 |-----------|-----------------|
 | `autopilot` | Can spawn PSM session for isolated work |
 | `ultrawork` | Parallel agents across PSM sessions |
@@ -788,7 +788,7 @@ Opens editor in worktree directory alongside tmux session.
 
 ### 10.5 HUD Integration
 
-PSM status in OMP HUD statusline:
+PSM status in OMC HUD statusline:
 
 ```
 [psm:omc:pr-123] 📋 Review | 🕐 2h active | 📁 ~/.psm/worktrees/omc/pr-123

@@ -46,6 +46,13 @@ Jumping into code without understanding requirements leads to rework, scope cree
 | Consensus | `--consensus`, "ralplan" | Planner -> Architect -> Critic loop until agreement with RALPLAN-DR structured deliberation (short by default, `--deliberate` for high-risk); add `--interactive` for user prompts at draft and approval steps |
 | Review | `--review`, "review this plan" | Critic evaluation of existing plan |
 
+### Complexity Classification
+
+All planning modes benefit from complexity awareness:
+- Tasks classified as **SIMPLE** by the heuristic classifier get abbreviated planning (direct mode, single pass)
+- Tasks classified as **COMPLEX** auto-enable `--deliberate` in consensus mode
+- Classification is automatic — no user action needed
+
 ### Interview Mode (broad/vague requests)
 
 1. **Classify the request**: Broad (vague verbs, no specific files, touches 3+ areas) triggers interview mode

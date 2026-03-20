@@ -1,6 +1,6 @@
 {
   "aliases": {
-    "omp": {
+    "omc": {
       "repo": "Yeachan-Heo/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"

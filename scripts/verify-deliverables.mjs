@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * OMP Deliverable Verification Hook (SubagentStop)
+ * OMC Deliverable Verification Hook (SubagentStop)
  *
  * Checks that completing agents actually produced their expected deliverables.
  * A task can be marked "completed" with zero output files — this hook catches
@@ -9,7 +9,7 @@
  *
  * Deliverable requirements are loaded from (in priority order):
  *   1. .omg/deliverables.json (project-specific overrides)
- *   2. ${CLAUDE_PLUGIN_ROOT}/templates/deliverables.json (OMP defaults)
+ *   2. ${CLAUDE_PLUGIN_ROOT}/templates/deliverables.json (OMC defaults)
  *
  * This hook is ADVISORY (non-blocking). It returns additionalContext warnings
  * when deliverables are missing, but never prevents the agent from stopping.
@@ -46,7 +46,7 @@ function sanitizePath(filePath) {
 }
 
 /**
- * Load deliverable requirements from project config or OMP defaults.
+ * Load deliverable requirements from project config or OMC defaults.
  */
 function loadDeliverableConfig(directory) {
   // Priority 1: Project-specific overrides
@@ -57,7 +57,7 @@ function loadDeliverableConfig(directory) {
     } catch { /* fall through to defaults */ }
   }
 
-  // Priority 2: OMP defaults
+  // Priority 2: OMC defaults
   const pluginRoot = _resolvedPluginRoot;
   if (pluginRoot) {
     const defaultConfig = join(pluginRoot, 'templates', 'deliverables.json');
@@ -72,7 +72,7 @@ function loadDeliverableConfig(directory) {
 }
 
 /**
- * Determine the current team stage from OMP state.
+ * Determine the current team stage from OMC state.
  */
 function detectStage(directory, sessionId) {
   // Try session-scoped state first
@@ -223,7 +223,7 @@ async function main() {
 
     // Build advisory warning
     const warnings = issues.map(i => `  - ${i.path}: ${i.reason}`).join('\n');
-    const message = `[OMP] Deliverable verification for stage "${stage}":\n` +
+    const message = `[OMC] Deliverable verification for stage "${stage}":\n` +
       `${issues.length} issue(s) found:\n${warnings}\n` +
       `These deliverables may be expected by the next stage.`;
 

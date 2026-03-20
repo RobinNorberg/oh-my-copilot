@@ -27,6 +27,7 @@ function createMinimalContext(overrides = {}) {
         promptTime: null,
         apiKeySource: null,
         profileName: null,
+        sessionSummary: null,
         ...overrides,
     };
 }

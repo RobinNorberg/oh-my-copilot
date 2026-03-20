@@ -1,42 +1,51 @@
 ---
 name: ccg
-description: Copilot-Codex-Gemini tri-model orchestration via /ask codex + /ask gemini, then Copilot synthesizes results
+description: Quadri-model orchestration — Claude, Codex, and Gemini provide independent analysis, Copilot synthesizes
 ---
 
-# CCG - Copilot-Codex-Gemini Tri-Model Orchestration
+# CCG - Quadri-Model Orchestration
 
-CCG routes through the canonical `/ask` skill (`/ask codex` + `/ask gemini`), then Copilot synthesizes both outputs into one answer.
+CCG fans out to three external models (Claude, Codex, Gemini) for independent analysis, then Copilot synthesizes all perspectives into one unified answer.
+
+Four models participate:
+1. **Claude** — independent analysis via `omc ask claude`
+2. **Codex** — independent analysis via `omc ask codex`
+3. **Gemini** — independent analysis via `omc ask gemini`
+4. **Copilot** — orchestrator, reads all three responses and produces the synthesis
 
 Use this when you want parallel external perspectives without launching tmux team workers.
 
 ## When to Use
 
-- Backend/analysis + frontend/UI work in one request
-- Code review from multiple perspectives (architecture + design/UX)
-- Cross-validation where Codex and Gemini may disagree
+- Cross-validation where multiple models may catch different issues
+- Code review from multiple perspectives (security, architecture, UX)
+- Architecture decisions where diverse opinions reduce blind spots
 - Fast advisor-style parallel input without team runtime orchestration
 
 ## Requirements
 
-- **Codex CLI**: `npm install -g @openai/codex` (or `@openai/codex`)
+- **Claude Code**: `npm install -g @anthropic-ai/claude-code`
+- **Codex CLI**: `npm install -g @openai/codex`
 - **Gemini CLI**: `npm install -g @google/gemini-cli`
 - `omc ask` command available
-- If either CLI is unavailable, continue with whichever provider is available and note the limitation
+- If any CLI is unavailable, continue with whichever providers are available and note the limitation
 
 ## How It Works
 
 ```text
-1. Copilot decomposes the request into two advisor prompts:
-   - Codex prompt (analysis/architecture/backend)
-   - Gemini prompt (UX/design/docs/alternatives)
+1. Copilot decomposes the request into three advisor prompts:
+   - Claude prompt (deep reasoning, logic, edge cases)
+   - Codex prompt (architecture, correctness, backend, risks)
+   - Gemini prompt (UX/design, alternatives, docs, usability)
 
-2. Copilot runs via CLI (skill nesting not supported):
+2. Copilot runs all three via CLI in parallel:
+   - `omc ask claude "<claude prompt>"`
    - `omc ask codex "<codex prompt>"`
    - `omc ask gemini "<gemini prompt>"`
 
 3. Artifacts are written under `.omg/artifacts/ask/`
 
-4. Copilot synthesizes both outputs into one final response
+4. Copilot reads all three outputs and synthesizes into one final response
 ```
 
 ## Execution Protocol
@@ -46,17 +55,19 @@ When invoked, Copilot MUST follow this workflow:
 ### 1. Decompose Request
 Split the user request into:
 
-- **Codex prompt:** architecture, correctness, backend, risks, test strategy
-- **Gemini prompt:** UX/content clarity, alternatives, edge-case usability, docs polish
-- **Synthesis plan:** how to reconcile conflicts
+- **Claude prompt:** deep reasoning, logic correctness, edge cases, security analysis
+- **Codex prompt:** architecture, backend patterns, test strategy, performance risks
+- **Gemini prompt:** UX/content clarity, alternatives, design consistency, docs polish
+- **Synthesis plan:** how to reconcile conflicts across three perspectives
 
 ### 2. Invoke advisors via CLI
 
-> **Note:** Skill nesting (invoking a skill from within an active skill) is not supported in Claude Code. Always use the direct CLI path via Bash tool.
+> **Note:** Skill nesting (invoking a skill from within an active skill) is not supported. Always use the direct CLI path via Bash tool.
 
-Run both advisors:
+Run all three advisors in parallel:
 
 ```bash
+omc ask claude "<claude prompt>"
 omc ask codex "<codex prompt>"
 omc ask gemini "<gemini prompt>"
 ```
@@ -66,6 +77,7 @@ omc ask gemini "<gemini prompt>"
 Read latest ask artifacts from:
 
 ```text
+.omg/artifacts/ask/claude-*.md
 .omg/artifacts/ask/codex-*.md
 .omg/artifacts/ask/gemini-*.md
 ```
@@ -74,19 +86,20 @@ Read latest ask artifacts from:
 
 Return one unified answer with:
 
-- Agreed recommendations
-- Conflicting recommendations (explicitly called out)
-- Chosen final direction + rationale
-- Action checklist
+- **Consensus:** recommendations all three models agree on
+- **Conflicts:** where models disagree (explicitly called out with each model's position)
+- **Unique insights:** valuable points raised by only one model
+- **Chosen direction:** final recommendation + rationale
+- **Action checklist:** concrete next steps
 
 ## Fallbacks
 
-If one provider is unavailable:
+If one or two providers are unavailable:
 
-- Continue with available provider + Copilot synthesis
-- Clearly note missing perspective and risk
+- Continue with available providers + Copilot synthesis
+- Clearly note missing perspectives and associated risk
 
-If both unavailable:
+If all three unavailable:
 
 - Fall back to Copilot-only answer and state CCG external advisors were unavailable
 
@@ -99,5 +112,5 @@ If both unavailable:
 Example:
 
 ```bash
-/oh-my-copilot:ccg Review this PR - architecture/security via Codex and UX/readability via Gemini
+/oh-my-copilot:ccg Review this PR for security, architecture, and UX concerns
 ```

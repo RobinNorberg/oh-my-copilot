@@ -173,6 +173,7 @@ describe('gitInfoPosition configuration', () => {
         promptTime: null,
         apiKeySource: null,
         profileName: null,
+        sessionSummary: null,
     });
     const createMockConfig = (gitInfoPosition) => ({
         preset: 'focused',
@@ -332,6 +333,7 @@ describe('maxWidth wrapMode behavior', () => {
         promptTime: null,
         apiKeySource: null,
         profileName: null,
+        sessionSummary: null,
     });
     const createWrapConfig = (wrapMode, maxWidth, maxOutputLines = 6) => ({
         preset: 'focused',

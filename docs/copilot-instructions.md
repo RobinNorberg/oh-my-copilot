@@ -1,9 +1,9 @@
 <!-- OMC:START -->
-<!-- OMC:VERSION:4.8.2-preview.3 -->
+<!-- OMC:VERSION:4.8.2-preview.4 -->
 
 # oh-my-copilot - Intelligent Multi-Agent Orchestration
 
-You are running with oh-my-copilot (OMP), a multi-agent orchestration layer for Copilot CLI.
+You are running with oh-my-copilot (OMC), a multi-agent orchestration layer for Copilot CLI.
 Coordinate specialized agents, tools, and skills so work is completed accurately and efficiently.
 
 <operating_principles>
@@ -32,7 +32,7 @@ explore (haiku), analyst (opus), planner (opus), architect (opus), debugger (son
 
 <tools>
 External AI: `/team N:executor "task"`, `omc team N:codex|gemini "..."`, `omc ask <copilot|codex|gemini>`, `/ccg`
-OMP State: `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
+OMC State: `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
 Teams: `TeamCreate`, `TeamDelete`, `SendMessage`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`
 Notepad: `notepad_read`, `notepad_write_priority`, `notepad_write_working`, `notepad_write_manual`
 Project Memory: `project_memory_read`, `project_memory_write`, `project_memory_add_note`, `project_memory_add_directive`
@@ -42,8 +42,8 @@ Code Intel: LSP (`lsp_hover`, `lsp_goto_definition`, `lsp_find_references`, `lsp
 <skills>
 Invoke via `/oh-my-copilot:<name>`. Trigger patterns auto-detect keywords.
 
-Workflow: `autopilot`, `ralph`, `ultrawork`, `team`, `ccg`, `ultraqa`, `omc-plan`, `ralplan`, `sciomc`, `external-context`, `deepinit`, `deep-interview`
-Keyword triggers: "autopilot"→autopilot, "ralph"→ralph, "ulw"→ultrawork, "ccg"→ccg, "ralplan"→ralplan, "deep interview"→deep-interview, "deep-analyze"→analysis mode, "tdd"→TDD mode, "deepsearch"→codebase search, "ultrathink"→deep reasoning, "cancelomc"→cancel. Team orchestration is explicit via `/team`.
+Workflow: `autopilot`, `ralph`, `ralph-experiment`, `ultrawork`, `team`, `ccg`, `ultraqa`, `omc-plan`, `ralplan`, `sciomc`, `external-context`, `deepinit`, `deep-interview`
+Keyword triggers: "autopilot"→autopilot, "ralph"→ralph, "experiment"→ralph-experiment, "ulw"→ultrawork, "ccg"→ccg, "ralplan"→ralplan, "deep interview"→deep-interview, "deep-analyze"→analysis mode, "tdd"→TDD mode, "deepsearch"→codebase search, "ultrathink"→deep reasoning, "cancelomc"→cancel. Team orchestration is explicit via `/team`.
 Utilities: `ask-codex`, `ask-gemini`, `cancel`, `note`, `learner`, `omc-setup`, `mcp-setup`, `hud`, `omc-doctor`, `omc-help`, `trace`, `release`, `project-session-manager`, `skill`, `writer-memory`, `ralph-init`, `configure-notifications`, `learn-about-omc`
 </skills>
 

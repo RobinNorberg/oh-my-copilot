@@ -17,13 +17,9 @@ const ASK_PROVIDER_SET = new Set(ASK_PROVIDERS);
 const ASK_AGENT_PROMPT_FLAG = '--agent-prompt';
 const SAFE_ROLE_PATTERN = /^[a-z][a-z0-9-]*$/;
 const ASK_ADVISOR_SCRIPT_ENV = 'OMC_ASK_ADVISOR_SCRIPT';
-const ASK_ADVISOR_SCRIPT_ENV_ALIAS = 'OMX_ASK_ADVISOR_SCRIPT';
 const ASK_ORIGINAL_TASK_ENV = 'OMC_ASK_ORIGINAL_TASK';
 function askUsageError(reason) {
     return new Error(`${reason}\n${ASK_USAGE}`);
-}
-function warnDeprecatedAlias(alias, canonical) {
-    process.stderr.write(`[ask] DEPRECATED: ${alias} is deprecated; use ${canonical} instead.\n`);
 }
 function getPackageRoot() {
     if (typeof __dirname !== 'undefined' && __dirname) {
@@ -145,11 +141,6 @@ export function resolveAskAdvisorScriptPath(packageRoot = getPackageRoot(), env 
     const canonical = env[ASK_ADVISOR_SCRIPT_ENV]?.trim();
     if (canonical) {
         return isAbsolute(canonical) ? canonical : join(packageRoot, canonical);
-    }
-    const alias = env[ASK_ADVISOR_SCRIPT_ENV_ALIAS]?.trim();
-    if (alias) {
-        warnDeprecatedAlias(ASK_ADVISOR_SCRIPT_ENV_ALIAS, ASK_ADVISOR_SCRIPT_ENV);
-        return isAbsolute(alias) ? alias : join(packageRoot, alias);
     }
     return join(packageRoot, 'scripts', 'run-provider-advisor.js');
 }

@@ -26,6 +26,7 @@ import { renderApiKeySource } from './elements/api-key-source.js';
 import { renderCallCounts } from './elements/call-counts.js';
 import { renderContextLimitWarning } from './elements/context-warning.js';
 import { renderMissionBoard } from './mission-board.js';
+import { renderSessionSummary } from './elements/session-summary.js';
 /**
  * ANSI escape sequence regex (matches SGR and other CSI sequences).
  * Used to skip escape codes when measuring/truncating visible width.
@@ -366,6 +367,11 @@ export async function render(context, config) {
     }
     if (context.missionBoard && (config.missionBoard?.enabled ?? config.elements.missionBoard ?? false)) {
         detailLines.unshift(...renderMissionBoard(context.missionBoard, config.missionBoard));
+    }
+    if (enabledElements.sessionSummary && context.sessionSummary) {
+        const summary = renderSessionSummary(context.sessionSummary);
+        if (summary)
+            elements.push(summary);
     }
     const widthAdjustedLines = applyMaxWidthByMode([...outputLines, ...detailLines], config.maxWidth, config.wrapMode);
     // Apply max output line limit after wrapping so wrapped output still respects maxOutputLines.

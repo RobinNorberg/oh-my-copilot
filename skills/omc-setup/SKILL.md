@@ -3,7 +3,7 @@ name: omc-setup
 description: Setup and configure oh-my-copilot (the ONLY command you need to learn)
 ---
 
-# OMP Setup
+# OMC Setup
 
 This is the **only command you need to learn**. After running this, everything else is automatic.
 
@@ -25,7 +25,7 @@ Check for flags in the user's invocation:
 When user runs with `--help`, display this and stop:
 
 ```
-OMP Setup - Configure oh-my-copilot
+OMC Setup - Configure oh-my-copilot
 
 USAGE:
   /oh-my-copilot:omc-setup           Run initial setup wizard (or update if already configured)
@@ -48,14 +48,14 @@ MODES:
     - Downloads fresh copilot-instructions.md to ./.copilot/
     - Backs up existing copilot-instructions.md to .copilot/copilot-instructions.md.backup.YYYY-MM-DD
     - Project-specific settings
-    - Use this to update project config after OMP upgrades
+    - Use this to update project config after OMC upgrades
 
   Global Configuration (--global)
     - Downloads fresh copilot-instructions.md to ~/.copilot/
     - Backs up existing copilot-instructions.md to ~/.copilot/copilot-instructions.md.backup.YYYY-MM-DD
     - Applies to all Copilot CLI sessions
     - Cleans up legacy hooks
-    - Use this to update global config after OMP upgrades
+    - Use this to update global config after OMC upgrades
 
   Force Full Setup (--force)
     - Bypasses the "already configured" check
@@ -84,7 +84,7 @@ if [ -f "$CONFIG_FILE" ]; then
   SETUP_VERSION=$(jq -r '.setupVersion // empty' "$CONFIG_FILE" 2>/dev/null)
 
   if [ -n "$SETUP_COMPLETED" ] && [ "$SETUP_COMPLETED" != "null" ]; then
-    echo "OMP setup was already completed on: $SETUP_COMPLETED"
+    echo "OMC setup was already completed on: $SETUP_COMPLETED"
     [ -n "$SETUP_VERSION" ] && echo "Setup version: $SETUP_VERSION"
     ALREADY_CONFIGURED="true"
   fi
@@ -97,7 +97,7 @@ If `ALREADY_CONFIGURED` is true AND the user did NOT pass `--force`, `--local`, 
 
 Use AskUserQuestion to prompt:
 
-**Question:** "OMP is already configured. What would you like to do?"
+**Question:** "OMC is already configured. What would you like to do?"
 
 **Options:**
 1. **Update copilot-instructions.md only** - Download latest copilot-instructions.md without re-running full setup

@@ -22,11 +22,11 @@ The Compatibility Layer consists of four integrated systems working together:
 
 1. **Discovery System** - Automatically finds plugins and MCP servers from user directories
 2. **Tool Registry** - Central hub that registers and manages all external tools with conflict resolution
-3. **Permission Adapter** - Integrates with OMP's permission system for safe tool execution
+3. **Permission Adapter** - Integrates with OMC's permission system for safe tool execution
 4. **MCP Bridge** - Connects to MCP servers and exposes their tools for use
 
 ```
-Plugins              MCP Configs          OMP Tools
+Plugins              MCP Configs          OMC Tools
    ↓                      ↓                    ↓
  Discovery System ────────────────────────────┐
                                               ↓
@@ -43,7 +43,7 @@ Plugins              MCP Configs          OMP Tools
 
 Scans for external plugins and MCP servers from:
 
-- `~/.copilot/plugins/` - OMP/Copilot CLI plugins directory
+- `~/.copilot/plugins/` - OMC/Copilot CLI plugins directory
 - `~/.copilot/installed-plugins/` - Alternative plugins location
 - `~/.copilot/settings.json` - Copilot CLI MCP server configs
 - `~/.copilot/claude_desktop_config.json` - Copilot Desktop MCP server configs
@@ -72,7 +72,7 @@ Central hub for tool management:
 
 ### Permission Adapter (`permission-adapter.ts`)
 
-Integrates external tools with OMP's permission system:
+Integrates external tools with OMC's permission system:
 
 - Maintains safe patterns for read-only tools
 - Auto-approves known-safe operations

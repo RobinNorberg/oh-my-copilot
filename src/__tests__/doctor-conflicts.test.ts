@@ -23,9 +23,6 @@ vi.mock('../utils/paths.js', () => ({
 vi.mock('../features/builtin-skills/skills.js', () => ({
   listBuiltinSkillNames: ({ includeAliases }: { includeAliases?: boolean } = {}) => {
     const names = ['autopilot', 'ralph', 'ultrawork', 'plan', 'team', 'cancel', 'note'];
-    if (includeAliases) {
-      return [...names, 'psm'];
-    }
     return names;
   },
 }));
