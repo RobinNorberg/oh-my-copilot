@@ -132,6 +132,43 @@ Optional shortcuts for power users. Natural language works fine without them.
 
 ---
 
+## Permissions
+
+oh-my-copilot uses a **three-tier permission architecture** inspired by auto mode to minimize permission prompts without sacrificing security.
+
+| Tier | Behavior | Examples |
+|------|----------|---------|
+| **Tier 1** | Always auto-approved | LSP navigation, code search, reading state/memory/notepad |
+| **Tier 2** | Auto-approved within project | Writing state/memory/notepad, AST replace, LSP rename, python REPL |
+| **Tier 3** | Always requires confirmation | Deleting shared memory, killing jobs |
+
+### Auto-Configuration
+
+Permissions are automatically configured during plugin setup and healed every session:
+- `omc-setup` writes the initial permission allowlist to `settings.local.json`
+- `setup-maintenance` checks and repairs missing permissions on each session start
+- The `permissionRequest` hook programmatically approves Tier 1+2 tools at runtime
+
+### Customization
+
+Edit `.copilot/settings.local.json` to adjust:
+```json
+{
+  "permissions": {
+    "allow": ["mcp__t__tool_name"]
+  }
+}
+```
+
+### Dangerous Tools (Always Prompt)
+
+These tools always require explicit confirmation:
+- `shared_memory_delete` — Permanently deletes shared memory entries
+- `shared_memory_cleanup` — Bulk cleanup of shared memory
+- `kill_job` — Terminates running background jobs
+
+---
+
 ## Documentation
 
 - [Documentation Home](docs/index.md)

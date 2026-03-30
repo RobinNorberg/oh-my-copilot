@@ -103,6 +103,7 @@ function formatSkillOutput(skills: LearnedSkill[]): string {
 export const loadLocalTool = {
   name: 'load_omc_skills_local',
   description: 'Load and list skills from the project-local .omg/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.',
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: loadLocalSchema,
   handler: async (args: { projectRoot?: string }) => {
     const projectRoot = args.projectRoot ? validateProjectRoot(args.projectRoot) : process.cwd();
@@ -122,6 +123,7 @@ export const loadLocalTool = {
 export const loadGlobalTool = {
   name: 'load_omc_skills_global',
   description: 'Load and list skills from global user directories (~/.omg/skills/ and ~/.copilot/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.',
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: loadGlobalSchema,
   handler: async (_args: Record<string, never>) => {
     const allSkills = loadAllSkills(null);
@@ -140,6 +142,7 @@ export const loadGlobalTool = {
 export const listSkillsTool = {
   name: 'list_omc_skills',
   description: 'List all available skills (both project-local and global user skills). Project skills take priority over user skills with the same ID.',
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: listSkillsSchema,
   handler: async (args: { projectRoot?: string }) => {
     const projectRoot = args.projectRoot ? validateProjectRoot(args.projectRoot) : process.cwd();

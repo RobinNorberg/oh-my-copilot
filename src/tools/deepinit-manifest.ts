@@ -413,6 +413,7 @@ export const deepinitManifestTool: ToolDefinition<typeof deepinitManifestSchema>
     'Manage the deepinit manifest for incremental AGENTS.md regeneration. ' +
     'Compares directory file lists (not file contents) to detect structural changes. ' +
     'Actions: diff (find changed directories), save (persist current state), check (validate manifest).',
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   category: TOOL_CATEGORIES.DEEPINIT,
   schema: deepinitManifestSchema,
   handler: async (args: DeepinitManifestInput) => {

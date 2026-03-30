@@ -20,6 +20,7 @@ import {
 import { getRuntimePackageVersion } from '../lib/version.js';
 import { getConfigDir } from '../utils/config-dir.js';
 import { resolveNodeBinary } from '../utils/resolve-node.js';
+import { generatePermissionAllowList } from './permissions.js';
 
 /** Copilot CLI configuration directory */
 export const COPILOT_CONFIG_DIR = getConfigDir();
@@ -1099,6 +1100,24 @@ export function install(options: InstallOptions = {}): InstallResult {
       // 4. Single atomic write
       writeFileSync(SETTINGS_FILE, JSON.stringify(existingSettings, null, 2));
       log('  settings.json updated');
+
+      // 5. Write permissions.allow to settings.local.json
+      try {
+        const localSettingsFile = join(COPILOT_CONFIG_DIR, 'settings.local.json');
+        let localSettings: Record<string, unknown> = {};
+        if (existsSync(localSettingsFile)) {
+          localSettings = JSON.parse(readFileSync(localSettingsFile, 'utf-8'));
+        }
+        const existing = localSettings.permissions as Record<string, unknown> | undefined;
+        localSettings.permissions = {
+          ...existing,
+          allow: generatePermissionAllowList(),
+        };
+        writeFileSync(localSettingsFile, JSON.stringify(localSettings, null, 2));
+        log('  settings.local.json permissions.allow updated');
+      } catch {
+        log('  Warning: Could not configure settings.local.json permissions (non-fatal)');
+      }
     } catch (_e) {
       log('  Warning: Could not configure settings.json (non-fatal)');
       result.hooksConfigured = false;

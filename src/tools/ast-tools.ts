@@ -86,6 +86,7 @@ export interface AstToolDefinition<T extends z.ZodRawShape> {
   name: string;
   description: string;
   schema: T;
+  annotations?: import('./types.js').ToolAnnotations;
   handler: (
     args: z.infer<z.ZodObject<T>>,
   ) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
@@ -255,6 +256,7 @@ export const astGrepSearchTool: AstToolDefinition<{
   maxResults: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: "ast_grep_search",
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   description: `Search for code patterns using AST matching. More precise than text search.
 
 Use meta-variables in patterns:
@@ -406,6 +408,7 @@ export const astGrepReplaceTool: AstToolDefinition<{
   dryRun: z.ZodOptional<z.ZodBoolean>;
 }> = {
   name: "ast_grep_replace",
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   description: `Replace code patterns using AST matching. Preserves matched content via meta-variables.
 
 Use meta-variables in both pattern and replacement:

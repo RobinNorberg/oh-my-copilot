@@ -37,6 +37,7 @@ export const notepadReadTool: ToolDefinition<{
 }> = {
   name: 'notepad_read',
   description: 'Read the notepad content. Can read the full notepad or a specific section (priority, working, manual).',
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: {
     section: z.enum(SECTION_NAMES).optional().describe('Section to read: "all" (default), "priority", "working", or "manual"'),
     workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
@@ -119,6 +120,7 @@ export const notepadWritePriorityTool: ToolDefinition<{
 }> = {
   name: 'notepad_write_priority',
   description: 'Write to the Priority Context section. This REPLACES the existing content. Keep under 500 chars - this is always loaded at session start.',
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: {
     content: z.string().max(2000).describe('Content to write (recommend under 500 chars)'),
     workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
@@ -175,6 +177,7 @@ export const notepadWriteWorkingTool: ToolDefinition<{
 }> = {
   name: 'notepad_write_working',
   description: 'Add an entry to Working Memory section. Entries are timestamped and auto-pruned after 7 days.',
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: {
     content: z.string().max(4000).describe('Content to add as a new entry'),
     workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
@@ -226,6 +229,7 @@ export const notepadWriteManualTool: ToolDefinition<{
 }> = {
   name: 'notepad_write_manual',
   description: 'Add an entry to the MANUAL section. Content in this section is never auto-pruned.',
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: {
     content: z.string().max(4000).describe('Content to add as a new entry'),
     workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
@@ -277,6 +281,7 @@ export const notepadPruneTool: ToolDefinition<{
 }> = {
   name: 'notepad_prune',
   description: 'Prune Working Memory entries older than N days (default: 7 days).',
+  annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
   schema: {
     daysOld: z.number().int().min(1).max(365).optional().describe('Remove entries older than this many days (default: 7)'),
     workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
@@ -314,6 +319,7 @@ export const notepadStatsTool: ToolDefinition<{
 }> = {
   name: 'notepad_stats',
   description: 'Get statistics about the notepad (size, entry count, oldest entry).',
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: {
     workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),
   },

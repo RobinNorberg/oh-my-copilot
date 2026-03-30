@@ -117,6 +117,13 @@
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/session-end.mjs\"",
         "timeoutSec": 10
       }
+    ],
+    "permissionRequest": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/permission-handler.mjs\"",
+        "timeoutSec": 3
+      }
     ]
   }
 }
