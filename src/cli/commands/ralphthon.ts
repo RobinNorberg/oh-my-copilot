@@ -22,11 +22,14 @@ import {
   formatRalphthonStatus,
   getRalphthonPrdPath,
   initRalphthonPrd,
+  sendKeysToPane,
 } from '../../ralphthon/index.js';
 import type {
   RalphthonCliOptions,
   OrchestratorEvent,
   RalphthonConfig,
+  RalphthonPlanningContext,
+  RalphthonStory,
 } from '../../ralphthon/types.js';
 import { RALPHTHON_DEFAULTS } from '../../ralphthon/types.js';
 
@@ -110,6 +113,89 @@ export function parseRalphthonArgs(args: string[]): RalphthonCliOptions {
   }
 
   return options;
+}
+
+export function buildRalphthonPlanningContext(
+  task: string,
+): RalphthonPlanningContext {
+  return {
+    brownfield: true,
+    assumptionsMode: "explicit",
+    codebaseMapSummary: `Brownfield target: ${task.slice(0, 160)}`,
+    knownConstraints: [
+      "Prefer repository evidence over assumptions",
+      "Capture brownfield/codebase-map findings explicitly before execution",
+    ],
+  };
+}
+
+export function buildRalphthonInterviewPrompt(
+  task: string,
+  options: RalphthonCliOptions,
+): string {
+  const sanitizedTask = task.replace(/[\r\n\0]+/g, " ").trim();
+  return `/deep-interview ${sanitizedTask}
+
+After the interview, generate a ralphthon-prd.json file in .omc/ with this structure:
+{
+  "project": "<project name>",
+  "branchName": "<branch>",
+  "description": "<description>",
+  "stories": [{ "id": "US-001", "title": "...", "description": "...", "acceptanceCriteria": [...], "priority": "high", "tasks": [{ "id": "T-001", "title": "...", "description": "...", "status": "pending", "retries": 0 }] }],
+  "hardening": [],
+  "config": { "maxWaves": ${options.maxWaves}, "cleanWavesForTermination": 3, "pollIntervalMs": ${options.pollInterval * 1000}, "idleThresholdMs": 30000, "maxRetries": 3, "skipInterview": false },
+  "planningContext": {
+    "brownfield": true,
+    "assumptionsMode": "explicit",
+    "codebaseMapSummary": "<brief brownfield/codebase-map summary>",
+    "knownConstraints": ["<constraint>"]
+  }
+}
+
+Treat this as brownfield planning. Summarize the existing codebase/module context explicitly instead of relying on implicit rediscovery.`;
+}
+
+export function buildDefaultSkipInterviewStories(
+  task: string,
+): RalphthonStory[] {
+  return [
+    {
+      id: "US-001",
+      title: task.slice(0, 60),
+      description: task,
+      acceptanceCriteria: [
+        "Implementation complete",
+        "Tests pass",
+        "No type errors",
+      ],
+      priority: "high",
+      tasks: [
+        {
+          id: "T-001",
+          title: task.slice(0, 60),
+          description: task,
+          status: "pending",
+          retries: 0,
+        },
+      ],
+    },
+  ];
+}
+
+export function buildDefaultSkipInterviewPrdParams(task: string): {
+  project: string;
+  branchName: string;
+  description: string;
+  stories: RalphthonStory[];
+  planningContext: RalphthonPlanningContext;
+} {
+  return {
+    project: "ralphthon",
+    branchName: "feat/ralphthon",
+    description: task,
+    stories: buildDefaultSkipInterviewStories(task),
+    planningContext: buildRalphthonPlanningContext(task),
+  };
 }
 
 // ============================================================================
@@ -266,17 +352,7 @@ export async function ralphthonCommand(args: string[]): Promise<void> {
 
     // Inject deep-interview command to the leader pane
     // The orchestrator will wait for the PRD to appear
-    const interviewPrompt = `/deep-interview ${options.task}
-
-After the interview, generate a ralphthon-prd.json file in .omc/ with this structure:
-{
-  "project": "<project name>",
-  "branchName": "<branch>",
-  "description": "<description>",
-  "stories": [{ "id": "US-001", "title": "...", "description": "...", "acceptanceCriteria": [...], "priority": "high", "tasks": [{ "id": "T-001", "title": "...", "description": "...", "status": "pending", "retries": 0 }] }],
-  "hardening": [],
-  "config": { "maxWaves": ${options.maxWaves}, "cleanWavesForTermination": 3, "pollIntervalMs": ${options.pollInterval * 1000}, "idleThresholdMs": 30000, "maxRetries": 3, "skipInterview": false }
-}`;
+    const interviewPrompt = buildRalphthonInterviewPrompt(options.task, options);
 
     // Initialize state in interview phase
     const state = initOrchestrator(
@@ -289,6 +365,15 @@ After the interview, generate a ralphthon-prd.json file in .omc/ with this struc
     );
     state.phase = 'interview';
     writeRalphthonState(cwd, state, sessionId);
+
+    // Send the deep-interview prompt to the leader pane
+    if (!sendKeysToPane(leaderPane, interviewPrompt)) {
+      console.log(
+        chalk.red("Failed to inject deep-interview prompt to leader pane."),
+      );
+      clearRalphthonState(cwd, sessionId);
+      process.exit(1);
+    }
 
     console.log(chalk.gray('Waiting for PRD generation...'));
 
@@ -320,24 +405,16 @@ After the interview, generate a ralphthon-prd.json file in .omc/ with this struc
     // Skip interview — create a simple PRD from the task
     console.log(chalk.cyan('\nSkipping interview — creating PRD from task...'));
 
-    initRalphthonPrd(cwd, 'ralphthon', 'feat/ralphthon', options.task, [
-      {
-        id: 'US-001',
-        title: options.task.slice(0, 60),
-        description: options.task,
-        acceptanceCriteria: ['Implementation complete', 'Tests pass', 'No type errors'],
-        priority: 'high',
-        tasks: [
-          {
-            id: 'T-001',
-            title: options.task.slice(0, 60),
-            description: options.task,
-            status: 'pending',
-            retries: 0,
-          },
-        ],
-      },
-    ], config);
+    const defaultPrd = buildDefaultSkipInterviewPrdParams(options.task);
+    initRalphthonPrd(
+      cwd,
+      defaultPrd.project,
+      defaultPrd.branchName,
+      defaultPrd.description,
+      defaultPrd.stories,
+      config,
+      defaultPrd.planningContext,
+    );
 
     initOrchestrator(
       cwd,
@@ -374,5 +451,5 @@ After the interview, generate a ralphthon-prd.json file in .omc/ with this struc
 // ============================================================================
 
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

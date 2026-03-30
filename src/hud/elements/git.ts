@@ -5,7 +5,26 @@
  */
 
 import { execSync } from 'node:child_process';
+import { resolve } from 'node:path';
 import { dim, cyan } from '../colors.js';
+
+const CACHE_TTL_MS = 30_000;
+
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+const repoCache = new Map<string, CacheEntry<string | null>>();
+const branchCache = new Map<string, CacheEntry<string | null>>();
+
+/**
+ * Clear all git caches. Call in tests beforeEach to ensure a clean slate.
+ */
+export function resetGitCache(): void {
+  repoCache.clear();
+  branchCache.clear();
+}
 
 /**
  * Get git repository name from remote URL.

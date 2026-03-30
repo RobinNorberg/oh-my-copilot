@@ -4,7 +4,7 @@
  * Intercepts Stop events to automatically delegate recently modified files
  * to the code-simplifier agent for cleanup and simplification.
  *
- * Opt-in via ~/.omg/config.json: { "codeSimplifier": { "enabled": true } }
+ * Opt-in via global OMC config.json (XDG-aware on Linux/Unix, legacy ~/.omc fallback)
  * Default: disabled (opt-in only)
  */
 /** Config shape for the code-simplifier feature */
@@ -27,7 +27,7 @@ export interface CodeSimplifierHookResult {
 /** Marker filename used to prevent re-triggering within the same turn cycle */
 export declare const TRIGGER_MARKER_FILENAME = "code-simplifier-triggered.marker";
 /**
- * Read the global OMC config from ~/.omg/config.json.
+ * Read the global OMC config from the Copilot config directory.
  * Returns null if the file does not exist or cannot be parsed.
  */
 export declare function readOmcConfig(): OmcGlobalConfig | null;

@@ -43,12 +43,18 @@ function isStateFileStale(filePath: string): boolean {
  * Returns the most recently modified matching path, or null if none found.
  * This ensures the HUD displays state from any active session (Issue #456).
  */
-function resolveStatePath(directory: string, filename: string): string | null {
+function resolveStatePath(directory: string, filename: string, sessionId?: string): string | null {
+  const omcRoot = getOmcRoot(directory);
+
+  if (sessionId) {
+    const sessionPath = join(omcRoot, 'state', 'sessions', sessionId, filename);
+    return existsSync(sessionPath) ? sessionPath : null;
+  }
+
   let bestPath: string | null = null;
   let bestMtime = 0;
 
   // Check session-scoped paths first (most likely location after Issue #456 fix)
-  const omcRoot = getOmcRoot(directory);
   const sessionsDir = join(omcRoot, 'state', 'sessions');
   if (existsSync(sessionsDir)) {
     try {
@@ -119,8 +125,8 @@ interface RalphLoopState {
  * Read Ralph Loop state for HUD display.
  * Returns null if no state file exists or on error.
  */
-export function readRalphStateForHud(directory: string): RalphStateForHud | null {
-  const stateFile = resolveStatePath(directory, 'ralph-state.json');
+export function readRalphStateForHud(directory: string, sessionId?: string): RalphStateForHud | null {
+  const stateFile = resolveStatePath(directory, 'ralph-state.json', sessionId);
 
   if (!stateFile) {
     return null;
@@ -165,10 +171,11 @@ interface UltraworkState {
  * Checks only local .omg/state location.
  */
 export function readUltraworkStateForHud(
-  directory: string
+  directory: string,
+  sessionId?: string
 ): UltraworkStateForHud | null {
   // Check local state only (with new path fallback)
-  const localFile = resolveStatePath(directory, 'ultrawork-state.json');
+  const localFile = resolveStatePath(directory, 'ultrawork-state.json', sessionId);
 
   if (!localFile || isStateFileStale(localFile)) {
     return null;
@@ -269,8 +276,8 @@ interface AutopilotStateFile {
  * Read Autopilot state for HUD display.
  * Returns shape matching AutopilotStateForHud from elements/autopilot.ts.
  */
-export function readAutopilotStateForHud(directory: string): AutopilotStateForHud | null {
-  const stateFile = resolveStatePath(directory, 'autopilot-state.json');
+export function readAutopilotStateForHud(directory: string, sessionId?: string): AutopilotStateForHud | null {
+  const stateFile = resolveStatePath(directory, 'autopilot-state.json', sessionId);
 
   if (!stateFile) {
     return null;
@@ -310,10 +317,10 @@ export function readAutopilotStateForHud(directory: string): AutopilotStateForHu
 /**
  * Check if any OMC mode is currently active
  */
-export function isAnyModeActive(directory: string): boolean {
-  const ralph = readRalphStateForHud(directory);
-  const ultrawork = readUltraworkStateForHud(directory);
-  const autopilot = readAutopilotStateForHud(directory);
+export function isAnyModeActive(directory: string, sessionId?: string): boolean {
+  const ralph = readRalphStateForHud(directory, sessionId);
+  const ultrawork = readUltraworkStateForHud(directory, sessionId);
+  const autopilot = readAutopilotStateForHud(directory, sessionId);
 
   return (ralph?.active ?? false) || (ultrawork?.active ?? false) || (autopilot?.active ?? false);
 }
@@ -321,20 +328,20 @@ export function isAnyModeActive(directory: string): boolean {
 /**
  * Get active skill names for display
  */
-export function getActiveSkills(directory: string): string[] {
+export function getActiveSkills(directory: string, sessionId?: string): string[] {
   const skills: string[] = [];
 
-  const autopilot = readAutopilotStateForHud(directory);
+  const autopilot = readAutopilotStateForHud(directory, sessionId);
   if (autopilot?.active) {
     skills.push('autopilot');
   }
 
-  const ralph = readRalphStateForHud(directory);
+  const ralph = readRalphStateForHud(directory, sessionId);
   if (ralph?.active) {
     skills.push('ralph');
   }
 
-  const ultrawork = readUltraworkStateForHud(directory);
+  const ultrawork = readUltraworkStateForHud(directory, sessionId);
   if (ultrawork?.active) {
     skills.push('ultrawork');
   }

@@ -12,6 +12,7 @@ export declare const MODE_NAMES: {
     readonly RALPH: "ralph";
     readonly ULTRAWORK: "ultrawork";
     readonly ULTRAQA: "ultraqa";
+    readonly RALPLAN: "ralplan";
 };
 /** Union type derived from the constant map. */
 export type ModeName = typeof MODE_NAMES[keyof typeof MODE_NAMES];

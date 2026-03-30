@@ -12,8 +12,8 @@ const STALE_TASK_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes default
  * @param thresholdMs Age threshold in milliseconds (default: 30 minutes)
  * @returns Number of tasks removed
  */
-export async function cleanupStaleBackgroundTasks(thresholdMs = STALE_TASK_THRESHOLD_MS) {
-    const state = readHudState();
+export async function cleanupStaleBackgroundTasks(thresholdMs = STALE_TASK_THRESHOLD_MS, directory) {
+    const state = readHudState(directory);
     if (!state || !state.backgroundTasks) {
         return 0;
     }
@@ -34,7 +34,7 @@ export async function cleanupStaleBackgroundTasks(thresholdMs = STALE_TASK_THRES
     }
     const removedCount = originalCount - state.backgroundTasks.length;
     if (removedCount > 0) {
-        writeHudState(state);
+        writeHudState(state, directory);
     }
     return removedCount;
 }
@@ -44,8 +44,8 @@ export async function cleanupStaleBackgroundTasks(thresholdMs = STALE_TASK_THRES
  *
  * @returns Array of orphaned tasks
  */
-export async function detectOrphanedTasks() {
-    const state = readHudState();
+export async function detectOrphanedTasks(directory) {
+    const state = readHudState(directory);
     if (!state || !state.backgroundTasks) {
         return [];
     }
@@ -70,12 +70,12 @@ export async function detectOrphanedTasks() {
  *
  * @returns Number of tasks marked
  */
-export async function markOrphanedTasksAsStale() {
-    const state = readHudState();
+export async function markOrphanedTasksAsStale(directory) {
+    const state = readHudState(directory);
     if (!state || !state.backgroundTasks) {
         return 0;
     }
-    const orphaned = await detectOrphanedTasks();
+    const orphaned = await detectOrphanedTasks(directory);
     let marked = 0;
     for (const orphanedTask of orphaned) {
         const task = state.backgroundTasks.find(t => t.id === orphanedTask.id);
@@ -85,7 +85,7 @@ export async function markOrphanedTasksAsStale() {
         }
     }
     if (marked > 0) {
-        writeHudState(state);
+        writeHudState(state, directory);
     }
     return marked;
 }

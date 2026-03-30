@@ -22,6 +22,7 @@ import { getCopilotConfigDir } from '../utils/paths.js';
 import type { TaskFile, TaskFileUpdate, TaskFailureSidecar } from './types.js';
 import { sanitizeName } from './tmux-session.js';
 import { atomicWriteJson, validateResolvedPath, ensureDirWithMode } from './fs-utils.js';
+import { isProcessAlive } from '../platform/index.js';
 import { getTaskStoragePath, getLegacyTaskStoragePath } from './state-paths.js';
 
 // ─── Lock-based atomic claiming ────────────────────────────────────────────
@@ -36,23 +37,6 @@ export interface LockHandle {
 const DEFAULT_STALE_LOCK_MS = 30_000;
 const FAILURE_LOCK_RETRY_ATTEMPTS = 40;
 const FAILURE_LOCK_RETRY_DELAY_MS = 5;
-
-
-/**
- * Check if a process with the given PID is alive.
- * Returns false for PIDs <= 0 or if kill(pid, 0) throws ESRCH.
- */
-function isPidAlive(pid: number): boolean {
-  if (pid <= 0 || !Number.isFinite(pid)) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (e: unknown) {
-    // EPERM means the process exists but we don't have permission — still alive
-    if (e && typeof e === 'object' && 'code' in e && (e as { code: string }).code === 'EPERM') return true;
-    return false;
-  }
-}
 
 /**
  * Try to acquire an exclusive lock file for a task.
@@ -164,7 +148,7 @@ function isLockStale(lockPath: string, staleLockMs: number): boolean {
     try {
       const raw = readFileSync(lockPath, 'utf-8');
       const payload = JSON.parse(raw) as { pid?: number };
-      if (payload.pid && isPidAlive(payload.pid)) return false;
+      if (payload.pid && isProcessAlive(payload.pid)) return false;
     } catch {
       // Malformed or unreadable — treat as stale if old enough
     }

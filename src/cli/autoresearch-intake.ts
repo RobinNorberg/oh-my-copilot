@@ -327,6 +327,12 @@ async function readPersistedResult(resultPath: string): Promise<AutoresearchDeep
   const draftArtifactPath = typeof parsed.draftArtifactPath === 'string' ? parsed.draftArtifactPath : buildDraftArtifactPath(compileTarget.repoRoot, compileTarget.slug);
   const missionArtifactPath = typeof parsed.missionArtifactPath === 'string' ? parsed.missionArtifactPath : join(buildArtifactDir(compileTarget.repoRoot, compileTarget.slug), 'mission.md');
   const sandboxArtifactPath = typeof parsed.sandboxArtifactPath === 'string' ? parsed.sandboxArtifactPath : join(buildArtifactDir(compileTarget.repoRoot, compileTarget.slug), 'sandbox.md');
+  if (!existsSync(missionArtifactPath)) {
+    throw new Error(`Missing mission artifact: ${missionArtifactPath} — the interview may have been interrupted before all files were written.`);
+  }
+  if (!existsSync(sandboxArtifactPath)) {
+    throw new Error(`Missing sandbox artifact: ${sandboxArtifactPath} — the interview may have been interrupted before all files were written.`);
+  }
   const missionContent = await readFile(missionArtifactPath, 'utf-8');
   const sandboxContent = await readFile(sandboxArtifactPath, 'utf-8');
   parseSandboxContract(sandboxContent);

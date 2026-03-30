@@ -705,7 +705,14 @@ export async function spawnWorkerForTask(
     '-c', runtime.cwd,
   ]);
   const paneId = splitResult.stdout.split('\n')[0]?.trim();
-  if (!paneId) return '';
+  if (!paneId) {
+    try {
+      await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
+    } catch {
+      // best-effort revert
+    }
+    return '';
+  }
 
   const workerIndex = parseWorkerIndex(workerNameValue);
   const agentType = runtime.config.agentTypes[workerIndex % runtime.config.agentTypes.length]

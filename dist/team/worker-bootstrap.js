@@ -77,7 +77,7 @@ You MUST complete ALL of these steps. Do NOT skip any step. Do NOT exit without 
 4. **Transition** the task status (REQUIRED before exit):
    - On success: \`omc team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"completed\",\"claim_token\":\"<claim_token>\"}" --json\`
    - On failure: \`omc team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"failed\",\"claim_token\":\"<claim_token>\"}" --json\`
-5. **Exit** immediately after transitioning.
+5. **Keep going after replies**: ACK/progress messages are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.
 
 ## Identity
 - **Team**: ${teamName}

@@ -108,7 +108,7 @@ export interface PluginConfig {
         defaultTier?: 'LOW' | 'MEDIUM' | 'HIGH';
         /**
          * Force all agents to inherit the parent model instead of using OMC model routing.
-         * When true, the `model` parameter is stripped from all Task calls so agents use
+         * When true, the `model` parameter is stripped from all Task/Agent calls so agents use
          * the user's Copilot CLI model setting. Overrides all per-agent model recommendations.
          * Env: OMC_ROUTING_FORCE_INHERIT=true
          */
@@ -220,7 +220,7 @@ export interface BackgroundTask {
 }
 export interface MagicKeyword {
     triggers: string[];
-    action: (prompt: string) => string;
+    action: (prompt: string, agentName?: string) => string;
     description: string;
 }
 export interface HookDefinition {

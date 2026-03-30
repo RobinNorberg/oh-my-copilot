@@ -128,7 +128,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 **Notes:**
 
 - **ralph includes ultrawork**: when you activate ralph mode, it automatically includes ultrawork's parallel execution.
-- **Informational filtering**: Asking "what is ralph?" or "explain ultrawork" won't trigger execution — only actionable uses activate keywords. Supports English, Korean, Japanese, and Chinese.
+- **Informational filtering**: Asking "what is ralph?" or "explain ultrawork" won't trigger execution — only actionable uses activate keywords.
 
 ---
 

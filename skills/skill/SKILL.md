@@ -12,15 +12,22 @@ Meta-skill for managing oh-my-copilot skills via CLI-like commands.
 
 ### /skill list
 
-Show all local skills organized by scope.
+Show all available skills organized by scope.
 
 **Behavior:**
-1. Scan user skills at `~/.copilot/skills/omc-learned/`
-2. Scan project skills at `.omg/skills/`
-3. Parse YAML frontmatter for metadata
-4. Display in organized table format:
+1. Scan bundled built-in skills in the plugin `skills/` directory (read-only)
+2. Scan user skills at `~/.copilot/skills/omc-learned/`
+3. Scan project skills at `.omg/skills/`
+4. Parse YAML frontmatter for metadata
+5. Display in organized table format:
 
 ```
+BUILT-IN SKILLS (bundled with oh-my-copilot):
+| Name              | Description                    | Scope    |
+|-------------------|--------------------------------|----------|
+| visual-verdict    | Structured visual QA verdicts  | built-in |
+| ralph             | Persistence loop               | built-in |
+
 USER SKILLS (~/.copilot/skills/omc-learned/):
 | Name              | Triggers           | Quality | Usage | Scope |
 |-------------------|--------------------|---------|-------|-------|
@@ -34,6 +41,8 @@ PROJECT SKILLS (.omg/skills/):
 ```
 
 **Fallback:** If quality/usage stats not available, show "N/A"
+
+**Built-in skill note:** Built-in skills are bundled with oh-my-copilot and are discoverable/readable, but not removed or edited through `/skill remove` or `/skill edit`.
 
 ---
 

@@ -68,8 +68,17 @@ const THINKING_PART_TYPES = ["thinking", "reasoning"] as const;
  */
 const THINKING_RECENCY_MS = 30_000; // 30 seconds
 
+interface CachedTranscriptParse {
+  cacheKey: string;
+  baseResult: TranscriptData;
+  pendingPermissions: PendingPermission[];
+}
+
+const transcriptCache = new Map<string, CachedTranscriptParse>();
+const TRANSCRIPT_CACHE_MAX_SIZE = 20;
+
 /**
- * Parse a Copilot CLI transcript JSONL file.
+ * Parse a Claude Code transcript JSONL file.
  * Extracts running agents and latest todo list.
  *
  * For large files (>500KB), only parses the tail portion for performance.
@@ -82,8 +91,6 @@ export async function parseTranscript(
   transcriptPath: string | undefined,
   options?: ParseTranscriptOptions,
 ): Promise<TranscriptData> {
-  // IMPORTANT: Clear module-level state at the start of each parse
-  // to prevent stale data from previous HUD invocations
   pendingPermissionMap.clear();
 
   const result: TranscriptData = {
@@ -99,17 +106,32 @@ export async function parseTranscript(
     return result;
   }
 
+  let cacheKey: string | null = null;
+
+  try {
+    const stat = statSync(transcriptPath);
+    cacheKey = `${transcriptPath}:${stat.size}:${stat.mtimeMs}`;
+    const cached = transcriptCache.get(transcriptPath);
+    if (cached?.cacheKey === cacheKey) {
+      return finalizeTranscriptResult(cloneTranscriptData(cached.baseResult), options, cached.pendingPermissions);
+    }
+  } catch {
+    return result;
+  }
+
   const agentMap = new Map<string, ActiveAgent>();
   const backgroundAgentMap: BackgroundAgentMap = new Map();
   const latestTodos: TodoItem[] = [];
 
+  let sessionTotalsReliable = false;
+  const sessionTokenTotals = { inputTokens: 0, outputTokens: 0, seenUsage: false };
+  const observedSessionIds = new Set<string>();
+
   try {
-    // Check file size to determine parsing strategy
     const stat = statSync(transcriptPath);
     const fileSize = stat.size;
 
     if (fileSize > MAX_TAIL_BYTES) {
-      // Large file: use tail-based parsing
       const lines = readTailLines(transcriptPath, fileSize, MAX_TAIL_BYTES);
       for (const line of lines) {
         if (!line.trim()) continue;
@@ -127,8 +149,10 @@ export async function parseTranscript(
           // Skip malformed lines
         }
       }
+      // Token totals from a tail-read are partial (we only saw the last MAX_TAIL_BYTES).
+      // Still surface them when token data was found so the HUD shows something useful.
+      sessionTotalsReliable = sessionTokenTotals.seenUsage;
     } else {
-      // Small file: stream entire file
       const fileStream = createReadStream(transcriptPath);
       const rl = createInterface({
         input: fileStream,
@@ -152,45 +176,12 @@ export async function parseTranscript(
           // Skip malformed lines
         }
       }
+      sessionTotalsReliable = observedSessionIds.size <= 1;
     }
   } catch {
-    // Return partial results on error
+    return finalizeTranscriptResult(result, options, []);
   }
 
-  // Filter out stale agents (running for more than threshold minutes are likely abandoned)
-  const staleMinutes = options?.staleTaskThresholdMinutes ?? 30;
-  const STALE_AGENT_THRESHOLD_MS = staleMinutes * 60 * 1000;
-  const now = Date.now();
-
-  for (const agent of agentMap.values()) {
-    if (agent.status === "running") {
-      const runningTime = now - agent.startTime.getTime();
-      if (runningTime > STALE_AGENT_THRESHOLD_MS) {
-        // Mark as completed (stale)
-        agent.status = "completed";
-        agent.endTime = new Date(
-          agent.startTime.getTime() + STALE_AGENT_THRESHOLD_MS,
-        );
-      }
-    }
-  }
-
-  // Check for pending permissions within threshold
-  for (const [_id, permission] of pendingPermissionMap) {
-    const age = now - permission.timestamp.getTime();
-    if (age <= PERMISSION_THRESHOLD_MS) {
-      result.pendingPermission = permission;
-      break; // Only show most recent
-    }
-  }
-
-  // Determine if thinking is currently active based on recency
-  if (result.thinkingState?.lastSeen) {
-    const age = now - result.thinkingState.lastSeen.getTime();
-    result.thinkingState.active = age <= THINKING_RECENCY_MS;
-  }
-
-  // Get running agents first, then recent completed (up to 10 total)
   const running = Array.from(agentMap.values()).filter(
     (a) => a.status === "running",
   );
@@ -202,6 +193,100 @@ export async function parseTranscript(
     ...completed.slice(-(10 - running.length)),
   ].slice(0, 10);
   result.todos = latestTodos;
+  if (sessionTotalsReliable && sessionTokenTotals.seenUsage) {
+    result.sessionTotalTokens = sessionTokenTotals.inputTokens + sessionTokenTotals.outputTokens;
+  }
+
+  const pendingPermissions = Array.from(pendingPermissionMap.values()).map(clonePendingPermission);
+  const finalized = finalizeTranscriptResult(result, options, pendingPermissions);
+  if (cacheKey) {
+    if (transcriptCache.size >= TRANSCRIPT_CACHE_MAX_SIZE) {
+      transcriptCache.clear();
+    }
+    transcriptCache.set(transcriptPath, {
+      cacheKey,
+      baseResult: cloneTranscriptData(finalized),
+      pendingPermissions,
+    });
+  }
+
+  return finalized;
+}
+
+function cloneDate(value: Date | undefined): Date | undefined {
+  return value ? new Date(value.getTime()) : undefined;
+}
+
+function clonePendingPermission(permission: PendingPermission): PendingPermission {
+  return {
+    ...permission,
+    timestamp: new Date(permission.timestamp.getTime()),
+  };
+}
+
+function cloneTranscriptData(result: TranscriptData): TranscriptData {
+  return {
+    ...result,
+    agents: result.agents.map((agent) => ({
+      ...agent,
+      startTime: new Date(agent.startTime.getTime()),
+      endTime: cloneDate(agent.endTime),
+    })),
+    todos: result.todos.map((todo) => ({ ...todo })),
+    sessionStart: cloneDate(result.sessionStart),
+    lastActivatedSkill: result.lastActivatedSkill
+      ? {
+          ...result.lastActivatedSkill,
+          timestamp: new Date(result.lastActivatedSkill.timestamp.getTime()),
+        }
+      : undefined,
+    pendingPermission: result.pendingPermission
+      ? clonePendingPermission(result.pendingPermission)
+      : undefined,
+    thinkingState: result.thinkingState
+      ? {
+          ...result.thinkingState,
+          lastSeen: cloneDate(result.thinkingState.lastSeen),
+        }
+      : undefined,
+    lastRequestTokenUsage: result.lastRequestTokenUsage
+      ? { ...result.lastRequestTokenUsage }
+      : undefined,
+  };
+}
+
+function finalizeTranscriptResult(
+  result: TranscriptData,
+  options: ParseTranscriptOptions | undefined,
+  pendingPermissions: PendingPermission[],
+): TranscriptData {
+  const staleMinutes = options?.staleTaskThresholdMinutes ?? 30;
+  const staleAgentThresholdMs = staleMinutes * 60 * 1000;
+  const now = Date.now();
+
+  for (const agent of result.agents) {
+    if (agent.status === "running") {
+      const runningTime = now - agent.startTime.getTime();
+      if (runningTime > staleAgentThresholdMs) {
+        agent.status = "completed";
+        agent.endTime = new Date(agent.startTime.getTime() + staleAgentThresholdMs);
+      }
+    }
+  }
+
+  result.pendingPermission = undefined;
+  for (const permission of pendingPermissions) {
+    const age = now - permission.timestamp.getTime();
+    if (age <= PERMISSION_THRESHOLD_MS) {
+      result.pendingPermission = clonePendingPermission(permission);
+      break;
+    }
+  }
+
+  if (result.thinkingState?.lastSeen) {
+    const age = now - result.thinkingState.lastSeen.getTime();
+    result.thinkingState.active = age <= THINKING_RECENCY_MS;
+  }
 
   return result;
 }
@@ -230,7 +315,10 @@ function readTailLines(
   const content = buffer.toString("utf8");
   const lines = content.split("\n");
 
-  // If we started mid-file, discard the potentially incomplete first line
+  // If we started mid-file, discard the potentially incomplete first line.
+  // This also handles UTF-8 multi-byte boundary splits: the first chunk may
+  // start in the middle of a multi-byte sequence, producing a garbled line.
+  // Discarding it is safe because every valid JSONL line ends with '\n'.
   if (startOffset > 0 && lines.length > 0) {
     lines.shift();
   }

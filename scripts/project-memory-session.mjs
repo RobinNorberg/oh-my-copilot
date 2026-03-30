@@ -11,6 +11,10 @@ import { fileURLToPath, pathToFileURL } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+function getRuntimeBaseDir() {
+  return process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
+}
+
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
 try {
@@ -34,7 +38,7 @@ try {
 // Dynamic import of project memory module (prevents crash if dist is missing, see issue #362)
 let registerProjectMemoryContext;
 try {
-  const mod = await import(pathToFileURL(join(__dirname, '..', 'dist', 'hooks', 'project-memory', 'index.js')).href);
+  const mod = await import(pathToFileURL(join(getRuntimeBaseDir(), 'dist', 'hooks', 'project-memory', 'index.js')).href);
   registerProjectMemoryContext = mod.registerProjectMemoryContext;
 } catch {
   // dist not built or missing - skip project memory detection silently

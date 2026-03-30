@@ -176,7 +176,13 @@ function getFilesForLanguage(dirPath, language, maxFiles = 1000) {
         }
     }
     const resolvedPath = resolve(dirPath);
-    const stat = statSync(resolvedPath);
+    let stat;
+    try {
+        stat = statSync(resolvedPath);
+    }
+    catch (err) {
+        throw new Error(`Cannot access path "${resolvedPath}": ${err.message}`);
+    }
     if (stat.isFile()) {
         return [resolvedPath];
     }
@@ -408,7 +414,10 @@ IMPORTANT: dryRun=true (default) only previews changes. Set dryRun=false to appl
                                 const varName = metaVar.replace(/^\$+/, "");
                                 const captured = match.getMatch(varName);
                                 if (captured) {
-                                    finalReplacement = finalReplacement.replaceAll(metaVar, captured.text());
+                                    // Escape $ in captured text to prevent JS replacement patterns
+                                    // ($&, $', $`, $$) from being interpreted by replaceAll
+                                    const safeText = captured.text().replace(/\$/g, '$$$$');
+                                    finalReplacement = finalReplacement.replaceAll(metaVar, safeText);
                                 }
                             }
                         }

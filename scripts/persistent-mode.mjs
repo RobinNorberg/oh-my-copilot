@@ -15,6 +15,11 @@ import {
   readdirSync,
   mkdirSync,
   unlinkSync,
+  renameSync,
+  statSync,
+  openSync,
+  readSync,
+  closeSync,
 } from "fs";
 import { join, dirname, resolve, normalize } from "path";
 import { homedir } from "os";
@@ -44,7 +49,9 @@ function writeJsonFile(path, data) {
     if (dir && dir !== "." && !existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    writeFileSync(path, JSON.stringify(data, null, 2));
+    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+    writeFileSync(tmp, JSON.stringify(data, null, 2));
+    renameSync(tmp, path);
     return true;
   } catch {
     return false;
@@ -191,6 +198,10 @@ function getSafeReinforcementCount(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? Math.floor(value)
     : 0;
+}
+
+function isAwaitingConfirmation(state) {
+  return state?.awaiting_confirmation === true;
 }
 
 /**
@@ -547,7 +558,7 @@ async function main() {
     // Priority 1: Ralph Loop (explicit persistence mode)
     // Skip if state is stale (older than 2 hours) - prevents blocking new sessions
     if (
-      ralph.state?.active &&
+      ralph.state?.active && !isAwaitingConfirmation(ralph.state) &&
       !isStaleState(ralph.state) &&
       isStateForCurrentProject(ralph.state, directory, ralph.isGlobal)
     ) {
@@ -599,7 +610,7 @@ async function main() {
 
     // Priority 2: Autopilot (high-level orchestration)
     if (
-      autopilot.state?.active &&
+      autopilot.state?.active && !isAwaitingConfirmation(autopilot.state) &&
       !isStaleState(autopilot.state) &&
       isStateForCurrentProject(autopilot.state, directory, autopilot.isGlobal)
     ) {
@@ -863,7 +874,7 @@ async function main() {
     // If state has session_id, it must match. If no session_id (legacy), allow.
     // Project isolation: only block if state belongs to this project
     if (
-      ultrawork.state?.active &&
+      ultrawork.state?.active && !isAwaitingConfirmation(ultrawork.state) &&
       !isStaleState(ultrawork.state) &&
       (hasValidSessionId
         ? ultrawork.state.session_id === sessionId

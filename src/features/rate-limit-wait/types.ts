@@ -113,11 +113,11 @@ export interface DaemonConfig {
   paneLinesToCapture?: number;
   /** Whether to log verbose output (default: false) */
   verbose?: boolean;
-  /** State file path (default: ~/.omg/state/rate-limit-daemon.json) */
+  /** State file path (default: XDG-aware global OMC state path) */
   stateFilePath?: string;
-  /** PID file path (default: ~/.omg/state/rate-limit-daemon.pid) */
+  /** PID file path (default: XDG-aware global OMC state path) */
   pidFilePath?: string;
-  /** Log file path (default: ~/.omg/state/rate-limit-daemon.log) */
+  /** Log file path (default: XDG-aware global OMC state path) */
   logFilePath?: string;
 }
 

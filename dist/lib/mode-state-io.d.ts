@@ -5,6 +5,8 @@
  * Centralises path resolution, ghost-legacy cleanup, directory creation,
  * and file permissions so that individual mode modules don't duplicate this logic.
  */
+export declare function getStateSessionOwner(state: Record<string, unknown> | null | undefined): string | undefined;
+export declare function canClearStateForSession(state: Record<string, unknown> | null | undefined, sessionId: string): boolean;
 /**
  * Write mode state to disk.
  *

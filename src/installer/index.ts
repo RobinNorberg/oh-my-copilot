@@ -350,6 +350,63 @@ export function isProjectScopedPlugin(): boolean {
   return !normalizedPluginRoot.startsWith(normalizedGlobalBase);
 }
 
+export function getInstalledOmcPluginRoots(): string[] {
+  const pluginRoots = new Set<string>();
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT?.trim();
+
+  if (pluginRoot) {
+    pluginRoots.add(pluginRoot);
+  }
+
+  const installedPluginsPath = join(COPILOT_CONFIG_DIR, 'plugins', 'installed_plugins.json');
+  if (!existsSync(installedPluginsPath)) {
+    return Array.from(pluginRoots);
+  }
+
+  try {
+    const raw = JSON.parse(readFileSync(installedPluginsPath, 'utf-8')) as {
+      plugins?: Record<string, Array<{ installPath?: string }>>;
+    } | Record<string, Array<{ installPath?: string }>>;
+    const plugins = raw.plugins ?? raw;
+
+    for (const [pluginId, entries] of Object.entries(plugins)) {
+      if (!pluginId.toLowerCase().includes('oh-my-copilot') || !Array.isArray(entries)) {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (typeof entry?.installPath === 'string' && entry.installPath.trim().length > 0) {
+          pluginRoots.add(entry.installPath.trim());
+        }
+      }
+    }
+  } catch {
+    // Ignore unreadable plugin registry and fall back to env-based detection.
+  }
+
+  return Array.from(pluginRoots);
+}
+
+function directoryHasMarkdownFiles(dir: string): boolean {
+  try {
+    if (!existsSync(dir)) return false;
+    const entries = readdirSync(dir);
+    return entries.some(e => e.endsWith('.md'));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Detect whether an installed Copilot CLI plugin already provides OMC agent
+ * markdown files, so the legacy ~/.copilot/agents copy can be skipped.
+ */
+export function hasPluginProvidedAgentFiles(): boolean {
+  return getInstalledOmcPluginRoots().some(pluginRoot =>
+    directoryHasMarkdownFiles(join(pluginRoot, 'agents'))
+  );
+}
+
 /**
  * Get the package root directory.
  * Works for both ESM (dist/installer/) and CJS bundles (bridge/).
@@ -420,9 +477,23 @@ function loadCommandDefinitions(): Record<string, string> {
   return definitions;
 }
 
+export function getRuntimePackageRoot(): string {
+  return getPackageDir();
+}
+
 /**
  * Load copilot-instructions.md content from /docs/copilot-instructions.md
  */
+function loadBundledSkillContent(skillName: string): string | null {
+  const skillPath = join(getPackageDir(), 'skills', skillName, 'SKILL.md');
+
+  if (!existsSync(skillPath)) {
+    return null;
+  }
+
+  return readFileSync(skillPath, 'utf-8');
+}
+
 function loadClaudeMdContent(): string {
   const claudeMdPath = join(getPackageDir(), 'docs', 'copilot-instructions.md');
 
@@ -553,7 +624,13 @@ export function mergeClaudeMd(existingContent: string | null, omcContent: string
   // Case 2: Corrupted markers (unmatched markers remain after removing complete blocks)
   if (hasResidualStartMarker || hasResidualEndMarker) {
     // Handle corrupted state - backup will be created by caller
-    return `${START_MARKER}\n${versionMarker}${cleanOmcContent}\n${END_MARKER}\n\n<!-- User customizations (recovered from corrupted markers) -->\n${existingContent}`;
+    // Strip unmatched OMC markers from recovered content to prevent unbounded
+    // growth on repeated calls (each call would re-detect corruption and append again)
+    const recoveredContent = strippedExistingContent
+      .replace(markerStartRegex, '')
+      .replace(markerEndRegex, '')
+      .trim();
+    return `${START_MARKER}\n${versionMarker}${cleanOmcContent}\n${END_MARKER}\n\n<!-- User customizations (recovered from corrupted markers) -->\n${recoveredContent}`;
   }
 
   const preservedUserContent = trimClaudeUserContent(
@@ -713,6 +790,22 @@ export function install(options: InstallOptions = {}): InstallResult {
 
       // NOTE: SKILL_DEFINITIONS removed - skills now only installed via COMMAND_DEFINITIONS
       // to avoid duplicate entries in Copilot CLI's available skills list
+
+      const omcReferenceSkillContent = loadBundledSkillContent('omc-reference');
+      if (omcReferenceSkillContent) {
+        const omcReferenceDir = join(SKILLS_DIR, 'omc-reference');
+        const omcReferencePath = join(omcReferenceDir, 'SKILL.md');
+        if (!existsSync(omcReferenceDir)) {
+          mkdirSync(omcReferenceDir, { recursive: true });
+        }
+        if (existsSync(omcReferencePath) && !options.force) {
+          log('  Skipping omc-reference/SKILL.md (already exists)');
+        } else {
+          writeFileSync(omcReferencePath, omcReferenceSkillContent);
+          result.installedSkills.push('omc-reference/SKILL.md');
+          log('  Installed omc-reference/SKILL.md');
+        }
+      }
 
       // Install copilot-instructions.md with merge support
       const claudeMdPath = join(COPILOT_CONFIG_DIR, 'copilot-instructions.md');

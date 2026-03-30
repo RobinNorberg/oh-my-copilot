@@ -15,7 +15,7 @@
 import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync, mkdirSync } from 'fs';
 import { getCopilotConfigDir } from '../utils/paths.js';
 import { join, dirname } from 'path';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { userInfo } from 'os';
 import { createHash } from 'crypto';
 import https from 'https';
@@ -216,7 +216,7 @@ function getRateLimitedBackoffMs(pollIntervalMs: number, count: number): number 
   const normalizedPollIntervalMs = sanitizePollIntervalMs(pollIntervalMs);
   return Math.min(
     normalizedPollIntervalMs * Math.pow(2, Math.max(0, count - 1)),
-    Math.max(MAX_RATE_LIMITED_BACKOFF_MS, normalizedPollIntervalMs),
+    MAX_RATE_LIMITED_BACKOFF_MS,
   );
 }
 
@@ -321,18 +321,20 @@ function readKeychainCredentials(): OAuthCredentials | null {
     () => {
       try {
         const account = userInfo().username;
-        return execSync(
-          `/usr/bin/security find-generic-password -s "${serviceName}" -a "${account}" -w 2>/dev/null`,
-          { encoding: 'utf-8', timeout: 2000 }
+        return execFileSync(
+          '/usr/bin/security',
+          ['find-generic-password', '-s', serviceName, '-a', account, '-w'],
+          { encoding: 'utf-8', timeout: 2000, stdio: ['pipe', 'pipe', 'pipe'] }
         ).trim() || null;
       } catch { return null; }
     },
     // Attempt 2: find by service name only (original behavior)
     () => {
       try {
-        return execSync(
-          `/usr/bin/security find-generic-password -s "${serviceName}" -w 2>/dev/null`,
-          { encoding: 'utf-8', timeout: 2000 }
+        return execFileSync(
+          '/usr/bin/security',
+          ['find-generic-password', '-s', serviceName, '-w'],
+          { encoding: 'utf-8', timeout: 2000, stdio: ['pipe', 'pipe', 'pipe'] }
         ).trim() || null;
       } catch { return null; }
     },

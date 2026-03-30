@@ -135,6 +135,7 @@ function activateState(directory, prompt, stateName, sessionId) {
     session_id: sessionId || undefined,
     project_path: directory,
     reinforcement_count: 0,
+    awaiting_confirmation: true,
     last_checked_at: new Date().toISOString()
   };
 
@@ -401,7 +402,7 @@ async function main() {
 
 
     // CCG keywords (Copilot-Codex-Gemini tri-model orchestration)
-    if (/\b(ccg|copilot-clix-gemini)\b/i.test(cleanPrompt)) {
+    if (/\b(ccg|claude-codex-gemini)\b/i.test(cleanPrompt)) {
       matches.push({ name: 'ccg', args: '' });
     }
 

@@ -210,8 +210,8 @@ function safeRealpathSync(filePath) {
   }
 }
 function isWithinBoundary(realPath, boundary) {
-  const normalizedReal = realPath.replace(/\\/g, "/").replace(/\/+/g, "/");
-  const normalizedBoundary = boundary.replace(/\\/g, "/").replace(/\/+/g, "/");
+  const normalizedReal = safeRealpathSync(realPath).replace(/\\/g, "/").replace(/\/+/g, "/");
+  const normalizedBoundary = safeRealpathSync(boundary).replace(/\\/g, "/").replace(/\/+/g, "/");
   return normalizedReal === normalizedBoundary || normalizedReal.startsWith(normalizedBoundary + "/");
 }
 function findSkillFiles(projectRoot, options) {

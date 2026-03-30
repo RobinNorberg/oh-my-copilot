@@ -600,7 +600,7 @@ function spawnCliProcess(
 /** Handle graceful shutdown */
 async function handleShutdown(
   config: BridgeConfig,
-  signal: { requestId: string; reason: string },
+  signal: { requestId: string; reason: string; _ackAlreadyWritten?: boolean },
   activeChild: ChildProcess | null,
 ): Promise<void> {
   const { teamName, workerName, workingDirectory } = config;
@@ -623,12 +623,14 @@ async function handleShutdown(
     }
   }
 
-  // 2. Write shutdown ack to outbox
-  appendOutbox(teamName, workerName, {
-    type: "shutdown_ack",
-    requestId: signal.requestId,
-    timestamp: new Date().toISOString(),
-  });
+  // 2. Write shutdown ack to outbox (skip if already written by drain path)
+  if (!signal._ackAlreadyWritten) {
+    appendOutbox(teamName, workerName, {
+      type: "shutdown_ack",
+      requestId: signal.requestId,
+      timestamp: new Date().toISOString(),
+    });
+  }
 
   // 3. Unregister from config.json / shadow registry
   try {
@@ -708,7 +710,7 @@ export async function runBridge(config: BridgeConfig): Promise<void> {
           type: "drain",
         });
 
-        // Write drain ack to outbox
+        // Write drain ack to outbox (only once — handleShutdown below skips its own ack)
         appendOutbox(teamName, workerName, {
           type: "shutdown_ack",
           requestId: drain.requestId,
@@ -718,10 +720,10 @@ export async function runBridge(config: BridgeConfig): Promise<void> {
         // Clean up drain signal
         deleteDrainSignal(teamName, workerName);
 
-        // Use the same handleShutdown for cleanup
+        // Run full shutdown cleanup (unregister, heartbeat, etc.) but skip duplicate ack
         await handleShutdown(
           config,
-          { requestId: drain.requestId, reason: `drain: ${drain.reason}` },
+          { requestId: drain.requestId, reason: `drain: ${drain.reason}`, _ackAlreadyWritten: true },
           null,
         );
         break;

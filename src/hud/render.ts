@@ -271,7 +271,7 @@ export async function render(context: HudRenderContext, config: HudConfig): Prom
 
   // Extended thinking indicator
   if (enabledElements.thinking && context.thinkingState) {
-    const thinking = renderThinking(context.thinkingState, enabledElements.thinkingFormat || 'text');
+    const thinking = renderThinking(context.thinkingState, enabledElements.thinkingFormat);
     if (thinking) elements.push(thinking);
   }
 
@@ -285,7 +285,7 @@ export async function render(context: HudRenderContext, config: HudConfig): Prom
   if (enabledElements.sessionHealth && context.sessionHealth) {
     // Session duration display (session:19m)
     // If showSessionDuration is explicitly set, use it; otherwise default to true (backward compat)
-    const showDuration = enabledElements.showSessionDuration ?? true;
+    const showDuration = enabledElements.showSessionDuration;
     if (showDuration) {
       const session = renderSession(context.sessionHealth);
       if (session) elements.push(session);
@@ -329,8 +329,17 @@ export async function render(context: HudRenderContext, config: HudConfig): Prom
   // Context window
   if (enabledElements.contextBar) {
     const ctx = enabledElements.useBars
-      ? renderContextWithBar(context.contextPercent, config.thresholds)
-      : renderContext(context.contextPercent, config.thresholds);
+      ? renderContextWithBar(
+          context.contextPercent,
+          config.thresholds,
+          10,
+          context.contextDisplayScope,
+        )
+      : renderContext(
+          context.contextPercent,
+          config.thresholds,
+          context.contextDisplayScope,
+        );
     if (ctx) elements.push(ctx);
   }
 
@@ -380,20 +389,21 @@ export async function render(context: HudRenderContext, config: HudConfig): Prom
   // Compose output
   const outputLines: string[] = [];
   const gitInfoLine = gitElements.length > 0 ? gitElements.join(dim(PLAIN_SEPARATOR)) : null;
-  const headerLine = elements.join(dim(PLAIN_SEPARATOR));
+  const headerLine = elements.length > 0 ? elements.join(dim(PLAIN_SEPARATOR)) : null;
 
-  // Position git info based on config (default: above for backward compatibility)
   const gitPosition = config.elements.gitInfoPosition ?? 'above';
 
   if (gitPosition === 'above') {
-    // Git info line above HUD header (traditional layout)
     if (gitInfoLine) {
       outputLines.push(gitInfoLine);
     }
-    outputLines.push(headerLine);
+    if (headerLine) {
+      outputLines.push(headerLine);
+    }
   } else {
-    // Git info line below HUD header
-    outputLines.push(headerLine);
+    if (headerLine) {
+      outputLines.push(headerLine);
+    }
     if (gitInfoLine) {
       outputLines.push(gitInfoLine);
     }

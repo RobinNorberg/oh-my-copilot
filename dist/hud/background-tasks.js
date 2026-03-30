@@ -56,6 +56,83 @@ export function completeBackgroundTask(id, directory, failed = false) {
     }
 }
 /**
+ * Remap a running background task from its launch-time hook id to the
+ * async task id reported after launch.
+ */
+export function remapBackgroundTaskId(currentId, nextId, directory) {
+    try {
+        if (currentId === nextId) {
+            return true;
+        }
+        const state = readHudState(directory);
+        if (!state) {
+            return false;
+        }
+        const task = state.backgroundTasks.find((t) => t.id === currentId);
+        if (!task) {
+            return false;
+        }
+        const existingTask = state.backgroundTasks.find((t) => t.id === nextId);
+        if (existingTask && existingTask !== task) {
+            return false;
+        }
+        task.id = nextId;
+        state.timestamp = new Date().toISOString();
+        return writeHudState(state, directory);
+    }
+    catch {
+        return false;
+    }
+}
+function findMostRecentMatchingRunningTask(state, description, agentType) {
+    return [...state.backgroundTasks]
+        .filter((task) => task.status === 'running'
+        && task.description === description
+        && (agentType === undefined || task.agentType === agentType))
+        .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())[0];
+}
+export function completeMostRecentMatchingBackgroundTask(description, directory, failed = false, agentType) {
+    try {
+        const state = readHudState(directory);
+        if (!state) {
+            return false;
+        }
+        const task = findMostRecentMatchingRunningTask(state, description, agentType);
+        if (!task) {
+            return false;
+        }
+        task.status = failed ? 'failed' : 'completed';
+        task.completedAt = new Date().toISOString();
+        state.timestamp = new Date().toISOString();
+        return writeHudState(state, directory);
+    }
+    catch {
+        return false;
+    }
+}
+export function remapMostRecentMatchingBackgroundTaskId(description, nextId, directory, agentType) {
+    try {
+        const state = readHudState(directory);
+        if (!state) {
+            return false;
+        }
+        const task = findMostRecentMatchingRunningTask(state, description, agentType);
+        if (!task) {
+            return false;
+        }
+        const existingTask = state.backgroundTasks.find((t) => t.id === nextId);
+        if (existingTask && existingTask !== task) {
+            return false;
+        }
+        task.id = nextId;
+        state.timestamp = new Date().toISOString();
+        return writeHudState(state, directory);
+    }
+    catch {
+        return false;
+    }
+}
+/**
  * Clean up old and expired tasks from state.
  */
 function cleanupTasks(state) {
@@ -106,7 +183,13 @@ export function getRunningTaskCount(directory) {
  */
 export function clearBackgroundTasks(directory) {
     try {
+        // Read existing state to preserve session fields (sessionStartTimestamp, sessionId)
+        const existing = readHudState(directory);
         const state = createEmptyHudState();
+        if (existing) {
+            state.sessionStartTimestamp = existing.sessionStartTimestamp;
+            state.sessionId = existing.sessionId;
+        }
         return writeHudState(state, directory);
     }
     catch {

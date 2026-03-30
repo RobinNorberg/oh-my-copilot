@@ -45,25 +45,25 @@ export interface OmcHudState {
 
 export interface StatuslineStdin {
   /** Transcript path for parsing conversation history */
-  transcript_path: string;
+  transcript_path?: string;
 
   /** Current working directory */
-  cwd: string;
+  cwd?: string;
 
-  /** Model information */
-  model: {
-    id: string;
-    display_name: string;
+  /** Model information from Claude Code statusline stdin */
+  model?: {
+    id?: string;
+    display_name?: string;
   };
 
-  /** Context window metrics */
-  context_window: {
-    context_window_size: number;
+  /** Context window metrics from Claude Code statusline stdin */
+  context_window?: {
+    context_window_size?: number;
     used_percentage?: number;
     current_usage?: {
-      input_tokens: number;
-      cache_creation_input_tokens: number;
-      cache_read_input_tokens: number;
+      input_tokens?: number;
+      cache_creation_input_tokens?: number;
+      cache_read_input_tokens?: number;
     };
   };
 }
@@ -111,6 +111,12 @@ export interface SessionHealth {
   health: 'healthy' | 'warning' | 'critical';
 }
 
+export interface LastRequestTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens?: number;
+}
+
 export interface TranscriptData {
   agents: ActiveAgent[];
   todos: TodoItem[];
@@ -118,6 +124,8 @@ export interface TranscriptData {
   lastActivatedSkill?: SkillInvocation;
   pendingPermission?: PendingPermission;
   thinkingState?: ThinkingState;
+  lastRequestTokenUsage?: LastRequestTokenUsage;
+  sessionTotalTokens?: number;
   toolCallCount: number;
   agentCallCount: number;
   skillCallCount: number;
@@ -271,6 +279,9 @@ export interface HudRenderContext {
   /** Context window percentage (0-100) */
   contextPercent: number;
 
+  /** Stable display scope for context smoothing (e.g. session/worktree key) */
+  contextDisplayScope?: string | null;
+
   /** Model display name */
   modelName: string;
 
@@ -336,6 +347,12 @@ export interface HudRenderContext {
 
   /** Total Skill/proxy_Skill calls seen in transcript */
   skillCallCount: number;
+
+  /** Last-request token usage parsed from transcript message.usage */
+  lastRequestTokenUsage?: LastRequestTokenUsage | null;
+
+  /** Session token total (input + output) when transcript parsing is reliable enough to calculate it */
+  sessionTotalTokens?: number | null;
 
   /** Last prompt submission time (from HUD state) */
   promptTime: Date | null;
@@ -502,6 +519,8 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     missionBoard: false,  // Opt-in mission board for whole-run progress tracking
     promptTime: true,  // Show last prompt time by default
     sessionHealth: true,
+    showSessionDuration: true,
+    showHealthIndicator: true,
     useBars: false,  // Disabled by default for backwards compatibility
     showCallCounts: true,  // Show tool/agent/skill call counts by default (Issue #710)
     maxOutputLines: 4,
@@ -554,6 +573,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     missionBoard: false,
     promptTime: false,
     sessionHealth: false,
+    showSessionDuration: true,
+    showHealthIndicator: true,
     useBars: false,
     showCallCounts: false,
     maxOutputLines: 2,
@@ -589,6 +610,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     missionBoard: false,
     promptTime: true,
     sessionHealth: true,
+    showSessionDuration: true,
+    showHealthIndicator: true,
     useBars: true,
     showCallCounts: true,
     maxOutputLines: 4,
@@ -624,6 +647,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     missionBoard: false,
     promptTime: true,
     sessionHealth: true,
+    showSessionDuration: true,
+    showHealthIndicator: true,
     useBars: true,
     showCallCounts: true,
     maxOutputLines: 12,
@@ -659,6 +684,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     missionBoard: false,
     promptTime: true,
     sessionHealth: true,
+    showSessionDuration: true,
+    showHealthIndicator: true,
     useBars: false,
     showCallCounts: true,
     maxOutputLines: 4,
@@ -694,6 +721,8 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     missionBoard: false,
     promptTime: true,
     sessionHealth: true,
+    showSessionDuration: true,
+    showHealthIndicator: true,
     useBars: true,
     showCallCounts: true,
     maxOutputLines: 6,

@@ -7,7 +7,27 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
-import { PRD_FILENAME, RALPHTHON_DEFAULTS, } from './types.js';
+import { PRD_FILENAME, RALPHTHON_DEFAULTS, } from "./types.js";
+// ============================================================================
+// Planning Context
+// ============================================================================
+export const DEFAULT_PLANNING_CONTEXT = {
+    brownfield: false,
+    assumptionsMode: "implicit",
+    codebaseMapSummary: "",
+    knownConstraints: [],
+};
+export function normalizePlanningContext(context) {
+    return {
+        brownfield: context?.brownfield ?? DEFAULT_PLANNING_CONTEXT.brownfield,
+        assumptionsMode: context?.assumptionsMode ?? DEFAULT_PLANNING_CONTEXT.assumptionsMode,
+        codebaseMapSummary: context?.codebaseMapSummary ??
+            DEFAULT_PLANNING_CONTEXT.codebaseMapSummary,
+        knownConstraints: Array.isArray(context?.knownConstraints)
+            ? [...context.knownConstraints]
+            : [...DEFAULT_PLANNING_CONTEXT.knownConstraints],
+    };
+}
 // ============================================================================
 // File Operations
 // ============================================================================
@@ -43,6 +63,7 @@ export function readRalphthonPrd(directory) {
             return null;
         if (!prd.config)
             return null;
+        prd.planningContext = normalizePlanningContext(prd.planningContext);
         return prd;
     }
     catch {
@@ -67,7 +88,11 @@ export function writeRalphthonPrd(directory, prd) {
         prdPath = getRalphthonPrdPath(directory);
     }
     try {
-        writeFileSync(prdPath, JSON.stringify(prd, null, 2));
+        const normalizedPrd = {
+            ...prd,
+            planningContext: normalizePlanningContext(prd.planningContext),
+        };
+        writeFileSync(prdPath, JSON.stringify(normalizedPrd, null, 2));
         return true;
     }
     catch {
@@ -223,7 +248,7 @@ export function addHardeningTasks(directory, tasks) {
 /**
  * Create a new RalphthonPRD from stories
  */
-export function createRalphthonPrd(project, branchName, description, stories, config) {
+export function createRalphthonPrd(project, branchName, description, stories, config, planningContext) {
     return {
         project,
         branchName,
@@ -231,13 +256,14 @@ export function createRalphthonPrd(project, branchName, description, stories, co
         stories,
         hardening: [],
         config: { ...RALPHTHON_DEFAULTS, ...config },
+        planningContext: normalizePlanningContext(planningContext),
     };
 }
 /**
  * Initialize a ralphthon PRD on disk
  */
-export function initRalphthonPrd(directory, project, branchName, description, stories, config) {
-    const prd = createRalphthonPrd(project, branchName, description, stories, config);
+export function initRalphthonPrd(directory, project, branchName, description, stories, config, planningContext) {
+    const prd = createRalphthonPrd(project, branchName, description, stories, config, planningContext);
     return writeRalphthonPrd(directory, prd);
 }
 // ============================================================================

@@ -5,6 +5,16 @@
  */
 import { execSync } from 'node:child_process';
 import { dim, cyan } from '../colors.js';
+const CACHE_TTL_MS = 30_000;
+const repoCache = new Map();
+const branchCache = new Map();
+/**
+ * Clear all git caches. Call in tests beforeEach to ensure a clean slate.
+ */
+export function resetGitCache() {
+    repoCache.clear();
+    branchCache.clear();
+}
 /**
  * Get git repository name from remote URL.
  * Extracts the repo name from URLs like:

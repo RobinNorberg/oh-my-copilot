@@ -13,6 +13,7 @@ import { join } from "path";
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { recordAgentStart, recordAgentStop } from './session-replay.js';
 import { recordMissionAgentStart, recordMissionAgentStop } from '../../hud/mission-board.js';
+import { isProcessAlive } from '../../platform/process-utils.js';
 export const COST_LIMIT_USD = 1.0;
 export const DEADLOCK_CHECK_THRESHOLD = 3;
 // ============================================================================
@@ -30,19 +31,6 @@ const FLUSH_RETRY_BASE_MS = 50;
 const pendingWrites = new Map();
 // Guard against duplicate concurrent flushes per directory
 const flushInProgress = new Set();
-/**
- * Check if a process is still alive
- * Signal 0 doesn't kill the process, just checks if it exists
- */
-function isProcessAlive(pid) {
-    try {
-        process.kill(pid, 0);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
 /**
  * Synchronous sleep using Atomics.wait
  * Avoids CPU-spinning busy-wait loops
@@ -413,37 +401,62 @@ export function processSubagentStart(input) {
     try {
         const state = readTrackingState(input.cwd);
         const parentMode = detectParentMode(input.cwd);
-        // Create new agent entry
-        const agentInfo = {
-            agent_id: input.agent_id,
-            agent_type: input.agent_type,
-            started_at: new Date().toISOString(),
-            parent_mode: parentMode,
-            task_description: input.prompt?.substring(0, 200), // Truncate for storage
-            status: "running",
-            model: input.model,
-        };
-        // Add to state
-        state.agents.push(agentInfo);
-        state.total_spawned++;
+        const startedAt = new Date().toISOString();
+        const taskDescription = input.prompt?.substring(0, 200); // Truncate for storage
+        const existingAgent = state.agents.find((agent) => agent.agent_id === input.agent_id);
+        const isDuplicateRunningStart = existingAgent?.status === "running";
+        let trackedAgent;
+        if (existingAgent) {
+            existingAgent.agent_type = input.agent_type;
+            existingAgent.parent_mode = parentMode;
+            existingAgent.task_description = taskDescription;
+            existingAgent.model = input.model;
+            if (existingAgent.status !== "running") {
+                existingAgent.status = "running";
+                existingAgent.started_at = startedAt;
+                existingAgent.completed_at = undefined;
+                existingAgent.duration_ms = undefined;
+                existingAgent.output_summary = undefined;
+                state.total_spawned++;
+            }
+            trackedAgent = existingAgent;
+        }
+        else {
+            // Create new agent entry
+            const agentInfo = {
+                agent_id: input.agent_id,
+                agent_type: input.agent_type,
+                started_at: startedAt,
+                parent_mode: parentMode,
+                task_description: taskDescription,
+                status: "running",
+                model: input.model,
+            };
+            // Add to state
+            state.agents.push(agentInfo);
+            state.total_spawned++;
+            trackedAgent = agentInfo;
+        }
         // Write updated state
         writeTrackingState(input.cwd, state);
-        // Record to session replay JSONL for /trace
-        try {
-            recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model);
+        if (!isDuplicateRunningStart) {
+            // Record to session replay JSONL for /trace
+            try {
+                recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model);
+            }
+            catch { /* best-effort */ }
+            try {
+                recordMissionAgentStart(input.cwd, {
+                    sessionId: input.session_id,
+                    agentId: input.agent_id,
+                    agentType: input.agent_type,
+                    parentMode,
+                    taskDescription: input.prompt,
+                    at: trackedAgent.started_at,
+                });
+            }
+            catch { /* best-effort */ }
         }
-        catch { /* best-effort */ }
-        try {
-            recordMissionAgentStart(input.cwd, {
-                sessionId: input.session_id,
-                agentId: input.agent_id,
-                agentType: input.agent_type,
-                parentMode,
-                taskDescription: input.prompt,
-                at: agentInfo.started_at,
-            });
-        }
-        catch { /* best-effort */ }
         // Check for stale agents
         const staleAgents = getStaleAgents(state);
         return {
@@ -572,15 +585,15 @@ export function cleanupStaleAgents(directory) {
         releaseLock(directory);
     }
 }
-// ============================================================================
-// Query Functions
-// ============================================================================
-/**
- * Get count of active (running) agents
- */
-export function getActiveAgentCount(directory) {
+export function getActiveAgentSnapshot(directory) {
     const state = readTrackingState(directory);
-    return state.agents.filter((a) => a.status === "running").length;
+    return {
+        count: state.agents.filter((a) => a.status === "running").length,
+        lastUpdatedAt: state.last_updated,
+    };
+}
+export function getActiveAgentCount(directory) {
+    return getActiveAgentSnapshot(directory).count;
 }
 /**
  * Get agents by type

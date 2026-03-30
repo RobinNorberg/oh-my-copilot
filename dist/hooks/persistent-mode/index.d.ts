@@ -56,7 +56,7 @@ export declare function getToolErrorRetryGuidance(toolError: ToolErrorState | nu
  */
 export declare function resetTodoContinuationAttempts(sessionId: string): void;
 /**
- * Read the session-idle notification cooldown in seconds from ~/.omg/config.json.
+ * Read the session-idle notification cooldown in seconds from global OMC config.
  * Default: 60 seconds. 0 = disabled (no cooldown).
  */
 export declare function getIdleNotificationCooldownSeconds(): number;

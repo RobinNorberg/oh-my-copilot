@@ -14,6 +14,7 @@ import type { TeamConfig, TeamRuntime } from './runtime.js';
 import { waitForSentinelReadiness } from './sentinel-gate.js';
 import { isRuntimeV2Enabled, startTeamV2, monitorTeamV2, shutdownTeamV2 } from './runtime-v2.js';
 import type { TeamSnapshotV2 } from './runtime-v2.js';
+import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 
 interface CliInput {
   teamName: string;

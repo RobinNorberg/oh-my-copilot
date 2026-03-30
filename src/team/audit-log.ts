@@ -8,6 +8,7 @@
  */
 
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, statSync, renameSync, writeFileSync, lstatSync, unlinkSync } from 'node:fs';
 import { appendFileWithMode, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 
