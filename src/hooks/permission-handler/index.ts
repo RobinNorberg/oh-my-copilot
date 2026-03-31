@@ -42,6 +42,15 @@ const SAFE_PATTERNS = [
   /^pytest/,
   /^python -m pytest/,
   /^ls( |$)/,
+  /^grep /,
+  /^find /,
+  /^wc /,
+  /^pwd$/,
+  /^which /,
+  /^echo /,
+  /^env$/,
+  /^node --version$/,
+  /^dotnet --version$/,
   // REMOVED: cat, head, tail - they allow reading arbitrary files
 ];
 
