@@ -101,6 +101,20 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `release/SKILL.md` | release | Automated release workflow |
 | `ralph-experiment/SKILL.md` | ralph-experiment | Hypothesis-driven experiment loop with structured notebook and git checkpoints |
 
+## Permission Model
+
+All plugin MCP tools use a **three-tier auto-approval system** so agents can operate without `/yolo`:
+
+- **Tier 1** (read-only): LSP nav, code search, state/memory reads — always auto-approved via `readOnlyHint` annotation
+- **Tier 2** (write): State/memory writes, AST replace, LSP rename — auto-approved via `permissions.allow` in `settings.local.json`
+- **Tier 3** (destructive): `shared_memory_delete`, `shared_memory_cleanup`, `kill_job` — always prompt user
+
+Safe bash patterns (git, npm, dotnet, gh, az, grep, find, ls) are auto-approved by the `permissionRequest` hook. Shell metacharacters are always rejected.
+
+Deny escalation: 3 consecutive or 20 total denials stops the session. All decisions are audit-logged to `.omc/logs/permissions.log`.
+
+See [full permissions guide](../docs/guides/permissions.md) for details.
+
 ## For AI Agents
 
 ### Working In This Directory
