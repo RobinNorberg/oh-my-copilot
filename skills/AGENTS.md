@@ -3,7 +3,7 @@
 
 # skills
 
-37 skill directories for workflow automation and specialized behaviors.
+42 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -77,6 +77,16 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `omc-ado-auto-review/SKILL.md` | omc-ado-auto-review | Automated Azure DevOps PR review |
 | `omc-ado-sprint/SKILL.md` | omc-ado-sprint | Azure DevOps sprint management |
 | `omc-ado-triage/SKILL.md` | omc-ado-triage | Azure DevOps work item triage |
+
+### GitHub Skills
+
+| File | Skill | Purpose |
+|-----------|-------|---------|
+| `omc-gh-setup/SKILL.md` | omc-gh-setup | Configure GitHub integration |
+| `omc-gh-triage/SKILL.md` | omc-gh-triage | Issue/PR/CI triage dashboard |
+| `omc-gh-review/SKILL.md` | omc-gh-review | Interactive PR review |
+| `omc-gh-auto-review/SKILL.md` | omc-gh-auto-review | Automated PR code review |
+| `omc-gh-project/SKILL.md` | omc-gh-project | GitHub Projects board management |
 
 ### Utility Skills
 
@@ -221,6 +231,7 @@ None - pure markdown files.
 | Visual | visual-verdict | screenshot QA |
 | Cleanup | ai-slop-cleaner | "deslop", "anti-slop" |
 | Azure DevOps | omc-ado-setup, omc-ado-review, omc-ado-auto-review, omc-ado-sprint, omc-ado-triage | "ado setup", "ado triage" |
+| GitHub | omc-gh-setup, omc-gh-triage, omc-gh-review, omc-gh-auto-review, omc-gh-project | "gh setup", "gh triage", "gh review" |
 | Notifications | configure-notifications | "configure discord", "setup telegram" |
 | Utility | learner, ask, cancel, setup, omc-doctor, omc-setup, mcp-setup, skill | "cancelomc", "stopomc" |
 | Domain | project-session-manager, writer-memory, release | psm context |

@@ -85,7 +85,18 @@ omc team 2:gemini "redesign UI components for accessibility"
 
 ---
 
-## Azure DevOps
+## Platform Integration
+
+### GitHub
+
+When your git remote points to `github.com`, OMC auto-detects GitHub. Run `/oh-my-copilot:omc-gh-setup` to configure, then use:
+
+- `/oh-my-copilot:omc-gh-triage` — scan open issues, PRs, failing CI, and Dependabot alerts
+- `/oh-my-copilot:omc-gh-review` — interactive PR review with inline comments
+- `/oh-my-copilot:omc-gh-auto-review` — automated code review via code-reviewer agent
+- `/oh-my-copilot:omc-gh-project` — manage GitHub Projects (v2) boards
+
+### Azure DevOps
 
 When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, and `/oh-my-copilot:omc-ado-triage` for a parallel scan of work items, PRs, pipelines, and security alerts.
 
@@ -123,6 +134,9 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ulw` | ![execution](https://img.shields.io/badge/execution-green) | Maximum parallelism | `ulw fix all errors` |
 | `ado setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure Azure DevOps integration | `ado setup` |
 | `ado triage` | ![devops](https://img.shields.io/badge/devops-gray) | Azure DevOps work item triage | `ado triage` |
+| `gh setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure GitHub integration | `gh setup` |
+| `gh triage` | ![devops](https://img.shields.io/badge/devops-gray) | GitHub issue/PR/CI triage | `gh triage` |
+| `gh review` | ![devops](https://img.shields.io/badge/devops-gray) | Interactive GitHub PR review | `gh review` |
 | `cancelomc`, `stopomc` | ![control](https://img.shields.io/badge/control-gray) | Stop active OMC modes | `stopomc` |
 
 **Notes:**
