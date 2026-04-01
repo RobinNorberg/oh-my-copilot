@@ -35,4 +35,4 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 
 - [Full Reference](../REFERENCE.md) — agents, skills, execution modes, and more
 - [Team Mode](../guides/team-mode.md) — multi-agent orchestration
-- [Permissions](../guides/permissions.md) — auto-approval configuration
+- [Permissions](../architecture/permissions.md) — auto-approval architecture

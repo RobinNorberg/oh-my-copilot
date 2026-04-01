@@ -113,7 +113,7 @@ Safe bash patterns (git, npm, dotnet, gh, az, grep, find, ls) are auto-approved 
 
 Deny escalation: 3 consecutive or 20 total denials stops the session. All decisions are audit-logged to `.omc/logs/permissions.log`.
 
-See [full permissions guide](../docs/guides/permissions.md) for details.
+See [permission architecture](../docs/architecture/permissions.md) for details.
 
 ## For AI Agents
 

@@ -132,22 +132,6 @@ Optional shortcuts for power users. Natural language works fine without them.
 
 ---
 
-## Permissions
-
-oh-my-copilot uses a **three-tier permission architecture** to minimize permission prompts without sacrificing security. No `/yolo` or `--allow-all` needed.
-
-| Tier | Behavior | Examples | Count |
-|------|----------|---------|-------|
-| **1** | Always auto-approved | LSP navigation, code search, state/memory reads | ~20 |
-| **2** | Auto-approved in project | State/memory writes, AST replace, LSP rename, REPL | ~12 + hooks |
-| **3** | Always requires confirmation | `shared_memory_delete`, `shared_memory_cleanup`, `kill_job` | 3 |
-
-Safe Bash commands (git, npm, dotnet, gh, az, cargo, pytest, etc.) are auto-approved. Shell metacharacters are always rejected. Deny escalation stops the agent after 3 consecutive or 20 total denials.
-
-[Permission architecture →](docs/architecture/permissions.md) | [Configuration guide →](docs/guides/permissions.md)
-
----
-
 ## Documentation
 
 - [Documentation Home](docs/index.md)

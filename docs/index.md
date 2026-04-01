@@ -10,8 +10,6 @@
 - [Team Mode](guides/team-mode.md)
 - [Azure DevOps Integration](guides/azure-devops.md)
 - [Notifications](guides/notifications.md)
-- [Permissions — Configuration Guide](guides/permissions.md)
-
 ## Reference
 
 - [Full Reference](REFERENCE.md)
