@@ -40,8 +40,8 @@ This directory contains documentation for end-users and developers:
 | Trigger | File to Update |
 |---------|---------------|
 | Agent count or list changes | `REFERENCE.md` (Agents section) |
-| Skill count or list changes | `REFERENCE.md` (Skills section) / `guides/skills-reference.md` |
-| Hook count or list changes | `REFERENCE.md` (Hooks System section) / `reference/hooks.md` |
+| Skill count or list changes | `REFERENCE.md` (Skills section) |
+| Hook count or list changes | `REFERENCE.md` (Hooks System section) |
 | Magic keywords change | `REFERENCE.md` (Magic Keywords section) |
 | Agent tool assignments change | `copilot-instructions.md` (Agent Tool Matrix) |
 | Skill composition or architecture changes | `architecture/overview.md` |

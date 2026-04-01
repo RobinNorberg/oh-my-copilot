@@ -3,7 +3,7 @@
 > **Skill Name:** `project-session-manager` (alias: `psm`)
 > **Version:** 1.0.0
 > **Author:** oh-my-copilot
-> **Status:** Design Draft
+> **Status:** Implemented — The `project-session-manager` skill is available via `/oh-my-copilot:project-session-manager`. This document captures the original design rationale.
 
 ## Executive Summary
 

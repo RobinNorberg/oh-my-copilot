@@ -136,80 +136,15 @@ Optional shortcuts for power users. Natural language works fine without them.
 
 oh-my-copilot uses a **three-tier permission architecture** to minimize permission prompts without sacrificing security. No `/yolo` or `--allow-all` needed.
 
-### Auto Permission Mode Flow
-
-```
-┌──────────────────────────────────────────────────────────┐
-│                    Tool call arrives                     │
-├──────────────────────────────────────────────────────────┤
-│                                                          │
-│  ┌─ Escalation check ──→ 3+ consecutive / 20+ total      │
-│  │                        denials?                       │
-│  │                        → DENY + STOP                  │
-│  │                        → ASK Human                    │
-│  │                                                       │
-│  ├─ MCP tool (mcp__t__*)                                 │
-│  │  ├─ In permissions.allow? ────────────→ ALLOW         │
-│  │  ├─ readOnlyHint annotation? ─────────→ ALLOW         │
-│  │  └─ Otherwise ────────────────────────→ ASK           │
-│  │                                                       │
-│  ├─ Bash command                                         │
-│  │  ├─ Shell metacharacters (;&|$`<>) ──→ REJECT         │
-│  │  ├─ Safe pattern match? ──────────────→ ALLOW         │
-│  │  │  (git, npm, dotnet, gh, az, tsc,                   │
-│  │  │   grep, find, ls, pytest, cargo…)                  │
-│  │  ├─ Heredoc with safe base? ──────────→ ALLOW         │
-│  │  └─ No match ─────────────────────────→ ASK           │
-│  │                                                       │
-│  └─ Every decision → audit log (.omc/logs/permissions)   │
-│                    → deny tracker (escalation counters)  │
-└──────────────────────────────────────────────────────────┘
-```
-
-### Three Tiers
-
-| Tier | Behavior | Tools | Count |
-|------|----------|-------|-------|
-| **1** | Always auto-approved | LSP navigation, code search, state/memory/notepad reads, job status | ~20 |
-| **2** | Auto-approved in project | State/memory/notepad writes, AST replace, LSP rename, python REPL | ~12 + hooks |
+| Tier | Behavior | Examples | Count |
+|------|----------|---------|-------|
+| **1** | Always auto-approved | LSP navigation, code search, state/memory reads | ~20 |
+| **2** | Auto-approved in project | State/memory writes, AST replace, LSP rename, REPL | ~12 + hooks |
 | **3** | Always requires confirmation | `shared_memory_delete`, `shared_memory_cleanup`, `kill_job` | 3 |
 
-### Three Enforcement Mechanisms
+Safe Bash commands (git, npm, dotnet, gh, az, cargo, pytest, etc.) are auto-approved. Shell metacharacters are always rejected. Deny escalation stops the agent after 3 consecutive or 20 total denials.
 
-| Mechanism | How | Where |
-|-----------|-----|-------|
-| **MCP Tool Annotations** | `readOnlyHint`/`destructiveHint` on every tool definition | Copilot CLI reads at tool discovery |
-| **permissions.allow** | Explicit allowlist auto-written and session-healed | `~/.copilot/settings.local.json` |
-| **permissionRequest Hook** | Programmatic approve/deny at runtime | `hooks/hooks.json` → `permission-handler.mjs` |
-
-### Safe Bash Commands (auto-approved)
-
-```
-git status/diff/log/branch/show/fetch    npm/pnpm/yarn test/lint/build
-tsc, eslint, prettier                     cargo test/check/clippy
-dotnet build/test/run/restore/clean       gh pr/issue/repo view/list/status
-az account/devops/pipelines/repos read    grep, find, ls, wc, pwd, which, echo
-```
-
-### Customization
-
-Edit `.copilot/settings.local.json` to add or remove tools:
-```json
-{
-  "permissions": {
-    "allow": ["mcp__t__tool_name"]
-  }
-}
-```
-
-### Safety Guardrails
-
-- **Deny escalation**: 3 consecutive or 20 total denials → stop and escalate to human
-- **Audit trail**: All decisions logged to `.omc/logs/permissions.log`
-- **Shell injection prevention**: Commands with metacharacters (`;&|$`) always rejected
-- **Dangerous tools**: `shared_memory_delete`, `shared_memory_cleanup`, `kill_job` always prompt
-
-[Full permissions guide →](docs/guides/permissions.md)
+[Permission architecture →](docs/architecture/permissions.md) | [Configuration guide →](docs/guides/permissions.md)
 
 ---
 
@@ -221,7 +156,7 @@ Edit `.copilot/settings.local.json` to add or remove tools:
 - [Team Mode](docs/guides/team-mode.md)
 - [Azure DevOps Integration](docs/guides/azure-devops.md)
 - [Architecture Overview](docs/architecture/overview.md)
-- [Migration Guide](docs/migration/breaking-changes.md)
+- [Permission Architecture](docs/architecture/permissions.md)
 
 ---
 

@@ -47,7 +47,7 @@ For mixed Codex + Gemini work in one command, use the **`/ccg`** skill (routes v
 
 | Surface                    | Workers                 | Best For                                      |
 | -------------------------- | ----------------------- | --------------------------------------------- |
-| `omc team N:claude "..."`  | N Claude Code panes     | Deep reasoning, architecture, complex analysis |
+| `omc team N:claude "..."`  | N Claude Code CLI panes | Deep reasoning, architecture, complex analysis |
 | `omc team N:codex "..."`   | N Codex CLI panes       | Code review, security analysis                |
 | `omc team N:gemini "..."`  | N Gemini CLI panes      | UI/UX design, docs, large-context tasks       |
 | `omc team N:copilot "..."` | N Copilot CLI panes     | General tasks via Copilot CLI in tmux         |

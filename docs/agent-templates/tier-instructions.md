@@ -1,5 +1,7 @@
 # Tier-Specific Instructions
 
+> **This is a template reference file.** Use these tier blocks to fill in `{{TIER_INSTRUCTIONS}}` in [base-agent.md](base-agent.md).
+
 This document defines the behavioral differences between agent tiers (LOW/MEDIUM/HIGH).
 
 ## LOW Tier (Haiku)
