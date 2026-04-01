@@ -3,6 +3,22 @@
  * Launches Copilot CLI with tmux session management
  */
 /**
+ * Extract the OMC-specific --openclaw flag from launch args.
+ * Purely presence-based (like --madmax/--yolo):
+ *   --openclaw        -> enable OpenClaw (OMC_OPENCLAW=1)
+ *   --openclaw=true   -> enable OpenClaw
+ *   --openclaw=false  -> disable OpenClaw
+ *   --openclaw=1      -> enable OpenClaw
+ *   --openclaw=0      -> disable OpenClaw
+ *
+ * Does NOT consume the next positional arg (no space-separated value).
+ * This flag is stripped before passing args to Copilot CLI.
+ */
+export declare function extractOpenClawFlag(args: string[]): {
+    openclawEnabled: boolean | undefined;
+    remainingArgs: string[];
+};
+/**
  * Extract the OMC-specific --notify flag from launch args.
  * --notify false  → disable notifications (OMC_NOTIFY=0)
  * --notify true   → enable notifications (default)

@@ -47,6 +47,89 @@ function readJsonFile(path) {
   }
 }
 
+function getRuntimeBaseDir() {
+  return process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
+}
+
+async function loadProjectMemoryModules() {
+  try {
+    const runtimeBase = getRuntimeBaseDir();
+    const [
+      projectMemoryStorage,
+      projectMemoryDetector,
+      projectMemoryFormatter,
+      rulesFinder,
+    ] = await Promise.all([
+      import(pathToFileURL(join(runtimeBase, 'dist', 'hooks', 'project-memory', 'storage.js')).href),
+      import(pathToFileURL(join(runtimeBase, 'dist', 'hooks', 'project-memory', 'detector.js')).href),
+      import(pathToFileURL(join(runtimeBase, 'dist', 'hooks', 'project-memory', 'formatter.js')).href),
+      import(pathToFileURL(join(runtimeBase, 'dist', 'hooks', 'rules-injector', 'finder.js')).href),
+    ]);
+
+    return {
+      loadProjectMemory: projectMemoryStorage.loadProjectMemory,
+      saveProjectMemory: projectMemoryStorage.saveProjectMemory,
+      shouldRescan: projectMemoryStorage.shouldRescan,
+      detectProjectEnvironment: projectMemoryDetector.detectProjectEnvironment,
+      formatContextSummary: projectMemoryFormatter.formatContextSummary,
+      findProjectRoot: rulesFinder.findProjectRoot,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function hasProjectMemoryContent(memory) {
+  return Boolean(
+    memory &&
+    (
+      memory.userDirectives?.length ||
+      memory.customNotes?.length ||
+      memory.hotPaths?.length ||
+      memory.techStack?.languages?.length ||
+      memory.techStack?.frameworks?.length ||
+      memory.build?.buildCommand ||
+      memory.build?.testCommand
+    )
+  );
+}
+
+async function resolveProjectMemorySummary(directory, projectMemoryModules) {
+  const {
+    detectProjectEnvironment,
+    findProjectRoot,
+    formatContextSummary,
+    loadProjectMemory,
+    saveProjectMemory,
+    shouldRescan,
+  } = projectMemoryModules;
+
+  const projectRoot = findProjectRoot?.(directory);
+  if (!projectRoot) {
+    return '';
+  }
+
+  let memory = await loadProjectMemory?.(projectRoot);
+
+  if ((!memory || shouldRescan?.(memory)) && detectProjectEnvironment && saveProjectMemory) {
+    const existing = memory;
+    memory = await detectProjectEnvironment(projectRoot);
+
+    if (existing) {
+      memory.customNotes = existing.customNotes;
+      memory.userDirectives = existing.userDirectives;
+    }
+
+    await saveProjectMemory(projectRoot, memory);
+  }
+
+  if (!hasProjectMemoryContent(memory)) {
+    return '';
+  }
+
+  return formatContextSummary(memory)?.trim() || '';
+}
+
 // Semantic version comparison (for cache cleanup sorting)
 function semverCompare(a, b) {
   const pa = a.replace(/^v/, '').split('.').map(s => parseInt(s, 10) || 0);
@@ -179,13 +262,12 @@ async function checkNpmUpdate(currentVersion) {
   } catch {}
 
   // Fetch from npm registry with 2s timeout
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
     const response = await fetch('https://registry.npmjs.org/oh-my-copilot/latest', {
       signal: controller.signal
     });
-    clearTimeout(timeoutId);
     if (!response.ok) return null;
 
     const data = await response.json();
@@ -200,7 +282,7 @@ async function checkNpmUpdate(currentVersion) {
     } catch {}
 
     return updateAvailable ? { currentVersion, latestVersion } : null;
-  } catch { return null; }
+  } catch { return null; } finally { clearTimeout(timeoutId); }
 }
 
 // Check if HUD is properly installed (with retry for race conditions)
@@ -325,6 +407,7 @@ async function main() {
 
     const directory = data.cwd || data.directory || process.cwd();
     const sessionId = data.session_id || data.sessionId || '';
+    const projectMemoryModules = await loadProjectMemoryModules();
     const messages = [];
 
     // Check for version drift between components
@@ -349,6 +432,17 @@ async function main() {
         }
       }
     } catch {}
+
+    // Warn if silentAutoUpdate is enabled but running in plugin mode (#1773)
+    if (process.env.CLAUDE_PLUGIN_ROOT) {
+      try {
+        const omcConfigPath = join(configDir, '.omc-config.json');
+        const omcConfig = readJsonFile(omcConfigPath);
+        if (omcConfig?.silentAutoUpdate) {
+          messages.push(`<session-restore>\n\n[OMC] silentAutoUpdate is enabled in .omc-config.json but has no effect in plugin mode.\nTo update, use: /plugin marketplace update omc && /omc-setup\nOr run manually: omc update\n\n</session-restore>\n\n---\n`);
+        }
+      } catch {}
+    }
 
     // Check HUD installation (one-time setup guidance)
     const hudCheck = await checkHudInstallation();
@@ -454,6 +548,26 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
 
 ---
 `);
+    }
+
+    if (projectMemoryModules) {
+      try {
+        const summary = await resolveProjectMemorySummary(directory, projectMemoryModules);
+        if (summary) {
+          messages.push(`<project-memory-context>
+
+[PROJECT MEMORY]
+
+${summary}
+
+</project-memory-context>
+
+---
+`);
+        }
+      } catch {
+        // Project memory is additive only; never break session start.
+      }
     }
 
     // Check for notepad Priority Context

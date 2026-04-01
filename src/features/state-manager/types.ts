@@ -2,7 +2,7 @@
  * State Manager Types
  *
  * Type definitions for unified state management across
- * local (.omg/state/) and global (~/.omg/state/) locations.
+ * local (.omg/state/) and global (XDG-aware user OMC state with legacy ~/.omg/state fallback) locations.
  */
 
 /**
@@ -11,7 +11,7 @@
 export enum StateLocation {
   /** Local project state: .omg/state/{name}.json */
   LOCAL = 'local',
-  /** Global user state: ~/.omg/state/{name}.json */
+  /** Global user state: XDG-aware OMC state path with legacy ~/.omg/state fallback on reads */
   GLOBAL = 'global'
 }
 

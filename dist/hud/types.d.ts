@@ -30,22 +30,22 @@ export interface OmcHudState {
 }
 export interface StatuslineStdin {
     /** Transcript path for parsing conversation history */
-    transcript_path: string;
+    transcript_path?: string;
     /** Current working directory */
-    cwd: string;
-    /** Model information */
-    model: {
-        id: string;
-        display_name: string;
+    cwd?: string;
+    /** Model information from Claude Code statusline stdin */
+    model?: {
+        id?: string;
+        display_name?: string;
     };
-    /** Context window metrics */
-    context_window: {
-        context_window_size: number;
+    /** Context window metrics from Claude Code statusline stdin */
+    context_window?: {
+        context_window_size?: number;
         used_percentage?: number;
         current_usage?: {
-            input_tokens: number;
-            cache_creation_input_tokens: number;
-            cache_read_input_tokens: number;
+            input_tokens?: number;
+            cache_creation_input_tokens?: number;
+            cache_read_input_tokens?: number;
         };
     };
 }
@@ -82,6 +82,11 @@ export interface SessionHealth {
     messageCount: number;
     health: 'healthy' | 'warning' | 'critical';
 }
+export interface LastRequestTokenUsage {
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens?: number;
+}
 export interface TranscriptData {
     agents: ActiveAgent[];
     todos: TodoItem[];
@@ -89,6 +94,8 @@ export interface TranscriptData {
     lastActivatedSkill?: SkillInvocation;
     pendingPermission?: PendingPermission;
     thinkingState?: ThinkingState;
+    lastRequestTokenUsage?: LastRequestTokenUsage;
+    sessionTotalTokens?: number;
     toolCallCount: number;
     agentCallCount: number;
     skillCallCount: number;
@@ -210,6 +217,8 @@ export interface CustomProviderResult {
 export interface HudRenderContext {
     /** Context window percentage (0-100) */
     contextPercent: number;
+    /** Stable display scope for context smoothing (e.g. session/worktree key) */
+    contextDisplayScope?: string | null;
     /** Model display name */
     modelName: string;
     /** Ralph loop state */
@@ -254,6 +263,10 @@ export interface HudRenderContext {
     agentCallCount: number;
     /** Total Skill/proxy_Skill calls seen in transcript */
     skillCallCount: number;
+    /** Last-request token usage parsed from transcript message.usage */
+    lastRequestTokenUsage?: LastRequestTokenUsage | null;
+    /** Session token total (input + output) when transcript parsing is reliable enough to calculate it */
+    sessionTotalTokens?: number | null;
     /** Last prompt submission time (from HUD state) */
     promptTime: Date | null;
     /** API key source: 'project', 'global', or 'env' */

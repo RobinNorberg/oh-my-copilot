@@ -127,6 +127,14 @@ export function detectAnySignal(sessionId: string): AutopilotSignal | null {
 // ENFORCEMENT
 // ============================================================================
 
+function isAwaitingConfirmation(state: unknown): boolean {
+  return Boolean(
+    state &&
+    typeof state === 'object' &&
+    (state as Record<string, unknown>).awaiting_confirmation === true
+  );
+}
+
 /**
  * Get the next phase after current phase
  */
@@ -158,6 +166,10 @@ export async function checkAutopilot(
 
   // Strict session isolation: only process state for matching session
   if (state.session_id !== sessionId) {
+    return null;
+  }
+
+  if (isAwaitingConfirmation(state)) {
     return null;
   }
 
@@ -461,7 +473,8 @@ function detectPipelineSignal(sessionId: string, signal: string): boolean {
     join(copilotDir, 'transcripts', `${sessionId}.md`),
   ];
 
-  const pattern = new RegExp(signal, 'i');
+  const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(escaped, 'i');
 
   for (const transcriptPath of possiblePaths) {
     if (existsSync(transcriptPath)) {

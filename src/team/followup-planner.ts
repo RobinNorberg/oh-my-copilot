@@ -156,7 +156,6 @@ const SHORT_TEAM_PATTERNS: RegExp[] = [
   /^\s*team\s+please\s*$/i,
   /^\s*run\s+team\s*$/i,
   /^\s*start\s+team\s*$/i,
-  /^\s*team으로\s+해줘\s*$/i,
   /^\s*launch\s+team\s*$/i,
   /^\s*go\s+team\s*$/i,
 ];

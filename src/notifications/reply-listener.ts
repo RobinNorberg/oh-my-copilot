@@ -30,7 +30,6 @@ import {
 } from '../features/rate-limit-wait/tmux-detector.js';
 import {
   lookupByMessageId,
-  loadAllMappings,
   removeMessagesByPane,
   pruneStale,
 } from './session-registry.js';
@@ -110,6 +109,8 @@ export interface ReplyListenerDaemonConfig extends ReplyConfig {
   slackChannelId?: string;
   /** Slack signing secret for verifying incoming WebSocket messages */
   slackSigningSecret?: string;
+  /** Authorized Slack user IDs for reply injection (empty = all channel users allowed) */
+  authorizedSlackUserIds: string[];
 }
 
 /** Response from daemon operations */
@@ -300,6 +301,7 @@ export function isDaemonRunning(): boolean {
     removePidFile();
     return false;
   }
+
 
   return true;
 }
@@ -782,6 +784,16 @@ async function pollLoop(): Promise<void> {
             channelId: slackChannelId,
           },
           async (event) => {
+            // Authorization: fail-closed — reject when no authorized users configured
+            if (!config.authorizedSlackUserIds || config.authorizedSlackUserIds.length === 0) {
+              log('WARN: No authorized Slack user IDs configured, rejecting all messages (fail-closed)');
+              return;
+            }
+            if (!config.authorizedSlackUserIds.includes(event.user)) {
+              log(`REJECTED Slack message from unauthorized user ${event.user}`);
+              return;
+            }
+
             // Rate limiting
             if (!rateLimiter.canProceed()) {
               log(`WARN: Rate limit exceeded, dropping Slack message ${event.ts}`);
@@ -800,13 +812,8 @@ async function pollLoop(): Promise<void> {
               }
             }
 
-            // No thread match: use most recent registered pane
-            if (!targetPaneId) {
-              const mappings = loadAllMappings();
-              if (mappings.length > 0) {
-                targetPaneId = mappings[mappings.length - 1].tmuxPaneId;
-              }
-            }
+            // No thread match: skip injection to avoid sending to an unrelated session.
+            // Discord and Telegram already skip when no match is found.
 
             if (!targetPaneId) {
               log('WARN: No target pane found for Slack message, skipping');

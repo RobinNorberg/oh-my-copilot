@@ -138,7 +138,8 @@ function stripClaudeTempCwdErrors(output) {
 }
 
 // Pattern matching Copilot CLI's "Error: Exit code N" prefix line
-const CLAUDE_EXIT_CODE_PREFIX = /^Error: Exit code \d+\s*$/gm;
+// Note: no /g flag — module-level regex with /g is stateful (.lastIndex persists across calls)
+const CLAUDE_EXIT_CODE_PREFIX = /^Error: Exit code \d+\s*$/m;
 
 /**
  * Detect non-zero exit code with valid stdout (issue #960).
@@ -152,12 +153,9 @@ export function isNonZeroExitWithOutput(output) {
 
   // Must contain Copilot CLI's exit code prefix
   if (!CLAUDE_EXIT_CODE_PREFIX.test(cleaned)) return false;
-  // Reset regex state (global flag)
-  CLAUDE_EXIT_CODE_PREFIX.lastIndex = 0;
 
   // Strip exit code prefix line(s) and check remaining content
   const remaining = cleaned.replace(CLAUDE_EXIT_CODE_PREFIX, '').trim();
-  CLAUDE_EXIT_CODE_PREFIX.lastIndex = 0;
 
   // Must have at least one non-empty line of real output
   const contentLines = remaining.split('\n').filter(l => l.trim().length > 0);

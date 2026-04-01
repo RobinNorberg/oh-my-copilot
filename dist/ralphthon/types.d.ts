@@ -68,6 +68,19 @@ export interface HardeningTask {
     notes?: string;
 }
 /**
+ * Persisted planning/brownfield intake context.
+ */
+export interface RalphthonPlanningContext {
+    /** Whether this work targets an existing codebase / brownfield surface */
+    brownfield: boolean;
+    /** Whether assumptions are explicitly captured in planning */
+    assumptionsMode: "explicit" | "implicit";
+    /** Short persisted summary of the brownfield/codebase-map intake */
+    codebaseMapSummary: string;
+    /** Constraints captured during planning intake */
+    knownConstraints: string[];
+}
+/**
  * Configuration for the ralphthon run
  */
 export interface RalphthonConfig {
@@ -100,6 +113,8 @@ export interface RalphthonPRD {
     hardening: HardeningTask[];
     /** Run configuration */
     config: RalphthonConfig;
+    /** Brownfield planning context */
+    planningContext?: RalphthonPlanningContext;
 }
 /**
  * Tracks the state of a running ralphthon session

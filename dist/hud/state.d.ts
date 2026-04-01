@@ -34,16 +34,16 @@ export declare function getBackgroundTaskCount(state: OmcHudState | null): {
  */
 export declare function readHudConfig(): HudConfig;
 /**
- * Write HUD configuration to ~/.copilot/settings.json (omcHud key)
+ * Write HUD configuration to settings.json (omcHud key)
  */
 export declare function writeHudConfig(config: HudConfig): boolean;
 /**
  * Apply a preset to the configuration
  */
-export declare function applyPreset(preset: HudConfig['preset']): HudConfig;
+export declare function applyPreset(preset: HudConfig["preset"]): HudConfig;
 /**
  * Initialize HUD state with cleanup of stale/orphaned tasks.
  * Should be called on HUD startup.
  */
-export declare function initializeHUDState(): Promise<void>;
+export declare function initializeHUDState(directory?: string): Promise<void>;
 //# sourceMappingURL=state.d.ts.map

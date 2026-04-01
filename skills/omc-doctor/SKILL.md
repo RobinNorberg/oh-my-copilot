@@ -104,10 +104,43 @@ ls -la ~/.copilot/skills/ 2>/dev/null
 `architect.md`, `document-specialist.md`, `explore.md`, `executor.md`, `debugger.md`, `planner.md`, `analyst.md`, `critic.md`, `verifier.md`, `test-engineer.md`, `designer.md`, `writer.md`, `qa-tester.md`, `scientist.md`, `security-reviewer.md`, `code-reviewer.md`, `git-master.md`, `code-simplifier.md`
 
 **Known plugin skill names** (check skills/ for these):
-`ai-slop-cleaner`, `ask`, `autopilot`, `cancel`, `ccg`, `configure-notifications`, `deep-interview`, `deepinit`, `external-context`, `hud`, `learner`, `mcp-setup`, `omc-doctor`, `omc-setup`, `omc-teams`, `plan`, `project-session-manager`, `ralph`, `ralplan`, `release`, `sciomc`, `setup`, `skill`, `team`, `ultraqa`, `ultrawork`, `writer-memory`
+`ai-slop-cleaner`, `ask`, `autopilot`, `cancel`, `ccg`, `configure-notifications`, `deep-interview`, `deepinit`, `external-context`, `hud`, `learner`, `mcp-setup`, `omc-doctor`, `omc-setup`, `omc-teams`, `plan`, `project-session-manager`, `ralph`, `ralplan`, `release`, `sciomc`, `setup`, `skill`, `team`, `ultraqa`, `ultrawork`, `visual-verdict`, `writer-memory`
 
 **Known plugin command names** (check commands/ for these):
 `ultrawork.md`, `deepsearch.md`
+
+### Step 7: Check Permission Allowlist
+
+Read `~/.copilot/settings.local.json` (respecting `COPILOT_CONFIG_DIR`) and verify `permissions.allow` contains the expected Tier 1+2 tools:
+
+```bash
+node -e "
+const p=require('path'),f=require('fs'),h=require('os').homedir();
+const d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.copilot');
+const fp=p.join(d,'settings.local.json');
+if(!f.existsSync(fp)){console.log('settings.local.json not found');process.exit()}
+try{
+  const s=JSON.parse(f.readFileSync(fp,'utf-8'));
+  const allow=s?.permissions?.allow;
+  if(!Array.isArray(allow)){console.log('permissions.allow missing or not an array');process.exit()}
+  const tier12=['lsp_hover','lsp_goto_definition','lsp_find_references','lsp_document_symbols',
+    'lsp_workspace_symbols','lsp_diagnostics','lsp_diagnostics_directory','lsp_servers',
+    'ast_grep_search','notepad_read','notepad_stats','state_read','state_list_active',
+    'state_get_status','project_memory_read','notepad_write_priority','notepad_write_working',
+    'notepad_write_manual','notepad_prune','state_write','state_clear','project_memory_write',
+    'project_memory_add_note','project_memory_add_directive','ast_grep_replace',
+    'lsp_prepare_rename','lsp_rename','lsp_code_actions','lsp_code_action_resolve','python_repl'];
+  const missing=tier12.filter(t=>!allow.some(e=>e.includes(t)));
+  if(missing.length===0){console.log('All Tier 1+2 tools present ('+allow.length+' entries)')}
+  else{console.log('Missing tools: '+missing.join(', '))}
+}catch(e){console.log('Parse error: '+e.message)}
+"
+```
+
+**Diagnosis**:
+- If `settings.local.json` not found: WARN - permissions not configured (run `/omc-setup`)
+- If `permissions.allow` missing: WARN - allowlist not written (run `/omc-setup`)
+- If tools missing: WARN - allowlist incomplete; `setup-maintenance` will auto-heal on next session start, or run `/omc-setup` to fix immediately
 
 ---
 
@@ -133,6 +166,7 @@ After running all checks, output a report:
 | Legacy Agents (~/.copilot/agents/) | OK/WARN | ... |
 | Legacy Commands (~/.copilot/commands/) | OK/WARN | ... |
 | Legacy Skills (~/.copilot/skills/) | OK/WARN | ... |
+| Permission Allowlist (settings.local.json) | OK/WARN | ... |
 
 ### Issues Found
 1. [Issue description]

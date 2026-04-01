@@ -124,11 +124,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             name: tool.name,
             description: tool.description,
             inputSchema: zodToJsonSchema(tool.schema),
+            ...(tool.annotations ? { annotations: tool.annotations } : {}),
         })),
     };
 });
 // Handle tool calls
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+const setStandaloneCallToolRequestHandler = server.setRequestHandler.bind(server);
+setStandaloneCallToolRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     const tool = allTools.find(t => t.name === name);
     if (!tool) {
@@ -141,7 +143,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = await tool.handler((args ?? {}));
         return {
             content: result.content,
-            isError: false,
+            isError: result.isError ?? false,
         };
     }
     catch (error) {

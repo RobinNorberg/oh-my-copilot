@@ -22,6 +22,42 @@ const DISCORD_FLAG = '--discord';
 const SLACK_FLAG = '--slack';
 const WEBHOOK_FLAG = '--webhook';
 const TEAMS_FLAG = '--teams';
+const OPENCLAW_FLAG = '--openclaw';
+
+/**
+ * Extract the OMC-specific --openclaw flag from launch args.
+ * Purely presence-based (like --madmax/--yolo):
+ *   --openclaw        -> enable OpenClaw (OMC_OPENCLAW=1)
+ *   --openclaw=true   -> enable OpenClaw
+ *   --openclaw=false  -> disable OpenClaw
+ *   --openclaw=1      -> enable OpenClaw
+ *   --openclaw=0      -> disable OpenClaw
+ *
+ * Does NOT consume the next positional arg (no space-separated value).
+ * This flag is stripped before passing args to Copilot CLI.
+ */
+export function extractOpenClawFlag(args: string[]): { openclawEnabled: boolean | undefined; remainingArgs: string[] } {
+  let openclawEnabled: boolean | undefined = undefined;
+  const remainingArgs: string[] = [];
+
+  for (const arg of args) {
+    if (arg === OPENCLAW_FLAG) {
+      // Bare --openclaw means enabled (does NOT consume next arg)
+      openclawEnabled = true;
+      continue;
+    }
+
+    if (arg.startsWith(`${OPENCLAW_FLAG}=`)) {
+      const val = arg.slice(OPENCLAW_FLAG.length + 1).toLowerCase();
+      openclawEnabled = val !== 'false' && val !== '0';
+      continue;
+    }
+
+    remainingArgs.push(arg);
+  }
+
+  return { openclawEnabled, remainingArgs };
+}
 
 /**
  * Extract the OMC-specific --notify flag from launch args.
@@ -356,8 +392,16 @@ export async function launchCommand(args: string[]): Promise<void> {
     process.env.OMC_NOTIFY = '0';
   }
 
+  // Extract OMC-specific --openclaw flag (presence-based, no value consumption)
+  const { openclawEnabled, remainingArgs: argsAfterOpenclaw } = extractOpenClawFlag(remainingArgs);
+  if (openclawEnabled === true) {
+    process.env.OMC_OPENCLAW = '1';
+  } else if (openclawEnabled === false) {
+    process.env.OMC_OPENCLAW = '0';
+  }
+
   // Extract OMC-specific --telegram flag (presence-based)
-  const { telegramEnabled, remainingArgs: argsAfterTelegram } = extractTelegramFlag(remainingArgs);
+  const { telegramEnabled, remainingArgs: argsAfterTelegram } = extractTelegramFlag(argsAfterOpenclaw);
   if (telegramEnabled === true) {
     process.env.OMC_TELEGRAM = '1';
   } else if (telegramEnabled === false) {
@@ -412,7 +456,7 @@ export async function launchCommand(args: string[]): Promise<void> {
   }
 
   const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);
-  const sessionId = `omc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sessionId = `omc-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
 
   // Phase 1: preLaunch
   try {

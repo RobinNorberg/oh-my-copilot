@@ -12,8 +12,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { writeFileSync, existsSync } from 'fs';
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
 import { loadConfig, getConfigPaths, } from '../config/loader.js';
 import { createOmcSession } from '../index.js';
 import { checkForUpdates, performUpdate, formatUpdateNotification, getInstalledVersion, getOMCConfig, reconcileUpdateRuntime, CONFIG_FILE, } from '../features/auto-update.js';
@@ -26,7 +24,9 @@ import { getRuntimePackageVersion } from '../lib/version.js';
 import { launchCommand } from './launch.js';
 import { askCommand, ASK_USAGE } from './ask.js';
 import { warnIfWin32 } from './win32-warning.js';
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { ralphthonCommand } from './commands/ralphthon.js';
+import { autoresearchCommand } from './autoresearch.js';
+import { runHudWatchLoop } from './hud-watch.js';
 const version = getRuntimePackageVersion();
 const program = new Command();
 // Win32 platform warning - OMC requires tmux which is not available on native Windows
@@ -1142,10 +1142,7 @@ program
     const { main: hudMain } = await import('../hud/index.js');
     if (options.watch) {
         const intervalMs = parseInt(options.interval, 10);
-        while (true) {
-            await hudMain(true);
-            await new Promise(resolve => setTimeout(resolve, intervalMs));
-        }
+        await runHudWatchLoop({ intervalMs, hudMain });
     }
     else {
         await hudMain();
@@ -1187,6 +1184,26 @@ program
     .argument('[args...]', 'team subcommand arguments')
     .action(async (args) => {
     await teamCommand(args);
+});
+program
+    .command('autoresearch')
+    .description('Launch thin-supervisor autoresearch with keep/discard/reset parity')
+    .helpOption(false)
+    .allowUnknownOption(true)
+    .allowExcessArguments(true)
+    .argument('[args...]', 'autoresearch subcommand arguments')
+    .action(async (args) => {
+    await autoresearchCommand(args);
+});
+program
+    .command('ralphthon')
+    .description('Autonomous hackathon lifecycle mode')
+    .helpOption(false)
+    .allowUnknownOption(true)
+    .allowExcessArguments(true)
+    .argument('[args...]', 'ralphthon arguments')
+    .action(async (args) => {
+    await ralphthonCommand(args);
 });
 // Parse arguments
 program.parse();

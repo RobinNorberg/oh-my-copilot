@@ -56,6 +56,98 @@ export function getConfigDir() {
     return process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
 }
 /**
+ * Get Windows-appropriate state directory.
+ */
+export function getStateDir() {
+    if (process.platform === 'win32') {
+        return process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local');
+    }
+    return process.env.XDG_STATE_HOME || join(homedir(), '.local', 'state');
+}
+function prefersXdgOmcDirs() {
+    return process.platform !== 'win32' && process.platform !== 'darwin';
+}
+function getUserHomeDir() {
+    if (process.platform === 'win32') {
+        return process.env.USERPROFILE || process.env.HOME || homedir();
+    }
+    return process.env.HOME || homedir();
+}
+/**
+ * Legacy global OMC directory under the user's home directory.
+ */
+export function getLegacyOmcDir() {
+    return join(getUserHomeDir(), '.omc');
+}
+/**
+ * Global OMC config directory.
+ *
+ * Precedence:
+ * 1. OMC_HOME (existing explicit override)
+ * 2. XDG-aware config root on Linux/Unix
+ * 3. Legacy ~/.omc elsewhere
+ */
+export function getGlobalOmcConfigRoot() {
+    const explicitRoot = process.env.OMC_HOME?.trim();
+    if (explicitRoot) {
+        return explicitRoot;
+    }
+    if (prefersXdgOmcDirs()) {
+        return join(getConfigDir(), 'omc');
+    }
+    return getLegacyOmcDir();
+}
+/**
+ * Global OMC state directory.
+ *
+ * When OMC_HOME is set, preserve that existing override semantics by treating
+ * it as the shared root and resolving state beneath it.
+ */
+export function getGlobalOmcStateRoot() {
+    const explicitRoot = process.env.OMC_HOME?.trim();
+    if (explicitRoot) {
+        return join(explicitRoot, 'state');
+    }
+    if (prefersXdgOmcDirs()) {
+        return join(getStateDir(), 'omc');
+    }
+    return join(getLegacyOmcDir(), 'state');
+}
+export function getGlobalOmcConfigPath(...segments) {
+    return join(getGlobalOmcConfigRoot(), ...segments);
+}
+export function getGlobalOmcStatePath(...segments) {
+    return join(getGlobalOmcStateRoot(), ...segments);
+}
+export function getLegacyOmcPath(...segments) {
+    return join(getLegacyOmcDir(), ...segments);
+}
+function dedupePaths(paths) {
+    return [...new Set(paths)];
+}
+export function getGlobalOmcConfigCandidates(...segments) {
+    if (process.env.OMC_HOME?.trim()) {
+        return [getGlobalOmcConfigPath(...segments)];
+    }
+    return dedupePaths([
+        getGlobalOmcConfigPath(...segments),
+        getLegacyOmcPath(...segments),
+    ]);
+}
+export function getGlobalOmcStateCandidates(...segments) {
+    const explicitRoot = process.env.OMC_HOME?.trim();
+    if (explicitRoot) {
+        return dedupePaths([
+            getGlobalOmcStatePath(...segments),
+            join(explicitRoot, ...segments),
+        ]);
+    }
+    return dedupePaths([
+        getGlobalOmcStatePath(...segments),
+        getLegacyOmcPath('state', ...segments),
+    ]);
+}
+/**
  * Get the plugin cache base directory for oh-my-copilot.
  * This is the directory containing version subdirectories.
  *

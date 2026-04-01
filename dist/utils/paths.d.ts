@@ -31,6 +31,35 @@ export declare function getDataDir(): string;
  */
 export declare function getConfigDir(): string;
 /**
+ * Get Windows-appropriate state directory.
+ */
+export declare function getStateDir(): string;
+/**
+ * Legacy global OMC directory under the user's home directory.
+ */
+export declare function getLegacyOmcDir(): string;
+/**
+ * Global OMC config directory.
+ *
+ * Precedence:
+ * 1. OMC_HOME (existing explicit override)
+ * 2. XDG-aware config root on Linux/Unix
+ * 3. Legacy ~/.omc elsewhere
+ */
+export declare function getGlobalOmcConfigRoot(): string;
+/**
+ * Global OMC state directory.
+ *
+ * When OMC_HOME is set, preserve that existing override semantics by treating
+ * it as the shared root and resolving state beneath it.
+ */
+export declare function getGlobalOmcStateRoot(): string;
+export declare function getGlobalOmcConfigPath(...segments: string[]): string;
+export declare function getGlobalOmcStatePath(...segments: string[]): string;
+export declare function getLegacyOmcPath(...segments: string[]): string;
+export declare function getGlobalOmcConfigCandidates(...segments: string[]): string[];
+export declare function getGlobalOmcStateCandidates(...segments: string[]): string[];
+/**
  * Get the plugin cache base directory for oh-my-copilot.
  * This is the directory containing version subdirectories.
  *

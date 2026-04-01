@@ -12,7 +12,6 @@
 import { existsSync, readFileSync, unlinkSync, statSync, openSync, readSync, closeSync, mkdirSync } from 'fs';
 import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { join } from 'path';
-import { homedir } from 'os';
 import { getCopilotConfigDir } from '../../utils/paths.js';
 import { readUltraworkState, writeUltraworkState, incrementReinforcement, deactivateUltrawork, getUltraworkPersistenceMessage } from '../ultrawork/index.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
@@ -23,6 +22,7 @@ import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import { isAutopilotActive } from '../autopilot/index.js';
 import { checkAutopilot } from '../autopilot/enforcement.js';
 import { readTeamPipelineState } from '../team-pipeline/state.js';
+import { getActiveAgentSnapshot } from '../subagent-tracker/index.js';
 /** Maximum todo-continuation attempts before giving up (prevents infinite loops) */
 const MAX_TODO_CONTINUATION_ATTEMPTS = 5;
 const CANCEL_SIGNAL_TTL_MS = 30_000;
@@ -150,6 +150,8 @@ Do NOT skip this step. Do NOT move on without fixing the error.
  * Get or increment todo-continuation attempt counter
  */
 function trackTodoContinuationAttempt(sessionId) {
+    if (todoContinuationAttempts.size > 200)
+        todoContinuationAttempts.clear();
     const current = todoContinuationAttempts.get(sessionId) || 0;
     const next = current + 1;
     todoContinuationAttempts.set(sessionId, next);
@@ -162,11 +164,11 @@ export function resetTodoContinuationAttempts(sessionId) {
     todoContinuationAttempts.delete(sessionId);
 }
 /**
- * Read the session-idle notification cooldown in seconds from ~/.omg/config.json.
+ * Read the session-idle notification cooldown in seconds from global OMC config.
  * Default: 60 seconds. 0 = disabled (no cooldown).
  */
 export function getIdleNotificationCooldownSeconds() {
-    const configPath = join(homedir(), '.omg', 'config.json');
+    const configPath = join(getCopilotConfigDir(), 'config.json');
     try {
         if (!existsSync(configPath))
             return 60;
@@ -175,11 +177,11 @@ export function getIdleNotificationCooldownSeconds() {
         const val = cooldown?.sessionIdleSeconds;
         if (typeof val === 'number' && Number.isFinite(val))
             return Math.max(0, val);
+        return 60;
     }
     catch {
-        // ignore parse errors
+        return 60;
     }
-    return 60;
 }
 function getIdleNotificationCooldownPath(stateDir, sessionId) {
     // Keep session segments filesystem-safe; fall back to legacy global path otherwise.
@@ -279,6 +281,11 @@ function isCriticalContextStop(stopContext) {
     const transcriptPath = stopContext?.transcript_path ?? stopContext?.transcriptPath;
     return estimateTranscriptContextPercent(transcriptPath) >= CRITICAL_CONTEXT_STOP_PERCENT;
 }
+function isAwaitingConfirmation(state) {
+    return Boolean(state &&
+        typeof state === 'object' &&
+        state.awaiting_confirmation === true);
+}
 /**
  * Check for architect approval in session transcript
  */
@@ -342,6 +349,9 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
     }
     // Strict session isolation: only process state for matching session
     if (state.session_id !== sessionId) {
+        return null;
+    }
+    if (isAwaitingConfirmation(state)) {
         return null;
     }
     // Explicit cancellation window: never re-arm Ralph internals while cancel is in progress.
@@ -692,6 +702,7 @@ When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 // ---------------------------------------------------------------------------
 const RALPLAN_STOP_BLOCKER_MAX = 30;
 const RALPLAN_STOP_BLOCKER_TTL_MS = 45 * 60 * 1000; // 45 min
+const RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS = 5_000;
 /**
  * Check Ralplan state for standalone ralplan mode enforcement.
  * Ralplan state is written by the MCP state_write tool.
@@ -705,6 +716,9 @@ async function checkRalplan(sessionId, directory, cancelInProgress) {
     }
     // Session isolation
     if (sessionId && state.session_id && state.session_id !== sessionId) {
+        return null;
+    }
+    if (isAwaitingConfirmation(state)) {
         return null;
     }
     // Terminal phase detection — allow stop when ralplan has completed
@@ -722,6 +736,23 @@ async function checkRalplan(sessionId, directory, cancelInProgress) {
             shouldBlock: false,
             message: '',
             mode: 'ralplan'
+        };
+    }
+    // Orchestrators are allowed to go idle while delegated work is still active,
+    // but the raw running-agent count can lag behind the real lifecycle because
+    // SubagentStop/post-tool-use bookkeeping lands after the stop event. Only
+    // trust the bypass when the tracker itself was updated recently enough to
+    // look live; otherwise fail closed and keep consensus enforcement active.
+    const activeAgents = getActiveAgentSnapshot(workingDir);
+    const activeAgentStateUpdatedAt = activeAgents.lastUpdatedAt ? new Date(activeAgents.lastUpdatedAt).getTime() : NaN;
+    const hasFreshActiveAgentState = Number.isFinite(activeAgentStateUpdatedAt)
+        && Date.now() - activeAgentStateUpdatedAt <= RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
+    if (activeAgents.count > 0 && hasFreshActiveAgentState) {
+        writeStopBreaker(workingDir, 'ralplan', 0, sessionId);
+        return {
+            shouldBlock: false,
+            message: '',
+            mode: 'ralplan',
         };
     }
     // Circuit breaker
@@ -764,6 +795,9 @@ async function checkUltrawork(sessionId, directory, _hasIncompleteTodos, cancelI
     }
     // Strict session isolation: only process state for matching session
     if (state.session_id !== sessionId) {
+        return null;
+    }
+    if (isAwaitingConfirmation(state)) {
         return null;
     }
     // Uses cached cancel signal from checkPersistentModes to avoid TOCTOU re-reads.

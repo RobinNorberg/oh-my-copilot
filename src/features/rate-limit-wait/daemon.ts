@@ -18,6 +18,7 @@ import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { spawn } from 'child_process';
 import { resolveDaemonModulePath } from '../../utils/daemon-module-path.js';
+import { isProcessAlive } from '../../platform/index.js';
 import {
   checkRateLimitStatus,
   formatRateLimitStatus,
@@ -44,9 +45,9 @@ const DEFAULT_CONFIG: Required<DaemonConfig> = {
   pollIntervalMs: 60 * 1000, // 1 minute
   paneLinesToCapture: 15,
   verbose: false,
-  stateFilePath: join(homedir(), '.omg', 'state', 'rate-limit-daemon.json'),
-  pidFilePath: join(homedir(), '.omg', 'state', 'rate-limit-daemon.pid'),
-  logFilePath: join(homedir(), '.omg', 'state', 'rate-limit-daemon.log'),
+  stateFilePath: join(homedir(), '.omg', 'rate-limit-daemon.json'),
+  pidFilePath: join(homedir(), '.omg', 'rate-limit-daemon.pid'),
+  logFilePath: join(homedir(), '.omg', 'rate-limit-daemon.log'),
 };
 
 /** Maximum log file size before rotation (1MB) */
@@ -233,19 +234,6 @@ function removePidFile(config: Required<DaemonConfig>): void {
 }
 
 /**
- * Check if a process is running
- */
-function isProcessRunning(pid: number): boolean {
-  try {
-    // Signal 0 doesn't actually send a signal, just checks if process exists
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Check if daemon is currently running
  */
 export function isDaemonRunning(config?: DaemonConfig): boolean {
@@ -256,7 +244,7 @@ export function isDaemonRunning(config?: DaemonConfig): boolean {
     return false;
   }
 
-  if (!isProcessRunning(pid)) {
+  if (!isProcessAlive(pid)) {
     // Stale PID file, clean up
     removePidFile(cfg);
     return false;
@@ -580,7 +568,7 @@ export function stopDaemon(config?: DaemonConfig): DaemonResponse {
     };
   }
 
-  if (!isProcessRunning(pid)) {
+  if (!isProcessAlive(pid)) {
     removePidFile(cfg);
     return {
       success: true,
@@ -742,10 +730,8 @@ export async function pollLoopWithConfigFile(configPath: string): Promise<void> 
   const configContent = readFileSync(configPath, 'utf-8');
   const config = JSON.parse(configContent) as Required<DaemonConfig>;
 
-  // Restore Date objects from JSON
-  if (config.stateFilePath) {
-    // Config is valid, proceed with poll loop
-  }
+  // Clean up the temp config file now that we've read it
+  try { unlinkSync(configPath); } catch { /* ignore cleanup errors */ }
 
   await pollLoop(config);
 }

@@ -3,7 +3,7 @@
 
 # skills
 
-31 skill directories for workflow automation and specialized behaviors.
+37 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -31,7 +31,14 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `plan/SKILL.md` | omc-plan | Strategic planning with interview workflow |
 | `ralplan/SKILL.md` | ralplan | Iterative planning (Planner+Architect+Critic) with RALPLAN-DR structured deliberation (`--deliberate` for high-risk) |
 | `deep-interview/SKILL.md` | deep-interview | Socratic deep interview with mathematical ambiguity gating (Ouroboros-inspired) |
-| `ralph-init/SKILL.md` | ralph-init | Initialize PRD for structured ralph |
+| `deep-dive/SKILL.md` | deep-dive | 2-stage pipeline: trace (causal investigation) → deep-interview (requirements crystallization) |
+
+### Analysis Skills
+
+| File | Skill | Purpose |
+|-----------|-------|---------|
+| `deep-review/SKILL.md` | deep-review | Multi-pass code review with security, quality, structural analysis, and validation |
+| `discover/SKILL.md` | discover | Spawn parallel specialist agents to scan the codebase and produce a prioritized improvement backlog |
 
 ### Exploration Skills
 
@@ -39,6 +46,37 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `deepinit/SKILL.md` | deepinit | Generate hierarchical AGENTS.md |
 | `sciomc/SKILL.md` | sciomc | Parallel scientist orchestration |
+| `external-context/SKILL.md` | external-context | Parallel document-specialist agents for external web searches and documentation lookup |
+
+### Visual Skills
+
+| File | Skill | Purpose |
+|-----------|-------|---------|
+| `visual-verdict/SKILL.md` | visual-verdict | Structured visual QA verdict for screenshot/reference comparisons |
+
+### Orchestration Skills
+
+| File | Skill | Purpose |
+|-----------|-------|---------|
+| `ccg/SKILL.md` | ccg | Quadri-model orchestration — Claude, Codex, Gemini provide independent analysis, Copilot synthesizes |
+| `omc-teams/SKILL.md` | omc-teams | CLI-team runtime for claude, codex, or gemini workers in tmux panes |
+| `omc-reference/SKILL.md` | omc-reference | OMC agent catalog, tools, team pipeline routing, commit protocol, and skills registry |
+
+### Notification Skills
+
+| File | Skill | Purpose |
+|-----------|-------|---------|
+| `configure-notifications/SKILL.md` | configure-notifications | Configure notification integrations (Telegram, Discord, Slack, Teams) |
+
+### Azure DevOps Skills
+
+| File | Skill | Purpose |
+|-----------|-------|---------|
+| `omc-ado-setup/SKILL.md` | omc-ado-setup | Configure Azure DevOps integration |
+| `omc-ado-review/SKILL.md` | omc-ado-review | Review Azure DevOps pull requests |
+| `omc-ado-auto-review/SKILL.md` | omc-ado-auto-review | Automated Azure DevOps PR review |
+| `omc-ado-sprint/SKILL.md` | omc-ado-sprint | Azure DevOps sprint management |
+| `omc-ado-triage/SKILL.md` | omc-ado-triage | Azure DevOps work item triage |
 
 ### Utility Skills
 
@@ -61,6 +99,21 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `project-session-manager/SKILL.md` | project-session-manager (+ `psm` alias) | Isolated dev environments |
 | `writer-memory/SKILL.md` | writer-memory | Agentic memory for writers |
 | `release/SKILL.md` | release | Automated release workflow |
+| `ralph-experiment/SKILL.md` | ralph-experiment | Hypothesis-driven experiment loop with structured notebook and git checkpoints |
+
+## Permission Model
+
+All plugin MCP tools use a **three-tier auto-approval system** so agents can operate without `/yolo`:
+
+- **Tier 1** (read-only): LSP nav, code search, state/memory reads — always auto-approved via `readOnlyHint` annotation
+- **Tier 2** (write): State/memory writes, AST replace, LSP rename — auto-approved via `permissions.allow` in `settings.local.json`
+- **Tier 3** (destructive): `shared_memory_delete`, `shared_memory_cleanup`, `kill_job` — always prompt user
+
+Safe bash patterns (git, npm, dotnet, gh, az, grep, find, ls) are auto-approved by the `permissionRequest` hook. Shell metacharacters are always rejected.
+
+Deny escalation: 3 consecutive or 20 total denials stops the session. All decisions are audit-logged to `.omc/logs/permissions.log`.
+
+See [full permissions guide](../docs/guides/permissions.md) for details.
 
 ## For AI Agents
 
@@ -160,12 +213,17 @@ None - pure markdown files.
 
 | Category | Skills | Trigger Keywords |
 |----------|--------|------------------|
-| Execution | autopilot, ultrawork, ralph, team, ultraqa | "autopilot", "ulw", "ralph", "team" |
-| Planning | omc-plan, ralplan, deep-interview, ralph-init | "plan this", "interview me", "ouroboros" |
-| Exploration | deepinit, sciomc, external-context | "deepinit", "research" |
-| Cleanup | ai-slop-cleaner | "deslop", "anti-slop", cleanup/refactor + slop smells |
-| Utility | learner, note, cancel, setup, omc-doctor, omc-setup, omc-help, mcp-setup | "stop", "cancel" |
-| Domain | psm, writer-memory, release | psm context |
+| Execution | autopilot, ultrawork, ralph, team, ultraqa, ralph-experiment | "autopilot", "ulw", "ralph" |
+| Planning | omc-plan, ralplan, deep-interview, deep-dive | "ralplan", "deep-interview", "ouroboros" |
+| Analysis | deep-review, discover | "code review", "security review" |
+| Exploration | deepinit, sciomc, external-context | "deepsearch", "deep-analyze" |
+| Orchestration | ccg, omc-teams, omc-reference | "ccg", "ask codex", "ask gemini" |
+| Visual | visual-verdict | screenshot QA |
+| Cleanup | ai-slop-cleaner | "deslop", "anti-slop" |
+| Azure DevOps | omc-ado-setup, omc-ado-review, omc-ado-auto-review, omc-ado-sprint, omc-ado-triage | "ado setup", "ado triage" |
+| Notifications | configure-notifications | "configure discord", "setup telegram" |
+| Utility | learner, ask, cancel, setup, omc-doctor, omc-setup, mcp-setup, skill | "cancelomc", "stopomc" |
+| Domain | project-session-manager, writer-memory, release | psm context |
 
 ## Auto-Activation
 

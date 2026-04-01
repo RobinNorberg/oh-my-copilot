@@ -12,6 +12,7 @@ export declare function killProcessTree(pid: number, signal?: NodeJS.Signals): P
 /**
  * Check if a process is alive.
  * Works cross-platform by attempting signal 0.
+ * EPERM means the process exists but we lack permission to signal it.
  */
 export declare function isProcessAlive(pid: number): boolean;
 /**

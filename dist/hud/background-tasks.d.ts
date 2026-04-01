@@ -15,6 +15,13 @@ export declare function addBackgroundTask(id: string, description: string, agent
  */
 export declare function completeBackgroundTask(id: string, directory?: string, failed?: boolean): boolean;
 /**
+ * Remap a running background task from its launch-time hook id to the
+ * async task id reported after launch.
+ */
+export declare function remapBackgroundTaskId(currentId: string, nextId: string, directory?: string): boolean;
+export declare function completeMostRecentMatchingBackgroundTask(description: string, directory?: string, failed?: boolean, agentType?: string): boolean;
+export declare function remapMostRecentMatchingBackgroundTaskId(description: string, nextId: string, directory?: string, agentType?: string): boolean;
+/**
  * Get count of running background tasks.
  */
 export declare function getRunningTaskCount(directory?: string): number;

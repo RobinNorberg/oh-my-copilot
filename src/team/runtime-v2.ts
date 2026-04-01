@@ -66,6 +66,7 @@ import {
   generateTriggerMessage,
 } from './worker-bootstrap.js';
 import { queueInboxInstruction, type DispatchOutcome } from './mcp-comm.js';
+import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 
 // ---------------------------------------------------------------------------
 // Feature flag
@@ -152,7 +153,9 @@ interface ShutdownGateCounts {
 // ---------------------------------------------------------------------------
 
 function sanitizeTeamName(name: string): string {
-  return name.replace(/[^a-z0-9-]/g, '').slice(0, 30);
+  const sanitized = name.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
+  if (!sanitized) throw new Error(`Invalid team name: "${name}" produces empty slug after sanitization`);
+  return sanitized;
 }
 
 // ---------------------------------------------------------------------------
@@ -701,6 +704,9 @@ export async function requeueDeadWorkerTasks(
   deadWorkerNames: string[],
   cwd: string,
 ): Promise<string[]> {
+  const logEventFailure = createSwallowedErrorLogger(
+    'team.runtime-v2.requeueDeadWorkerTasks appendTeamEvent failed',
+  );
   const sanitized = sanitizeTeamName(teamName);
   const tasks = await listTasksFromFiles(sanitized, cwd);
   const requeued: string[] = [];
@@ -723,18 +729,25 @@ export async function requeueDeadWorkerTasks(
     await mkdir(absPath(cwd, TeamPaths.tasks(sanitized)), { recursive: true });
     await writeFile(sidecarPath, JSON.stringify(sidecar, null, 2), 'utf-8');
 
-    // Reset task to pending (clear owner and claim)
+    // Reset task to pending (locked to prevent race with concurrent claimTask)
     const taskPath = absPath(cwd, TeamPaths.taskFile(sanitized, task.id));
     try {
-      const raw = await import('fs/promises').then(fs => fs.readFile(taskPath, 'utf-8'));
-      const taskData = JSON.parse(raw);
-      taskData.status = 'pending';
-      taskData.owner = undefined;
-      taskData.claim = undefined;
-      await writeFile(taskPath, JSON.stringify(taskData, null, 2), 'utf-8');
-      requeued.push(task.id);
+      const { readFileSync, writeFileSync } = await import('fs');
+      const { withFileLockSync } = await import('../lib/file-lock.js');
+      withFileLockSync(taskPath + '.lock', () => {
+        const raw = readFileSync(taskPath, 'utf-8');
+        const taskData = JSON.parse(raw);
+        // Only requeue if still in_progress — another worker may have already claimed it
+        if (taskData.status === 'in_progress') {
+          taskData.status = 'pending';
+          taskData.owner = undefined;
+          taskData.claim = undefined;
+          writeFileSync(taskPath, JSON.stringify(taskData, null, 2), 'utf-8');
+          requeued.push(task.id);
+        }
+      });
     } catch {
-      // Task file may have been removed; skip
+      // Task file may have been removed or lock failed; skip
     }
 
     await appendTeamEvent(sanitized, {
@@ -742,7 +755,7 @@ export async function requeueDeadWorkerTasks(
       worker: 'leader-fixed',
       task_id: task.id,
       reason: `requeue_dead_worker:${task.owner}`,
-    }, cwd).catch(() => {});
+    }, cwd).catch(logEventFailure);
   }
 
   return requeued;
@@ -924,6 +937,9 @@ export async function shutdownTeamV2(
   cwd: string,
   options: ShutdownOptionsV2 = {},
 ): Promise<void> {
+  const logEventFailure = createSwallowedErrorLogger(
+    'team.runtime-v2.shutdownTeamV2 appendTeamEvent failed',
+  );
   const force = options.force === true;
   const ralph = options.ralph === true;
   const timeoutMs = options.timeoutMs ?? 15_000;
@@ -955,17 +971,23 @@ export async function shutdownTeamV2(
       type: 'shutdown_gate',
       worker: 'leader-fixed',
       reason: `allowed=${gate.allowed} total=${gate.total} pending=${gate.pending} blocked=${gate.blocked} in_progress=${gate.in_progress} completed=${gate.completed} failed=${gate.failed}${ralph ? ' policy=ralph' : ''}`,
-    }, cwd).catch(() => {});
+    }, cwd).catch(logEventFailure);
 
     if (!gate.allowed) {
       const hasActiveWork = gate.pending > 0 || gate.blocked > 0 || gate.in_progress > 0;
-      if (ralph && !hasActiveWork) {
+      if (hasActiveWork) {
+        await appendTeamEvent(sanitized, {
+          type: 'team_leader_nudge',
+          worker: 'leader-fixed',
+          reason: `cleanup_override_bypassed:pending=${gate.pending},blocked=${gate.blocked},in_progress=${gate.in_progress},failed=${gate.failed}`,
+        }, cwd).catch(logEventFailure);
+      } else if (ralph && !hasActiveWork) {
         // Ralph policy: bypass on failure-only scenarios
         await appendTeamEvent(sanitized, {
           type: 'team_leader_nudge',
           worker: 'leader-fixed',
           reason: `gate_bypassed:pending=${gate.pending},blocked=${gate.blocked},in_progress=${gate.in_progress},failed=${gate.failed}`,
-        }, cwd).catch(() => {});
+        }, cwd).catch(logEventFailure);
       } else {
         throw new Error(
           `shutdown_gate_blocked:pending=${gate.pending},blocked=${gate.blocked},in_progress=${gate.in_progress},failed=${gate.failed}`,
@@ -979,7 +1001,7 @@ export async function shutdownTeamV2(
       type: 'shutdown_gate_forced',
       worker: 'leader-fixed',
       reason: 'force_bypass',
-    }, cwd).catch(() => {});
+    }, cwd).catch(logEventFailure);
   }
 
   // 2. Send shutdown request to each worker
@@ -1012,7 +1034,7 @@ export async function shutdownTeamV2(
           type: 'shutdown_ack',
           worker: w.name,
           reason: ack.status === 'reject' ? `reject:${ack.reason || 'no_reason'}` : 'accept',
-        }, cwd).catch(() => {});
+        }, cwd).catch(logEventFailure);
         if (ack.status === 'reject') {
           rejected.push({ worker: w.name, reason: ack.reason || 'no_reason' });
         }
@@ -1074,7 +1096,7 @@ export async function shutdownTeamV2(
       type: 'team_leader_nudge',
       worker: 'leader-fixed',
       reason: `ralph_cleanup_summary: total=${finalTasks.length} completed=${completed} failed=${failed} pending=${pending} force=${force}`,
-    }, cwd).catch(() => {});
+    }, cwd).catch(logEventFailure);
   }
 
   // 6. Clean up state

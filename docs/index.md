@@ -14,6 +14,7 @@
 - [Skills Reference](guides/skills-reference.md)
 - [Azure DevOps Integration](guides/azure-devops.md)
 - [Notifications](guides/notifications.md)
+- [Permissions & Auto-Approval](guides/permissions.md)
 
 ## Reference
 

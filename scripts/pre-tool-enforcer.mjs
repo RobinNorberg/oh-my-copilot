@@ -21,6 +21,21 @@ const _resolvedPluginRoot = process.env.PLUGIN_ROOT
   || process.env.CLAUDE_PLUGIN_ROOT
   || dirname(__scriptDir);
 
+// Inlined from src/config/models.ts — avoids a dist/ import so the hook works
+// before a build and stays consistent with the TypeScript source.
+function isProviderSpecificModelId(modelId) {
+  if (/^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) return true;
+  if (/^arn:aws(-[^:]+)?:bedrock:/i.test(modelId)) return true;
+  if (modelId.toLowerCase().startsWith('vertex_ai/')) return true;
+  return false;
+}
+function hasExtendedContextSuffix(modelId) {
+  return /\[\d+[mk]\]$/i.test(modelId);
+}
+function isSubagentSafeModelId(modelId) {
+  return isProviderSpecificModelId(modelId) && !hasExtendedContextSuffix(modelId);
+}
+
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 const MODE_STATE_FILES = [
   'autopilot-state.json',
@@ -356,6 +371,29 @@ function getSkillProtectionLevel(skillName) {
   return SKILL_PROTECTION_MAP[normalized] || 'light';
 }
 
+// Load OMC config to check forceInherit setting (issues #1135, #1201)
+function loadOmcConfig() {
+  const configPaths = [
+    join(homedir(), '.claude', '.omc-config.json'),
+    join(process.cwd(), '.omc', 'config.json'),
+  ];
+  for (const configPath of configPaths) {
+    try {
+      if (existsSync(configPath)) {
+        return JSON.parse(readFileSync(configPath, 'utf-8'));
+      }
+    } catch { /* continue */ }
+  }
+  return {};
+}
+
+// Check if forceInherit is enabled via config or env var
+function isForceInheritEnabled() {
+  if (process.env.OMC_ROUTING_FORCE_INHERIT === 'true') return true;
+  const config = loadOmcConfig();
+  return config.routing?.forceInherit === true;
+}
+
 function extractSkillName(toolInput) {
   if (!toolInput || typeof toolInput !== 'object') return null;
   const rawSkill = toolInput.skill || toolInput.skill_name || toolInput.skillName || toolInput.command || null;
@@ -399,6 +437,49 @@ function writeSkillActiveState(directory, skillName, sessionId) {
     renameSync(tmpPath, targetPath);
   } catch {
     // Best-effort; don't fail the hook
+  }
+}
+
+function clearAwaitingConfirmationFlag(directory, stateName, sessionId) {
+  const stateDir = join(directory, '.omg', 'state');
+  const safeSessionId = sessionId && SESSION_ID_PATTERN.test(sessionId) ? sessionId : '';
+  const paths = [
+    safeSessionId ? join(stateDir, 'sessions', safeSessionId, `${stateName}-state.json`) : null,
+    join(stateDir, `${stateName}-state.json`),
+  ].filter(Boolean);
+
+  for (const statePath of paths) {
+    try {
+      if (!existsSync(statePath)) continue;
+      const state = JSON.parse(readFileSync(statePath, 'utf-8'));
+      if (!state || typeof state !== 'object' || !state.awaiting_confirmation) continue;
+      delete state.awaiting_confirmation;
+      const tmpPath = statePath + '.tmp';
+      writeFileSync(tmpPath, JSON.stringify(state, null, 2), { mode: 0o600 });
+      renameSync(tmpPath, statePath);
+    } catch {
+      // Best-effort; don't fail the hook
+    }
+  }
+}
+
+function confirmSkillModeStates(directory, skillName, sessionId) {
+  switch (skillName) {
+    case 'ralph':
+      clearAwaitingConfirmationFlag(directory, 'ralph', sessionId);
+      clearAwaitingConfirmationFlag(directory, 'ultrawork', sessionId);
+      break;
+    case 'ultrawork':
+      clearAwaitingConfirmationFlag(directory, 'ultrawork', sessionId);
+      break;
+    case 'autopilot':
+      clearAwaitingConfirmationFlag(directory, 'autopilot', sessionId);
+      break;
+    case 'ralplan':
+      clearAwaitingConfirmationFlag(directory, 'ralplan', sessionId);
+      break;
+    default:
+      break;
   }
 }
 
@@ -448,6 +529,7 @@ async function main() {
         const sid = typeof data.session_id === 'string' ? data.session_id
           : typeof data.sessionId === 'string' ? data.sessionId : '';
         writeSkillActiveState(directory, skillName, sid);
+        confirmSkillModeStates(directory, skillName, sid);
       }
     }
 
@@ -458,6 +540,74 @@ async function main() {
           ? data.sessionId
           : '';
     const modeActive = hasActiveMode(directory, sessionId);
+
+    // Force-inherit check: deny Task/Agent calls with invalid model param when forceInherit is
+    // enabled (Bedrock, Vertex, CC Switch, etc.) - issues #1135, #1201, #1767, #1868
+    //
+    // New behaviour (issue #1868 — [1m] suffix deadlock):
+    //   ALLOW explicit valid provider-specific model IDs (full Bedrock/Vertex format, no [1m])
+    //   DENY  tier names (sonnet/opus/haiku) and [1m]-suffixed IDs
+    //   DENY  no-model calls when the session model itself has [1m] — guide to OMC_SUBAGENT_MODEL
+    if (toolName === 'Task' || toolName === 'Agent') {
+      const toolInput = data.toolInput || data.tool_input || {};
+      const toolModel = toolInput.model;
+      if (isForceInheritEnabled()) {
+        // Check both vars: if either carries [1m] the session model is unsafe for sub-agents.
+        // Avoids a split-brain between the hook and runtime code that may read the vars in
+        // different orders (e.g. model-contract.ts uses ANTHROPIC_MODEL first).
+        const claudeModel = process.env.CLAUDE_MODEL || '';
+        const anthropicModel = process.env.ANTHROPIC_MODEL || '';
+        const sessionHasLmSuffix =
+          hasExtendedContextSuffix(claudeModel) || hasExtendedContextSuffix(anthropicModel);
+        // For error messages: prefer whichever var actually carries the [1m] suffix.
+        const sessionModel = hasExtendedContextSuffix(claudeModel)
+          ? claudeModel
+          : hasExtendedContextSuffix(anthropicModel)
+            ? anthropicModel
+            : claudeModel || anthropicModel;
+
+        if (toolModel) {
+          // Allow explicit valid provider-specific IDs (full Bedrock/Vertex format) without a
+          // [1m] suffix — blocking these leaves no escape hatch when the inherited session model
+          // is itself invalid. Reject tier names (sonnet/opus/haiku) and [1m]-suffixed IDs.
+          if (!isSubagentSafeModelId(toolModel)) {
+            const subagentModel = process.env.OMC_SUBAGENT_MODEL || '';
+            const guidance = subagentModel
+              ? `Pass model="${subagentModel}" (your configured OMC_SUBAGENT_MODEL value).`
+              : `Remove the \`model\` parameter, or set OMC_SUBAGENT_MODEL=<valid-bedrock-id> and pass that value explicitly.`;
+            console.log(JSON.stringify({
+              continue: true,
+              hookSpecificOutput: {
+                hookEventName: 'PreToolUse',
+                permissionDecision: 'deny',
+                permissionDecisionReason: `[MODEL ROUTING] This environment uses a non-standard provider (Bedrock/Vertex/proxy). ${guidance} The model "${toolModel}" is not valid for this provider.`
+              }
+            }));
+            return;
+          }
+          // else: valid provider-specific model ID — fall through to continue.
+        } else if (sessionHasLmSuffix) {
+          // No model param, but the session model has a [1m] context-window suffix.
+          // Sub-agents would inherit it and fail — the runtime strips [1m] to a bare
+          // Anthropic model ID (e.g. claude-sonnet-4-6) which is invalid on Bedrock.
+          const subagentModel = process.env.OMC_SUBAGENT_MODEL || '';
+          const suggestion = subagentModel
+            ? `Pass model="${subagentModel}" (your configured OMC_SUBAGENT_MODEL) explicitly on this ${toolName} call.`
+            : `Set OMC_SUBAGENT_MODEL=<valid-bedrock-id> in your environment (use the model ID from the 400 error message, e.g. "us.anthropic.claude-sonnet-4-5-20250929-v1:0"), then pass that value as the model parameter.`;
+          console.log(JSON.stringify({
+            continue: true,
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'deny',
+              permissionDecisionReason: `[MODEL ROUTING] Your session model "${sessionModel}" has a context-window suffix ([1m]) that sub-agents cannot inherit — the runtime strips it to a bare Anthropic model ID which is invalid on Bedrock. ${suggestion}`
+            }
+          }));
+          return;
+        }
+        // else: no model param and no [1m] on session model → normal forceInherit,
+        // agents inherit the parent session's model cleanly.
+      }
+    }
 
     // Send notification when AskUserQuestion is about to execute (user input needed)
     // Fires in PreToolUse so users get notified BEFORE the tool blocks for input (#597)

@@ -15,9 +15,37 @@ import {
   type HardeningTask,
   type RalphthonConfig,
   type TaskStatus,
+  type RalphthonPlanningContext,
   PRD_FILENAME,
   RALPHTHON_DEFAULTS,
-} from './types.js';
+} from "./types.js";
+
+// ============================================================================
+// Planning Context
+// ============================================================================
+
+export const DEFAULT_PLANNING_CONTEXT: RalphthonPlanningContext = {
+  brownfield: false,
+  assumptionsMode: "implicit",
+  codebaseMapSummary: "",
+  knownConstraints: [],
+};
+
+export function normalizePlanningContext(
+  context?: Partial<RalphthonPlanningContext> | null,
+): RalphthonPlanningContext {
+  return {
+    brownfield: context?.brownfield ?? DEFAULT_PLANNING_CONTEXT.brownfield,
+    assumptionsMode:
+      context?.assumptionsMode ?? DEFAULT_PLANNING_CONTEXT.assumptionsMode,
+    codebaseMapSummary:
+      context?.codebaseMapSummary ??
+      DEFAULT_PLANNING_CONTEXT.codebaseMapSummary,
+    knownConstraints: Array.isArray(context?.knownConstraints)
+      ? [...context!.knownConstraints]
+      : [...DEFAULT_PLANNING_CONTEXT.knownConstraints],
+  };
+}
 
 // ============================================================================
 // File Operations
@@ -57,6 +85,8 @@ export function readRalphthonPrd(directory: string): RalphthonPRD | null {
     if (!prd.stories || !Array.isArray(prd.stories)) return null;
     if (!prd.config) return null;
 
+    prd.planningContext = normalizePlanningContext(prd.planningContext);
+
     return prd;
   } catch {
     return null;
@@ -82,7 +112,11 @@ export function writeRalphthonPrd(directory: string, prd: RalphthonPRD): boolean
   }
 
   try {
-    writeFileSync(prdPath, JSON.stringify(prd, null, 2));
+    const normalizedPrd: RalphthonPRD = {
+      ...prd,
+      planningContext: normalizePlanningContext(prd.planningContext),
+    };
+    writeFileSync(prdPath, JSON.stringify(normalizedPrd, null, 2));
     return true;
   } catch {
     return false;
@@ -325,6 +359,7 @@ export function createRalphthonPrd(
   description: string,
   stories: RalphthonStory[],
   config?: Partial<RalphthonConfig>,
+  planningContext?: Partial<RalphthonPlanningContext>,
 ): RalphthonPRD {
   return {
     project,
@@ -333,6 +368,7 @@ export function createRalphthonPrd(
     stories,
     hardening: [],
     config: { ...RALPHTHON_DEFAULTS, ...config },
+    planningContext: normalizePlanningContext(planningContext),
   };
 }
 
@@ -346,8 +382,16 @@ export function initRalphthonPrd(
   description: string,
   stories: RalphthonStory[],
   config?: Partial<RalphthonConfig>,
+  planningContext?: Partial<RalphthonPlanningContext>,
 ): boolean {
-  const prd = createRalphthonPrd(project, branchName, description, stories, config);
+  const prd = createRalphthonPrd(
+    project,
+    branchName,
+    description,
+    stories,
+    config,
+    planningContext,
+  );
   return writeRalphthonPrd(directory, prd);
 }
 

@@ -163,6 +163,11 @@ export function isWriteEditTool(toolName: string): boolean {
   return WRITE_EDIT_TOOLS.includes(toolName);
 }
 
+function isDelegationToolName(toolName: string): boolean {
+  const normalizedToolName = toolName.toLowerCase();
+  return normalizedToolName === 'task' || normalizedToolName === 'agent';
+}
+
 /**
  * Get git diff statistics for the working directory
  */
@@ -451,8 +456,8 @@ export function processOrchestratorPostTool(
     }
   }
 
-  // Handle Task tool completion
-  if (toolName === 'Task' || toolName === 'task') {
+  // Handle delegation tool completion
+  if (isDelegationToolName(toolName)) {
     // Check for background task launch
     const isBackgroundLaunch = output.includes('Background task launched') || output.includes('Background task resumed');
     if (isBackgroundLaunch) {
