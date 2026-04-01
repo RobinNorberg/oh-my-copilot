@@ -9,10 +9,10 @@
 
 
 <h1 align="center">Turbocharge your Copilot CLI with multi-agent orchestration.</h1>
-<p align="center">    
+<p align="center">
   <img src="assets/omc-character.png" alt="oh-my-copilot" width="400" />
   </br>
-  <strong><i>Your Copilot has just been steroided.</i></strong>
+  <strong><i>Your Copilot has been working out, learning new ways to improve your life.</i></strong>
 </p>
 
 ---
@@ -57,11 +57,11 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 - **Zero configuration required** — works out of the box with intelligent defaults
 - **Team-first orchestration** — staged pipeline with plan, PRD, exec, verify, and fix loop
 - **Natural language interface** — no commands to memorize, just describe what you want
-- **Automatic parallelization** — complex tasks distributed across 18 specialized agents
+- **Automatic parallelization** — complex tasks distributed across our specialized agents
 - **Persistent execution** — won't give up until the job is verified complete
-- **Smart model routing** — Haiku for simple tasks, Opus for complex reasoning (30–50% token savings)
-- **Azure DevOps native** — auto-detection, work item management, PR operations, triage workflows
-
+- **Smart model routing** — Haiku for simple tasks, Sonnet for average and Opus for complex reasoning (30–50% token savings)
+- **Azure DevOps/GitHub native** — auto-detection, work item management, PR operations, triage workflows
+- **Stop your yolo abuse** — using a layered permission model to help your agents perform safe work without your interference
 ---
 
 ## Team Mode
@@ -134,34 +134,36 @@ Optional shortcuts for power users. Natural language works fine without them.
 
 ## Permissions
 
-oh-my-copilot uses a **three-tier permission architecture** inspired by [Anthropic's auto mode](https://www.anthropic.com/engineering/claude-code-auto-mode) to minimize permission prompts without sacrificing security. No `/yolo` or `--allow-all` needed.
+oh-my-copilot uses a **three-tier permission architecture** to minimize permission prompts without sacrificing security. No `/yolo` or `--allow-all` needed.
 
-### Auto Mode Flow
+### Auto Permission Mode Flow
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Tool call arrives                      │
-├─────────────────────────────────────────────────────────┤
+┌──────────────────────────────────────────────────────────┐
+│                    Tool call arrives                     │
+├──────────────────────────────────────────────────────────┤
 │                                                          │
-│  ┌─ Escalation check ──→ 3+ consecutive / 20+ total    │
-│  │                        denials? → DENY + STOP         │
+│  ┌─ Escalation check ──→ 3+ consecutive / 20+ total      │
+│  │                        denials?                       │
+│  │                        → DENY + STOP                  │
+│  │                        → ASK Human                    │
 │  │                                                       │
-│  ├─ MCP tool (mcp__t__*)                                │
-│  │  ├─ In permissions.allow? ────────────→ ALLOW        │
-│  │  ├─ readOnlyHint annotation? ─────────→ ALLOW        │
-│  │  └─ Otherwise ────────────────────────→ ASK          │
+│  ├─ MCP tool (mcp__t__*)                                 │
+│  │  ├─ In permissions.allow? ────────────→ ALLOW         │
+│  │  ├─ readOnlyHint annotation? ─────────→ ALLOW         │
+│  │  └─ Otherwise ────────────────────────→ ASK           │
 │  │                                                       │
 │  ├─ Bash command                                         │
-│  │  ├─ Shell metacharacters (;&|$`<>) ──→ REJECT        │
-│  │  ├─ Safe pattern match? ──────────────→ ALLOW        │
-│  │  │  (git, npm, dotnet, gh, az, tsc,                  │
-│  │  │   grep, find, ls, pytest, cargo…)                 │
-│  │  ├─ Heredoc with safe base? ──────────→ ALLOW        │
-│  │  └─ No match ─────────────────────────→ ASK          │
+│  │  ├─ Shell metacharacters (;&|$`<>) ──→ REJECT         │
+│  │  ├─ Safe pattern match? ──────────────→ ALLOW         │
+│  │  │  (git, npm, dotnet, gh, az, tsc,                   │
+│  │  │   grep, find, ls, pytest, cargo…)                  │
+│  │  ├─ Heredoc with safe base? ──────────→ ALLOW         │
+│  │  └─ No match ─────────────────────────→ ASK           │
 │  │                                                       │
-│  └─ Every decision → audit log (.omc/logs/permissions)  │
+│  └─ Every decision → audit log (.omc/logs/permissions)   │
 │                    → deny tracker (escalation counters)  │
-└─────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────┘
 ```
 
 ### Three Tiers
