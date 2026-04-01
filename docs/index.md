@@ -8,6 +8,7 @@
 ## Guides
 
 - [Team Mode](guides/team-mode.md)
+- [GitHub Integration](guides/github.md)
 - [Azure DevOps Integration](guides/azure-devops.md)
 - [Notifications](guides/notifications.md)
 ## Reference

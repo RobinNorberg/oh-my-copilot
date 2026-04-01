@@ -100,7 +100,7 @@ When your git remote points to `github.com`, OMC auto-detects GitHub. Run `/oh-m
 
 When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, and `/oh-my-copilot:omc-ado-triage` for a parallel scan of work items, PRs, pipelines, and security alerts.
 
-[Full Azure DevOps docs →](docs/guides/azure-devops.md)
+[GitHub guide →](docs/guides/github.md) | [Azure DevOps guide →](docs/guides/azure-devops.md)
 
 ---
 
@@ -152,6 +152,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 - [Quick Start](docs/get-started/quickstart.md)
 - [Full Reference](docs/REFERENCE.md)
 - [Team Mode](docs/guides/team-mode.md)
+- [GitHub Integration](docs/guides/github.md)
 - [Azure DevOps Integration](docs/guides/azure-devops.md)
 - [Architecture Overview](docs/architecture/overview.md)
 - [Permission Architecture](docs/architecture/permissions.md)
