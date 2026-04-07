@@ -2,13 +2,13 @@ import { HOOK_NAME, NON_INTERACTIVE_ENV, SHELL_COMMAND_PATTERNS } from "./consta
 export * from "./constants.js";
 export * from "./detector.js";
 export * from "./types.js";
-const BANNED_COMMAND_PATTERNS = SHELL_COMMAND_PATTERNS.banned
+const BANNED_ENTRIES = SHELL_COMMAND_PATTERNS.banned
     .filter((cmd) => !cmd.includes("("))
-    .map((cmd) => new RegExp(`\\b${cmd}\\b`));
+    .map((cmd) => ({ pattern: new RegExp(`\\b${cmd}\\b`), name: cmd }));
 function detectBannedCommand(command) {
-    for (let i = 0; i < BANNED_COMMAND_PATTERNS.length; i++) {
-        if (BANNED_COMMAND_PATTERNS[i].test(command)) {
-            return SHELL_COMMAND_PATTERNS.banned[i];
+    for (const entry of BANNED_ENTRIES) {
+        if (entry.pattern.test(command)) {
+            return entry.name;
         }
     }
     return undefined;

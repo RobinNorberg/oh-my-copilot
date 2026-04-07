@@ -5,6 +5,7 @@
 export declare function isUnixLikeOnWindows(): boolean;
 export type TeamMultiplexerContext = 'tmux' | 'cmux' | 'none';
 export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): TeamMultiplexerContext;
+export declare function applyMainVerticalLayout(teamTarget: string): Promise<void>;
 export type TeamSessionMode = 'split-pane' | 'dedicated-window' | 'detached-session';
 export interface TeamSession {
     sessionName: string;
@@ -31,7 +32,7 @@ export interface WorkerLaunchSpec {
     shell: string;
     rcFile: string | null;
 }
-/** Try a list of shell paths; return first that exists with its rcFile, or null */
+/** Try a list of shell paths; return first existing path or PATH-discovered binary with its rcFile, or null */
 export declare function resolveShellFromCandidates(paths: string[], rcFile: string): WorkerLaunchSpec | null;
 /** Check if shellPath is a supported shell (zsh/bash) that exists on disk */
 export declare function resolveSupportedShellAffinity(shellPath?: string): WorkerLaunchSpec | null;

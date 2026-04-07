@@ -4,9 +4,11 @@
  * Manages connections to language servers using JSON-RPC 2.0 over stdio.
  * Handles server lifecycle, message buffering, and request/response matching.
  */
+import type { DevContainerContext } from './devcontainer.js';
 import type { LspServerConfig } from './servers.js';
 /** Default timeout (ms) for LSP requests. Override with OMC_LSP_TIMEOUT_MS env var. */
 export declare const DEFAULT_LSP_REQUEST_TIMEOUT_MS: number;
+export declare function getLspRequestTimeout(serverConfig: Pick<LspServerConfig, 'initializeTimeoutMs'>, method: string, baseTimeout?: number): number;
 export interface Position {
     line: number;
     character: number;
@@ -94,8 +96,11 @@ export declare class LspClient {
     private diagnosticWaiters;
     private workspaceRoot;
     private serverConfig;
+    private devContainerContext;
     private initialized;
-    constructor(workspaceRoot: string, serverConfig: LspServerConfig);
+    private _serverCapabilities;
+    private _supportsPullDiagnostics;
+    constructor(workspaceRoot: string, serverConfig: LspServerConfig, devContainerContext?: DevContainerContext | null);
     /**
      * Start the LSP server and initialize the connection
      */
@@ -179,6 +184,15 @@ export declare class LspClient {
      */
     getDiagnostics(filePath: string): Diagnostic[];
     /**
+     * Whether the server supports LSP 3.17 pull diagnostics (textDocument/diagnostic).
+     */
+    get supportsPullDiagnostics(): boolean;
+    /**
+     * Request diagnostics via the LSP 3.17 pull model (textDocument/diagnostic).
+     * Only call when supportsPullDiagnostics is true.
+     */
+    pullDiagnostics(filePath: string): Promise<Diagnostic[]>;
+    /**
      * Wait for the server to publish diagnostics for a file.
      * Resolves as soon as textDocument/publishDiagnostics fires for the URI,
      * or after `timeoutMs` milliseconds (whichever comes first).
@@ -197,6 +211,12 @@ export declare class LspClient {
      * Get code actions
      */
     codeActions(filePath: string, range: Range, diagnostics?: Diagnostic[]): Promise<CodeAction[] | null>;
+    private getServerWorkspaceRoot;
+    private getWorkspaceRootUri;
+    private toServerUri;
+    private toHostUri;
+    private translateIncomingPayload;
+    private translateIncomingValue;
 }
 /** Idle timeout: disconnect LSP clients unused for 5 minutes */
 export declare const IDLE_TIMEOUT_MS: number;

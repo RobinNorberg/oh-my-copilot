@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Unified setup entrypoint for install, diagnostics, and MCP configuration
+description: Use first for install/update routing — sends setup, doctor, or MCP requests to the correct OMC setup flow
 ---
 
 # Setup
@@ -18,18 +18,18 @@ Use `/oh-my-copilot:setup` as the unified setup/configuration entrypoint.
 
 ## Routing
 
-Route by the first argument:
+Process the request by the **first argument only** so install/setup questions land on the right flow immediately:
 
-- No argument, `wizard`, `local`, `global`, or `--force` -> run `/oh-my-copilot:omc-setup {{ARGUMENTS}}`
-- `doctor` -> run `/oh-my-copilot:omc-doctor {{ARGUMENTS_AFTER_DOCTOR}}`
-- `mcp` -> run `/oh-my-copilot:mcp-setup {{ARGUMENTS_AFTER_MCP}}`
+- No argument, `wizard`, `local`, `global`, or `--force` -> route to `/oh-my-copilot:omc-setup` with the same remaining args
+- `doctor` -> route to `/oh-my-copilot:omc-doctor` with everything after the `doctor` token
+- `mcp` -> route to `/oh-my-copilot:mcp-setup` with everything after the `mcp` token
 
 Examples:
 
 ```bash
-/oh-my-copilot:omc-setup {{ARGUMENTS}}
-/oh-my-copilot:omc-doctor {{ARGUMENTS_AFTER_DOCTOR}}
-/oh-my-copilot:mcp-setup {{ARGUMENTS_AFTER_MCP}}
+/oh-my-copilot:setup --local          # => /oh-my-copilot:omc-setup --local
+/oh-my-copilot:setup doctor --json    # => /oh-my-copilot:omc-doctor --json
+/oh-my-copilot:setup mcp github       # => /oh-my-copilot:mcp-setup github
 ```
 
 ## Notes

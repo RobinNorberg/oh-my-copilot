@@ -1,6 +1,8 @@
 ---
 name: cancel
 description: Cancel any active OMC mode (autopilot, ralph, ultrawork, ultraqa, swarm, ultrapilot, pipeline, team)
+argument-hint: "[--force|--all]"
+level: 2
 ---
 
 # Cancel Skill
@@ -34,6 +36,68 @@ Automatically detects which mode is active and cancels it:
 
 Or say: "cancelomc", "stopomc"
 
+## Critical: Deferred Tool Handling
+
+The state management tools (`state_clear`, `state_read`, `state_write`, `state_list_active`,
+`state_get_status`) may be registered as **deferred tools** by Copilot CLI. Before calling
+any state tool, you MUST first load all of them via `ToolSearch`:
+
+```
+ToolSearch(query="select:mcp__plugin_oh-my-claudecode_t__state_clear,mcp__plugin_oh-my-claudecode_t__state_read,mcp__plugin_oh-my-claudecode_t__state_write,mcp__plugin_oh-my-claudecode_t__state_list_active,mcp__plugin_oh-my-claudecode_t__state_get_status")
+```
+
+If `state_clear` is unavailable or fails, use this **bash fallback** as an **emergency
+escape from the stop hook loop**. This is NOT a full replacement for the cancel flow —
+it only removes state files to unblock the session. Linked modes (e.g. ralph→ultrawork,
+autopilot→ralph/ultraqa) must be cleared separately by running the fallback once per mode.
+
+Replace `MODE` with the specific mode (e.g. `ralplan`, `ralph`, `ultrawork`, `ultraqa`).
+
+**WARNING:** Do NOT use this fallback for `autopilot` or `omc-teams`. Autopilot requires
+`state_write(active=false)` to preserve resume data. omc-teams requires tmux session
+cleanup that cannot be done via file deletion alone.
+
+```bash
+# Fallback: direct file removal when state_clear MCP tool is unavailable
+SESSION_ID="${CLAUDE_SESSION_ID:-${CLAUDECODE_SESSION_ID:-}}"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || { d="$PWD"; while [ "$d" != "/" ] && [ ! -d "$d/.omc" ]; do d="$(dirname "$d")"; done; echo "$d"; })"
+
+# Cross-platform SHA-256 (macOS: shasum, Linux: sha256sum)
+sha256portable() { printf '%s' "$1" | (sha256sum 2>/dev/null || shasum -a 256) | cut -c1-16; }
+
+# Resolve state directory (supports OMC_STATE_DIR centralized storage)
+if [ -n "${OMC_STATE_DIR:-}" ]; then
+  # Mirror getProjectIdentifier() from worktree-paths.ts
+  SOURCE="$(git remote get-url origin 2>/dev/null || echo "$REPO_ROOT")"
+  HASH="$(sha256portable "$SOURCE")"
+  DIR_NAME="$(basename "$REPO_ROOT" | sed 's/[^a-zA-Z0-9_-]/_/g')"
+  OMC_STATE="$OMC_STATE_DIR/${DIR_NAME}-${HASH}/state"
+  [ ! -d "$OMC_STATE" ] && { echo "ERROR: State dir not found at $OMC_STATE" >&2; exit 1; }
+elif [ "$REPO_ROOT" != "/" ] && [ -d "$REPO_ROOT/.omc" ]; then
+  OMC_STATE="$REPO_ROOT/.omc/state"
+else
+  echo "ERROR: Could not locate .omc state directory" >&2
+  exit 1
+fi
+MODE="ralplan"  # <-- replace with the target mode
+
+# Clear session-scoped state for the specific mode
+if [ -n "$SESSION_ID" ] && [ -d "$OMC_STATE/sessions/$SESSION_ID" ]; then
+  rm -f "$OMC_STATE/sessions/$SESSION_ID/${MODE}-state.json"
+  rm -f "$OMC_STATE/sessions/$SESSION_ID/${MODE}-stop-breaker.json"
+  # Write cancel signal so stop hook detects cancellation in progress
+  NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  EXPIRES_ISO="$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || python3 - <<'PY'\nfrom datetime import datetime, timedelta, timezone\nprint((datetime.now(timezone.utc) + timedelta(seconds=30)).strftime('%Y-%m-%dT%H:%M:%SZ'))\nPY\n)"
+  printf '{"active":true,"requested_at":"%s","expires_at":"%s","mode":"%s","source":"bash_fallback"}' \
+    "$NOW_ISO" "$EXPIRES_ISO" "$MODE" > "$OMC_STATE/sessions/$SESSION_ID/cancel-signal-state.json"
+fi
+
+# Clear legacy state only if no session ID (avoid clearing another session's state)
+if [ -z "$SESSION_ID" ]; then
+  rm -f "$OMC_STATE/${MODE}-state.json"
+fi
+```
+
 ## Auto-Detection
 
 `/oh-my-copilot:cancel` follows the session-aware state contract:
@@ -53,6 +117,7 @@ Active modes are still cancelled in dependency order:
 8. Team (Copilot CLI native)
 9. OMC Teams (tmux CLI workers)
 10. Plan Consensus (standalone)
+11. Self-Improve (standalone — clear state, clean orphaned worktrees, preserve iteration_state for resume, set status: "user_stopped" in .omc/self-improve/state/agent-settings.json)
 
 ## Force Clear All
 
@@ -132,18 +197,18 @@ Use force mode to clear every session plus legacy artifacts via `state_clear`. D
 
 #### If Team Active (Copilot CLI native)
 
-Teams are detected by checking for config files in `~/.copilot/teams/`:
+Teams are detected by checking for config files in `${COPILOT_CONFIG_DIR:-~/.copilot}/teams/`:
 
 ```bash
 # Check for active teams
-TEAM_CONFIGS=$(find ~/.copilot/teams -name config.json -maxdepth 2 2>/dev/null)
+TEAM_CONFIGS=$(find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/teams -name config.json -maxdepth 2 2>/dev/null)
 ```
 
 **Two-pass cancellation protocol:**
 
 **Pass 1: Graceful Shutdown**
 ```
-For each team found in ~/.copilot/teams/:
+For each team found in ${COPILOT_CONFIG_DIR:-~/.copilot}/teams/:
   1. Read config.json to get team_name and members list
   2. For each non-lead member:
      a. Send shutdown_request via SendMessage
@@ -202,7 +267,7 @@ Team "{team_name}" cancelled:
 ```
 
 **Implementation note:** The cancel skill is executed by the LLM, not as a bash script. When you detect an active team:
-1. Read `~/.copilot/teams/*/config.json` to find active teams
+1. Read `${COPILOT_CONFIG_DIR:-~/.copilot}/teams/*/config.json` to find active teams
 2. If multiple teams exist, cancel oldest first (by `createdAt`)
 3. For each non-lead member, call `SendMessage(type: "shutdown_request", recipient: member-name, content: "Cancelling")`
 4. Wait briefly for shutdown responses (15s per member timeout)
@@ -253,6 +318,11 @@ The cancel skill runs as follows:
 3. When operating in default mode, call `state_clear` with that session_id to remove only the session’s files, then run mode-specific cleanup (autopilot → ralph → …) based on the state tool signals.
 4. In force mode, iterate every active session, call `state_clear` per session, then run a global `state_clear` without `session_id` to drop legacy files (`.omg/state/*.json`, compatibility artifacts) and report success. Swarm remains a shared SQLite/marker mode outside session scoping.
 5. Team artifacts (`~/.copilot/teams/*/`, `~/.copilot/tasks/*/`, `.omg/state/team-state.json`) remain best-effort cleanup items invoked during the legacy/global pass.
+6. **Always** clear skill-active state as the final step, regardless of which mode was active or whether `--force` was used:
+   ```
+   state_clear(mode="skill-active", session_id)
+   ```
+   This ensures the stop hook does not keep firing skill-protection reinforcements after cancel due to a stale `skill-active-state.json`. See issue #2118.
 
 State tools always honor the `session_id` argument, so even force mode still clears the session-scoped paths before deleting compatibility-only legacy state.
 

@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname, sep } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { getPluginCacheBase, getCopilotConfigDir } from '../utils/paths.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
+import { getPluginCacheBase } from '../utils/paths.js';
 /**
  * HUD Windows Compatibility Tests
  *
@@ -39,7 +40,7 @@ describe('HUD Windows Compatibility', () => {
             const installerPath = join(packageRoot, 'src', 'installer', 'index.ts');
             const content = readFileSync(installerPath, 'utf-8');
             // Should have pathToFileURL import in the generated script
-            expect(content).toContain('import { pathToFileURL } from "node:url"');
+            expect(content).toContain('pathToFileURL } from "node:url"');
         });
         it('installer HUD script should use pathToFileURL for dev path import', () => {
             const installerPath = join(packageRoot, 'src', 'installer', 'index.ts');
@@ -93,6 +94,25 @@ describe('HUD Windows Compatibility', () => {
             expect(sorted).toEqual(['1.0.10', '1.0.9', '1.0.2', '1.0.1']);
         });
     });
+    describe('safeMode override (#346)', () => {
+        it('safeMode logic: explicit false overrides platform detection', () => {
+            // Simulate the logic from src/hud/index.ts
+            const resolveSafeMode = (safeMode, isWin32) => safeMode !== false && (safeMode || isWin32);
+            // explicit false: disabled even on Windows
+            expect(resolveSafeMode(false, true)).toBe(false);
+            expect(resolveSafeMode(false, false)).toBe(false);
+            // explicit true: always enabled
+            expect(resolveSafeMode(true, false)).toBe(true);
+            expect(resolveSafeMode(true, true)).toBe(true);
+            // default true on Windows: enabled
+            expect(resolveSafeMode(true, true)).toBe(true);
+        });
+        it('hud index.ts should use explicit-false override for safeMode', () => {
+            const indexPath = join(packageRoot, 'src', 'hud', 'index.ts');
+            const content = readFileSync(indexPath, 'utf-8');
+            expect(content).toContain('config.elements.safeMode !== false');
+        });
+    });
     describe('Cross-Platform Plugin Cache Path (#670)', () => {
         it('getPluginCacheBase should return path with correct segments', () => {
             const cachePath = getPluginCacheBase();
@@ -114,15 +134,15 @@ describe('HUD Windows Compatibility', () => {
             const setupPath = join(packageRoot, 'scripts', 'plugin-setup.mjs');
             const content = readFileSync(setupPath, 'utf-8');
             // Should import pathToFileURL
-            expect(content).toContain('import { pathToFileURL } from "node:url"');
+            expect(content).toContain('pathToFileURL } from "node:url"');
             // Should use pathToFileURL for the dynamic import
             expect(content).toContain('pathToFileURL(pluginPath).href');
         });
         it('plugin-setup.mjs should respect COPILOT_CONFIG_DIR for plugin cache base', () => {
             const setupPath = join(packageRoot, 'scripts', 'plugin-setup.mjs');
             const content = readFileSync(setupPath, 'utf-8');
-            // Should use COPILOT_CONFIG_DIR env var for cross-platform compat (#897)
-            expect(content).toContain('process.env.COPILOT_CONFIG_DIR');
+            // Should use getCopilotConfigDir() which reads COPILOT_CONFIG_DIR internally (#897)
+            expect(content).toContain('getCopilotConfigDir()');
             // Should use join() with configDir for path construction
             expect(content).toContain('join(configDir,');
         });

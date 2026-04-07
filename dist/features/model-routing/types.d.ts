@@ -158,7 +158,7 @@ export interface RoutingConfig {
     /**
      * Force all agents to inherit the parent model, bypassing all routing.
      * When true, routeTask returns 'inherit' model type so no model parameter
-     * is passed to Task calls.
+     * is passed to Task/Agent calls.
      */
     forceInherit?: boolean;
     /** Minimum tier to allow (e.g. disable LOW tier by setting minTier to MEDIUM) */

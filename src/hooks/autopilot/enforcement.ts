@@ -9,7 +9,7 @@
 
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { OmgPaths } from '../../lib/worktree-paths.js';
 import {
   readAutopilotState,
@@ -127,6 +127,35 @@ export function detectAnySignal(sessionId: string): AutopilotSignal | null {
 // ENFORCEMENT
 // ============================================================================
 
+const AWAITING_CONFIRMATION_TTL_MS = 2 * 60 * 1000;
+
+function isAwaitingConfirmation(state: unknown): boolean {
+  if (!state || typeof state !== 'object') {
+    return false;
+  }
+
+  const stateRecord = state as Record<string, unknown>;
+  if (stateRecord.awaiting_confirmation !== true) {
+    return false;
+  }
+
+  const setAt =
+    (typeof stateRecord.awaiting_confirmation_set_at === 'string' && stateRecord.awaiting_confirmation_set_at) ||
+    (typeof stateRecord.started_at === 'string' && stateRecord.started_at) ||
+    null;
+
+  if (!setAt) {
+    return false;
+  }
+
+  const setAtMs = new Date(setAt).getTime();
+  if (!Number.isFinite(setAtMs)) {
+    return false;
+  }
+
+  return Date.now() - setAtMs < AWAITING_CONFIRMATION_TTL_MS;
+}
+
 /**
  * Get the next phase after current phase
  */
@@ -158,6 +187,10 @@ export async function checkAutopilot(
 
   // Strict session isolation: only process state for matching session
   if (state.session_id !== sessionId) {
+    return null;
+  }
+
+  if (isAwaitingConfirmation(state)) {
     return null;
   }
 
@@ -461,7 +494,8 @@ function detectPipelineSignal(sessionId: string, signal: string): boolean {
     join(copilotDir, 'transcripts', `${sessionId}.md`),
   ];
 
-  const pattern = new RegExp(signal, 'i');
+  const escaped = signal.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(escaped, 'i');
 
   for (const transcriptPath of possiblePaths) {
     if (existsSync(transcriptPath)) {

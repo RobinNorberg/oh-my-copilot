@@ -15,6 +15,7 @@ import { fileURLToPath } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getRuntimeDir, getSessionDir, getBridgeSocketPath, getBridgeMetaPath, getBridgePortPath, getSessionLockPath } from './paths.js';
+import { isPythonSandboxEnabled } from '../../lib/security-config.js';
 import { atomicWriteJson, safeReadJson, ensureDirSync } from '../../lib/atomic-write.js';
 import { getProcessStartTime, isProcessAlive } from '../../platform/index.js';
 const execFileAsync = promisify(execFile);
@@ -298,7 +299,12 @@ export async function spawnBridgeServer(sessionId, projectDir) {
     const proc = spawn(pythonEnv.pythonPath, bridgeArgs, {
         stdio: ['ignore', 'ignore', 'pipe'],
         cwd: effectiveProjectDir,
-        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+        env: {
+            ...process.env,
+            PYTHONUNBUFFERED: '1',
+            OMC_PARENT_PID: String(process.pid),
+            ...(isPythonSandboxEnabled() ? { OMC_PYTHON_SANDBOX: '1' } : {}),
+        },
         detached: true,
     });
     proc.unref();

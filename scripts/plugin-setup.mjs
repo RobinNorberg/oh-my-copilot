@@ -5,18 +5,24 @@
  * Configures HUD statusline when plugin is installed.
  */
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, chmodSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, chmodSync, copyFileSync } from 'node:fs';
+import { execFileSync, execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const CLAUDE_DIR = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
+const CLAUDE_DIR = getCopilotConfigDir();
 const HUD_DIR = join(CLAUDE_DIR, 'hud');
+const HUD_LIB_DIR = join(HUD_DIR, 'lib');
 const SETTINGS_FILE = join(CLAUDE_DIR, 'settings.json');
+// Use the absolute node binary path so nvm/fnm users don't get
+// "node not found" errors in non-interactive shells (issue #892).
+const nodeBin = process.execPath || 'node';
 
 console.log('[OMC] Running post-install setup...');
 
@@ -24,6 +30,11 @@ console.log('[OMC] Running post-install setup...');
 if (!existsSync(HUD_DIR)) {
   mkdirSync(HUD_DIR, { recursive: true });
 }
+
+if (!existsSync(HUD_LIB_DIR)) {
+  mkdirSync(HUD_LIB_DIR, { recursive: true });
+}
+copyFileSync(join(__dirname, 'lib', 'config-dir.mjs'), join(HUD_LIB_DIR, 'config-dir.mjs'));
 
 // 2. Create HUD wrapper script
 const hudScriptPath = join(HUD_DIR, 'omc-hud.mjs').replace(/\\/g, '/');
@@ -33,10 +44,16 @@ const hudScript = `#!/usr/bin/env node
  * Wrapper that imports from plugin cache or development paths
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);
 
 // Semantic version comparison: returns negative if a < b, positive if a > b, 0 if equal
 function semverCompare(a, b) {
@@ -56,13 +73,81 @@ function semverCompare(a, b) {
   return 0;
 }
 
+function uniquePaths(paths) {
+  return [...new Set(paths.filter(Boolean).map(candidate => resolve(candidate)))];
+}
+
+function getGlobalNodeModuleRoots() {
+  const roots = [];
+  const addPrefixRoots = (prefix) => {
+    if (!prefix) return;
+    if (process.platform === 'win32') {
+      roots.push(join(prefix, 'node_modules'));
+      return;
+    }
+    roots.push(join(prefix, 'lib', 'node_modules'));
+    roots.push(join(prefix, 'node_modules'));
+  };
+
+  addPrefixRoots(process.env.npm_config_prefix);
+  addPrefixRoots(process.env.PREFIX);
+
+  const nodeBinDir = dirname(process.execPath);
+  roots.push(join(nodeBinDir, 'node_modules'));
+  roots.push(join(nodeBinDir, '..', 'node_modules'));
+  roots.push(join(nodeBinDir, '..', 'lib', 'node_modules'));
+
+  if (process.platform === 'win32' && process.env.APPDATA) {
+    roots.push(join(process.env.APPDATA, 'npm', 'node_modules'));
+  }
+
+  try {
+    const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const npmRoot = String(execFileSync(npmCommand, ['root', '-g'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 1500,
+    })).trim();
+    if (npmRoot) roots.unshift(npmRoot);
+  } catch { /* continue */ }
+
+  return uniquePaths(roots);
+}
+
+async function importHudPackage(hudPackage) {
+  try {
+    const wrapperRequire = createRequire(import.meta.url);
+    const resolvedHudPath = wrapperRequire.resolve(hudPackage);
+    await import(pathToFileURL(resolvedHudPath).href);
+    return true;
+  } catch { /* continue */ }
+
+  try {
+    const cwdRequire = createRequire(join(process.cwd(), '__omc_hud__.cjs'));
+    const resolvedHudPath = cwdRequire.resolve(hudPackage);
+    await import(pathToFileURL(resolvedHudPath).href);
+    return true;
+  } catch { /* continue */ }
+
+  for (const nodeModulesRoot of getGlobalNodeModuleRoots()) {
+    const resolvedHudPath = join(nodeModulesRoot, hudPackage);
+    if (!existsSync(resolvedHudPath)) continue;
+    try {
+      await import(pathToFileURL(resolvedHudPath).href);
+      return true;
+    } catch { /* continue */ }
+  }
+
+  return false;
+}
+
 async function main() {
   const home = homedir();
   let pluginCacheDir = null;
 
   // 1. Try plugin cache first (marketplace: omg, plugin: oh-my-copilot)
   // Respect COPILOT_CONFIG_DIR so installs under a custom config dir are found
-  const configDir = process.env.COPILOT_CONFIG_DIR || join(home, ".copilot");
+  const configDir = getCopilotConfigDir();
   const pluginCacheBase = join(configDir, "plugins", "cache", "omg", "oh-my-copilot");
   if (existsSync(pluginCacheBase)) {
     try {
@@ -91,8 +176,6 @@ async function main() {
   const devPaths = [
     join(home, "Workspace/oh-my-copilot/dist/hud/index.js"),
     join(home, "workspace/oh-my-copilot/dist/hud/index.js"),
-    join(home, "Workspace/oh-my-copilot/dist/hud/index.js"),
-    join(home, "workspace/oh-my-copilot/dist/hud/index.js"),
   ];
 
   for (const devPath of devPaths) {
@@ -113,7 +196,18 @@ async function main() {
     } catch { /* continue */ }
   }
 
-  // 4. Fallback: provide targeted repair guidance
+  // 4. npm package (current project, global install, or branded fallback)
+  const npmHudPackages = [
+    "oh-my-claude-sisyphus/dist/hud/index.js",
+    "oh-my-copilot/dist/hud/index.js",
+  ];
+  for (const hudPackage of npmHudPackages) {
+    if (await importHudPackage(hudPackage)) {
+      return;
+    }
+  }
+
+  // 5. Fallback: provide targeted repair guidance
   if (pluginCacheDir && existsSync(pluginCacheDir)) {
     const distDir = join(pluginCacheDir, "dist");
     if (!existsSync(distDir)) {
@@ -144,9 +238,6 @@ try {
     settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
   }
 
-  // Use the absolute node binary path so nvm/fnm users don't get
-  // "node not found" errors in non-interactive shells (issue #892).
-  const nodeBin = process.execPath || 'node';
   settings.statusLine = {
     type: 'command',
     command: `"${nodeBin}" "${hudScriptPath.replace(/\\/g, "/")}"`

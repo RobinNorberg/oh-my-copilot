@@ -6,7 +6,11 @@ function validateGiteaUrl(raw: string): string | null {
     const u = new URL(raw);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
     const host = u.hostname.toLowerCase();
-    if (host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local')) return null;
+    if (
+      host === 'localhost' || host === '127.0.0.1' || host === '::1' ||
+      host === '0.0.0.0' || host === '::' ||
+      host.startsWith('169.254.') || host.endsWith('.local')
+    ) return null;
     return u.origin;
   } catch {
     return null;
@@ -124,10 +128,13 @@ export class GiteaProvider implements GitProvider {
 
   private viewIssueviaRest(number: number, owner?: string, repo?: string): IssueInfo | null {
     const baseUrl = validateGiteaUrl(process.env.GITEA_URL ?? '');
+    const token = process.env.GITEA_TOKEN;
     if (!baseUrl || !owner || !repo) return null;
 
     try {
-      const args = ['-sS', `${baseUrl}/api/v1/repos/${owner}/${repo}/issues/${number}`];
+      const args = ['-sS'];
+      if (token) args.push('-H', `Authorization: token ${token}`);
+      args.push(`${baseUrl}/api/v1/repos/${owner}/${repo}/issues/${number}`);
       const raw = execFileSync('curl', args, {
         encoding: 'utf-8',
         timeout: 10000,

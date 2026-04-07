@@ -26,10 +26,10 @@ npm view oh-my-copilot version 2>/dev/null || echo "Latest: (unavailable)"
 
 ### Step 2: Check for Legacy Hooks in settings.json
 
-Read both `~/.copilot/settings.json` (profile-level) and `./.copilot/settings.json` (project-level) and check if there's a `"hooks"` key with entries like:
-- `bash $HOME/.copilot/hooks/keyword-detector.sh`
-- `bash $HOME/.copilot/hooks/persistent-mode.sh`
-- `bash $HOME/.copilot/hooks/session-start.sh`
+Read both `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json` (profile-level) and `./.copilot/settings.json` (project-level) and check if there's a `"hooks"` key with entries like:
+- `bash ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/keyword-detector.sh`
+- `bash ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.sh`
+- `bash ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/session-start.sh`
 
 **Diagnosis**:
 - If found: CRITICAL - legacy hooks causing duplicates
@@ -37,7 +37,7 @@ Read both `~/.copilot/settings.json` (profile-level) and `./.copilot/settings.js
 ### Step 3: Check for Legacy Bash Hook Scripts
 
 ```bash
-ls -la ~/.copilot/hooks/*.sh 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/*.sh 2>/dev/null
 ```
 
 **Diagnosis**:
@@ -47,14 +47,14 @@ ls -la ~/.copilot/hooks/*.sh 2>/dev/null
 
 ```bash
 # Check if copilot-instructions.md exists
-ls -la ~/.copilot/copilot-instructions.md 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-instructions.md 2>/dev/null
 
 # Check for OMC markers (<!-- OMG:START --> is the canonical marker)
-grep -q "<!-- OMG:START -->" ~/.copilot/copilot-instructions.md 2>/dev/null && echo "Has OMC config" || echo "Missing OMC config in copilot-instructions.md"
+grep -q "<!-- OMG:START -->" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-instructions.md" 2>/dev/null && echo "Has OMC config" || echo "Missing OMC config in copilot-instructions.md"
 
 # Check companion files for file-split pattern (e.g. copilot-omg.md)
-ls ~/.copilot/copilot-*.md 2>/dev/null
-for f in ~/.copilot/copilot-*.md; do
+ls "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-*.md 2>/dev/null
+for f in "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-*.md; do
   [ -f "$f" ] && grep -q "<!-- OMG:START -->" "$f" 2>/dev/null && echo "Has OMC config in companion: $f"
 done
 
@@ -85,13 +85,13 @@ Check for legacy agents, commands, and skills installed via curl (before plugin 
 
 ```bash
 # Check for legacy agents directory
-ls -la ~/.copilot/agents/ 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/agents/ 2>/dev/null
 
 # Check for legacy commands directory
-ls -la ~/.copilot/commands/ 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands/ 2>/dev/null
 
 # Check for legacy skills directory
-ls -la ~/.copilot/skills/ 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/skills/ 2>/dev/null
 ```
 
 **Diagnosis**:
@@ -104,10 +104,43 @@ ls -la ~/.copilot/skills/ 2>/dev/null
 `architect.md`, `document-specialist.md`, `explore.md`, `executor.md`, `debugger.md`, `planner.md`, `analyst.md`, `critic.md`, `verifier.md`, `test-engineer.md`, `designer.md`, `writer.md`, `qa-tester.md`, `scientist.md`, `security-reviewer.md`, `code-reviewer.md`, `git-master.md`, `code-simplifier.md`
 
 **Known plugin skill names** (check skills/ for these):
-`ai-slop-cleaner`, `ask`, `autopilot`, `cancel`, `ccg`, `configure-notifications`, `deep-interview`, `deepinit`, `external-context`, `hud`, `learner`, `mcp-setup`, `omc-doctor`, `omc-setup`, `omc-teams`, `plan`, `project-session-manager`, `ralph`, `ralplan`, `release`, `sciomc`, `setup`, `skill`, `team`, `ultraqa`, `ultrawork`, `writer-memory`
+`ai-slop-cleaner`, `ask`, `autopilot`, `cancel`, `ccg`, `configure-notifications`, `deep-interview`, `deepinit`, `external-context`, `hud`, `learner`, `mcp-setup`, `omc-doctor`, `omc-setup`, `omc-teams`, `plan`, `project-session-manager`, `ralph`, `ralplan`, `release`, `sciomc`, `setup`, `skill`, `team`, `ultraqa`, `ultrawork`, `visual-verdict`, `writer-memory`
 
 **Known plugin command names** (check commands/ for these):
 `ultrawork.md`, `deepsearch.md`
+
+### Step 7: Check Permission Allowlist
+
+Read `~/.copilot/settings.local.json` (respecting `COPILOT_CONFIG_DIR`) and verify `permissions.allow` contains the expected Tier 1+2 tools:
+
+```bash
+node -e "
+const p=require('path'),f=require('fs'),h=require('os').homedir();
+const d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.copilot');
+const fp=p.join(d,'settings.local.json');
+if(!f.existsSync(fp)){console.log('settings.local.json not found');process.exit()}
+try{
+  const s=JSON.parse(f.readFileSync(fp,'utf-8'));
+  const allow=s?.permissions?.allow;
+  if(!Array.isArray(allow)){console.log('permissions.allow missing or not an array');process.exit()}
+  const tier12=['lsp_hover','lsp_goto_definition','lsp_find_references','lsp_document_symbols',
+    'lsp_workspace_symbols','lsp_diagnostics','lsp_diagnostics_directory','lsp_servers',
+    'ast_grep_search','notepad_read','notepad_stats','state_read','state_list_active',
+    'state_get_status','project_memory_read','notepad_write_priority','notepad_write_working',
+    'notepad_write_manual','notepad_prune','state_write','state_clear','project_memory_write',
+    'project_memory_add_note','project_memory_add_directive','ast_grep_replace',
+    'lsp_prepare_rename','lsp_rename','lsp_code_actions','lsp_code_action_resolve','python_repl'];
+  const missing=tier12.filter(t=>!allow.some(e=>e.includes(t)));
+  if(missing.length===0){console.log('All Tier 1+2 tools present ('+allow.length+' entries)')}
+  else{console.log('Missing tools: '+missing.join(', '))}
+}catch(e){console.log('Parse error: '+e.message)}
+"
+```
+
+**Diagnosis**:
+- If `settings.local.json` not found: WARN - permissions not configured (run `/omc-setup`)
+- If `permissions.allow` missing: WARN - allowlist not written (run `/omc-setup`)
+- If tools missing: WARN - allowlist incomplete; `setup-maintenance` will auto-heal on next session start, or run `/omc-setup` to fix immediately
 
 ---
 
@@ -133,6 +166,7 @@ After running all checks, output a report:
 | Legacy Agents (~/.copilot/agents/) | OK/WARN | ... |
 | Legacy Commands (~/.copilot/commands/) | OK/WARN | ... |
 | Legacy Skills (~/.copilot/skills/) | OK/WARN | ... |
+| Permission Allowlist (settings.local.json) | OK/WARN | ... |
 
 ### Issues Found
 1. [Issue description]
@@ -151,14 +185,14 @@ If issues found, ask user: "Would you like me to fix these issues automatically?
 If yes, apply fixes:
 
 ### Fix: Legacy Hooks in settings.json
-Remove the `"hooks"` section from `~/.copilot/settings.json` (keep other settings intact)
+Remove the `"hooks"` section from `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json` (keep other settings intact)
 
 ### Fix: Legacy Bash Scripts
 ```bash
-rm -f ~/.copilot/hooks/keyword-detector.sh
-rm -f ~/.copilot/hooks/persistent-mode.sh
-rm -f ~/.copilot/hooks/session-start.sh
-rm -f ~/.copilot/hooks/stop-continuation.sh
+rm -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/keyword-detector.sh
+rm -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/persistent-mode.sh
+rm -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/session-start.sh
+rm -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/stop-continuation.sh
 ```
 
 ### Fix: Outdated Plugin
@@ -174,7 +208,7 @@ node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=pro
 ```
 
 ### Fix: Missing/Outdated copilot-instructions.md
-Fetch latest from GitHub and write to `~/.copilot/copilot-instructions.md`:
+Fetch latest from GitHub and write to `${COPILOT_CONFIG_DIR:-~/.copilot}/copilot-instructions.md`:
 ```
 WebFetch(url: "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md", prompt: "Return the complete raw markdown content exactly as-is")
 ```
@@ -185,14 +219,14 @@ Remove legacy agents, commands, and skills directories (now provided by plugin):
 
 ```bash
 # Backup first (optional - ask user)
-# mv ~/.copilot/agents ~/.copilot/agents.bak
-# mv ~/.copilot/commands ~/.copilot/commands.bak
-# mv ~/.copilot/skills ~/.copilot/skills.bak
+# mv "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/agents "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/agents.bak
+# mv "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands.bak
+# mv "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/skills "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/skills.bak
 
 # Or remove directly
-rm -rf ~/.copilot/agents
-rm -rf ~/.copilot/commands
-rm -rf ~/.copilot/skills
+rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/agents
+rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands
+rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/skills
 ```
 
 **Note**: Only remove if these contain oh-my-copilot-related files. If user has custom agents/commands/skills, warn them and ask before removing.

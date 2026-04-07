@@ -9,10 +9,10 @@
 
 
 <h1 align="center">Turbocharge your Copilot CLI with multi-agent orchestration.</h1>
-<p align="center">    
+<p align="center">
   <img src="assets/omc-character.png" alt="oh-my-copilot" width="400" />
   </br>
-  <strong><i>Your Copilot has just been steroided.</i></strong>
+  <strong><i>Your Copilot has been working out, learning new ways to improve your life.</i></strong>
 </p>
 
 ---
@@ -57,11 +57,11 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 - **Zero configuration required** — works out of the box with intelligent defaults
 - **Team-first orchestration** — staged pipeline with plan, PRD, exec, verify, and fix loop
 - **Natural language interface** — no commands to memorize, just describe what you want
-- **Automatic parallelization** — complex tasks distributed across 18 specialized agents
+- **Automatic parallelization** — complex tasks distributed across our specialized agents
 - **Persistent execution** — won't give up until the job is verified complete
-- **Smart model routing** — Haiku for simple tasks, Opus for complex reasoning (30–50% token savings)
-- **Azure DevOps native** — auto-detection, work item management, PR operations, triage workflows
-
+- **Smart model routing** — Haiku for simple tasks, Sonnet for average and Opus for complex reasoning (30–50% token savings)
+- **Azure DevOps/GitHub native** — auto-detection, work item management, PR operations, triage workflows
+- **Stop your yolo abuse** — using a layered permission model to help your agents perform safe work without your interference
 ---
 
 ## Team Mode
@@ -82,14 +82,6 @@ omc team 2:gemini "redesign UI components for accessibility"
 ```
 
 [Full Team Mode docs →](docs/guides/team-mode.md)
-
----
-
-## Azure DevOps
-
-When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, and `/oh-my-copilot:omc-ado-triage` for a parallel scan of work items, PRs, pipelines, and security alerts.
-
-[Full Azure DevOps docs →](docs/guides/azure-devops.md)
 
 ---
 
@@ -121,14 +113,22 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ralph` | ![execution](https://img.shields.io/badge/execution-green) | Persistence mode | `ralph: refactor auth` |
 | `ralphthon` | ![execution](https://img.shields.io/badge/execution-green) | Autonomous hackathon mode | `ralphthon: build MVP in 2 hours` |
 | `ulw` | ![execution](https://img.shields.io/badge/execution-green) | Maximum parallelism | `ulw fix all errors` |
+| `gh setup` | ![github](https://img.shields.io/badge/github-blue) | Configure GitHub integration | `gh setup` |
+| `gh triage` | ![github](https://img.shields.io/badge/github-blue) | GitHub issue/PR/CI triage | `gh triage` |
+| `gh review` | ![github](https://img.shields.io/badge/github-blue) | Interactive GitHub PR review | `gh review` |
+| `gh auto-review` | ![github](https://img.shields.io/badge/github-blue) | Automated code review via code-reviewer agent | `gh auto-review` |
+| `gh project` | ![github](https://img.shields.io/badge/github-blue) | Manage GitHub Projects (v2) boards | `gh project` |
 | `ado setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure Azure DevOps integration | `ado setup` |
 | `ado triage` | ![devops](https://img.shields.io/badge/devops-gray) | Azure DevOps work item triage | `ado triage` |
+| `ado review` | ![devops](https://img.shields.io/badge/devops-gray) | Interactive Azure DevOps PR review | `ado review` |
+| `ado auto-review` | ![devops](https://img.shields.io/badge/devops-gray) | Automated code review via code-reviewer agent | `ado auto-review` |
+| `ado sprint` | ![devops](https://img.shields.io/badge/devops-gray) | Sprint planning and iteration management | `ado sprint` |
 | `cancelomc`, `stopomc` | ![control](https://img.shields.io/badge/control-gray) | Stop active OMC modes | `stopomc` |
 
 **Notes:**
 
 - **ralph includes ultrawork**: when you activate ralph mode, it automatically includes ultrawork's parallel execution.
-- **Informational filtering**: Asking "what is ralph?" or "explain ultrawork" won't trigger execution — only actionable uses activate keywords. Supports English, Korean, Japanese, and Chinese.
+- **Informational filtering**: Asking "what is ralph?" or "explain ultrawork" won't trigger execution — only actionable uses activate keywords.
 
 ---
 
@@ -138,15 +138,44 @@ Optional shortcuts for power users. Natural language works fine without them.
 - [Quick Start](docs/get-started/quickstart.md)
 - [Full Reference](docs/REFERENCE.md)
 - [Team Mode](docs/guides/team-mode.md)
+- [GitHub Integration](docs/guides/github.md)
 - [Azure DevOps Integration](docs/guides/azure-devops.md)
 - [Architecture Overview](docs/architecture/overview.md)
-- [Migration Guide](docs/migration/breaking-changes.md)
+- [Permission Architecture](docs/architecture/permissions.md)
+
+---
+
+## Platform Integration
+
+### GitHub
+
+When your git remote points to `github.com`, OMC auto-detects GitHub. Run `/oh-my-copilot:omc-gh-setup` to configure, then use:
+
+- `/oh-my-copilot:omc-gh-triage` — scan open issues, PRs, failing CI, and Dependabot alerts
+- `/oh-my-copilot:omc-gh-review` — interactive PR review with inline comments
+- `/oh-my-copilot:omc-gh-auto-review` — automated code review via code-reviewer agent
+- `/oh-my-copilot:omc-gh-project` — manage GitHub Projects (v2) boards
+
+### Azure DevOps
+
+When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, then use:
+
+- `/oh-my-copilot:omc-ado-triage` — parallel scan of work items, PRs, pipelines, and security alerts
+- `/oh-my-copilot:omc-ado-review` — interactive PR review with inline comments
+- `/oh-my-copilot:omc-ado-auto-review` — automated code review via code-reviewer agent
+- `/oh-my-copilot:omc-ado-sprint` — sprint planning and work item management
+
+[GitHub guide →](docs/guides/github.md) | [Azure DevOps guide →](docs/guides/azure-devops.md)
 
 ---
 
 ## Requirements
 
 - [Copilot CLI](https://docs.github.com/copilot-cli)
+
+---
+
+## Optional enhancements
 
 ### Platform & tmux
 
@@ -158,7 +187,7 @@ OMC features like `omc team` and rate-limit detection require **tmux**:
 | Ubuntu/Debian  | tmux                                                   | `sudo apt install tmux` |
 | Fedora         | tmux                                                   | `sudo dnf install tmux` |
 | Arch           | tmux                                                   | `sudo pacman -S tmux`   |
-| Windows        | [psmux](https://github.com/marlocarlo/psmux) (native) | `winget install psmux`  |
+| Windows        | [psmux](https://github.com/marlocarlo/psmux) (native)  | `winget install psmux`  |
 | Windows (WSL2) | tmux (inside WSL)                                      | `sudo apt install tmux` |
 
 > **Windows users:** [psmux](https://github.com/marlocarlo/psmux) provides a native `tmux` binary for Windows with 76 tmux-compatible commands. No WSL required.
@@ -180,9 +209,7 @@ omc team 2:codex "security analysis"
 omc team 2:gemini "UI consistency check"
 omc team 1:copilot "review existing tests"
 ```
-
 Only Copilot CLI is required — the others are optional and add cross-provider validation.
-
 ---
 
 ## License
@@ -193,8 +220,6 @@ MIT
 
 <div align="center">
 
-**Inspired by:** [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) • [copilot-hud](https://github.com/ryanjoachim/copilot-hud) • [Superpowers](https://github.com/obra/superpowers) • [everything-copilot-cli](https://github.com/affaan-m/everything-copilot-cli) • [Ouroboros](https://github.com/Q00/ouroboros)
-
-**Zero learning curve. Maximum power.**
+**Inspired by:** • [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode), [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) • [Superpowers](https://github.com/obra/superpowers) • [get-shit-done](https://github.com/gsd-build/get-shit-done) • [Ouroboros](https://github.com/Q00/ouroboros) • [BMAD](https://github.com/bmad-code-org/BMAD-METHOD)
 
 </div>

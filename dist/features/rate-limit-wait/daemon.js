@@ -17,6 +17,7 @@ import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { spawn } from 'child_process';
 import { resolveDaemonModulePath } from '../../utils/daemon-module-path.js';
+import { isProcessAlive } from '../../platform/index.js';
 import { checkRateLimitStatus, formatRateLimitStatus, isRateLimitStatusDegraded, shouldMonitorBlockedPanes, } from './rate-limit-monitor.js';
 import { isTmuxAvailable, scanForBlockedPanes, sendResumeSequence, formatBlockedPanesSummary, } from './tmux-detector.js';
 // ESM compatibility: __filename is not available in ES modules
@@ -26,9 +27,9 @@ const DEFAULT_CONFIG = {
     pollIntervalMs: 60 * 1000, // 1 minute
     paneLinesToCapture: 15,
     verbose: false,
-    stateFilePath: join(homedir(), '.omg', 'state', 'rate-limit-daemon.json'),
-    pidFilePath: join(homedir(), '.omg', 'state', 'rate-limit-daemon.pid'),
-    logFilePath: join(homedir(), '.omg', 'state', 'rate-limit-daemon.log'),
+    stateFilePath: join(homedir(), '.omg', 'rate-limit-daemon.json'),
+    pidFilePath: join(homedir(), '.omg', 'rate-limit-daemon.pid'),
+    logFilePath: join(homedir(), '.omg', 'rate-limit-daemon.log'),
 };
 /** Maximum log file size before rotation (1MB) */
 const MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
@@ -54,7 +55,7 @@ const DAEMON_ENV_ALLOWLIST = [
     // Shell
     'SHELL',
     // Node.js
-    'NODE_ENV',
+    'NODE_ENV', 'NODE_EXTRA_CA_CERTS',
     // Proxy settings
     'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy',
     // Windows system
@@ -203,19 +204,6 @@ function removePidFile(config) {
     }
 }
 /**
- * Check if a process is running
- */
-function isProcessRunning(pid) {
-    try {
-        // Signal 0 doesn't actually send a signal, just checks if process exists
-        process.kill(pid, 0);
-        return true;
-    }
-    catch {
-        return false;
-    }
-}
-/**
  * Check if daemon is currently running
  */
 export function isDaemonRunning(config) {
@@ -224,7 +212,7 @@ export function isDaemonRunning(config) {
     if (pid === null) {
         return false;
     }
-    if (!isProcessRunning(pid)) {
+    if (!isProcessAlive(pid)) {
         // Stale PID file, clean up
         removePidFile(cfg);
         return false;
@@ -504,7 +492,7 @@ export function stopDaemon(config) {
             message: 'Daemon is not running',
         };
     }
-    if (!isProcessRunning(pid)) {
+    if (!isProcessAlive(pid)) {
         removePidFile(cfg);
         return {
             success: true,
@@ -648,10 +636,11 @@ export { pollLoop };
 export async function pollLoopWithConfigFile(configPath) {
     const configContent = readFileSync(configPath, 'utf-8');
     const config = JSON.parse(configContent);
-    // Restore Date objects from JSON
-    if (config.stateFilePath) {
-        // Config is valid, proceed with poll loop
+    // Clean up the temp config file now that we've read it
+    try {
+        unlinkSync(configPath);
     }
+    catch { /* ignore cleanup errors */ }
     await pollLoop(config);
 }
 //# sourceMappingURL=daemon.js.map

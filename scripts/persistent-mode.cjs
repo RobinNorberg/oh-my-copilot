@@ -15,9 +15,14 @@ const {
   readdirSync,
   mkdirSync,
   unlinkSync,
+  openSync,
+  readSync,
+  closeSync,
+  renameSync,
+  statSync,
 } = require("fs");
 const { join, dirname, resolve, normalize } = require("path");
-const { homedir } = require("os");
+const { getCopilotConfigDir } = require("./lib/config-dir.cjs");
 
 async function readStdin(timeoutMs = 2000) {
   return new Promise((resolve) => {
@@ -49,7 +54,9 @@ function writeJsonFile(path, data) {
     if (dir && dir !== "." && !existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    writeFileSync(path, JSON.stringify(data, null, 2));
+    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`;
+    writeFileSync(tmp, JSON.stringify(data, null, 2));
+    renameSync(tmp, path);
     return true;
   } catch {
     return false;
@@ -199,6 +206,34 @@ function getSafeReinforcementCount(value) {
     : 0;
 }
 
+function shouldWriteStateBack(path) {
+  return Boolean(path && existsSync(path));
+}
+
+const AWAITING_CONFIRMATION_TTL_MS = 2 * 60 * 1000;
+
+function isAwaitingConfirmation(state) {
+  if (!state || state.awaiting_confirmation !== true) {
+    return false;
+  }
+
+  const setAt =
+    state.awaiting_confirmation_set_at ||
+    state.started_at ||
+    null;
+
+  if (!setAt) {
+    return false;
+  }
+
+  const setAtMs = new Date(setAt).getTime();
+  if (!Number.isFinite(setAtMs)) {
+    return false;
+  }
+
+  return Date.now() - setAtMs < AWAITING_CONFIRMATION_TTL_MS;
+}
+
 // ---------------------------------------------------------------------------
 // Stop Breaker helpers (shared by team pipeline and ralplan)
 // ---------------------------------------------------------------------------
@@ -248,30 +283,41 @@ function writeStopBreaker(stateDir, name, count, sessionId) {
  */
 function isSessionCancelInProgress(stateDir, sessionId) {
   const CANCEL_SIGNAL_TTL_MS = 30000; // 30 seconds
+  const isActiveSignal = (signalPath) => {
+    const signal = readJsonFile(signalPath);
+    if (!signal) {
+      return false;
+    }
+
+    const now = Date.now();
+    const expiresAt = signal.expires_at ? new Date(signal.expires_at).getTime() : NaN;
+    const requestedAt = signal.requested_at ? new Date(signal.requested_at).getTime() : NaN;
+    const fallbackExpiry = Number.isFinite(requestedAt) ? requestedAt + CANCEL_SIGNAL_TTL_MS : NaN;
+    const effectiveExpiry = Number.isFinite(expiresAt) ? expiresAt : fallbackExpiry;
+
+    if (Number.isFinite(effectiveExpiry) && effectiveExpiry > now) {
+      return true;
+    }
+
+    if (existsSync(signalPath)) {
+      try {
+        unlinkSync(signalPath);
+      } catch {}
+    }
+    return false;
+  };
 
   // Try session-scoped path first
   if (sessionId) {
     const sessionSignalPath = join(stateDir, 'sessions', sessionId, 'cancel-signal-state.json');
-    const signal = readJsonFile(sessionSignalPath);
-    if (signal && signal.expires_at) {
-      const expiresAt = new Date(signal.expires_at).getTime();
-      if (Date.now() < expiresAt) {
-        return true;
-      }
+    if (isActiveSignal(sessionSignalPath)) {
+      return true;
     }
   }
 
   // Fall back to legacy path
   const legacySignalPath = join(stateDir, 'cancel-signal-state.json');
-  const signal = readJsonFile(legacySignalPath);
-  if (signal && signal.expires_at) {
-    const expiresAt = new Date(signal.expires_at).getTime();
-    if (Date.now() < expiresAt) {
-      return true;
-    }
-  }
-
-  return false;
+  return isActiveSignal(legacySignalPath);
 }
 
 /**
@@ -358,7 +404,7 @@ function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
-  const cfgDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), ".copilot");
+  const cfgDir = getCopilotConfigDir();
   const taskDir = join(cfgDir, "tasks", sessionId);
   if (!existsSync(taskDir)) return 0;
 
@@ -392,8 +438,7 @@ function countIncompleteTodos(sessionId, projectDir) {
     /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)
   ) {
     const sessionTodoPath = join(
-      homedir(),
-      ".copilot",
+      getCopilotConfigDir(),
       "todos",
       `${sessionId}.json`,
     );
@@ -623,13 +668,17 @@ async function main() {
 
     // Priority 1: Ralph Loop (explicit persistence mode)
     // Skip if state is stale (older than 2 hours) - prevents blocking new sessions
-    if (ralph.state?.active && !isStaleState(ralph.state) && isSessionMatch(ralph.state, sessionId)) {
+    if (ralph.state?.active && !isAwaitingConfirmation(ralph.state) && !isStaleState(ralph.state) && isSessionMatch(ralph.state, sessionId)) {
       const iteration = ralph.state.iteration || 1;
       const maxIter = ralph.state.max_iterations || 100;
 
       if (iteration < maxIter) {
         ralph.state.iteration = iteration + 1;
         ralph.state.last_checked_at = new Date().toISOString();
+        if (!shouldWriteStateBack(ralph.path)) {
+          console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+          return;
+        }
         writeJsonFile(ralph.path, ralph.state);
 
         // Fire-and-forget notification
@@ -644,10 +693,23 @@ async function main() {
         );
         return;
       }
+
+      // Do not silently stop Ralph once it hits max iterations; extend and keep going.
+      ralph.state.max_iterations = maxIter + 10;
+      ralph.state.iteration = maxIter + 1;
+      ralph.state.last_checked_at = new Date().toISOString();
+      if (!shouldWriteStateBack(ralph.path)) {
+        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+        return;
+      }
+      writeJsonFile(ralph.path, ralph.state);
+      const extendReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`;
+      console.log(JSON.stringify({ decision: "block", reason: extendReason }));
+      return;
     }
 
     // Priority 2: Autopilot (high-level orchestration)
-    if (autopilot.state?.active && !isStaleState(autopilot.state) && isSessionMatch(autopilot.state, sessionId)) {
+    if (autopilot.state?.active && !isAwaitingConfirmation(autopilot.state) && !isStaleState(autopilot.state) && isSessionMatch(autopilot.state, sessionId)) {
       const phase = autopilot.state.phase || "unknown";
       if (phase !== "complete") {
         const newCount = (autopilot.state.reinforcement_count || 0) + 1;
@@ -736,7 +798,7 @@ async function main() {
     }
 
     // Priority 2.6: Ralplan (standalone consensus planning — first-class enforcement)
-    if (ralplan.state?.active && !isStaleState(ralplan.state) && isSessionMatch(ralplan.state, sessionId)) {
+    if (ralplan.state?.active && !isAwaitingConfirmation(ralplan.state) && !isStaleState(ralplan.state) && isSessionMatch(ralplan.state, sessionId)) {
       // Terminal phase detection
       const currentPhase = ralplan.state.current_phase;
       let ralplanTerminal = false;
@@ -927,7 +989,7 @@ async function main() {
     // Session isolation: only block if state belongs to this session (issue #311)
     // Project isolation: only block if state belongs to this project
     if (
-      ultrawork.state?.active &&
+      ultrawork.state?.active && !isAwaitingConfirmation(ultrawork.state) &&
       !isStaleState(ultrawork.state) &&
       isSessionMatch(ultrawork.state, sessionId) &&
       isStateForCurrentProject(ultrawork.state, directory, ultrawork.isGlobal)

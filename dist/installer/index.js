@@ -12,10 +12,11 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
-import { isWindows, MIN_NODE_VERSION } from './hooks.js';
+import { isWindows, MIN_NODE_VERSION, } from './hooks.js';
 import { getRuntimePackageVersion } from '../lib/version.js';
 import { getConfigDir } from '../utils/config-dir.js';
 import { resolveNodeBinary } from '../utils/resolve-node.js';
+import { generatePermissionAllowList } from './permissions.js';
 /** Copilot CLI configuration directory */
 export const COPILOT_CONFIG_DIR = getConfigDir();
 export const AGENTS_DIR = join(COPILOT_CONFIG_DIR, 'agents');
@@ -34,6 +35,24 @@ export const CORE_COMMANDS = [];
 /** Current version */
 export const VERSION = getRuntimePackageVersion();
 const OMC_VERSION_MARKER_PATTERN = /<!-- OMC:VERSION:([^\s]+) -->/;
+const CC_NATIVE_COMMANDS = new Set([
+    'review',
+    'plan',
+    'security-review',
+    'init',
+    'doctor',
+    'help',
+    'config',
+    'clear',
+    'compact',
+    'memory',
+]);
+const SKININTHEGAMEBROS_ONLY_SKILLS = new Set([
+    'remember',
+    'verify',
+    'debug',
+    'skillify',
+]);
 /**
  * Detects the newest installed OMC version from persistent metadata or
  * existing copilot-instructions.md markers so an older CLI package cannot overwrite a
@@ -125,6 +144,31 @@ function findLineAnchoredMarker(content, marker, fromEnd = false) {
 function escapeRegex(value) {
     return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+function normalizePath(value) {
+    return value.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+function isDefaultClaudeConfigDirPath(configDir) {
+    return normalizePath(configDir) === normalizePath(join(homedir(), '.claude'));
+}
+function quoteShellArg(value) {
+    return `"${value.replace(/"/g, '\\"')}"`;
+}
+function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath) {
+    if (isWindows()) {
+        return `${quoteShellArg(nodeBin)} ${quoteShellArg(hudScriptPath)}`;
+    }
+    if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
+        if (findNodePath) {
+            return 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omc-hud.mjs';
+        }
+        return 'node $HOME/.claude/hud/omc-hud.mjs';
+    }
+    const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
+    if (findNodePath) {
+        return `sh ${quoteShellArg(findNodePath.replace(/\\/g, '/'))} ${quoteShellArg(normalizedHudScriptPath)}`;
+    }
+    return `node ${quoteShellArg(normalizedHudScriptPath)}`;
+}
 function createLineAnchoredMarkerRegex(marker, flags = 'gm') {
     return new RegExp(`^${escapeRegex(marker)}$`, flags);
 }
@@ -197,6 +241,7 @@ const OMC_HOOK_FILENAMES = new Set([
     'post-tool-use.mjs',
     'post-tool-use-failure.mjs',
     'persistent-mode.mjs',
+    'code-simplifier.mjs',
     'stop-continuation.mjs',
 ]);
 /**
@@ -219,10 +264,11 @@ export function isOmcHook(command) {
     if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
         return true;
     }
-    // Check for known OMC hook filenames in .copilot/hooks/ path.
-    // Handles both Unix (.copilot/hooks/) and Windows (.copilot\hooks\) paths.
-    const hookPathMatch = lowerCommand.match(/\.copilot[/\\]hooks[/\\]([a-z0-9-]+\.mjs)/);
-    if (hookPathMatch && OMC_HOOK_FILENAMES.has(hookPathMatch[1])) {
+    // Check for known OMC hook filenames in hooks/ path.
+    // Handles both Unix and Windows paths, and any config dir prefix.
+    const containsHooksDir = /hooks[/\\]/.test(lowerCommand);
+    const hookFilenameMatch = lowerCommand.match(/([a-z0-9-]+\.mjs)(?:$|["'\s])/);
+    if (containsHooksDir && hookFilenameMatch && OMC_HOOK_FILENAMES.has(hookFilenameMatch[1])) {
         return true;
     }
     return false;
@@ -293,6 +339,53 @@ export function isProjectScopedPlugin() {
     const normalizedGlobalBase = globalPluginBase.replace(/\\/g, '/').replace(/\/$/, '');
     return !normalizedPluginRoot.startsWith(normalizedGlobalBase);
 }
+export function getInstalledOmcPluginRoots() {
+    const pluginRoots = new Set();
+    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT?.trim();
+    if (pluginRoot) {
+        pluginRoots.add(pluginRoot);
+    }
+    const installedPluginsPath = join(COPILOT_CONFIG_DIR, 'plugins', 'installed_plugins.json');
+    if (!existsSync(installedPluginsPath)) {
+        return Array.from(pluginRoots);
+    }
+    try {
+        const raw = JSON.parse(readFileSync(installedPluginsPath, 'utf-8'));
+        const plugins = raw.plugins ?? raw;
+        for (const [pluginId, entries] of Object.entries(plugins)) {
+            if (!pluginId.toLowerCase().includes('oh-my-copilot') || !Array.isArray(entries)) {
+                continue;
+            }
+            for (const entry of entries) {
+                if (typeof entry?.installPath === 'string' && entry.installPath.trim().length > 0) {
+                    pluginRoots.add(entry.installPath.trim());
+                }
+            }
+        }
+    }
+    catch {
+        // Ignore unreadable plugin registry and fall back to env-based detection.
+    }
+    return Array.from(pluginRoots);
+}
+function directoryHasMarkdownFiles(dir) {
+    try {
+        if (!existsSync(dir))
+            return false;
+        const entries = readdirSync(dir);
+        return entries.some(e => e.endsWith('.md'));
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Detect whether an installed Copilot CLI plugin already provides OMC agent
+ * markdown files, so the legacy ~/.copilot/agents copy can be skipped.
+ */
+export function hasPluginProvidedAgentFiles() {
+    return getInstalledOmcPluginRoots().some(pluginRoot => directoryHasMarkdownFiles(join(pluginRoot, 'agents')));
+}
 /**
  * Get the package root directory.
  * Works for both ESM (dist/installer/) and CJS bundles (bridge/).
@@ -355,9 +448,19 @@ function loadCommandDefinitions() {
     }
     return definitions;
 }
+export function getRuntimePackageRoot() {
+    return getPackageDir();
+}
 /**
  * Load copilot-instructions.md content from /docs/copilot-instructions.md
  */
+function loadBundledSkillContent(skillName) {
+    const skillPath = join(getPackageDir(), 'skills', skillName, 'SKILL.md');
+    if (!existsSync(skillPath)) {
+        return null;
+    }
+    return readFileSync(skillPath, 'utf-8');
+}
 function loadClaudeMdContent() {
     const claudeMdPath = join(getPackageDir(), 'docs', 'copilot-instructions.md');
     if (!existsSync(claudeMdPath)) {
@@ -461,7 +564,13 @@ export function mergeClaudeMd(existingContent, omcContent, version) {
     // Case 2: Corrupted markers (unmatched markers remain after removing complete blocks)
     if (hasResidualStartMarker || hasResidualEndMarker) {
         // Handle corrupted state - backup will be created by caller
-        return `${START_MARKER}\n${versionMarker}${cleanOmcContent}\n${END_MARKER}\n\n<!-- User customizations (recovered from corrupted markers) -->\n${existingContent}`;
+        // Strip unmatched OMC markers from recovered content to prevent unbounded
+        // growth on repeated calls (each call would re-detect corruption and append again)
+        const recoveredContent = strippedExistingContent
+            .replace(markerStartRegex, '')
+            .replace(markerEndRegex, '')
+            .trim();
+        return `${START_MARKER}\n${versionMarker}${cleanOmcContent}\n${END_MARKER}\n\n<!-- User customizations (recovered from corrupted markers) -->\n${recoveredContent}`;
     }
     const preservedUserContent = trimClaudeUserContent(stripGeneratedUserCustomizationHeaders(strippedExistingContent));
     if (!preservedUserContent) {
@@ -603,6 +712,22 @@ export function install(options = {}) {
             }
             // NOTE: SKILL_DEFINITIONS removed - skills now only installed via COMMAND_DEFINITIONS
             // to avoid duplicate entries in Copilot CLI's available skills list
+            const omcReferenceSkillContent = loadBundledSkillContent('omc-reference');
+            if (omcReferenceSkillContent) {
+                const omcReferenceDir = join(SKILLS_DIR, 'omc-reference');
+                const omcReferencePath = join(omcReferenceDir, 'SKILL.md');
+                if (!existsSync(omcReferenceDir)) {
+                    mkdirSync(omcReferenceDir, { recursive: true });
+                }
+                if (existsSync(omcReferencePath) && !options.force) {
+                    log('  Skipping omc-reference/SKILL.md (already exists)');
+                }
+                else {
+                    writeFileSync(omcReferencePath, omcReferenceSkillContent);
+                    result.installedSkills.push('omc-reference/SKILL.md');
+                    log('  Installed omc-reference/SKILL.md');
+                }
+            }
             // Install copilot-instructions.md with merge support
             const claudeMdPath = join(COPILOT_CONFIG_DIR, 'copilot-instructions.md');
             const homeMdPath = join(homedir(), 'copilot-instructions.md');
@@ -890,6 +1015,24 @@ export function install(options = {}) {
                 // 4. Single atomic write
                 writeFileSync(SETTINGS_FILE, JSON.stringify(existingSettings, null, 2));
                 log('  settings.json updated');
+                // 5. Write permissions.allow to settings.local.json
+                try {
+                    const localSettingsFile = join(COPILOT_CONFIG_DIR, 'settings.local.json');
+                    let localSettings = {};
+                    if (existsSync(localSettingsFile)) {
+                        localSettings = JSON.parse(readFileSync(localSettingsFile, 'utf-8'));
+                    }
+                    const existing = localSettings.permissions;
+                    localSettings.permissions = {
+                        ...existing,
+                        allow: generatePermissionAllowList(),
+                    };
+                    writeFileSync(localSettingsFile, JSON.stringify(localSettings, null, 2));
+                    log('  settings.local.json permissions.allow updated');
+                }
+                catch {
+                    log('  Warning: Could not configure settings.local.json permissions (non-fatal)');
+                }
             }
             catch (_e) {
                 log('  Warning: Could not configure settings.json (non-fatal)');

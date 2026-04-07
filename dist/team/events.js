@@ -12,6 +12,7 @@ import { dirname } from 'path';
 import { mkdir, readFile, appendFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { TeamPaths, absPath } from './state-paths.js';
+import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 /**
  * Append a team event to the JSONL event log.
  * Thread-safe via atomic append (O_WRONLY|O_APPEND|O_CREAT).
@@ -66,6 +67,7 @@ export async function readTeamEventsByType(teamName, eventType, cwd) {
 export async function emitMonitorDerivedEvents(teamName, tasks, workers, previousSnapshot, cwd) {
     if (!previousSnapshot)
         return;
+    const logDerivedEventFailure = createSwallowedErrorLogger('team.events.emitMonitorDerivedEvents appendTeamEvent failed');
     const completedEventTaskIds = { ...(previousSnapshot.completedEventTaskIds ?? {}) };
     // Detect task status transitions
     for (const task of tasks) {
@@ -78,7 +80,7 @@ export async function emitMonitorDerivedEvents(teamName, tasks, workers, previou
                 worker: 'leader-fixed',
                 task_id: task.id,
                 reason: `status_transition:${prevStatus}->${task.status}`,
-            }, cwd).catch(() => { });
+            }, cwd).catch(logDerivedEventFailure);
             completedEventTaskIds[task.id] = true;
         }
         else if (task.status === 'failed') {
@@ -87,7 +89,7 @@ export async function emitMonitorDerivedEvents(teamName, tasks, workers, previou
                 worker: 'leader-fixed',
                 task_id: task.id,
                 reason: `status_transition:${prevStatus}->${task.status}`,
-            }, cwd).catch(() => { });
+            }, cwd).catch(logDerivedEventFailure);
         }
     }
     // Detect worker state changes
@@ -99,14 +101,14 @@ export async function emitMonitorDerivedEvents(teamName, tasks, workers, previou
                 type: 'worker_stopped',
                 worker: worker.name,
                 reason: 'pane_exited',
-            }, cwd).catch(() => { });
+            }, cwd).catch(logDerivedEventFailure);
         }
         if (prevState === 'working' && worker.status.state === 'idle') {
             await appendTeamEvent(teamName, {
                 type: 'worker_idle',
                 worker: worker.name,
                 reason: `state_transition:${prevState}->${worker.status.state}`,
-            }, cwd).catch(() => { });
+            }, cwd).catch(logDerivedEventFailure);
         }
     }
 }

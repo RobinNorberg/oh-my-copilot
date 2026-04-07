@@ -13,9 +13,9 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import { join } from 'path';
 import { writeFileSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
-import { fileURLToPath } from 'url';
+import { getClaudeConfigDir } from '../utils/config-dir.js';
 import {
   loadConfig,
   getConfigPaths,
@@ -56,10 +56,8 @@ import { launchCommand } from './launch.js';
 import { askCommand, ASK_USAGE } from './ask.js';
 import { warnIfWin32 } from './win32-warning.js';
 import { ralphthonCommand } from './commands/ralphthon.js';
-import { autoresearchCommand, AUTORESEARCH_HELP } from './autoresearch.js';
+import { autoresearchCommand } from './autoresearch.js';
 import { runHudWatchLoop } from './hud-watch.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const version = getRuntimePackageVersion();
 
@@ -468,7 +466,7 @@ Examples:
         const current = config.stopHookCallbacks.file;
         config.stopHookCallbacks.file = {
           enabled: enabled ?? current?.enabled ?? false,
-          path: options.path ?? current?.path ?? '~/.copilot/session-logs/{session_id}.md',
+          path: options.path ?? current?.path ?? join(getClaudeConfigDir(), 'session-logs/{session_id}.md'),
           format: (options.format as 'markdown' | 'json') ?? current?.format ?? 'markdown',
         };
         break;
@@ -910,7 +908,7 @@ Examples:
         console.log(chalk.green('║         Installation Complete!                            ║'));
         console.log(chalk.green('╚═══════════════════════════════════════════════════════════╝'));
         console.log('');
-        console.log(chalk.gray(`Installed to: ~/.copilot/`));
+        console.log(chalk.gray(`Installed to: ${getClaudeConfigDir()}`));
         console.log('');
         console.log(chalk.yellow('Usage:'));
         console.log('  copilot                        # Start Copilot CLI normally');
@@ -1153,10 +1151,12 @@ program
   .option('-q, --quiet', 'Suppress output except for errors')
   .option('--skip-hooks', 'Skip hook installation')
   .option('--force-hooks', 'Force reinstall hooks even if unchanged')
+  .option('--no-plugin', 'Install bundled skills from the current package instead of relying on plugin-provided skills')
   .addHelpText('after', `
 Examples:
   $ omc setup                     Sync all OMC components
   $ omc setup --force             Force reinstall everything
+  $ omc setup --no-plugin         Force local bundled skill installation
   $ omc setup --quiet             Silent setup for scripts
   $ omc setup --skip-hooks        Install without hooks
   $ omc setup --force-hooks       Force reinstall hooks`)
@@ -1170,11 +1170,16 @@ Examples:
       console.log(chalk.gray('Syncing OMC components...'));
     }
 
+    // Commander exposes negated flags like `--no-plugin` as `options.plugin === false`
+    // rather than `options.noPlugin`. Keep the installer API explicit.
+    const useLocalBundledSkills = options.plugin === false;
+
     const result = installOmc({
       force: !!options.force,
       verbose: !options.quiet,
       skipCopilotCheck: true,
       forceHooks: !!options.forceHooks,
+      noPlugin: useLocalBundledSkills,
     });
 
     if (!result.success) {

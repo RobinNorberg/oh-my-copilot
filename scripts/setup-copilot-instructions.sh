@@ -1,25 +1,144 @@
 #!/usr/bin/env bash
 # setup-copilot-instructions.sh - Unified copilot-instructions.md download/merge script
-# Usage: setup-copilot-instructions.sh <local|global>
+# Usage: setup-copilot-instructions.sh <local|global> [overwrite|preserve]
 #
 # Handles: version extraction, backup, download, marker stripping, merge, version reporting.
-# For global mode, also cleans up legacy hooks.
+# For global mode, defaults to overwrite; preserve mode keeps the user's base
+# copilot-instructions.md and writes OMC content to a companion file for `omc` launch.
 
 set -euo pipefail
 
-MODE="${1:?Usage: setup-copilot-instructions.sh <local|global>}"
+MODE="${1:?Usage: setup-copilot-instructions.sh <local|global> [overwrite|preserve]}"
+INSTALL_STYLE="${2:-overwrite}"
 DOWNLOAD_URL="https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/copilot-instructions.md"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+. "$SCRIPT_DIR/lib/config-dir.sh"
+
+# Resolve active plugin root from installed_plugins.json.
+# Handles stale PLUGIN_ROOT when a session was started before a plugin
+# update (e.g. 4.8.2 session invoking setup after updating to 4.9.0).
+# Same pattern as run.cjs resolveTarget() fallback.
+resolve_active_plugin_root() {
+  local config_dir
+  config_dir="$(resolve_copilot_config_dir)"
+  local installed_plugins="${config_dir}/plugins/installed_plugins.json"
+
+  if [ -f "$installed_plugins" ] && command -v jq >/dev/null 2>&1; then
+    local active_path
+    active_path=$(jq -r '
+      (.plugins // .)
+      | to_entries[]
+      | select(.key | startswith("oh-my-copilot"))
+      | .value[0].installPath // empty
+    ' "$installed_plugins" 2>/dev/null)
+
+    if [ -n "$active_path" ] && [ -d "$active_path" ]; then
+      echo "$active_path"
+      return 0
+    fi
+  fi
+
+  # Fallback: scan sibling version directories for the latest (mirrors run.cjs)
+  local cache_base
+  cache_base="$(dirname "$SCRIPT_PLUGIN_ROOT")"
+  if [ -d "$cache_base" ]; then
+    local latest
+    latest=$(ls -1 "$cache_base" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1,1nr -k2,2nr -k3,3nr | head -1)
+    if [ -n "$latest" ] && [ -d "${cache_base}/${latest}" ]; then
+      echo "${cache_base}/${latest}"
+      return 0
+    fi
+  fi
+
+  echo "$SCRIPT_PLUGIN_ROOT"
+}
+
+ACTIVE_PLUGIN_ROOT="$(resolve_active_plugin_root)"
+CANONICAL_COPILOT_MD="${ACTIVE_PLUGIN_ROOT}/docs/copilot-instructions.md"
+CANONICAL_OMC_REFERENCE_SKILL="${ACTIVE_PLUGIN_ROOT}/skills/omc-reference/SKILL.md"
+
+ensure_local_omc_git_exclude() {
+  local exclude_path
+
+  if ! exclude_path=$(git rev-parse --git-path info/exclude 2>/dev/null); then
+    echo "Skipped OMC git exclude setup (not a git repository)"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$exclude_path")"
+
+  local block_start="# BEGIN OMC local artifacts"
+
+  if [ -f "$exclude_path" ] && grep -Fq "$block_start" "$exclude_path"; then
+    echo "OMC git exclude already configured"
+    return 0
+  fi
+
+  if [ -f "$exclude_path" ] && [ -s "$exclude_path" ]; then
+    printf '\n' >> "$exclude_path"
+  fi
+
+  cat >> "$exclude_path" <<'EOF'
+# BEGIN OMC local artifacts
+.omc/*
+!.omc/skills/
+!.omc/skills/**
+# END OMC local artifacts
+EOF
+
+  echo "Configured git exclude for local .omc artifacts (preserving .omc/skills/)"
+}
 
 # Determine target path
+CONFIG_DIR="$(resolve_copilot_config_dir)"
 if [ "$MODE" = "local" ]; then
-  mkdir -p .copilot
+  mkdir -p .copilot/skills/omc-reference
   TARGET_PATH=".copilot/copilot-instructions.md"
+  SKILL_TARGET_PATH=".copilot/skills/omc-reference/SKILL.md"
 elif [ "$MODE" = "global" ]; then
-  TARGET_PATH="$HOME/.copilot/copilot-instructions.md"
+  mkdir -p "$CONFIG_DIR/skills/omc-reference"
+  TARGET_PATH="$CONFIG_DIR/copilot-instructions.md"
+  SKILL_TARGET_PATH="$CONFIG_DIR/skills/omc-reference/SKILL.md"
 else
   echo "ERROR: Invalid mode '$MODE'. Use 'local' or 'global'." >&2
   exit 1
 fi
+
+if [ "$INSTALL_STYLE" != "overwrite" ] && [ "$INSTALL_STYLE" != "preserve" ]; then
+  echo "ERROR: Invalid install style '$INSTALL_STYLE'. Use 'overwrite' or 'preserve'." >&2
+  exit 1
+fi
+
+
+install_omc_reference_skill() {
+  local source_label=""
+  local temp_skill
+  temp_skill=$(mktemp /tmp/omc-reference-skill-XXXXXX.md)
+
+  if [ -f "$CANONICAL_OMC_REFERENCE_SKILL" ]; then
+    cp "$CANONICAL_OMC_REFERENCE_SKILL" "$temp_skill"
+    source_label="$CANONICAL_OMC_REFERENCE_SKILL"
+  elif [ -n "${PLUGIN_ROOT:-}" ] && [ -f "${PLUGIN_ROOT}/skills/omc-reference/SKILL.md" ]; then
+    cp "${PLUGIN_ROOT}/skills/omc-reference/SKILL.md" "$temp_skill"
+    source_label="${PLUGIN_ROOT}/skills/omc-reference/SKILL.md"
+  else
+    rm -f "$temp_skill"
+    echo "Skipped omc-reference skill install (canonical skill source unavailable)"
+    return 0
+  fi
+
+  if [ ! -s "$temp_skill" ]; then
+    rm -f "$temp_skill"
+    echo "Skipped omc-reference skill install (empty canonical skill source: $source_label)"
+    return 0
+  fi
+
+  mkdir -p "$(dirname "$SKILL_TARGET_PATH")"
+  cp "$temp_skill" "$SKILL_TARGET_PATH"
+  rm -f "$temp_skill"
+  echo "Installed omc-reference skill to $SKILL_TARGET_PATH"
+}
 
 # Extract old version before download
 OLD_VERSION=$(grep -m1 'OMC:VERSION:' "$TARGET_PATH" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
@@ -31,6 +150,7 @@ if [ -z "$OLD_VERSION" ]; then
 fi
 
 # Backup existing
+BACKUP_DATE=""
 if [ -f "$TARGET_PATH" ]; then
   BACKUP_DATE=$(date +%Y-%m-%d_%H%M%S)
   BACKUP_PATH="${TARGET_PATH}.backup.${BACKUP_DATE}"
@@ -38,33 +158,95 @@ if [ -f "$TARGET_PATH" ]; then
   echo "Backed up existing copilot-instructions.md to $BACKUP_PATH"
 fi
 
-# Download fresh OMC content to temp file
-TEMP_OMP=$(mktemp /tmp/omc-copilot-XXXXXX.md)
-trap 'rm -f "$TEMP_OMP"' EXIT
-curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_OMP"
+# Load canonical OMC content to temp file
+TEMP_OMC=$(mktemp /tmp/omc-copilot-XXXXXX.md)
+trap 'rm -f "$TEMP_OMC"' EXIT
 
-if [ ! -s "$TEMP_OMP" ]; then
+OMC_IMPORT_START='<!-- OMC:IMPORT:START -->'
+OMC_IMPORT_END='<!-- OMC:IMPORT:END -->'
+COMPANION_FILENAME='copilot-instructions-omc.md'
+
+write_wrapped_omc_file() {
+  local destination="$1"
+  mkdir -p "$(dirname "$destination")"
+  {
+    echo '<!-- OMC:START -->'
+    cat "$TEMP_OMC"
+    echo '<!-- OMC:END -->'
+  } > "$destination"
+}
+
+ensure_managed_companion_import() {
+  local target_path="$1"
+  local companion_name="$2"
+  local import_block
+  import_block=$(cat <<EOF
+$OMC_IMPORT_START
+@${companion_name}
+$OMC_IMPORT_END
+EOF
+)
+
+  if grep -Fq "$OMC_IMPORT_START" "$target_path"; then
+    perl -0pe 's/^<!-- OMC:IMPORT:START -->\R[\s\S]*?^<!-- OMC:IMPORT:END -->(?:\R)?//msg' "$target_path" > "${target_path}.importless"
+    mv "${target_path}.importless" "$target_path"
+  fi
+
+  if [ -s "$target_path" ]; then
+    printf '\n\n%s\n' "$import_block" >> "$target_path"
+  else
+    printf '%s\n' "$import_block" > "$target_path"
+  fi
+}
+
+ensure_not_symlink_path() {
+  local target_path="$1"
+  local label="$2"
+
+  if [ -L "$target_path" ]; then
+    echo "ERROR: Refusing to write $label because the destination is a symlink: $target_path" >&2
+    exit 1
+  fi
+}
+
+VALIDATION_PATH="$TARGET_PATH"
+
+SOURCE_LABEL=""
+if [ -f "$CANONICAL_COPILOT_MD" ]; then
+  cp "$CANONICAL_COPILOT_MD" "$TEMP_OMC"
+  SOURCE_LABEL="$CANONICAL_COPILOT_MD"
+elif [ -n "${PLUGIN_ROOT:-}" ] && [ -f "${PLUGIN_ROOT}/docs/copilot-instructions.md" ]; then
+  cp "${PLUGIN_ROOT}/docs/copilot-instructions.md" "$TEMP_OMC"
+  SOURCE_LABEL="${PLUGIN_ROOT}/docs/copilot-instructions.md"
+else
+  curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_OMC"
+  SOURCE_LABEL="$DOWNLOAD_URL"
+fi
+
+if [ ! -s "$TEMP_OMC" ]; then
   echo "ERROR: Failed to download copilot-instructions.md. Aborting."
   echo "FALLBACK: Manually download from: $DOWNLOAD_URL"
-  rm -f "$TEMP_OMP"
+  rm -f "$TEMP_OMC"
+  exit 1
+fi
+
+if ! grep -q '<!-- OMC:START -->' "$TEMP_OMC" || ! grep -q '<!-- OMC:END -->' "$TEMP_OMC"; then
+  echo "ERROR: Canonical copilot-instructions.md source is missing required OMC markers: $SOURCE_LABEL" >&2
+  echo "Refusing to install a summarized or malformed copilot-instructions.md." >&2
   exit 1
 fi
 
 # Strip existing markers from downloaded content (idempotency)
 # Use awk for cross-platform compatibility (GNU/BSD)
-if grep -q '<!-- OMC:START -->' "$TEMP_OMP"; then
-  awk '/<!-- OMC:END -->/{p=0} p; /<!-- OMC:START -->/{p=1}' "$TEMP_OMP" > "${TEMP_OMP}.clean"
-  mv "${TEMP_OMP}.clean" "$TEMP_OMP"
+if grep -q '<!-- OMC:START -->' "$TEMP_OMC"; then
+  awk '/<!-- OMC:END -->/{p=0} p; /<!-- OMC:START -->/{p=1}' "$TEMP_OMC" > "${TEMP_OMC}.clean"
+  mv "${TEMP_OMC}.clean" "$TEMP_OMC"
 fi
 
 if [ ! -f "$TARGET_PATH" ]; then
   # Fresh install: wrap in markers
-  {
-    echo '<!-- OMC:START -->'
-    cat "$TEMP_OMP"
-    echo '<!-- OMC:END -->'
-  } > "$TARGET_PATH"
-  rm -f "$TEMP_OMP"
+  write_wrapped_omc_file "$TARGET_PATH"
+  rm -f "$TEMP_OMC"
   echo "Installed copilot-instructions.md (fresh)"
 else
   # Merge: preserve user content outside OMC markers
@@ -79,7 +261,7 @@ else
       OLD_CONTENT=$(cat "$TARGET_PATH")
       {
         echo '<!-- OMC:START -->'
-        cat "$TEMP_OMP"
+        cat "$TEMP_OMC"
         echo '<!-- OMC:END -->'
         echo ""
         echo "<!-- User customizations (recovered from corrupted markers) -->"
@@ -89,7 +271,7 @@ else
       PRESERVED_CONTENT=$(cat "${TARGET_PATH}.preserved")
       {
         echo '<!-- OMC:START -->'
-        cat "$TEMP_OMP"
+        cat "$TEMP_OMC"
         echo '<!-- OMC:END -->'
         if printf '%s' "$PRESERVED_CONTENT" | grep -q '[^[:space:]]'; then
           echo ""
@@ -102,12 +284,24 @@ else
     mv "${TARGET_PATH}.tmp" "$TARGET_PATH"
     rm -f "${TARGET_PATH}.preserved"
     echo "Updated OMC section (user customizations preserved)"
+  elif [ "$MODE" = "global" ] && [ "$INSTALL_STYLE" = "preserve" ]; then
+    COMPANION_TARGET_PATH="$CONFIG_DIR/$COMPANION_FILENAME"
+    ensure_not_symlink_path "$COMPANION_TARGET_PATH" "OMC companion copilot-instructions.md"
+    ensure_not_symlink_path "$TARGET_PATH" "base copilot-instructions.md import block"
+    if [ -f "$COMPANION_TARGET_PATH" ] && [ -n "$BACKUP_DATE" ]; then
+      cp "$COMPANION_TARGET_PATH" "${COMPANION_TARGET_PATH}.backup.${BACKUP_DATE}"
+      echo "Backed up existing companion copilot-instructions.md to ${COMPANION_TARGET_PATH}.backup.${BACKUP_DATE}"
+    fi
+    write_wrapped_omc_file "$COMPANION_TARGET_PATH"
+    ensure_managed_companion_import "$TARGET_PATH" "$COMPANION_FILENAME"
+    VALIDATION_PATH="$COMPANION_TARGET_PATH"
+    echo "Installed OMC companion file and preserved existing copilot-instructions.md"
   else
     # No markers: wrap new content in markers, append old content as user section
     OLD_CONTENT=$(cat "$TARGET_PATH")
     {
       echo '<!-- OMC:START -->'
-      cat "$TEMP_OMP"
+      cat "$TEMP_OMC"
       echo '<!-- OMC:END -->'
       echo ""
       echo "<!-- User customizations (migrated from previous copilot-instructions.md) -->"
@@ -116,11 +310,22 @@ else
     mv "${TARGET_PATH}.tmp" "$TARGET_PATH"
     echo "Migrated existing copilot-instructions.md (added OMC markers, preserved old content)"
   fi
-  rm -f "$TEMP_OMP"
+  rm -f "$TEMP_OMC"
+fi
+
+if ! grep -q '<!-- OMC:START -->' "$VALIDATION_PATH" || ! grep -q '<!-- OMC:END -->' "$VALIDATION_PATH"; then
+  echo "ERROR: Installed copilot-instructions.md is missing required OMC markers: $VALIDATION_PATH" >&2
+  exit 1
+fi
+
+install_omc_reference_skill
+
+if [ "$MODE" = "local" ]; then
+  ensure_local_omc_git_exclude
 fi
 
 # Extract new version and report
-NEW_VERSION=$(grep -m1 'OMC:VERSION:' "$TARGET_PATH" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
+NEW_VERSION=$(grep -m1 'OMC:VERSION:' "$VALIDATION_PATH" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 if [ -z "$NEW_VERSION" ]; then
   NEW_VERSION=$(omc --version 2>/dev/null | head -1 || true)
 fi
@@ -137,23 +342,27 @@ fi
 
 # Legacy hooks cleanup (global mode only)
 if [ "$MODE" = "global" ]; then
-  rm -f ~/.copilot/hooks/keyword-detector.sh
-  rm -f ~/.copilot/hooks/stop-continuation.sh
-  rm -f ~/.copilot/hooks/persistent-mode.sh
-  rm -f ~/.copilot/hooks/session-start.sh
+  rm -f "$CONFIG_DIR/hooks/keyword-detector.sh"
+  rm -f "$CONFIG_DIR/hooks/stop-continuation.sh"
+  rm -f "$CONFIG_DIR/hooks/persistent-mode.sh"
+  rm -f "$CONFIG_DIR/hooks/session-start.sh"
   echo "Legacy hooks cleaned"
 
   # Check for manual hook entries in settings.json
-  SETTINGS_FILE="$HOME/.copilot/settings.json"
+  SETTINGS_FILE="$CONFIG_DIR/settings.json"
   if [ -f "$SETTINGS_FILE" ]; then
     if jq -e '.hooks' "$SETTINGS_FILE" > /dev/null 2>&1; then
       echo ""
       echo "NOTE: Found legacy hooks in settings.json. These should be removed since"
       echo "the plugin now provides hooks automatically. Remove the \"hooks\" section"
-      echo "from ~/.copilot/settings.json to prevent duplicate hook execution."
+      echo "from $SETTINGS_FILE to prevent duplicate hook execution."
     fi
   fi
 fi
 
 # Verify plugin installation
-grep -q "oh-my-copilot" ~/.copilot/settings.json && echo "Plugin verified" || echo "Plugin NOT found - run: copilot /install-plugin oh-my-copilot"
+if [ -f "$CONFIG_DIR/settings.json" ] && grep -q "oh-my-copilot" "$CONFIG_DIR/settings.json"; then
+  echo "Plugin verified"
+else
+  echo "Plugin NOT found - run: copilot /install-plugin oh-my-copilot"
+fi

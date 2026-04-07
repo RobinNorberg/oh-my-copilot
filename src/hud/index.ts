@@ -6,7 +6,14 @@
  * Receives stdin JSON from Copilot CLI and outputs formatted statusline.
  */
 
-import { readStdin, writeStdinCache, readStdinCache, getContextPercent, getModelName } from "./stdin.js";
+import {
+  readStdin,
+  writeStdinCache,
+  readStdinCache,
+  getContextPercent,
+  getModelName,
+  stabilizeContextPercent,
+} from "./stdin.js";
 import { parseTranscript } from "./transcript.js";
 import {
   readHudState,
@@ -40,14 +47,47 @@ import { access, readFile } from "fs/promises";
 import { join, dirname, basename } from "path";
 import { homedir } from "os";
 import { getOmcRoot } from "../lib/worktree-paths.js";
+import { getCopilotConfigDir } from "../utils/config-dir.js";
 
 /**
- * Read session summary state from state directory.
+ * Read cached session summary from state directory.
  */
-function readSessionSummary(stateDir: string, sessionId: string): SessionSummaryState | null {
+function readSessionSummary(
+  stateDir: string,
+  sessionId: string,
+): SessionSummaryState | null {
   const statePath = join(stateDir, `session-summary-${sessionId}.json`);
   if (!existsSync(statePath)) return null;
-  try { return JSON.parse(readFileSync(statePath, 'utf-8')); } catch { return null; }
+  try {
+    return JSON.parse(readFileSync(statePath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Track the timestamp of the last spawned session-summary process to prevent
+ * unbounded accumulation of detached processes when summarization takes >60s.
+ */
+let lastSummarySpawnTimestamp = 0;
+
+/**
+ * Track the PID of the spawned session-summary child process.
+ * Before spawning a new process, we check if this PID is still alive
+ * using process.kill(pid, 0). This prevents process accumulation even
+ * when summarization runs longer than the timestamp-based throttle window.
+ */
+let summaryProcessPid: number | null = null;
+
+/** @internal Reset spawn guard — used by tests only. */
+export function _resetSummarySpawnTimestamp(): void {
+  lastSummarySpawnTimestamp = 0;
+  summaryProcessPid = null;
+}
+
+/** @internal Get the tracked summary process PID — used by tests only. */
+export function _getSummaryProcessPid(): number | null {
+  return summaryProcessPid;
 }
 
 /**
@@ -76,38 +116,96 @@ async function calculateSessionHealth(
 }
 
 /**
+ * Show installation diagnostic when called from CLI without stdin.
+ * Helps users verify HUD setup after omc-setup.
+ */
+function showDiagnostic(): void {
+  const version = getRuntimePackageVersion();
+  const configDir = getCopilotConfigDir();
+  const hudScript = join(configDir, 'hud', 'omc-hud.mjs');
+  const settingsFile = join(configDir, 'settings.json');
+
+  const hudExists = existsSync(hudScript);
+  let statusLineOk = false;
+  try {
+    const settings = JSON.parse(readFileSync(settingsFile, 'utf-8'));
+    const sl = settings.statusLine;
+    if (sl && typeof sl === 'object' && typeof (sl as Record<string, unknown>).command === 'string') {
+      statusLineOk = ((sl as Record<string, unknown>).command as string).includes('omc-hud');
+    } else if (typeof sl === 'string') {
+      statusLineOk = sl.includes('omc-hud');
+    }
+  } catch {
+    /* settings.json missing or invalid */
+  }
+
+  const config = readHudConfig();
+  const preset = config.preset ?? 'focused';
+
+  console.log(`[OMC] HUD v${version} | preset: ${preset}`);
+  console.log(`  HUD script:  ${hudExists ? 'installed' : 'MISSING'}`);
+  console.log(`  statusLine:  ${statusLineOk ? 'configured' : 'NOT configured'}`);
+
+  if (!hudExists || !statusLineOk) {
+    console.log('  Run /oh-my-copilot:hud setup to fix.');
+  } else {
+    console.log('  HUD renders automatically inside Copilot CLI sessions.');
+  }
+}
+
+/**
  * Main HUD entry point
  * @param watchMode - true when called from the --watch polling loop (stdin is TTY)
  */
-async function main(watchMode = false): Promise<void> {
+async function main(watchMode = false, skipInit = false): Promise<void> {
   try {
-    // Initialize HUD state (cleanup stale/orphaned tasks)
-    await initializeHUDState();
-
     // Read stdin from Copilot CLI
+    const previousStdinCache = readStdinCache();
     let stdin = await readStdin();
 
     if (stdin) {
+      stdin = stabilizeContextPercent(stdin, previousStdinCache);
       // Persist for --watch mode so it can read data when stdin is a TTY
       writeStdinCache(stdin);
     } else if (watchMode) {
       // In watch mode stdin is always a TTY; fall back to last cached value
-      stdin = readStdinCache();
+      stdin = previousStdinCache;
       if (!stdin) {
         // Cache not yet populated (first poll before statusline fires)
         console.log("[OMC] Starting...");
         return;
       }
     } else {
-      // Non-watch invocation with no stdin - suggest setup
-      console.log("[OMC] run /omc-setup to install properly");
+      // CLI invocation (TTY, no stdin) — show installation diagnostic
+      showDiagnostic();
       return;
     }
 
     const cwd = resolveToWorktreeRoot(stdin.cwd || undefined);
 
+    // Initialize HUD state (cleanup stale/orphaned tasks)
+    // Must happen after cwd resolution so cleanup targets the correct project directory
+    if (!skipInit) {
+      await initializeHUDState(cwd);
+    }
+
     // Read configuration (before transcript parsing so we can use staleTaskThresholdMinutes)
-    const config = readHudConfig();
+    // Clone to avoid mutating shared DEFAULT_HUD_CONFIG when applying runtime width detection
+    const config = { ...readHudConfig() };
+
+    // Auto-detect terminal width if not explicitly configured (#1726)
+    // Prefer live TTY columns (responds to resize) over static COLUMNS env var
+    if (config.maxWidth === undefined) {
+      const cols =
+        process.stderr.columns ||
+        process.stdout.columns ||
+        parseInt(process.env.COLUMNS ?? "0", 10) ||
+        0;
+      if (cols > 0) {
+        config.maxWidth = cols;
+        if (!config.wrapMode) config.wrapMode = "wrap";
+      }
+    }
 
     // Resolve worktree-mismatched transcript paths (issue #1094)
     const resolvedTranscriptPath = resolveTranscriptPath(stdin.transcript_path, cwd);
@@ -117,11 +215,15 @@ async function main(watchMode = false): Promise<void> {
       staleTaskThresholdMinutes: config.staleTaskThresholdMinutes,
     });
 
+    const currentSessionId = extractSessionIdFromPath(
+      resolvedTranscriptPath ?? stdin.transcript_path ?? "",
+    );
+
     // Read OMC state files
-    const ralph = readRalphStateForHud(cwd);
-    const ultrawork = readUltraworkStateForHud(cwd);
+    const ralph = readRalphStateForHud(cwd, currentSessionId ?? undefined);
+    const ultrawork = readUltraworkStateForHud(cwd, currentSessionId ?? undefined);
     const prd = readPrdStateForHud(cwd);
-    const autopilot = readAutopilotStateForHud(cwd);
+    const autopilot = readAutopilotStateForHud(cwd, currentSessionId ?? undefined);
 
     // Read HUD state for background tasks
     const hudState = readHudState(cwd);
@@ -133,7 +235,6 @@ async function main(watchMode = false): Promise<void> {
     // We persist the real start time in HUD state on first observation.
     // Scoped per session ID so a new session in the same cwd resets the timestamp.
     let sessionStart = transcriptData.sessionStart;
-    const currentSessionId = extractSessionIdFromPath(resolvedTranscriptPath ?? stdin.transcript_path);
     const sameSession = hudState?.sessionId === currentSessionId;
     if (sameSession && hudState?.sessionStartTimestamp) {
       // Use persisted value (the real session start) - but validate first
@@ -194,9 +295,12 @@ async function main(watchMode = false): Promise<void> {
       ? await refreshMissionBoardState(cwd, config.missionBoard)
       : null;
 
+    const contextPercent = getContextPercent(stdin);
+
     // Build render context
     const context: HudRenderContext = {
-      contextPercent: getContextPercent(stdin),
+      contextPercent,
+      contextDisplayScope: currentSessionId ?? cwd,
       modelName: getModelName(stdin),
       ralph,
       ultrawork,
@@ -212,15 +316,14 @@ async function main(watchMode = false): Promise<void> {
       customBuckets,
       pendingPermission: transcriptData.pendingPermission || null,
       thinkingState: transcriptData.thinkingState || null,
-      sessionHealth: await calculateSessionHealth(
-        sessionStart,
-        getContextPercent(stdin),
-      ),
+      sessionHealth: await calculateSessionHealth(sessionStart, contextPercent),
       omcVersion,
       updateAvailable,
       toolCallCount: transcriptData.toolCallCount,
       agentCallCount: transcriptData.agentCallCount,
       skillCallCount: transcriptData.skillCallCount,
+      lastRequestTokenUsage: transcriptData.lastRequestTokenUsage || null,
+      sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
       promptTime: hudState?.lastPromptTimestamp
         ? new Date(hudState.lastPromptTimestamp)
         : null,
@@ -233,6 +336,7 @@ async function main(watchMode = false): Promise<void> {
       sessionSummary: currentSessionId
         ? readSessionSummary(join(getOmcRoot(cwd), 'state'), currentSessionId)
         : null,
+      lastToolName: transcriptData.lastToolName,
     };
 
     // Debug: log data if OMC_DEBUG is set
@@ -278,10 +382,15 @@ async function main(watchMode = false): Promise<void> {
 
     // Apply safe mode sanitization if enabled (Issue #346)
     // This strips ANSI codes and uses ASCII-only output to prevent
-    // terminal rendering corruption during concurrent updates
-    // On Windows, always use safe mode to prevent terminal rendering issues
-    // with non-breaking spaces and ANSI escape sequences
-    const useSafeMode = config.elements.safeMode || process.platform === 'win32';
+    // terminal rendering corruption during concurrent updates.
+    // On Windows, default to safe mode unless the user explicitly sets safeMode: false
+    // (e.g. Windows Terminal and modern terminals support ANSI natively).
+    // The win32 fallback is retained for configs that omit safeMode entirely
+    // (before default merge, e.g. minimal config files or future schema changes).
+    // explicit false overrides platform detection: process.platform === 'win32'
+    const useSafeMode =
+      config.elements.safeMode !== false &&
+      (config.elements.safeMode || process.platform === 'win32');
 
     if (useSafeMode) {
       output = sanitizeOutput(output);

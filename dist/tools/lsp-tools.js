@@ -12,7 +12,7 @@
  */
 import { z } from 'zod';
 import { lspClientManager, getAllServers, getServerForFile, formatHover, formatLocations, formatDocumentSymbols, formatWorkspaceSymbols, formatDiagnostics, formatCodeActions, formatWorkspaceEdit, countEdits } from './lsp/index.js';
-import { runDirectoryDiagnostics, LSP_DIAGNOSTICS_WAIT_MS } from './diagnostics/index.js';
+import { runDirectoryDiagnostics } from './diagnostics/index.js';
 /**
  * Helper to handle LSP errors gracefully.
  * Uses runWithClientLease to protect the client from idle eviction
@@ -68,6 +68,7 @@ async function withLspClient(filePath, operation, fn) {
 export const lspHoverTool = {
     name: 'lsp_hover',
     description: 'Get type information, documentation, and signature at a specific position in a file. Useful for understanding what a symbol represents.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file'),
         line: z.number().int().min(1).describe('Line number (1-indexed)'),
@@ -87,6 +88,7 @@ export const lspHoverTool = {
 export const lspGotoDefinitionTool = {
     name: 'lsp_goto_definition',
     description: 'Find the definition location of a symbol (function, variable, class, etc.). Returns the file path and position where the symbol is defined.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file'),
         line: z.number().int().min(1).describe('Line number (1-indexed)'),
@@ -106,6 +108,7 @@ export const lspGotoDefinitionTool = {
 export const lspFindReferencesTool = {
     name: 'lsp_find_references',
     description: 'Find all references to a symbol across the codebase. Useful for understanding usage patterns and impact of changes.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file'),
         line: z.number().int().min(1).describe('Line number (1-indexed)'),
@@ -129,6 +132,7 @@ export const lspFindReferencesTool = {
 export const lspDocumentSymbolsTool = {
     name: 'lsp_document_symbols',
     description: 'Get a hierarchical outline of all symbols in a file (functions, classes, variables, etc.). Useful for understanding file structure.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file')
     },
@@ -146,6 +150,7 @@ export const lspDocumentSymbolsTool = {
 export const lspWorkspaceSymbolsTool = {
     name: 'lsp_workspace_symbols',
     description: 'Search for symbols (functions, classes, etc.) across the entire workspace by name. Useful for finding definitions without knowing the exact file.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         query: z.string().describe('Symbol name or pattern to search'),
         file: z.string().describe('Any file in the workspace (used to determine which language server to use)')
@@ -167,6 +172,7 @@ export const lspWorkspaceSymbolsTool = {
 export const lspDiagnosticsTool = {
     name: 'lsp_diagnostics',
     description: 'Get language server diagnostics (errors, warnings, hints) for a file. Useful for finding issues without running the compiler.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file'),
         severity: z.enum(['error', 'warning', 'info', 'hint']).optional().describe('Filter by severity level')
@@ -174,11 +180,15 @@ export const lspDiagnosticsTool = {
     handler: async (args) => {
         const { file, severity } = args;
         return withLspClient(file, 'diagnostics', async (client) => {
-            // Open the document to trigger diagnostics
             await client.openDocument(file);
-            // Wait a bit for diagnostics to be published
-            await new Promise(resolve => setTimeout(resolve, LSP_DIAGNOSTICS_WAIT_MS));
-            let diagnostics = client.getDiagnostics(file);
+            let diagnostics;
+            if (client.supportsPullDiagnostics) {
+                diagnostics = await client.pullDiagnostics(file);
+            }
+            else {
+                await client.waitForDiagnostics(file, 30_000);
+                diagnostics = client.getDiagnostics(file);
+            }
             if (severity) {
                 const severityMap = {
                     'error': 1,
@@ -204,6 +214,7 @@ export const lspDiagnosticsTool = {
 export const lspServersTool = {
     name: 'lsp_servers',
     description: 'List all known language servers and their installation status. Shows which servers are available and how to install missing ones.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {},
     handler: async () => {
         const servers = getAllServers();
@@ -240,6 +251,7 @@ export const lspServersTool = {
 export const lspPrepareRenameTool = {
     name: 'lsp_prepare_rename',
     description: 'Check if a symbol at the given position can be renamed. Returns the range of the symbol if rename is possible.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file'),
         line: z.number().int().min(1).describe('Line number (1-indexed)'),
@@ -262,6 +274,7 @@ export const lspPrepareRenameTool = {
 export const lspRenameTool = {
     name: 'lsp_rename',
     description: 'Rename a symbol (variable, function, class, etc.) across all files in the project. Returns the list of edits that would be made. Does NOT apply the changes automatically.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file'),
         line: z.number().int().min(1).describe('Line number (1-indexed)'),
@@ -286,6 +299,7 @@ export const lspRenameTool = {
 export const lspCodeActionsTool = {
     name: 'lsp_code_actions',
     description: 'Get available code actions (refactorings, quick fixes) for a selection. Returns a list of possible actions that can be applied.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file'),
         startLine: z.number().int().min(1).describe('Start line of selection (1-indexed)'),
@@ -311,6 +325,7 @@ export const lspCodeActionsTool = {
 export const lspCodeActionResolveTool = {
     name: 'lsp_code_action_resolve',
     description: 'Get the full edit details for a specific code action. Use after lsp_code_actions to see what changes an action would make.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         file: z.string().describe('Path to the source file'),
         startLine: z.number().int().min(1).describe('Start line of selection (1-indexed)'),
@@ -355,6 +370,7 @@ export const lspCodeActionResolveTool = {
 export const lspDiagnosticsDirectoryTool = {
     name: 'lsp_diagnostics_directory',
     description: 'Run project-level diagnostics on a directory using tsc --noEmit (preferred) or LSP iteration (fallback). Useful for checking the entire codebase for errors.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         directory: z.string().describe('Project directory to check'),
         strategy: z.enum(['tsc', 'lsp', 'auto']).optional().describe('Strategy to use: "tsc" (TypeScript compiler), "lsp" (Language Server iteration), or "auto" (default: auto-detect)')

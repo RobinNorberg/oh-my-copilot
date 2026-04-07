@@ -16,6 +16,7 @@ import { basename } from "path";
 const MAX_TAIL_BYTES = 512 * 1024; // 500KB - enough for recent activity
 const MAX_AGENT_MAP_SIZE = 100; // Cap agent tracking
 const _MIN_RUNNING_AGENTS_THRESHOLD = 10; // Early termination threshold
+const MAX_RECENT_TOOLS = 20; // Track last 20 tool calls for recentTools display
 /**
  * Tools known to require permission approval in Copilot CLI.
  * Only these tools will trigger the "APPROVE?" indicator.
@@ -47,9 +48,9 @@ const THINKING_PART_TYPES = ["thinking", "reasoning"];
  * Time threshold for considering thinking "active".
  */
 const THINKING_RECENCY_MS = 30_000; // 30 seconds
+const transcriptCache = new Map();
+const TRANSCRIPT_CACHE_MAX_SIZE = 20;
 export async function parseTranscript(transcriptPath, options) {
-    // IMPORTANT: Clear module-level state at the start of each parse
-    // to prevent stale data from previous HUD invocations
     pendingPermissionMap.clear();
     const result = {
         agents: [],
@@ -58,34 +59,52 @@ export async function parseTranscript(transcriptPath, options) {
         toolCallCount: 0,
         agentCallCount: 0,
         skillCallCount: 0,
+        lastToolName: null,
+        recentTools: [],
     };
     if (!transcriptPath || !existsSync(transcriptPath)) {
+        return result;
+    }
+    let cacheKey = null;
+    try {
+        const stat = statSync(transcriptPath);
+        cacheKey = `${transcriptPath}:${stat.size}:${stat.mtimeMs}`;
+        const cached = transcriptCache.get(transcriptPath);
+        if (cached?.cacheKey === cacheKey) {
+            return finalizeTranscriptResult(cloneTranscriptData(cached.baseResult), options, cached.pendingPermissions);
+        }
+    }
+    catch {
         return result;
     }
     const agentMap = new Map();
     const backgroundAgentMap = new Map();
     const latestTodos = [];
+    const recentToolMap = new Map();
+    let sessionTotalsReliable = false;
+    const sessionTokenTotals = { inputTokens: 0, outputTokens: 0, seenUsage: false };
+    const observedSessionIds = new Set();
     try {
-        // Check file size to determine parsing strategy
         const stat = statSync(transcriptPath);
         const fileSize = stat.size;
         if (fileSize > MAX_TAIL_BYTES) {
-            // Large file: use tail-based parsing
             const lines = readTailLines(transcriptPath, fileSize, MAX_TAIL_BYTES);
             for (const line of lines) {
                 if (!line.trim())
                     continue;
                 try {
                     const entry = JSON.parse(line);
-                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap);
+                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap, recentToolMap);
                 }
                 catch {
                     // Skip malformed lines
                 }
             }
+            // Token totals from a tail-read are partial (we only saw the last MAX_TAIL_BYTES).
+            // Still surface them when token data was found so the HUD shows something useful.
+            sessionTotalsReliable = sessionTokenTotals.seenUsage;
         }
         else {
-            // Small file: stream entire file
             const fileStream = createReadStream(transcriptPath);
             const rl = createInterface({
                 input: fileStream,
@@ -96,45 +115,18 @@ export async function parseTranscript(transcriptPath, options) {
                     continue;
                 try {
                     const entry = JSON.parse(line);
-                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap);
+                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap, recentToolMap);
                 }
                 catch {
                     // Skip malformed lines
                 }
             }
+            sessionTotalsReliable = observedSessionIds.size <= 1;
         }
     }
     catch {
-        // Return partial results on error
+        return finalizeTranscriptResult(result, options, []);
     }
-    // Filter out stale agents (running for more than threshold minutes are likely abandoned)
-    const staleMinutes = options?.staleTaskThresholdMinutes ?? 30;
-    const STALE_AGENT_THRESHOLD_MS = staleMinutes * 60 * 1000;
-    const now = Date.now();
-    for (const agent of agentMap.values()) {
-        if (agent.status === "running") {
-            const runningTime = now - agent.startTime.getTime();
-            if (runningTime > STALE_AGENT_THRESHOLD_MS) {
-                // Mark as completed (stale)
-                agent.status = "completed";
-                agent.endTime = new Date(agent.startTime.getTime() + STALE_AGENT_THRESHOLD_MS);
-            }
-        }
-    }
-    // Check for pending permissions within threshold
-    for (const [_id, permission] of pendingPermissionMap) {
-        const age = now - permission.timestamp.getTime();
-        if (age <= PERMISSION_THRESHOLD_MS) {
-            result.pendingPermission = permission;
-            break; // Only show most recent
-        }
-    }
-    // Determine if thinking is currently active based on recency
-    if (result.thinkingState?.lastSeen) {
-        const age = now - result.thinkingState.lastSeen.getTime();
-        result.thinkingState.active = age <= THINKING_RECENCY_MS;
-    }
-    // Get running agents first, then recent completed (up to 10 total)
     const running = Array.from(agentMap.values()).filter((a) => a.status === "running");
     const completed = Array.from(agentMap.values()).filter((a) => a.status === "completed");
     result.agents = [
@@ -142,6 +134,93 @@ export async function parseTranscript(transcriptPath, options) {
         ...completed.slice(-(10 - running.length)),
     ].slice(0, 10);
     result.todos = latestTodos;
+    result.recentTools = Array.from(recentToolMap.values())
+        .map(({ id: _id, ...rest }) => rest);
+    if (sessionTotalsReliable && sessionTokenTotals.seenUsage) {
+        result.sessionTotalTokens = sessionTokenTotals.inputTokens + sessionTokenTotals.outputTokens;
+    }
+    const pendingPermissions = Array.from(pendingPermissionMap.values()).map(clonePendingPermission);
+    const finalized = finalizeTranscriptResult(result, options, pendingPermissions);
+    if (cacheKey) {
+        if (transcriptCache.size >= TRANSCRIPT_CACHE_MAX_SIZE) {
+            transcriptCache.clear();
+        }
+        transcriptCache.set(transcriptPath, {
+            cacheKey,
+            baseResult: cloneTranscriptData(finalized),
+            pendingPermissions,
+        });
+    }
+    return finalized;
+}
+function cloneDate(value) {
+    return value ? new Date(value.getTime()) : undefined;
+}
+function clonePendingPermission(permission) {
+    return {
+        ...permission,
+        timestamp: new Date(permission.timestamp.getTime()),
+    };
+}
+function cloneTranscriptData(result) {
+    return {
+        ...result,
+        agents: result.agents.map((agent) => ({
+            ...agent,
+            startTime: new Date(agent.startTime.getTime()),
+            endTime: cloneDate(agent.endTime),
+        })),
+        todos: result.todos.map((todo) => ({ ...todo })),
+        sessionStart: cloneDate(result.sessionStart),
+        lastActivatedSkill: result.lastActivatedSkill
+            ? {
+                ...result.lastActivatedSkill,
+                timestamp: new Date(result.lastActivatedSkill.timestamp.getTime()),
+            }
+            : undefined,
+        pendingPermission: result.pendingPermission
+            ? clonePendingPermission(result.pendingPermission)
+            : undefined,
+        thinkingState: result.thinkingState
+            ? {
+                ...result.thinkingState,
+                lastSeen: cloneDate(result.thinkingState.lastSeen),
+            }
+            : undefined,
+        lastRequestTokenUsage: result.lastRequestTokenUsage
+            ? { ...result.lastRequestTokenUsage }
+            : undefined,
+        recentTools: result.recentTools.map((t) => ({
+            ...t,
+            timestamp: new Date(t.timestamp.getTime()),
+        })),
+    };
+}
+function finalizeTranscriptResult(result, options, pendingPermissions) {
+    const staleMinutes = options?.staleTaskThresholdMinutes ?? 30;
+    const staleAgentThresholdMs = staleMinutes * 60 * 1000;
+    const now = Date.now();
+    for (const agent of result.agents) {
+        if (agent.status === "running") {
+            const runningTime = now - agent.startTime.getTime();
+            if (runningTime > staleAgentThresholdMs) {
+                agent.status = "completed";
+                agent.endTime = new Date(agent.startTime.getTime() + staleAgentThresholdMs);
+            }
+        }
+    }
+    result.pendingPermission = undefined;
+    for (const permission of pendingPermissions) {
+        const age = now - permission.timestamp.getTime();
+        if (age <= PERMISSION_THRESHOLD_MS) {
+            result.pendingPermission = clonePendingPermission(permission);
+            break;
+        }
+    }
+    if (result.thinkingState?.lastSeen) {
+        const age = now - result.thinkingState.lastSeen.getTime();
+        result.thinkingState.active = age <= THINKING_RECENCY_MS;
+    }
     return result;
 }
 /**
@@ -161,7 +240,10 @@ function readTailLines(filePath, fileSize, maxBytes) {
     }
     const content = buffer.toString("utf8");
     const lines = content.split("\n");
-    // If we started mid-file, discard the potentially incomplete first line
+    // If we started mid-file, discard the potentially incomplete first line.
+    // This also handles UTF-8 multi-byte boundary splits: the first chunk may
+    // start in the middle of a multi-byte sequence, producing a garbled line.
+    // Discarding it is safe because every valid JSONL line ends with '\n'.
     if (startOffset > 0 && lines.length > 0) {
         lines.shift();
     }
@@ -221,7 +303,7 @@ function extractTargetSummary(input, toolName) {
 /**
  * Process a single transcript entry
  */
-function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50, backgroundAgentMap) {
+function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50, backgroundAgentMap, recentToolMap) {
     const timestamp = entry.timestamp ? new Date(entry.timestamp) : new Date();
     // Set session start time from first entry
     if (!result.sessionStart && entry.timestamp) {
@@ -241,6 +323,29 @@ function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50
         // Track tool_use for Task (agents) and TodoWrite
         if (block.type === "tool_use" && block.id && block.name) {
             result.toolCallCount++;
+            result.lastToolName = block.name;
+            // Track for recentTools (skip internal/meta tools)
+            if (recentToolMap) {
+                const SKIP_TOOLS = [
+                    'TodoWrite', 'Skill', 'proxy_Skill', 'Task', 'proxy_Task',
+                    'report_intent', 'task_complete', 'thinking',
+                    'read_agent', 'list_agents', 'write_agent',
+                ];
+                if (!SKIP_TOOLS.includes(block.name)) {
+                    if (recentToolMap.size >= MAX_RECENT_TOOLS) {
+                        const oldestKey = recentToolMap.keys().next().value;
+                        if (oldestKey)
+                            recentToolMap.delete(oldestKey);
+                    }
+                    recentToolMap.set(block.id, {
+                        id: block.id,
+                        name: block.name.replace('proxy_', ''),
+                        target: extractTargetSummary(block.input, block.name),
+                        status: 'running',
+                        timestamp,
+                    });
+                }
+            }
             if (block.name === "Task" || block.name === "proxy_Task") {
                 result.agentCallCount++;
                 const input = block.input;
@@ -309,6 +414,15 @@ function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50
         if (block.type === "tool_result" && block.tool_use_id) {
             // Clear from pending permissions when tool_result arrives
             pendingPermissionMap.delete(block.tool_use_id);
+            // Update recentTools status
+            if (recentToolMap) {
+                const trackedTool = recentToolMap.get(block.tool_use_id);
+                if (trackedTool) {
+                    const isError = block.is_error === true ||
+                        (typeof block.content === 'string' && block.content.toLowerCase().includes('error'));
+                    trackedTool.status = isError ? 'failure' : 'success';
+                }
+            }
             const agent = agentMap.get(block.tool_use_id);
             if (agent) {
                 const blockContent = block.content;

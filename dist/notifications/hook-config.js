@@ -6,7 +6,7 @@
  */
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { getCopilotConfigDir } from "../utils/paths.js";
+import { getCopilotConfigDir } from "../utils/config-dir.js";
 const DEFAULT_CONFIG_PATH = join(getCopilotConfigDir(), "omp_config.hook.json");
 /** Cached hook config. `undefined` = not yet read, `null` = read but absent/disabled. */
 let cachedConfig;

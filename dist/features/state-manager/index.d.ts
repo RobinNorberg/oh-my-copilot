@@ -3,7 +3,7 @@
  *
  * Unified state management that standardizes state file locations:
  * - Local state: .omg/state/{name}.json
- * - Global state: ~/.omg/state/{name}.json
+ * - Global state: XDG-aware user OMC state with legacy ~/.omg/state fallback
  *
  * Features:
  * - Type-safe read/write operations

@@ -13,6 +13,7 @@ import { mergeProjectMemory } from '../lib/project-memory-merge.js';
 export const projectMemoryReadTool = {
     name: 'project_memory_read',
     description: 'Read the project memory. Can read the full memory or a specific section.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         section: z.enum(['all', 'techStack', 'build', 'conventions', 'structure', 'notes', 'directives']).optional()
             .describe('Section to read (default: all)'),
@@ -75,6 +76,7 @@ export const projectMemoryReadTool = {
 export const projectMemoryWriteTool = {
     name: 'project_memory_write',
     description: 'Write/update project memory. Can replace entirely or merge with existing memory.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         memory: z.record(z.string(), z.unknown()).describe('The memory object to write'),
         merge: z.boolean().optional().describe('If true, merge with existing memory (default: false = replace)'),
@@ -130,6 +132,7 @@ export const projectMemoryWriteTool = {
 export const projectMemoryAddNoteTool = {
     name: 'project_memory_add_note',
     description: 'Add a custom note to project memory. Notes are categorized and persisted across sessions.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         category: z.string().max(50).describe('Note category (e.g., "build", "test", "deploy", "env", "architecture")'),
         content: z.string().max(1000).describe('Note content'),
@@ -173,6 +176,7 @@ export const projectMemoryAddNoteTool = {
 export const projectMemoryAddDirectiveTool = {
     name: 'project_memory_add_directive',
     description: 'Add a user directive to project memory. Directives are instructions that persist across sessions and survive compaction.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         directive: z.string().max(500).describe('The directive (e.g., "Always use TypeScript strict mode")'),
         context: z.string().max(500).optional().describe('Additional context for the directive'),

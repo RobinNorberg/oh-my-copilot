@@ -9,8 +9,10 @@
 
 import { z } from "zod";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "fs";
-import { join, extname, resolve } from "path";
+import { join, extname, resolve, normalize, relative, isAbsolute } from "path";
 import { createRequire } from "module";
+import { getWorktreeRoot } from "../lib/worktree-paths.js";
+import { isToolPathRestricted } from "../lib/security-config.js";
 
 // Dynamic import for @ast-grep/napi
 // Graceful degradation: if the module is not available (e.g., in bundled/plugin context),
@@ -45,6 +47,32 @@ async function getSgModule(): Promise<typeof import("@ast-grep/napi") | null> {
     }
   }
   return sgModule;
+}
+
+/**
+ * Validate that a tool path is within the project root boundary.
+ * Only enforced when security.restrictToolPaths is enabled.
+ */
+export function validateToolPath(inputPath: string): string {
+  const resolved = resolve(inputPath);
+
+  if (!isToolPathRestricted()) {
+    return resolved;
+  }
+
+  const projectRoot = getWorktreeRoot() || process.cwd();
+  const normalizedRoot = normalize(projectRoot);
+  const normalizedPath = normalize(resolved);
+  const rel = relative(normalizedRoot, normalizedPath);
+
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(
+      `Path restricted: '${inputPath}' is outside the project root '${projectRoot}'. ` +
+        `Disable via security.restrictToolPaths in .copilot/omc.jsonc or unset OMC_SECURITY.`,
+    );
+  }
+
+  return resolved;
 }
 
 /**
@@ -86,6 +114,7 @@ export interface AstToolDefinition<T extends z.ZodRawShape> {
   name: string;
   description: string;
   schema: T;
+  annotations?: import('./types.js').ToolAnnotations;
   handler: (
     args: z.infer<z.ZodObject<T>>,
   ) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
@@ -203,7 +232,12 @@ function getFilesForLanguage(
   }
 
   const resolvedPath = resolve(dirPath);
-  const stat = statSync(resolvedPath);
+  let stat: ReturnType<typeof statSync>;
+  try {
+    stat = statSync(resolvedPath);
+  } catch (err) {
+    throw new Error(`Cannot access path "${resolvedPath}": ${(err as Error).message}`);
+  }
 
   if (stat.isFile()) {
     return [resolvedPath];
@@ -250,6 +284,7 @@ export const astGrepSearchTool: AstToolDefinition<{
   maxResults: z.ZodOptional<z.ZodNumber>;
 }> = {
   name: "ast_grep_search",
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   description: `Search for code patterns using AST matching. More precise than text search.
 
 Use meta-variables in patterns:
@@ -401,6 +436,7 @@ export const astGrepReplaceTool: AstToolDefinition<{
   dryRun: z.ZodOptional<z.ZodBoolean>;
 }> = {
   name: "ast_grep_replace",
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   description: `Replace code patterns using AST matching. Preserves matched content via meta-variables.
 
 Use meta-variables in both pattern and replacement:
@@ -503,9 +539,12 @@ IMPORTANT: dryRun=true (default) only previews changes. Set dryRun=false to appl
                 const varName = metaVar.replace(/^\$+/, "");
                 const captured = match.getMatch(varName);
                 if (captured) {
+                  // Escape $ in captured text to prevent JS replacement patterns
+                  // ($&, $', $`, $$) from being interpreted by replaceAll
+                  const safeText = captured.text().replace(/\$/g, '$$$$');
                   finalReplacement = finalReplacement.replaceAll(
                     metaVar,
-                    captured.text(),
+                    safeText,
                   );
                 }
               }

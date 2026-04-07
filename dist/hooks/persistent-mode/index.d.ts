@@ -37,6 +37,7 @@ export interface PersistentModeResult {
         toolError?: ToolErrorState;
     };
 }
+export declare function shouldWriteStateBack(statePath: string | null | undefined): boolean;
 /**
  * Read last tool error from state directory.
  * Returns null if file doesn't exist or error is stale (>60 seconds old).
@@ -56,7 +57,7 @@ export declare function getToolErrorRetryGuidance(toolError: ToolErrorState | nu
  */
 export declare function resetTodoContinuationAttempts(sessionId: string): void;
 /**
- * Read the session-idle notification cooldown in seconds from ~/.omg/config.json.
+ * Read the session-idle notification cooldown in seconds from global OMC config.
  * Default: 60 seconds. 0 = disabled (no cooldown).
  */
 export declare function getIdleNotificationCooldownSeconds(): number;

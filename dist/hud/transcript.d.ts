@@ -11,7 +11,7 @@
  */
 import type { TranscriptData, ActiveAgent, TodoItem } from "./types.js";
 /**
- * Parse a Copilot CLI transcript JSONL file.
+ * Parse a Claude Code transcript JSONL file.
  * Extracts running agents and latest todo list.
  *
  * For large files (>500KB), only parses the tail portion for performance.

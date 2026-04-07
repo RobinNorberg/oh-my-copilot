@@ -10,8 +10,9 @@
 
 import * as path from 'path';
 import { execSync } from 'child_process';
-import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getOmcRoot, getWorktreeRoot } from '../../lib/worktree-paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { toForwardSlash } from '../../utils/paths.js';
 import { existsSync, readFileSync } from 'fs';
 import {
   HOOK_NAME,
@@ -33,8 +34,6 @@ import {
   setPriorityContext,
 } from '../notepad/index.js';
 import { logAuditEntry } from './audit.js';
-import { getWorktreeRoot } from '../../lib/worktree-paths.js';
-import { toForwardSlash } from '../../utils/paths.js';
 
 // Re-export constants
 export * from './constants.js';
@@ -54,8 +53,8 @@ export function clearEnforcementCache(): void {
 }
 
 /**
- * Read enforcement level from config
- * Checks: .omg/config.json → ~/.copilot/.omc-config.json → default (warn)
+ * Read enforcement level from config.
+ * Checks: .omc/config.json → [$COPILOT_CONFIG_DIR|~/.copilot]/.omc-config.json → default (warn)
  */
 function getEnforcementLevel(directory: string): EnforcementLevel {
   const now = Date.now();
@@ -137,6 +136,11 @@ export function isAllowedPath(filePath: string, directory?: string): boolean {
   if (ALLOWED_PATH_PATTERNS.some(pattern => pattern.test(normalized))) return true;
   // Absolute path: strip worktree root, then re-check
   if (path.isAbsolute(filePath)) {
+    const relToConfigDir = path.relative(getCopilotConfigDir(), filePath);
+    if (!relToConfigDir || (!relToConfigDir.startsWith('..') && !path.isAbsolute(relToConfigDir))) {
+      return true;
+    }
+
     const root = directory ? getWorktreeRoot(directory) : getWorktreeRoot();
     if (root) {
       const rel = toForwardSlash(path.relative(root, filePath));
@@ -161,6 +165,11 @@ export function isSourceFile(filePath: string): boolean {
  */
 export function isWriteEditTool(toolName: string): boolean {
   return WRITE_EDIT_TOOLS.includes(toolName);
+}
+
+function isDelegationToolName(toolName: string): boolean {
+  const normalizedToolName = toolName.toLowerCase();
+  return normalizedToolName === 'task' || normalizedToolName === 'agent';
 }
 
 /**
@@ -441,7 +450,7 @@ export function processOrchestratorPostTool(
 
   // Handle write/edit tools
   if (isWriteEditTool(toolName)) {
-    const filePath = (toolInput?.filePath ?? toolInput?.path ?? toolInput?.file) as string | undefined;
+    const filePath = (toolInput?.file_path ?? toolInput?.filePath ?? toolInput?.path ?? toolInput?.file ?? toolInput?.notebook_path) as string | undefined;
 
     if (filePath && !isAllowedPath(filePath, workDir)) {
       return {
@@ -451,8 +460,8 @@ export function processOrchestratorPostTool(
     }
   }
 
-  // Handle Task tool completion
-  if (toolName === 'Task' || toolName === 'task') {
+  // Handle delegation tool completion
+  if (isDelegationToolName(toolName)) {
     // Check for background task launch
     const isBackgroundLaunch = output.includes('Background task launched') || output.includes('Background task resumed');
     if (isBackgroundLaunch) {

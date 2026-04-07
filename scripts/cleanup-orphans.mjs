@@ -24,7 +24,7 @@
 import { existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 
 const args = process.argv.slice(2);
 const teamNameIdx = args.indexOf('--team-name');
@@ -71,8 +71,8 @@ function findOrphanProcesses(filterTeam) {
       const output = execSync('ps aux', { encoding: 'utf-8', timeout: 10000 });
 
       for (const line of output.split('\n')) {
-        // Match copilot agent processes with team context
-        if ((line.includes('gh') || line.includes('node')) &&
+        // Match OMC agent processes with team context (exclude bare 'node' to avoid over-matching)
+        if ((line.includes('claude') || line.includes('codex') || line.includes('gemini') || line.includes('omc') || line.includes('oh-my-claude')) &&
             (line.includes('--team-name') || line.includes('team_name'))) {
 
           // Restrict team name match to valid slug characters
@@ -121,7 +121,7 @@ function getWindowsProcessListOutput() {
  * Check if a team's config still exists (i.e., team is still active).
  */
 function teamConfigExists(name) {
-  const configDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
+  const configDir = getCopilotConfigDir();
   const configPath = join(configDir, 'teams', name, 'config.json');
   return existsSync(configPath);
 }

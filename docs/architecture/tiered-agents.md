@@ -1,5 +1,7 @@
 # Tiered Agents v2 Architecture Design
 
+> **Status: Proposal** — This is an aspirational design document describing a planned improvement to the agent tier system. It is not yet implemented. See `docs/shared/agent-tiers.md` and `docs/agent-templates/` for the current tier definitions.
+
 ## Overview
 
 This document describes an improved tiered agent architecture that addresses current gaps and implements sophisticated patterns for model routing, capability inheritance, and dynamic escalation.

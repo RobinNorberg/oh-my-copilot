@@ -98,21 +98,57 @@ echo "Default execution mode set to: USER_CHOICE"
 
 The OMC CLI (`omc` command) provides standalone monitoring and analytics commands.
 
-First, check if the CLI is already installed:
+First, check if the CLI is already installed and which package provides it:
 
 ```bash
+OMC_CLI_INSTALLED="false"
+OMC_CLI_STALE="false"
+
 if command -v omc &>/dev/null; then
+  # Detect which npm package provides the omc binary
+  OMC_BIN_PATH=$(command -v omc)
   OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
-  echo "OMC CLI already installed: $OMC_CLI_VERSION"
-  OMC_CLI_INSTALLED="true"
+
+  # Check if omc comes from the legacy oh-my-claude-sisyphus package
+  if [[ "$OMC_BIN_PATH" == *"oh-my-claude-sisyphus"* ]] || npm list -g oh-my-claude-sisyphus --depth=0 2>/dev/null | grep -q "oh-my-claude-sisyphus"; then
+    echo "WARNING: omc binary comes from legacy package 'oh-my-claude-sisyphus' ($OMC_CLI_VERSION)"
+    echo "This package has been renamed to 'oh-my-copilot'."
+    OMC_CLI_STALE="true"
+  else
+    echo "OMC CLI already installed: $OMC_CLI_VERSION"
+    OMC_CLI_INSTALLED="true"
+  fi
 else
   OMC_CLI_INSTALLED="false"
 fi
 ```
 
-If `OMC_CLI_INSTALLED` is `"true"`, skip the rest of this step.
+If `OMC_CLI_INSTALLED` is `"true"` and `OMC_CLI_STALE` is `"false"`, skip the rest of this step.
 
-If `OMC_CLI_INSTALLED` is `"false"`, use AskUserQuestion:
+If `OMC_CLI_STALE` is `"true"`, use AskUserQuestion:
+
+**Question:** "Found legacy package `oh-my-claude-sisyphus`. Would you like to replace it with `oh-my-copilot`?"
+
+**Options:**
+1. **Yes (Recommended)** - Uninstall legacy package and install `oh-my-copilot`
+2. **No - Skip** - Keep the legacy package for now
+
+If user chooses **Yes**:
+
+```bash
+echo "Removing legacy package oh-my-claude-sisyphus..."
+npm uninstall -g oh-my-claude-sisyphus 2>&1
+echo "Installing oh-my-copilot..."
+npm install -g oh-my-copilot 2>&1
+if command -v omc &>/dev/null; then
+  OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
+  echo "Replaced successfully. OMC CLI: $OMC_CLI_VERSION"
+else
+  echo "Installed but 'omc' not on PATH. You may need to restart your shell."
+fi
+```
+
+If `OMC_CLI_INSTALLED` is `"false"` and `OMC_CLI_STALE` is `"false"`, use AskUserQuestion:
 
 **Question:** "Would you like to install the OMC CLI globally for standalone monitoring and analytics? (`omc`, `omc cost`, `omc sessions`)"
 

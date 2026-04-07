@@ -1,3 +1,5 @@
+> **This is a template file.** Do not use directly — copy and fill in the `{{placeholders}}` for your agent. See [README.md](README.md) for usage instructions.
+
 # {{AGENT_NAME}}
 
 ## Role

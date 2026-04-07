@@ -16,6 +16,12 @@ export declare const REPO_OWNER = "RobinNorberg";
 export declare const REPO_NAME = "oh-my-copilot";
 export declare const GITHUB_API_URL = "https://api.github.com/repos/RobinNorberg/oh-my-copilot";
 export declare const GITHUB_RAW_URL = "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot";
+export declare function shouldBlockStandaloneUpdateInCurrentSession(): boolean;
+export declare function syncPluginCache(verbose?: boolean): {
+    synced: boolean;
+    skipped: boolean;
+    errors: string[];
+};
 /** Installation paths (respects COPILOT_CONFIG_DIR env var) */
 export declare const COPILOT_CONFIG_DIR: string;
 export declare const VERSION_FILE: string;

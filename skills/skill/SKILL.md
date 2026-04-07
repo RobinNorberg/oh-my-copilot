@@ -12,15 +12,22 @@ Meta-skill for managing oh-my-copilot skills via CLI-like commands.
 
 ### /skill list
 
-Show all local skills organized by scope.
+Show all available skills organized by scope.
 
 **Behavior:**
-1. Scan user skills at `~/.copilot/skills/omc-learned/`
-2. Scan project skills at `.omg/skills/`
-3. Parse YAML frontmatter for metadata
-4. Display in organized table format:
+1. Scan bundled built-in skills in the plugin `skills/` directory (read-only)
+2. Scan user skills at `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/`
+3. Scan project skills at `.omg/skills/`
+4. Parse YAML frontmatter for metadata
+5. Display in organized table format:
 
 ```
+BUILT-IN SKILLS (bundled with oh-my-copilot):
+| Name              | Description                    | Scope    |
+|-------------------|--------------------------------|----------|
+| visual-verdict    | Structured visual QA verdicts  | built-in |
+| ralph             | Persistence loop               | built-in |
+
 USER SKILLS (~/.copilot/skills/omc-learned/):
 | Name              | Triggers           | Quality | Usage | Scope |
 |-------------------|--------------------|---------|-------|-------|
@@ -34,6 +41,8 @@ PROJECT SKILLS (.omg/skills/):
 ```
 
 **Fallback:** If quality/usage stats not available, show "N/A"
+
+**Built-in skill note:** Built-in skills are bundled with oh-my-copilot and are discoverable/readable, but not removed or edited through `/skill remove` or `/skill edit`.
 
 ---
 
@@ -51,7 +60,7 @@ Interactive wizard for creating a new skill.
 4. **Ask for argument hint** (optional)
    - Example: "<file> [options]"
 5. **Ask for scope:**
-   - `user` → `~/.copilot/skills/omc-learned/<name>/SKILL.md`
+   - `user` → `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/SKILL.md`
    - `project` → `.omg/skills/<name>/SKILL.md`
 6. **Create skill file** with template:
 
@@ -123,7 +132,7 @@ Remove a skill by name.
    - Display skill info (name, description, scope)
    - **Ask for confirmation:** "Delete '<name>' skill from <scope>? (yes/no)"
 3. **If confirmed:**
-   - Delete entire skill directory (e.g., `~/.copilot/skills/omc-learned/<name>/`)
+   - Delete entire skill directory (e.g., `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/`)
    - Report: "✓ Removed skill '<name>' from <scope>"
 4. **If not found:**
    - Report: "✗ Skill '<name>' not found in user or project scope"
@@ -290,7 +299,7 @@ Sync skills between user and project scopes.
 
 **Behavior:**
 1. **Scan both scopes:**
-   - User skills: `~/.copilot/skills/omc-learned/`
+   - User skills: `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/`
    - Project skills: `.omg/skills/`
 2. **Compare and categorize:**
    - User-only skills (not in project)
@@ -360,7 +369,7 @@ First, check if skill directories exist and create them if needed:
 
 ```bash
 # Check and create user-level skills directory
-USER_SKILLS_DIR="$HOME/.copilot/skills/omc-learned"
+USER_SKILLS_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned"
 if [ -d "$USER_SKILLS_DIR" ]; then
   echo "User skills directory exists: $USER_SKILLS_DIR"
 else
@@ -386,13 +395,13 @@ Scan both directories and show a comprehensive inventory:
 # Scan user-level skills
 echo "=== USER-LEVEL SKILLS (~/.copilot/skills/omc-learned/) ==="
 if [ -d "$HOME/.copilot/skills/omc-learned" ]; then
-  USER_COUNT=$(find "$HOME/.copilot/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
+  USER_COUNT=$(find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
   echo "Total skills: $USER_COUNT"
 
   if [ $USER_COUNT -gt 0 ]; then
     echo ""
     echo "Skills found:"
-    find "$HOME/.copilot/skills/omc-learned" -name "*.md" -type f -exec sh -c '
+    find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned" -name "*.md" -type f -exec sh -c '
       FILE="$1"
       NAME=$(grep -m1 "^name:" "$FILE" 2>/dev/null | sed "s/name: //")
       DESC=$(grep -m1 "^description:" "$FILE" 2>/dev/null | sed "s/description: //")

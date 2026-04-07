@@ -59,12 +59,16 @@ describe('mode-state-io', () => {
             writeModeState('ralph', { active: true, iteration: 1 }, tempDir);
             const filePath = join(tempDir, '.omg', 'state', 'ralph-state.json');
             writeFileSync(filePath + '.tmp', 'partial-garbage');
-            // A new write should overwrite the stale .tmp and succeed
+            // A new write should succeed regardless of the stale .tmp file.
+            // atomicWriteJsonSync uses UUID-suffixed temp files so the pre-existing
+            // .tmp is not touched or removed — only the main state file is updated.
             writeModeState('ralph', { active: true, iteration: 2 }, tempDir);
             const state = readModeState('ralph', tempDir);
             expect(state).not.toBeNull();
             expect(state.iteration).toBe(2);
-            expect(existsSync(filePath + '.tmp')).toBe(false);
+            // The manually-placed .tmp leftover is not cleaned up by atomicWriteJsonSync
+            // (it uses a different temp file naming scheme with UUID suffix).
+            expect(existsSync(filePath + '.tmp')).toBe(true);
         });
     });
     // -----------------------------------------------------------------------

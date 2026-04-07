@@ -20,6 +20,7 @@ import { join } from "path";
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { recordAgentStart, recordAgentStop } from './session-replay.js';
 import { recordMissionAgentStart, recordMissionAgentStop } from '../../hud/mission-board.js';
+import { isProcessAlive } from '../../platform/process-utils.js';
 
 // ============================================================================
 // Types
@@ -133,7 +134,11 @@ export const DEADLOCK_CHECK_THRESHOLD = 3;
 const STATE_FILE = "subagent-tracking.json";
 const STALE_THRESHOLD_MS = 5 * 60 * 1000;
 const MAX_COMPLETED_AGENTS = 100;
-const LOCK_TIMEOUT_MS = 5000;
+// Split lock timings: acquisition stays short to avoid long Atomics.wait
+// stalls, while stale detection stays generous so healthy writers are not
+// treated as abandoned during slow disk read/merge/write sequences.
+const LOCK_ACQUIRE_TIMEOUT_MS = 500;
+const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 50;
 const WRITE_DEBOUNCE_MS = 100;
 const MAX_FLUSH_RETRIES = 3;
@@ -147,19 +152,6 @@ const pendingWrites = new Map<
 
 // Guard against duplicate concurrent flushes per directory
 const flushInProgress = new Set<string>();
-
-/**
- * Check if a process is still alive
- * Signal 0 doesn't kill the process, just checks if it exists
- */
-function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Synchronous sleep using Atomics.wait
@@ -251,7 +243,7 @@ function acquireLock(directory: string): boolean {
 
   const startTime = Date.now();
 
-  while (Date.now() - startTime < LOCK_TIMEOUT_MS) {
+  while (Date.now() - startTime < LOCK_ACQUIRE_TIMEOUT_MS) {
     try {
       // Check for stale lock (older than timeout or dead process)
       if (existsSync(lockPath)) {
@@ -280,7 +272,7 @@ function acquireLock(directory: string): boolean {
           syncSleep(LOCK_RETRY_MS);
           continue;
         }
-        const isStale = Date.now() - lockTime > LOCK_TIMEOUT_MS;
+        const isStale = Date.now() - lockTime > LOCK_STALE_MS;
         const isDeadProcess = !isNaN(lockPid) && !isProcessAlive(lockPid);
 
         if (isStale || isDeadProcess) {
@@ -579,40 +571,65 @@ export function processSubagentStart(input: SubagentStartInput): HookOutput {
   try {
     const state = readTrackingState(input.cwd);
     const parentMode = detectParentMode(input.cwd);
+    const startedAt = new Date().toISOString();
+    const taskDescription = input.prompt?.substring(0, 200); // Truncate for storage
+    const existingAgent = state.agents.find((agent) => agent.agent_id === input.agent_id);
+    const isDuplicateRunningStart = existingAgent?.status === "running";
+    let trackedAgent: SubagentInfo;
 
-    // Create new agent entry
-    const agentInfo: SubagentInfo = {
-      agent_id: input.agent_id,
-      agent_type: input.agent_type,
-      started_at: new Date().toISOString(),
-      parent_mode: parentMode,
-      task_description: input.prompt?.substring(0, 200), // Truncate for storage
-      status: "running",
-      model: input.model,
-    };
+    if (existingAgent) {
+      existingAgent.agent_type = input.agent_type;
+      existingAgent.parent_mode = parentMode;
+      existingAgent.task_description = taskDescription;
+      existingAgent.model = input.model;
 
-    // Add to state
-    state.agents.push(agentInfo);
-    state.total_spawned++;
+      if (existingAgent.status !== "running") {
+        existingAgent.status = "running";
+        existingAgent.started_at = startedAt;
+        existingAgent.completed_at = undefined;
+        existingAgent.duration_ms = undefined;
+        existingAgent.output_summary = undefined;
+        state.total_spawned++;
+      }
+      trackedAgent = existingAgent;
+    } else {
+      // Create new agent entry
+      const agentInfo: SubagentInfo = {
+        agent_id: input.agent_id,
+        agent_type: input.agent_type,
+        started_at: startedAt,
+        parent_mode: parentMode,
+        task_description: taskDescription,
+        status: "running",
+        model: input.model,
+      };
+
+      // Add to state
+      state.agents.push(agentInfo);
+      state.total_spawned++;
+      trackedAgent = agentInfo;
+    }
 
     // Write updated state
     writeTrackingState(input.cwd, state);
 
-    // Record to session replay JSONL for /trace
-    try {
-      recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model);
-    } catch { /* best-effort */ }
+    if (!isDuplicateRunningStart) {
+      // Record to session replay JSONL for /trace
+      try {
+        recordAgentStart(input.cwd, input.session_id, input.agent_id, input.agent_type, input.prompt, parentMode, input.model);
+      } catch { /* best-effort */ }
 
-    try {
-      recordMissionAgentStart(input.cwd, {
-        sessionId: input.session_id,
-        agentId: input.agent_id,
-        agentType: input.agent_type,
-        parentMode,
-        taskDescription: input.prompt,
-        at: agentInfo.started_at,
-      });
-    } catch { /* best-effort */ }
+      try {
+        recordMissionAgentStart(input.cwd, {
+          sessionId: input.session_id,
+          agentId: input.agent_id,
+          agentType: input.agent_type,
+          parentMode,
+          taskDescription: input.prompt,
+          at: trackedAgent.started_at,
+        });
+      } catch { /* best-effort */ }
+    }
 
     // Check for stale agents
     const staleAgents = getStaleAgents(state);
@@ -777,9 +794,21 @@ export function cleanupStaleAgents(directory: string): number {
 /**
  * Get count of active (running) agents
  */
-export function getActiveAgentCount(directory: string): number {
+export interface ActiveAgentSnapshot {
+  count: number;
+  lastUpdatedAt?: string;
+}
+
+export function getActiveAgentSnapshot(directory: string): ActiveAgentSnapshot {
   const state = readTrackingState(directory);
-  return state.agents.filter((a) => a.status === "running").length;
+  return {
+    count: state.agents.filter((a) => a.status === "running").length,
+    lastUpdatedAt: state.last_updated,
+  };
+}
+
+export function getActiveAgentCount(directory: string): number {
+  return getActiveAgentSnapshot(directory).count;
 }
 
 /**

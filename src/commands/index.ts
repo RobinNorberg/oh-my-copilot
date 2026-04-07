@@ -7,7 +7,7 @@
 
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { getCopilotConfigDir } from '../utils/paths.js';
+import { getClaudeConfigDir } from '../utils/config-dir.js';
 
 export interface CommandInfo {
   name: string;
@@ -26,7 +26,7 @@ export interface ExpandedCommand {
  * Get the commands directory path
  */
 export function getCommandsDir(): string {
-  return join(getCopilotConfigDir(), 'commands');
+  return join(getClaudeConfigDir(), 'commands');
 }
 
 /**

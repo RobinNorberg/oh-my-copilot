@@ -14,6 +14,7 @@ import { notepadTools } from "../tools/notepad-tools.js";
 import { memoryTools } from "../tools/memory-tools.js";
 import { traceTools } from "../tools/trace-tools.js";
 import { sharedMemoryTools } from "../tools/shared-memory-tools.js";
+import { wikiTools } from "../tools/wiki-tools.js";
 import { TOOL_CATEGORIES } from "../constants/index.js";
 // Tag each tool array with its category before aggregation
 function tagCategory(tools, category) {
@@ -37,6 +38,7 @@ export const DISABLE_TOOLS_GROUP_MAP = {
     'codex': TOOL_CATEGORIES.CODEX,
     'gemini': TOOL_CATEGORIES.GEMINI,
     'shared-memory': TOOL_CATEGORIES.SHARED_MEMORY,
+    'wiki': TOOL_CATEGORIES.WIKI,
 };
 /**
  * Parse OMC_DISABLE_TOOLS env var value into a Set of disabled ToolCategory values.
@@ -78,6 +80,7 @@ const allTools = [
     ...tagCategory(memoryTools, TOOL_CATEGORIES.MEMORY),
     ...tagCategory(traceTools, TOOL_CATEGORIES.TRACE),
     ...tagCategory(sharedMemoryTools, TOOL_CATEGORIES.SHARED_MEMORY),
+    ...tagCategory(wikiTools, TOOL_CATEGORIES.WIKI),
 ];
 // Read OMC_DISABLE_TOOLS once at startup and filter tools accordingly
 const _startupDisabledGroups = parseDisabledGroups();

@@ -72,6 +72,7 @@ const SKILL_PROTECTION = {
     ccg: 'medium',
     // === Heavy protection (long-running, 10 reinforcements) ===
     deepinit: 'heavy',
+    'self-improve': 'heavy',
 };
 // ---------------------------------------------------------------------------
 // Public API
@@ -114,6 +115,20 @@ export function writeSkillActiveState(directory, skillName, sessionId) {
     const config = PROTECTION_CONFIGS[protection];
     const now = new Date().toISOString();
     const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
+    // Nesting guard: when a skill (e.g. omc-setup) invokes a child skill
+    // (e.g. mcp-setup), the child must not overwrite the parent's active state.
+    // If a DIFFERENT skill is already active in this session, skip writing —
+    // the parent's stop-hook protection already covers the session.
+    // If the SAME skill is re-invoked, allow the overwrite (idempotent refresh).
+    //
+    // NOTE: This read-check-write sequence has a TOCTOU race condition
+    // (non-atomic), but this is acceptable because Claude Code sessions are
+    // single-threaded — only one tool call executes at a time within a session.
+    const existingState = readSkillActiveState(directory, sessionId);
+    if (existingState && existingState.active && existingState.skill_name !== normalized) {
+        // A different skill already owns the active state — do not overwrite.
+        return null;
+    }
     const state = {
         active: true,
         skill_name: normalized,

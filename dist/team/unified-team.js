@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getCopilotConfigDir } from '../utils/paths.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { listMcpWorkers } from './team-registration.js';
 import { readHeartbeat, isWorkerAlive } from './heartbeat.js';
 import { getDefaultCapabilities } from './capabilities.js';

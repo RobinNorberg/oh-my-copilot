@@ -27,6 +27,7 @@ Use this instead of Bash heredocs when you need:
 - Large datasets that shouldn't be reloaded
 - Iterative ML model training
 - Any workflow benefiting from Python state persistence`,
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     schema: pythonReplSchema,
     handler: pythonReplHandler
 };

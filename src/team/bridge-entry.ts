@@ -17,7 +17,7 @@ import { runBridge } from './mcp-team-bridge.js';
 import { deleteHeartbeat } from './heartbeat.js';
 import { unregisterMcpWorker } from './team-registration.js';
 import { getWorktreeRoot } from '../lib/worktree-paths.js';
-import { getCopilotConfigDir } from '../utils/paths.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { sanitizeName } from './tmux-session.js';
 
 /**

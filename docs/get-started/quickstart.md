@@ -33,6 +33,6 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 
 ## Next Steps
 
-- [Agent Selection Guide](../guides/agent-selection.md) — find the right agent for your task
-- [Execution Modes](../guides/execution-modes.md) — Autopilot, Ralph, Team, Ultrawork
-- [Full Reference](../REFERENCE.md) — comprehensive documentation
+- [Full Reference](../REFERENCE.md) — agents, skills, execution modes, and more
+- [Team Mode](../guides/team-mode.md) — multi-agent orchestration
+- [Permissions](../architecture/permissions.md) — auto-approval architecture

@@ -1,7 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import type { ToolAnnotations } from '../../tools/types.js';
 
 export interface PermissionRequestInput {
   session_id: string;
@@ -42,6 +43,22 @@ const SAFE_PATTERNS = [
   /^pytest/,
   /^python -m pytest/,
   /^ls( |$)/,
+  /^grep /,
+  /^find /,
+  /^wc /,
+  /^pwd$/,
+  /^which /,
+  /^echo /,
+  /^env$/,
+  /^node --version$/,
+  /^dotnet (--version|--list-sdks|--list-runtimes|--info)$/,
+  /^dotnet (build|test|run|restore|clean)( |$)/,
+  /^gh (pr|issue|repo|api|run|workflow) (view|list|status|diff|checks)/,
+  /^gh auth status/,
+  /^az (account show|group list|resource list|ad signed-in-user show)/,
+  /^az devops (project list|configure)/,
+  /^az pipelines (list|show|runs list)/,
+  /^az repos (list|show|pr list)/,
   // REMOVED: cat, head, tail - they allow reading arbitrary files
 ];
 
@@ -53,6 +70,77 @@ const DANGEROUS_SHELL_CHARS = /[;&|`$()<>\n\r\t\0\\{}\[\]*?~!#]/;
 
 // Heredoc operator detection (<<, <<-, <<~, with optional quoting of delimiter)
 const HEREDOC_PATTERN = /<<[-~]?\s*['"]?\w+['"]?/;
+
+// --- Deny tracking & escalation ---
+const CONSECUTIVE_DENY_LIMIT = 3;
+const TOTAL_DENY_LIMIT = 20;
+
+interface DenyTracker {
+  consecutiveDenials: number;
+  totalDenials: number;
+  totalAllows: number;
+  lastDecision: 'allow' | 'deny' | 'ask' | null;
+}
+
+const sessionDenyTracker: DenyTracker = {
+  consecutiveDenials: 0,
+  totalDenials: 0,
+  totalAllows: 0,
+  lastDecision: null,
+};
+
+function trackDecision(decision: 'allow' | 'deny' | 'ask'): void {
+  sessionDenyTracker.lastDecision = decision;
+  if (decision === 'deny') {
+    sessionDenyTracker.consecutiveDenials++;
+    sessionDenyTracker.totalDenials++;
+  } else if (decision === 'allow') {
+    sessionDenyTracker.consecutiveDenials = 0;
+    sessionDenyTracker.totalAllows++;
+  }
+}
+
+function shouldEscalate(): boolean {
+  return (
+    sessionDenyTracker.consecutiveDenials >= CONSECUTIVE_DENY_LIMIT ||
+    sessionDenyTracker.totalDenials >= TOTAL_DENY_LIMIT
+  );
+}
+
+// --- Audit logging ---
+function logPermissionDecision(
+  toolName: string,
+  command: string | undefined,
+  decision: 'allow' | 'deny' | 'ask',
+  reason: string,
+  directory: string,
+): void {
+  try {
+    const logDir = path.join(getOmcRoot(directory), 'logs');
+    if (!fs.existsSync(logDir)) {
+      fs.mkdirSync(logDir, { recursive: true });
+    }
+    const logPath = path.join(logDir, 'permissions.log');
+    const entry = JSON.stringify({
+      ts: new Date().toISOString(),
+      tool: toolName,
+      command: command?.slice(0, 200),
+      decision,
+      reason,
+      denials: sessionDenyTracker.totalDenials,
+      allows: sessionDenyTracker.totalAllows,
+    });
+    fs.appendFileSync(logPath, entry + '\n');
+  } catch {
+    // Audit logging is best-effort; never fail the permission decision
+  }
+}
+
+// --- Annotation-aware MCP tool approval ---
+function isAnnotationSafe(annotations: ToolAnnotations | undefined): boolean {
+  if (!annotations) return false;
+  return annotations.readOnlyHint === true && annotations.destructiveHint !== true;
+}
 
 /**
  * Patterns that are safe to auto-allow even when they contain heredoc content.
@@ -261,52 +349,100 @@ export function isActiveModeRunning(directory: string): boolean {
 }
 
 /**
- * Process permission request and decide whether to auto-allow
+ * Build a permission decision result with tracking and audit logging.
  */
-export function processPermissionRequest(input: PermissionRequestInput): HookOutput {
-  // Only process Bash tool for command auto-approval
-  // Normalize tool name - handle both proxy_ prefixed and unprefixed versions
-  const toolName = input.tool_name.replace(/^proxy_/, '');
-  if (toolName !== 'Bash') {
-    return { continue: true };
+function makeDecision(
+  behavior: 'allow' | 'deny' | 'ask',
+  reason: string,
+  toolName: string,
+  command: string | undefined,
+  directory: string,
+): HookOutput {
+  trackDecision(behavior);
+  logPermissionDecision(toolName, command, behavior, reason, directory);
+
+  if (behavior === 'allow' || behavior === 'deny') {
+    return {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: 'PermissionRequest',
+        decision: { behavior, reason },
+      },
+    };
   }
 
+  // 'ask' — pass through to Copilot CLI's native prompt
+  return { continue: true };
+}
+
+/**
+ * Process permission request and decide whether to auto-allow.
+ *
+ * Decision flow:
+ * 1. Escalation check — if too many denials, stop and escalate
+ * 2. MCP tool annotations — readOnlyHint tools auto-approved
+ * 3. Bash safe patterns — known-safe CLI commands auto-approved
+ * 4. Bash heredoc — safe base commands with heredoc content auto-approved
+ * 5. Default — pass through to Copilot CLI's native permission prompt
+ */
+export function processPermissionRequest(input: PermissionRequestInput): HookOutput {
+  const toolName = input.tool_name.replace(/^proxy_/, '');
   const command = input.tool_input.command;
+  const directory = input.cwd;
+
+  // Escalation: if consecutive or total denials exceeded, deny-and-escalate
+  if (shouldEscalate()) {
+    return makeDecision(
+      'deny',
+      `Escalation: ${sessionDenyTracker.consecutiveDenials} consecutive or ${sessionDenyTracker.totalDenials} total denials — stopping to prevent unsafe retry loops`,
+      toolName,
+      command,
+      directory,
+    );
+  }
+
+  // MCP tool annotation check — auto-approve read-only plugin tools
+  if (toolName.startsWith('mcp__t__')) {
+    const annotations = input.tool_input._annotations as ToolAnnotations | undefined;
+    if (isAnnotationSafe(annotations)) {
+      return makeDecision('allow', 'Read-only MCP tool (annotation)', toolName, command, directory);
+    }
+  }
+
+  // Only process Bash commands beyond this point
+  if (toolName !== 'Bash') {
+    return makeDecision('ask', 'Non-Bash tool — defer to Copilot CLI', toolName, command, directory);
+  }
+
   if (!command || typeof command !== 'string') {
     return { continue: true };
   }
 
   // Auto-allow safe commands
   if (isSafeCommand(command)) {
-    return {
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: 'PermissionRequest',
-        decision: {
-          behavior: 'allow',
-          reason: 'Safe read-only or test command',
-        },
-      },
-    };
+    return makeDecision('allow', 'Safe read-only or test command', toolName, command, directory);
   }
 
   // Auto-allow heredoc commands with safe base commands (Issue #608)
-  // This prevents the full heredoc body from being stored in settings.local.json
   if (isHeredocWithSafeBase(command)) {
-    return {
-      continue: true,
-      hookSpecificOutput: {
-        hookEventName: 'PermissionRequest',
-        decision: {
-          behavior: 'allow',
-          reason: 'Safe command with heredoc content',
-        },
-      },
-    };
+    return makeDecision('allow', 'Safe command with heredoc content', toolName, command, directory);
   }
 
   // Default: let normal permission flow handle it
-  return { continue: true };
+  return makeDecision('ask', 'No safe pattern match — defer to Copilot CLI prompt', toolName, command, directory);
+}
+
+/** Get current deny tracker state (for diagnostics/omc-doctor) */
+export function getPermissionDenyStats(): Readonly<DenyTracker> {
+  return { ...sessionDenyTracker };
+}
+
+/** Reset deny tracker (e.g., after user explicitly approves) */
+export function resetDenyTracker(): void {
+  sessionDenyTracker.consecutiveDenials = 0;
+  sessionDenyTracker.totalDenials = 0;
+  sessionDenyTracker.totalAllows = 0;
+  sessionDenyTracker.lastDecision = null;
 }
 
 /**

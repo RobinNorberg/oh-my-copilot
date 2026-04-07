@@ -15,6 +15,7 @@
 import { readFile, writeFile, mkdir, readdir, appendFile, rename, rm, stat } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname, join, resolve } from 'path';
+import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 // ── Helpers ────────────────────────────────────────────────────────────────
 function safeString(value, fallback = '') {
     if (typeof value === 'string')
@@ -488,6 +489,7 @@ export async function drainPendingTeamDispatch(options = { cwd: '' }) {
     let processed = 0;
     let skipped = 0;
     let failed = 0;
+    const logMailboxSyncFailure = createSwallowedErrorLogger('hooks.team-dispatch drainPendingTeamDispatch mailbox notification sync failed');
     const issueCooldownMs = resolveIssueDispatchCooldownMs();
     const triggerCooldownMs = resolveDispatchTriggerCooldownMs();
     for (const teamName of teams) {
@@ -619,7 +621,7 @@ export async function drainPendingTeamDispatch(options = { cwd: '' }) {
                     request.notified_at = nowIso;
                     request.last_reason = result.reason;
                     if (request.kind === 'mailbox' && request.message_id) {
-                        await updateMailboxNotified(stateDir, teamName, request.to_worker, request.message_id).catch(() => { });
+                        await updateMailboxNotified(stateDir, teamName, request.to_worker, request.message_id).catch(logMailboxSyncFailure);
                     }
                     processed += 1;
                     mutated = true;

@@ -56,6 +56,10 @@ function getPackageDir(): string {
   try {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
+    const currentDirName = basename(__dirname);
+    if (currentDirName === 'bridge') {
+      return join(__dirname, '..');
+    }
     // From src/agents/ or dist/agents/ go up to package root
     return join(__dirname, '..', '..');
   } catch {
@@ -364,6 +368,7 @@ export function deepMerge<T extends Record<string, unknown>>(
   const result = { ...target };
 
   for (const key of Object.keys(source)) {
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
     const sourceValue = source[key as keyof T];
     const targetValue = target[key as keyof T];
 

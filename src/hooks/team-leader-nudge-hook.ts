@@ -12,6 +12,7 @@
 import { readFile, writeFile, mkdir, rename } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -249,6 +250,9 @@ export async function maybeNudgeLeader(params: {
 
   // Send nudge
   const message = `[OMC] Leader nudge: ${staleness.idleWorkerCount}/${staleness.totalWorkerCount} workers idle, ${staleness.pendingTaskCount} tasks pending. Please check task assignments. ${INJECT_MARKER}`;
+  const logNudgePersistenceFailure = createSwallowedErrorLogger(
+    'hooks.team-leader-nudge maybeNudgeLeader persistence failed',
+  );
 
   try {
     await tmux.sendKeys(leaderPaneId, message, true);
@@ -262,7 +266,7 @@ export async function maybeNudgeLeader(params: {
       nudge_count: nudgeState.nudge_count + 1,
       last_nudge_at_ms: nowMs,
       last_nudge_at: nowIso,
-    }).catch(() => {});
+    }).catch(logNudgePersistenceFailure);
 
     return { nudged: true, reason: staleness.reason };
   } catch {

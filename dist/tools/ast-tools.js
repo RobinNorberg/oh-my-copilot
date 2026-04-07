@@ -8,8 +8,10 @@
  */
 import { z } from "zod";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "fs";
-import { join, extname, resolve } from "path";
+import { join, extname, resolve, normalize, relative, isAbsolute } from "path";
 import { createRequire } from "module";
+import { getWorktreeRoot } from "../lib/worktree-paths.js";
+import { isToolPathRestricted } from "../lib/security-config.js";
 // Dynamic import for @ast-grep/napi
 // Graceful degradation: if the module is not available (e.g., in bundled/plugin context),
 // tools will return a helpful error message instead of crashing
@@ -44,6 +46,25 @@ async function getSgModule() {
         }
     }
     return sgModule;
+}
+/**
+ * Validate that a tool path is within the project root boundary.
+ * Only enforced when security.restrictToolPaths is enabled.
+ */
+export function validateToolPath(inputPath) {
+    const resolved = resolve(inputPath);
+    if (!isToolPathRestricted()) {
+        return resolved;
+    }
+    const projectRoot = getWorktreeRoot() || process.cwd();
+    const normalizedRoot = normalize(projectRoot);
+    const normalizedPath = normalize(resolved);
+    const rel = relative(normalizedRoot, normalizedPath);
+    if (rel.startsWith("..") || isAbsolute(rel)) {
+        throw new Error(`Path restricted: '${inputPath}' is outside the project root '${projectRoot}'. ` +
+            `Disable via security.restrictToolPaths in .copilot/omc.jsonc or unset OMC_SECURITY.`);
+    }
+    return resolved;
 }
 /**
  * Convert lowercase language string to ast-grep Lang enum value
@@ -176,7 +197,13 @@ function getFilesForLanguage(dirPath, language, maxFiles = 1000) {
         }
     }
     const resolvedPath = resolve(dirPath);
-    const stat = statSync(resolvedPath);
+    let stat;
+    try {
+        stat = statSync(resolvedPath);
+    }
+    catch (err) {
+        throw new Error(`Cannot access path "${resolvedPath}": ${err.message}`);
+    }
     if (stat.isFile()) {
         return [resolvedPath];
     }
@@ -204,6 +231,7 @@ function formatMatch(filePath, matchText, startLine, endLine, context, fileConte
  */
 export const astGrepSearchTool = {
     name: "ast_grep_search",
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     description: `Search for code patterns using AST matching. More precise than text search.
 
 Use meta-variables in patterns:
@@ -327,6 +355,7 @@ Note: Patterns must be valid AST nodes for the language.`,
  */
 export const astGrepReplaceTool = {
     name: "ast_grep_replace",
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     description: `Replace code patterns using AST matching. Preserves matched content via meta-variables.
 
 Use meta-variables in both pattern and replacement:
@@ -408,7 +437,10 @@ IMPORTANT: dryRun=true (default) only previews changes. Set dryRun=false to appl
                                 const varName = metaVar.replace(/^\$+/, "");
                                 const captured = match.getMatch(varName);
                                 if (captured) {
-                                    finalReplacement = finalReplacement.replaceAll(metaVar, captured.text());
+                                    // Escape $ in captured text to prevent JS replacement patterns
+                                    // ($&, $', $`, $$) from being interpreted by replaceAll
+                                    const safeText = captured.text().replace(/\$/g, '$$$$');
+                                    finalReplacement = finalReplacement.replaceAll(metaVar, safeText);
                                 }
                             }
                         }

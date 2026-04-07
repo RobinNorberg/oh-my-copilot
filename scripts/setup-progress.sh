@@ -8,8 +8,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "$SCRIPT_DIR/lib/config-dir.sh"
+
 STATE_FILE=".omg/state/setup-state.json"
-CONFIG_FILE="$HOME/.copilot/.omg-config.json"
+CONFIG_DIR="$(resolve_copilot_config_dir)"
+CONFIG_FILE="$CONFIG_DIR/.omc-config.json"
 
 # Cross-platform ISO date to epoch conversion
 iso_to_epoch() {
@@ -86,6 +90,20 @@ cmd_complete() {
 
   # Clear temporary state
   rm -f "$STATE_FILE"
+
+  # Clear skill-active-state left over from nested skill invocations (e.g. mcp-setup
+  # invoked inside omc-setup). Without this, the stop hook blocks with "skill still
+  # executing" even though setup has finished.
+  local sid="${CLAUDE_SESSION_ID:-${CLAUDECODE_SESSION_ID:-}}"
+  if [ -n "$sid" ]; then
+    # Validate session ID: alphanumeric, hyphens, underscores only (matches TS SESSION_ID_REGEX)
+    if [[ "$sid" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$ ]]; then
+      rm -f ".omc/state/sessions/${sid}/skill-active-state.json" 2>/dev/null || true
+    fi
+  else
+    # No session ID: fall back to cleaning stale files only (>30min, matching heavy TTL)
+    find .omc/state -name "skill-active-state.json" -mmin +30 -delete 2>/dev/null || true
+  fi
 
   # Mark setup as completed in persistent config
   mkdir -p "$(dirname "$CONFIG_FILE")"

@@ -5,6 +5,18 @@
  * Centralises path resolution, ghost-legacy cleanup, directory creation,
  * and file permissions so that individual mode modules don't duplicate this logic.
  */
+export declare function getStateSessionOwner(state: Record<string, unknown> | null | undefined): string | undefined;
+export declare function canClearStateForSession(state: Record<string, unknown> | null | undefined, sessionId: string): boolean;
+/**
+ * Find session-scoped state files that belong to the requested session.
+ *
+ * Normally the state file lives under `.omc/state/sessions/{sessionId}/`.
+ * When a file is stranded under a different session directory (for example
+ * after session continuation or manual recovery), this scans all session
+ * directories and returns any file whose embedded owner still matches the
+ * requested session.
+ */
+export declare function findSessionOwnedStateFiles(mode: string, sessionId: string, directory?: string): string[];
 /**
  * Write mode state to disk.
  *

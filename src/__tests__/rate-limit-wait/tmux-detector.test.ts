@@ -14,11 +14,13 @@ import type { BlockedPane } from '../../features/rate-limit-wait/types.js';
 
 // Mock child_process
 vi.mock('child_process', () => ({
-  execSync: vi.fn(),
+  execFileSync: vi.fn(),
   spawnSync: vi.fn(),
 }));
 
-import { execSync, spawnSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
+// Alias so tests can use execSync variable name
+const execSync = execFileSync;
 
 describe('tmux-detector', () => {
   beforeEach(() => {
@@ -243,7 +245,8 @@ describe('tmux-detector', () => {
 
       expect(content).toBe('Line 1\nLine 2\nLine 3\n');
       expect(execSync).toHaveBeenCalledWith(
-        'tmux capture-pane -t "%0" -p -S -3',
+        'tmux',
+        expect.arrayContaining(['-t', '%0', '-S', '-3']),
         expect.any(Object)
       );
     });
@@ -313,7 +316,8 @@ describe('tmux-detector', () => {
       // Should clamp negative to 1
       capturePaneContent('%0', -5);
       expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining('-S -1'),
+        'tmux',
+        expect.arrayContaining(['-S', '-1']),
         expect.any(Object)
       );
 
@@ -321,7 +325,8 @@ describe('tmux-detector', () => {
       vi.mocked(execSync).mockClear();
       capturePaneContent('%0', 1000);
       expect(execSync).toHaveBeenCalledWith(
-        expect.stringContaining('-S -100'),
+        'tmux',
+        expect.arrayContaining(['-S', '-100']),
         expect.any(Object)
       );
     });

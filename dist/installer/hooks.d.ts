@@ -17,8 +17,6 @@ export declare function isWindows(): boolean;
  * @deprecated Always returns true. Bash hooks were removed in v3.9.0.
  */
 export declare function shouldUseNodeHooks(): boolean;
-/** Get the Copilot config directory path (cross-platform) */
-export declare function getCopilotConfigDir(): string;
 /** Get the hooks directory path */
 export declare function getHooksDir(): string;
 /**

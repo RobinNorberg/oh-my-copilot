@@ -3,6 +3,9 @@
  * Launches Copilot CLI with tmux session management
  */
 import { execFileSync } from 'child_process';
+import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
+import { homedir } from 'os';
+import { basename, join } from 'path';
 import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, wrapWithLoginShell, isCopilotAvailable, } from './tmux-utils.js';
 // Flag mapping
 const MADMAX_FLAG = '--madmax';
@@ -14,6 +17,100 @@ const DISCORD_FLAG = '--discord';
 const SLACK_FLAG = '--slack';
 const WEBHOOK_FLAG = '--webhook';
 const TEAMS_FLAG = '--teams';
+const OPENCLAW_FLAG = '--openclaw';
+const OMC_RUNTIME_DIRNAME = '.omc-launch';
+function hasOmcMarkers(path) {
+    if (!existsSync(path))
+        return false;
+    const content = readFileSync(path, 'utf-8');
+    return content.includes('<!-- OMC:START -->') && content.includes('<!-- OMC:END -->');
+}
+function ensureMirroredPath(sourcePath, targetPath) {
+    if (!existsSync(sourcePath))
+        return;
+    try {
+        const sourceStat = lstatSync(sourcePath);
+        const targetExists = existsSync(targetPath);
+        if (targetExists) {
+            const targetStat = lstatSync(targetPath);
+            if (targetStat.isSymbolicLink()) {
+                return;
+            }
+            rmSync(targetPath, { recursive: true, force: true });
+        }
+        if (sourceStat.isDirectory()) {
+            symlinkSync(sourcePath, targetPath, process.platform === 'win32' ? 'junction' : 'dir');
+            return;
+        }
+        symlinkSync(sourcePath, targetPath, 'file');
+    }
+    catch {
+        const sourceStat = lstatSync(sourcePath);
+        if (sourceStat.isDirectory()) {
+            cpSync(sourcePath, targetPath, { recursive: true });
+            return;
+        }
+        copyFileSync(sourcePath, targetPath);
+    }
+}
+export function prepareOmcLaunchConfigDir(baseConfigDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot')) {
+    const companionPath = join(baseConfigDir, 'copilot-instructions-omc.md');
+    if (!hasOmcMarkers(companionPath)) {
+        return baseConfigDir;
+    }
+    const runtimeConfigDir = join(baseConfigDir, OMC_RUNTIME_DIRNAME);
+    rmSync(runtimeConfigDir, { recursive: true, force: true });
+    mkdirSync(runtimeConfigDir, { recursive: true });
+    copyFileSync(companionPath, join(runtimeConfigDir, 'copilot-instructions.md'));
+    for (const entry of [
+        'agents',
+        'commands',
+        'hooks',
+        'hud',
+        'plugins',
+        'projects',
+        'skills',
+        '.omc-config.json',
+        '.omc-version.json',
+        '.omc-silent-update.json',
+        'settings.json',
+        'settings.local.json',
+    ]) {
+        ensureMirroredPath(join(baseConfigDir, entry), join(runtimeConfigDir, basename(entry)));
+    }
+    writeFileSync(join(runtimeConfigDir, '.omc-launch-profile.json'), JSON.stringify({ sourceConfigDir: baseConfigDir, sourceClaudeMd: companionPath }, null, 2));
+    return runtimeConfigDir;
+}
+/**
+ * Extract the OMC-specific --openclaw flag from launch args.
+ * Purely presence-based (like --madmax/--yolo):
+ *   --openclaw        -> enable OpenClaw (OMC_OPENCLAW=1)
+ *   --openclaw=true   -> enable OpenClaw
+ *   --openclaw=false  -> disable OpenClaw
+ *   --openclaw=1      -> enable OpenClaw
+ *   --openclaw=0      -> disable OpenClaw
+ *
+ * Does NOT consume the next positional arg (no space-separated value).
+ * This flag is stripped before passing args to Copilot CLI.
+ */
+export function extractOpenClawFlag(args) {
+    let openclawEnabled = undefined;
+    const remainingArgs = [];
+    for (const arg of args) {
+        if (arg === OPENCLAW_FLAG) {
+            // Bare --openclaw means enabled (does NOT consume next arg)
+            openclawEnabled = true;
+            continue;
+        }
+        if (arg.startsWith(`${OPENCLAW_FLAG}=`)) {
+            const val = arg.slice(OPENCLAW_FLAG.length + 1).toLowerCase();
+            openclawEnabled = val !== 'false' && val !== '0';
+            continue;
+        }
+        remainingArgs.push(arg);
+    }
+    return { openclawEnabled, remainingArgs };
+}
 /**
  * Extract the OMC-specific --notify flag from launch args.
  * --notify false  → disable notifications (OMC_NOTIFY=0)
@@ -342,8 +439,16 @@ export async function launchCommand(args) {
     if (!notifyEnabled) {
         process.env.OMC_NOTIFY = '0';
     }
+    // Extract OMC-specific --openclaw flag (presence-based, no value consumption)
+    const { openclawEnabled, remainingArgs: argsAfterOpenclaw } = extractOpenClawFlag(remainingArgs);
+    if (openclawEnabled === true) {
+        process.env.OMC_OPENCLAW = '1';
+    }
+    else if (openclawEnabled === false) {
+        process.env.OMC_OPENCLAW = '0';
+    }
     // Extract OMC-specific --telegram flag (presence-based)
-    const { telegramEnabled, remainingArgs: argsAfterTelegram } = extractTelegramFlag(remainingArgs);
+    const { telegramEnabled, remainingArgs: argsAfterTelegram } = extractTelegramFlag(argsAfterOpenclaw);
     if (telegramEnabled === true) {
         process.env.OMC_TELEGRAM = '1';
     }
@@ -395,7 +500,7 @@ export async function launchCommand(args) {
         process.exit(1);
     }
     const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);
-    const sessionId = `omc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const sessionId = `omc-${Date.now()}-${crypto.randomUUID().replace(/-/g, '').slice(0, 8)}`;
     // Phase 1: preLaunch
     try {
         await preLaunch(cwd, sessionId);

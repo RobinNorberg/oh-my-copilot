@@ -10,7 +10,7 @@
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import { ConcurrencyManager } from './concurrency.js';
 import type {
   BackgroundTask,
@@ -26,7 +26,7 @@ import type {
 const DEFAULT_TASK_TTL_MS = 30 * 60 * 1000;
 
 /** Storage directory for task state */
-const BACKGROUND_TASKS_DIR = join(getCopilotConfigDir(), '.omg', 'background-tasks');
+const BACKGROUND_TASKS_DIR = join(getClaudeConfigDir(), '.omg', 'background-tasks');
 
 /**
  * Manages background tasks for the OMC system.

@@ -5,7 +5,7 @@
 
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import { isOmcHook } from '../../installer/index.js';
 import { colors } from '../utils/formatting.js';
 import { listBuiltinSkillNames } from '../../features/builtin-skills/skills.js';
@@ -71,7 +71,7 @@ function collectHooksFromSettings(settingsPath: string): ConflictReport['hookCon
  * We check both levels so the diagnostic is complete.
  */
 export function checkHookConflicts(): ConflictReport['hookConflicts'] {
-  const profileSettingsPath = join(getCopilotConfigDir(), 'settings.json');
+  const profileSettingsPath = join(getClaudeConfigDir(), 'settings.json');
   const projectSettingsPath = join(process.cwd(), '.copilot', 'settings.json');
 
   const profileHooks = collectHooksFromSettings(profileSettingsPath);
@@ -141,7 +141,7 @@ function findCompanionInstructionFiles(configDir: string): string[] {
  * where users keep OMC config in a separate file.
  */
 export function checkCopilotMdStatus(): ConflictReport['claudeMdStatus'] {
-  const configDir = getCopilotConfigDir();
+  const configDir = getClaudeConfigDir();
   const claudeMdPath = join(configDir, 'copilot-instructions.md');
 
   if (!existsSync(claudeMdPath)) {
@@ -219,7 +219,7 @@ export function checkEnvFlags(): ConflictReport['envFlags'] {
  * false positives for user's custom skills.
  */
 export function checkLegacySkills(): ConflictReport['legacySkills'] {
-  const legacySkillsDir = join(getCopilotConfigDir(), 'skills');
+  const legacySkillsDir = join(getClaudeConfigDir(), 'skills');
   if (!existsSync(legacySkillsDir)) return [];
 
   const collisions: ConflictReport['legacySkills'] = [];
@@ -246,7 +246,7 @@ export function checkLegacySkills(): ConflictReport['legacySkills'] {
  */
 export function checkConfigIssues(): ConflictReport['configIssues'] {
   const unknownFields: string[] = [];
-  const configPath = join(getCopilotConfigDir(), '.omc-config.json');
+  const configPath = join(getClaudeConfigDir(), '.omc-config.json');
 
   if (!existsSync(configPath)) {
     return { unknownFields };

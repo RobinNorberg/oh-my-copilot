@@ -14,6 +14,7 @@ import { execSync } from 'child_process';
 import { existsSync, mkdirSync, realpathSync, readdirSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 
 /** Standard .omc subdirectories */
 export const OmgPaths = {
@@ -234,7 +235,13 @@ export function ensureOmcDir(relativePath: string, worktreeRoot?: string): strin
   const fullPath = resolveOmcPath(relativePath, worktreeRoot);
 
   if (!existsSync(fullPath)) {
-    mkdirSync(fullPath, { recursive: true });
+    try {
+      mkdirSync(fullPath, { recursive: true });
+    } catch (err) {
+      // On Windows, concurrent hooks can race past the existsSync check and
+      // throw EEXIST. Safe to ignore — see atomic-write.ts:ensureDirSync.
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
   }
 
   return fullPath;
@@ -310,7 +317,13 @@ export function ensureAllOmcDirs(worktreeRoot?: string): void {
   for (const subdir of subdirs) {
     const fullPath = subdir ? join(omcRoot, subdir) : omcRoot;
     if (!existsSync(fullPath)) {
-      mkdirSync(fullPath, { recursive: true });
+      try {
+        mkdirSync(fullPath, { recursive: true });
+      } catch (err) {
+        // On Windows, concurrent hooks can race past the existsSync check and
+        // throw EEXIST. Safe to ignore — see atomic-write.ts:ensureDirSync.
+        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      }
     }
   }
 }
@@ -422,15 +435,19 @@ export function isValidTranscriptPath(transcriptPath: string): boolean {
   const home = homedir();
 
   // Allowed: ~/.copilot/..., ~/.omg/..., /tmp/..., os.tmpdir() (cross-platform)
+  // Allowed: [$COPILOT_CONFIG_DIR|~/.copilot], ~/.omg/..., /tmp/...
   const allowedPrefixes = [
-    join(home, '.copilot'),
+    getCopilotConfigDir(),
     join(home, '.omg'),
     '/tmp',
     '/var/folders', // macOS temp
     tmpdir(),       // cross-platform: covers Windows %TEMP%, macOS /var/folders, Linux /tmp
   ];
 
-  return allowedPrefixes.some(prefix => normalized.startsWith(prefix));
+  return allowedPrefixes.some((prefix) => {
+    const rel = relative(prefix, normalized);
+    return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+  });
 }
 
 
@@ -497,7 +514,13 @@ export function ensureSessionStateDir(sessionId: string, worktreeRoot?: string):
   const sessionDir = getSessionStateDir(sessionId, worktreeRoot);
 
   if (!existsSync(sessionDir)) {
-    mkdirSync(sessionDir, { recursive: true });
+    try {
+      mkdirSync(sessionDir, { recursive: true });
+    } catch (err) {
+      // On Windows, concurrent hooks can race past the existsSync check and
+      // throw EEXIST. Safe to ignore — see atomic-write.ts:ensureDirSync.
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+    }
   }
 
   return sessionDir;
@@ -589,8 +612,7 @@ export function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: 
     const sessionFile = lastSep !== -1 ? transcriptPath.substring(lastSep + 1) : '';
     if (sessionFile) {
       // The projects directory is under the Copilot config dir
-      const configDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
-      const projectsDir = join(configDir, 'projects');
+      const projectsDir = join(getCopilotConfigDir(), 'projects');
 
       if (existsSync(projectsDir)) {
         // Encode the main project root the same way Copilot CLI does:
@@ -628,8 +650,7 @@ export function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: 
       const lastSep = Math.max(transcriptPath.lastIndexOf('/'), transcriptPath.lastIndexOf('\\'));
       const sessionFile = lastSep !== -1 ? transcriptPath.substring(lastSep + 1) : '';
       if (sessionFile) {
-        const configDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
-        const projectsDir = join(configDir, 'projects');
+        const projectsDir = join(getCopilotConfigDir(), 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = mainRepoRoot.replace(/[/\\:]/g, '-');
           const resolvedPath = join(projectsDir, encodedMain, sessionFile);

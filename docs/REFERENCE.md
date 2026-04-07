@@ -10,7 +10,7 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [Configuration](#configuration)
 - [CLI Commands: ask/team](#cli-commands-askteam)
 - [Agents (18 Total)](#agents-18-total)
-- [Skills (37 Total)](#skills-37-total)
+- [Skills (50 Total)](#skills-50-total)
 - [Slash Commands](#slash-commands)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -107,6 +107,20 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `OMC_LSP_IDLE_CHECK_INTERVAL_MS`    | `60000` (1 min)      | Interval for checking idle LSP clients                                                                                                                                                                                                                                      |
 | `DISABLE_OMC`                       | _(unset)_            | Set to any value to disable all OMC hooks                                                                                                                                                                                                                                   |
 | `OMC_SKIP_HOOKS`                    | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
+
+### Strict Mode
+
+Strict mode is **disabled by default**. When enabled, it loads additional skills (`debug`, `remember`, `skillify`, `verify`) and applies stricter execution guidance.
+
+Enable via environment variable:
+```bash
+export OMC_STRICT_MODE=true
+```
+
+Or via config file (`~/.copilot/.omc-config.json`):
+```json
+{ "strictMode": true }
+```
 
 #### Centralized State with `OMC_STATE_DIR`
 
@@ -298,9 +312,11 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 
 ---
 
-## Skills (37 Total)
+## Skills (50 Total)
 
-Includes **37 canonical skills**.
+> **Note:** 4 skills (`debug`, `remember`, `skillify`, `verify`) are strict-mode-only and require `OMC_STRICT_MODE=true` to load.
+
+Includes **50 canonical skills**.
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |

@@ -22,6 +22,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
 
 // Dynamic import for the shared stdin module
 const { readStdin } = await import(
@@ -49,6 +50,10 @@ function writeJsonFile(path, data) {
   } catch {
     return false;
   }
+}
+
+function shouldWriteStateBack(path) {
+  return Boolean(path && existsSync(path));
 }
 
 /**
@@ -193,6 +198,30 @@ function getSafeReinforcementCount(value) {
     : 0;
 }
 
+const AWAITING_CONFIRMATION_TTL_MS = 2 * 60 * 1000;
+
+function isAwaitingConfirmation(state) {
+  if (!state || state.awaiting_confirmation !== true) {
+    return false;
+  }
+
+  const setAt =
+    state.awaiting_confirmation_set_at ||
+    state.started_at ||
+    null;
+
+  if (!setAt) {
+    return false;
+  }
+
+  const setAtMs = new Date(setAt).getTime();
+  if (!Number.isFinite(setAtMs)) {
+    return false;
+  }
+
+  return Date.now() - setAtMs < AWAITING_CONFIRMATION_TTL_MS;
+}
+
 /**
  * Check if a skill active state is stale based on its per-skill TTL.
  * Unlike mode states (which use the global 2-hour threshold), skill states
@@ -224,30 +253,42 @@ function isStaleSkillState(state) {
  */
 function isSessionCancelInProgress(stateDir, sessionId) {
   const CANCEL_SIGNAL_TTL_MS = 30000; // 30 seconds
+  const isActiveSignal = (signalPath) => {
+    const signal = readJsonFile(signalPath);
+    if (!signal) {
+      return false;
+    }
+
+    const now = Date.now();
+    const expiresAt = signal.expires_at ? new Date(signal.expires_at).getTime() : NaN;
+    const requestedAt = signal.requested_at ? new Date(signal.requested_at).getTime() : NaN;
+    const fallbackExpiry = Number.isFinite(requestedAt) ? requestedAt + CANCEL_SIGNAL_TTL_MS : NaN;
+    const effectiveExpiry = Number.isFinite(expiresAt) ? expiresAt : fallbackExpiry;
+
+    if (Number.isFinite(effectiveExpiry) && effectiveExpiry > now) {
+      return true;
+    }
+
+    if (existsSync(signalPath)) {
+      try {
+        unlinkSync(signalPath);
+      } catch {
+        // best effort cleanup
+      }
+    }
+    return false;
+  };
 
   // Try session-scoped path first
   if (sessionId) {
     const sessionSignalPath = join(stateDir, 'sessions', sessionId, 'cancel-signal-state.json');
-    const signal = readJsonFile(sessionSignalPath);
-    if (signal && signal.expires_at) {
-      const expiresAt = new Date(signal.expires_at).getTime();
-      if (Date.now() < expiresAt) {
-        return true;
-      }
-    }
-  }
-
-  // Fall back to legacy path
-  const legacySignalPath = join(stateDir, 'cancel-signal-state.json');
-  const signal = readJsonFile(legacySignalPath);
-  if (signal && signal.expires_at) {
-    const expiresAt = new Date(signal.expires_at).getTime();
-    if (Date.now() < expiresAt) {
+    if (isActiveSignal(sessionSignalPath)) {
       return true;
     }
   }
 
-  return false;
+  // Fall back to legacy path
+  return isActiveSignal(join(stateDir, 'cancel-signal-state.json'));
 }
 
 /**
@@ -343,7 +384,32 @@ function readStateFileWithSession(stateDir, globalStateDir, filename, sessionId)
     const sessionsDir = join(stateDir, "sessions", safeSessionId);
     const sessionPath = join(sessionsDir, filename);
     const state = readJsonFile(sessionPath);
-    return { state, path: sessionPath, isGlobal: false };
+    if (state) {
+      return { state, path: sessionPath, isGlobal: false };
+    }
+
+    try {
+      const allSessionsDir = join(stateDir, "sessions");
+      if (existsSync(allSessionsDir)) {
+        const dirs = readdirSync(allSessionsDir).filter((dir) => SESSION_ID_ALLOWLIST.test(dir));
+        for (const dir of dirs) {
+          const candidatePath = join(allSessionsDir, dir, filename);
+          const candidateState = readJsonFile(candidatePath);
+          if (candidateState && candidateState.session_id === safeSessionId) {
+            return { state: candidateState, path: candidatePath, isGlobal: false };
+          }
+        }
+      }
+    } catch {
+      // ignore scan failures
+    }
+
+    const legacyResult = readStateFile(stateDir, globalStateDir, filename);
+    if (legacyResult.state && legacyResult.state.session_id === safeSessionId) {
+      return legacyResult;
+    }
+
+    return { state: null, path: sessionPath, isGlobal: false };
   }
 
   return readStateFile(stateDir, globalStateDir, filename);
@@ -371,7 +437,7 @@ function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
-  const taskDir = join(homedir(), ".copilot", "tasks", sessionId);
+  const taskDir = join(getCopilotConfigDir(), "tasks", sessionId);
   if (!existsSync(taskDir)) return 0;
 
   let count = 0;
@@ -404,8 +470,7 @@ function countIncompleteTodos(sessionId, projectDir) {
     /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)
   ) {
     const sessionTodoPath = join(
-      homedir(),
-      ".copilot",
+      getCopilotConfigDir(),
       "todos",
       `${sessionId}.json`,
     );
@@ -651,7 +716,7 @@ async function main() {
     // Priority 1: Ralph Loop (explicit persistence mode)
     // Skip if state is stale (older than 2 hours) - prevents blocking new sessions
     if (
-      ralph.state?.active &&
+      ralph.state?.active && !isAwaitingConfirmation(ralph.state) &&
       !isStaleState(ralph.state) &&
       isStateForCurrentProject(ralph.state, directory, ralph.isGlobal)
     ) {
@@ -668,6 +733,10 @@ async function main() {
 
           ralph.state.iteration = iteration + 1;
           ralph.state.last_checked_at = new Date().toISOString();
+          if (!shouldWriteStateBack(ralph.path)) {
+            console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+            return;
+          }
           writeJsonFile(ralph.path, ralph.state);
 
           let reason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-copilot:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-copilot:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
@@ -689,6 +758,10 @@ async function main() {
         // This prevents abrupt stops in long-running loops where the model hasn't finished.
         ralph.state.max_iterations = maxIter + 10;
         ralph.state.last_checked_at = new Date().toISOString();
+        if (!shouldWriteStateBack(ralph.path)) {
+          console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+          return;
+        }
         writeJsonFile(ralph.path, ralph.state);
 
         console.log(
@@ -704,7 +777,7 @@ async function main() {
 
     // Priority 2: Autopilot (high-level orchestration)
     if (
-      autopilot.state?.active &&
+      autopilot.state?.active && !isAwaitingConfirmation(autopilot.state) &&
       !isStaleState(autopilot.state) &&
       isStateForCurrentProject(autopilot.state, directory, autopilot.isGlobal)
     ) {
@@ -935,7 +1008,7 @@ async function main() {
     // Session isolation: only block if state belongs to this session (issue #311)
     // If state has session_id, it must match. If no session_id (legacy), allow.
     if (
-      ultrawork.state?.active &&
+      ultrawork.state?.active && !isAwaitingConfirmation(ultrawork.state) &&
       !isStaleState(ultrawork.state) &&
       (hasValidSessionId
         ? ultrawork.state.session_id === sessionId

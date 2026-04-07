@@ -13,6 +13,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { readStdin } from './lib/stdin.mjs';
 import { createRequire } from 'module';
 
@@ -26,7 +27,7 @@ try {
 }
 
 // Constants (used by fallback)
-const cfgDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
+const cfgDir = getCopilotConfigDir();
 const USER_SKILLS_DIR = join(cfgDir, 'skills', 'omg-learned');
 const GLOBAL_SKILLS_DIR = join(homedir(), '.omg', 'skills');
 const PROJECT_SKILLS_SUBDIR = join('.omg', 'skills');
@@ -130,8 +131,9 @@ function findMatchingSkillsFallback(prompt, directory, sessionId) {
   const candidates = findSkillFilesFallback(directory);
   const matches = [];
 
-  // Get or create session cache
+  // Get or create session cache (cap size to prevent unbounded growth)
   if (!injectedCacheFallback.has(sessionId)) {
+    if (injectedCacheFallback.size > 500) injectedCacheFallback.clear();
     injectedCacheFallback.set(sessionId, new Set());
   }
   const alreadyInjected = injectedCacheFallback.get(sessionId);

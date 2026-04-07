@@ -31,8 +31,8 @@ export const PROJECT_RULE_FILES = [
 ];
 /** Pattern for GitHub instructions files */
 export const GITHUB_INSTRUCTIONS_PATTERN = /\.instructions\.md$/;
-/** User-level rule directory */
-export const USER_RULE_DIR = '.copilot/rules';
+/** User-level rule directory (relative to config dir) */
+export const USER_RULE_DIR = 'rules';
 /** Valid rule file extensions */
 export const RULE_EXTENSIONS = ['.md', '.mdc'];
 /** Tools that trigger rule injection */

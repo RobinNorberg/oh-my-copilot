@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { atomicWriteJson } from '../../lib/atomic-write.js';
 
 export interface InvocationConfig {

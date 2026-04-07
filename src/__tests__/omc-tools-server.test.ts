@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { omcToolsServer, omcToolNames, getOmcToolNames } from '../mcp/omc-tools-server.js';
 
-const totalTools = 40;
-const withoutLsp = 28;
-const withoutAst = 38;
-const withoutPython = 39;
-const withoutSkills = 37;
+const totalTools = 47;
+const withoutLsp = 35;
+const withoutAst = 45;
+const withoutPython = 46;
+const withoutSkills = 44;
 
 describe('omc-tools-server', () => {
   describe('omcToolNames', () => {

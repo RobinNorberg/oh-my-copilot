@@ -27,6 +27,11 @@
       },
       {
         "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-session-start.mjs\"",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/setup-init.mjs\"",
         "timeoutSec": 30
       },
@@ -97,6 +102,11 @@
       },
       {
         "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-pre-compact.mjs\"",
+        "timeoutSec": 3
+      },
+      {
+        "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/context-guard-stop.mjs\"",
         "timeoutSec": 5
       },
@@ -116,6 +126,18 @@
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/session-end.mjs\"",
         "timeoutSec": 10
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-session-end.mjs\"",
+        "timeoutSec": 30
+      }
+    ],
+    "permissionRequest": [
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/permission-handler.mjs\"",
+        "timeoutSec": 3
       }
     ]
   }

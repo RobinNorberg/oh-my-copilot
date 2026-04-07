@@ -16,10 +16,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   mkdirSync, writeFileSync, rmSync, existsSync,
-  readFileSync, appendFileSync
+  readFileSync, appendFileSync, realpathSync
 } from 'fs';
 import { join } from 'path';
-import { homedir, tmpdir } from 'os';
+import { tmpdir } from 'os';
+import { getClaudeConfigDir } from '../../utils/config-dir.js';
 
 // --- task-file-ops imports ---
 import {
@@ -64,14 +65,12 @@ const EDGE_TEAM_IO = 'test-edge-io';
 let TASK_TEST_CWD: string;
 let TASKS_DIR: string;
 
-// inbox-outbox tests still use the legacy ~/.copilot/teams path (inbox-outbox.ts
-// was not changed in this refactor and still uses getClaudeConfigDir internally)
-const TEAMS_IO_DIR = join(homedir(), '.copilot', 'teams', EDGE_TEAM_IO);
+const TEAMS_IO_DIR = join(getClaudeConfigDir(), 'teams', EDGE_TEAM_IO);
 
 const HB_DIR = join(tmpdir(), 'test-edge-hb');
 const REG_DIR = join(tmpdir(), 'test-edge-reg');
 const REG_TEAM = 'test-edge-reg-team';
-const CONFIG_DIR = join(homedir(), '.copilot', 'teams', REG_TEAM);
+const CONFIG_DIR = join(getClaudeConfigDir(), 'teams', REG_TEAM);
 
 function writeTaskHelper(task: TaskFile): void {
   mkdirSync(TASKS_DIR, { recursive: true });
@@ -98,7 +97,7 @@ function makeHeartbeat(overrides?: Partial<HeartbeatData>): HeartbeatData {
 
 describe('task-file-ops edge cases', () => {
   beforeEach(() => {
-    TASK_TEST_CWD = join(tmpdir(), `omc-edge-tasks-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    TASK_TEST_CWD = join(realpathSync(tmpdir()), `omc-edge-tasks-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     TASKS_DIR = join(TASK_TEST_CWD, '.omg', 'state', 'team', EDGE_TEAM_TASKS, 'tasks');
     mkdirSync(TASKS_DIR, { recursive: true });
   });

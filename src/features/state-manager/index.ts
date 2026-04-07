@@ -3,7 +3,7 @@
  *
  * Unified state management that standardizes state file locations:
  * - Local state: .omg/state/{name}.json
- * - Global state: ~/.omg/state/{name}.json
+ * - Global state: XDG-aware user OMC state with legacy ~/.omg/state fallback
  *
  * Features:
  * - Type-safe read/write operations
@@ -13,12 +13,12 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import * as os from "os";
 import { atomicWriteJsonSync } from "../../lib/atomic-write.js";
 import {
   OmgPaths,
   validateWorkingDirectory,
 } from "../../lib/worktree-paths.js";
+import * as os from "os";
 import {
   StateLocation,
   StateConfig,
@@ -565,7 +565,7 @@ function withFileLock<R>(filePath: string, fn: () => R): R {
         throw new Error(`Timed out acquiring state lock: ${lockPath}`);
       }
 
-      // Brief busy-wait before retry
+      // Brief pause before retry (sync spin intentional — this is a sync lock function)
       const waitEnd = Date.now() + LOCK_POLL_MS;
       while (Date.now() < waitEnd) {
         /* spin */

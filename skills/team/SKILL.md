@@ -1,6 +1,7 @@
 ---
 name: team
 description: N coordinated agents on shared task list using Copilot CLI native teams
+argument-hint: "[N:agent-type] [ralph] <task description>"
 aliases: []
 ---
 
@@ -809,7 +810,7 @@ See Cancellation section below for details.
 
 If the lead crashes mid-run, the team skill should detect existing state and resume:
 
-1. Check `~/.copilot/teams/` for teams matching the task slug
+1. Check `${COPILOT_CONFIG_DIR:-~/.copilot}/teams/` for teams matching the task slug
 2. If found, read `config.json` to discover active members
 3. Resume monitor mode instead of creating a duplicate team
 4. Call `TaskList` to determine current progress

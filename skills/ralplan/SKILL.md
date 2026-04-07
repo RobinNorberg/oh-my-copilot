@@ -1,6 +1,7 @@
 ---
 name: ralplan
-description: Alias for /omc-plan --consensus
+description: Consensus planning entrypoint that auto-gates vague ralph/autopilot/team requests before execution
+argument-hint: "[--interactive] [--deliberate] [--architect codex] [--critic codex] <task description>"
 ---
 
 # Ralplan (Consensus Planning Alias)

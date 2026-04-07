@@ -4,7 +4,7 @@
 
 import { join } from 'path';
 import { homedir } from 'os';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { OmgPaths } from '../../lib/worktree-paths.js';
 
 /** User-level skills directory (read by skill-injector.mjs hook) */

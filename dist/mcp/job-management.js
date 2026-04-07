@@ -15,12 +15,27 @@ import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { isJobDbInitialized, getJob, getActiveJobs as getActiveJobsFromDb, getJobsByStatus, updateJobStatus } from '../lib/job-state-db.js';
 /**
- * PID ownership check - codex/gemini MCP servers no longer spawn background
- * processes, so we accept any valid PID within a recorded job's status file.
- * The status file itself is the ownership proof.
+ * Set of PIDs spawned by this process. Used to verify ownership before
+ * sending signals. Falls back to accepting any PID recorded in a status file
+ * when the set is empty (e.g. after a server restart).
  */
-function isKnownPid(_pid) {
-    return true;
+const spawnedPids = new Set();
+/**
+ * Register a PID as spawned by this process.
+ */
+export function registerSpawnedPid(pid) {
+    spawnedPids.add(pid);
+}
+/**
+ * PID ownership check. Returns true if the PID was spawned by this process
+ * or if no PIDs have been registered yet (status file is the ownership proof).
+ */
+function isKnownPid(pid) {
+    if (spawnedPids.size === 0) {
+        // No PIDs registered (e.g. server restarted) — accept based on status file
+        return true;
+    }
+    return spawnedPids.has(pid);
 }
 /** Signals allowed for kill_job. SIGKILL excluded - too dangerous for process groups. */
 const ALLOWED_SIGNALS = new Set(['SIGTERM', 'SIGINT']);
@@ -164,10 +179,15 @@ export async function handleWaitForJob(provider, jobId, timeoutMs = 3600000) {
         const jobDir = getJobWorkingDir(provider, jobId);
         const found = findJobStatusFile(provider, jobId, jobDir);
         if (!found) {
-            // Job may not be written yet (async SQLite init race) — retry with backoff
-            notFoundCount++;
-            if (notFoundCount >= 10) {
-                return textResult(`No job found with ID: ${jobId}`, true);
+            // When SQLite is initialized but the job isn't in the DB yet, this
+            // is likely a creation race — keep polling until the deadline rather
+            // than giving up early. When SQLite is NOT initialized, the JSON
+            // file path is the only source, so 10 retries is a reasonable limit.
+            if (!isJobDbInitialized()) {
+                notFoundCount++;
+                if (notFoundCount >= 10) {
+                    return textResult(`No job found with ID: ${jobId}`, true);
+                }
             }
             await new Promise(resolve => setTimeout(resolve, pollDelay));
             pollDelay = Math.min(pollDelay * 1.5, 2000);
@@ -563,6 +583,7 @@ export function getJobManagementToolSchemas(_provider) {
         {
             name: 'wait_for_job',
             description: 'Block (poll) until a background job reaches a terminal state (completed, failed, or timeout). Uses exponential backoff. Returns the response preview on success. WARNING: This tool blocks the MCP server for the duration of the poll. Prefer check_job_status for non-blocking status checks.',
+            annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -581,6 +602,7 @@ export function getJobManagementToolSchemas(_provider) {
         {
             name: 'check_job_status',
             description: 'Non-blocking status check for a background job. Returns current status, metadata, and error information if available.',
+            annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -595,6 +617,7 @@ export function getJobManagementToolSchemas(_provider) {
         {
             name: 'kill_job',
             description: 'Send a signal to a running background job. Marks the job as failed. Only works on jobs in spawned or running state.',
+            annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
             inputSchema: {
                 type: 'object',
                 properties: {
@@ -614,6 +637,7 @@ export function getJobManagementToolSchemas(_provider) {
         {
             name: 'list_jobs',
             description: 'List background jobs for this provider. Filter by status and limit results. Results sorted newest first.',
+            annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
             inputSchema: {
                 type: 'object',
                 properties: {

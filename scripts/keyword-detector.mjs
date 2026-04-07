@@ -25,9 +25,28 @@
  */
 
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
-import { join } from 'path';
+import { join, dirname } from 'path';
 import { homedir } from 'os';
+import { fileURLToPath } from 'url';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { readStdin } from './lib/stdin.mjs';
+
+// Resolve OMC package root: CLAUDE_PLUGIN_ROOT (plugin system) or derive from this script's location
+const _omcRoot = process.env.CLAUDE_PLUGIN_ROOT ||
+  join(dirname(fileURLToPath(import.meta.url)), '..');
+
+/**
+ * Load skill content directly from SKILL.md on disk.
+ * Works for both npm installs and plugin marketplace installs.
+ * Returns null if the skill file is not found.
+ */
+function loadSkillContent(skillName) {
+  const skillPath = join(_omcRoot, 'skills', skillName, 'SKILL.md');
+  if (existsSync(skillPath)) {
+    try { return readFileSync(skillPath, 'utf8'); } catch { /* fall through */ }
+  }
+  return null;
+}
 
 const ULTRATHINK_MESSAGE = `<think-mode>
 
@@ -42,6 +61,17 @@ You are now in deep thinking mode. Take your time to:
 Use your extended thinking capabilities to provide the most thorough and well-reasoned response.
 
 </think-mode>
+
+---
+`;
+
+const SEARCH_MESSAGE = `<search-mode>
+MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+- explore agents (codebase patterns, file structures)
+- document-specialist agents (remote repos, official docs, GitHub examples)
+Plus direct tools: Grep, Glob
+NEVER stop at first result - be exhaustive.
+</search-mode>
 
 ---
 `;
@@ -79,6 +109,15 @@ Perform a focused security review of the relevant changes or target area. Check 
 
 ---
 `;
+
+const MODE_MESSAGE_KEYWORDS = new Map([
+  ['ultrathink', ULTRATHINK_MESSAGE],
+  ['deepsearch', SEARCH_MESSAGE],
+  ['analyze', ANALYZE_MESSAGE],
+  ['tdd', TDD_MESSAGE],
+  ['code-review', CODE_REVIEW_MESSAGE],
+  ['security-review', SECURITY_REVIEW_MESSAGE],
+]);
 
 // Extract prompt from various JSON structures
 function extractPrompt(input) {
@@ -135,6 +174,7 @@ function activateState(directory, prompt, stateName, sessionId) {
     session_id: sessionId || undefined,
     project_path: directory,
     reinforcement_count: 0,
+    awaiting_confirmation: true,
     last_checked_at: new Date().toISOString()
   };
 
@@ -208,13 +248,14 @@ function linkRalphTeam(directory, sessionId) {
 
 /**
  * Check if the team feature is enabled in Copilot CLI settings.
- * Reads ~/.copilot/settings.json and checks for CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var.
+ * Reads settings.json from [$COPILOT_CONFIG_DIR|~/.copilot] and checks for
+ * CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var.
  * @returns {boolean} true if team feature is enabled
  */
 function isTeamEnabled() {
   try {
     // Check settings.json first (authoritative, user-controlled)
-    const cfgDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
+    const cfgDir = getCopilotConfigDir();
     const settingsPath = join(cfgDir, 'settings.json');
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
@@ -239,6 +280,10 @@ function isTeamEnabled() {
  */
 function createSkillInvocation(skillName, originalPrompt, args = '') {
   const argsSection = args ? `\nArguments: ${args}` : '';
+  const skillContent = loadSkillContent(skillName);
+  if (skillContent) {
+    return `[MAGIC KEYWORD: ${skillName.toUpperCase()}]\n\n${skillContent}\n\n---\nUser request:\n${originalPrompt}${argsSection}`;
+  }
   return `[MAGIC KEYWORD: ${skillName.toUpperCase()}]
 
 You MUST invoke the skill using the Skill tool:
@@ -262,20 +307,24 @@ function createMultiSkillInvocation(skills, originalPrompt) {
 
   const skillBlocks = skills.map((s, i) => {
     const argsSection = s.args ? `\nArguments: ${s.args}` : '';
-    return `### Skill ${i + 1}: ${s.name.toUpperCase()}
-Skill: oh-my-copilot:${s.name}${argsSection}`;
+    const content = loadSkillContent(s.name);
+    if (content) {
+      return `### Skill ${i + 1}: ${s.name.toUpperCase()}\n\n${content}${argsSection}`;
+    }
+    return `### Skill ${i + 1}: ${s.name.toUpperCase()}\nSkill: oh-my-copilot:${s.name}${argsSection}`;
   }).join('\n\n');
 
+  const hasDirectContent = skills.some(s => loadSkillContent(s.name));
   return `[MAGIC KEYWORDS DETECTED: ${skills.map(s => s.name.toUpperCase()).join(', ')}]
 
-You MUST invoke ALL of the following skills using the Skill tool, in order:
+${hasDirectContent ? 'Execute ALL of the following skills in order:' : 'You MUST invoke ALL of the following skills using the Skill tool, in order:'}
 
 ${skillBlocks}
 
 User request:
 ${originalPrompt}
 
-IMPORTANT: Invoke ALL skills listed above. Start with the first skill IMMEDIATELY. After it completes, invoke the next skill in order. Do not skip any skill.`;
+IMPORTANT: Complete ALL skills listed above in order. Start with the first skill IMMEDIATELY.`;
 }
 
 /**
@@ -401,7 +450,7 @@ async function main() {
 
 
     // CCG keywords (Copilot-Codex-Gemini tri-model orchestration)
-    if (/\b(ccg|copilot-clix-gemini)\b/i.test(cleanPrompt)) {
+    if (/\b(ccg|claude-codex-gemini)\b/i.test(cleanPrompt)) {
       matches.push({ name: 'ccg', args: '' });
     }
 
@@ -452,6 +501,11 @@ async function main() {
     // Analyze keywords
     if (/\b(deep[\s-]?analyze|deepanalyze)\b/i.test(cleanPrompt)) {
       matches.push({ name: 'analyze', args: '' });
+    }
+
+    // Wiki keywords
+    if (/\b(wiki(?:\s+(?:this|add|lint|query))?)\b/i.test(cleanPrompt)) {
+      matches.push({ name: 'wiki', args: '' });
     }
 
     // No matches - pass through
@@ -512,13 +566,7 @@ async function main() {
     }
 
     const additionalContextParts = [];
-    for (const [keywordName, message] of [
-      ['ultrathink', ULTRATHINK_MESSAGE],
-      ['analyze', ANALYZE_MESSAGE],
-      ['tdd', TDD_MESSAGE],
-      ['code-review', CODE_REVIEW_MESSAGE],
-      ['security-review', SECURITY_REVIEW_MESSAGE],
-    ]) {
+    for (const [keywordName, message] of MODE_MESSAGE_KEYWORDS) {
       const index = resolved.findIndex(m => m.name === keywordName);
       if (index !== -1) {
         resolved.splice(index, 1);

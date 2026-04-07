@@ -9,12 +9,13 @@
  * - Store version metadata for installed components
  * - Configurable update notifications
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync } from 'fs';
 import { join, dirname } from 'path';
 import { execSync, execFileSync } from 'child_process';
-import { install as installOmc, HOOKS_DIR, isProjectScopedPlugin, isRunningAsPlugin } from '../installer/index.js';
-import { getConfigDir } from '../utils/config-dir.js';
+import { install as installOmc, HOOKS_DIR, isProjectScopedPlugin, isRunningAsPlugin, getInstalledOmcPluginRoots, getRuntimePackageRoot, } from '../installer/index.js';
+import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
+import { isAutoUpdateDisabled } from '../lib/security-config.js';
 /** GitHub repository information */
 export const REPO_OWNER = 'RobinNorberg';
 export const REPO_NAME = 'oh-my-copilot';
@@ -27,7 +28,7 @@ export const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/$
  * and cache rebuilds reinstall old versions. (See #506)
  */
 function syncMarketplaceClone(verbose = false) {
-    const marketplacePath = join(getConfigDir(), 'plugins', 'marketplaces', 'omg');
+    const marketplacePath = join(getClaudeConfigDir(), 'plugins', 'marketplaces', 'omg');
     if (!existsSync(marketplacePath)) {
         return { ok: true, message: 'Marketplace clone not found; skipping' };
     }
@@ -62,8 +63,124 @@ function syncMarketplaceClone(verbose = false) {
     }
     return { ok: true, message: 'Marketplace clone updated' };
 }
+const PLUGIN_SYNC_PAYLOAD = [
+    'dist',
+    'bridge',
+    'hooks',
+    'scripts',
+    'skills',
+    'agents',
+    'templates',
+    'docs',
+    '.claude-plugin',
+    '.mcp.json',
+    'README.md',
+    'LICENSE',
+    'package.json',
+];
+function copyPluginSyncPayload(sourceRoot, targetRoots) {
+    if (targetRoots.length === 0) {
+        return { synced: false, errors: [] };
+    }
+    let synced = false;
+    const errors = [];
+    for (const targetRoot of targetRoots) {
+        let copiedToTarget = false;
+        for (const entry of PLUGIN_SYNC_PAYLOAD) {
+            const sourcePath = join(sourceRoot, entry);
+            if (!existsSync(sourcePath)) {
+                continue;
+            }
+            try {
+                cpSync(sourcePath, join(targetRoot, entry), {
+                    recursive: true,
+                    force: true,
+                });
+                copiedToTarget = true;
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                errors.push(`Failed to sync ${entry} to ${targetRoot}: ${message}`);
+            }
+        }
+        synced = synced || copiedToTarget;
+    }
+    return { synced, errors };
+}
+function syncActivePluginCache() {
+    const activeRoots = getInstalledOmcPluginRoots().filter(root => existsSync(root));
+    if (activeRoots.length === 0) {
+        return { synced: false, errors: [] };
+    }
+    const result = copyPluginSyncPayload(getRuntimePackageRoot(), activeRoots);
+    if (result.synced) {
+        console.log('[omc update] Synced plugin cache');
+    }
+    return result;
+}
+export function shouldBlockStandaloneUpdateInCurrentSession() {
+    if (!isRunningAsPlugin()) {
+        return false;
+    }
+    const entrypoint = process.env.CLAUDE_CODE_ENTRYPOINT?.trim();
+    if (entrypoint) {
+        return true;
+    }
+    const sessionId = process.env.CLAUDE_SESSION_ID?.trim() || process.env.CLAUDECODE_SESSION_ID?.trim();
+    if (sessionId) {
+        return true;
+    }
+    return false;
+}
+export function syncPluginCache(verbose = false) {
+    const pluginCacheRoot = join(getClaudeConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    if (!existsSync(pluginCacheRoot)) {
+        return { synced: false, skipped: true, errors: [] };
+    }
+    try {
+        const npmRoot = String(execSync('npm root -g', {
+            encoding: 'utf-8',
+            stdio: 'pipe',
+            timeout: 10000,
+            ...(process.platform === 'win32' ? { windowsHide: true } : {}),
+        }) ?? '').trim();
+        if (!npmRoot) {
+            throw new Error('npm root -g returned an empty path');
+        }
+        const sourceRoot = join(npmRoot, 'oh-my-copilot');
+        const packageJsonPath = join(sourceRoot, 'package.json');
+        const packageJsonRaw = String(readFileSync(packageJsonPath, 'utf-8') ?? '');
+        const packageMetadata = JSON.parse(packageJsonRaw);
+        const version = typeof packageMetadata.version === 'string' ? packageMetadata.version.trim() : '';
+        if (!version) {
+            throw new Error(`Missing version in ${packageJsonPath}`);
+        }
+        const versionedPluginCacheRoot = join(pluginCacheRoot, version);
+        mkdirSync(versionedPluginCacheRoot, { recursive: true });
+        const result = copyPluginSyncPayload(sourceRoot, [versionedPluginCacheRoot]);
+        if (result.errors.length > 0) {
+            for (const error of result.errors) {
+                console.warn(`[omc update] Plugin cache sync warning: ${error}`);
+            }
+        }
+        if (result.synced) {
+            console.log('[omc update] Plugin cache synced');
+        }
+        return { ...result, skipped: false };
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (verbose) {
+            console.warn(`[omc update] Plugin cache sync warning: ${message}`);
+        }
+        else {
+            console.warn('[omc update] Plugin cache sync warning:', message);
+        }
+        return { synced: false, skipped: false, errors: [message] };
+    }
+}
 /** Installation paths (respects COPILOT_CONFIG_DIR env var) */
-export const COPILOT_CONFIG_DIR = getConfigDir();
+export const COPILOT_CONFIG_DIR = getClaudeConfigDir();
 export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
 export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, '.omc-config.json');
 /**
@@ -101,6 +218,8 @@ export function getOMCConfig() {
  * Check if silent auto-updates are enabled
  */
 export function isSilentAutoUpdateEnabled() {
+    if (isAutoUpdateDisabled())
+        return false;
     return getOMCConfig().silentAutoUpdate;
 }
 /**
@@ -272,7 +391,9 @@ export async function checkForUpdates() {
  */
 export function reconcileUpdateRuntime(options) {
     const errors = [];
+    const runningAsPlugin = isRunningAsPlugin();
     const projectScopedPlugin = isProjectScopedPlugin();
+    const shouldRefreshPluginHooks = runningAsPlugin && !projectScopedPlugin;
     if (!projectScopedPlugin) {
         try {
             if (!existsSync(HOOKS_DIR)) {
@@ -290,7 +411,7 @@ export function reconcileUpdateRuntime(options) {
             verbose: options?.verbose ?? false,
             skipCopilotCheck: true,
             forceHooks: true,
-            refreshHooksInPlugin: !projectScopedPlugin,
+            refreshHooksInPlugin: shouldRefreshPluginHooks,
         });
         if (!installResult.success) {
             errors.push(...installResult.errors);
@@ -299,6 +420,20 @@ export function reconcileUpdateRuntime(options) {
     catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`Failed to refresh installer artifacts: ${message}`);
+    }
+    try {
+        const pluginSyncResult = syncActivePluginCache();
+        if (pluginSyncResult.errors.length > 0 && options?.verbose) {
+            for (const err of pluginSyncResult.errors) {
+                console.warn(`[omc] Plugin cache sync warning: ${err}`);
+            }
+        }
+    }
+    catch (error) {
+        if (options?.verbose) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`[omc] Plugin cache sync warning: ${message}`);
+        }
     }
     // Purge stale plugin cache versions (non-fatal)
     try {
@@ -334,13 +469,14 @@ export async function performUpdate(options) {
     const installed = getInstalledVersion();
     const previousVersion = installed?.version ?? null;
     try {
-        // Check if running as plugin - prevent npm global update from corrupting plugin
-        if (isRunningAsPlugin() && !options?.standalone) {
+        // Block npm update only from active Claude Code/plugin sessions.
+        // Standalone terminals may inherit CLAUDE_PLUGIN_ROOT and should still update.
+        if (shouldBlockStandaloneUpdateInCurrentSession() && !options?.standalone) {
             return {
                 success: false,
                 previousVersion,
                 newVersion: 'unknown',
-                message: 'Running as a Copilot CLI plugin. Use "/plugin install oh-my-copilot" to update, or pass --standalone to force npm update.',
+                message: 'Running inside an active Claude Code plugin session. Use "/plugin install oh-my-copilot" to update, or pass --standalone to force npm update.',
             };
         }
         // Fetch the latest release to get the version
@@ -359,6 +495,7 @@ export async function performUpdate(options) {
             if (!marketplaceSync.ok && options?.verbose) {
                 console.warn(`[omc update] ${marketplaceSync.message}`);
             }
+            syncPluginCache(options?.verbose ?? false);
             // CRITICAL FIX: After npm updates the global package, the current process
             // still has OLD code loaded in memory. We must re-exec to run reconciliation
             // with the NEW code. Otherwise, installOmc() runs OLD logic against NEW files.
@@ -376,7 +513,8 @@ export async function performUpdate(options) {
                         encoding: 'utf-8',
                         stdio: options?.verbose ? 'inherit' : 'pipe',
                         timeout: 60000,
-                        env: { ...process.env, OMC_UPDATE_RECONCILE: '1' }
+                        env: { ...process.env, OMC_UPDATE_RECONCILE: '1' },
+                        ...(process.platform === 'win32' ? { windowsHide: true, shell: true } : {}),
                     });
                 }
                 catch (reconcileError) {

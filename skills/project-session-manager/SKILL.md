@@ -1,11 +1,11 @@
 ---
 name: project-session-manager
-description: Manage isolated dev environments with git worktrees and tmux sessions
+description: Worktree-first dev environment manager for issues, PRs, and features with optional tmux sessions
 ---
 
 # Project Session Manager Skill
 
-> **Quick Start:** For simple worktree creation without tmux sessions, use `omc teleport`:
+> **Quick Start (worktree-first):** Start with `omc teleport` when you want an isolated issue/PR/feature worktree before adding any tmux/session orchestration:
 > ```bash
 > omc teleport #123          # Create worktree for issue/PR
 > omc teleport my-feature    # Create worktree for feature

@@ -11,6 +11,10 @@
  * passes it as the first argument. Schemas omit provider since it's implicit.
  */
 /**
+ * Register a PID as spawned by this process.
+ */
+export declare function registerSpawnedPid(pid: number): void;
+/**
  * Find the status file for a job by provider and jobId.
  * Scans .omg/prompts/ for files matching the naming convention.
  *
@@ -71,6 +75,12 @@ export declare function handleListJobs(provider: 'codex' | 'gemini', statusFilte
 export declare function getJobManagementToolSchemas(_provider?: 'codex' | 'gemini'): ({
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     inputSchema: {
         type: "object";
         properties: {
@@ -91,6 +101,12 @@ export declare function getJobManagementToolSchemas(_provider?: 'codex' | 'gemin
 } | {
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     inputSchema: {
         type: "object";
         properties: {
@@ -108,6 +124,12 @@ export declare function getJobManagementToolSchemas(_provider?: 'codex' | 'gemin
 } | {
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     inputSchema: {
         type: "object";
         properties: {
@@ -129,6 +151,12 @@ export declare function getJobManagementToolSchemas(_provider?: 'codex' | 'gemin
 } | {
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     inputSchema: {
         type: "object";
         properties: {

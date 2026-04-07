@@ -5,14 +5,15 @@ export * from "./constants.js"
 export * from "./detector.js"
 export * from "./types.js"
 
-const BANNED_COMMAND_PATTERNS = SHELL_COMMAND_PATTERNS.banned
-  .filter((cmd: string) => !cmd.includes("("))
-  .map((cmd: string) => new RegExp(`\\b${cmd}\\b`))
+const BANNED_ENTRIES: { pattern: RegExp; name: string }[] =
+  SHELL_COMMAND_PATTERNS.banned
+    .filter((cmd: string) => !cmd.includes("("))
+    .map((cmd: string) => ({ pattern: new RegExp(`\\b${cmd}\\b`), name: cmd }))
 
 function detectBannedCommand(command: string): string | undefined {
-  for (let i = 0; i < BANNED_COMMAND_PATTERNS.length; i++) {
-    if (BANNED_COMMAND_PATTERNS[i].test(command)) {
-      return SHELL_COMMAND_PATTERNS.banned[i]
+  for (const entry of BANNED_ENTRIES) {
+    if (entry.pattern.test(command)) {
+      return entry.name
     }
   }
   return undefined

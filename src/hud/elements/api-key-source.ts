@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { dim, cyan } from '../colors.js';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 
 export type ApiKeySource = 'project' | 'global' | 'env';
 

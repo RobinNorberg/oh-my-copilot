@@ -158,6 +158,11 @@ export declare function cleanupStaleAgents(directory: string): number;
 /**
  * Get count of active (running) agents
  */
+export interface ActiveAgentSnapshot {
+    count: number;
+    lastUpdatedAt?: string;
+}
+export declare function getActiveAgentSnapshot(directory: string): ActiveAgentSnapshot;
 export declare function getActiveAgentCount(directory: string): number;
 /**
  * Get agents by type

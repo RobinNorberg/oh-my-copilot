@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync } from 'child_process';
 import type { GitProvider, PRInfo, IssueInfo } from './types.js';
 
 const API_BASE = 'https://api.bitbucket.org/2.0/repositories';
@@ -20,13 +20,12 @@ function fetchApi(url: string): Record<string, unknown> | null {
   const auth = getAuthHeader();
   if (!auth) return null;
   try {
-    const args = ['-sS', '-H', `Authorization: ${auth}`, url];
-    const raw = execFileSync('curl', args, {
-      encoding: 'utf-8',
-      timeout: 10000,
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-    return JSON.parse(raw);
+    const stdout = execFileSync(
+      'curl',
+      ['-sS', '-H', `Authorization: ${auth}`, url],
+      { encoding: 'utf-8', timeout: 10000 },
+    );
+    return JSON.parse(stdout) as Record<string, unknown>;
   } catch {
     return null;
   }

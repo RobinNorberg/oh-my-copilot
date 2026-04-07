@@ -79,7 +79,7 @@ export interface PluginConfig {
     defaultTier?: 'LOW' | 'MEDIUM' | 'HIGH';
     /**
      * Force all agents to inherit the parent model instead of using OMC model routing.
-     * When true, the `model` parameter is stripped from all Task calls so agents use
+     * When true, the `model` parameter is stripped from all Task/Agent calls so agents use
      * the user's Copilot CLI model setting. Overrides all per-agent model recommendations.
      * Env: OMC_ROUTING_FORCE_INHERIT=true
      */
@@ -169,6 +169,12 @@ export interface PluginConfig {
     };
   };
 
+  // Teleport worktree bootstrap configuration
+  teleport?: {
+    /** Reuse parent repo node_modules via symlink when package.json matches. Default: true */
+    symlinkNodeModules?: boolean;
+  };
+
   // Task size detection configuration (issue #790)
   taskSizeDetection?: {
     /** Enable task-size detection to prevent over-orchestration for small tasks. Default: true */
@@ -179,6 +185,23 @@ export interface PluginConfig {
     largeWordLimit?: number;
     /** Suppress heavy orchestration modes (ralph/autopilot/team/ultrawork) for small tasks. Default: true */
     suppressHeavyModesForSmallTasks?: boolean;
+  };
+
+  // Prompt prerequisite gating for execution modes (issue #1859)
+  promptPrerequisites?: {
+    /** Enable parsing + blocking gate injection for prerequisite sections. Default: true */
+    enabled?: boolean;
+    /** Extensible heading aliases grouped by semantic section kind. */
+    sectionNames?: {
+      memory?: string[];
+      skills?: string[];
+      verifyFirst?: string[];
+      context?: string[];
+    };
+    /** Tool names denied until prerequisites are satisfied. */
+    blockingTools?: string[];
+    /** Execution keywords that activate the gate. */
+    executionKeywords?: string[];
   };
 }
 
@@ -207,7 +230,7 @@ export interface BackgroundTask {
 
 export interface MagicKeyword {
   triggers: string[];
-  action: (prompt: string) => string;
+  action: (prompt: string, agentName?: string) => string;
   description: string;
 }
 

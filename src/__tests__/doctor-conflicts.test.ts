@@ -14,10 +14,19 @@ const TEST_CLAUDE_DIR = join(homedir(), '.copilot-test-doctor-conflicts');
 const TEST_PROJECT_DIR = join(homedir(), '.copilot-test-doctor-project');
 const TEST_PROJECT_CLAUDE_DIR = join(TEST_PROJECT_DIR, '.copilot');
 
-// Mock getCopilotConfigDir before importing the module under test
-vi.mock('../utils/paths.js', () => ({
-  getCopilotConfigDir: () => TEST_CLAUDE_DIR,
-}));
+// Mock getCopilotConfigDir/getClaudeConfigDir before importing the module under test
+// Note: vi.mock is hoisted, so we can't reference TEST_CLAUDE_DIR directly.
+// The mock returns a dynamic value by calling homedir() at invocation time.
+vi.mock('../utils/config-dir.js', async () => {
+  const { homedir } = await import('os');
+  const { join } = await import('path');
+  const dir = join(homedir(), '.copilot-test-doctor-conflicts');
+  return {
+    getConfigDir: () => dir,
+    getCopilotConfigDir: () => dir,
+    getClaudeConfigDir: () => dir,
+  };
+});
 
 // Mock builtin skills to return a known list for testing
 vi.mock('../features/builtin-skills/skills.js', () => ({

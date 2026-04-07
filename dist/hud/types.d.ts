@@ -30,22 +30,22 @@ export interface OmcHudState {
 }
 export interface StatuslineStdin {
     /** Transcript path for parsing conversation history */
-    transcript_path: string;
+    transcript_path?: string;
     /** Current working directory */
-    cwd: string;
-    /** Model information */
-    model: {
-        id: string;
-        display_name: string;
+    cwd?: string;
+    /** Model information from Claude Code statusline stdin */
+    model?: {
+        id?: string;
+        display_name?: string;
     };
-    /** Context window metrics */
-    context_window: {
-        context_window_size: number;
+    /** Context window metrics from Claude Code statusline stdin */
+    context_window?: {
+        context_window_size?: number;
         used_percentage?: number;
         current_usage?: {
-            input_tokens: number;
-            cache_creation_input_tokens: number;
-            cache_read_input_tokens: number;
+            input_tokens?: number;
+            cache_creation_input_tokens?: number;
+            cache_read_input_tokens?: number;
         };
     };
 }
@@ -62,6 +62,16 @@ export interface ActiveAgent {
     status: 'running' | 'completed';
     startTime: Date;
     endTime?: Date;
+}
+export interface RecentTool {
+    /** Tool name (e.g., "Read", "Bash", "Edit") */
+    name: string;
+    /** Target summary (e.g., "auth.ts", "git st…") */
+    target: string | null;
+    /** Execution status */
+    status: 'running' | 'success' | 'failure';
+    /** When the tool was invoked */
+    timestamp: Date;
 }
 export interface SkillInvocation {
     name: string;
@@ -82,6 +92,11 @@ export interface SessionHealth {
     messageCount: number;
     health: 'healthy' | 'warning' | 'critical';
 }
+export interface LastRequestTokenUsage {
+    inputTokens: number;
+    outputTokens: number;
+    reasoningTokens?: number;
+}
 export interface TranscriptData {
     agents: ActiveAgent[];
     todos: TodoItem[];
@@ -89,9 +104,15 @@ export interface TranscriptData {
     lastActivatedSkill?: SkillInvocation;
     pendingPermission?: PendingPermission;
     thinkingState?: ThinkingState;
+    lastRequestTokenUsage?: LastRequestTokenUsage;
+    sessionTotalTokens?: number;
     toolCallCount: number;
     agentCallCount: number;
     skillCallCount: number;
+    /** Name of the last tool_use block seen in transcript */
+    lastToolName: string | null;
+    /** Rolling list of recent tool calls with status and target info */
+    recentTools: RecentTool[];
 }
 export interface RalphStateForHud {
     active: boolean;
@@ -210,6 +231,8 @@ export interface CustomProviderResult {
 export interface HudRenderContext {
     /** Context window percentage (0-100) */
     contextPercent: number;
+    /** Stable display scope for context smoothing (e.g. session/worktree key) */
+    contextDisplayScope?: string | null;
     /** Model display name */
     modelName: string;
     /** Ralph loop state */
@@ -254,6 +277,10 @@ export interface HudRenderContext {
     agentCallCount: number;
     /** Total Skill/proxy_Skill calls seen in transcript */
     skillCallCount: number;
+    /** Last-request token usage parsed from transcript message.usage */
+    lastRequestTokenUsage?: LastRequestTokenUsage | null;
+    /** Session token total (input + output) when transcript parsing is reliable enough to calculate it */
+    sessionTotalTokens?: number | null;
     /** Last prompt submission time (from HUD state) */
     promptTime: Date | null;
     /** API key source: 'project', 'global', or 'env' */
@@ -262,6 +289,8 @@ export interface HudRenderContext {
     profileName: string | null;
     /** Session summary state (AI-generated brief summary) */
     sessionSummary: SessionSummaryState | null;
+    /** Name of the last tool called in this session */
+    lastToolName?: string | null;
 }
 export type HudPreset = 'minimal' | 'focused' | 'full' | 'opencode' | 'dense';
 /**
@@ -297,9 +326,11 @@ export type CwdFormat = 'relative' | 'absolute' | 'folder';
  * - full: raw model ID like 'claude-opus-4-6-20260205'
  */
 export type ModelFormat = 'short' | 'versioned' | 'full';
+export type CallCountsFormat = 'auto' | 'emoji' | 'ascii';
 export interface HudElementConfig {
     cwd: boolean;
     cwdFormat: CwdFormat;
+    useHyperlinks?: boolean;
     gitRepo: boolean;
     gitBranch: boolean;
     gitInfoPosition: 'above' | 'below';
@@ -331,6 +362,8 @@ export interface HudElementConfig {
     showTokens?: boolean;
     useBars: boolean;
     showCallCounts?: boolean;
+    callCountsFormat?: CallCountsFormat;
+    showLastTool?: boolean;
     maxOutputLines: number;
     safeMode: boolean;
     sessionSummary: boolean;
@@ -351,6 +384,25 @@ export interface ContextLimitWarningConfig {
     /** Automatically queue /compact when threshold is exceeded (default: false) */
     autoCompact: boolean;
 }
+/**
+ * Layout configuration for HUD element ordering.
+ * Each group is an ordered array of element names.
+ * Elements can be moved between groups (e.g., contextBar from main to line1).
+ * Presets control on/off; layout controls order and placement.
+ */
+export interface LayoutConfig {
+    /** Elements on the git/info line (above or below main, per gitInfoPosition) */
+    line1?: string[];
+    /** Elements on the main statusline */
+    main?: string[];
+    /** Elements rendered as separate detail lines below the main line */
+    detail?: string[];
+}
+/**
+ * Default element order matching the current hardcoded order in render.ts.
+ * Used as fallback when no layout is configured.
+ */
+export declare const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig>;
 export interface HudConfig {
     preset: HudPreset;
     elements: HudElementConfig;
@@ -367,6 +419,8 @@ export interface HudConfig {
     maxWidth?: number;
     /** Controls maxWidth behavior: truncate with ellipsis (default) or wrap at " | " HUD element boundaries. */
     wrapMode?: 'truncate' | 'wrap';
+    /** Optional element ordering. Overrides default order when set. Presets still control on/off. */
+    layout?: LayoutConfig;
 }
 export declare const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS: number;
 export declare const DEFAULT_HUD_CONFIG: HudConfig;

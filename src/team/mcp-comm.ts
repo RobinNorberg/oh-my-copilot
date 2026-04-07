@@ -96,6 +96,9 @@ async function markImmediateDispatchFailure(params: {
 }): Promise<void> {
   const { teamName, request, reason, messageId, cwd } = params;
   if (request.transport_preference === 'hook_preferred_with_fallback') return;
+  const logTransitionFailure = (err: unknown) => {
+    try { process.stderr.write(`[omc] team.mcp-comm.markImmediateDispatchFailure transitionDispatchRequest failed: ${err instanceof Error ? err.message : String(err)}\n`); } catch { /* ignore */ }
+  };
 
   const current = await readDispatchRequest(teamName, request.request_id, cwd);
   if (!current) return;
@@ -111,7 +114,7 @@ async function markImmediateDispatchFailure(params: {
       last_reason: reason,
     },
     cwd,
-  ).catch(() => {});
+  ).catch(logTransitionFailure);
 }
 
 async function markLeaderPaneMissingDeferred(params: {
@@ -121,6 +124,9 @@ async function markLeaderPaneMissingDeferred(params: {
   messageId?: string;
 }): Promise<void> {
   const { teamName, request, cwd, messageId } = params;
+  const logTransitionFailure = (err: unknown) => {
+    try { process.stderr.write(`[omc] team.mcp-comm.markLeaderPaneMissingDeferred transitionDispatchRequest failed: ${err instanceof Error ? err.message : String(err)}\n`); } catch { /* ignore */ }
+  };
   const current = await readDispatchRequest(teamName, request.request_id, cwd);
   if (!current) return;
   if (current.status !== 'pending') return;
@@ -135,7 +141,7 @@ async function markLeaderPaneMissingDeferred(params: {
       last_reason: 'leader_pane_missing_deferred',
     },
     cwd,
-  ).catch(() => {});
+  ).catch(logTransitionFailure);
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -156,7 +162,6 @@ export interface QueueInboxParams {
 }
 
 export async function queueInboxInstruction(params: QueueInboxParams): Promise<DispatchOutcome> {
-  await params.deps.writeWorkerInbox(params.teamName, params.workerName, params.inbox, params.cwd);
   const queued = await enqueueDispatchRequest(
     params.teamName,
     {
@@ -179,6 +184,18 @@ export async function queueInboxInstruction(params: QueueInboxParams): Promise<D
       reason: 'duplicate_pending_dispatch_request',
       request_id: queued.request.request_id,
     };
+  }
+
+  try {
+    await params.deps.writeWorkerInbox(params.teamName, params.workerName, params.inbox, params.cwd);
+  } catch (error) {
+    await markImmediateDispatchFailure({
+      teamName: params.teamName,
+      request: queued.request,
+      reason: 'inbox_write_failed',
+      cwd: params.cwd,
+    });
+    throw error;
   }
 
   const notifyOutcome = await Promise.resolve(params.notify(

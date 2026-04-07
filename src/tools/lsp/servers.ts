@@ -15,6 +15,7 @@ export interface LspServerConfig {
   extensions: string[];
   installHint: string;
   initializationOptions?: Record<string, unknown>;
+  initializeTimeoutMs?: number;
 }
 
 /**
@@ -114,10 +115,11 @@ export const LSP_SERVERS: Record<string, LspServerConfig> = {
   },
   kotlin: {
     name: 'Kotlin Language Server',
-    command: 'kotlin-language-server',
-    args: [],
+    command: 'kotlin-lsp',
+    args: ['--stdio'],
     extensions: ['.kt', '.kts'],
-    installHint: 'Install from https://github.com/fwcd/kotlin-language-server'
+    installHint: 'Install from https://github.com/Kotlin/kotlin-lsp (brew install JetBrains/utils/kotlin-lsp)',
+    initializeTimeoutMs: 5 * 60 * 1000
   },
   elixir: {
     name: 'ElixirLS',

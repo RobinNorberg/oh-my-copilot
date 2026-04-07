@@ -33,6 +33,10 @@ function getPackageDir() {
     try {
         const __filename = fileURLToPath(import.meta.url);
         const __dirname = dirname(__filename);
+        const currentDirName = basename(__dirname);
+        if (currentDirName === 'bridge') {
+            return join(__dirname, '..');
+        }
         // From src/agents/ or dist/agents/ go up to package root
         return join(__dirname, '..', '..');
     }
@@ -287,6 +291,8 @@ export function formatOpenQuestions(topic, questions) {
 export function deepMerge(target, source) {
     const result = { ...target };
     for (const key of Object.keys(source)) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype')
+            continue;
         const sourceValue = source[key];
         const targetValue = target[key];
         if (sourceValue &&

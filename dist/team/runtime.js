@@ -3,7 +3,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
-import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, waitForPaneReady, resolveSplitPaneWorkerPaneIds, } from './tmux-session.js';
+import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, resolveSplitPaneWorkerPaneIds, waitForPaneReady, applyMainVerticalLayout, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, } from './worker-bootstrap.js';
 import { cleanupTeamWorktrees } from './git-worktree.js';
 import { withTaskLock, writeTaskFailure, DEFAULT_MAX_TASK_RETRIES, } from './task-file-ops.js';
@@ -532,8 +532,15 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
         '-c', runtime.cwd,
     ]);
     const paneId = splitResult.stdout.split('\n')[0]?.trim();
-    if (!paneId)
+    if (!paneId) {
+        try {
+            await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);
+        }
+        catch {
+            // best-effort revert
+        }
         return '';
+    }
     const workerIndex = parseWorkerIndex(workerNameValue);
     const agentType = runtime.config.agentTypes[workerIndex % runtime.config.agentTypes.length]
         ?? runtime.config.agentTypes[0]
@@ -589,12 +596,7 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     await spawnWorkerInPane(runtime.sessionName, paneId, paneConfig);
     runtime.workerPaneIds.push(paneId);
     runtime.activeWorkers.set(workerNameValue, { paneId, taskId, spawnedAt: Date.now() });
-    try {
-        await execFileAsync('tmux', ['select-layout', '-t', runtime.sessionName, 'main-vertical']);
-    }
-    catch {
-        // layout update is best-effort
-    }
+    await applyMainVerticalLayout(runtime.sessionName);
     try {
         await writePanesTrackingFileIfPresent(runtime);
     }
