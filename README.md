@@ -137,11 +137,16 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ralph` | ![execution](https://img.shields.io/badge/execution-green) | Persistence mode | `ralph: refactor auth` |
 | `ralphthon` | ![execution](https://img.shields.io/badge/execution-green) | Autonomous hackathon mode | `ralphthon: build MVP in 2 hours` |
 | `ulw` | ![execution](https://img.shields.io/badge/execution-green) | Maximum parallelism | `ulw fix all errors` |
+| `gh setup` | ![github](https://img.shields.io/badge/github-blue) | Configure GitHub integration | `gh setup` |
+| `gh triage` | ![github](https://img.shields.io/badge/github-blue) | GitHub issue/PR/CI triage | `gh triage` |
+| `gh review` | ![github](https://img.shields.io/badge/github-blue) | Interactive GitHub PR review | `gh review` |
+| `gh auto-review` | ![github](https://img.shields.io/badge/github-blue) | Automated code review via code-reviewer agent | `gh auto-review` |
+| `gh project` | ![github](https://img.shields.io/badge/github-blue) | Manage GitHub Projects (v2) boards | `gh project` |
 | `ado setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure Azure DevOps integration | `ado setup` |
 | `ado triage` | ![devops](https://img.shields.io/badge/devops-gray) | Azure DevOps work item triage | `ado triage` |
-| `gh setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure GitHub integration | `gh setup` |
-| `gh triage` | ![devops](https://img.shields.io/badge/devops-gray) | GitHub issue/PR/CI triage | `gh triage` |
-| `gh review` | ![devops](https://img.shields.io/badge/devops-gray) | Interactive GitHub PR review | `gh review` |
+| `ado review` | ![devops](https://img.shields.io/badge/devops-gray) | Interactive Azure DevOps PR review | `ado review` |
+| `ado auto-review` | ![devops](https://img.shields.io/badge/devops-gray) | Automated code review via code-reviewer agent | `ado auto-review` |
+| `ado sprint` | ![devops](https://img.shields.io/badge/devops-gray) | Sprint planning and iteration management | `ado sprint` |
 | `cancelomc`, `stopomc` | ![control](https://img.shields.io/badge/control-gray) | Stop active OMC modes | `stopomc` |
 
 **Notes:**
