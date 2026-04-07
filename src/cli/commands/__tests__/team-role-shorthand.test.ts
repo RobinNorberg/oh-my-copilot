@@ -26,8 +26,7 @@ vi.mock('../../../agents/utils.js', () => ({
   loadAgentPrompt: agentUtilsMocks.loadAgentPrompt,
 }));
 
-// TODO: role-only shorthand should use 'claude' agent type + workerRoles (contradicts current 'copilot' default)
-describe.skip('teamCommand role-only shorthand', () => {
+describe('teamCommand role-only shorthand', () => {
   const originalCwd = process.cwd();
   let logSpy: ReturnType<typeof vi.spyOn>;
 
@@ -52,7 +51,7 @@ describe.skip('teamCommand role-only shorthand', () => {
     vi.clearAllMocks();
   });
 
-  it('routes `N:executor` through claude agent types plus executor worker roles', async () => {
+  it('routes `N:executor` through copilot agent types plus executor worker roles', async () => {
     const { teamCommand } = await import('../team.js');
 
     await teamCommand(['2:executor', 'fix the bug']);
@@ -60,7 +59,7 @@ describe.skip('teamCommand role-only shorthand', () => {
     expect(agentUtilsMocks.loadAgentPrompt).toHaveBeenCalledWith('executor');
     expect(runtimeV2Mocks.startTeamV2).toHaveBeenCalledWith(expect.objectContaining({
       workerCount: 2,
-      agentTypes: ['claude', 'claude'],
+      agentTypes: ['copilot', 'copilot'],
       workerRoles: ['executor', 'executor'],
       roleName: 'executor',
       rolePrompt: 'prompt:executor',

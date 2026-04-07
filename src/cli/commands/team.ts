@@ -117,9 +117,15 @@ function slugifyTask(task: string): string {
     .slice(0, 30) || 'team-task';
 }
 
+export interface ParsedWorkerSpec {
+  agentType: string;
+  role?: string;
+}
+
 export interface ParsedTeamArgs {
   workerCount: number;
   agentTypes: string[];
+  workerSpecs: ParsedWorkerSpec[];
   role?: string;
   task: string;
   teamName: string;
@@ -178,6 +184,7 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
   const args = [...tokens];
   let workerCount = 3;
   let agentTypes: string[] = [];
+  let workerSpecs: ParsedWorkerSpec[] = [];
   let json = false;
   let newWindow = false;
 
@@ -216,6 +223,7 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
         workerCount += seg.count;
         for (let i = 0; i < seg.count; i++) {
           agentTypes.push(seg.agentType);
+          workerSpecs.push({ agentType: seg.agentType, ...(seg.role ? { role: seg.role } : {}) });
         }
       }
       if (workerCount > MAX_WORKER_COUNT) {
@@ -238,6 +246,10 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
       workerCount = normalized.count;
       role = normalized.role;
       agentTypes = Array.from({ length: workerCount }, () => normalized.agentType);
+      workerSpecs = Array.from({ length: workerCount }, () => ({
+        agentType: normalized.agentType,
+        ...(role ? { role } : {}),
+      }));
       filteredArgs.shift();
     }
   }
@@ -245,6 +257,7 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
   // Default: 3 copilot workers if no spec matched
   if (agentTypes.length === 0) {
     agentTypes = Array.from({ length: workerCount }, () => 'copilot');
+    workerSpecs = Array.from({ length: workerCount }, () => ({ agentType: 'copilot' }));
   }
 
   const task = filteredArgs.join(' ').trim();
@@ -253,7 +266,7 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
   }
 
   const teamName = slugifyTask(task);
-  return { workerCount, agentTypes, role, task, teamName, json, newWindow };
+  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow };
 }
 
 function sampleValueForField(field: string): unknown {
@@ -414,6 +427,7 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
       tasks,
       cwd,
       newWindow: parsed.newWindow,
+      workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
       ...(rolePrompt ? { roleName: parsed.role, rolePrompt } : {}),
     });
 
