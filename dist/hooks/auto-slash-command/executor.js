@@ -7,7 +7,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, basename } from 'path';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { resolveLiveData } from './live-data.js';
 import { parseFrontmatter, parseFrontmatterAliases, stripOptionalQuotes } from '../../utils/frontmatter.js';
 import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
@@ -226,7 +226,7 @@ export function executeSlashCommand(parsed) {
     if (!command) {
         return {
             success: false,
-            error: `Command "/${parsed.command}" not found. Available commands are in $COPILOT_CONFIG_DIR/commands/ (or ~/.copilot/commands/ by default) or .copilot/commands/`,
+            error: `Command "/${parsed.command}" not found. Available commands are in ${COPILOT_CONFIG_DIR}/commands/ or .copilot/commands/`,
         };
     }
     try {

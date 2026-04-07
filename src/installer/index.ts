@@ -8,19 +8,23 @@
  * Bash hook scripts were removed in v3.9.0.
  */
 
-import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 import {
   isWindows,
-  MIN_NODE_VERSION
+  MIN_NODE_VERSION,
+  getHooksSettingsConfig,
 } from './hooks.js';
 import { getRuntimePackageVersion } from '../lib/version.js';
 import { getConfigDir } from '../utils/config-dir.js';
 import { resolveNodeBinary } from '../utils/resolve-node.js';
+import { parseFrontmatter } from '../utils/frontmatter.js';
+import { isSkininthegamebrosUser } from '../utils/skininthegamebros-user.js';
 import { generatePermissionAllowList } from './permissions.js';
+import { syncUnifiedMcpRegistryTargets } from './mcp-registry.js';
 
 /** Copilot CLI configuration directory */
 export const COPILOT_CONFIG_DIR = getConfigDir();
@@ -43,6 +47,26 @@ export const CORE_COMMANDS: string[] = [];
 export const VERSION = getRuntimePackageVersion();
 
 const OMC_VERSION_MARKER_PATTERN = /<!-- OMC:VERSION:([^\s]+) -->/;
+
+const CC_NATIVE_COMMANDS = new Set([
+  'review',
+  'plan',
+  'security-review',
+  'init',
+  'doctor',
+  'help',
+  'config',
+  'clear',
+  'compact',
+  'memory',
+]);
+
+const SKININTHEGAMEBROS_ONLY_SKILLS = new Set([
+  'remember',
+  'verify',
+  'debug',
+  'skillify',
+]);
 
 /**
  * Detects the newest installed OMC version from persistent metadata or
@@ -145,6 +169,39 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+function isDefaultClaudeConfigDirPath(configDir: string): boolean {
+  return normalizePath(configDir) === normalizePath(join(homedir(), '.claude'));
+}
+
+function quoteShellArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+function buildStatusLineCommand(nodeBin: string, hudScriptPath: string, findNodePath?: string): string {
+  if (isWindows()) {
+    return `${quoteShellArg(nodeBin)} ${quoteShellArg(hudScriptPath)}`;
+  }
+
+  if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
+    if (findNodePath) {
+      return 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omc-hud.mjs';
+    }
+
+    return 'node $HOME/.claude/hud/omc-hud.mjs';
+  }
+
+  const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
+  if (findNodePath) {
+    return `sh ${quoteShellArg(findNodePath.replace(/\\/g, '/'))} ${quoteShellArg(normalizedHudScriptPath)}`;
+  }
+
+  return `node ${quoteShellArg(normalizedHudScriptPath)}`;
+}
+
 function createLineAnchoredMarkerRegex(marker: string, flags: string = 'gm'): RegExp {
   return new RegExp(`^${escapeRegex(marker)}$`, flags);
 }
@@ -188,6 +245,7 @@ export interface InstallOptions {
   forceHooks?: boolean;
   refreshHooksInPlugin?: boolean;
   skipHud?: boolean;
+  noPlugin?: boolean;
 }
 
 /**
@@ -247,6 +305,7 @@ const OMC_HOOK_FILENAMES = new Set([
   'post-tool-use.mjs',
   'post-tool-use-failure.mjs',
   'persistent-mode.mjs',
+  'code-simplifier.mjs',
   'stop-continuation.mjs',
 ]);
 
@@ -270,10 +329,11 @@ export function isOmcHook(command: string): boolean {
   if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
     return true;
   }
-  // Check for known OMC hook filenames in .copilot/hooks/ path.
-  // Handles both Unix (.copilot/hooks/) and Windows (.copilot\hooks\) paths.
-  const hookPathMatch = lowerCommand.match(/\.copilot[/\\]hooks[/\\]([a-z0-9-]+\.mjs)/);
-  if (hookPathMatch && OMC_HOOK_FILENAMES.has(hookPathMatch[1])) {
+  // Check for known OMC hook filenames in hooks/ path.
+  // Handles both Unix and Windows paths, and any config dir prefix.
+  const containsHooksDir = /hooks[/\\]/.test(lowerCommand);
+  const hookFilenameMatch = lowerCommand.match(/([a-z0-9-]+\.mjs)(?:$|["'\s])/);
+  if (containsHooksDir && hookFilenameMatch && OMC_HOOK_FILENAMES.has(hookFilenameMatch[1])) {
     return true;
   }
   return false;

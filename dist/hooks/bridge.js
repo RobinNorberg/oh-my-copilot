@@ -25,6 +25,7 @@ import { normalizeHookInput } from "./bridge-normalize.js";
 import { addBackgroundTask, completeBackgroundTask, completeMostRecentMatchingBackgroundTask, getRunningTaskCount, remapBackgroundTaskId, remapMostRecentMatchingBackgroundTaskId, } from "../hud/background-tasks.js";
 import { readHudState, writeHudState } from "../hud/state.js";
 import { loadConfig } from "../config/loader.js";
+import { getPromptPrerequisiteConfig, isPromptPrerequisiteBlockingTool, parsePromptPrerequisiteSections, readPromptPrerequisiteState, recordPromptPrerequisiteProgress, shouldEnforcePromptPrerequisites, activatePromptPrerequisiteState, buildPromptPrerequisiteReminder, buildPromptPrerequisiteDenyReason, } from "./prompt-prerequisites/index.js";
 import { writeSkillActiveState } from "./skill-state/index.js";
 import { ULTRAWORK_MESSAGE, ULTRATHINK_MESSAGE, SEARCH_MESSAGE, ANALYZE_MESSAGE, TDD_MESSAGE, CODE_REVIEW_MESSAGE, SECURITY_REVIEW_MESSAGE, RALPH_MESSAGE, PROMPT_TRANSLATION_MESSAGE, } from "../installer/hooks.js";
 // Agent dashboard is used in pre/post-tool-use hot path
@@ -36,7 +37,7 @@ import { getBackgroundBashPermissionFallback, getBackgroundTaskPermissionFallbac
 import { wrapUntrustedFileContent } from "../agents/prompt-helpers.js";
 const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
-const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+(split-window|new-session|new-window|join-pane)\b/i;
+const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+(split-window|new-session|new-window|join-pane|send-keys)\b/i;
 const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cgpx]\s+team\b(?!\s+api\b)/i;
 const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
 const TEAM_TERMINAL_VALUES = new Set([
@@ -135,9 +136,11 @@ function updateModeAwaitingConfirmation(directory, modeName, sessionId, awaiting
             }
             if (awaitingConfirmation) {
                 state.awaiting_confirmation = true;
+                state.awaiting_confirmation_set_at = new Date().toISOString();
             }
             else if (state.awaiting_confirmation === true) {
                 delete state.awaiting_confirmation;
+                delete state.awaiting_confirmation_set_at;
             }
             else {
                 continue;
@@ -378,6 +381,41 @@ function isDelegationToolName(toolName) {
     const normalizedToolName = (toolName || "").toLowerCase();
     return normalizedToolName === "task" || normalizedToolName === "agent";
 }
+function hasInjectableText(value) {
+    return typeof value === "string" && value.trim().length > 0;
+}
+/**
+ * Strip empty hook text fields before serializing to Copilot CLI.
+ *
+ * Some hook handlers use empty strings as internal sentinels. Passing those
+ * through to the shell hook protocol can create empty system-message/context
+ * injections on the next turn, which is especially risky after Task/Agent
+ * completion when Claude is deciding whether to continue.
+ */
+export function sanitizeHookOutputForSerialization(output) {
+    const sanitized = { ...output };
+    if (!hasInjectableText(sanitized.message)) {
+        delete sanitized.message;
+    }
+    if (!hasInjectableText(sanitized.systemMessage)) {
+        delete sanitized.systemMessage;
+    }
+    const hookSpecificOutput = sanitized.hookSpecificOutput;
+    if (hookSpecificOutput && typeof hookSpecificOutput === "object") {
+        const nextHookSpecificOutput = { ...hookSpecificOutput };
+        if (!hasInjectableText(nextHookSpecificOutput.additionalContext)) {
+            delete nextHookSpecificOutput.additionalContext;
+        }
+        sanitized.hookSpecificOutput =
+            Object.keys(nextHookSpecificOutput).length > 0
+                ? nextHookSpecificOutput
+                : undefined;
+        if (!sanitized.hookSpecificOutput) {
+            delete sanitized.hookSpecificOutput;
+        }
+    }
+    return sanitized;
+}
 /**
  * Extract prompt text from various input formats
  */
@@ -432,6 +470,7 @@ async function processKeywordDetector(input) {
     // Load config for task-size detection settings
     const config = loadConfig();
     const taskSizeConfig = config.taskSizeDetection ?? {};
+    const promptPrerequisiteConfig = getPromptPrerequisiteConfig(config);
     // Get all keywords with optional task-size filtering (issue #790)
     const sizeCheckResult = getAllKeywordsWithSizeCheck(cleanedText, {
         enabled: taskSizeConfig.enabled !== false,
@@ -473,6 +512,15 @@ async function processKeywordDetector(input) {
     const sanitizedText = sanitizeForKeywordDetection(cleanedText);
     if (NON_LATIN_SCRIPT_PATTERN.test(sanitizedText)) {
         messages.push(PROMPT_TRANSLATION_MESSAGE);
+    }
+    // Prompt prerequisites enforcement
+    const promptPrerequisiteParse = parsePromptPrerequisiteSections(promptText, promptPrerequisiteConfig);
+    const executionKeywords = fullKeywords.filter((keywordType) => promptPrerequisiteConfig.executionKeywords.includes(keywordType));
+    if (shouldEnforcePromptPrerequisites(executionKeywords, promptPrerequisiteParse, promptPrerequisiteConfig)) {
+        const state = activatePromptPrerequisiteState(directory, sessionId, executionKeywords, promptPrerequisiteParse);
+        if (state) {
+            messages.push(buildPromptPrerequisiteReminder(state));
+        }
     }
     if (keywords.length === 0) {
         if (messages.length > 0) {
@@ -966,7 +1014,25 @@ function processPreToolUse(input) {
         };
     }
     const preToolMessages = enforcementResult.message ? [enforcementResult.message] : [];
+    const promptPrerequisiteConfig = getPromptPrerequisiteConfig(loadConfig());
     let modifiedToolInput;
+    // Prompt prerequisites: track progress and block editing tools until context is read
+    const promptPrerequisiteProgress = recordPromptPrerequisiteProgress(directory, input.sessionId, input.toolName, input.toolInput);
+    if (promptPrerequisiteProgress?.isComplete) {
+        preToolMessages.push("[PROMPT PREREQUISITES COMPLETE] Required context tools/files were read. Editing and agent delegation are unblocked.");
+    }
+    const promptPrerequisiteState = readPromptPrerequisiteState(directory, input.sessionId);
+    if (promptPrerequisiteState?.active
+        && isPromptPrerequisiteBlockingTool(input.toolName, promptPrerequisiteConfig)) {
+        return {
+            continue: true,
+            hookSpecificOutput: {
+                hookEventName: "PreToolUse",
+                permissionDecision: "deny",
+                permissionDecisionReason: buildPromptPrerequisiteDenyReason(promptPrerequisiteState, input.toolName),
+            },
+        };
+    }
     // Force-inherit: deny Task calls that carry a `model` parameter when
     // forceInherit is enabled (Bedrock, Vertex, CC Switch, etc.).
     // Copilot CLI's hook protocol does not support modifiedInput, so we cannot
@@ -1209,8 +1275,17 @@ async function processPostToolUse(input) {
         }
         // Clear skill-active state on skill completion to prevent false-blocking.
         // Without this, every non-'none' skill falsely blocks stops until TTL expires.
-        const { clearSkillActiveState } = await import("./skill-state/index.js");
-        clearSkillActiveState(directory, input.sessionId);
+        // Guard: only clear if the completing skill owns the active state.
+        // When a parent skill (e.g. omc-setup) invokes a child skill (e.g. mcp-setup),
+        // the child's PostToolUse fires first — we must not delete the parent's state.
+        const { clearSkillActiveState, readSkillActiveState } = await import("./skill-state/index.js");
+        const currentState = readSkillActiveState(directory, input.sessionId);
+        const completingSkill = (getInvokedSkillName(input.toolInput) ?? "")
+            .toLowerCase()
+            .replace(/^oh-my-copilot:/, "");
+        if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
+            clearSkillActiveState(directory, input.sessionId);
+        }
     }
     // Run orchestrator post-tool processing (remember tags, verification reminders, etc.)
     const orchestratorResult = processOrchestratorPostTool({
@@ -1526,7 +1601,7 @@ export async function main() {
     // Process hook
     const output = await processHook(hookType, input);
     // Write output to stdout
-    console.log(JSON.stringify(output));
+    console.log(JSON.stringify(sanitizeHookOutputForSerialization(output)));
 }
 // Run if called directly (works in both ESM and bundled CJS)
 // In CJS bundle, check if this is the main module by comparing with process.argv[1]

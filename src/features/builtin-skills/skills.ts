@@ -15,6 +15,8 @@ import { fileURLToPath } from 'url';
 import type { BuiltinSkill } from './types.js';
 import { parseFrontmatter, parseFrontmatterAliases } from '../../utils/frontmatter.js';
 import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
+import { isStrictMode } from '../../utils/strict-mode.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 
 // Get the project root directory (go up from src/features/builtin-skills/)
 const __filename = fileURLToPath(import.meta.url);
@@ -39,6 +41,77 @@ const CC_NATIVE_COMMANDS = new Set([
   'compact',
   'memory',
 ]);
+
+const STRICT_MODE_ONLY_SKILLS = new Set([
+  'remember',
+  'verify',
+  'debug',
+  'skillify',
+]);
+
+const DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD = 0.2;
+
+function readJsonObject(path: string): Record<string, unknown> | null {
+  if (!existsSync(path)) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readDeepInterviewThresholdFromSettings(path: string): number | null {
+  const settings = readJsonObject(path);
+  const omc = settings?.omc;
+  if (!omc || typeof omc !== 'object' || Array.isArray(omc)) {
+    return null;
+  }
+
+  const deepInterview = (omc as Record<string, unknown>).deepInterview;
+  if (!deepInterview || typeof deepInterview !== 'object' || Array.isArray(deepInterview)) {
+    return null;
+  }
+
+  const threshold = (deepInterview as Record<string, unknown>).ambiguityThreshold;
+  return typeof threshold === 'number' && Number.isFinite(threshold) && threshold >= 0 && threshold <= 1
+    ? threshold
+    : null;
+}
+
+function getDeepInterviewAmbiguityThreshold(): number {
+  const profileThreshold = readDeepInterviewThresholdFromSettings(join(getCopilotConfigDir(), 'settings.json'));
+  const projectThreshold = readDeepInterviewThresholdFromSettings(join(process.cwd(), '.copilot', 'settings.json'));
+  return projectThreshold ?? profileThreshold ?? DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD;
+}
+
+function formatThresholdPercent(threshold: number): string {
+  return `${(threshold * 100).toFixed(2).replace(/\.?0+$/, '')}%`;
+}
+
+function applyDeepInterviewRuntimeSettings(template: string): string {
+  const threshold = getDeepInterviewAmbiguityThreshold();
+  const percent = formatThresholdPercent(threshold);
+
+  return template
+    .replace(
+      '4. **Initialize state** via `state_write(mode="deep-interview")`:',
+      [
+        `3.5. **Load runtime settings** from \`~/.copilot/settings.json\` and \`./.copilot/settings.json\` before state init (project overrides profile). For this run, use \`ambiguityThreshold = ${threshold}\`.`,
+        '4. **Initialize state** via `state_write(mode="deep-interview")`:',
+      ].join('\n'),
+    )
+    .replace('"threshold": 0.2,', `"threshold": ${threshold},`)
+    .replace(
+      'We\'ll proceed to execution once ambiguity drops below 20%.',
+      `We'll proceed to execution once ambiguity drops below ${percent}.`,
+    );
+}
 
 function toSafeSkillName(name: string): string {
   const normalized = name.trim();
@@ -119,6 +192,9 @@ function loadSkillsFromDirectory(): BuiltinSkill[] {
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      if (STRICT_MODE_ONLY_SKILLS.has(entry.name) && !isStrictMode()) {
+        continue;
+      }
 
       const skillPath = join(SKILLS_DIR, entry.name, 'SKILL.md');
       if (existsSync(skillPath)) {

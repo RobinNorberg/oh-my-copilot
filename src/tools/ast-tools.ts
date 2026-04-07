@@ -9,8 +9,10 @@
 
 import { z } from "zod";
 import { readFileSync, readdirSync, statSync, writeFileSync } from "fs";
-import { join, extname, resolve } from "path";
+import { join, extname, resolve, normalize, relative, isAbsolute } from "path";
 import { createRequire } from "module";
+import { getWorktreeRoot } from "../lib/worktree-paths.js";
+import { isToolPathRestricted } from "../lib/security-config.js";
 
 // Dynamic import for @ast-grep/napi
 // Graceful degradation: if the module is not available (e.g., in bundled/plugin context),
@@ -45,6 +47,32 @@ async function getSgModule(): Promise<typeof import("@ast-grep/napi") | null> {
     }
   }
   return sgModule;
+}
+
+/**
+ * Validate that a tool path is within the project root boundary.
+ * Only enforced when security.restrictToolPaths is enabled.
+ */
+export function validateToolPath(inputPath: string): string {
+  const resolved = resolve(inputPath);
+
+  if (!isToolPathRestricted()) {
+    return resolved;
+  }
+
+  const projectRoot = getWorktreeRoot() || process.cwd();
+  const normalizedRoot = normalize(projectRoot);
+  const normalizedPath = normalize(resolved);
+  const rel = relative(normalizedRoot, normalizedPath);
+
+  if (rel.startsWith("..") || isAbsolute(rel)) {
+    throw new Error(
+      `Path restricted: '${inputPath}' is outside the project root '${projectRoot}'. ` +
+        `Disable via security.restrictToolPaths in .copilot/omc.jsonc or unset OMC_SECURITY.`,
+    );
+  }
+
+  return resolved;
 }
 
 /**

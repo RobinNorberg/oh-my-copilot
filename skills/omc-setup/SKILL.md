@@ -15,7 +15,7 @@ Note: All `~/.copilot/...` paths in this guide respect `COPILOT_CONFIG_DIR` when
 
 Choose this setup flow when the user wants to **install, refresh, or repair OMC itself**.
 
-- Marketplace/plugin install users should land here after `/plugin install oh-my-claudecode`
+- Marketplace/plugin install users should land here after `/plugin install oh-my-copilot`
 - npm users should land here after `npm i -g oh-my-copilot@latest`
 - local-dev and worktree users should land here after updating the checked-out repo and rerunning setup
 

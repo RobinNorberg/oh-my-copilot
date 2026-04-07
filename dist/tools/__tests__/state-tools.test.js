@@ -198,6 +198,50 @@ describe('state-tools', () => {
             expect(result.content[0].text).toContain('Locations cleared: 1');
             expect(result.content[0].text).not.toContain('Errors:');
         });
+        it('should clear skill-active state with session_id (fix for #2118)', async () => {
+            const sessionId = 'test-skill-active-clear';
+            await stateWriteTool.handler({
+                mode: 'skill-active',
+                active: true,
+                state: { skill_name: 'sciomc', reinforcement_count: 2 },
+                session_id: sessionId,
+                workingDirectory: TEST_DIR,
+            });
+            // Verify skill-active appears in the active list before clearing
+            const listBefore = await stateListActiveTool.handler({
+                session_id: sessionId,
+                workingDirectory: TEST_DIR,
+            });
+            expect(listBefore.content[0].text).toContain('skill-active');
+            const clearResult = await stateClearTool.handler({
+                mode: 'skill-active',
+                session_id: sessionId,
+                workingDirectory: TEST_DIR,
+            });
+            expect(clearResult.content[0].text).toContain('cleared');
+            const readResult = await stateReadTool.handler({
+                mode: 'skill-active',
+                session_id: sessionId,
+                workingDirectory: TEST_DIR,
+            });
+            // stateReadTool returning "No state found" is authoritative proof the file is gone
+            expect(readResult.content[0].text).toContain('No state found');
+        });
+        it('should list skill-active as active when state file is present', async () => {
+            const sessionId = 'skill-active-list-test';
+            await stateWriteTool.handler({
+                mode: 'skill-active',
+                active: true,
+                state: { skill_name: 'learner' },
+                session_id: sessionId,
+                workingDirectory: TEST_DIR,
+            });
+            const result = await stateListActiveTool.handler({
+                session_id: sessionId,
+                workingDirectory: TEST_DIR,
+            });
+            expect(result.content[0].text).toContain('skill-active');
+        });
     });
     describe('state_list_active', () => {
         it('should list active modes in current session when session_id provided', async () => {
@@ -327,6 +371,19 @@ describe('state-tools', () => {
             expect(existsSync(join(sessionDir, 'ralph-state.json'))).toBe(false);
             // Legacy file should remain (belongs to different session)
             expect(existsSync(join(TEST_DIR, '.omg', 'state', 'ralph-state.json'))).toBe(true);
+        });
+        it('should clear recovered session-owned state stranded under another session directory', async () => {
+            const sessionId = 'continued-session';
+            const strandedDir = join(TEST_DIR, '.omg', 'state', 'sessions', 'stale-session-dir');
+            mkdirSync(strandedDir, { recursive: true });
+            writeFileSync(join(strandedDir, 'ralph-state.json'), JSON.stringify({ active: true, session_id: sessionId, source: 'recovered-session-state' }));
+            const result = await stateClearTool.handler({
+                mode: 'ralph',
+                session_id: sessionId,
+                workingDirectory: TEST_DIR,
+            });
+            expect(result.content[0].text).toContain('recovered session file');
+            expect(existsSync(join(strandedDir, 'ralph-state.json'))).toBe(false);
         });
     });
     describe('session-scoped behavior', () => {

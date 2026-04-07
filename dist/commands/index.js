@@ -6,12 +6,12 @@
  */
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { getCopilotConfigDir } from '../utils/paths.js';
+import { getClaudeConfigDir } from '../utils/config-dir.js';
 /**
  * Get the commands directory path
  */
 export function getCommandsDir() {
-    return join(getCopilotConfigDir(), 'commands');
+    return join(getClaudeConfigDir(), 'commands');
 }
 /**
  * Parse command frontmatter and content

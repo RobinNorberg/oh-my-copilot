@@ -241,6 +241,7 @@ function mergeWithDefaults(config) {
         wrapMode: config.wrapMode ?? DEFAULT_HUD_CONFIG.wrapMode,
         ...(config.rateLimitsProvider ? { rateLimitsProvider: config.rateLimitsProvider } : {}),
         ...(config.maxWidth != null ? { maxWidth: config.maxWidth } : {}),
+        ...(config.layout ? { layout: config.layout } : {}),
     };
 }
 /**

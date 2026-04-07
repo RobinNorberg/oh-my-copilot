@@ -5,6 +5,19 @@
 
 import { execFileSync } from 'child_process';
 import {
+  cpSync,
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'fs';
+import { homedir } from 'os';
+import { basename, join } from 'path';
+import {
   resolveLaunchPolicy,
   buildTmuxSessionName,
   buildTmuxShellCommand,
@@ -23,6 +36,79 @@ const SLACK_FLAG = '--slack';
 const WEBHOOK_FLAG = '--webhook';
 const TEAMS_FLAG = '--teams';
 const OPENCLAW_FLAG = '--openclaw';
+const OMC_RUNTIME_DIRNAME = '.omc-launch';
+
+function hasOmcMarkers(path: string): boolean {
+  if (!existsSync(path)) return false;
+  const content = readFileSync(path, 'utf-8');
+  return content.includes('<!-- OMC:START -->') && content.includes('<!-- OMC:END -->');
+}
+
+function ensureMirroredPath(sourcePath: string, targetPath: string): void {
+  if (!existsSync(sourcePath)) return;
+
+  try {
+    const sourceStat = lstatSync(sourcePath);
+    const targetExists = existsSync(targetPath);
+    if (targetExists) {
+      const targetStat = lstatSync(targetPath);
+      if (targetStat.isSymbolicLink()) {
+        return;
+      }
+      rmSync(targetPath, { recursive: true, force: true });
+    }
+
+    if (sourceStat.isDirectory()) {
+      symlinkSync(sourcePath, targetPath, process.platform === 'win32' ? 'junction' : 'dir');
+      return;
+    }
+
+    symlinkSync(sourcePath, targetPath, 'file');
+  } catch {
+    const sourceStat = lstatSync(sourcePath);
+    if (sourceStat.isDirectory()) {
+      cpSync(sourcePath, targetPath, { recursive: true });
+      return;
+    }
+    copyFileSync(sourcePath, targetPath);
+  }
+}
+
+export function prepareOmcLaunchConfigDir(baseConfigDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot')): string {
+  const companionPath = join(baseConfigDir, 'copilot-instructions-omc.md');
+  if (!hasOmcMarkers(companionPath)) {
+    return baseConfigDir;
+  }
+
+  const runtimeConfigDir = join(baseConfigDir, OMC_RUNTIME_DIRNAME);
+  rmSync(runtimeConfigDir, { recursive: true, force: true });
+  mkdirSync(runtimeConfigDir, { recursive: true });
+  copyFileSync(companionPath, join(runtimeConfigDir, 'copilot-instructions.md'));
+
+  for (const entry of [
+    'agents',
+    'commands',
+    'hooks',
+    'hud',
+    'plugins',
+    'projects',
+    'skills',
+    '.omc-config.json',
+    '.omc-version.json',
+    '.omc-silent-update.json',
+    'settings.json',
+    'settings.local.json',
+  ]) {
+    ensureMirroredPath(join(baseConfigDir, entry), join(runtimeConfigDir, basename(entry)));
+  }
+
+  writeFileSync(
+    join(runtimeConfigDir, '.omc-launch-profile.json'),
+    JSON.stringify({ sourceConfigDir: baseConfigDir, sourceClaudeMd: companionPath }, null, 2),
+  );
+
+  return runtimeConfigDir;
+}
 
 /**
  * Extract the OMC-specific --openclaw flag from launch args.

@@ -10,6 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
 
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
@@ -293,7 +294,7 @@ async function main() {
     const updateInfo = currentVersion ? await checkForUpdates(currentVersion) : null;
     if (updateInfo) {
       // Read config to check autoUpgradePrompt preference
-      const configPath = join(homedir(), '.copilot', '.omg-config.json');
+      const configPath = join(getCopilotConfigDir(), '.omg-config.json');
       const omcConfig = readJsonFile(configPath) || {};
       const autoUpgradePrompt = omcConfig.autoUpgradePrompt !== false; // default: true
 

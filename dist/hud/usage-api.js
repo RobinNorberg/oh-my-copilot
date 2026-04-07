@@ -12,7 +12,7 @@
  * Response: { five_hour: { utilization }, seven_day: { utilization } }
  */
 import { existsSync, readFileSync, writeFileSync, renameSync, unlinkSync, mkdirSync } from 'fs';
-import { getCopilotConfigDir } from '../utils/paths.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { join, dirname } from 'path';
 import { execFileSync } from 'child_process';
 import { userInfo } from 'os';

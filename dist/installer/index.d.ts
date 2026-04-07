@@ -47,6 +47,7 @@ export interface InstallOptions {
     forceHooks?: boolean;
     refreshHooksInPlugin?: boolean;
     skipHud?: boolean;
+    noPlugin?: boolean;
 }
 /**
  * Read hudEnabled from .omc-config.json without importing auto-update

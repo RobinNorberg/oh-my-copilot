@@ -126,7 +126,12 @@ function readSummaryState(stateDir, sessionId) {
  * Write summary state to disk (scoped by sessionId).
  */
 function writeSummaryState(stateDir, sessionId, state) {
-  mkdirSync(stateDir, { recursive: true });
+  try {
+    mkdirSync(stateDir, { recursive: true });
+  } catch (err) {
+    // On Windows, concurrent hooks can throw EEXIST even with recursive:true
+    if (err?.code !== 'EEXIST') throw err;
+  }
   const statePath = join(stateDir, `session-summary-${sessionId}.json`);
   writeFileSync(statePath, JSON.stringify(state, null, 2));
 }

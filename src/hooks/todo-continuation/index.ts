@@ -28,7 +28,7 @@ function debugLog(message: string, ...args: unknown[]): void {
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 
 /**
  * Validates that a session ID is safe to use in file paths.

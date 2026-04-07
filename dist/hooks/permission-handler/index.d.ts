@@ -23,6 +23,12 @@ export interface HookOutput {
         };
     };
 }
+interface DenyTracker {
+    consecutiveDenials: number;
+    totalDenials: number;
+    totalAllows: number;
+    lastDecision: 'allow' | 'deny' | 'ask' | null;
+}
 export declare function getCopilotPermissionAllowEntries(directory: string): string[];
 export declare function hasCopilotPermissionApproval(directory: string, toolName: 'Edit' | 'Write' | 'Bash', command?: string): boolean;
 export interface BackgroundPermissionFallbackResult {
@@ -52,11 +58,23 @@ export declare function isHeredocWithSafeBase(command: string): boolean;
  */
 export declare function isActiveModeRunning(directory: string): boolean;
 /**
- * Process permission request and decide whether to auto-allow
+ * Process permission request and decide whether to auto-allow.
+ *
+ * Decision flow:
+ * 1. Escalation check — if too many denials, stop and escalate
+ * 2. MCP tool annotations — readOnlyHint tools auto-approved
+ * 3. Bash safe patterns — known-safe CLI commands auto-approved
+ * 4. Bash heredoc — safe base commands with heredoc content auto-approved
+ * 5. Default — pass through to Copilot CLI's native permission prompt
  */
 export declare function processPermissionRequest(input: PermissionRequestInput): HookOutput;
+/** Get current deny tracker state (for diagnostics/omc-doctor) */
+export declare function getPermissionDenyStats(): Readonly<DenyTracker>;
+/** Reset deny tracker (e.g., after user explicitly approves) */
+export declare function resetDenyTracker(): void;
 /**
  * Main hook entry point
  */
 export declare function handlePermissionRequest(input: PermissionRequestInput): Promise<HookOutput>;
+export {};
 //# sourceMappingURL=index.d.ts.map

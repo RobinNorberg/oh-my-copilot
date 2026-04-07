@@ -22,9 +22,10 @@ import {
   getInstalledOmcPluginRoots,
   getRuntimePackageRoot,
 } from '../installer/index.js';
-import { getConfigDir } from '../utils/config-dir.js';
+import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 import type { NotificationConfig } from '../notifications/types.js';
+import { isAutoUpdateDisabled } from '../lib/security-config.js';
 
 /** GitHub repository information */
 export const REPO_OWNER = 'RobinNorberg';
@@ -39,7 +40,7 @@ export const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/$
  * and cache rebuilds reinstall old versions. (See #506)
  */
 function syncMarketplaceClone(verbose: boolean = false): { ok: boolean; message: string } {
-  const marketplacePath = join(getConfigDir(), 'plugins', 'marketplaces', 'omg');
+  const marketplacePath = join(getClaudeConfigDir(), 'plugins', 'marketplaces', 'omg');
   if (!existsSync(marketplacePath)) {
     return { ok: true, message: 'Marketplace clone not found; skipping' };
   }
@@ -160,7 +161,7 @@ export function shouldBlockStandaloneUpdateInCurrentSession(): boolean {
 }
 
 export function syncPluginCache(verbose: boolean = false): { synced: boolean; skipped: boolean; errors: string[] } {
-  const pluginCacheRoot = join(getConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
+  const pluginCacheRoot = join(getClaudeConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
   if (!existsSync(pluginCacheRoot)) {
     return { synced: false, skipped: true, errors: [] };
   }
@@ -214,7 +215,7 @@ export function syncPluginCache(verbose: boolean = false): { synced: boolean; sk
 }
 
 /** Installation paths (respects COPILOT_CONFIG_DIR env var) */
-export const COPILOT_CONFIG_DIR = getConfigDir();
+export const COPILOT_CONFIG_DIR = getClaudeConfigDir();
 export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
 export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, '.omc-config.json');
 
@@ -361,6 +362,7 @@ export function getOMCConfig(): OMCConfig {
  * Check if silent auto-updates are enabled
  */
 export function isSilentAutoUpdateEnabled(): boolean {
+  if (isAutoUpdateDisabled()) return false;
   return getOMCConfig().silentAutoUpdate;
 }
 
@@ -609,7 +611,10 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 export function reconcileUpdateRuntime(options?: { verbose?: boolean }): UpdateReconcileResult {
   const errors: string[] = [];
 
+  const runningAsPlugin = isRunningAsPlugin();
   const projectScopedPlugin = isProjectScopedPlugin();
+  const shouldRefreshPluginHooks = runningAsPlugin && !projectScopedPlugin;
+
   if (!projectScopedPlugin) {
     try {
       if (!existsSync(HOOKS_DIR)) {
@@ -627,7 +632,7 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean }): UpdateR
       verbose: options?.verbose ?? false,
       skipCopilotCheck: true,
       forceHooks: true,
-      refreshHooksInPlugin: !projectScopedPlugin,
+      refreshHooksInPlugin: shouldRefreshPluginHooks,
     });
 
     if (!installResult.success) {

@@ -26,7 +26,7 @@ import { appendTeamEvent, emitMonitorDerivedEvents } from './events.js';
 import { inferPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
 import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, } from './model-contract.js';
-import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, resolveSplitPaneWorkerPaneIds, } from './tmux-session.js';
+import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, applyMainVerticalLayout, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
@@ -189,12 +189,7 @@ async function spawnV2Worker(opts) {
     };
     await spawnWorkerInPane(opts.sessionName, paneId, paneConfig);
     // Apply layout
-    try {
-        await execFileAsync('tmux', [
-            'select-layout', '-t', opts.sessionName, 'main-vertical',
-        ]);
-    }
-    catch { /* layout is best-effort */ }
+    await applyMainVerticalLayout(opts.sessionName);
     // For interactive agents, wait for pane readiness before dispatching startup inbox.
     if (!usePromptMode) {
         const paneReady = await waitForPaneReady(paneId);
@@ -792,7 +787,7 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
     }
     // 4. Force kill remaining tmux panes
     try {
-        const { killWorkerPanes, killTeamSession } = await import('./tmux-session.js');
+        const { killWorkerPanes, killTeamSession, resolveSplitPaneWorkerPaneIds } = await import('./tmux-session.js');
         const configPaneIds = config.workers
             .map((w) => w.pane_id)
             .filter((p) => typeof p === 'string' && p.trim().length > 0);

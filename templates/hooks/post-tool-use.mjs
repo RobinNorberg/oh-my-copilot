@@ -3,7 +3,7 @@
 // Processes <remember> tags from Task agent output
 // Saves to .omg/notepad.md for compaction-resilient memory
 
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -56,18 +56,54 @@ function getInvokedSkillName(toolInput) {
     : normalized.toLowerCase();
 }
 
-function activateState(directory, stateName, state, sessionId) {
-  const localDir = join(directory, '.omg', 'state');
-  if (!existsSync(localDir)) {
-    try { mkdirSync(localDir, { recursive: true }); } catch {}
-  }
-  try { writeFileSync(join(localDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
+const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 
-  const globalDir = join(homedir(), '.omg', 'state');
-  if (!existsSync(globalDir)) {
-    try { mkdirSync(globalDir, { recursive: true }); } catch {}
+function getSkillActiveStatePaths(directory, sessionId) {
+  const stateDir = join(directory, '.omg', 'state');
+  const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
+  return [
+    safeSessionId ? join(stateDir, 'sessions', safeSessionId, 'skill-active-state.json') : null,
+    join(stateDir, 'skill-active-state.json'),
+  ].filter(Boolean);
+}
+
+function readSkillActiveState(directory, sessionId) {
+  for (const statePath of getSkillActiveStatePaths(directory, sessionId)) {
+    try {
+      if (!existsSync(statePath)) continue;
+      const state = JSON.parse(readFileSync(statePath, 'utf-8'));
+      if (state && typeof state === 'object') return state;
+    } catch {}
   }
-  try { writeFileSync(join(globalDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
+  return null;
+}
+
+function clearSkillActiveState(directory, sessionId) {
+  for (const statePath of getSkillActiveStatePaths(directory, sessionId)) {
+    try {
+      unlinkSync(statePath);
+    } catch {}
+  }
+}
+
+function activateState(directory, stateName, state, sessionId) {
+  const stateDir = join(directory, '.omg', 'state');
+  const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
+  const targetDir = safeSessionId
+    ? join(stateDir, 'sessions', safeSessionId)
+    : stateDir;
+
+  try {
+    if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
+    atomicWriteFileSync(join(targetDir, `${stateName}-state.json`), JSON.stringify(state, null, 2));
+  } catch {}
+
+  // Also write to global fallback
+  const globalDir = join(homedir(), '.omg', 'state');
+  try {
+    if (!existsSync(globalDir)) mkdirSync(globalDir, { recursive: true });
+    atomicWriteFileSync(join(globalDir, `${stateName}-state.json`), JSON.stringify(state, null, 2));
+  } catch {}
 }
 
 // Set priority context
@@ -145,13 +181,18 @@ async function main() {
     // Handle Skill("...:ralph") invocations so ralph handoffs activate persistent states.
     if (String(toolName).toLowerCase() === 'skill') {
       const skillName = getInvokedSkillName(toolInput);
+      const currentState = readSkillActiveState(directory, sessionId);
+      const completingSkill = (skillName || '').replace(/^oh-my-copilot:/, '');
+      if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
+        clearSkillActiveState(directory, sessionId);
+      }
       if (skillName === 'ralph') {
         const now = new Date().toISOString();
         const promptText = data.prompt || data.message || 'Ralph loop activated via Skill tool';
         activateState(directory, 'ralph', {
           active: true,
           iteration: 1,
-          max_iterations: 10,
+          max_iterations: 100,
           started_at: now,
           prompt: promptText,
           session_id: sessionId || undefined,

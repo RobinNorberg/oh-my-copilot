@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync } from 'fs';
+import { mkdirSync, rmSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { getTeamStatus } from '../team-status.js';
 import { atomicWriteJson } from '../fs-utils.js';
 import { appendOutbox } from '../inbox-outbox.js';
 import { recordTaskUsage } from '../usage-tracker.js';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import type { HeartbeatData, TaskFile, OutboxMessage, McpWorkerMember } from '../types.js';
 
 const TEST_TEAM = 'test-team-status';
@@ -15,7 +15,7 @@ let WORK_DIR: string;
 let TASKS_DIR: string;
 
 beforeEach(() => {
-  WORK_DIR = join(tmpdir(), `omc-team-status-test-${Date.now()}`);
+  WORK_DIR = join(realpathSync(tmpdir()), `omc-team-status-test-${Date.now()}`);
   TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
   mkdirSync(TASKS_DIR, { recursive: true });
   mkdirSync(join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
@@ -25,7 +25,7 @@ beforeEach(() => {
 afterEach(() => {
   rmSync(WORK_DIR, { recursive: true, force: true });
   // Clean up outbox files written to ~/.copilot/teams/ by appendOutbox
-  rmSync(join(getCopilotConfigDir(), 'teams', TEST_TEAM), { recursive: true, force: true });
+  rmSync(join(getClaudeConfigDir(), 'teams', TEST_TEAM), { recursive: true, force: true });
 });
 
 function writeWorkerRegistry(workers: McpWorkerMember[]): void {

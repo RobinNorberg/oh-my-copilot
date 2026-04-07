@@ -26,10 +26,10 @@ npm view oh-my-copilot version 2>/dev/null || echo "Latest: (unavailable)"
 
 ### Step 2: Check for Legacy Hooks in settings.json
 
-Read both `~/.copilot/settings.json` (profile-level) and `./.copilot/settings.json` (project-level) and check if there's a `"hooks"` key with entries like:
-- `bash $HOME/.copilot/hooks/keyword-detector.sh`
-- `bash $HOME/.copilot/hooks/persistent-mode.sh`
-- `bash $HOME/.copilot/hooks/session-start.sh`
+Read both `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json` (profile-level) and `./.copilot/settings.json` (project-level) and check if there's a `"hooks"` key with entries like:
+- `bash ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/keyword-detector.sh`
+- `bash ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.sh`
+- `bash ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/session-start.sh`
 
 **Diagnosis**:
 - If found: CRITICAL - legacy hooks causing duplicates
@@ -37,7 +37,7 @@ Read both `~/.copilot/settings.json` (profile-level) and `./.copilot/settings.js
 ### Step 3: Check for Legacy Bash Hook Scripts
 
 ```bash
-ls -la ~/.copilot/hooks/*.sh 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/*.sh 2>/dev/null
 ```
 
 **Diagnosis**:
@@ -47,14 +47,14 @@ ls -la ~/.copilot/hooks/*.sh 2>/dev/null
 
 ```bash
 # Check if copilot-instructions.md exists
-ls -la ~/.copilot/copilot-instructions.md 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-instructions.md 2>/dev/null
 
 # Check for OMC markers (<!-- OMG:START --> is the canonical marker)
-grep -q "<!-- OMG:START -->" ~/.copilot/copilot-instructions.md 2>/dev/null && echo "Has OMC config" || echo "Missing OMC config in copilot-instructions.md"
+grep -q "<!-- OMG:START -->" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-instructions.md" 2>/dev/null && echo "Has OMC config" || echo "Missing OMC config in copilot-instructions.md"
 
 # Check companion files for file-split pattern (e.g. copilot-omg.md)
-ls ~/.copilot/copilot-*.md 2>/dev/null
-for f in ~/.copilot/copilot-*.md; do
+ls "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-*.md 2>/dev/null
+for f in "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-*.md; do
   [ -f "$f" ] && grep -q "<!-- OMG:START -->" "$f" 2>/dev/null && echo "Has OMC config in companion: $f"
 done
 
@@ -85,13 +85,13 @@ Check for legacy agents, commands, and skills installed via curl (before plugin 
 
 ```bash
 # Check for legacy agents directory
-ls -la ~/.copilot/agents/ 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/agents/ 2>/dev/null
 
 # Check for legacy commands directory
-ls -la ~/.copilot/commands/ 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands/ 2>/dev/null
 
 # Check for legacy skills directory
-ls -la ~/.copilot/skills/ 2>/dev/null
+ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/skills/ 2>/dev/null
 ```
 
 **Diagnosis**:
@@ -185,14 +185,14 @@ If issues found, ask user: "Would you like me to fix these issues automatically?
 If yes, apply fixes:
 
 ### Fix: Legacy Hooks in settings.json
-Remove the `"hooks"` section from `~/.copilot/settings.json` (keep other settings intact)
+Remove the `"hooks"` section from `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json` (keep other settings intact)
 
 ### Fix: Legacy Bash Scripts
 ```bash
-rm -f ~/.copilot/hooks/keyword-detector.sh
-rm -f ~/.copilot/hooks/persistent-mode.sh
-rm -f ~/.copilot/hooks/session-start.sh
-rm -f ~/.copilot/hooks/stop-continuation.sh
+rm -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/keyword-detector.sh
+rm -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/persistent-mode.sh
+rm -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/session-start.sh
+rm -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/hooks/stop-continuation.sh
 ```
 
 ### Fix: Outdated Plugin
@@ -208,7 +208,7 @@ node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=pro
 ```
 
 ### Fix: Missing/Outdated copilot-instructions.md
-Fetch latest from GitHub and write to `~/.copilot/copilot-instructions.md`:
+Fetch latest from GitHub and write to `${COPILOT_CONFIG_DIR:-~/.copilot}/copilot-instructions.md`:
 ```
 WebFetch(url: "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md", prompt: "Return the complete raw markdown content exactly as-is")
 ```
@@ -219,14 +219,14 @@ Remove legacy agents, commands, and skills directories (now provided by plugin):
 
 ```bash
 # Backup first (optional - ask user)
-# mv ~/.copilot/agents ~/.copilot/agents.bak
-# mv ~/.copilot/commands ~/.copilot/commands.bak
-# mv ~/.copilot/skills ~/.copilot/skills.bak
+# mv "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/agents "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/agents.bak
+# mv "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands.bak
+# mv "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/skills "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/skills.bak
 
 # Or remove directly
-rm -rf ~/.copilot/agents
-rm -rf ~/.copilot/commands
-rm -rf ~/.copilot/skills
+rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/agents
+rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands
+rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/skills
 ```
 
 **Note**: Only remove if these contain oh-my-copilot-related files. If user has custom agents/commands/skills, warn them and ask before removing.

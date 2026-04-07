@@ -65,8 +65,8 @@ describe('Project Memory Formatter', () => {
       expect(summary).toContain('TypeScript');
       expect(summary).toContain('react');
       expect(summary).toContain('pnpm');
-      expect(summary).toContain('Build: pnpm build');
-      expect(summary).toContain('Test: pnpm test');
+      expect(summary).toContain('build=pnpm build');
+      expect(summary).toContain('test=pnpm test');
       expect(summary.length).toBeLessThan(300);
     });
 
@@ -143,7 +143,7 @@ describe('Project Memory Formatter', () => {
 
       expect(summary).toContain('Rust');
       expect(summary).toContain('cargo');
-      expect(summary).toContain('Build: cargo build');
+      expect(summary).toContain('build=cargo build');
     });
 
     it('should truncate long summaries', () => {

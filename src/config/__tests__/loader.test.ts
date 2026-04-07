@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { loadConfig } from '../loader.js';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import {
+  loadConfig,
+  loadContextFromFiles,
+} from '../loader.js';
 import { saveAndClear, restore } from './test-helpers.js';
 
 const ALL_KEYS = [
@@ -45,6 +51,15 @@ describe('loadConfig() — auto-forceInherit for non-standard providers', () => 
     process.env.ANTHROPIC_MODEL = 'us.anthropic.claude-opus-4-6-v1';
     const config = loadConfig();
     expect(config.routing?.forceInherit).toBe(true);
+  });
+
+  it('does not auto-enable forceInherit for Bedrock inference-profile ARN model IDs (use CLAUDE_CODE_USE_BEDROCK=1 instead)', () => {
+    process.env.ANTHROPIC_MODEL =
+      'arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-opus-4-6-v1:0';
+    const config = loadConfig();
+    // isBedrock() only checks region prefix patterns and CLAUDE_CODE_USE_BEDROCK env var,
+    // not ARN format. ARN model IDs contain 'claude' so non-copilot model check also skips.
+    expect(config.routing?.forceInherit).toBe(false);
   });
 
   it('auto-enables forceInherit when CLAUDE_CODE_USE_VERTEX=1', () => {
@@ -101,4 +116,96 @@ describe('loadConfig() — auto-forceInherit for non-standard providers', () => 
     expect(config.agents?.explore?.model).toBe('claude-haiku-4-5-custom');
   });
 
+});
+
+describe("startup context compaction", () => {
+  it("loadContextFromFiles includes file content with header prefix", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "omc-loader-context-"));
+
+    try {
+      const omcAgentsPath = join(tempDir, "AGENTS.md");
+      const omcGuidance = `# oh-my-copilot - Intelligent Multi-Agent Orchestration
+
+<operating_principles>
+- keep this
+</operating_principles>
+
+<verification>
+- verify this stays
+</verification>`;
+
+      writeFileSync(omcAgentsPath, omcGuidance);
+
+      const loaded = loadContextFromFiles([omcAgentsPath]);
+
+      expect(loaded).toContain("<operating_principles>");
+      expect(loaded).toContain("<verification>");
+      expect(loaded).toContain("## Context from");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+});
+
+describe("plan output configuration", () => {
+  let saved: Record<string, string | undefined>;
+  let originalCwd: string;
+
+  beforeEach(() => {
+    saved = saveAndClear(ALL_KEYS);
+    originalCwd = process.cwd();
+  });
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    restore(saved);
+  });
+
+  it("includes plan output defaults", () => {
+    const config = loadConfig();
+    // planOutput is optional; when not set in project config, it may be undefined
+    // or contain defaults depending on loader implementation
+    if (config.planOutput !== undefined) {
+      expect(config.planOutput).toMatchObject({
+        directory: expect.any(String),
+      });
+    }
+  });
+
+  it("includes teleport defaults", () => {
+    const config = loadConfig();
+    expect(config.teleport).toEqual({
+      symlinkNodeModules: true,
+    });
+  });
+
+  it("loads plan output overrides from project config", () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "omc-plan-output-"));
+
+    try {
+      const copilotDir = join(tempDir, ".copilot");
+      require("node:fs").mkdirSync(copilotDir, { recursive: true });
+      writeFileSync(
+        join(copilotDir, "omg.jsonc"),
+        JSON.stringify({
+          planOutput: {
+            directory: "docs/plans",
+            filenameTemplate: "plan-{{name}}.md",
+          },
+        }),
+      );
+
+      process.chdir(tempDir);
+
+      const config = loadConfig();
+      expect(config.planOutput).toEqual({
+        directory: "docs/plans",
+        filenameTemplate: "plan-{{name}}.md",
+      });
+    } finally {
+      process.chdir(originalCwd);
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

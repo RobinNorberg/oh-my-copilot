@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { homedir } from 'os';
 import {
   appendOutbox, rotateOutboxIfNeeded, readNewInboxMessages,
   readAllInboxMessages, clearInbox, writeShutdownSignal,
@@ -11,10 +10,11 @@ import {
 } from '../inbox-outbox.js';
 import { sanitizeName } from '../tmux-session.js';
 import { validateResolvedPath } from '../fs-utils.js';
+import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import type { OutboxMessage, InboxMessage } from '../types.js';
 
 const TEST_TEAM = 'test-team-io';
-const TEAMS_DIR = join(homedir(), '.copilot', 'teams', TEST_TEAM);
+const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 
 beforeEach(() => {
   mkdirSync(join(TEAMS_DIR, 'inbox'), { recursive: true });

@@ -10,9 +10,13 @@ const { mockSpawn, mockResolveDaemonModulePath, mockIsTmuxAvailable } = vi.hoist
   mockIsTmuxAvailable: vi.fn(() => true),
 }));
 
-vi.mock('child_process', () => ({
-  spawn: mockSpawn,
-}));
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    spawn: mockSpawn,
+  };
+});
 
 vi.mock('../../utils/daemon-module-path.js', () => ({
   resolveDaemonModulePath: mockResolveDaemonModulePath,

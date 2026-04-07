@@ -71,6 +71,12 @@ export declare function pythonReplHandler(input: PythonReplInput): Promise<strin
 export declare const pythonReplTool: {
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     schema: {
         action: z.ZodEnum<["execute", "interrupt", "reset", "get_state"]>;
         researchSessionID: z.ZodString;

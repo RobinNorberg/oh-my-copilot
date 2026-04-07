@@ -24,6 +24,7 @@ import {
 import { join, dirname, resolve, normalize } from "path";
 import { homedir } from "os";
 import { fileURLToPath, pathToFileURL } from "url";
+import { getCopilotConfigDir } from "./lib/config-dir.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,6 +41,47 @@ function readJsonFile(path) {
   } catch {
     return null;
   }
+}
+
+/**
+ * Get hard max iterations from OMC_SECURITY / config file.
+ * Returns 0 if unlimited (default).
+ */
+function getHardMaxIterations() {
+  // OMC_SECURITY=strict → default hard max 200
+  if (process.env.OMC_SECURITY === "strict") {
+    // Check config file for override
+    const configOverride = readSecurityConfigValue("hardMaxIterations");
+    return typeof configOverride === "number" ? configOverride : 200;
+  }
+  // Check config file only
+  const configValue = readSecurityConfigValue("hardMaxIterations");
+  return typeof configValue === "number" ? configValue : 0;
+}
+
+/**
+ * Read a single value from the security section of omc config files.
+ */
+function readSecurityConfigValue(key) {
+  const paths = [
+    join(process.cwd(), ".copilot", "omc.jsonc"),
+    join(homedir(), ".config", "copilot-omc", "config.jsonc"),
+  ];
+  for (const p of paths) {
+    try {
+      if (!existsSync(p)) continue;
+      const raw = readFileSync(p, "utf-8");
+      // Strip JSONC comments (// and /* */)
+      const json = raw.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      const parsed = JSON.parse(json);
+      if (parsed?.security && parsed.security[key] !== undefined) {
+        return parsed.security[key];
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return undefined;
 }
 
 function writeJsonFile(path, data) {
@@ -200,8 +242,71 @@ function getSafeReinforcementCount(value) {
     : 0;
 }
 
+const AWAITING_CONFIRMATION_TTL_MS = 2 * 60 * 1000;
+
 function isAwaitingConfirmation(state) {
-  return state?.awaiting_confirmation === true;
+  if (!state || state.awaiting_confirmation !== true) {
+    return false;
+  }
+
+  const setAt =
+    state.awaiting_confirmation_set_at ||
+    state.started_at ||
+    null;
+
+  if (!setAt) {
+    return false;
+  }
+
+  const setAtMs = new Date(setAt).getTime();
+  if (!Number.isFinite(setAtMs)) {
+    return false;
+  }
+
+  return Date.now() - setAtMs < AWAITING_CONFIRMATION_TTL_MS;
+}
+
+const CANCEL_SIGNAL_TTL_MS = 30_000;
+
+function isSessionCancelInProgress(stateDir, sessionId) {
+  const isActiveSignal = (signalPath) => {
+    const signal = readJsonFile(signalPath);
+    if (!signal) {
+      return false;
+    }
+
+    const now = Date.now();
+    const expiresAt = signal.expires_at ? new Date(signal.expires_at).getTime() : NaN;
+    const requestedAt = signal.requested_at ? new Date(signal.requested_at).getTime() : NaN;
+    const fallbackExpiry = Number.isFinite(requestedAt) ? requestedAt + CANCEL_SIGNAL_TTL_MS : NaN;
+    const effectiveExpiry = Number.isFinite(expiresAt) ? expiresAt : fallbackExpiry;
+
+    if (Number.isFinite(effectiveExpiry) && effectiveExpiry > now) {
+      return true;
+    }
+
+    if (existsSync(signalPath)) {
+      try {
+        unlinkSync(signalPath);
+      } catch {
+        // best effort cleanup
+      }
+    }
+    return false;
+  };
+
+  if (sessionId) {
+    const sessionSignalPath = join(stateDir, "sessions", sessionId, "cancel-signal-state.json");
+    if (isActiveSignal(sessionSignalPath)) {
+      return true;
+    }
+  }
+
+  return isActiveSignal(join(stateDir, "cancel-signal-state.json"));
+}
+
+function shouldWriteStateBack(path) {
+  return Boolean(path && existsSync(path));
 }
 
 /**
@@ -264,8 +369,8 @@ function sanitizeSessionId(sessionId) {
 
 /**
  * Read state file with session-scoped path support.
- * If sessionId is provided, ONLY reads the session-scoped path.
- * Falls back to legacy path when sessionId is not provided.
+ * If sessionId is provided, prefers the session-scoped path, then scans other
+ * session directories and legacy state for matching ownership.
  */
 function readStateFileWithSession(stateDir, globalStateDir, filename, sessionId) {
   const safeSessionId = sanitizeSessionId(sessionId);
@@ -273,7 +378,32 @@ function readStateFileWithSession(stateDir, globalStateDir, filename, sessionId)
     const sessionsDir = join(stateDir, "sessions", safeSessionId);
     const sessionPath = join(sessionsDir, filename);
     const state = readJsonFile(sessionPath);
-    return { state, path: sessionPath, isGlobal: false };
+    if (state) {
+      return { state, path: sessionPath, isGlobal: false };
+    }
+
+    try {
+      const allSessionsDir = join(stateDir, "sessions");
+      if (existsSync(allSessionsDir)) {
+        const dirs = readdirSync(allSessionsDir).filter((dir) => SESSION_ID_ALLOWLIST.test(dir));
+        for (const dir of dirs) {
+          const candidatePath = join(allSessionsDir, dir, filename);
+          const candidateState = readJsonFile(candidatePath);
+          if (candidateState && candidateState.session_id === safeSessionId) {
+            return { state: candidateState, path: candidatePath, isGlobal: false };
+          }
+        }
+      }
+    } catch {
+      // ignore scan failures
+    }
+
+    const legacyResult = readStateFile(stateDir, globalStateDir, filename);
+    if (legacyResult.state && legacyResult.state.session_id === safeSessionId) {
+      return legacyResult;
+    }
+
+    return { state: null, path: sessionPath, isGlobal: false };
   }
 
   return readStateFile(stateDir, globalStateDir, filename);
@@ -290,7 +420,7 @@ function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
-  const cfgDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), ".copilot");
+  const cfgDir = getCopilotConfigDir();
   const taskDir = join(cfgDir, "tasks", sessionId);
   if (!existsSync(taskDir)) return 0;
 
@@ -324,8 +454,7 @@ function countIncompleteTodos(sessionId, projectDir) {
     /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)
   ) {
     const sessionTodoPath = join(
-      homedir(),
-      ".copilot",
+      getCopilotConfigDir(),
       "todos",
       `${sessionId}.json`,
     );
@@ -550,6 +679,11 @@ async function main() {
     const swarmMarker = existsSync(join(stateDir, "swarm-active.marker"));
     const swarmSummary = readJsonFile(join(stateDir, "swarm-summary.json"));
 
+    if (isSessionCancelInProgress(stateDir, sessionId)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
     // Count incomplete items (session-specific + project-local only)
     const taskCount = countIncompleteTasks(sessionId);
     const todoCount = countIncompleteTodos(sessionId, directory);
@@ -575,6 +709,10 @@ async function main() {
 
           ralph.state.iteration = iteration + 1;
           ralph.state.last_checked_at = new Date().toISOString();
+          if (!shouldWriteStateBack(ralph.path)) {
+            console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+            return;
+          }
           writeJsonFile(ralph.path, ralph.state);
 
           let reason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-copilot:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-copilot:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
@@ -592,9 +730,33 @@ async function main() {
           return;
         }
 
-        // Do not silently stop Ralph once it hits max iterations; extend and keep going.
+        // Check hard max before extending
+        const hardMax = getHardMaxIterations();
+        if (hardMax > 0 && maxIter >= hardMax) {
+          ralph.state.active = false;
+          ralph.state.last_checked_at = new Date().toISOString();
+          if (!shouldWriteStateBack(ralph.path)) {
+            console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+            return;
+          }
+          writeJsonFile(ralph.path, ralph.state);
+
+          console.log(
+            JSON.stringify({
+              decision: "block",
+              reason: `[RALPH LOOP - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-copilot:ralph if needed.`,
+            }),
+          );
+          return;
+        }
+
+        // Extend and keep going.
         ralph.state.max_iterations = maxIter + 10;
         ralph.state.last_checked_at = new Date().toISOString();
+        if (!shouldWriteStateBack(ralph.path)) {
+          console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+          return;
+        }
         writeJsonFile(ralph.path, ralph.state);
 
         console.log(

@@ -21,8 +21,9 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { execSync } from 'node:child_process';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { readStdin } from './lib/stdin.mjs';
 
 const THRESHOLD = parseInt(process.env.OMC_CONTEXT_GUARD_THRESHOLD || '75', 10);
@@ -110,7 +111,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
       const lastSep = transcriptPath.lastIndexOf('/');
       const sessionFile = lastSep !== -1 ? transcriptPath.substring(lastSep + 1) : '';
       if (sessionFile) {
-        const configDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
+        const configDir = getCopilotConfigDir();
         const projectsDir = join(configDir, 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = mainRepoRoot.replace(/[/\\]/g, '-');
@@ -169,9 +170,14 @@ function estimateContextPercent(transcriptPath) {
  * Prevents infinite block loops by capping at MAX_BLOCKS.
  */
 function getGuardFilePath(sessionId) {
-  const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
+  const configDir = getCopilotConfigDir();
   const guardDir = join(configDir, 'projects', '.omc-guards');
-  mkdirSync(guardDir, { recursive: true, mode: 0o700 });
+  try {
+    mkdirSync(guardDir, { recursive: true, mode: 0o700 });
+  } catch (err) {
+    // On Windows, concurrent hooks can throw EEXIST even with recursive:true
+    if (err?.code !== 'EEXIST') throw err;
+  }
   return join(guardDir, `context-guard-${sessionId}.json`);
 }
 

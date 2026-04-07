@@ -49,7 +49,7 @@ const DAEMON_ENV_ALLOWLIST = [
     'TMPDIR', 'TMP', 'TEMP',
     'XDG_RUNTIME_DIR', 'XDG_DATA_HOME', 'XDG_CONFIG_HOME',
     'SHELL',
-    'NODE_ENV',
+    'NODE_ENV', 'NODE_EXTRA_CA_CERTS',
     'HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy',
     'SystemRoot', 'SYSTEMROOT', 'windir', 'COMSPEC',
 ];

@@ -75,6 +75,12 @@ export declare function handleListJobs(provider: 'codex' | 'gemini', statusFilte
 export declare function getJobManagementToolSchemas(_provider?: 'codex' | 'gemini'): ({
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     inputSchema: {
         type: "object";
         properties: {
@@ -95,6 +101,12 @@ export declare function getJobManagementToolSchemas(_provider?: 'codex' | 'gemin
 } | {
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     inputSchema: {
         type: "object";
         properties: {
@@ -112,6 +124,12 @@ export declare function getJobManagementToolSchemas(_provider?: 'codex' | 'gemin
 } | {
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     inputSchema: {
         type: "object";
         properties: {
@@ -133,6 +151,12 @@ export declare function getJobManagementToolSchemas(_provider?: 'codex' | 'gemin
 } | {
     name: string;
     description: string;
+    annotations: {
+        readOnlyHint: boolean;
+        destructiveHint: boolean;
+        idempotentHint: boolean;
+        openWorldHint: boolean;
+    };
     inputSchema: {
         type: "object";
         properties: {

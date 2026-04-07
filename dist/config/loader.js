@@ -117,11 +117,25 @@ export function buildDefaultConfig() {
             maxFiles: 200,
             maxDepth: 4,
         },
+        teleport: {
+            symlinkNodeModules: true,
+        },
         taskSizeDetection: {
             enabled: true,
             smallWordLimit: 50,
             largeWordLimit: 200,
             suppressHeavyModesForSmallTasks: true,
+        },
+        promptPrerequisites: {
+            enabled: true,
+            sectionNames: {
+                memory: ["MÉMOIRE", "MEMOIRE", "MEMORY"],
+                skills: ["SKILLS"],
+                verifyFirst: ["VERIFY-FIRST", "VERIFY FIRST", "VERIFY_FIRST"],
+                context: ["CONTEXT"],
+            },
+            blockingTools: ["Edit", "MultiEdit", "Write", "Agent", "Task"],
+            executionKeywords: ["ralph", "ultrawork", "autopilot"],
         },
     };
 }
@@ -536,6 +550,17 @@ export function generateConfigSchema() {
                     analyze: { type: 'array', items: { type: 'string' } },
                     ultrathink: { type: 'array', items: { type: 'string' } }
                 }
+            },
+            teleport: {
+                type: 'object',
+                description: 'Teleport worktree bootstrap settings',
+                properties: {
+                    symlinkNodeModules: {
+                        type: 'boolean',
+                        default: true,
+                        description: 'Symlink node_modules from the parent repo when teleport-created worktrees have a matching package.json',
+                    },
+                },
             },
             routing: {
                 type: 'object',

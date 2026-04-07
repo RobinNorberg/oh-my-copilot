@@ -6,11 +6,12 @@
  * Cross-platform: Windows, macOS, Linux
  */
 
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readSync, renameSync, statSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { execSync } from 'child_process';
-import { homedir } from 'os';
 import { pathToFileURL, fileURLToPath } from 'url';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
+import { evaluateAgentHeavyPreflight } from './lib/pre-tool-enforcer-preflight.mjs';
 import { readStdin } from './lib/stdin.mjs';
 
 // Resolve plugin root: Copilot CLI sets PLUGIN_ROOT; legacy Claude CLI sets CLAUDE_PLUGIN_ROOT.
@@ -35,6 +36,57 @@ function hasExtendedContextSuffix(modelId) {
 function isSubagentSafeModelId(modelId) {
   return isProviderSpecificModelId(modelId) && !hasExtendedContextSuffix(modelId);
 }
+const TIER_ALIASES = new Set(['sonnet', 'opus', 'haiku']);
+function isTierAlias(modelId) {
+  return TIER_ALIASES.has((modelId || '').toLowerCase());
+}
+/** Map a bare Anthropic model ID to its CC tier alias (sonnet/opus/haiku), or null if unrecognised. */
+function normalizeToCcAlias(model) {
+  if (!model) return null;
+  const lower = model.toLowerCase();
+  if (lower.includes('opus'))   return 'opus';
+  if (lower.includes('sonnet')) return 'sonnet';
+  if (lower.includes('haiku'))  return 'haiku';
+  return null;
+}
+/**
+ * Read the `model:` field from an OMC agent definition's YAML frontmatter.
+ * Returns the raw model string (e.g. "claude-opus-4-6") or null if not found.
+ */
+function readAgentDefinitionModel(subagentType) {
+  // Guard: subagent_type must be a string — non-string payloads would throw on .replace()
+  // and the catch block would silently return {continue:true}, bypassing enforcement.
+  const agentType = (typeof subagentType === 'string' ? subagentType : '').replace(/^oh-my-copilot:/, '');
+  if (!agentType) return null;
+  // Reject path traversal: agent names are simple identifiers; no path separators allowed.
+  if (!/^[a-zA-Z0-9_-]+$/.test(agentType)) return null;
+  // Build a prioritised list of agents/ directories to search.
+  // PLUGIN_ROOT is tried first when set; the script-relative path is always the
+  // final fallback. Checking per-file (not just per-directory) means a partially-populated
+  // plugin install doesn't hide agents that exist in the script-relative tree.
+  const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
+  const scriptAgentsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'agents');
+  const candidateDirs = [
+    ...(pluginRoot ? [join(pluginRoot, 'agents')] : []),
+    scriptAgentsDir,
+  ];
+  const agentFile = candidateDirs.map(d => join(d, `${agentType}.md`)).find(f => existsSync(f)) ?? null;
+  try {
+    if (!agentFile) return null;
+    const content = readFileSync(agentFile, 'utf-8');
+    // Extract the YAML frontmatter block (content between the opening and closing ---).
+    // Searching the whole file would match `model:` lines in the body/prompt text, causing
+    // false denies for agents whose prompt happens to contain that word.
+    const fmMatch = content.match(/^---[\r\n]+([\s\S]*?)[\r\n]+---/);
+    if (!fmMatch) return null;
+    // Strip surrounding quotes so `model: "global.anthropic.claude-sonnet-4-6"` and
+    // `model: global.anthropic.claude-sonnet-4-6` are treated identically.
+    const modelMatch = fmMatch[1].match(/^model:\s*(\S+)/m);
+    return modelMatch ? modelMatch[1].trim().replace(/^["']|["']$/g, '') : null;
+  } catch {
+    return null;
+  }
+}
 
 const SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 const MODE_STATE_FILES = [
@@ -47,8 +99,7 @@ const MODE_STATE_FILES = [
   'team-state.json',
   'omc-teams-state.json',
 ];
-const AGENT_HEAVY_TOOLS = new Set(['Task', 'TaskCreate', 'TaskUpdate']);
-const PREFLIGHT_CONTEXT_THRESHOLD = parseInt(process.env.OMC_AGENT_PREFLIGHT_CONTEXT_THRESHOLD || '72', 10);
+
 
 /**
  * Resolve transcript path in worktree environments.
@@ -89,7 +140,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
       const lastSep = transcriptPath.lastIndexOf('/');
       const sessionFile = lastSep !== -1 ? transcriptPath.substring(lastSep + 1) : '';
       if (sessionFile) {
-        const configDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
+        const configDir = getCopilotConfigDir();
         const projectsDir = join(configDir, 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = mainRepoRoot.replace(/[/\\]/g, '-');
@@ -103,46 +154,6 @@ function resolveTranscriptPath(transcriptPath, cwd) {
   } catch { /* best-effort fallback */ }
 
   return transcriptPath;
-}
-
-function estimateContextPercent(transcriptPath) {
-  if (!transcriptPath) return 0;
-
-  let fd = -1;
-  try {
-    const stat = statSync(transcriptPath);
-    if (stat.size === 0) return 0;
-
-    fd = openSync(transcriptPath, 'r');
-    const readSize = Math.min(4096, stat.size);
-    const buf = Buffer.alloc(readSize);
-    readSync(fd, buf, 0, readSize, stat.size - readSize);
-    closeSync(fd);
-    fd = -1;
-
-    const tail = buf.toString('utf-8');
-    const windowMatch = tail.match(/"context_window"\s{0,5}:\s{0,5}(\d+)/g);
-    const inputMatch = tail.match(/"input_tokens"\s{0,5}:\s{0,5}(\d+)/g);
-
-    if (!windowMatch || !inputMatch) return 0;
-
-    const lastWindow = parseInt(windowMatch[windowMatch.length - 1].match(/(\d+)/)[1], 10);
-    const lastInput = parseInt(inputMatch[inputMatch.length - 1].match(/(\d+)/)[1], 10);
-
-    if (lastWindow === 0) return 0;
-    return Math.round((lastInput / lastWindow) * 100);
-  } catch {
-    return 0;
-  } finally {
-    if (fd !== -1) try { closeSync(fd); } catch { /* ignore */ }
-  }
-}
-
-function buildPreflightRecoveryAdvice(contextPercent) {
-  return `[OMC] Preflight context guard: ${contextPercent}% used ` +
-    `(threshold: ${PREFLIGHT_CONTEXT_THRESHOLD}%). Avoid spawning additional agent-heavy tasks ` +
-    `until context is reduced. Safe recovery: (1) pause new Task fan-out, (2) run /compact now, ` +
-    `(3) if compact fails, open a fresh session and continue from .omg/state + .omg/notepad.md.`;
 }
 
 // Simple JSON field extraction
@@ -197,7 +208,8 @@ function getTodoStatus(directory) {
     }
   }
 
-  // NOTE: We intentionally do NOT scan the global ~/.copilot/todos/ directory.
+  // NOTE: We intentionally do NOT scan the global
+  // [$COPILOT_CONFIG_DIR|~/.copilot]/todos/ directory.
   // That directory accumulates todo files from ALL past sessions across all
   // projects, causing phantom task counts in fresh sessions (see issue #354).
 
@@ -310,8 +322,8 @@ function generateAgentSpawnMessage(toolInput, directory, todoStatus, sessionId) 
       `without team_name. You MUST use TeamCreate first (if not already created), then spawn teammates with ` +
       `Task(team_name="${teamName}", name="worker-N", subagent_type="${agentType}"). ` +
       `Do NOT use Task without team_name during an active team session. ` +
-      `If TeamCreate is not available in your tools, tell the user to verify ` +
-      `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 is set in ~/.copilot/settings.json and restart Copilot CLI.`;
+      'If TeamCreate is not available in your tools, tell the user to verify ' +
+      'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 is set in [$COPILOT_CONFIG_DIR|~/.copilot]/settings.json. Restart Copilot CLI.';
   }
 
   const parts = [`${todoStatus}Spawning agent: ${agentType} (${model})${bg}`];
@@ -352,21 +364,35 @@ const SKILL_PROTECTION_CONFIGS = {
 };
 
 const SKILL_PROTECTION_MAP = {
+  // === Already have mode state → no additional protection ===
   autopilot: 'none', ralph: 'none', ultrawork: 'none', team: 'none',
   'omc-teams': 'none', ultraqa: 'none', cancel: 'none',
+
+  // === Instant / read-only → no protection needed ===
   trace: 'none', hud: 'none', 'omc-doctor': 'none', 'omc-help': 'none',
-  'learn-about-omg': 'none', note: 'none',
-  tdd: 'light', 'build-fix': 'light', analyze: 'light', skill: 'light',
-  'configure-notifications': 'light',
-  'code-review': 'medium', 'security-review': 'medium', plan: 'medium',
-  ralplan: 'medium', review: 'medium', 'external-context': 'medium',
-  sciomp: 'medium', learner: 'medium', 'omc-setup': 'medium',
+  'learn-about-omc': 'none', note: 'none',
+
+  // === Light protection (simple shortcuts, 3 reinforcements) ===
+  skill: 'light', ask: 'light', 'configure-notifications': 'light',
+
+  // === Medium protection (review/planning, 5 reinforcements) ===
+  'omc-plan': 'medium', plan: 'medium',
+  ralplan: 'none',  // Has first-class checkRalplan() enforcement; no skill-active needed
+  'deep-interview': 'heavy',
+  review: 'medium', 'external-context': 'medium',
+  'ai-slop-cleaner': 'medium',
+  sciomc: 'medium', learner: 'medium', 'omc-setup': 'medium',
+  setup: 'medium',        // alias for omc-setup
   'mcp-setup': 'medium', 'project-session-manager': 'medium',
-  'writer-memory': 'medium', 'ralph-init': 'medium', ccg: 'medium',
+  psm: 'medium',          // alias for project-session-manager
+  'writer-memory': 'medium', 'ralph-init': 'medium',
+  release: 'medium', ccg: 'medium',
+
+  // === Heavy protection (long-running, 10 reinforcements) ===
   deepinit: 'heavy',
 };
 
-function getSkillProtectionLevel(skillName) {
+function getSkillProtectionLevel(skillName, rawSkillName) {
   const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
   return SKILL_PROTECTION_MAP[normalized] || 'light';
 }
@@ -374,7 +400,7 @@ function getSkillProtectionLevel(skillName) {
 // Load OMC config to check forceInherit setting (issues #1135, #1201)
 function loadOmcConfig() {
   const configPaths = [
-    join(homedir(), '.claude', '.omc-config.json'),
+    join(getCopilotConfigDir(), '.omc-config.json'),
     join(process.cwd(), '.omc', 'config.json'),
   ];
   for (const configPath of configPaths) {
@@ -402,18 +428,45 @@ function extractSkillName(toolInput) {
   return normalized.includes(':') ? normalized.split(':').at(-1).toLowerCase() : normalized.toLowerCase();
 }
 
-function writeSkillActiveState(directory, skillName, sessionId) {
-  const protection = getSkillProtectionLevel(skillName);
+function writeSkillActiveState(directory, skillName, sessionId, rawSkillName) {
+  const protection = getSkillProtectionLevel(skillName, rawSkillName);
   if (protection === 'none') return;
 
   const config = SKILL_PROTECTION_CONFIGS[protection];
   const now = new Date().toISOString();
   const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
 
+  const stateDir = join(directory, '.omc', 'state');
+  const safeSessionId = sessionId && SESSION_ID_PATTERN.test(sessionId) ? sessionId : '';
+  const targetDir = safeSessionId
+    ? join(stateDir, 'sessions', safeSessionId)
+    : stateDir;
+  const targetPath = join(targetDir, 'skill-active-state.json');
+
+  // Nesting guard: when a skill (e.g. omc-setup) invokes a child skill
+  // (e.g. mcp-setup), the child must not overwrite the parent's active state.
+  // If a DIFFERENT skill is already active in this session, skip writing —
+  // the parent's stop-hook protection already covers the session.
+  // If the SAME skill is re-invoked, allow the overwrite (idempotent refresh).
+  //
+  // NOTE: This read-check-write sequence has a TOCTOU race condition
+  // (non-atomic), but this is acceptable because Copilot CLI sessions are
+  // single-threaded — only one tool call executes at a time within a session.
+  try {
+    if (existsSync(targetPath)) {
+      const existing = JSON.parse(readFileSync(targetPath, 'utf-8'));
+      if (existing.active && existing.skill_name && existing.skill_name !== normalized) {
+        return; // A different skill already owns the active state — do not overwrite.
+      }
+    }
+  } catch {
+    // If read/parse fails, treat as no existing state — proceed with write
+  }
+
   const state = {
     active: true,
     skill_name: normalized,
-    session_id: sessionId || undefined,
+    session_id: safeSessionId || undefined,
     started_at: now,
     last_checked_at: now,
     reinforcement_count: 0,
@@ -421,19 +474,16 @@ function writeSkillActiveState(directory, skillName, sessionId) {
     stale_ttl_ms: config.staleTtlMs,
   };
 
-  const stateDir = join(directory, '.omg', 'state');
-  const safeSessionId = sessionId && SESSION_ID_PATTERN.test(sessionId) ? sessionId : '';
-  const targetDir = safeSessionId
-    ? join(stateDir, 'sessions', safeSessionId)
-    : stateDir;
-  const targetPath = join(targetDir, 'skill-active-state.json');
-
   try {
     if (!existsSync(targetDir)) {
       mkdirSync(targetDir, { recursive: true });
     }
     const tmpPath = targetPath + '.tmp';
-    writeFileSync(tmpPath, JSON.stringify(state, null, 2), { mode: 0o600 });
+    const envelope = {
+      ...state,
+      _meta: { written_at: now, mode: 'skill-active', ...(safeSessionId ? { sessionId: safeSessionId } : {}) },
+    };
+    writeFileSync(tmpPath, JSON.stringify(envelope, null, 2), { mode: 0o600 });
     renameSync(tmpPath, targetPath);
   } catch {
     // Best-effort; don't fail the hook
@@ -567,10 +617,14 @@ async function main() {
             : claudeModel || anthropicModel;
 
         if (toolModel) {
-          // Allow explicit valid provider-specific IDs (full Bedrock/Vertex format) without a
-          // [1m] suffix — blocking these leaves no escape hatch when the inherited session model
-          // is itself invalid. Reject tier names (sonnet/opus/haiku) and [1m]-suffixed IDs.
-          if (!isSubagentSafeModelId(toolModel)) {
+          // Allow tier aliases (sonnet/opus/haiku) when OMC_SUBAGENT_MODEL is a valid
+          // provider-specific ID. The Agent tool schema only accepts these short aliases —
+          // full Bedrock/Vertex IDs are rejected by the tool schema, so tier aliases + routing
+          // via OMC_SUBAGENT_MODEL is the only viable explicit-model escape hatch.
+          const subagentModelForAlias = process.env.OMC_SUBAGENT_MODEL || '';
+          if (isTierAlias(toolModel) && isSubagentSafeModelId(subagentModelForAlias)) {
+            // fall through to continue — tier alias is safe when OMC_SUBAGENT_MODEL is a valid provider-specific ID
+          } else if (!isSubagentSafeModelId(toolModel)) {
             const subagentModel = process.env.OMC_SUBAGENT_MODEL || '';
             const guidance = subagentModel
               ? `Pass model="${subagentModel}" (your configured OMC_SUBAGENT_MODEL value).`
@@ -590,10 +644,12 @@ async function main() {
           // No model param, but the session model has a [1m] context-window suffix.
           // Sub-agents would inherit it and fail — the runtime strips [1m] to a bare
           // Anthropic model ID (e.g. claude-sonnet-4-6) which is invalid on Bedrock.
+          // Fix: pass a tier alias (sonnet/haiku/opus). The Agent tool schema only accepts
+          // tier aliases for the model param — full Bedrock IDs are rejected by the schema.
+          // OMC_SUBAGENT_MODEL is used only for guidance; derive the tier alias from it.
           const subagentModel = process.env.OMC_SUBAGENT_MODEL || '';
-          const suggestion = subagentModel
-            ? `Pass model="${subagentModel}" (your configured OMC_SUBAGENT_MODEL) explicitly on this ${toolName} call.`
-            : `Set OMC_SUBAGENT_MODEL=<valid-bedrock-id> in your environment (use the model ID from the 400 error message, e.g. "us.anthropic.claude-sonnet-4-5-20250929-v1:0"), then pass that value as the model parameter.`;
+          const tierAlias = normalizeToCcAlias(subagentModel) || normalizeToCcAlias(sessionModel) || 'sonnet';
+          const suggestion = `Pass model="${tierAlias}" explicitly on this ${toolName} call — tier aliases resolve cleanly on Bedrock.`;
           console.log(JSON.stringify({
             continue: true,
             hookSpecificOutput: {
@@ -603,6 +659,39 @@ async function main() {
             }
           }));
           return;
+        }
+        // Agent-definition model check: runs for any no-model call with a subagent_type,
+        // independent of the sessionHasLmSuffix branch above (which may have matched and
+        // fallen through safely). Copilot CLI reads the agent definition's `model:` field
+        // AFTER this hook and injects it — if that's a bare Anthropic ID, Bedrock rejects
+        // with 400. Detect it here and deny with guidance to retry with an explicit tier alias.
+        if (!toolModel && toolInput.subagent_type) {
+          const agentDefModel = readAgentDefinitionModel(toolInput.subagent_type);
+          const subagentModel = process.env.OMC_SUBAGENT_MODEL || '';
+          // Only deny when OMC_SUBAGENT_MODEL is configured as a valid provider-specific ID.
+          // Without a routing target the tier-alias escape hatch doesn't exist, so blocking
+          // would strand Claude in a retry loop with no viable path forward.
+          if (agentDefModel && !isSubagentSafeModelId(agentDefModel) && !isTierAlias(agentDefModel)
+              && isSubagentSafeModelId(subagentModel)) {
+            const tierAlias = normalizeToCcAlias(agentDefModel);
+            const guidance = tierAlias
+              ? (subagentModel
+                  ? `Add model="${tierAlias}" to this ${toolName} call — OMC will route it through OMC_SUBAGENT_MODEL (${subagentModel}).`
+                  : `Add model="${tierAlias}" to this ${toolName} call and set OMC_SUBAGENT_MODEL=<valid-bedrock-id>.`)
+              : (subagentModel
+                  ? `Add model="${subagentModel}" (your configured OMC_SUBAGENT_MODEL) explicitly to this ${toolName} call.`
+                  : `Set OMC_SUBAGENT_MODEL=<valid-bedrock-id> and add it as the model parameter on this ${toolName} call.`);
+            const agentType = (toolInput.subagent_type).replace(/^oh-my-copilot:/, '');
+            console.log(JSON.stringify({
+              continue: true,
+              hookSpecificOutput: {
+                hookEventName: 'PreToolUse',
+                permissionDecision: 'deny',
+                permissionDecisionReason: `[MODEL ROUTING] Agent type "${agentType}" has model "${agentDefModel}" in its definition, which is not valid for this Bedrock/Vertex/proxy environment. ${guidance}`
+              }
+            }));
+            return;
+          }
         }
         // else: no model param and no [1m] on session model → normal forceInherit,
         // agents inherit the parent session's model cleanly.
@@ -636,16 +725,15 @@ async function main() {
 
     const todoStatus = getTodoStatus(directory);
 
-    if (AGENT_HEAVY_TOOLS.has(toolName)) {
+    if (toolName === 'Task' || toolName === 'TaskCreate' || toolName === 'TaskUpdate') {
       const rawTranscriptPath = data.transcript_path || data.transcriptPath || '';
       const transcriptPath = resolveTranscriptPath(rawTranscriptPath, directory);
-      const contextPercent = estimateContextPercent(transcriptPath);
-
-      if (contextPercent >= PREFLIGHT_CONTEXT_THRESHOLD) {
-        console.log(JSON.stringify({
-          decision: 'block',
-          reason: buildPreflightRecoveryAdvice(contextPercent),
-        }));
+      const preflightBlock = evaluateAgentHeavyPreflight({
+        toolName,
+        transcriptPath,
+      });
+      if (preflightBlock) {
+        console.log(JSON.stringify(preflightBlock));
         return;
       }
     }

@@ -7,8 +7,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { tmpdir, homedir } from 'os';
+import { tmpdir } from 'os';
 import { runChecks } from '../index.js';
+import { getClaudeConfigDir } from '../../../utils/config-dir.js';
 import type { FactcheckPolicy } from '../types.js';
 
 // ---------------------------------------------------------------------------
@@ -20,7 +21,7 @@ function defaultPolicy(): FactcheckPolicy {
     enabled: true,
     mode: 'quick',
     strict_project_patterns: [],
-    forbidden_path_prefixes: [join(homedir(), '.copilot/plugins/cache/omg/')],
+    forbidden_path_prefixes: [join(getClaudeConfigDir(), 'plugins/cache/omc/')],
     forbidden_path_substrings: ['/.omg/', '.omc-config.json'],
     readonly_command_prefixes: [
       'ls ', 'cat ', 'find ', 'grep ', 'head ', 'tail ', 'stat ', 'echo ', 'wc ',
@@ -111,7 +112,7 @@ describe('Factcheck Guard (issue #1155)', () => {
     const policy = defaultPolicy();
     const claims = baseClaims();
     (claims as Record<string, unknown>).files_created = [
-      join(homedir(), '.copilot/plugins/cache/omg/touched.txt'),
+      join(getClaudeConfigDir(), 'plugins/cache/omc/touched.txt'),
     ];
 
     const result = runChecks(claims, 'declared', policy, '/tmp/original');
@@ -150,7 +151,7 @@ describe('Factcheck Guard (issue #1155)', () => {
   it('forbidden command in mutating context is FAIL', () => {
     const policy = defaultPolicy();
     const claims = baseClaims();
-    const forbiddenPath = join(homedir(), '.copilot/plugins/cache/omg/');
+    const forbiddenPath = join(getClaudeConfigDir(), 'plugins/cache/omc/');
     (claims as Record<string, unknown>).commands_executed = [
       `rm -rf ${forbiddenPath}data`,
     ];
@@ -166,7 +167,7 @@ describe('Factcheck Guard (issue #1155)', () => {
   it('readonly command in forbidden path is allowed', () => {
     const policy = defaultPolicy();
     const claims = baseClaims();
-    const forbiddenPath = join(homedir(), '.copilot/plugins/cache/omg/');
+    const forbiddenPath = join(getClaudeConfigDir(), 'plugins/cache/omc/');
     (claims as Record<string, unknown>).commands_executed = [
       `ls ${forbiddenPath}`,
       `cat ${forbiddenPath}file.txt`,

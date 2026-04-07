@@ -187,6 +187,10 @@ export interface PluginConfig {
             };
         };
     };
+    teleport?: {
+        /** Reuse parent repo node_modules via symlink when package.json matches. Default: true */
+        symlinkNodeModules?: boolean;
+    };
     taskSizeDetection?: {
         /** Enable task-size detection to prevent over-orchestration for small tasks. Default: true */
         enabled?: boolean;
@@ -196,6 +200,21 @@ export interface PluginConfig {
         largeWordLimit?: number;
         /** Suppress heavy orchestration modes (ralph/autopilot/team/ultrawork) for small tasks. Default: true */
         suppressHeavyModesForSmallTasks?: boolean;
+    };
+    promptPrerequisites?: {
+        /** Enable parsing + blocking gate injection for prerequisite sections. Default: true */
+        enabled?: boolean;
+        /** Extensible heading aliases grouped by semantic section kind. */
+        sectionNames?: {
+            memory?: string[];
+            skills?: string[];
+            verifyFirst?: string[];
+            context?: string[];
+        };
+        /** Tool names denied until prerequisites are satisfied. */
+        blockingTools?: string[];
+        /** Execution keywords that activate the gate. */
+        executionKeywords?: string[];
     };
 }
 export interface SessionState {

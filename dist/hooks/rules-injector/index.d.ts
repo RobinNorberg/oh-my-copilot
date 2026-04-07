@@ -3,7 +3,7 @@
  *
  * Automatically injects relevant rule files when Copilot accesses files.
  * Supports project-level (.copilot/rules, .github/instructions) and
- * user-level (~/.copilot/rules) rule files.
+ * user-level rules under [$COPILOT_CONFIG_DIR|~/.copilot].
  *
  * Ported from oh-my-opencode's rules-injector hook.
  */

@@ -6,12 +6,100 @@
  */
 import chalk from 'chalk';
 import { execSync, execFileSync } from 'child_process';
-import { existsSync, mkdirSync, rmSync, readdirSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync } from 'fs';
 import { homedir } from 'os';
 import { join, basename, isAbsolute, relative } from 'path';
+import { loadConfig } from '../../config/loader.js';
 import { parseRemoteUrl, getProvider } from '../../providers/index.js';
 // Default worktree root directory
 const DEFAULT_WORKTREE_ROOT = join(homedir(), 'Workspace', 'omc-worktrees');
+const PACKAGE_JSON_NAME = 'package.json';
+const PACKAGE_MANAGER_LOCKFILES = {
+    pnpm: 'pnpm-lock.yaml',
+    yarn: 'yarn.lock',
+    npm: 'package-lock.json',
+};
+function readPackageJsonText(directory) {
+    try {
+        return readFileSync(join(directory, PACKAGE_JSON_NAME), 'utf-8');
+    }
+    catch {
+        return null;
+    }
+}
+function detectPackageManager(parentRepoRoot, worktreePath) {
+    for (const [manager, lockfile] of Object.entries(PACKAGE_MANAGER_LOCKFILES)) {
+        if (existsSync(join(worktreePath, lockfile)) || existsSync(join(parentRepoRoot, lockfile))) {
+            return manager;
+        }
+    }
+    for (const directory of [worktreePath, parentRepoRoot]) {
+        const packageJsonText = readPackageJsonText(directory);
+        if (!packageJsonText)
+            continue;
+        try {
+            const parsed = JSON.parse(packageJsonText);
+            const packageManager = parsed.packageManager?.split('@')[0];
+            if (packageManager === 'pnpm' || packageManager === 'yarn' || packageManager === 'npm') {
+                return packageManager;
+            }
+        }
+        catch {
+            // Ignore and fall back to npm.
+        }
+    }
+    return 'npm';
+}
+function symlinkNodeModules(parentRepoRoot, worktreePath) {
+    const sourceNodeModules = join(parentRepoRoot, 'node_modules');
+    const targetNodeModules = join(worktreePath, 'node_modules');
+    if (!existsSync(sourceNodeModules) || existsSync(targetNodeModules)) {
+        return false;
+    }
+    symlinkSync(sourceNodeModules, targetNodeModules, process.platform === 'win32' ? 'junction' : 'dir');
+    return true;
+}
+function installDependencies(worktreePath, packageManager) {
+    const argsByManager = {
+        npm: ['install'],
+        pnpm: ['install'],
+        yarn: ['install'],
+    };
+    execFileSync(packageManager, argsByManager[packageManager], {
+        cwd: worktreePath,
+        stdio: 'inherit',
+    });
+}
+function warnTeleportDependencyFallback(message, json) {
+    if (json)
+        return;
+    console.warn(chalk.yellow(message));
+}
+function bootstrapTeleportDependencies(parentRepoRoot, worktreePath, options) {
+    const packageManager = detectPackageManager(parentRepoRoot, worktreePath);
+    if (!options.symlinkNodeModules) {
+        installDependencies(worktreePath, packageManager);
+        return { mode: 'install', packageManager };
+    }
+    const parentPackageJson = readPackageJsonText(parentRepoRoot);
+    const worktreePackageJson = readPackageJsonText(worktreePath);
+    if (!parentPackageJson || !worktreePackageJson) {
+        warnTeleportDependencyFallback('Warning: could not read package.json for teleport dependency reuse; running full install instead.', options.json);
+        installDependencies(worktreePath, packageManager);
+        return { mode: 'install', packageManager };
+    }
+    if (parentPackageJson !== worktreePackageJson) {
+        warnTeleportDependencyFallback('Warning: worktree package.json differs from parent repo; running full install instead of symlinking node_modules.', options.json);
+        installDependencies(worktreePath, packageManager);
+        return { mode: 'install', packageManager };
+    }
+    if (symlinkNodeModules(parentRepoRoot, worktreePath)) {
+        return { mode: 'symlink', packageManager };
+    }
+    warnTeleportDependencyFallback('Warning: parent node_modules is unavailable for teleport symlink reuse; running full install instead.', options.json);
+    installDependencies(worktreePath, packageManager);
+    return { mode: 'install', packageManager };
+}
 /**
  * Parse a reference string into components
  * Supports: omg#123, owner/repo#123, #123, URLs, feature names
@@ -252,6 +340,8 @@ export async function teleportCommand(ref, options) {
     }
     const { owner, repo, root: repoRoot } = currentRepo;
     const repoName = basename(repoRoot);
+    const config = loadConfig();
+    const shouldSymlinkNodeModules = config.teleport?.symlinkNodeModules ?? true;
     // Use provider from parsed ref if available, otherwise fall back to current repo
     const effectiveProviderName = parsed.provider || currentRepo.provider;
     const provider = getProvider(effectiveProviderName);
@@ -355,6 +445,19 @@ export async function teleportCommand(ref, options) {
             console.error(chalk.red(`Failed to create worktree: ${result.error}`));
         }
         return { success: false, error: result.error };
+    }
+    try {
+        bootstrapTeleportDependencies(repoRoot, worktreePath, {
+            json: options.json,
+            symlinkNodeModules: shouldSymlinkNodeModules,
+        });
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        if (!options.json) {
+            console.error(chalk.red(`Failed to bootstrap worktree dependencies: ${message}`));
+        }
+        return { success: false, error: message };
     }
     if (!options.json) {
         console.log('');

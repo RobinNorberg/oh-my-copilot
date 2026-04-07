@@ -3,7 +3,7 @@
  *
  * Composes statusline output from render context.
  */
-import { DEFAULT_HUD_CONFIG } from './types.js';
+import { DEFAULT_HUD_CONFIG, DEFAULT_ELEMENT_ORDER } from './types.js';
 import { bold, dim } from './colors.js';
 import { stringWidth, getCharWidth } from '../utils/string-width.js';
 import { renderRalph } from './elements/ralph.js';
@@ -27,6 +27,7 @@ import { renderCallCounts } from './elements/call-counts.js';
 import { renderContextLimitWarning } from './elements/context-warning.js';
 import { renderMissionBoard } from './mission-board.js';
 import { renderSessionSummary } from './elements/session-summary.js';
+import { renderLastTool } from './elements/last-tool.js';
 /**
  * ANSI escape sequence regex (matches SGR and other CSI sequences).
  * Used to skip escape codes when measuring/truncating visible width.
@@ -162,183 +163,232 @@ export function limitOutputLines(lines, maxLines) {
  * Render the complete statusline (single or multi-line)
  */
 export async function render(context, config) {
-    const elements = [];
-    const detailLines = [];
     const { elements: enabledElements } = config;
-    // Git info line (separate line above HUD)
-    const gitElements = [];
-    // Working directory
+    // ── Render all elements into maps ──────────────────────────────────
+    // Each element is rendered independently and stored by name.
+    // The layout (or DEFAULT_ELEMENT_ORDER) determines final ordering.
+    const rendered = new Map();
+    const renderedDetail = new Map();
+    // -- line1-group elements (default: git info line) --
     if (enabledElements.cwd) {
-        const cwdElement = renderCwd(context.cwd, enabledElements.cwdFormat || 'relative');
+        const cwdElement = renderCwd(context.cwd, enabledElements.cwdFormat || 'relative', enabledElements.useHyperlinks ?? false);
         if (cwdElement)
-            gitElements.push(cwdElement);
+            rendered.set('cwd', cwdElement);
     }
-    // Git repository name
     if (enabledElements.gitRepo) {
         const gitRepoElement = renderGitRepo(context.cwd);
         if (gitRepoElement)
-            gitElements.push(gitRepoElement);
+            rendered.set('gitRepo', gitRepoElement);
     }
-    // Git branch
     if (enabledElements.gitBranch) {
         const gitBranchElement = renderGitBranch(context.cwd);
         if (gitBranchElement)
-            gitElements.push(gitBranchElement);
+            rendered.set('gitBranch', gitBranchElement);
     }
-    // Model name
     if (enabledElements.model && context.modelName) {
         const modelElement = renderModel(context.modelName, enabledElements.modelFormat);
         if (modelElement)
-            gitElements.push(modelElement);
+            rendered.set('model', modelElement);
     }
-    // API key source
     if (enabledElements.apiKeySource && context.apiKeySource) {
         const keySource = renderApiKeySource(context.apiKeySource);
         if (keySource)
-            gitElements.push(keySource);
+            rendered.set('apiKeySource', keySource);
     }
-    // Profile name (from COPILOT_CONFIG_DIR)
     if (enabledElements.profile && context.profileName) {
-        gitElements.push(bold(`profile:${context.profileName}`));
+        rendered.set('profile', bold(`profile:${context.profileName}`));
     }
-    // [OMC#X.Y.Z] label with optional update notification
+    // -- main-group elements (default: main statusline) --
     if (enabledElements.omcLabel) {
         const versionTag = context.omcVersion ? `#${context.omcVersion}` : '';
         if (context.updateAvailable) {
-            elements.push(bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`));
+            rendered.set('omcLabel', bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`));
         }
         else {
-            elements.push(bold(`[OMC${versionTag}]`));
+            rendered.set('omcLabel', bold(`[OMC${versionTag}]`));
         }
     }
     // Rate limits (5h and weekly) - data takes priority over error indicator
     if (enabledElements.rateLimits && context.rateLimitsResult) {
         if (context.rateLimitsResult.rateLimits) {
-            // Data available (possibly stale from 429) → always show data
             const stale = context.rateLimitsResult.stale;
             const limits = enabledElements.useBars
                 ? renderRateLimitsWithBar(context.rateLimitsResult.rateLimits, undefined, stale)
                 : renderRateLimits(context.rateLimitsResult.rateLimits, stale);
             if (limits)
-                elements.push(limits);
+                rendered.set('rateLimits', limits);
         }
         else {
-            // No data → show error indicator
             const errorIndicator = renderRateLimitsError(context.rateLimitsResult);
             if (errorIndicator)
-                elements.push(errorIndicator);
+                rendered.set('rateLimits', errorIndicator);
         }
     }
-    // Custom rate limit buckets
     if (context.customBuckets) {
         const thresholdPercent = config.rateLimitsProvider?.resetsAtDisplayThresholdPercent;
         const custom = renderCustomBuckets(context.customBuckets, thresholdPercent);
         if (custom)
-            elements.push(custom);
+            rendered.set('customBuckets', custom);
     }
-    // Permission status indicator (heuristic-based)
     if (enabledElements.permissionStatus && context.pendingPermission) {
         const permission = renderPermission(context.pendingPermission);
         if (permission)
-            elements.push(permission);
+            rendered.set('permission', permission);
     }
-    // Extended thinking indicator
     if (enabledElements.thinking && context.thinkingState) {
         const thinking = renderThinking(context.thinkingState, enabledElements.thinkingFormat);
         if (thinking)
-            elements.push(thinking);
+            rendered.set('thinking', thinking);
     }
-    // Prompt submission time
     if (enabledElements.promptTime) {
-        const prompt = renderPromptTime(context.promptTime);
+        const prompt = renderPromptTime(context.promptTime, new Date());
         if (prompt)
-            elements.push(prompt);
+            rendered.set('promptTime', prompt);
     }
-    // Session health indicator
     if (enabledElements.sessionHealth && context.sessionHealth) {
-        // Session duration display (session:19m)
-        // If showSessionDuration is explicitly set, use it; otherwise default to true (backward compat)
-        const showDuration = enabledElements.showSessionDuration;
+        const showDuration = enabledElements.showSessionDuration ?? true;
         if (showDuration) {
             const session = renderSession(context.sessionHealth);
             if (session)
-                elements.push(session);
+                rendered.set('session', session);
         }
     }
-    // Ralph loop state
     if (enabledElements.ralph && context.ralph) {
         const ralph = renderRalph(context.ralph, config.thresholds);
         if (ralph)
-            elements.push(ralph);
+            rendered.set('ralph', ralph);
     }
-    // Autopilot state (takes precedence over ralph in display)
     if (enabledElements.autopilot && context.autopilot) {
         const autopilot = renderAutopilot(context.autopilot, config.thresholds);
         if (autopilot)
-            elements.push(autopilot);
+            rendered.set('autopilot', autopilot);
     }
-    // PRD story
     if (enabledElements.prdStory && context.prd) {
         const prd = renderPrd(context.prd);
         if (prd)
-            elements.push(prd);
+            rendered.set('prd', prd);
     }
-    // Active skills (ultrawork, etc.) + last skill
     if (enabledElements.activeSkills) {
         const skills = renderSkills(context.ultrawork, context.ralph, (enabledElements.lastSkill ?? true) ? context.lastSkill : null);
         if (skills)
-            elements.push(skills);
+            rendered.set('skills', skills);
     }
-    // Standalone last skill element (if activeSkills disabled but lastSkill enabled)
     if ((enabledElements.lastSkill ?? true) && !enabledElements.activeSkills) {
         const lastSkillElement = renderLastSkill(context.lastSkill);
         if (lastSkillElement)
-            elements.push(lastSkillElement);
+            rendered.set('lastSkill', lastSkillElement);
     }
-    // Context window
     if (enabledElements.contextBar) {
         const ctx = enabledElements.useBars
             ? renderContextWithBar(context.contextPercent, config.thresholds, 10, context.contextDisplayScope)
             : renderContext(context.contextPercent, config.thresholds, context.contextDisplayScope);
         if (ctx)
-            elements.push(ctx);
+            rendered.set('contextBar', ctx);
     }
     // Active agents - handle multi-line format specially
     if (enabledElements.agents) {
         const format = enabledElements.agentsFormat || 'codes';
         if (format === 'multiline') {
-            // Multi-line mode: get header part and detail lines
             const maxLines = enabledElements.agentsMaxLines || 5;
             const result = renderAgentsMultiLine(context.activeAgents, maxLines);
             if (result.headerPart)
-                elements.push(result.headerPart);
-            detailLines.push(...result.detailLines);
+                rendered.set('agents', result.headerPart);
+            if (result.detailLines.length > 0) {
+                renderedDetail.set('agents', result.detailLines);
+            }
         }
         else {
-            // Single-line mode: standard format
             const agents = renderAgentsByFormat(context.activeAgents, format);
             if (agents)
-                elements.push(agents);
+                rendered.set('agents', agents);
         }
     }
-    // Background tasks
     if (enabledElements.backgroundTasks) {
         const bg = renderBackground(context.backgroundTasks);
         if (bg)
-            elements.push(bg);
+            rendered.set('background', bg);
     }
-    // Call counts on the right side of the status line (Issue #710)
-    // Controlled by showCallCounts config option (default: true)
     const showCounts = enabledElements.showCallCounts ?? true;
     if (showCounts) {
-        const counts = renderCallCounts(context.toolCallCount, context.agentCallCount, context.skillCallCount);
+        const counts = renderCallCounts(context.toolCallCount, context.agentCallCount, context.skillCallCount, enabledElements.callCountsFormat ?? 'auto');
         if (counts)
-            elements.push(counts);
+            rendered.set('callCounts', counts);
     }
-    // Context limit warning banner (shown when ctx% >= threshold)
+    if (enabledElements.showLastTool === true) {
+        const tool = renderLastTool(context.lastToolName ?? null);
+        if (tool)
+            rendered.set('lastTool', tool);
+    }
+    if (enabledElements.sessionSummary && context.sessionSummary) {
+        const summary = renderSessionSummary(context.sessionSummary);
+        if (summary)
+            rendered.set('sessionSummary', summary);
+    }
+    // -- detail-group elements --
+    if (context.missionBoard &&
+        (config.missionBoard?.enabled ?? config.elements.missionBoard ?? false)) {
+        const mbLines = renderMissionBoard(context.missionBoard, config.missionBoard);
+        if (mbLines.length > 0)
+            renderedDetail.set('missionBoard', mbLines);
+    }
     const ctxWarning = renderContextLimitWarning(context.contextPercent, config.contextLimitWarning.threshold, config.contextLimitWarning.autoCompact);
     if (ctxWarning)
-        detailLines.push(ctxWarning);
+        renderedDetail.set('contextWarning', [ctxWarning]);
+    if (enabledElements.todos) {
+        const todos = renderTodosWithCurrent(context.todos);
+        if (todos)
+            renderedDetail.set('todos', [todos]);
+    }
+    // ── Assemble output using layout order ─────────────────────────────
+    const safeArray = (v, fallback) => Array.isArray(v) ? v : fallback;
+    const effectiveLayout = {
+        line1: safeArray(config.layout?.line1, DEFAULT_ELEMENT_ORDER.line1),
+        main: safeArray(config.layout?.main, DEFAULT_ELEMENT_ORDER.main),
+        detail: safeArray(config.layout?.detail, DEFAULT_ELEMENT_ORDER.detail),
+    };
+    /** Collect inline elements in layout order.
+     *  Also picks up detail-origin elements moved to an inline group —
+     *  their detail lines are joined into a single inline string. */
+    function collectInline(order) {
+        const result = [];
+        for (const name of order) {
+            const el = rendered.get(name);
+            if (el) {
+                result.push(el);
+            }
+            else {
+                // Detail elements moved to an inline group render as joined inline
+                const lines = renderedDetail.get(name);
+                if (lines && lines.length > 0)
+                    result.push(lines.join(' '));
+            }
+        }
+        return result;
+    }
+    /** Collect detail lines in layout order.
+     *  Also picks up inline elements moved to the detail group —
+     *  they become individual detail lines when placed here. */
+    function collectDetailLines(order) {
+        const result = [];
+        for (const name of order) {
+            const lines = renderedDetail.get(name);
+            if (lines)
+                result.push(...lines);
+            // Inline elements moved to the detail group render as detail lines
+            if (!lines) {
+                const inline = rendered.get(name);
+                if (inline)
+                    result.push(inline);
+            }
+        }
+        return result;
+    }
+    const gitElements = collectInline(effectiveLayout.line1);
+    const elements = collectInline(effectiveLayout.main);
+    // Detail lines from the detail group layout order.
+    // Elements like 'agents' appear in both main (inline) and detail (detail lines),
+    // preserving legacy ordering: missionBoard, agents detail, contextWarning, todos.
+    const detailLines = collectDetailLines(effectiveLayout.detail);
     // Compose output
     const outputLines = [];
     const gitInfoLine = gitElements.length > 0 ? gitElements.join(dim(PLAIN_SEPARATOR)) : null;
@@ -359,20 +409,6 @@ export async function render(context, config) {
         if (gitInfoLine) {
             outputLines.push(gitInfoLine);
         }
-    }
-    // Todos on next line (if available)
-    if (enabledElements.todos) {
-        const todos = renderTodosWithCurrent(context.todos);
-        if (todos)
-            detailLines.push(todos);
-    }
-    if (context.missionBoard && (config.missionBoard?.enabled ?? config.elements.missionBoard ?? false)) {
-        detailLines.unshift(...renderMissionBoard(context.missionBoard, config.missionBoard));
-    }
-    if (enabledElements.sessionSummary && context.sessionSummary) {
-        const summary = renderSessionSummary(context.sessionSummary);
-        if (summary)
-            elements.push(summary);
     }
     const widthAdjustedLines = applyMaxWidthByMode([...outputLines, ...detailLines], config.maxWidth, config.wrapMode);
     // Apply max output line limit after wrapping so wrapped output still respects maxOutputLines.

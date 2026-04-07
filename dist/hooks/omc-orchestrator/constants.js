@@ -13,7 +13,7 @@ export const ALLOWED_PATH_PREFIX = '.omg/';
 export const ALLOWED_PATH_PATTERNS = [
     /^\.omg\//, // .omg/**
     /^\.copilot\//, // .copilot/** (local)
-    /^~?\/\.copilot\//, // ~/.copilot/** (global)
+    /^~?\/\.copilot\//, // legacy ~/.copilot/** references
     /\/\.copilot\//, // any /.copilot/ path
     /copilot-instructions\.md$/, // **/copilot-instructions.md
     /AGENTS\.md$/, // **/AGENTS.md
@@ -97,7 +97,7 @@ As an ORCHESTRATOR, you MUST:
 
 **ALLOWED direct file operations:**
 - Files inside \`.omg/\` (plans, notepads, drafts)
-- Files inside \`~/.copilot/\` (global config)
+- Files inside \`[$CLAUDE_CONFIG_DIR|~/.copilot]/\`
 - \`copilot-instructions.md\` and \`AGENTS.md\` files
 - Reading files for verification
 - Running diagnostics/tests

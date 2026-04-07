@@ -14,6 +14,7 @@
 
 import { z } from 'zod';
 import { validateWorkingDirectory } from '../lib/worktree-paths.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js'
 import {
   isSharedMemoryEnabled,
   writeEntry,
@@ -29,7 +30,7 @@ import type { ToolDefinition } from './types.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-const DISABLED_MSG = 'Shared memory is disabled. Set agents.sharedMemory.enabled = true in ~/.copilot/.omc-config.json to enable.';
+const DISABLED_MSG = `Shared memory is disabled. Set agents.sharedMemory.enabled = true in ${getCopilotConfigDir()}/.omc-config.json to enable.`;
 
 function disabledResponse() {
   return {

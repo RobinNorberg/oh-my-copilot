@@ -19,9 +19,11 @@ const STATE_TOOL_MODES = [
     ...EXECUTION_MODES,
     'ralplan',
     'omc-teams',
-    'deep-interview'
+    'deep-interview',
+    'self-improve',
+    'skill-active'
 ];
-const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omc-teams', 'deep-interview'];
+const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omc-teams', 'deep-interview', 'self-improve', 'skill-active'];
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 /**
  * Get the state file path for any mode (including swarm and ralplan).

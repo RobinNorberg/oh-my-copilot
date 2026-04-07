@@ -212,9 +212,13 @@ export function readAutopilotStateForHud(directory, sessionId) {
         if (!state.active) {
             return null;
         }
+        const phase = state.phase ?? state.current_phase;
+        if (!phase) {
+            return null;
+        }
         return {
             active: state.active,
-            phase: state.phase,
+            phase,
             iteration: state.iteration,
             maxIterations: state.max_iterations,
             tasksCompleted: state.execution?.tasks_completed,

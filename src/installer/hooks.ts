@@ -12,7 +12,8 @@
 import { join, dirname } from "path";
 import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
-import { getConfigDir } from '../utils/config-dir.js';
+import { homedir } from "os";
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 
 // =============================================================================
 // TEMPLATE LOADER (loads hook scripts from templates/hooks/)
@@ -76,11 +77,6 @@ export function shouldUseNodeHooks(): boolean {
   return true;
 }
 
-/** Get the Copilot config directory path (cross-platform) */
-export function getCopilotConfigDir(): string {
-  return getConfigDir();
-}
-
 /** Get the hooks directory path */
 export function getHooksDir(): string {
   return join(getCopilotConfigDir(), "hooks");
@@ -92,6 +88,34 @@ export function getHooksDir(): string {
  */
 export function getHomeEnvVar(): string {
   return isWindows() ? "%USERPROFILE%" : "$HOME";
+}
+
+function normalizePath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+
+function isDefaultCopilotConfigDir(): boolean {
+  return normalizePath(getCopilotConfigDir()) === normalizePath(join(homedir(), '.copilot'));
+}
+
+function quoteCommandPath(path: string): string {
+  return `"${path.replace(/"/g, '\\"')}"`;
+}
+
+function buildHookCommand(filename: string): string {
+  if (isWindows()) {
+    if (isDefaultCopilotConfigDir()) {
+      return `node "%USERPROFILE%\\\\.copilot\\\\hooks\\\\${filename}"`;
+    }
+
+    return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename))}`;
+  }
+
+  if (isDefaultCopilotConfigDir()) {
+    return `node "$HOME/.copilot/hooks/${filename}"`;
+  }
+
+  return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
 }
 
 /**
@@ -388,11 +412,7 @@ export const HOOKS_SETTINGS_CONFIG_NODE = {
         hooks: [
           {
             type: "command" as const,
-            // Note: On Windows, %USERPROFILE% is expanded by cmd.exe
-            // On Unix with node hooks, $HOME is expanded by the shell
-            command: isWindows()
-              ? 'node "%USERPROFILE%\\.copilot\\hooks\\keyword-detector.mjs"'
-              : 'node "$HOME/.copilot/hooks/keyword-detector.mjs"',
+            command: buildHookCommand('keyword-detector.mjs'),
           },
         ],
       },
@@ -402,9 +422,7 @@ export const HOOKS_SETTINGS_CONFIG_NODE = {
         hooks: [
           {
             type: "command" as const,
-            command: isWindows()
-              ? 'node "%USERPROFILE%\\.copilot\\hooks\\session-start.mjs"'
-              : 'node "$HOME/.copilot/hooks/session-start.mjs"',
+            command: buildHookCommand('session-start.mjs'),
           },
         ],
       },
@@ -414,9 +432,7 @@ export const HOOKS_SETTINGS_CONFIG_NODE = {
         hooks: [
           {
             type: "command" as const,
-            command: isWindows()
-              ? 'node "%USERPROFILE%\\.copilot\\hooks\\pre-tool-use.mjs"'
-              : 'node "$HOME/.copilot/hooks/pre-tool-use.mjs"',
+            command: buildHookCommand('pre-tool-use.mjs'),
           },
         ],
       },
@@ -426,9 +442,7 @@ export const HOOKS_SETTINGS_CONFIG_NODE = {
         hooks: [
           {
             type: "command" as const,
-            command: isWindows()
-              ? 'node "%USERPROFILE%\\.copilot\\hooks\\post-tool-use.mjs"'
-              : 'node "$HOME/.copilot/hooks/post-tool-use.mjs"',
+            command: buildHookCommand('post-tool-use.mjs'),
           },
         ],
       },
@@ -438,9 +452,7 @@ export const HOOKS_SETTINGS_CONFIG_NODE = {
         hooks: [
           {
             type: "command" as const,
-            command: isWindows()
-              ? 'node "%USERPROFILE%\\.copilot\\hooks\\post-tool-use-failure.mjs"'
-              : 'node "$HOME/.copilot/hooks/post-tool-use-failure.mjs"',
+            command: buildHookCommand('post-tool-use-failure.mjs'),
           },
         ],
       },
@@ -450,9 +462,7 @@ export const HOOKS_SETTINGS_CONFIG_NODE = {
         hooks: [
           {
             type: "command" as const,
-            command: isWindows()
-              ? 'node "%USERPROFILE%\\.copilot\\hooks\\persistent-mode.mjs"'
-              : 'node "$HOME/.copilot/hooks/persistent-mode.mjs"',
+            command: buildHookCommand('persistent-mode.mjs'),
           },
         ],
       },
@@ -460,9 +470,7 @@ export const HOOKS_SETTINGS_CONFIG_NODE = {
         hooks: [
           {
             type: "command" as const,
-            command: isWindows()
-              ? 'node "%USERPROFILE%\\.copilot\\hooks\\code-simplifier.mjs"'
-              : 'node "$HOME/.copilot/hooks/code-simplifier.mjs"',
+            command: buildHookCommand('code-simplifier.mjs'),
           },
         ],
       },

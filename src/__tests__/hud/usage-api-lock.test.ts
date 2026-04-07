@@ -79,6 +79,7 @@ describe('getUsage lock failure fallback', () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     vi.unmock('../../utils/paths.js');
+    vi.unmock('../../utils/config-dir.js');
     vi.unmock('../../utils/ssrf-guard.js');
     vi.unmock('fs');
     vi.unmock('child_process');
@@ -111,11 +112,16 @@ describe('getUsage lock failure fallback', () => {
     vi.doMock('../../utils/paths.js', () => ({
       getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
     }));
+    vi.doMock('../../utils/config-dir.js', () => ({
+      getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
+    }));
     vi.doMock('../../utils/ssrf-guard.js', () => ({
       validateAnthropicBaseUrl: () => ({ allowed: true }),
     }));
     vi.doMock('child_process', () => ({
       execSync: vi.fn(),
+      execFile: vi.fn(),
+      execFileSync: vi.fn(),
     }));
     vi.doMock('fs', () => fsModule);
     vi.doMock('https', () => ({
@@ -157,11 +163,16 @@ describe('getUsage lock failure fallback', () => {
     vi.doMock('../../utils/paths.js', () => ({
       getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
     }));
+    vi.doMock('../../utils/config-dir.js', () => ({
+      getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
+    }));
     vi.doMock('../../utils/ssrf-guard.js', () => ({
       validateAnthropicBaseUrl: () => ({ allowed: true }),
     }));
     vi.doMock('child_process', () => ({
       execSync: vi.fn(),
+      execFile: vi.fn(),
+      execFileSync: vi.fn(),
     }));
     vi.doMock('fs', () => fsModule);
     vi.doMock('https', () => ({
@@ -196,6 +207,7 @@ describe.skipIf(process.platform === 'win32')('getUsage lock behavior', () => {
   afterEach(() => {
     process.env = { ...originalEnv };
     vi.unmock('../../utils/paths.js');
+    vi.unmock('../../utils/config-dir.js');
     vi.unmock('../../utils/ssrf-guard.js');
     vi.unmock('fs');
     vi.unmock('child_process');
@@ -218,11 +230,16 @@ describe.skipIf(process.platform === 'win32')('getUsage lock behavior', () => {
     vi.doMock('../../utils/paths.js', () => ({
       getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
     }));
+    vi.doMock('../../utils/config-dir.js', () => ({
+      getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
+    }));
     vi.doMock('../../utils/ssrf-guard.js', () => ({
       validateAnthropicBaseUrl: () => ({ allowed: true }),
     }));
     vi.doMock('child_process', () => ({
       execSync: vi.fn(),
+      execFile: vi.fn(),
+      execFileSync: vi.fn(),
     }));
     vi.doMock('fs', () => fsModule);
     vi.doMock('https', () => ({

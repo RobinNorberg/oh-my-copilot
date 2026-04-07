@@ -9,7 +9,7 @@
  */
 
 import { join } from 'node:path';
-import { getCopilotConfigDir } from '../utils/paths.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { appendFileWithMode, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 import { getTeamMembers } from './unified-team.js';
 import { sanitizeName } from './tmux-session.js';

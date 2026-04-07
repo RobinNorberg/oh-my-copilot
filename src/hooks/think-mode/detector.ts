@@ -62,6 +62,12 @@ const MULTILINGUAL_KEYWORDS = [
   'tenk', 'tenke', 'gruble',
   // Hebrew
   'חשוב', 'לחשוב', 'להרהר',
+  // Korean
+  '생각', '고려', '사고',
+  // Chinese (Simplified & Traditional)
+  '思考', '考虑', '想一想', '思索',
+  // Japanese
+  '考え', '思考', '熟考',
 ];
 
 /** Combined patterns including multilingual support */

@@ -547,6 +547,7 @@ export const pythonReplTool = {
         'Variables and state persist between calls within the same session. ' +
         'Actions: execute (run code), interrupt (stop execution), reset (clear state), get_state (view memory/variables). ' +
         'Supports scientific computing with pandas, numpy, matplotlib.',
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     schema: pythonReplSchema.shape,
     handler: async (args) => {
         const output = await pythonReplHandler(args);

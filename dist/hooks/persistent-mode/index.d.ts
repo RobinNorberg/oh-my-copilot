@@ -37,6 +37,7 @@ export interface PersistentModeResult {
         toolError?: ToolErrorState;
     };
 }
+export declare function shouldWriteStateBack(statePath: string | null | undefined): boolean;
 /**
  * Read last tool error from state directory.
  * Returns null if file doesn't exist or error is stale (>60 seconds old).

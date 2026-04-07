@@ -2,6 +2,7 @@
  * Native tmux shell launch for omg
  * Launches Copilot CLI with tmux session management
  */
+export declare function prepareOmcLaunchConfigDir(baseConfigDir?: string): string;
 /**
  * Extract the OMC-specific --openclaw flag from launch args.
  * Purely presence-based (like --madmax/--yolo):

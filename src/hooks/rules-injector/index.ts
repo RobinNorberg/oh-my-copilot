@@ -3,13 +3,12 @@
  *
  * Automatically injects relevant rule files when Copilot accesses files.
  * Supports project-level (.copilot/rules, .github/instructions) and
- * user-level (~/.copilot/rules) rule files.
+ * user-level rules under [$COPILOT_CONFIG_DIR|~/.copilot].
  *
  * Ported from oh-my-opencode's rules-injector hook.
  */
 
 import { readFileSync } from 'fs';
-import { homedir } from 'os';
 import { isAbsolute, relative, resolve } from 'path';
 import { findProjectRoot, findRuleFiles } from './finder.js';
 import {
@@ -77,9 +76,8 @@ export function createRulesInjectorHook(workingDirectory: string) {
 
     const projectRoot = findProjectRoot(resolved);
     const cache = getSessionCache(sessionId);
-    const home = homedir();
 
-    const ruleFileCandidates = findRuleFiles(projectRoot, home, resolved);
+    const ruleFileCandidates = findRuleFiles(projectRoot, resolved);
     const toInject: RuleToInject[] = [];
 
     for (const candidate of ruleFileCandidates) {
@@ -166,9 +164,8 @@ export function createRulesInjectorHook(workingDirectory: string) {
       if (!resolved) return [];
 
       const projectRoot = findProjectRoot(resolved);
-      const home = homedir();
 
-      const ruleFileCandidates = findRuleFiles(projectRoot, home, resolved);
+      const ruleFileCandidates = findRuleFiles(projectRoot, resolved);
       const rules: RuleToInject[] = [];
 
       for (const candidate of ruleFileCandidates) {

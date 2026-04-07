@@ -13,8 +13,9 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync } from 'fs';
 import { join, dirname } from 'path';
 import { execSync, execFileSync } from 'child_process';
 import { install as installOmc, HOOKS_DIR, isProjectScopedPlugin, isRunningAsPlugin, getInstalledOmcPluginRoots, getRuntimePackageRoot, } from '../installer/index.js';
-import { getConfigDir } from '../utils/config-dir.js';
+import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
+import { isAutoUpdateDisabled } from '../lib/security-config.js';
 /** GitHub repository information */
 export const REPO_OWNER = 'RobinNorberg';
 export const REPO_NAME = 'oh-my-copilot';
@@ -27,7 +28,7 @@ export const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/$
  * and cache rebuilds reinstall old versions. (See #506)
  */
 function syncMarketplaceClone(verbose = false) {
-    const marketplacePath = join(getConfigDir(), 'plugins', 'marketplaces', 'omg');
+    const marketplacePath = join(getClaudeConfigDir(), 'plugins', 'marketplaces', 'omg');
     if (!existsSync(marketplacePath)) {
         return { ok: true, message: 'Marketplace clone not found; skipping' };
     }
@@ -132,7 +133,7 @@ export function shouldBlockStandaloneUpdateInCurrentSession() {
     return false;
 }
 export function syncPluginCache(verbose = false) {
-    const pluginCacheRoot = join(getConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const pluginCacheRoot = join(getClaudeConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
     if (!existsSync(pluginCacheRoot)) {
         return { synced: false, skipped: true, errors: [] };
     }
@@ -146,7 +147,7 @@ export function syncPluginCache(verbose = false) {
         if (!npmRoot) {
             throw new Error('npm root -g returned an empty path');
         }
-        const sourceRoot = join(npmRoot, 'oh-my-claude-sisyphus');
+        const sourceRoot = join(npmRoot, 'oh-my-copilot');
         const packageJsonPath = join(sourceRoot, 'package.json');
         const packageJsonRaw = String(readFileSync(packageJsonPath, 'utf-8') ?? '');
         const packageMetadata = JSON.parse(packageJsonRaw);
@@ -179,7 +180,7 @@ export function syncPluginCache(verbose = false) {
     }
 }
 /** Installation paths (respects COPILOT_CONFIG_DIR env var) */
-export const COPILOT_CONFIG_DIR = getConfigDir();
+export const COPILOT_CONFIG_DIR = getClaudeConfigDir();
 export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
 export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, '.omc-config.json');
 /**
@@ -217,6 +218,8 @@ export function getOMCConfig() {
  * Check if silent auto-updates are enabled
  */
 export function isSilentAutoUpdateEnabled() {
+    if (isAutoUpdateDisabled())
+        return false;
     return getOMCConfig().silentAutoUpdate;
 }
 /**
@@ -388,7 +391,9 @@ export async function checkForUpdates() {
  */
 export function reconcileUpdateRuntime(options) {
     const errors = [];
+    const runningAsPlugin = isRunningAsPlugin();
     const projectScopedPlugin = isProjectScopedPlugin();
+    const shouldRefreshPluginHooks = runningAsPlugin && !projectScopedPlugin;
     if (!projectScopedPlugin) {
         try {
             if (!existsSync(HOOKS_DIR)) {
@@ -405,8 +410,8 @@ export function reconcileUpdateRuntime(options) {
             force: true,
             verbose: options?.verbose ?? false,
             skipCopilotCheck: true,
-            forceHooks: true,
-            refreshHooksInPlugin: !projectScopedPlugin,
+            forceHooks: shouldRefreshPluginHooks,
+            refreshHooksInPlugin: shouldRefreshPluginHooks,
         });
         if (!installResult.success) {
             errors.push(...installResult.errors);

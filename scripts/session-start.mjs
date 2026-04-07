@@ -8,14 +8,14 @@
 
 import { existsSync, readFileSync, readdirSync, rmSync, mkdirSync, writeFileSync, symlinkSync, lstatSync, readlinkSync, unlinkSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
-import { homedir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /** Copilot config directory (respects COPILOT_CONFIG_DIR env var) */
-const configDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
+const configDir = getCopilotConfigDir();
 
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
@@ -517,8 +517,10 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
 `);
     }
 
-    // Check for incomplete todos (project-local only, not global ~/.copilot/todos/)
-    // NOTE: We intentionally do NOT scan the global ~/.copilot/todos/ directory.
+    // Check for incomplete todos (project-local only, not global
+    // [$COPILOT_CONFIG_DIR|~/.copilot]/todos/)
+    // NOTE: We intentionally do NOT scan the global
+    // [$COPILOT_CONFIG_DIR|~/.copilot]/todos/ directory.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [

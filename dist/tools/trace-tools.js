@@ -193,6 +193,7 @@ function buildExecutionFlow(events) {
 export const traceTimelineTool = {
     name: 'trace_timeline',
     description: 'Show chronological agent flow trace timeline. Displays hooks, keywords, skills, agents, and tools in time order. Use filter to show specific event types.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         sessionId: z.string().optional().describe('Session ID (auto-detects latest if omitted)'),
         filter: z.enum(['all', 'hooks', 'skills', 'agents', 'keywords', 'tools', 'modes']).optional().describe('Filter to show specific event types (default: all)'),
@@ -261,6 +262,7 @@ export const traceTimelineTool = {
 export const traceSummaryTool = {
     name: 'trace_summary',
     description: 'Show aggregate statistics for an agent flow trace session. Includes hook stats, keyword frequencies, skill activations, mode transitions, and tool bottlenecks.',
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     schema: {
         sessionId: z.string().optional().describe('Session ID (auto-detects latest if omitted)'),
         workingDirectory: z.string().optional().describe('Working directory (defaults to cwd)'),

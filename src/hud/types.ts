@@ -129,6 +129,8 @@ export interface TranscriptData {
   toolCallCount: number;
   agentCallCount: number;
   skillCallCount: number;
+  /** Name of the last tool_use block seen in transcript */
+  lastToolName: string | null;
 }
 
 // ============================================================================
@@ -365,6 +367,9 @@ export interface HudRenderContext {
 
   /** Session summary state (AI-generated brief summary) */
   sessionSummary: SessionSummaryState | null;
+
+  /** Name of the last tool called in this session */
+  lastToolName?: string | null;
 }
 
 // ============================================================================
@@ -410,9 +415,12 @@ export type CwdFormat = 'relative' | 'absolute' | 'folder';
  */
 export type ModelFormat = 'short' | 'versioned' | 'full';
 
+export type CallCountsFormat = 'auto' | 'emoji' | 'ascii';
+
 export interface HudElementConfig {
   cwd: boolean;              // Show working directory
   cwdFormat: CwdFormat;      // Path display format
+  useHyperlinks?: boolean;   // Wrap cwd/paths in OSC 8 terminal hyperlinks (clickable in supported terminals)
   gitRepo: boolean;          // Show git repository name
   gitBranch: boolean;        // Show git branch
   gitInfoPosition: 'above' | 'below';  // Position of git info relative to main HUD line
@@ -444,8 +452,11 @@ export interface HudElementConfig {
   showTokens?: boolean;           // Show token count like 79.3k (default: true if sessionHealth is true)
   useBars: boolean;           // Show visual progress bars instead of/alongside percentages
   showCallCounts?: boolean;   // Show tool/agent/skill call counts on the right of the status line (default: true)
+  callCountsFormat?: CallCountsFormat; // Controls call count icon rendering: auto (platform default), emoji, or ascii
+  showLastTool?: boolean;      // Show name of last tool called (tool:Read)
   maxOutputLines: number;     // Max total output lines to prevent input field shrinkage
-  safeMode: boolean;          // Strip ANSI codes and use ASCII-only output to prevent terminal rendering corruption (Issue #346)
+  safeMode: boolean;          // Strip ANSI codes and use ASCII-only output to prevent terminal rendering corruption (Issue #346).
+                              // Default true. Set to false to explicitly disable even on Windows (e.g. Windows Terminal with ANSI support).
   sessionSummary: boolean;    // Show AI-generated session summary
 }
 
@@ -468,6 +479,40 @@ export interface ContextLimitWarningConfig {
   autoCompact: boolean;
 }
 
+// ============================================================================
+// Layout Configuration
+// ============================================================================
+
+/**
+ * Layout configuration for HUD element ordering.
+ * Each group is an ordered array of element names.
+ * Elements can be moved between groups (e.g., contextBar from main to line1).
+ * Presets control on/off; layout controls order and placement.
+ */
+export interface LayoutConfig {
+  /** Elements on the git/info line (above or below main, per gitInfoPosition) */
+  line1?: string[];
+  /** Elements on the main statusline */
+  main?: string[];
+  /** Elements rendered as separate detail lines below the main line */
+  detail?: string[];
+}
+
+/**
+ * Default element order matching the current hardcoded order in render.ts.
+ * Used as fallback when no layout is configured.
+ */
+export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
+  line1: ['cwd', 'gitRepo', 'gitBranch', 'model', 'apiKeySource', 'profile'],
+  main: [
+    'omcLabel', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+    'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
+    'skills', 'lastSkill', 'contextBar', 'agents', 'background',
+    'callCounts', 'lastTool', 'sessionSummary',
+  ],
+  detail: ['missionBoard', 'agents', 'contextWarning', 'todos'],
+};
+
 export interface HudConfig {
   preset: HudPreset;
   elements: HudElementConfig;
@@ -484,6 +529,8 @@ export interface HudConfig {
   maxWidth?: number;
   /** Controls maxWidth behavior: truncate with ellipsis (default) or wrap at " | " HUD element boundaries. */
   wrapMode?: 'truncate' | 'wrap';
+  /** Optional element ordering. Overrides default order when set. Presets still control on/off. */
+  layout?: LayoutConfig;
 }
 
 export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
@@ -493,6 +540,7 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
   elements: {
     cwd: false,               // Disabled by default for backward compatibility
     cwdFormat: 'relative',
+    useHyperlinks: false,
     gitRepo: false,           // Disabled by default for backward compatibility
     gitBranch: false,         // Disabled by default for backward compatibility
     gitInfoPosition: 'above',  // Git info above main HUD line (backward compatible)
@@ -523,6 +571,8 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     showHealthIndicator: true,
     useBars: false,  // Disabled by default for backwards compatibility
     showCallCounts: true,  // Show tool/agent/skill call counts by default (Issue #710)
+    callCountsFormat: 'auto',  // Preserve platform-based emoji/ASCII defaults unless explicitly overridden
+    showLastTool: false,
     maxOutputLines: 4,
     safeMode: true,  // Enabled by default to prevent terminal rendering corruption (Issue #346)
     sessionSummary: false,
@@ -547,6 +597,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
   minimal: {
     cwd: false,
     cwdFormat: 'folder',
+    useHyperlinks: false,
     gitRepo: false,
     gitBranch: false,
     gitInfoPosition: 'above',
@@ -577,6 +628,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showHealthIndicator: true,
     useBars: false,
     showCallCounts: false,
+    showLastTool: false,
     maxOutputLines: 2,
     safeMode: true,
     sessionSummary: false,
@@ -584,6 +636,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
   focused: {
     cwd: false,
     cwdFormat: 'relative',
+    useHyperlinks: false,
     gitRepo: false,
     gitBranch: true,
     gitInfoPosition: 'above',
@@ -614,6 +667,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showHealthIndicator: true,
     useBars: true,
     showCallCounts: true,
+    showLastTool: false,
     maxOutputLines: 4,
     safeMode: true,
     sessionSummary: false,
@@ -621,6 +675,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
   full: {
     cwd: false,
     cwdFormat: 'relative',
+    useHyperlinks: false,
     gitRepo: true,
     gitBranch: true,
     gitInfoPosition: 'above',
@@ -651,6 +706,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showHealthIndicator: true,
     useBars: true,
     showCallCounts: true,
+    showLastTool: false,
     maxOutputLines: 12,
     safeMode: true,
     sessionSummary: false,
@@ -658,6 +714,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
   opencode: {
     cwd: false,
     cwdFormat: 'relative',
+    useHyperlinks: false,
     gitRepo: false,
     gitBranch: true,
     gitInfoPosition: 'above',
@@ -688,6 +745,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showHealthIndicator: true,
     useBars: false,
     showCallCounts: true,
+    showLastTool: false,
     maxOutputLines: 4,
     safeMode: true,
     sessionSummary: false,
@@ -695,6 +753,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
   dense: {
     cwd: false,
     cwdFormat: 'relative',
+    useHyperlinks: false,
     gitRepo: true,
     gitBranch: true,
     gitInfoPosition: 'above',
@@ -725,6 +784,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     showHealthIndicator: true,
     useBars: true,
     showCallCounts: true,
+    showLastTool: false,
     maxOutputLines: 6,
     safeMode: true,
     sessionSummary: false,

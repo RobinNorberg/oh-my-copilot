@@ -7,6 +7,9 @@
  */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { execFileSync } from 'child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     return {
@@ -22,7 +25,7 @@ vi.mock('../tmux-utils.js', () => ({
     quoteShellArg: vi.fn((s) => s),
     isCopilotAvailable: vi.fn(() => true),
 }));
-import { runCopilot, launchCommand, extractNotifyFlag, extractTelegramFlag, extractDiscordFlag, extractSlackFlag, extractWebhookFlag, normalizeCopilotLaunchArgs } from '../launch.js';
+import { runCopilot, launchCommand, extractNotifyFlag, extractTelegramFlag, extractDiscordFlag, extractSlackFlag, extractWebhookFlag, normalizeCopilotLaunchArgs, prepareOmcLaunchConfigDir } from '../launch.js';
 import { resolveLaunchPolicy, buildTmuxShellCommand, } from '../tmux-utils.js';
 // ---------------------------------------------------------------------------
 // extractNotifyFlag
@@ -184,11 +187,9 @@ describe('runCopilot OMC HUD behavior', () => {
     it('does not add split-window HUD pane args when launching outside tmux', () => {
         resolveLaunchPolicy.mockReturnValue('outside-tmux');
         runCopilot('/tmp/cwd', [], 'test-session');
-        const calls = vi.mocked(execFileSync).mock.calls;
-        const tmuxCall = calls.find(([cmd]) => cmd === 'tmux');
-        expect(tmuxCall).toBeDefined();
-        const tmuxArgs = tmuxCall[1];
-        expect(tmuxArgs).not.toContain('split-window');
+        const tmuxCalls = vi.mocked(execFileSync).mock.calls.filter(([cmd]) => cmd === 'tmux');
+        expect(tmuxCalls.length).toBeGreaterThan(0);
+        expect(tmuxCalls.every(([, tmuxArgs]) => !tmuxArgs.includes('split-window'))).toBe(true);
     });
 });
 // ---------------------------------------------------------------------------
@@ -207,8 +208,8 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
     });
     it('uses session-targeted mouse option instead of global (-t sessionName, not -g)', () => {
         runCopilot('/tmp', [], 'sid');
-        const calls = vi.mocked(execFileSync).mock.calls;
-        const tmuxCall = calls.find(([cmd]) => cmd === 'tmux');
+        const tmuxCalls = vi.mocked(execFileSync).mock.calls.filter(([cmd]) => cmd === 'tmux');
+        const tmuxCall = tmuxCalls.find(([, args]) => args[0] === 'set-option');
         expect(tmuxCall).toBeDefined();
         const tmuxArgs = tmuxCall[1];
         // Must use -t <sessionName> targeting, not -g (global)
@@ -223,22 +224,58 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
     });
     it('does not set terminal-overrides in tmux args', () => {
         runCopilot('/tmp', [], 'sid');
-        const calls = vi.mocked(execFileSync).mock.calls;
-        const tmuxCall = calls.find(([cmd]) => cmd === 'tmux');
+        const tmuxCalls = vi.mocked(execFileSync).mock.calls.filter(([cmd]) => cmd === 'tmux');
+        const tmuxCall = tmuxCalls.find(([, args]) => args[0] === 'new-session');
+        expect(tmuxCall).toBeDefined();
         const tmuxArgs = tmuxCall[1];
         expect(tmuxArgs).not.toContain('terminal-overrides');
         expect(tmuxArgs).not.toContain('*:smcup@:rmcup@');
     });
     it('places mouse mode setup before attach-session', () => {
         runCopilot('/tmp', [], 'sid');
-        const calls = vi.mocked(execFileSync).mock.calls;
-        const tmuxCall = calls.find(([cmd]) => cmd === 'tmux');
-        const tmuxArgs = tmuxCall[1];
-        const mouseIdx = tmuxArgs.indexOf('mouse');
-        const attachIdx = tmuxArgs.indexOf('attach-session');
+        const tmuxCalls = vi.mocked(execFileSync).mock.calls
+            .map(([cmd, tmuxArgs]) => ({ cmd, tmuxArgs: tmuxArgs }))
+            .filter(({ cmd }) => cmd === 'tmux');
+        const mouseIdx = tmuxCalls.findIndex(({ tmuxArgs }) => tmuxArgs[0] === 'set-option');
+        const attachIdx = tmuxCalls.findIndex(({ tmuxArgs }) => tmuxArgs[0] === 'attach-session');
         expect(mouseIdx).toBeGreaterThanOrEqual(0);
         expect(attachIdx).toBeGreaterThanOrEqual(0);
         expect(mouseIdx).toBeLessThan(attachIdx);
+    });
+    it('preserves a valid detached session when attach-session is interrupted', () => {
+        execFileSync.mockImplementation((cmd, args) => {
+            if (cmd !== 'tmux')
+                return Buffer.from('');
+            if (args[0] === 'attach-session') {
+                throw new Error('attach interrupted');
+            }
+            return Buffer.from('');
+        });
+        runCopilot('/tmp', [], 'sid');
+        const tmuxCalls = vi.mocked(execFileSync).mock.calls
+            .filter(([cmd]) => cmd === 'tmux')
+            .map(([, tmuxArgs]) => tmuxArgs);
+        expect(tmuxCalls.map((tmuxArgs) => tmuxArgs[0])).toEqual([
+            'new-session',
+            'set-option',
+            'attach-session',
+            'has-session',
+        ]);
+        expect(tmuxCalls.some((tmuxArgs) => tmuxArgs[0] === 'kill-session')).toBe(false);
+        expect(vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'copilot')).toBeUndefined();
+        expect(processExitSpy).not.toHaveBeenCalled();
+    });
+    it('falls back to direct launch when detached session creation fails', () => {
+        execFileSync.mockImplementation((cmd, args) => {
+            if (cmd === 'tmux' && args[0] === 'new-session') {
+                throw new Error('tmux launch failed');
+            }
+            return Buffer.from('');
+        });
+        runCopilot('/tmp', ['--dangerously-skip-permissions'], 'sid');
+        const calls = vi.mocked(execFileSync).mock.calls;
+        expect(calls.filter(([cmd]) => cmd === 'tmux')).toHaveLength(1);
+        expect(calls.find(([cmd, args]) => cmd === 'copilot' && args[0] === '--dangerously-skip-permissions')).toBeDefined();
     });
 });
 // ---------------------------------------------------------------------------
@@ -575,6 +612,50 @@ describe('launchCommand — env var propagation', () => {
         expect(claudeArgs).not.toContain('--slack');
         expect(claudeArgs).not.toContain('--webhook');
         expect(claudeArgs).toContain('--print');
+    });
+});
+describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () => {
+    const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+    let tempRoot = null;
+    beforeEach(() => {
+        vi.resetAllMocks();
+        tempRoot = mkdtempSync(join(tmpdir(), 'omc-launch-profile-'));
+        execFileSync.mockReturnValue(Buffer.from(''));
+        resolveLaunchPolicy.mockReturnValue('direct');
+    });
+    afterEach(() => {
+        if (tempRoot) {
+            rmSync(tempRoot, { recursive: true, force: true });
+            tempRoot = null;
+        }
+        if (originalClaudeConfigDir === undefined) {
+            delete process.env.COPILOT_CONFIG_DIR;
+        }
+        else {
+            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+        }
+    });
+    it('uses a runtime launch profile when a preserved CLAUDE-omc.md companion exists', async () => {
+        const configDir = join(tempRoot, '.copilot');
+        mkdirSync(join(configDir, 'skills'), { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE.md'), '# User base config\n');
+        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC companion\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'settings.json'), '{"hooks":{}}');
+        process.env.COPILOT_CONFIG_DIR = configDir;
+        await launchCommand(['--print']);
+        const runtimeDir = join(configDir, '.omc-launch');
+        expect(process.env.COPILOT_CONFIG_DIR).toBe(runtimeDir);
+        expect(existsSync(join(runtimeDir, 'CLAUDE.md'))).toBe(true);
+        expect(readFileSync(join(runtimeDir, 'CLAUDE.md'), 'utf-8')).toContain('# OMC companion');
+        expect(readFileSync(join(configDir, 'CLAUDE.md'), 'utf-8')).toBe('# User base config\n');
+        expect(existsSync(join(runtimeDir, 'settings.json'))).toBe(true);
+    });
+    it('leaves COPILOT_CONFIG_DIR unchanged when no preserved companion exists', () => {
+        const configDir = join(tempRoot, '.copilot');
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(join(configDir, 'CLAUDE.md'), '<!-- OMC:START -->\n# OMC base\n<!-- OMC:END -->\n');
+        expect(prepareOmcLaunchConfigDir(configDir)).toBe(configDir);
+        expect(existsSync(join(configDir, '.omc-launch'))).toBe(false);
     });
 });
 //# sourceMappingURL=launch.test.js.map

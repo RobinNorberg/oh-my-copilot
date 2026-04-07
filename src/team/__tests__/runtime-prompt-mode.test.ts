@@ -54,6 +54,22 @@ vi.mock('child_process', async (importOriginal) => {
     return { stdout: '', stderr: '' };
   };
 
+  function mockExec(cmd: string, cb: (err: Error | null, stdout: string, stderr: string) => void) {
+    if (cmd.includes('display-message') && cmd.includes('#{window_width}')) {
+      cb(null, '160\n', '');
+    } else {
+      cb(null, '', '');
+    }
+    return {} as never;
+  }
+
+  (mockExec as any)[utilPromisify.custom] = async (cmd: string) => {
+    if (cmd.includes('display-message') && cmd.includes('#{window_width}')) {
+      return { stdout: '160\n', stderr: '' };
+    }
+    return { stdout: '', stderr: '' };
+  };
+
   return {
     ...actual,
     spawnSync: vi.fn((cmd: string, args: string[] = []) => {
@@ -64,6 +80,7 @@ vi.mock('child_process', async (importOriginal) => {
       }
       return { status: 0, stdout: '', stderr: '' };
     }),
+    exec: mockExec,
     execFile: mockExecFile,
   };
 });
@@ -218,6 +235,7 @@ describe('spawnWorkerForTask – prompt mode (Gemini & Codex)', () => {
       args => args[0] === 'send-keys' && args.includes('-l') && (args[args.length - 1] ?? '').includes('Read and execute your task from:')
     );
     expect(readInstructionCalls.length).toBe(1);
+    expect(tmuxCalls.args).toContainEqual(['set-window-option', '-t', 'test-session:0', 'main-pane-width', '80']);
 
     rmSync(cwd, { recursive: true, force: true });
   });

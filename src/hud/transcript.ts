@@ -100,6 +100,7 @@ export async function parseTranscript(
     toolCallCount: 0,
     agentCallCount: 0,
     skillCallCount: 0,
+    lastToolName: null,
   };
 
   if (!transcriptPath || !existsSync(transcriptPath)) {
@@ -431,6 +432,7 @@ function processEntry(
     // Track tool_use for Task (agents) and TodoWrite
     if (block.type === "tool_use" && block.id && block.name) {
       result.toolCallCount++;
+      result.lastToolName = block.name;
       if (block.name === "Task" || block.name === "proxy_Task") {
         result.agentCallCount++;
         const input = block.input as TaskInput | undefined;

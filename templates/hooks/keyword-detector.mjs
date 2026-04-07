@@ -30,6 +30,8 @@ const __dirname = dirname(__filename);
 
 // Dynamic import for the shared stdin module (use pathToFileURL for Windows compatibility, #524)
 const { readStdin } = await import(pathToFileURL(join(__dirname, 'lib', 'stdin.mjs')).href);
+const { atomicWriteFileSync } = await import(pathToFileURL(join(__dirname, 'lib', 'atomic-write.mjs')).href);
+const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
 
 const ULTRATHINK_MESSAGE = `<think-mode>
 
@@ -146,6 +148,8 @@ function sanitizeForKeywordDetection(text) {
 }
 
 // Create state file for a mode
+const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+
 function activateState(directory, prompt, stateName, sessionId) {
   let state;
 
@@ -158,6 +162,7 @@ function activateState(directory, prompt, stateName, sessionId) {
       started_at: new Date().toISOString(),
       prompt: prompt,
       session_id: sessionId || undefined,
+      project_path: directory,
       reinforcement_count: 0,
       awaiting_confirmation: true,
       last_checked_at: new Date().toISOString()
@@ -168,25 +173,31 @@ function activateState(directory, prompt, stateName, sessionId) {
       started_at: new Date().toISOString(),
       original_prompt: prompt,
       session_id: sessionId || undefined,
+      project_path: directory,
       reinforcement_count: 0,
       awaiting_confirmation: true,
       last_checked_at: new Date().toISOString()
     };
   }
 
-  // Write to local .omg/state directory
-  const localDir = join(directory, '.omg', 'state');
-  if (!existsSync(localDir)) {
-    try { mkdirSync(localDir, { recursive: true }); } catch {}
-  }
-  try { writeFileSync(join(localDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
+  // Write to session-scoped local path when sessionId is available (must match persistent-mode.mjs reads)
+  const stateDir = join(directory, '.omg', 'state');
+  const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
+  const targetDir = safeSessionId
+    ? join(stateDir, 'sessions', safeSessionId)
+    : stateDir;
 
-  // Write to global .omg/state directory
+  try {
+    if (!existsSync(targetDir)) mkdirSync(targetDir, { recursive: true });
+    atomicWriteFileSync(join(targetDir, `${stateName}-state.json`), JSON.stringify(state, null, 2));
+  } catch {}
+
+  // Also write to global fallback
   const globalDir = join(homedir(), '.omg', 'state');
-  if (!existsSync(globalDir)) {
-    try { mkdirSync(globalDir, { recursive: true }); } catch {}
-  }
-  try { writeFileSync(join(globalDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
+  try {
+    if (!existsSync(globalDir)) mkdirSync(globalDir, { recursive: true });
+    atomicWriteFileSync(join(globalDir, `${stateName}-state.json`), JSON.stringify(state, null, 2));
+  } catch {}
 }
 
 /**
@@ -335,7 +346,7 @@ function createHookOutput(additionalContext) {
 function isTeamEnabled() {
   try {
     // Check settings.json first (authoritative, user-controlled)
-    const cfgDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot');
+    const cfgDir = getCopilotConfigDir();
     const settingsPath = join(cfgDir, 'settings.json');
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));

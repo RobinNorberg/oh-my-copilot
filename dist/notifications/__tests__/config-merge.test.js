@@ -14,7 +14,7 @@ vi.mock("fs", async (importOriginal) => {
     };
 });
 // Mock getCopilotConfigDir to return a predictable path
-vi.mock("../../utils/paths.js", () => ({
+vi.mock("../../utils/config-dir.js", () => ({
     getCopilotConfigDir: () => "/mock-copilot-config",
 }));
 import { getNotificationConfig, getTmuxTailLines } from "../config.js";

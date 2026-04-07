@@ -8,9 +8,9 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (34 canonical skills)', () => {
+    it('should return correct number of skills (50 canonical skills)', () => {
       const skills = createBuiltinSkills();
-      expect(skills).toHaveLength(34);
+      expect(skills).toHaveLength(50);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -66,11 +66,14 @@ describe('Builtin Skills', () => {
         'cancel',
         'ccg',
         'configure-notifications',
+        'debug',
+        'deep-dive',
         'deep-interview',
         'deep-review',
         'discover',
         'deepinit',
         'external-context',
+        'hud',
         'learner',
         'mcp-setup',
         'omc-ado-auto-review',
@@ -79,7 +82,13 @@ describe('Builtin Skills', () => {
         'omc-ado-sprint',
         'omc-ado-triage',
         'omc-doctor',
+        'omc-gh-auto-review',
+        'omc-gh-project',
+        'omc-gh-review',
+        'omc-gh-setup',
+        'omc-gh-triage',
         'omc-plan',
+        'omc-reference',
         'omc-setup',
         'omc-teams',
         'project-session-manager',
@@ -87,12 +96,19 @@ describe('Builtin Skills', () => {
         'ralph-experiment',
         'ralplan',
         'release',
+        'remember',
         'sciomc',
+        'self-improve',
         'setup',
         'skill',
+        'skillify',
         'team',
+        'trace',
         'ultraqa',
         'ultrawork',
+        'verify',
+        'visual-verdict',
+        'wiki',
         'writer-memory',
       ];
 
@@ -138,7 +154,7 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toHaveLength(34);
+      expect(names).toHaveLength(50);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('ask');
       expect(names).toContain('autopilot');
@@ -155,7 +171,6 @@ describe('Builtin Skills', () => {
       expect(names).toContain('omc-setup');
       expect(names).not.toContain('swarm'); // removed in #1131
       expect(names).not.toContain('psm');
-      expect(names).not.toContain('hud'); // removed — Copilot doesn't support custom HUDs
     });
 
     it('should return an array of strings', () => {
@@ -169,7 +184,7 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131, psm alias removed in Phase 4 cleanup
-      expect(names).toHaveLength(34);
+      expect(names).toHaveLength(50);
       expect(names).not.toContain('swarm');
       expect(names).not.toContain('psm');
     });

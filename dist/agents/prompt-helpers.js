@@ -8,6 +8,7 @@ import { readdirSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { loadAgentPrompt } from './utils.js';
+import { appendStrictModeGuidance } from './strict-mode-guidance.js';
 /**
  * Get the package root directory.
  * Handles both ESM (import.meta.url) and CJS bundle (__dirname) contexts.
@@ -116,7 +117,7 @@ export function resolveSystemPrompt(systemPrompt, agentRole) {
             console.warn(`[prompt-injection] Agent role "${role}" prompt not found, skipping injection`);
             return undefined;
         }
-        return prompt;
+        return appendStrictModeGuidance(prompt, 'agent');
     }
     return undefined;
 }
