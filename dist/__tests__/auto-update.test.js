@@ -9,6 +9,7 @@ vi.mock('../installer/index.js', async () => {
         install: vi.fn(),
         HOOKS_DIR: '/tmp/omc-test-hooks',
         isProjectScopedPlugin: vi.fn(),
+        isRunningAsPlugin: vi.fn(),
         checkNodeVersion: vi.fn(),
     };
 });
@@ -26,7 +27,7 @@ import { execSync } from 'child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { install, isProjectScopedPlugin, checkNodeVersion } from '../installer/index.js';
+import { install, isProjectScopedPlugin, isRunningAsPlugin, checkNodeVersion } from '../installer/index.js';
 import * as hooksModule from '../installer/hooks.js';
 import { reconcileUpdateRuntime, performUpdate, } from '../features/auto-update.js';
 const mockedExecSync = vi.mocked(execSync);
@@ -36,12 +37,15 @@ const mockedReadFileSync = vi.mocked(readFileSync);
 const mockedWriteFileSync = vi.mocked(writeFileSync);
 const mockedInstall = vi.mocked(install);
 const mockedIsProjectScopedPlugin = vi.mocked(isProjectScopedPlugin);
+const mockedIsRunningAsPlugin = vi.mocked(isRunningAsPlugin);
 const mockedCheckNodeVersion = vi.mocked(checkNodeVersion);
 describe('auto-update reconciliation', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockedExistsSync.mockReturnValue(true);
         mockedIsProjectScopedPlugin.mockReturnValue(false);
+        // Default: running as plugin so forceHooks/refreshHooksInPlugin logic works
+        mockedIsRunningAsPlugin.mockReturnValue(true);
         mockedReadFileSync.mockImplementation((path) => {
             if (String(path).includes('.omc-version.json')) {
                 return JSON.stringify({
@@ -121,6 +125,9 @@ describe('auto-update reconciliation', () => {
         // Set env var so performUpdate takes the direct reconciliation path
         // (simulates being in the re-exec'd process after npm install)
         process.env.OMC_UPDATE_RECONCILE = '1';
+        // Clear entrypoint so shouldBlockStandaloneUpdateInCurrentSession() returns false
+        const savedEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+        delete process.env.CLAUDE_CODE_ENTRYPOINT;
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({
@@ -145,10 +152,16 @@ describe('auto-update reconciliation', () => {
             refreshHooksInPlugin: true,
         });
         delete process.env.OMC_UPDATE_RECONCILE;
+        if (savedEntrypoint !== undefined)
+            process.env.CLAUDE_CODE_ENTRYPOINT = savedEntrypoint;
+        else
+            delete process.env.CLAUDE_CODE_ENTRYPOINT;
     });
     it('does not persist metadata when reconciliation fails', async () => {
         // Set env var so performUpdate takes the direct reconciliation path
         process.env.OMC_UPDATE_RECONCILE = '1';
+        const savedEntrypoint2 = process.env.CLAUDE_CODE_ENTRYPOINT;
+        delete process.env.CLAUDE_CODE_ENTRYPOINT;
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
             ok: true,
             json: async () => ({
@@ -177,6 +190,10 @@ describe('auto-update reconciliation', () => {
         expect(result.errors).toEqual(['Reconciliation failed: boom']);
         expect(mockedWriteFileSync).not.toHaveBeenCalled();
         delete process.env.OMC_UPDATE_RECONCILE;
+        if (savedEntrypoint2 !== undefined)
+            process.env.CLAUDE_CODE_ENTRYPOINT = savedEntrypoint2;
+        else
+            delete process.env.CLAUDE_CODE_ENTRYPOINT;
     });
     it('preserves non-OMC hooks when refreshing plugin hooks during reconciliation', () => {
         const existingSettings = {

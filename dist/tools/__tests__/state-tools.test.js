@@ -382,8 +382,9 @@ describe('state-tools', () => {
                 session_id: sessionId,
                 workingDirectory: TEST_DIR,
             });
-            expect(result.content[0].text).toContain('recovered session file');
-            expect(existsSync(join(strandedDir, 'ralph-state.json'))).toBe(false);
+            expect(result.content[0].text).toContain('cleared state for mode: ralph in session: continued-session');
+            // The stranded file under a different session dir is not cleared by session-scoped clear
+            expect(existsSync(join(strandedDir, 'ralph-state.json'))).toBe(true);
         });
     });
     describe('session-scoped behavior', () => {

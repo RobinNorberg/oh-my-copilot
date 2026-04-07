@@ -16,6 +16,7 @@ import { basename } from "path";
 const MAX_TAIL_BYTES = 512 * 1024; // 500KB - enough for recent activity
 const MAX_AGENT_MAP_SIZE = 100; // Cap agent tracking
 const _MIN_RUNNING_AGENTS_THRESHOLD = 10; // Early termination threshold
+const MAX_RECENT_TOOLS = 20; // Track last 20 tool calls for recentTools display
 /**
  * Tools known to require permission approval in Copilot CLI.
  * Only these tools will trigger the "APPROVE?" indicator.
@@ -59,6 +60,7 @@ export async function parseTranscript(transcriptPath, options) {
         agentCallCount: 0,
         skillCallCount: 0,
         lastToolName: null,
+        recentTools: [],
     };
     if (!transcriptPath || !existsSync(transcriptPath)) {
         return result;
@@ -78,6 +80,7 @@ export async function parseTranscript(transcriptPath, options) {
     const agentMap = new Map();
     const backgroundAgentMap = new Map();
     const latestTodos = [];
+    const recentToolMap = new Map();
     let sessionTotalsReliable = false;
     const sessionTokenTotals = { inputTokens: 0, outputTokens: 0, seenUsage: false };
     const observedSessionIds = new Set();
@@ -91,7 +94,7 @@ export async function parseTranscript(transcriptPath, options) {
                     continue;
                 try {
                     const entry = JSON.parse(line);
-                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap);
+                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap, recentToolMap);
                 }
                 catch {
                     // Skip malformed lines
@@ -112,7 +115,7 @@ export async function parseTranscript(transcriptPath, options) {
                     continue;
                 try {
                     const entry = JSON.parse(line);
-                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap);
+                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap, recentToolMap);
                 }
                 catch {
                     // Skip malformed lines
@@ -131,6 +134,8 @@ export async function parseTranscript(transcriptPath, options) {
         ...completed.slice(-(10 - running.length)),
     ].slice(0, 10);
     result.todos = latestTodos;
+    result.recentTools = Array.from(recentToolMap.values())
+        .map(({ id: _id, ...rest }) => rest);
     if (sessionTotalsReliable && sessionTokenTotals.seenUsage) {
         result.sessionTotalTokens = sessionTokenTotals.inputTokens + sessionTokenTotals.outputTokens;
     }
@@ -185,6 +190,10 @@ function cloneTranscriptData(result) {
         lastRequestTokenUsage: result.lastRequestTokenUsage
             ? { ...result.lastRequestTokenUsage }
             : undefined,
+        recentTools: result.recentTools.map((t) => ({
+            ...t,
+            timestamp: new Date(t.timestamp.getTime()),
+        })),
     };
 }
 function finalizeTranscriptResult(result, options, pendingPermissions) {
@@ -294,7 +303,7 @@ function extractTargetSummary(input, toolName) {
 /**
  * Process a single transcript entry
  */
-function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50, backgroundAgentMap) {
+function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50, backgroundAgentMap, recentToolMap) {
     const timestamp = entry.timestamp ? new Date(entry.timestamp) : new Date();
     // Set session start time from first entry
     if (!result.sessionStart && entry.timestamp) {
@@ -315,6 +324,28 @@ function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50
         if (block.type === "tool_use" && block.id && block.name) {
             result.toolCallCount++;
             result.lastToolName = block.name;
+            // Track for recentTools (skip internal/meta tools)
+            if (recentToolMap) {
+                const SKIP_TOOLS = [
+                    'TodoWrite', 'Skill', 'proxy_Skill', 'Task', 'proxy_Task',
+                    'report_intent', 'task_complete', 'thinking',
+                    'read_agent', 'list_agents', 'write_agent',
+                ];
+                if (!SKIP_TOOLS.includes(block.name)) {
+                    if (recentToolMap.size >= MAX_RECENT_TOOLS) {
+                        const oldestKey = recentToolMap.keys().next().value;
+                        if (oldestKey)
+                            recentToolMap.delete(oldestKey);
+                    }
+                    recentToolMap.set(block.id, {
+                        id: block.id,
+                        name: block.name.replace('proxy_', ''),
+                        target: extractTargetSummary(block.input, block.name),
+                        status: 'running',
+                        timestamp,
+                    });
+                }
+            }
             if (block.name === "Task" || block.name === "proxy_Task") {
                 result.agentCallCount++;
                 const input = block.input;
@@ -383,6 +414,15 @@ function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50
         if (block.type === "tool_result" && block.tool_use_id) {
             // Clear from pending permissions when tool_result arrives
             pendingPermissionMap.delete(block.tool_use_id);
+            // Update recentTools status
+            if (recentToolMap) {
+                const trackedTool = recentToolMap.get(block.tool_use_id);
+                if (trackedTool) {
+                    const isError = block.is_error === true ||
+                        (typeof block.content === 'string' && block.content.toLowerCase().includes('error'));
+                    trackedTool.status = isError ? 'failure' : 'success';
+                }
+            }
             const agent = agentMap.get(block.tool_use_id);
             if (agent) {
                 const blockContent = block.content;

@@ -63,6 +63,16 @@ export interface ActiveAgent {
     startTime: Date;
     endTime?: Date;
 }
+export interface RecentTool {
+    /** Tool name (e.g., "Read", "Bash", "Edit") */
+    name: string;
+    /** Target summary (e.g., "auth.ts", "git st…") */
+    target: string | null;
+    /** Execution status */
+    status: 'running' | 'success' | 'failure';
+    /** When the tool was invoked */
+    timestamp: Date;
+}
 export interface SkillInvocation {
     name: string;
     args?: string;
@@ -101,6 +111,8 @@ export interface TranscriptData {
     skillCallCount: number;
     /** Name of the last tool_use block seen in transcript */
     lastToolName: string | null;
+    /** Rolling list of recent tool calls with status and target info */
+    recentTools: RecentTool[];
 }
 export interface RalphStateForHud {
     active: boolean;
@@ -279,6 +291,8 @@ export interface HudRenderContext {
     sessionSummary: SessionSummaryState | null;
     /** Name of the last tool called in this session */
     lastToolName?: string | null;
+    /** Rolling list of recent tool calls with status and target info */
+    recentTools?: RecentTool[];
 }
 export type HudPreset = 'minimal' | 'focused' | 'full' | 'opencode' | 'dense';
 /**
@@ -352,6 +366,10 @@ export interface HudElementConfig {
     showCallCounts?: boolean;
     callCountsFormat?: CallCountsFormat;
     showLastTool?: boolean;
+    showRecentTools?: boolean;
+    recentToolsMax?: number;
+    recentToolsShowTarget?: boolean;
+    maxAgents?: number;
     maxOutputLines: number;
     safeMode: boolean;
     sessionSummary: boolean;

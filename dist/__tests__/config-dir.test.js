@@ -71,7 +71,7 @@ describe('getCopilotConfigDir', () => {
         });
         expect(output).toBe(normalize(join(homedir(), '.copilot-alt')));
     });
-    it('find-node.sh resolves a ~-prefixed COPILOT_CONFIG_DIR before reading .omc-config.json', () => {
+    it.skipIf(process.platform === 'win32')('find-node.sh resolves a ~-prefixed COPILOT_CONFIG_DIR before reading .omc-config.json', () => {
         const homeDir = mkdtempSync(join(tmpdir(), 'omc-find-node-home-'));
         const configDir = join(homeDir, '.copilot-alt');
         mkdirSync(configDir, { recursive: true });
@@ -88,7 +88,7 @@ describe('getCopilotConfigDir', () => {
         });
         expect(output).toBe('ok');
     });
-    it('shared shell helper expands a ~-prefixed COPILOT_CONFIG_DIR', () => {
+    it.skipIf(process.platform === 'win32')('shared shell helper expands a ~-prefixed COPILOT_CONFIG_DIR', () => {
         const homeDir = mkdtempSync(join(tmpdir(), 'omc-uninstall-home-'));
         const output = execFileSync('bash', ['-lc', `. "${join(process.cwd(), 'scripts', 'lib', 'config-dir.sh')}"; resolve_claude_config_dir`], {
             cwd: process.cwd(),

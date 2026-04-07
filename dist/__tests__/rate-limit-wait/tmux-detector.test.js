@@ -5,10 +5,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { analyzePaneContent, isTmuxAvailable, listTmuxPanes, capturePaneContent, formatBlockedPanesSummary, } from '../../features/rate-limit-wait/tmux-detector.js';
 // Mock child_process
 vi.mock('child_process', () => ({
-    execSync: vi.fn(),
+    execFileSync: vi.fn(),
     spawnSync: vi.fn(),
 }));
-import { execSync, spawnSync } from 'child_process';
+import { execFileSync, spawnSync } from 'child_process';
+// Alias so tests can use execSync variable name
+const execSync = execFileSync;
 describe('tmux-detector', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -189,7 +191,7 @@ describe('tmux-detector', () => {
             vi.mocked(execSync).mockReturnValue('Line 1\nLine 2\nLine 3\n');
             const content = capturePaneContent('%0', 3);
             expect(content).toBe('Line 1\nLine 2\nLine 3\n');
-            expect(execSync).toHaveBeenCalledWith('tmux capture-pane -t "%0" -p -S -3', expect.any(Object));
+            expect(execSync).toHaveBeenCalledWith('tmux', expect.arrayContaining(['-t', '%0', '-S', '-3']), expect.any(Object));
         });
         it('should return empty string when tmux not available', () => {
             vi.mocked(spawnSync).mockReturnValue({
@@ -246,11 +248,11 @@ describe('tmux-detector', () => {
             vi.mocked(execSync).mockReturnValue('content');
             // Should clamp negative to 1
             capturePaneContent('%0', -5);
-            expect(execSync).toHaveBeenCalledWith(expect.stringContaining('-S -1'), expect.any(Object));
+            expect(execSync).toHaveBeenCalledWith('tmux', expect.arrayContaining(['-S', '-1']), expect.any(Object));
             // Should clamp excessive values to 100
             vi.mocked(execSync).mockClear();
             capturePaneContent('%0', 1000);
-            expect(execSync).toHaveBeenCalledWith(expect.stringContaining('-S -100'), expect.any(Object));
+            expect(execSync).toHaveBeenCalledWith('tmux', expect.arrayContaining(['-S', '-100']), expect.any(Object));
         });
     });
     describe('formatBlockedPanesSummary', () => {

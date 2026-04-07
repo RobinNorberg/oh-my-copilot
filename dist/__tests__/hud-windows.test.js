@@ -141,8 +141,8 @@ describe('HUD Windows Compatibility', () => {
         it('plugin-setup.mjs should respect COPILOT_CONFIG_DIR for plugin cache base', () => {
             const setupPath = join(packageRoot, 'scripts', 'plugin-setup.mjs');
             const content = readFileSync(setupPath, 'utf-8');
-            // Should use getClaudeConfigDir() which reads COPILOT_CONFIG_DIR internally (#897)
-            expect(content).toContain('getClaudeConfigDir()');
+            // Should use getCopilotConfigDir() which reads COPILOT_CONFIG_DIR internally (#897)
+            expect(content).toContain('getCopilotConfigDir()');
             // Should use join() with configDir for path construction
             expect(content).toContain('join(configDir,');
         });

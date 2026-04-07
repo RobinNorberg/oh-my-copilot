@@ -26,7 +26,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
         const output = runKeywordDetector('deepsearch the codebase for keyword dispatch');
         const context = output.hookSpecificOutput?.additionalContext ?? '';
         expect(output.continue).toBe(true);
-        expect(output.hookSpecificOutput?.hookEventName).toBe('UserPromptSubmit');
+        expect(output.hookSpecificOutput?.hookEventName).toBe('userPromptSubmitted');
         expect(context).toContain('<search-mode>');
         expect(context).toContain('MAXIMIZE SEARCH EFFORT');
         expect(context).not.toContain('[MAGIC KEYWORD: DEEPSEARCH]');

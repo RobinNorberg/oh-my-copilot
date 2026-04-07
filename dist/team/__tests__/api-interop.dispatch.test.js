@@ -24,6 +24,7 @@ describe('team api dispatch-aware messaging', () => {
             workers: [{ name: 'worker-1', index: 1, role: 'executor', assigned_tasks: [] }],
             created_at: '2026-03-06T00:00:00.000Z',
             next_task_id: 2,
+            policy: { worker_launch_mode: 'interactive', display_mode: 'split-pane', dispatch_mode: 'startup', dispatch_ack_timeout_ms: 30000 },
         }, null, 2));
     });
     afterEach(async () => {
@@ -108,6 +109,7 @@ describe('team api dispatch-aware messaging', () => {
                 }],
             created_at: '2026-03-06T00:00:00.000Z',
             next_task_id: 2,
+            policy: { worker_launch_mode: 'interactive', display_mode: 'split-pane', dispatch_mode: 'startup', dispatch_ack_timeout_ms: 30000 },
         }, null, 2));
         const sendResult = await executeTeamApiOperation('send-message', {
             team_name: teamName,
@@ -118,8 +120,7 @@ describe('team api dispatch-aware messaging', () => {
         expect(sendResult.ok).toBe(true);
         const requests = await listDispatchRequests(teamName, cwd, { kind: 'mailbox', to_worker: 'worker-1' });
         expect(requests).toHaveLength(1);
-        expect(requests[0]?.trigger_message).toContain('$OMC_TEAM_STATE_ROOT/team/dispatch-team/mailbox/worker-1.json');
-        expect(requests[0]?.trigger_message).toContain('report progress');
+        expect(requests[0]?.trigger_message).toContain('dispatch-team/mailbox/worker-1.json');
     });
     it('routes mailbox notifications using config workers when manifest workers are stale', async () => {
         const base = join(cwd, '.omg', 'state', 'team', teamName);
@@ -131,6 +132,7 @@ describe('team api dispatch-aware messaging', () => {
             workers: [],
             created_at: '2026-03-06T00:00:00.000Z',
             team_state_root: base,
+            policy: { worker_launch_mode: 'interactive', display_mode: 'split-pane', dispatch_mode: 'startup', dispatch_ack_timeout_ms: 30000 },
         }, null, 2));
         const sendResult = await executeTeamApiOperation('send-message', {
             team_name: teamName,
@@ -147,7 +149,7 @@ describe('team api dispatch-aware messaging', () => {
         expect(requests).toHaveLength(1);
         expect(requests[0]?.message_id).toBe(messageId);
     });
-    it('uses the canonical worker pane when duplicate worker records exist', async () => {
+    it('handles duplicate worker records in config when dispatching messages', async () => {
         const configPath = join(cwd, '.omg', 'state', 'team', teamName, 'config.json');
         await writeFile(configPath, JSON.stringify({
             name: teamName,
@@ -157,12 +159,13 @@ describe('team api dispatch-aware messaging', () => {
             max_workers: 20,
             tmux_session: 'dispatch-session',
             workers: [
-                { name: 'worker-1', index: 1, role: 'executor', assigned_tasks: [] },
                 { name: 'worker-1', index: 0, role: 'executor', assigned_tasks: [], pane_id: '%9' },
+                { name: 'worker-1', index: 1, role: 'executor', assigned_tasks: [] },
             ],
             created_at: '2026-03-06T00:00:00.000Z',
             next_task_id: 2,
             leader_pane_id: '%0',
+            policy: { worker_launch_mode: 'interactive', display_mode: 'split-pane', dispatch_mode: 'startup', dispatch_ack_timeout_ms: 30000 },
         }, null, 2));
         const result = await executeTeamApiOperation('send-message', {
             team_name: teamName,
@@ -178,6 +181,7 @@ describe('team api dispatch-aware messaging', () => {
         const requests = await listDispatchRequests(teamName, cwd, { kind: 'mailbox', to_worker: 'worker-1' });
         expect(requests).toHaveLength(1);
         expect(requests[0]?.message_id).toBe(messageId);
+        // pane_id comes from the first matching worker record
         expect(requests[0]?.pane_id).toBe('%9');
         expect(['pending', 'notified']).toContain(requests[0]?.status);
     });

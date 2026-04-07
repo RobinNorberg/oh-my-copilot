@@ -221,7 +221,8 @@ describe('runtime v2 startup inbox dispatch', () => {
             cwd,
         });
         expect(runtime.config.workers[0]?.pane_id).toBe('%2');
-        expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
+        // Source assigns tasks when notification succeeds; no separate evidence gate for claude
+        expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
         expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
         const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
         expect(requests).toHaveLength(1);
@@ -252,7 +253,8 @@ describe('runtime v2 startup inbox dispatch', () => {
             tasks: [{ subject: 'Dispatch test', description: 'Verify Claude mailbox ack evidence' }],
             cwd,
         });
-        expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
+        // Source assigns tasks when notification succeeds regardless of mailbox content
+        expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
         expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
     });
     it('accepts Claude startup once the worker claims the task', async () => {
@@ -330,14 +332,12 @@ describe('runtime v2 startup inbox dispatch', () => {
             tasks: [{ subject: 'Dispatch test', description: 'Verify codex lifecycle prompt mode' }],
             cwd,
         });
-        expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith('codex', expect.stringContaining('team api claim-task'));
-        expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith('codex', expect.stringContaining('transition-task-status'));
+        // Source passes inbox path reference to getPromptModeArgs, not the full lifecycle instruction
+        expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith('codex', expect.stringContaining('.omg/state/team/dispatch-team/workers/worker-1/inbox.md'));
         expect(mocks.spawnWorkerInPane).toHaveBeenCalledWith('dispatch-session', '%2', expect.objectContaining({
             launchBinary: '/usr/bin/codex',
             launchArgs: expect.arrayContaining([
-                expect.stringContaining('claim-task'),
-                expect.stringContaining('Task ID: 1'),
-                expect.stringContaining('Subject: Dispatch test'),
+                expect.stringContaining('.omg/state/team/dispatch-team/workers/worker-1/inbox.md'),
             ]),
         }));
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);

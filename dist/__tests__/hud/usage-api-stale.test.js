@@ -72,11 +72,16 @@ function setupMocks(fsModule, httpStatus, httpBody) {
     vi.doMock('../../utils/paths.js', () => ({
         getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
     }));
+    vi.doMock('../../utils/config-dir.js', () => ({
+        getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
+    }));
     vi.doMock('../../utils/ssrf-guard.js', () => ({
         validateAnthropicBaseUrl: () => ({ allowed: true }),
     }));
     vi.doMock('child_process', () => ({
         execSync: vi.fn(),
+        execFile: vi.fn(),
+        execFileSync: vi.fn(),
     }));
     vi.doMock('fs', () => fsModule);
     vi.doMock('https', () => ({
@@ -204,11 +209,16 @@ describe('usage API stale data handling', () => {
         vi.doMock('../../utils/paths.js', () => ({
             getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
         }));
+        vi.doMock('../../utils/config-dir.js', () => ({
+            getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
+        }));
         vi.doMock('../../utils/ssrf-guard.js', () => ({
             validateAnthropicBaseUrl: () => ({ allowed: true }),
         }));
         vi.doMock('child_process', () => ({
             execSync: vi.fn(),
+            execFile: vi.fn(),
+            execFileSync: vi.fn(),
         }));
         vi.doMock('fs', () => fsModule);
         const { getUsage } = await import('../../hud/usage-api.js');

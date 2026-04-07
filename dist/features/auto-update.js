@@ -410,7 +410,7 @@ export function reconcileUpdateRuntime(options) {
             force: true,
             verbose: options?.verbose ?? false,
             skipCopilotCheck: true,
-            forceHooks: shouldRefreshPluginHooks,
+            forceHooks: true,
             refreshHooksInPlugin: shouldRefreshPluginHooks,
         });
         if (!installResult.success) {

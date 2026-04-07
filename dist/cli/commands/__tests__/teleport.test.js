@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, execSync } from 'child_process';
+import { join } from 'path';
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal();
     return {
@@ -42,20 +43,24 @@ describe('teleportCommand', () => {
         existsSync.mockImplementation((target) => {
             if (typeof target !== 'string')
                 return false;
-            if (target === '/root/issue')
+            const normalized = target.replace(/\\/g, '/');
+            if (normalized === '/root/issue')
                 return true;
-            if (target.includes('/issue/repo-'))
+            if (normalized.includes('/issue/repo-'))
                 return false;
-            if (target === '/repo/package-lock.json')
+            if (normalized === '/repo/package-lock.json')
                 return true;
-            if (target === '/repo/node_modules')
+            if (normalized === '/repo/node_modules')
                 return true;
             return false;
         });
         readFileSync.mockImplementation((target) => {
-            if (target === '/repo/package.json')
+            if (typeof target !== 'string')
+                throw new Error(`unexpected readFileSync(${String(target)})`);
+            const normalized = target.replace(/\\/g, '/');
+            if (normalized === '/repo/package.json')
                 return '{"name":"repo","version":"1.0.0"}';
-            if (typeof target === 'string' && target.includes('/issue/repo-1/package.json')) {
+            if (normalized.includes('/issue/repo-1/package.json')) {
                 return '{"name":"repo","version":"1.0.0"}';
             }
             throw new Error(`unexpected readFileSync(${String(target)})`);
@@ -89,7 +94,7 @@ describe('teleportCommand', () => {
         expect(calls).toContainEqual([
             'git',
             ['fetch', 'origin', 'main; touch /tmp/pwned'],
-            expect.objectContaining({ cwd: '/repo' }),
+            expect.objectContaining({ cwd: expect.stringMatching(/[/\\]repo$/) }),
         ]);
     });
     it('does not invoke execSync for git fetch/branch/worktree creation commands', async () => {
@@ -104,16 +109,19 @@ describe('teleportCommand', () => {
     });
     it('symlinks node_modules when package.json matches and config allows it', async () => {
         await teleportCommand('#1', { worktreePath: '/root' });
-        expect(symlinkSync).toHaveBeenCalledWith('/repo/node_modules', '/root/issue/repo-1/node_modules', expect.stringMatching(/dir|junction/));
+        expect(symlinkSync).toHaveBeenCalledWith(join('/repo', 'node_modules'), join('/root', 'issue', 'repo-1', 'node_modules'), expect.stringMatching(/dir|junction/));
         const installCalls = execFileSync.mock.calls.filter(([cmd]) => cmd === 'npm' || cmd === 'pnpm' || cmd === 'yarn');
         expect(installCalls).toHaveLength(0);
     });
     it('falls back to install with a warning when package.json differs', async () => {
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
         readFileSync.mockImplementation((target) => {
-            if (target === '/repo/package.json')
+            if (typeof target !== 'string')
+                throw new Error(`unexpected readFileSync(${String(target)})`);
+            const normalized = target.replace(/\\/g, '/');
+            if (normalized === '/repo/package.json')
                 return '{"name":"repo","version":"1.0.0"}';
-            if (typeof target === 'string' && target.includes('/issue/repo-1/package.json')) {
+            if (normalized.includes('/issue/repo-1/package.json')) {
                 return '{"name":"repo","version":"2.0.0"}';
             }
             throw new Error(`unexpected readFileSync(${String(target)})`);
@@ -121,7 +129,7 @@ describe('teleportCommand', () => {
         await teleportCommand('#1', { worktreePath: '/root' });
         expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('package.json differs'));
         expect(symlinkSync).not.toHaveBeenCalled();
-        expect(execFileSync).toHaveBeenCalledWith('npm', ['install'], expect.objectContaining({ cwd: '/root/issue/repo-1' }));
+        expect(execFileSync).toHaveBeenCalledWith('npm', ['install'], expect.objectContaining({ cwd: join('/root', 'issue', 'repo-1') }));
     });
     it('falls back to pnpm install when symlinking is disabled in config', async () => {
         loadConfig.mockReturnValue({
@@ -130,44 +138,49 @@ describe('teleportCommand', () => {
         existsSync.mockImplementation((target) => {
             if (typeof target !== 'string')
                 return false;
-            if (target === '/root/issue')
+            const normalized = target.replace(/\\/g, '/');
+            if (normalized === '/root/issue')
                 return true;
-            if (target.includes('/issue/repo-'))
+            if (normalized.includes('/issue/repo-'))
                 return false;
-            if (target === '/repo/pnpm-lock.yaml')
+            if (normalized === '/repo/pnpm-lock.yaml')
                 return true;
-            if (target === '/repo/node_modules')
+            if (normalized === '/repo/node_modules')
                 return true;
             return false;
         });
         await teleportCommand('#1', { worktreePath: '/root' });
         expect(symlinkSync).not.toHaveBeenCalled();
-        expect(execFileSync).toHaveBeenCalledWith('pnpm', ['install'], expect.objectContaining({ cwd: '/root/issue/repo-1' }));
+        expect(execFileSync).toHaveBeenCalledWith('pnpm', ['install'], expect.objectContaining({ cwd: join('/root', 'issue', 'repo-1') }));
     });
     it('falls back to yarn install when parent package.json cannot be read', async () => {
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
         existsSync.mockImplementation((target) => {
             if (typeof target !== 'string')
                 return false;
-            if (target === '/root/issue')
+            const normalized = target.replace(/\\/g, '/');
+            if (normalized === '/root/issue')
                 return true;
-            if (target.includes('/issue/repo-'))
+            if (normalized.includes('/issue/repo-'))
                 return false;
-            if (target === '/repo/yarn.lock')
+            if (normalized === '/repo/yarn.lock')
                 return true;
-            if (target === '/repo/node_modules')
+            if (normalized === '/repo/node_modules')
                 return true;
             return false;
         });
         readFileSync.mockImplementation((target) => {
-            if (typeof target === 'string' && target.includes('/issue/repo-1/package.json')) {
+            if (typeof target !== 'string')
+                throw new Error(`unexpected readFileSync(${String(target)})`);
+            const normalized = target.replace(/\\/g, '/');
+            if (normalized.includes('/issue/repo-1/package.json')) {
                 return '{"name":"repo","version":"1.0.0"}';
             }
             throw new Error(`unexpected readFileSync(${String(target)})`);
         });
         await teleportCommand('#1', { worktreePath: '/root' });
         expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('could not read package.json'));
-        expect(execFileSync).toHaveBeenCalledWith('yarn', ['install'], expect.objectContaining({ cwd: '/root/issue/repo-1' }));
+        expect(execFileSync).toHaveBeenCalledWith('yarn', ['install'], expect.objectContaining({ cwd: join('/root', 'issue', 'repo-1') }));
     });
 });
 //# sourceMappingURL=teleport.test.js.map
