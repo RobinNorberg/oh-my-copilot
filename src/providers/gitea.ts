@@ -1,16 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import type { GitProvider, PRInfo, IssueInfo, ProviderName } from './types.js';
+import { validateUrlForSSRF } from '../utils/ssrf-guard.js';
 
 function validateGiteaUrl(raw: string): string | null {
   try {
     const u = new URL(raw);
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
-    const host = u.hostname.toLowerCase();
-    if (
-      host === 'localhost' || host === '127.0.0.1' || host === '::1' ||
-      host === '0.0.0.0' || host === '::' ||
-      host.startsWith('169.254.') || host.endsWith('.local')
-    ) return null;
+    if (!validateUrlForSSRF(raw).allowed) return null;
     return u.origin;
   } catch {
     return null;

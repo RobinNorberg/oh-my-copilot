@@ -1,6 +1,8 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { join, resolve } from 'path';
 import { describe, expect, it } from 'vitest';
+import { execSync } from 'child_process';
+import { tmpdir } from 'os';
 import {
   extractPullRequestNumbers,
   isReleasePullRequest,
@@ -9,6 +11,7 @@ import {
   categorizeReleaseNoteEntries,
   generateChangelog,
   generateReleaseBody,
+  getLatestTag,
 } from '../lib/release-generation.js';
 
 describe('release generation', () => {
@@ -84,6 +87,31 @@ describe('release generation', () => {
     expect(changelog).toContain('### Other Changes');
     expect(changelog).toContain('Fix team tmux pane geometry collapse and bundled agent path resolution');
     expect(changelog).not.toContain('1+ PRs merged');
+  });
+
+  it('excludes the current release tag when resolving the previous tag', () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'release-tag-test-'));
+
+    try {
+      execSync('git init', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git config user.name "Test User"', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git config user.email "test@example.com"', { cwd: repoDir, stdio: 'ignore' });
+
+      writeFileSync(join(repoDir, 'notes.txt'), 'first\n');
+      execSync('git add notes.txt', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git commit -m "first"', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git tag v4.10.2', { cwd: repoDir, stdio: 'ignore' });
+
+      writeFileSync(join(repoDir, 'notes.txt'), 'second\n');
+      execSync('git add notes.txt', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git commit -m "second"', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git tag v4.11.0', { cwd: repoDir, stdio: 'ignore' });
+
+      expect(getLatestTag({ cwd: repoDir })).toBe('v4.11.0');
+      expect(getLatestTag({ cwd: repoDir, excludeTag: 'v4.11.0' })).toBe('v4.10.2');
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
   });
 
   it('assembles a single custom release body with compare link and contributors', () => {

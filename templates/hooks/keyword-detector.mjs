@@ -132,6 +132,8 @@ function extractPrompt(input) {
 // Sanitize text to prevent false positives from code blocks, XML tags, URLs, and file paths
 function sanitizeForKeywordDetection(text) {
   return text
+    // 0. Strip HTML/markdown comments before tag stripping
+    .replace(/<!--[\s\S]*?-->/g, '')
     // 1. Strip XML-style tag blocks: <tag-name ...>...</tag-name> (multi-line, greedy on tag name)
     .replace(/<(\w[\w-]*)[\s>][\s\S]*?<\/\1>/g, '')
     // 2. Strip self-closing XML tags: <tag-name />, <tag-name attr="val" />

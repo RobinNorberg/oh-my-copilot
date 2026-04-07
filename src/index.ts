@@ -65,7 +65,7 @@ export {
   backgroundUpdateCheck,
   compareVersions
 } from './features/auto-update.js';
-export * from './shared/types.js';
+export * from './shared/index.js';
 
 // Hooks module exports
 export * from './hooks/index.js';

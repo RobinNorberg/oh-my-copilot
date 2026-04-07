@@ -42,7 +42,7 @@ Use AskUserQuestion:
 First, read the current settings.json:
 
 ```bash
-SETTINGS_FILE="$HOME/.copilot/settings.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
 if [ -f "$SETTINGS_FILE" ]; then
   echo "Current settings.json found"
@@ -57,7 +57,7 @@ Then use the Read tool to read `~/.copilot/settings.json` (if it exists). Use th
 Use jq to safely merge without overwriting existing settings:
 
 ```bash
-SETTINGS_FILE="$HOME/.copilot/settings.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
 if [ -f "$SETTINGS_FILE" ]; then
   TEMP_FILE=$(mktemp)
@@ -92,7 +92,7 @@ Use AskUserQuestion:
 If user chooses anything other than "Auto", add `teammateMode` to settings.json:
 
 ```bash
-SETTINGS_FILE="$HOME/.copilot/settings.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
 # TEAMMATE_MODE is "in-process" or "tmux" based on user choice
 # Skip this if user chose "Auto" (that's the default)
@@ -121,7 +121,7 @@ Use AskUserQuestion with multiple questions:
 Store the team configuration in `~/.copilot/.omc-config.json`:
 
 ```bash
-CONFIG_FILE="$HOME/.copilot/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -147,7 +147,7 @@ echo "  Model: teammates inherit your session model"
 After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-SETTINGS_FILE="$HOME/.copilot/settings.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
 if jq empty "$SETTINGS_FILE" 2>/dev/null; then
   echo "settings.json: valid JSON"

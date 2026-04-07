@@ -17,6 +17,7 @@
  */
 
 import { writeModeState, readModeState, clearModeStateFile } from '../../lib/mode-state-io.js';
+import { readTrackingState, getStaleAgents } from '../subagent-tracker/index.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -246,6 +247,29 @@ export function checkSkillActiveState(
   if (isSkillStateStale(state)) {
     clearSkillActiveState(directory, sessionId);
     return { shouldBlock: false, message: '' };
+  }
+
+  // Orchestrators are allowed to go idle while delegated work is still active.
+  // Do not consume a reinforcement here; the skill is still active and should
+  // resume enforcement only after the running subagents finish.
+  // Read tracking state and exclude stale agents (>5 min without updates)
+  // to prevent phantom "running" entries from blocking enforcement.
+  // Uses read-only filtering instead of cleanupStaleAgents() to avoid
+  // destructively marking legitimate long-running agents as failed.
+  const trackingState = readTrackingState(directory);
+  const staleIds = new Set(getStaleAgents(trackingState).map(a => a.agent_id));
+  const nonStaleRunning = trackingState.agents.filter(
+    a => a.status === 'running' && !staleIds.has(a.agent_id),
+  );
+  if (nonStaleRunning.length > 0) {
+    // Reset reinforcement counter so accumulations during brief idle gaps
+    // don't cause premature skill-active clearance.
+    if (state.reinforcement_count > 0) {
+      state.reinforcement_count = 0;
+      state.last_checked_at = new Date().toISOString();
+      writeModeState('skill-active', state as unknown as Record<string, unknown>, directory, sessionId);
+    }
+    return { shouldBlock: false, message: '', skillName: state.skill_name };
   }
 
   // Reinforcement limit check

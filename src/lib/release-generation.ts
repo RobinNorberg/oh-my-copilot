@@ -1,3 +1,4 @@
+import { execSync } from 'child_process';
 const DEFAULT_REPO_URL = 'https://github.com/Yeachan-Heo/oh-my-claudecode';
 
 export interface ReleasePullRequest {
@@ -30,6 +31,21 @@ function parseConventionalSubject(raw: string): { type: string; scope: string; d
     scope: match.groups.scope || '',
     description: match.groups.desc.replace(/\s*\(#\d+\)$/, '').trim(),
   };
+}
+
+
+export function getLatestTag(options: { cwd?: string; excludeTag?: string; ref?: string } = {}): string {
+  const { cwd = process.cwd(), excludeTag, ref = 'HEAD' } = options;
+
+  try {
+    const excludeArg = excludeTag ? ` --exclude ${JSON.stringify(excludeTag)}` : '';
+    return execSync(`git describe --tags --abbrev=0${excludeArg} ${JSON.stringify(ref)}`, {
+      cwd,
+      encoding: 'utf-8',
+    }).trim();
+  } catch {
+    return '';
+  }
 }
 
 export function extractPullRequestNumbers(subjects: string[]): string[] {

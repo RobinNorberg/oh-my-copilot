@@ -178,8 +178,8 @@ Get the current OMC version and mark setup complete:
 OMC_VERSION=""
 if [ -f ".copilot/copilot-instructions.md" ]; then
   OMC_VERSION=$(grep -m1 'OMC:VERSION:' .copilot/copilot-instructions.md 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
-elif [ -f "$HOME/.copilot/copilot-instructions.md" ]; then
-  OMC_VERSION=$(grep -m1 'OMC:VERSION:' "$HOME/.copilot/copilot-instructions.md" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
+elif [ -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-instructions.md" ]; then
+  OMC_VERSION=$(grep -m1 'OMC:VERSION:' "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-instructions.md" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 fi
 if [ -z "$OMC_VERSION" ]; then
   OMC_VERSION=$(omc --version 2>/dev/null | head -1 || true)

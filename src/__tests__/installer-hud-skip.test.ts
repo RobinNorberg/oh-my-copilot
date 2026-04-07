@@ -154,4 +154,18 @@ describe('isOmcStatusLine', () => {
       command: 'sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omc-hud.mjs'
     })).toBe(true);
   });
+
+  it('should recognize COPILOT_CONFIG_DIR-aware statusLine as OMC', () => {
+    expect(isOmcStatusLine({
+      type: 'command',
+      command: 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs'
+    })).toBe(true);
+  });
+
+  it('should recognize COPILOT_CONFIG_DIR-aware find-node.sh statusLine as OMC', () => {
+    expect(isOmcStatusLine({
+      type: 'command',
+      command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs'
+    })).toBe(true);
+  });
 });

@@ -29,10 +29,11 @@ vi.mock('../tmux-utils.js', () => ({
   isCopilotAvailable: vi.fn(() => true),
 }));
 
-import { runCopilot, launchCommand, extractNotifyFlag, extractOpenClawFlag, extractTelegramFlag, extractDiscordFlag, extractSlackFlag, extractWebhookFlag, normalizeCopilotLaunchArgs, prepareOmcLaunchConfigDir } from '../launch.js';
+import { runCopilot, launchCommand, extractNotifyFlag, extractOpenClawFlag, extractTelegramFlag, extractDiscordFlag, extractSlackFlag, extractWebhookFlag, normalizeCopilotLaunchArgs, prepareOmcLaunchConfigDir, buildEnvExportPrefix, TMUX_ENV_FORWARD } from '../launch.js';
 import {
   resolveLaunchPolicy,
   buildTmuxShellCommand,
+  wrapWithLoginShell,
 } from '../tmux-utils.js';
 
 // ---------------------------------------------------------------------------
@@ -802,6 +803,19 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
     expect(readFileSync(join(configDir, 'CLAUDE.md'), 'utf-8')).toBe('# User base config\n');
   });
 
+  it('mirrors keybindings.json and rules/ into the runtime config dir', () => {
+    const configDir = join(tempRoot!, '.copilot-keybind');
+    mkdirSync(join(configDir, 'rules'), { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+    writeFileSync(join(configDir, 'keybindings.json'), '{"bindings":[]}');
+    writeFileSync(join(configDir, 'rules', 'my-rule.md'), '# Rule');
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    expect(runtimeDir).not.toBe(configDir);
+    expect(existsSync(join(runtimeDir, 'keybindings.json'))).toBe(true);
+    expect(existsSync(join(runtimeDir, 'rules'))).toBe(true);
+  });
+
   it('leaves COPILOT_CONFIG_DIR unchanged when no preserved companion exists', () => {
     const configDir = join(tempRoot!, '.copilot');
     mkdirSync(configDir, { recursive: true });
@@ -809,5 +823,63 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
 
     expect(prepareOmcLaunchConfigDir(configDir)).toBe(configDir);
     expect(existsSync(join(configDir, '.omc-launch'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildEnvExportPrefix — unit tests
+// ---------------------------------------------------------------------------
+describe('buildEnvExportPrefix', () => {
+  const savedEnv: Record<string, string | undefined> = {};
+  const testVars = ['TEST_VAR_A', 'TEST_VAR_B', 'TEST_VAR_C'];
+
+  beforeEach(() => {
+    for (const key of testVars) {
+      savedEnv[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of testVars) {
+      if (savedEnv[key] !== undefined) {
+        process.env[key] = savedEnv[key];
+      } else {
+        delete process.env[key];
+      }
+    }
+  });
+
+  it('returns empty string when no vars are set', () => {
+    expect(buildEnvExportPrefix(testVars)).toBe('');
+  });
+
+  it('builds export statement for a single set var', () => {
+    process.env.TEST_VAR_A = '/some/path';
+    const result = buildEnvExportPrefix(['TEST_VAR_A']);
+    expect(result).toBe('export TEST_VAR_A=/some/path; ');
+  });
+
+  it('builds semicolon-separated exports for multiple set vars', () => {
+    process.env.TEST_VAR_A = 'aaa';
+    process.env.TEST_VAR_B = 'bbb';
+    const result = buildEnvExportPrefix(['TEST_VAR_A', 'TEST_VAR_B', 'TEST_VAR_C']);
+    expect(result).toBe('export TEST_VAR_A=aaa; export TEST_VAR_B=bbb; ');
+  });
+
+  it('skips unset vars and only exports defined ones', () => {
+    process.env.TEST_VAR_B = 'only-b';
+    const result = buildEnvExportPrefix(testVars);
+    expect(result).toBe('export TEST_VAR_B=only-b; ');
+  });
+
+  it('exports vars with empty string values', () => {
+    process.env.TEST_VAR_A = '';
+    const result = buildEnvExportPrefix(['TEST_VAR_A']);
+    expect(result).toBe('export TEST_VAR_A=; ');
+  });
+
+  it('TMUX_ENV_FORWARD contains COPILOT_CONFIG_DIR', () => {
+    expect(TMUX_ENV_FORWARD).toContain('COPILOT_CONFIG_DIR');
   });
 });
