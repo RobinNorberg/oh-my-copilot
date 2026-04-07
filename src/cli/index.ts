@@ -878,10 +878,10 @@ function printInstallBanner(result: InstallResult): void {
   console.log(chalk.gray('     Turbocharge your Copilot CLI with multi-agent orchestration'));
   console.log('');
   console.log(chalk.green('  ┌─────────────────────────────────────────────────────────────┐'));
-  console.log(chalk.green('  │') + '  /autopilot          Autonomous end-to-end execution       ' + chalk.green('│'));
+  console.log(chalk.green('  │') + '  /autopilot          Autonomous end-to-end execution        ' + chalk.green('│'));
   console.log(chalk.green('  │') + '  /plan               Strategic planning with interview      ' + chalk.green('│'));
   console.log(chalk.green('  │') + '  /team N             Parallel coordinated agents            ' + chalk.green('│'));
-  console.log(chalk.green('  │') + '  /review             Run code review                       ' + chalk.green('│'));
+  console.log(chalk.green('  │') + '  /review             Run code review                        ' + chalk.green('│'));
   console.log(chalk.green('  │') + '  /ai-slop-cleaner    Clean AI-generated code slop           ' + chalk.green('│'));
   console.log(chalk.green('  │') + '  /simplify           Simplify the code, and fix issues      ' + chalk.green('│'));
   console.log(chalk.green('  │') + '  /ralph              Loop until task is complete            ' + chalk.green('│'));
