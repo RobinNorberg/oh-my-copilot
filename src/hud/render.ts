@@ -31,6 +31,7 @@ import { renderContextLimitWarning } from './elements/context-warning.js';
 import { renderMissionBoard } from './mission-board.js';
 import { renderSessionSummary } from './elements/session-summary.js';
 import { renderLastTool } from './elements/last-tool.js';
+import { renderRecentTools } from './elements/recent-tools.js';
 
 /**
  * ANSI escape sequence regex (matches SGR and other CSI sequences).
@@ -362,16 +363,18 @@ export async function render(
   // Active agents - handle multi-line format specially
   if (enabledElements.agents) {
     const format = enabledElements.agentsFormat || 'codes';
+    const maxAgents = enabledElements.maxAgents ?? 10;
+    const cappedAgents = context.activeAgents.slice(0, maxAgents);
 
     if (format === 'multiline') {
       const maxLines = enabledElements.agentsMaxLines || 5;
-      const result = renderAgentsMultiLine(context.activeAgents, maxLines);
+      const result = renderAgentsMultiLine(cappedAgents, maxLines);
       if (result.headerPart) rendered.set('agents', result.headerPart);
       if (result.detailLines.length > 0) {
         renderedDetail.set('agents', result.detailLines);
       }
     } else {
-      const agents = renderAgentsByFormat(context.activeAgents, format);
+      const agents = renderAgentsByFormat(cappedAgents, format);
       if (agents) rendered.set('agents', agents);
     }
   }
@@ -390,6 +393,16 @@ export async function render(
       enabledElements.callCountsFormat ?? 'auto',
     );
     if (counts) rendered.set('callCounts', counts);
+  }
+
+  if (enabledElements.showRecentTools === true) {
+    const tools = renderRecentTools(
+      context.recentTools ?? [],
+      enabledElements.recentToolsMax ?? 5,
+      enabledElements.recentToolsShowTarget !== false,
+      enabledElements.safeMode,
+    );
+    if (tools) rendered.set('recentTools', tools);
   }
 
   if (enabledElements.showLastTool === true) {

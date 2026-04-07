@@ -383,6 +383,9 @@ export interface HudRenderContext {
 
   /** Name of the last tool called in this session */
   lastToolName?: string | null;
+
+  /** Rolling list of recent tool calls with status and target info */
+  recentTools?: RecentTool[];
 }
 
 // ============================================================================
@@ -469,6 +472,10 @@ export interface HudElementConfig {
   showCallCounts?: boolean;   // Show tool/agent/skill call counts on the right of the status line (default: true)
   callCountsFormat?: CallCountsFormat; // Controls call count icon rendering: auto (platform default), emoji, or ascii
   showLastTool?: boolean;      // Show name of last tool called (tool:Read)
+  showRecentTools?: boolean;   // Show rolling list of recent tools with status icons
+  recentToolsMax?: number;     // Max recent tools to display (default 5)
+  recentToolsShowTarget?: boolean; // Show target summary next to tool name (default true)
+  maxAgents?: number;          // Max agents to display (default 10)
   maxOutputLines: number;     // Max total output lines to prevent input field shrinkage
   safeMode: boolean;          // Strip ANSI codes and use ASCII-only output to prevent terminal rendering corruption (Issue #346).
                               // Default true. Set to false to explicitly disable even on Windows (e.g. Windows Terminal with ANSI support).
@@ -523,7 +530,7 @@ export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
     'omcLabel', 'rateLimits', 'customBuckets', 'permission', 'thinking',
     'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
-    'callCounts', 'lastTool', 'sessionSummary',
+    'callCounts', 'recentTools', 'lastTool', 'sessionSummary',
   ],
   detail: ['missionBoard', 'agents', 'contextWarning', 'todos'],
 };
@@ -551,7 +558,7 @@ export interface HudConfig {
 export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
 
 export const DEFAULT_HUD_CONFIG: HudConfig = {
-  preset: 'focused',
+  preset: 'full',
   elements: {
     cwd: false,               // Disabled by default for backward compatibility
     cwdFormat: 'relative',
@@ -590,6 +597,10 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     showCallCounts: true,  // Show tool/agent/skill call counts by default (Issue #710)
     callCountsFormat: 'auto',  // Preserve platform-based emoji/ASCII defaults unless explicitly overridden
     showLastTool: false,
+    showRecentTools: true,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
+    maxAgents: 10,
     maxOutputLines: 4,
     safeMode: true,  // Enabled by default to prevent terminal rendering corruption (Issue #346)
     sessionSummary: false,
@@ -632,6 +643,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'count',
     agentsMaxLines: 0,
+    maxAgents: 5,
     backgroundTasks: false,
     todos: true,
     permissionStatus: false,
@@ -648,6 +660,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: false,
     showCallCounts: false,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 3,
+    recentToolsShowTarget: false,
     maxOutputLines: 2,
     safeMode: true,
     sessionSummary: false,
@@ -673,6 +688,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 3,
+    maxAgents: 10,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
@@ -689,6 +705,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: true,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     maxOutputLines: 4,
     safeMode: true,
     sessionSummary: false,
@@ -714,6 +733,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 10,
+    maxAgents: 15,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
@@ -730,6 +750,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: true,
+    recentToolsMax: 8,
+    recentToolsShowTarget: true,
     maxOutputLines: 12,
     safeMode: true,
     sessionSummary: false,
@@ -755,6 +778,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'codes',
     agentsMaxLines: 0,
+    maxAgents: 10,
     backgroundTasks: false,
     todos: true,
     permissionStatus: false,
@@ -771,6 +795,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: false,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     maxOutputLines: 4,
     safeMode: true,
     sessionSummary: false,
@@ -796,6 +823,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 5,
+    maxAgents: 10,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
@@ -812,6 +840,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: true,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     maxOutputLines: 6,
     safeMode: true,
     sessionSummary: false,

@@ -337,6 +337,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
         ? readSessionSummary(join(getOmcRoot(cwd), 'state'), currentSessionId)
         : null,
       lastToolName: transcriptData.lastToolName,
+      recentTools: transcriptData.recentTools ?? [],
     };
 
     // Debug: log data if OMC_DEBUG is set

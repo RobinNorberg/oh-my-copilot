@@ -291,6 +291,8 @@ export interface HudRenderContext {
     sessionSummary: SessionSummaryState | null;
     /** Name of the last tool called in this session */
     lastToolName?: string | null;
+    /** Rolling list of recent tool calls with status and target info */
+    recentTools?: RecentTool[];
 }
 export type HudPreset = 'minimal' | 'focused' | 'full' | 'opencode' | 'dense';
 /**
@@ -333,6 +335,7 @@ export interface HudElementConfig {
     useHyperlinks?: boolean;
     gitRepo: boolean;
     gitBranch: boolean;
+    gitStatus: boolean;
     gitInfoPosition: 'above' | 'below';
     model: boolean;
     modelFormat: ModelFormat;
@@ -353,6 +356,7 @@ export interface HudElementConfig {
     thinking: boolean;
     thinkingFormat: ThinkingFormat;
     apiKeySource: boolean;
+    hostname: boolean;
     profile: boolean;
     missionBoard?: boolean;
     promptTime: boolean;
@@ -364,6 +368,10 @@ export interface HudElementConfig {
     showCallCounts?: boolean;
     callCountsFormat?: CallCountsFormat;
     showLastTool?: boolean;
+    showRecentTools?: boolean;
+    recentToolsMax?: number;
+    recentToolsShowTarget?: boolean;
+    maxAgents?: number;
     maxOutputLines: number;
     safeMode: boolean;
     sessionSummary: boolean;
