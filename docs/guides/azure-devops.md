@@ -99,6 +99,15 @@ Full sprint planning cycle — query iterations, check team capacity, review and
 - Backlog grooming with priority adjustments
 - Capacity-based sprint load balancing
 
+## Magic Keywords
+
+You can trigger ADO skills by typing these keywords directly in the prompt instead of using full slash commands:
+
+| Keyword | Skill | Description |
+|---------|-------|-------------|
+| `ado setup` | `/oh-my-copilot:omc-ado-setup` | Configure Azure DevOps integration |
+| `ado triage` | `/oh-my-copilot:omc-ado-triage` | Azure DevOps work item triage |
+
 ## Agent Awareness
 
 Five agents have built-in ADO knowledge (planner, verifier, debugger, analyst, explore). They automatically use ADO MCP tools for:

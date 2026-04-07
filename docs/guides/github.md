@@ -100,6 +100,16 @@ All GitHub skills use `gh` CLI exclusively. No MCP tools are required.
 | `gh api` | Dependabot alerts, review comments, GraphQL |
 | `gh project` | Projects v2 board management |
 
+## Magic Keywords
+
+You can trigger GitHub skills by typing these keywords directly in the prompt instead of using full slash commands:
+
+| Keyword | Skill | Description |
+|---------|-------|-------------|
+| `gh setup` | `/oh-my-copilot:omc-gh-setup` | Configure GitHub integration |
+| `gh triage` | `/oh-my-copilot:omc-gh-triage` | GitHub issue/PR/CI triage |
+| `gh review` | `/oh-my-copilot:omc-gh-review` | Interactive GitHub PR review |
+
 ## Agent Awareness
 
 All OMC agents can invoke `gh` CLI commands when operating on a GitHub repository. The triage, review, and project skills coordinate multiple agents for parallel scanning.
