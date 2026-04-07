@@ -91,6 +91,15 @@ export function _getSummaryProcessPid(): number | null {
 }
 
 /**
+ * Read session summary state from state directory.
+ */
+function readSessionSummary(stateDir: string, sessionId: string): SessionSummaryState | null {
+  const statePath = join(stateDir, `session-summary-${sessionId}.json`);
+  if (!existsSync(statePath)) return null;
+  try { return JSON.parse(readFileSync(statePath, 'utf-8')); } catch { return null; }
+}
+
+/**
  * Extract session ID (UUID) from a transcript path.
  */
 function extractSessionIdFromPath(transcriptPath: string): string | null {

@@ -410,6 +410,11 @@ export async function render(context, config) {
             outputLines.push(gitInfoLine);
         }
     }
+    if (enabledElements.sessionSummary && context.sessionSummary) {
+        const summary = renderSessionSummary(context.sessionSummary);
+        if (summary)
+            elements.push(summary);
+    }
     const widthAdjustedLines = applyMaxWidthByMode([...outputLines, ...detailLines], config.maxWidth, config.wrapMode);
     // Apply max output line limit after wrapping so wrapped output still respects maxOutputLines.
     const limitedLines = limitOutputLines(widthAdjustedLines, config.elements.maxOutputLines);

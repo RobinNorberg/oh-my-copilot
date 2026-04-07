@@ -76150,7 +76150,7 @@ function resolveAskAdvisorScriptPath(packageRoot = getPackageRoot(), env2 = proc
 }
 function resolveSignalExitCode(signal) {
   if (!signal) return 1;
-  const signalNumber = import_os22.constants.signals[signal];
+  const signalNumber = import_os23.constants.signals[signal];
   if (typeof signalNumber === "number" && Number.isFinite(signalNumber)) {
     return 128 + signalNumber;
   }

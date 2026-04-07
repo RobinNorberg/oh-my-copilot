@@ -3581,8 +3581,8 @@ async function resumeTeamV2(teamName, cwd) {
   }
 }
 async function findActiveTeamsV2(cwd) {
-  const root = join13(cwd, ".omg", "state", "team");
-  if (!existsSync12(root)) return [];
+  const root = join9(cwd, ".omg", "state", "team");
+  if (!existsSync8(root)) return [];
   const entries = await readdir3(root, { withFileTypes: true });
   const active = [];
   for (const e of entries) {
@@ -4313,8 +4313,8 @@ function parseValidatedTaskIdArray(value, fieldName) {
 }
 function teamStateExists(teamName, candidateCwd) {
   if (!TEAM_NAME_SAFE_PATTERN.test(teamName)) return false;
-  const teamRoot = join14(candidateCwd, ".omg", "state", "team", teamName);
-  return existsSync13(join14(teamRoot, "config.json")) || existsSync13(join14(teamRoot, "tasks")) || existsSync13(teamRoot);
+  const teamRoot = join10(candidateCwd, ".omg", "state", "team", teamName);
+  return existsSync9(join10(teamRoot, "config.json")) || existsSync9(join10(teamRoot, "tasks")) || existsSync9(teamRoot);
 }
 function parseTeamWorkerEnv(raw) {
   if (typeof raw !== "string" || raw.trim() === "") return null;
@@ -4375,15 +4375,15 @@ function stateRootToWorkingDirectory(stateRoot2) {
   return dirname11(dirname11(absolute));
 }
 function resolveTeamWorkingDirectoryFromMetadata(teamName, candidateCwd, workerContext) {
-  const teamRoot = join14(candidateCwd, ".omg", "state", "team", teamName);
-  if (!existsSync13(teamRoot)) return null;
+  const teamRoot = join10(candidateCwd, ".omg", "state", "team", teamName);
+  if (!existsSync9(teamRoot)) return null;
   if (workerContext?.teamName === teamName) {
-    const workerRoot = readTeamStateRootFromFile(join14(teamRoot, "workers", workerContext.workerName, "identity.json"));
+    const workerRoot = readTeamStateRootFromFile(join10(teamRoot, "workers", workerContext.workerName, "identity.json"));
     if (workerRoot) return stateRootToWorkingDirectory(workerRoot);
   }
-  const fromConfig = readTeamStateRootFromFile(join14(teamRoot, "config.json"));
+  const fromConfig = readTeamStateRootFromFile(join10(teamRoot, "config.json"));
   if (fromConfig) return stateRootToWorkingDirectory(fromConfig);
-  const fromManifest = readTeamStateRootFromFile(join14(teamRoot, "manifest.v2.json"));
+  const fromManifest = readTeamStateRootFromFile(join10(teamRoot, "manifest.v2.json"));
   if (fromManifest) return stateRootToWorkingDirectory(fromManifest);
   return null;
 }
