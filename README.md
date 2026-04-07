@@ -85,30 +85,6 @@ omc team 2:gemini "redesign UI components for accessibility"
 
 ---
 
-## Platform Integration
-
-### GitHub
-
-When your git remote points to `github.com`, OMC auto-detects GitHub. Run `/oh-my-copilot:omc-gh-setup` to configure, then use:
-
-- `/oh-my-copilot:omc-gh-triage` — scan open issues, PRs, failing CI, and Dependabot alerts
-- `/oh-my-copilot:omc-gh-review` — interactive PR review with inline comments
-- `/oh-my-copilot:omc-gh-auto-review` — automated code review via code-reviewer agent
-- `/oh-my-copilot:omc-gh-project` — manage GitHub Projects (v2) boards
-
-### Azure DevOps
-
-When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, then use:
-
-- `/oh-my-copilot:omc-ado-triage` — parallel scan of work items, PRs, pipelines, and security alerts
-- `/oh-my-copilot:omc-ado-review` — interactive PR review with inline comments
-- `/oh-my-copilot:omc-ado-auto-review` — automated code review via code-reviewer agent
-- `/oh-my-copilot:omc-ado-sprint` — sprint planning and work item management
-
-[GitHub guide →](docs/guides/github.md) | [Azure DevOps guide →](docs/guides/azure-devops.md)
-
----
-
 ## Magic Keywords
 
 Optional shortcuts for power users. Natural language works fine without them.
@@ -169,9 +145,37 @@ Optional shortcuts for power users. Natural language works fine without them.
 
 ---
 
+## Platform Integration
+
+### GitHub
+
+When your git remote points to `github.com`, OMC auto-detects GitHub. Run `/oh-my-copilot:omc-gh-setup` to configure, then use:
+
+- `/oh-my-copilot:omc-gh-triage` — scan open issues, PRs, failing CI, and Dependabot alerts
+- `/oh-my-copilot:omc-gh-review` — interactive PR review with inline comments
+- `/oh-my-copilot:omc-gh-auto-review` — automated code review via code-reviewer agent
+- `/oh-my-copilot:omc-gh-project` — manage GitHub Projects (v2) boards
+
+### Azure DevOps
+
+When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, then use:
+
+- `/oh-my-copilot:omc-ado-triage` — parallel scan of work items, PRs, pipelines, and security alerts
+- `/oh-my-copilot:omc-ado-review` — interactive PR review with inline comments
+- `/oh-my-copilot:omc-ado-auto-review` — automated code review via code-reviewer agent
+- `/oh-my-copilot:omc-ado-sprint` — sprint planning and work item management
+
+[GitHub guide →](docs/guides/github.md) | [Azure DevOps guide →](docs/guides/azure-devops.md)
+
+---
+
 ## Requirements
 
 - [Copilot CLI](https://docs.github.com/copilot-cli)
+
+---
+
+## Optional enhancements
 
 ### Platform & tmux
 
@@ -183,7 +187,7 @@ OMC features like `omc team` and rate-limit detection require **tmux**:
 | Ubuntu/Debian  | tmux                                                   | `sudo apt install tmux` |
 | Fedora         | tmux                                                   | `sudo dnf install tmux` |
 | Arch           | tmux                                                   | `sudo pacman -S tmux`   |
-| Windows        | [psmux](https://github.com/marlocarlo/psmux) (native) | `winget install psmux`  |
+| Windows        | [psmux](https://github.com/marlocarlo/psmux) (native)  | `winget install psmux`  |
 | Windows (WSL2) | tmux (inside WSL)                                      | `sudo apt install tmux` |
 
 > **Windows users:** [psmux](https://github.com/marlocarlo/psmux) provides a native `tmux` binary for Windows with 76 tmux-compatible commands. No WSL required.
@@ -205,9 +209,7 @@ omc team 2:codex "security analysis"
 omc team 2:gemini "UI consistency check"
 omc team 1:copilot "review existing tests"
 ```
-
 Only Copilot CLI is required — the others are optional and add cross-provider validation.
-
 ---
 
 ## License
@@ -218,8 +220,6 @@ MIT
 
 <div align="center">
 
-**Inspired by:** [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) • [copilot-hud](https://github.com/ryanjoachim/copilot-hud) • [Superpowers](https://github.com/obra/superpowers) • [everything-copilot-cli](https://github.com/affaan-m/everything-copilot-cli) • [Ouroboros](https://github.com/Q00/ouroboros)
-
-**Zero learning curve. Maximum power.**
+**Inspired by:** • [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode), [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) • [Superpowers](https://github.com/obra/superpowers) • [get-shit-done](https://github.com/gsd-build/get-shit-done) • [Ouroboros](https://github.com/Q00/ouroboros) • [BMAD](https://github.com/bmad-code-org/BMAD-METHOD)
 
 </div>
