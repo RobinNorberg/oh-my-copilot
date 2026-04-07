@@ -179,6 +179,10 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         const parsed = parseTeamArgs(['2:executor', 'fix the bug']);
         expect(parsed.workerCount).toBe(2);
         expect(parsed.agentTypes).toEqual(['copilot', 'copilot']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'copilot', role: 'executor' },
+            { agentType: 'copilot', role: 'executor' },
+        ]);
         expect(parsed.role).toBe('executor');
         expect(parsed.task).toBe('fix the bug');
     });
@@ -205,6 +209,10 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
         const parsed = parseTeamArgs(['1:executor,1:codex:architect', 'run tasks']);
         expect(parsed.workerCount).toBe(2);
         expect(parsed.agentTypes).toEqual(['copilot', 'codex']);
+        expect(parsed.workerSpecs).toEqual([
+            { agentType: 'copilot', role: 'executor' },
+            { agentType: 'codex', role: 'architect' },
+        ]);
         expect(parsed.role).toBeUndefined();
     });
     it('still parses single-type spec 3:codex into uniform agentTypes', () => {

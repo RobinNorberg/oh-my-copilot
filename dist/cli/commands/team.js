@@ -138,6 +138,7 @@ export function parseTeamArgs(tokens) {
     const args = [...tokens];
     let workerCount = 3;
     let agentTypes = [];
+    let workerSpecs = [];
     let json = false;
     let newWindow = false;
     // Extract supported flags before parsing positional args
@@ -175,6 +176,7 @@ export function parseTeamArgs(tokens) {
                 workerCount += seg.count;
                 for (let i = 0; i < seg.count; i++) {
                     agentTypes.push(seg.agentType);
+                    workerSpecs.push({ agentType: seg.agentType, ...(seg.role ? { role: seg.role } : {}) });
                 }
             }
             if (workerCount > MAX_WORKER_COUNT) {
@@ -197,19 +199,24 @@ export function parseTeamArgs(tokens) {
             workerCount = normalized.count;
             role = normalized.role;
             agentTypes = Array.from({ length: workerCount }, () => normalized.agentType);
+            workerSpecs = Array.from({ length: workerCount }, () => ({
+                agentType: normalized.agentType,
+                ...(role ? { role } : {}),
+            }));
             filteredArgs.shift();
         }
     }
     // Default: 3 copilot workers if no spec matched
     if (agentTypes.length === 0) {
         agentTypes = Array.from({ length: workerCount }, () => 'copilot');
+        workerSpecs = Array.from({ length: workerCount }, () => ({ agentType: 'copilot' }));
     }
     const task = filteredArgs.join(' ').trim();
     if (!task) {
         throw new Error('Usage: omc team [N:agent-type] "<task description>"');
     }
     const teamName = slugifyTask(task);
-    return { workerCount, agentTypes, role, task, teamName, json, newWindow };
+    return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow };
 }
 function sampleValueForField(field) {
     switch (field) {
@@ -359,6 +366,7 @@ async function handleTeamStart(parsed, cwd) {
             tasks,
             cwd,
             newWindow: parsed.newWindow,
+            workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
             ...(rolePrompt ? { roleName: parsed.role, rolePrompt } : {}),
         });
         const uniqueTypes = [...new Set(parsed.agentTypes)].join(',');

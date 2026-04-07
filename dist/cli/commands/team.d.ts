@@ -7,9 +7,14 @@
  *   omc team shutdown <team-name> [--force] Shutdown team
  *   omc team api <operation> --input '...'  Worker CLI API
  */
+export interface ParsedWorkerSpec {
+    agentType: string;
+    role?: string;
+}
 export interface ParsedTeamArgs {
     workerCount: number;
     agentTypes: string[];
+    workerSpecs: ParsedWorkerSpec[];
     role?: string;
     task: string;
     teamName: string;

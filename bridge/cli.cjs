@@ -6854,6 +6854,59 @@ var init_resolve_node = __esm({
   }
 });
 
+// src/utils/frontmatter.ts
+function stripOptionalQuotes(value) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'")) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+function parseFrontmatter2(content) {
+  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+  const match = content.match(frontmatterRegex);
+  if (!match) {
+    return { metadata: {}, body: content };
+  }
+  const [, yamlContent, body] = match;
+  const metadata = {};
+  for (const line of yamlContent.split("\n")) {
+    const colonIndex = line.indexOf(":");
+    if (colonIndex === -1) continue;
+    const key = line.slice(0, colonIndex).trim();
+    const value = stripOptionalQuotes(line.slice(colonIndex + 1));
+    metadata[key] = value;
+  }
+  return { metadata, body };
+}
+function parseFrontmatterAliases(rawAliases) {
+  if (!rawAliases) return [];
+  const trimmed = rawAliases.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+    const inner = trimmed.slice(1, -1).trim();
+    if (!inner) return [];
+    return inner.split(",").map((alias) => stripOptionalQuotes(alias)).filter((alias) => alias.length > 0);
+  }
+  const singleAlias = stripOptionalQuotes(trimmed);
+  return singleAlias ? [singleAlias] : [];
+}
+var init_frontmatter = __esm({
+  "src/utils/frontmatter.ts"() {
+    "use strict";
+  }
+});
+
+// src/utils/skininthegamebros-user.ts
+function isSkininthegamebrosUser() {
+  return process.env.USER_TYPE === "ant";
+}
+var init_skininthegamebros_user = __esm({
+  "src/utils/skininthegamebros-user.ts"() {
+    "use strict";
+  }
+});
+
 // src/installer/permissions.ts
 function generatePermissionAllowList() {
   return [
@@ -7090,6 +7143,47 @@ function getInstalledOmcPluginRoots() {
   }
   return Array.from(pluginRoots);
 }
+function directoryHasSkillDefinitions(directory) {
+  if (!(0, import_fs30.existsSync)(directory)) {
+    return false;
+  }
+  try {
+    return (0, import_fs30.readdirSync)(directory, { withFileTypes: true }).some(
+      (entry) => entry.isDirectory() && (0, import_fs30.existsSync)((0, import_path42.join)(directory, entry.name, "SKILL.md"))
+    );
+  } catch {
+    return false;
+  }
+}
+function hasPluginProvidedSkillFiles() {
+  return getInstalledOmcPluginRoots().some(
+    (pluginRoot) => directoryHasSkillDefinitions((0, import_path42.join)(pluginRoot, "skills"))
+  );
+}
+function hasEnabledOmcPlugin() {
+  if (process.env.CLAUDE_PLUGIN_ROOT?.trim()) {
+    return true;
+  }
+  if (!(0, import_fs30.existsSync)(SETTINGS_FILE)) {
+    return false;
+  }
+  try {
+    const settings = JSON.parse((0, import_fs30.readFileSync)(SETTINGS_FILE, "utf-8"));
+    const plugins = settings.plugins;
+    if (Array.isArray(plugins)) {
+      return plugins.some(
+        (plugin) => typeof plugin === "string" && plugin.toLowerCase().includes("oh-my-copilot")
+      );
+    }
+    if (plugins && typeof plugins === "object") {
+      return Object.entries(plugins).some(
+        ([pluginId, value]) => pluginId.toLowerCase().includes("oh-my-copilot") && value !== false
+      );
+    }
+  } catch {
+  }
+  return false;
+}
 function getPackageDir3() {
   if (typeof __dirname !== "undefined") {
     return (0, import_path42.join)(__dirname, "..");
@@ -7133,12 +7227,42 @@ function loadCommandDefinitions() {
 function getRuntimePackageRoot() {
   return getPackageDir3();
 }
-function loadBundledSkillContent(skillName) {
-  const skillPath = (0, import_path42.join)(getPackageDir3(), "skills", skillName, "SKILL.md");
-  if (!(0, import_fs30.existsSync)(skillPath)) {
-    return null;
+function toSafeStandaloneSkillName(name) {
+  const normalized = name.trim();
+  return CC_NATIVE_COMMANDS.has(normalized.toLowerCase()) ? `omc-${normalized}` : normalized;
+}
+function syncBundledSkillDefinitions(log3, options) {
+  const skillsDir = (0, import_path42.join)(getPackageDir3(), "skills");
+  const installedSkills = [];
+  if (!(0, import_fs30.existsSync)(skillsDir)) {
+    return installedSkills;
   }
-  return (0, import_fs30.readFileSync)(skillPath, "utf-8");
+  const seenTargetDirs = /* @__PURE__ */ new Set();
+  for (const entry of (0, import_fs30.readdirSync)(skillsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    if (SKININTHEGAMEBROS_ONLY_SKILLS.has(entry.name) && !isSkininthegamebrosUser()) {
+      continue;
+    }
+    const sourceDir = (0, import_path42.join)(skillsDir, entry.name);
+    const sourceSkillPath = (0, import_path42.join)(sourceDir, "SKILL.md");
+    if (!(0, import_fs30.existsSync)(sourceSkillPath)) continue;
+    let targetDirName = entry.name;
+    if (options?.safeStandaloneNames) {
+      const content = (0, import_fs30.readFileSync)(sourceSkillPath, "utf-8");
+      const { metadata } = parseFrontmatter2(content);
+      const rawName = typeof metadata.name === "string" && metadata.name.trim().length > 0 ? metadata.name : entry.name;
+      targetDirName = toSafeStandaloneSkillName(rawName);
+    }
+    const dedupeKey = targetDirName.toLowerCase();
+    if (seenTargetDirs.has(dedupeKey)) continue;
+    seenTargetDirs.add(dedupeKey);
+    const relativePath = (0, import_path42.join)(targetDirName, "SKILL.md");
+    const targetDir = (0, import_path42.join)(SKILLS_DIR, targetDirName);
+    (0, import_fs30.cpSync)(sourceDir, targetDir, { recursive: true, force: true });
+    installedSkills.push(relativePath.replace(/\\/g, "/"));
+    log3(`  Synced ${relativePath}`);
+  }
+  return installedSkills;
 }
 function loadClaudeMdContent() {
   const claudeMdPath = (0, import_path42.join)(getPackageDir3(), "docs", "copilot-instructions.md");
@@ -7280,6 +7404,9 @@ function install(options = {}) {
   log3(`Platform: ${process.platform} (Node.js hooks)`);
   const runningAsPlugin = isRunningAsPlugin();
   const projectScoped = isProjectScopedPlugin();
+  const pluginProvidesSkillFiles = hasPluginProvidedSkillFiles();
+  const enabledOmcPlugin = hasEnabledOmcPlugin();
+  const shouldInstallBundledSkills = options.noPlugin === true || !enabledOmcPlugin || !pluginProvidesSkillFiles;
   const allowPluginHookRefresh = runningAsPlugin && options.refreshHooksInPlugin && !projectScoped;
   if (runningAsPlugin) {
     log3("Detected Copilot CLI plugin context - skipping agent/command file installation");
@@ -7302,8 +7429,11 @@ function install(options = {}) {
     }
   }
   try {
-    if (!projectScoped && !(0, import_fs30.existsSync)(COPILOT_CONFIG_DIR)) {
+    if ((!projectScoped || shouldInstallBundledSkills) && !(0, import_fs30.existsSync)(COPILOT_CONFIG_DIR)) {
       (0, import_fs30.mkdirSync)(COPILOT_CONFIG_DIR, { recursive: true });
+    }
+    if (shouldInstallBundledSkills && !(0, import_fs30.existsSync)(SKILLS_DIR)) {
+      (0, import_fs30.mkdirSync)(SKILLS_DIR, { recursive: true });
     }
     if (!runningAsPlugin) {
       log3("Creating directories...");
@@ -7349,21 +7479,6 @@ function install(options = {}) {
           log3(`  Installed ${filename}`);
         }
       }
-      const omcReferenceSkillContent = loadBundledSkillContent("omc-reference");
-      if (omcReferenceSkillContent) {
-        const omcReferenceDir = (0, import_path42.join)(SKILLS_DIR, "omc-reference");
-        const omcReferencePath = (0, import_path42.join)(omcReferenceDir, "SKILL.md");
-        if (!(0, import_fs30.existsSync)(omcReferenceDir)) {
-          (0, import_fs30.mkdirSync)(omcReferenceDir, { recursive: true });
-        }
-        if ((0, import_fs30.existsSync)(omcReferencePath) && !options.force) {
-          log3("  Skipping omc-reference/SKILL.md (already exists)");
-        } else {
-          (0, import_fs30.writeFileSync)(omcReferencePath, omcReferenceSkillContent);
-          result.installedSkills.push("omc-reference/SKILL.md");
-          log3("  Installed omc-reference/SKILL.md");
-        }
-      }
       const claudeMdPath = (0, import_path42.join)(COPILOT_CONFIG_DIR, "copilot-instructions.md");
       const homeMdPath = (0, import_path42.join)((0, import_os10.homedir)(), "copilot-instructions.md");
       if (!(0, import_fs30.existsSync)(homeMdPath)) {
@@ -7391,6 +7506,16 @@ function install(options = {}) {
       result.hooksConfigured = true;
     } else {
       log3("Skipping agent/command/hook files (managed by plugin system)");
+    }
+    if (shouldInstallBundledSkills) {
+      log3(options.noPlugin ? "Installing bundled skills from local package (--no-plugin)..." : !enabledOmcPlugin ? "Installing bundled skills from local package (no enabled OMC plugin detected)..." : "Installing bundled skills from local package (enabled plugin skill files not found)...");
+      result.installedSkills.push(...syncBundledSkillDefinitions(log3, {
+        safeStandaloneNames: !enabledOmcPlugin || options.noPlugin === true
+      }));
+    } else if (pluginProvidesSkillFiles) {
+      log3("Skipping bundled skill installation (plugin-provided skills are available). Use --no-plugin to force local skill sync.");
+    } else if (runningAsPlugin) {
+      log3("Skipping bundled skill installation (managed by plugin system)");
     }
     let hudScriptPath = null;
     const hudDisabledByOption = options.skipHud === true;
@@ -7680,7 +7805,7 @@ function getInstallInfo() {
     return null;
   }
 }
-var import_fs30, import_path42, import_url9, import_os10, import_child_process12, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, OMC_HOOK_FILENAMES;
+var import_fs30, import_path42, import_url9, import_os10, import_child_process12, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, OMC_HOOK_FILENAMES;
 var init_installer = __esm({
   "src/installer/index.ts"() {
     "use strict";
@@ -7693,6 +7818,8 @@ var init_installer = __esm({
     init_version();
     init_config_dir();
     init_resolve_node();
+    init_frontmatter();
+    init_skininthegamebros_user();
     init_permissions();
     COPILOT_CONFIG_DIR = getConfigDir();
     AGENTS_DIR = (0, import_path42.join)(COPILOT_CONFIG_DIR, "agents");
@@ -7705,6 +7832,24 @@ var init_installer = __esm({
     CORE_COMMANDS = [];
     VERSION = getRuntimePackageVersion();
     OMC_VERSION_MARKER_PATTERN = /<!-- OMC:VERSION:([^\s]+) -->/;
+    CC_NATIVE_COMMANDS = /* @__PURE__ */ new Set([
+      "review",
+      "plan",
+      "security-review",
+      "init",
+      "doctor",
+      "help",
+      "config",
+      "clear",
+      "compact",
+      "memory"
+    ]);
+    SKININTHEGAMEBROS_ONLY_SKILLS = /* @__PURE__ */ new Set([
+      "remember",
+      "verify",
+      "debug",
+      "skillify"
+    ]);
     OMC_HOOK_FILENAMES = /* @__PURE__ */ new Set([
       "keyword-detector.mjs",
       "session-start.mjs",
@@ -71371,43 +71516,8 @@ init_worktree_paths();
 var import_safe_regex = __toESM(require_safe_regex(), 1);
 var MAX_OUTPUT_BYTES = 50 * 1024;
 
-// src/utils/frontmatter.ts
-function stripOptionalQuotes(value) {
-  const trimmed = value.trim();
-  if (trimmed.startsWith('"') && trimmed.endsWith('"') || trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    return trimmed.slice(1, -1).trim();
-  }
-  return trimmed;
-}
-function parseFrontmatter2(content) {
-  const frontmatterRegex = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
-  const match = content.match(frontmatterRegex);
-  if (!match) {
-    return { metadata: {}, body: content };
-  }
-  const [, yamlContent, body] = match;
-  const metadata = {};
-  for (const line of yamlContent.split("\n")) {
-    const colonIndex = line.indexOf(":");
-    if (colonIndex === -1) continue;
-    const key = line.slice(0, colonIndex).trim();
-    const value = stripOptionalQuotes(line.slice(colonIndex + 1));
-    metadata[key] = value;
-  }
-  return { metadata, body };
-}
-function parseFrontmatterAliases(rawAliases) {
-  if (!rawAliases) return [];
-  const trimmed = rawAliases.trim();
-  if (!trimmed) return [];
-  if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    const inner = trimmed.slice(1, -1).trim();
-    if (!inner) return [];
-    return inner.split(",").map((alias) => stripOptionalQuotes(alias)).filter((alias) => alias.length > 0);
-  }
-  const singleAlias = stripOptionalQuotes(trimmed);
-  return singleAlias ? [singleAlias] : [];
-}
+// src/hooks/auto-slash-command/executor.ts
+init_frontmatter();
 
 // src/utils/skill-resources.ts
 var import_fs71 = require("fs");
@@ -71699,13 +71809,14 @@ init_context_injector();
 var import_fs79 = require("fs");
 var import_path97 = require("path");
 var import_url13 = require("url");
+init_frontmatter();
 init_strict_mode();
 init_config_dir();
 var __filename3 = (0, import_url13.fileURLToPath)(importMetaUrl);
 var __dirname2 = (0, import_path97.dirname)(__filename3);
 var PROJECT_ROOT = (0, import_path97.join)(__dirname2, "..", "..", "..");
 var SKILLS_DIR2 = (0, import_path97.join)(PROJECT_ROOT, "skills");
-var CC_NATIVE_COMMANDS = /* @__PURE__ */ new Set([
+var CC_NATIVE_COMMANDS2 = /* @__PURE__ */ new Set([
   "review",
   "plan",
   "security-review",
@@ -71725,7 +71836,7 @@ var STRICT_MODE_ONLY_SKILLS = /* @__PURE__ */ new Set([
 ]);
 function toSafeSkillName(name) {
   const normalized = name.trim();
-  return CC_NATIVE_COMMANDS.has(normalized.toLowerCase()) ? `omc-${normalized}` : normalized;
+  return CC_NATIVE_COMMANDS2.has(normalized.toLowerCase()) ? `omc-${normalized}` : normalized;
 }
 function loadSkillFromFile(skillPath, skillName) {
   try {
@@ -73882,6 +73993,7 @@ function parseTeamArgs(tokens) {
   const args = [...tokens];
   let workerCount = 3;
   let agentTypes = [];
+  let workerSpecs = [];
   let json = false;
   let newWindow = false;
   const filteredArgs = [];
@@ -73915,6 +74027,7 @@ function parseTeamArgs(tokens) {
         workerCount += seg.count;
         for (let i = 0; i < seg.count; i++) {
           agentTypes.push(seg.agentType);
+          workerSpecs.push({ agentType: seg.agentType, ...seg.role ? { role: seg.role } : {} });
         }
       }
       if (workerCount > MAX_WORKER_COUNT) {
@@ -73934,18 +74047,23 @@ function parseTeamArgs(tokens) {
       workerCount = normalized.count;
       role = normalized.role;
       agentTypes = Array.from({ length: workerCount }, () => normalized.agentType);
+      workerSpecs = Array.from({ length: workerCount }, () => ({
+        agentType: normalized.agentType,
+        ...role ? { role } : {}
+      }));
       filteredArgs.shift();
     }
   }
   if (agentTypes.length === 0) {
     agentTypes = Array.from({ length: workerCount }, () => "copilot");
+    workerSpecs = Array.from({ length: workerCount }, () => ({ agentType: "copilot" }));
   }
   const task = filteredArgs.join(" ").trim();
   if (!task) {
     throw new Error('Usage: omc team [N:agent-type] "<task description>"');
   }
   const teamName = slugifyTask(task);
-  return { workerCount, agentTypes, role, task, teamName, json, newWindow };
+  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow };
 }
 function sampleValueForField(field) {
   switch (field) {
@@ -74113,6 +74231,7 @@ async function handleTeamStart(parsed, cwd2) {
       tasks,
       cwd: cwd2,
       newWindow: parsed.newWindow,
+      workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
       ...rolePrompt ? { roleName: parsed.role, rolePrompt } : {}
     });
     const uniqueTypes = [...new Set(parsed.agentTypes)].join(",");

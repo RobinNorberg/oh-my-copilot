@@ -9,6 +9,8 @@
  */
 /** Copilot CLI configuration directory */
 export declare const COPILOT_CONFIG_DIR: string;
+/** Alias used by upstream tests and modules */
+export declare const CLAUDE_CONFIG_DIR: string;
 export declare const AGENTS_DIR: string;
 export declare const COMMANDS_DIR: string;
 export declare const SKILLS_DIR: string;
@@ -121,6 +123,8 @@ export declare function getInstalledOmcPluginRoots(): string[];
  * markdown files, so the legacy ~/.copilot/agents copy can be skipped.
  */
 export declare function hasPluginProvidedAgentFiles(): boolean;
+export declare function hasPluginProvidedSkillFiles(): boolean;
+export declare function hasEnabledOmcPlugin(): boolean;
 export declare function getRuntimePackageRoot(): string;
 /**
  * Extract the embedded OMC version from a copilot-instructions.md file.
