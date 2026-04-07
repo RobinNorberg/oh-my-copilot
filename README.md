@@ -98,7 +98,12 @@ When your git remote points to `github.com`, OMC auto-detects GitHub. Run `/oh-m
 
 ### Azure DevOps
 
-When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, and `/oh-my-copilot:omc-ado-triage` for a parallel scan of work items, PRs, pipelines, and security alerts.
+When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, then use:
+
+- `/oh-my-copilot:omc-ado-triage` — parallel scan of work items, PRs, pipelines, and security alerts
+- `/oh-my-copilot:omc-ado-review` — interactive PR review with inline comments
+- `/oh-my-copilot:omc-ado-auto-review` — automated code review via code-reviewer agent
+- `/oh-my-copilot:omc-ado-sprint` — sprint planning and work item management
 
 [GitHub guide →](docs/guides/github.md) | [Azure DevOps guide →](docs/guides/azure-devops.md)
 
