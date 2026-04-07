@@ -10,6 +10,11 @@ When your git remote points to `github.com`, OMC automatically:
 - Uses `gh` CLI for all GitHub operations
 - Reads `.omc/config.json` for project-specific settings
 
+## Prerequisites
+
+- [GitHub CLI (`gh`)](https://cli.github.com/) installed and authenticated (`gh auth login`)
+- Git remote pointing to `github.com`
+
 ## Setup
 
 ```bash
@@ -95,6 +100,10 @@ All GitHub skills use `gh` CLI exclusively. No MCP tools are required.
 | `gh api` | Dependabot alerts, review comments, GraphQL |
 | `gh project` | Projects v2 board management |
 
+## Agent Awareness
+
+All OMC agents can invoke `gh` CLI commands when operating on a GitHub repository. The triage, review, and project skills coordinate multiple agents for parallel scanning.
+
 ## Comparison with Azure DevOps Integration
 
 | Capability | GitHub | Azure DevOps |
@@ -107,3 +116,5 @@ All GitHub skills use `gh` CLI exclusively. No MCP tools are required.
 | **PR Review** | 3-state (approve/request-changes/comment) | 5-value vote system (-10 to +10) |
 | **Sprint/Project** | GitHub Projects v2 (field-based) | Iterations + capacity + WIQL |
 | **Auth** | `gh auth login` | `az login` + PAT |
+
+[Azure DevOps guide →](azure-devops.md)
