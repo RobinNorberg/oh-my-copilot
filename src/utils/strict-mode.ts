@@ -21,14 +21,20 @@ function readOmcConfig(): OmcConfig {
 
 /**
  * Returns true if strict mode is enabled.
- * Reads `strictMode` from ~/.copilot/.omc-config.json (default: true).
- * Users opt out by setting `strictMode: false`.
+ * Checks OMC_STRICT_MODE env var first, then ~/.copilot/.omc-config.json (default: false).
+ * Users opt in by setting `strictMode: true` or OMC_STRICT_MODE=true.
  */
 export function isStrictMode(): boolean {
+  // Always honour the env var (overrides config file and skips cache)
+  const envVar = process.env.OMC_STRICT_MODE;
+  if (envVar !== undefined) {
+    return envVar === 'true';
+  }
+
   if (_cachedStrictMode !== undefined) {
     return _cachedStrictMode;
   }
   const config = readOmcConfig();
-  _cachedStrictMode = config.strictMode !== false;
+  _cachedStrictMode = config.strictMode === true;
   return _cachedStrictMode;
 }

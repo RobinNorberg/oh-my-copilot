@@ -88,6 +88,17 @@ export interface ActiveAgent {
   endTime?: Date;
 }
 
+export interface RecentTool {
+  /** Tool name (e.g., "Read", "Bash", "Edit") */
+  name: string;
+  /** Target summary (e.g., "auth.ts", "git st…") */
+  target: string | null;
+  /** Execution status */
+  status: 'running' | 'success' | 'failure';
+  /** When the tool was invoked */
+  timestamp: Date;
+}
+
 export interface SkillInvocation {
   name: string;
   args?: string;
@@ -131,6 +142,8 @@ export interface TranscriptData {
   skillCallCount: number;
   /** Name of the last tool_use block seen in transcript */
   lastToolName: string | null;
+  /** Rolling list of recent tool calls with status and target info */
+  recentTools: RecentTool[];
 }
 
 // ============================================================================
