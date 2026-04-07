@@ -1,7 +1,7 @@
 /**
  * Returns true if strict mode is enabled.
- * Reads `strictMode` from ~/.copilot/.omc-config.json (default: true).
- * Users opt out by setting `strictMode: false`.
+ * Checks OMC_STRICT_MODE env var first, then ~/.copilot/.omc-config.json (default: false).
+ * Users opt in by setting `strictMode: true` or OMC_STRICT_MODE=true.
  */
 export declare function isStrictMode(): boolean;
 //# sourceMappingURL=strict-mode.d.ts.map

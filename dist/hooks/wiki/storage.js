@@ -14,7 +14,6 @@
  */
 import { existsSync, readFileSync, readdirSync, unlinkSync, mkdirSync } from 'fs';
 import { join, resolve, sep } from 'path';
-import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../../lib/file-lock.js';
 import { WIKI_SCHEMA_VERSION, } from './types.js';
@@ -28,9 +27,13 @@ const RESERVED_FILES = new Set([INDEX_FILE, LOG_FILE]);
 // ============================================================================
 // Path helpers
 // ============================================================================
+/** Get the .omc root directory for a given worktree root. */
+function getOmcDir(root) {
+    return join(root, '.omc');
+}
 /** Get the wiki directory path. */
 export function getWikiDir(root) {
-    return join(getOmcRoot(root), WIKI_DIR);
+    return join(getOmcDir(root), WIKI_DIR);
 }
 /** Ensure wiki directory exists and is git-ignored. */
 export function ensureWikiDir(root) {
@@ -39,7 +42,7 @@ export function ensureWikiDir(root) {
         mkdirSync(wikiDir, { recursive: true });
     }
     // Ensure .omc/.gitignore includes wiki/
-    const omcRoot = getOmcRoot(root);
+    const omcRoot = getOmcDir(root);
     const gitignorePath = join(omcRoot, '.gitignore');
     if (existsSync(gitignorePath)) {
         const content = readFileSync(gitignorePath, 'utf-8');

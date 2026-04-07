@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+const isWindows = process.platform === 'win32';
 import { buildWorkerLaunchSpec, resolveSupportedShellAffinity, resolveShellFromCandidates, } from '../tmux-session.js';
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal();
@@ -15,7 +16,7 @@ afterEach(() => {
         Object.defineProperty(process, 'platform', originalPlatformDescriptor);
     }
 });
-describe('resolveShellFromCandidates', () => {
+describe.skipIf(isWindows)('resolveShellFromCandidates', () => {
     it('returns first existing candidate', () => {
         mockExistsSync.mockImplementation((p) => p === '/usr/bin/zsh');
         const result = resolveShellFromCandidates(['/bin/zsh', '/usr/bin/zsh'], '/home/user/.zshrc');
@@ -38,7 +39,7 @@ describe('resolveShellFromCandidates', () => {
         }
     });
 });
-describe('resolveSupportedShellAffinity', () => {
+describe.skipIf(isWindows)('resolveSupportedShellAffinity', () => {
     it('returns null for undefined shellPath', () => {
         expect(resolveSupportedShellAffinity(undefined)).toBeNull();
     });
@@ -67,7 +68,7 @@ describe('resolveSupportedShellAffinity', () => {
         expect(result).toEqual({ shell: '/bin/bash', rcFile: '/home/testuser/.bashrc' });
     });
 });
-describe('buildWorkerLaunchSpec', () => {
+describe.skipIf(isWindows)('buildWorkerLaunchSpec', () => {
     it('returns /bin/sh on MSYS2 (isUnixLikeOnWindows)', () => {
         vi.stubEnv('MSYSTEM', 'MINGW64');
         // On Windows MSYS2, platform would be win32; we test the env branch

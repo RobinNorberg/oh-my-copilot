@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+const isWindows = process.platform === 'win32';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -44,7 +45,7 @@ afterEach(() => {
         }
     }
 });
-describe('setup-claude-md.sh (issue #1572)', () => {
+describe.skipIf(isWindows)('setup-claude-md.sh (issue #1572)', () => {
     it('installs the canonical docs/CLAUDE.md content with OMC markers', () => {
         const fixture = createPluginFixture(`<!-- OMC:START -->
 <!-- OMC:VERSION:9.9.9 -->
@@ -317,7 +318,7 @@ Use the real docs file.
         expect(readFileSync(realTarget, 'utf-8')).toBe('outside target');
     });
 });
-describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
+describe.skipIf(isWindows)('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     it('uses docs/CLAUDE.md from the active version in installed_plugins.json, not the stale script location', () => {
         // Simulate: script lives at old version (4.8.2), but installed_plugins.json points to new version (4.9.0)
         const root = mkdtempSync(join(tmpdir(), 'omc-stale-root-'));

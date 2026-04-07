@@ -1,4 +1,4 @@
-const DEFAULT_REPO_URL = 'https://github.com/RobinNorberg/oh-my-copilot';
+const DEFAULT_REPO_URL = 'https://github.com/Yeachan-Heo/oh-my-claudecode';
 const CONVENTIONAL_RE = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?:\s*(?<desc>.+)$/;
 function parseConventionalSubject(raw) {
     const match = raw.match(CONVENTIONAL_RE);
@@ -183,7 +183,7 @@ export function generateReleaseBody(version, changelog, contributors, prevTag, r
     let body = changelog;
     body += `\n### Install / Update\n\n`;
     body += '```bash\n';
-    body += `npm install -g oh-my-claude-sisyphus@${version}\n`;
+    body += `npm install -g oh-my-copilot@${version}\n`;
     body += '```\n\n';
     body += 'Or reinstall the plugin:\n```bash\nclaude /install-plugin oh-my-copilot\n```\n';
     if (prevTag) {

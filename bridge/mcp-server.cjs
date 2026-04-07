@@ -2245,8 +2245,8 @@ var require_resolve = __commonJS({
       }
       return count;
     }
-    function getFullPath(resolver, id = "", normalize3) {
-      if (normalize3 !== false)
+    function getFullPath(resolver, id = "", normalize4) {
+      if (normalize4 !== false)
         id = normalizeId(id);
       const p = resolver.parse(id);
       return _getFullPath(resolver, p);
@@ -3586,27 +3586,27 @@ var require_fast_uri = __commonJS({
     "use strict";
     var { normalizeIPv6, removeDotSegments, recomposeAuthority, normalizeComponentEncoding, isIPv4, nonSimpleDomain } = require_utils();
     var { SCHEMES, getSchemeHandler } = require_schemes();
-    function normalize3(uri, options) {
+    function normalize4(uri, options) {
       if (typeof uri === "string") {
         uri = /** @type {T} */
-        serialize(parse6(uri, options), options);
+        serialize(parse7(uri, options), options);
       } else if (typeof uri === "object") {
         uri = /** @type {T} */
-        parse6(serialize(uri, options), options);
+        parse7(serialize(uri, options), options);
       }
       return uri;
     }
     function resolve6(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
-      const resolved = resolveComponent(parse6(baseURI, schemelessOptions), parse6(relativeURI, schemelessOptions), schemelessOptions, true);
+      const resolved = resolveComponent(parse7(baseURI, schemelessOptions), parse7(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
     function resolveComponent(base, relative5, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
-        base = parse6(serialize(base, options), options);
-        relative5 = parse6(serialize(relative5, options), options);
+        base = parse7(serialize(base, options), options);
+        relative5 = parse7(serialize(relative5, options), options);
       }
       options = options || {};
       if (!options.tolerant && relative5.scheme) {
@@ -3658,13 +3658,13 @@ var require_fast_uri = __commonJS({
     function equal(uriA, uriB, options) {
       if (typeof uriA === "string") {
         uriA = unescape(uriA);
-        uriA = serialize(normalizeComponentEncoding(parse6(uriA, options), true), { ...options, skipEscape: true });
+        uriA = serialize(normalizeComponentEncoding(parse7(uriA, options), true), { ...options, skipEscape: true });
       } else if (typeof uriA === "object") {
         uriA = serialize(normalizeComponentEncoding(uriA, true), { ...options, skipEscape: true });
       }
       if (typeof uriB === "string") {
         uriB = unescape(uriB);
-        uriB = serialize(normalizeComponentEncoding(parse6(uriB, options), true), { ...options, skipEscape: true });
+        uriB = serialize(normalizeComponentEncoding(parse7(uriB, options), true), { ...options, skipEscape: true });
       } else if (typeof uriB === "object") {
         uriB = serialize(normalizeComponentEncoding(uriB, true), { ...options, skipEscape: true });
       }
@@ -3733,7 +3733,7 @@ var require_fast_uri = __commonJS({
       return uriTokens.join("");
     }
     var URI_PARSE = /^(?:([^#/:?]+):)?(?:\/\/((?:([^#/?@]*)@)?(\[[^#/?\]]+\]|[^#/:?]*)(?::(\d*))?))?([^#?]*)(?:\?([^#]*))?(?:#((?:.|[\n\r])*))?/u;
-    function parse6(uri, opts) {
+    function parse7(uri, opts) {
       const options = Object.assign({}, opts);
       const parsed = {
         scheme: void 0,
@@ -3822,12 +3822,12 @@ var require_fast_uri = __commonJS({
     }
     var fastUri = {
       SCHEMES,
-      normalize: normalize3,
+      normalize: normalize4,
       resolve: resolve6,
       resolveComponent,
       equal,
       serialize,
-      parse: parse6
+      parse: parse7
     };
     module2.exports = fastUri;
     module2.exports.default = fastUri;
@@ -19792,15 +19792,21 @@ var lspTools = [
 
 // src/tools/ast-tools.ts
 var import_fs9 = require("fs");
-var import_path11 = require("path");
+var import_path12 = require("path");
 var import_module = require("module");
 
 // src/lib/worktree-paths.ts
 var import_crypto = require("crypto");
 var import_child_process5 = require("child_process");
 var import_fs6 = require("fs");
-var import_os = require("os");
+var import_os2 = require("os");
+var import_path9 = require("path");
+
+// src/utils/config-dir.ts
 var import_path8 = require("path");
+var import_os = require("os");
+
+// src/lib/worktree-paths.ts
 var OmgPaths = {
   ROOT: ".omg",
   STATE: ".omg/state",
@@ -19850,7 +19856,7 @@ function validatePath(inputPath) {
   if (inputPath.includes("..")) {
     throw new Error(`Invalid path: path traversal not allowed (${inputPath})`);
   }
-  if (inputPath.startsWith("~") || (0, import_path8.isAbsolute)(inputPath)) {
+  if (inputPath.startsWith("~") || (0, import_path9.isAbsolute)(inputPath)) {
     throw new Error(`Invalid path: absolute paths not allowed (${inputPath})`);
   }
 }
@@ -19869,7 +19875,7 @@ function getProjectIdentifier(worktreeRoot) {
     source = root;
   }
   const hash = (0, import_crypto.createHash)("sha256").update(source).digest("hex").slice(0, 16);
-  const dirName = (0, import_path8.basename)(root).replace(/[^a-zA-Z0-9_-]/g, "_");
+  const dirName = (0, import_path9.basename)(root).replace(/[^a-zA-Z0-9_-]/g, "_");
   return `${dirName}-${hash}`;
 }
 function getOmcRoot(worktreeRoot) {
@@ -19877,8 +19883,8 @@ function getOmcRoot(worktreeRoot) {
   if (customDir) {
     const root2 = worktreeRoot || getWorktreeRoot() || process.cwd();
     const projectId = getProjectIdentifier(root2);
-    const centralizedPath = (0, import_path8.join)(customDir, projectId);
-    const legacyPath = (0, import_path8.join)(root2, OmgPaths.ROOT);
+    const centralizedPath = (0, import_path9.join)(customDir, projectId);
+    const legacyPath = (0, import_path9.join)(root2, OmgPaths.ROOT);
     const warningKey = `${legacyPath}:${centralizedPath}`;
     if (!dualDirWarnings.has(warningKey) && (0, import_fs6.existsSync)(legacyPath) && (0, import_fs6.existsSync)(centralizedPath)) {
       dualDirWarnings.add(warningKey);
@@ -19889,14 +19895,14 @@ function getOmcRoot(worktreeRoot) {
     return centralizedPath;
   }
   const root = worktreeRoot || getWorktreeRoot() || process.cwd();
-  return (0, import_path8.join)(root, OmgPaths.ROOT);
+  return (0, import_path9.join)(root, OmgPaths.ROOT);
 }
 function resolveOmcPath(relativePath, worktreeRoot) {
   validatePath(relativePath);
   const omcDir = getOmcRoot(worktreeRoot);
-  const fullPath = (0, import_path8.normalize)((0, import_path8.resolve)(omcDir, relativePath));
-  const relativeToOmc = (0, import_path8.relative)(omcDir, fullPath);
-  if (relativeToOmc.startsWith("..") || relativeToOmc.startsWith(import_path8.sep + "..")) {
+  const fullPath = (0, import_path9.normalize)((0, import_path9.resolve)(omcDir, relativePath));
+  const relativeToOmc = (0, import_path9.relative)(omcDir, fullPath);
+  if (relativeToOmc.startsWith("..") || relativeToOmc.startsWith(import_path9.sep + "..")) {
     throw new Error(`Path escapes omc boundary: ${relativePath}`);
   }
   return fullPath;
@@ -19917,10 +19923,10 @@ function ensureOmcDir(relativePath, worktreeRoot) {
   return fullPath;
 }
 function getWorktreeNotepadPath(worktreeRoot) {
-  return (0, import_path8.join)(getOmcRoot(worktreeRoot), "notepad.md");
+  return (0, import_path9.join)(getOmcRoot(worktreeRoot), "notepad.md");
 }
 function getWorktreeProjectMemoryPath(worktreeRoot) {
-  return (0, import_path8.join)(getOmcRoot(worktreeRoot), "project-memory.json");
+  return (0, import_path9.join)(getOmcRoot(worktreeRoot), "project-memory.json");
 }
 var SESSION_ID_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 function validateSessionId(sessionId) {
@@ -19941,10 +19947,10 @@ function resolveSessionStatePath(stateName, sessionId, worktreeRoot) {
 }
 function getSessionStateDir(sessionId, worktreeRoot) {
   validateSessionId(sessionId);
-  return (0, import_path8.join)(getOmcRoot(worktreeRoot), "state", "sessions", sessionId);
+  return (0, import_path9.join)(getOmcRoot(worktreeRoot), "state", "sessions", sessionId);
 }
 function listSessionIds(worktreeRoot) {
-  const sessionsDir = (0, import_path8.join)(getOmcRoot(worktreeRoot), "state", "sessions");
+  const sessionsDir = (0, import_path9.join)(getOmcRoot(worktreeRoot), "state", "sessions");
   if (!(0, import_fs6.existsSync)(sessionsDir)) {
     return [];
   }
@@ -19971,7 +19977,7 @@ function validateWorkingDirectory(workingDirectory) {
   if (!workingDirectory) {
     return trustedRoot;
   }
-  const resolved = (0, import_path8.resolve)(workingDirectory);
+  const resolved = (0, import_path9.resolve)(workingDirectory);
   let trustedRootReal;
   try {
     trustedRootReal = (0, import_fs6.realpathSync)(trustedRoot);
@@ -20002,8 +20008,8 @@ function validateWorkingDirectory(workingDirectory) {
   } catch {
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
   }
-  const rel = (0, import_path8.relative)(trustedRootReal, resolvedReal);
-  if (rel.startsWith("..") || (0, import_path8.isAbsolute)(rel)) {
+  const rel = (0, import_path9.relative)(trustedRootReal, resolvedReal);
+  if (rel.startsWith("..") || (0, import_path9.isAbsolute)(rel)) {
     throw new Error(`workingDirectory '${workingDirectory}' is outside the trusted worktree root '${trustedRoot}'.`);
   }
   return trustedRoot;
@@ -20011,17 +20017,17 @@ function validateWorkingDirectory(workingDirectory) {
 
 // src/lib/security-config.ts
 var import_fs8 = require("fs");
-var import_path10 = require("path");
+var import_path11 = require("path");
 
 // src/utils/paths.ts
-var import_path9 = require("path");
+var import_path10 = require("path");
 var import_fs7 = require("fs");
-var import_os2 = require("os");
+var import_os3 = require("os");
 function getConfigDir2() {
   if (process.platform === "win32") {
-    return process.env.APPDATA || (0, import_path9.join)((0, import_os2.homedir)(), "AppData", "Roaming");
+    return process.env.APPDATA || (0, import_path10.join)((0, import_os3.homedir)(), "AppData", "Roaming");
   }
-  return process.env.XDG_CONFIG_HOME || (0, import_path9.join)((0, import_os2.homedir)(), ".config");
+  return process.env.XDG_CONFIG_HOME || (0, import_path10.join)((0, import_os3.homedir)(), ".config");
 }
 var STALE_THRESHOLD_MS = 24 * 60 * 60 * 1e3;
 
@@ -20047,8 +20053,8 @@ var STRICT_OVERRIDES = {
 var cachedConfig = null;
 function loadSecurityFromConfigFiles() {
   const paths = [
-    (0, import_path10.join)(process.cwd(), ".copilot", "omc.jsonc"),
-    (0, import_path10.join)(getConfigDir2(), "copilot-omc", "config.jsonc")
+    (0, import_path11.join)(process.cwd(), ".copilot", "omc.jsonc"),
+    (0, import_path11.join)(getConfigDir2(), "copilot-omc", "config.jsonc")
   ];
   for (const configPath of paths) {
     if (!(0, import_fs8.existsSync)(configPath)) continue;
@@ -20205,7 +20211,7 @@ function getFilesForLanguage(dirPath, language, maxFiles = 1e3) {
       const entries = (0, import_fs9.readdirSync)(dir, { withFileTypes: true });
       for (const entry of entries) {
         if (files.length >= maxFiles) return;
-        const fullPath = (0, import_path11.join)(dir, entry.name);
+        const fullPath = (0, import_path12.join)(dir, entry.name);
         if (entry.isDirectory()) {
           if (![
             "node_modules",
@@ -20219,7 +20225,7 @@ function getFilesForLanguage(dirPath, language, maxFiles = 1e3) {
             walk(fullPath);
           }
         } else if (entry.isFile()) {
-          const ext = (0, import_path11.extname)(entry.name).toLowerCase();
+          const ext = (0, import_path12.extname)(entry.name).toLowerCase();
           if (extensions.includes(ext)) {
             files.push(fullPath);
           }
@@ -20228,7 +20234,7 @@ function getFilesForLanguage(dirPath, language, maxFiles = 1e3) {
     } catch {
     }
   }
-  const resolvedPath = (0, import_path11.resolve)(dirPath);
+  const resolvedPath = (0, import_path12.resolve)(dirPath);
   let stat;
   try {
     stat = (0, import_fs9.statSync)(resolvedPath);
@@ -22190,7 +22196,7 @@ function validatePayload(payload, limits = {}) {
 
 // src/hooks/mode-registry/index.ts
 var import_fs11 = require("fs");
-var import_path12 = require("path");
+var import_path13 = require("path");
 
 // src/lib/mode-names.ts
 var MODE_NAMES = {
@@ -22267,19 +22273,19 @@ var MODE_CONFIGS = {
 };
 var EXCLUSIVE_MODES = [MODE_NAMES.AUTOPILOT];
 function getStateDir(cwd) {
-  return (0, import_path12.join)(getOmcRoot(cwd), "state");
+  return (0, import_path13.join)(getOmcRoot(cwd), "state");
 }
 function getStateFilePath(cwd, mode, sessionId) {
   const config2 = MODE_CONFIGS[mode];
   if (sessionId) {
     return resolveSessionStatePath(mode, sessionId, cwd);
   }
-  return (0, import_path12.join)(getStateDir(cwd), config2.stateFile);
+  return (0, import_path13.join)(getStateDir(cwd), config2.stateFile);
 }
 function getMarkerFilePath(cwd, mode) {
   const config2 = MODE_CONFIGS[mode];
   if (!config2.markerFile) return null;
-  return (0, import_path12.join)(getStateDir(cwd), config2.markerFile);
+  return (0, import_path13.join)(getStateDir(cwd), config2.markerFile);
 }
 function isJsonModeActive(cwd, mode, sessionId) {
   const config2 = MODE_CONFIGS[mode];
@@ -23142,7 +23148,7 @@ var stateTools = [
 
 // src/hooks/notepad/index.ts
 var import_fs14 = require("fs");
-var import_path13 = require("path");
+var import_path14 = require("path");
 
 // src/lib/file-lock.ts
 var import_fs13 = require("fs");
@@ -23313,7 +23319,7 @@ function getSectionRegexSet(header) {
   return SECTION_REGEXES[header] ?? createSectionRegexSet(header);
 }
 function getNotepadPath(directory) {
-  return (0, import_path13.join)(getOmcRoot(directory), NOTEPAD_FILENAME);
+  return (0, import_path14.join)(getOmcRoot(directory), NOTEPAD_FILENAME);
 }
 function initNotepad(directory) {
   const omcDir = getOmcRoot(directory);
@@ -23843,7 +23849,7 @@ var notepadTools = [
 ];
 
 // src/hooks/project-memory/index.ts
-var import_path21 = __toESM(require("path"), 1);
+var import_path22 = __toESM(require("path"), 1);
 
 // src/features/context-injector/collector.ts
 var PRIORITY_ORDER = {
@@ -23954,17 +23960,17 @@ var contextCollector = new ContextCollector();
 
 // src/hooks/rules-injector/finder.ts
 var import_fs15 = require("fs");
-var import_path15 = require("path");
+var import_path16 = require("path");
 
 // src/hooks/rules-injector/constants.ts
-var import_path14 = require("path");
-var import_os3 = require("os");
-var OMC_STORAGE_DIR = (0, import_path14.join)((0, import_os3.homedir)(), ".omg");
-var RULES_INJECTOR_STORAGE = (0, import_path14.join)(OMC_STORAGE_DIR, "rules-injector");
+var import_path15 = require("path");
+var import_os4 = require("os");
+var OMC_STORAGE_DIR = (0, import_path15.join)((0, import_os4.homedir)(), ".omg");
+var RULES_INJECTOR_STORAGE = (0, import_path15.join)(OMC_STORAGE_DIR, "rules-injector");
 
 // src/hooks/project-memory/storage.ts
 var import_promises = __toESM(require("fs/promises"), 1);
-var import_path16 = __toESM(require("path"), 1);
+var import_path17 = __toESM(require("path"), 1);
 
 // src/hooks/project-memory/constants.ts
 var CACHE_EXPIRY_MS = 24 * 60 * 60 * 1e3;
@@ -23988,7 +23994,7 @@ async function loadProjectMemory(projectRoot) {
 }
 async function saveProjectMemory(projectRoot, memory) {
   const memoryPath = getMemoryPath(projectRoot);
-  const omcDir = import_path16.default.dirname(memoryPath);
+  const omcDir = import_path17.default.dirname(memoryPath);
   try {
     await import_promises.default.mkdir(omcDir, { recursive: true });
     await atomicWriteJson(memoryPath, memory);
@@ -24004,17 +24010,17 @@ async function withProjectMemoryLock(projectRoot, fn) {
 
 // src/hooks/project-memory/detector.ts
 var import_promises3 = __toESM(require("fs/promises"), 1);
-var import_path18 = __toESM(require("path"), 1);
+var import_path19 = __toESM(require("path"), 1);
 
 // src/hooks/project-memory/directory-mapper.ts
 var import_promises2 = __toESM(require("fs/promises"), 1);
-var import_path17 = __toESM(require("path"), 1);
+var import_path18 = __toESM(require("path"), 1);
 
 // src/hooks/project-memory/formatter.ts
-var import_path20 = __toESM(require("path"), 1);
+var import_path21 = __toESM(require("path"), 1);
 
 // src/hooks/project-memory/hot-path-tracker.ts
-var import_path19 = __toESM(require("path"), 1);
+var import_path20 = __toESM(require("path"), 1);
 
 // src/hooks/project-memory/directive-detector.ts
 function addDirective(directives, newDirective) {
@@ -24400,20 +24406,20 @@ var memoryTools = [
 
 // src/tools/trace-tools.ts
 var import_fs17 = require("fs");
-var import_path23 = require("path");
+var import_path24 = require("path");
 
 // src/hooks/subagent-tracker/session-replay.ts
 var import_fs16 = require("fs");
-var import_path22 = require("path");
+var import_path23 = require("path");
 var REPLAY_PREFIX = "agent-replay-";
 var MAX_REPLAY_SIZE_BYTES = 5 * 1024 * 1024;
 function getReplayFilePath(directory, sessionId) {
-  const stateDir = (0, import_path22.join)(getOmcRoot(directory), "state");
+  const stateDir = (0, import_path23.join)(getOmcRoot(directory), "state");
   if (!(0, import_fs16.existsSync)(stateDir)) {
     (0, import_fs16.mkdirSync)(stateDir, { recursive: true });
   }
   const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  return (0, import_path22.join)(stateDir, `${REPLAY_PREFIX}${safeId}.jsonl`);
+  return (0, import_path23.join)(stateDir, `${REPLAY_PREFIX}${safeId}.jsonl`);
 }
 function readReplayEvents(directory, sessionId) {
   const filePath = getReplayFilePath(directory, sessionId);
@@ -24592,12 +24598,12 @@ function getReplaySummary(directory, sessionId) {
 // src/tools/trace-tools.ts
 var REPLAY_PREFIX2 = "agent-replay-";
 function findLatestSessionId(directory) {
-  const stateDir = (0, import_path23.join)(directory, ".omg", "state");
+  const stateDir = (0, import_path24.join)(directory, ".omg", "state");
   try {
     const files = (0, import_fs17.readdirSync)(stateDir).filter((f) => f.startsWith(REPLAY_PREFIX2) && f.endsWith(".jsonl")).map((f) => ({
       name: f,
       sessionId: f.slice(REPLAY_PREFIX2.length, -".jsonl".length),
-      mtime: (0, import_fs17.statSync)((0, import_path23.join)(stateDir, f)).mtimeMs
+      mtime: (0, import_fs17.statSync)((0, import_path24.join)(stateDir, f)).mtimeMs
     })).sort((a, b) => b.mtime - a.mtime);
     return files.length > 0 ? files[0].sessionId : null;
   } catch {
