@@ -1,4 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
+
+const isWindows = process.platform === 'win32';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -18,7 +20,7 @@ afterEach(() => {
   }
 });
 
-describe('setup-progress.sh', () => {
+describe.skipIf(isWindows)('setup-progress.sh', () => {
   it('writes setup completion metadata to COPILOT_CONFIG_DIR', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-setup-progress-'));
     tempRoots.push(root);

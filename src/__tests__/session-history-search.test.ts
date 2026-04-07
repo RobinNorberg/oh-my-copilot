@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+const isWindows = process.platform === 'win32';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { basename, join } from 'path';
@@ -16,7 +18,7 @@ function writeTranscript(filePath: string, entries: Array<Record<string, unknown
   writeFileSync(filePath, entries.map((entry) => JSON.stringify(entry)).join('\n') + '\n', 'utf-8');
 }
 
-describe('session history search', () => {
+describe.skipIf(isWindows)('session history search', () => {
   const repoRoot = process.cwd();
   const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
   let tempRoot: string;

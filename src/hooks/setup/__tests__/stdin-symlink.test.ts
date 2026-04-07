@@ -6,6 +6,8 @@
  * only removes old destination AFTER successfully creating new symlink.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
+const isWindows = process.platform === 'win32';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, lstatSync, unlinkSync, symlinkSync, copyFileSync, readlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -21,7 +23,7 @@ vi.mock('fs', async () => {
 
 import { ensureStdinSymlink } from '../index.js';
 
-describe('ensureStdinSymlink', () => {
+describe.skipIf(isWindows)('ensureStdinSymlink', () => {
   let pluginRoot: string;
   let configDir: string;
   let hooksLibDir: string;

@@ -1,4 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
+
+const isWindows = process.platform === 'win32';
 import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
@@ -76,7 +78,7 @@ function executePythonInSandbox(code: string): string {
   }
 }
 
-describe('python-repl sandbox blocked modules (bypass prevention)', () => {
+describe.skipIf(isWindows)('python-repl sandbox blocked modules (bypass prevention)', () => {
   it('should block importlib (bypass prevention)', () => {
     const result = executePythonInSandbox('import importlib');
     expect(result).toContain('blocked in sandbox mode');
@@ -145,7 +147,7 @@ describe('python-repl sandbox blocked modules (bypass prevention)', () => {
   });
 });
 
-describe('python-repl sandbox bridge startup integration', () => {
+describe.skipIf(isWindows)('python-repl sandbox bridge startup integration', () => {
   it('should load bridge with OMC_PYTHON_SANDBOX=1 and block os in sandbox namespace', () => {
     const bridgePath = new URL('../../../../bridge/gyoshu_bridge.py', import.meta.url).pathname;
     const tmpScript = join(tmpdir(), `omc-sandbox-bridge-${Date.now()}.py`);

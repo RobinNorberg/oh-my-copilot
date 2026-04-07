@@ -1,7 +1,16 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { createBuiltinSkills, getBuiltinSkill, listBuiltinSkillNames, clearSkillsCache } from '../features/builtin-skills/skills.js';
 
 describe('Builtin Skills', () => {
+  // Enable strict mode so all skills (including strict-mode-only) are loaded
+  const originalStrictMode = process.env.OMC_STRICT_MODE;
+  process.env.OMC_STRICT_MODE = 'true';
+
+  afterAll(() => {
+    if (originalStrictMode === undefined) delete process.env.OMC_STRICT_MODE;
+    else process.env.OMC_STRICT_MODE = originalStrictMode;
+  });
+
   // Clear cache before each test to ensure fresh loads
   beforeEach(() => {
     clearSkillsCache();
