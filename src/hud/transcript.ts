@@ -25,12 +25,14 @@ import type {
   ActiveAgent,
   TodoItem,
   PendingPermission,
+  RecentTool,
 } from "./types.js";
 
 // Performance constants
 const MAX_TAIL_BYTES = 512 * 1024; // 500KB - enough for recent activity
 const MAX_AGENT_MAP_SIZE = 100; // Cap agent tracking
 const _MIN_RUNNING_AGENTS_THRESHOLD = 10; // Early termination threshold
+const MAX_RECENT_TOOLS = 20; // Track last 20 tool calls for recentTools display
 
 /**
  * Tools known to require permission approval in Copilot CLI.
@@ -101,6 +103,7 @@ export async function parseTranscript(
     agentCallCount: 0,
     skillCallCount: 0,
     lastToolName: null,
+    recentTools: [],
   };
 
   if (!transcriptPath || !existsSync(transcriptPath)) {
@@ -123,6 +126,7 @@ export async function parseTranscript(
   const agentMap = new Map<string, ActiveAgent>();
   const backgroundAgentMap: BackgroundAgentMap = new Map();
   const latestTodos: TodoItem[] = [];
+  const recentToolMap = new Map<string, RecentTool & { id: string }>();
 
   let sessionTotalsReliable = false;
   const sessionTokenTotals = { inputTokens: 0, outputTokens: 0, seenUsage: false };
@@ -145,6 +149,7 @@ export async function parseTranscript(
             result,
             MAX_AGENT_MAP_SIZE,
             backgroundAgentMap,
+            recentToolMap,
           );
         } catch {
           // Skip malformed lines
@@ -172,6 +177,7 @@ export async function parseTranscript(
             result,
             MAX_AGENT_MAP_SIZE,
             backgroundAgentMap,
+            recentToolMap,
           );
         } catch {
           // Skip malformed lines
@@ -194,6 +200,8 @@ export async function parseTranscript(
     ...completed.slice(-(10 - running.length)),
   ].slice(0, 10);
   result.todos = latestTodos;
+  result.recentTools = Array.from(recentToolMap.values())
+    .map(({ id: _id, ...rest }) => rest);
   if (sessionTotalsReliable && sessionTokenTotals.seenUsage) {
     result.sessionTotalTokens = sessionTokenTotals.inputTokens + sessionTokenTotals.outputTokens;
   }
@@ -253,6 +261,10 @@ function cloneTranscriptData(result: TranscriptData): TranscriptData {
     lastRequestTokenUsage: result.lastRequestTokenUsage
       ? { ...result.lastRequestTokenUsage }
       : undefined,
+    recentTools: result.recentTools.map((t) => ({
+      ...t,
+      timestamp: new Date(t.timestamp.getTime()),
+    })),
   };
 }
 
@@ -405,6 +417,7 @@ function processEntry(
   result: TranscriptData,
   maxAgentMapSize: number = 50,
   backgroundAgentMap?: BackgroundAgentMap,
+  recentToolMap?: Map<string, RecentTool & { id: string }>,
 ): void {
   const timestamp = entry.timestamp ? new Date(entry.timestamp) : new Date();
 
@@ -433,6 +446,29 @@ function processEntry(
     if (block.type === "tool_use" && block.id && block.name) {
       result.toolCallCount++;
       result.lastToolName = block.name;
+
+      // Track for recentTools (skip internal/meta tools)
+      if (recentToolMap) {
+        const SKIP_TOOLS = [
+          'TodoWrite', 'Skill', 'proxy_Skill', 'Task', 'proxy_Task',
+          'report_intent', 'task_complete', 'thinking',
+          'read_agent', 'list_agents', 'write_agent',
+        ];
+        if (!SKIP_TOOLS.includes(block.name)) {
+          if (recentToolMap.size >= MAX_RECENT_TOOLS) {
+            const oldestKey = recentToolMap.keys().next().value;
+            if (oldestKey) recentToolMap.delete(oldestKey);
+          }
+          recentToolMap.set(block.id, {
+            id: block.id,
+            name: block.name.replace('proxy_', ''),
+            target: extractTargetSummary(block.input, block.name),
+            status: 'running',
+            timestamp,
+          });
+        }
+      }
+
       if (block.name === "Task" || block.name === "proxy_Task") {
         result.agentCallCount++;
         const input = block.input as TaskInput | undefined;
@@ -509,6 +545,16 @@ function processEntry(
     if (block.type === "tool_result" && block.tool_use_id) {
       // Clear from pending permissions when tool_result arrives
       pendingPermissionMap.delete(block.tool_use_id);
+
+      // Update recentTools status
+      if (recentToolMap) {
+        const trackedTool = recentToolMap.get(block.tool_use_id);
+        if (trackedTool) {
+          const isError = block.is_error === true ||
+            (typeof block.content === 'string' && block.content.toLowerCase().includes('error'));
+          trackedTool.status = isError ? 'failure' : 'success';
+        }
+      }
 
       const agent = agentMap.get(block.tool_use_id);
       if (agent) {
