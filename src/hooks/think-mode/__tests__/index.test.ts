@@ -84,35 +84,7 @@ World`);
       });
     });
 
-    describe('Multilingual keywords', () => {
-      it('should detect Korean "생각"', () => {
-        expect(detectThinkKeyword('이것에 대해 생각해주세요')).toBe(true);
-      });
 
-      it('should detect Chinese "思考"', () => {
-        expect(detectThinkKeyword('请思考这个问题')).toBe(true);
-      });
-
-      it('should detect Japanese "考え"', () => {
-        expect(detectThinkKeyword('これについて考えてください')).toBe(true);
-      });
-
-      it('should detect Russian "думать"', () => {
-        expect(detectThinkKeyword('пожалуйста думай')).toBe(true);
-      });
-
-      it('should detect Spanish "piensa"', () => {
-        expect(detectThinkKeyword('piensa en esto')).toBe(true);
-      });
-
-      it('should detect French "penser"', () => {
-        expect(detectThinkKeyword('tu dois penser')).toBe(true);
-      });
-
-      it('should detect German "denken"', () => {
-        expect(detectThinkKeyword('bitte denken Sie')).toBe(true);
-      });
-    });
 
     describe('Code block exclusion', () => {
       it('should not detect keyword inside fenced code block', () => {
@@ -644,8 +616,8 @@ World`);
       expect(shouldActivateThinkMode('ultrathink')).toBe(true);
     });
 
-    it('should return true for multilingual keywords', () => {
-      expect(shouldActivateThinkMode('생각해주세요')).toBe(true);
+    it('should not activate for non-English keywords', () => {
+      expect(shouldActivateThinkMode('생각해주세요')).toBe(false);
     });
 
     it('should return false for no keywords', () => {
