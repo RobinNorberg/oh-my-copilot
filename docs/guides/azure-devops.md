@@ -107,6 +107,9 @@ You can trigger ADO skills by typing these keywords directly in the prompt inste
 |---------|-------|-------------|
 | `ado setup` | `/oh-my-copilot:omc-ado-setup` | Configure Azure DevOps integration |
 | `ado triage` | `/oh-my-copilot:omc-ado-triage` | Azure DevOps work item triage |
+| `ado review` | `/oh-my-copilot:omc-ado-review` | Interactive PR review |
+| `ado auto-review` | `/oh-my-copilot:omc-ado-auto-review` | Automated code review via code-reviewer agent |
+| `ado sprint` | `/oh-my-copilot:omc-ado-sprint` | Sprint planning and iteration management |
 
 ## Agent Awareness
 

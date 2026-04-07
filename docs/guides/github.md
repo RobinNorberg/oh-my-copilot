@@ -109,6 +109,8 @@ You can trigger GitHub skills by typing these keywords directly in the prompt in
 | `gh setup` | `/oh-my-copilot:omc-gh-setup` | Configure GitHub integration |
 | `gh triage` | `/oh-my-copilot:omc-gh-triage` | GitHub issue/PR/CI triage |
 | `gh review` | `/oh-my-copilot:omc-gh-review` | Interactive GitHub PR review |
+| `gh auto-review` | `/oh-my-copilot:omc-gh-auto-review` | Automated code review via code-reviewer agent |
+| `gh project` | `/oh-my-copilot:omc-gh-project` | Manage GitHub Projects (v2) boards |
 
 ## Agent Awareness
 
