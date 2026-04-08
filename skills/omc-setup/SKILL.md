@@ -79,6 +79,24 @@ EXAMPLES:
 For more info: https://github.com/RobinNorberg/oh-my-copilot
 ```
 
+## Step 0: Discover Plugin Root
+
+Before anything else, resolve `COPILOT_PLUGIN_ROOT`. Run this command and use the result for all subsequent `${COPILOT_PLUGIN_ROOT}` references:
+
+```bash
+# Find the oh-my-copilot plugin root
+for d in   "${COPILOT_PLUGIN_ROOT:-}"   "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/installed-plugins/omg/oh-my-copilot"   "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/installed-plugins/_direct/oh-my-copilot"   "$(npm root -g 2>/dev/null)/oh-my-copilot"   ; do
+  [ -n "$d" ] && [ -f "$d/skills/omc-setup/SKILL.md" ] && { echo "$d"; break; }
+done
+```
+
+Store the output as `COPILOT_PLUGIN_ROOT` for the rest of this setup. If no path is found, tell the user to install first:
+```
+oh-my-copilot plugin not found. Install it first:
+  /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
+  /plugin install oh-my-copilot@omg
+```
+
 ## Pre-Setup Check: Already Configured?
 
 **CRITICAL**: Before doing anything else, check if setup has already been completed. This prevents users from having to re-run the full setup wizard after every update.
