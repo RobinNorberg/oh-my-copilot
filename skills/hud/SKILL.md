@@ -124,13 +124,45 @@ async function main() {
     } catch { /* continue */ }
   }
 
-  // 3. npm package (global or local install)
+  // 3. Installed plugins (marketplace install)
+  const installedPluginPaths = [
+    join(configDir, "installed-plugins", "omg", "oh-my-copilot"),
+    join(configDir, "installed-plugins", "_direct", "oh-my-copilot"),
+  ];
+  for (const pluginDir of installedPluginPaths) {
+    const hudPath = join(pluginDir, "dist", "hud", "index.js");
+    if (existsSync(hudPath)) {
+      try {
+        await import(pathToFileURL(hudPath).href);
+        return;
+      } catch { /* continue */ }
+    }
+  }
+
+  // 4. npm global install (platform-specific paths)
+  const npmGlobalPaths = [
+    process.env.APPDATA && join(process.env.APPDATA, "npm", "node_modules", "oh-my-copilot"),
+    join(home, ".npm-global", "lib", "node_modules", "oh-my-copilot"),
+    "/usr/local/lib/node_modules/oh-my-copilot",
+    "/usr/lib/node_modules/oh-my-copilot",
+  ].filter(Boolean);
+  for (const npmDir of npmGlobalPaths) {
+    const hudPath = join(npmDir, "dist", "hud", "index.js");
+    if (existsSync(hudPath)) {
+      try {
+        await import(pathToFileURL(hudPath).href);
+        return;
+      } catch { /* continue */ }
+    }
+  }
+
+  // 5. npm package (bare import - works for local installs)
   try {
     await import("oh-my-copilot/dist/hud/index.js");
     return;
   } catch { /* continue */ }
 
-  // 4. Fallback: provide detailed error message with fix instructions
+  // 6. Fallback: provide detailed error message with fix instructions
   if (pluginCacheDir && existsSync(pluginCacheDir)) {
     // Plugin exists but dist/ folder is missing - needs build
     const distDir = join(pluginCacheDir, "dist");
