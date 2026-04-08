@@ -1,6 +1,18 @@
 import { describe, it, expect, afterEach } from 'vitest';
 
 const isWindows = process.platform === 'win32';
+
+// Check python3 availability at module level for CI guard
+function isPython3Available(): boolean {
+  try {
+    const { execSync } = require('child_process');
+    execSync('python3 --version', { stdio: 'ignore', timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+const isPython3Unavailable = !isPython3Available();
 import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
@@ -78,7 +90,7 @@ function executePythonInSandbox(code: string): string {
   }
 }
 
-describe.skipIf(isWindows)('python-repl sandbox blocked modules (bypass prevention)', () => {
+describe.skipIf(isWindows || isPython3Unavailable)('python-repl sandbox blocked modules (bypass prevention)', () => {
   it('should block importlib (bypass prevention)', () => {
     const result = executePythonInSandbox('import importlib');
     expect(result).toContain('blocked in sandbox mode');
@@ -147,7 +159,7 @@ describe.skipIf(isWindows)('python-repl sandbox blocked modules (bypass preventi
   });
 });
 
-describe.skipIf(isWindows)('python-repl sandbox bridge startup integration', () => {
+describe.skipIf(isWindows || isPython3Unavailable)('python-repl sandbox bridge startup integration', () => {
   it('should load bridge with OMC_PYTHON_SANDBOX=1 and block os in sandbox namespace', () => {
     const bridgePath = new URL('../../../../bridge/gyoshu_bridge.py', import.meta.url).pathname;
     const tmpScript = join(tmpdir(), `omc-sandbox-bridge-${Date.now()}.py`);
