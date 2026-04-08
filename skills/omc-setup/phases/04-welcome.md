@@ -1,18 +1,6 @@
 # Phase 4: Completion
 
-## Detect Upgrade from 2.x
-
-Check if user has existing 2.x configuration:
-
-```bash
-ls ~/.copilot/commands/ralph-loop.md 2>/dev/null || ls ~/.copilot/commands/ultrawork.md 2>/dev/null
-```
-
-If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
-
 ## Show Welcome Message
-
-### For New Users (IS_UPGRADE is not true):
 
 Display this exact output as a code block:
 
@@ -50,17 +38,6 @@ Display this exact output as a code block:
 Then show this below the banner:
 
 ```
-HUD STATUSLINE:
-The status bar now shows OMC state. Restart Copilot CLI to see it.
-```
-
-### For Users Upgrading from 2.x (IS_UPGRADE is true):
-
-Display the same banner and command table as shown for new users above, followed by:
-
-```
-Upgraded from 2.x - your existing commands (/ralph, /ultrawork, etc.) still work!
-
 HUD STATUSLINE:
 The status bar now shows OMC state. Restart Copilot CLI to see it.
 ```
