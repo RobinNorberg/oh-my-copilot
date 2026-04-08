@@ -19,8 +19,8 @@ describe('release generation', () => {
     const prNumbers = extractPullRequestNumbers([
       'feat(hud): add configurable call count icon format (#2151)',
       'fix(hud): replace misleading CLI error with installation diagnostic (#2129)',
-      'Merge pull request #2146 from Yeachan-Heo/issue-2143-omc-launch-followup',
-      'Merge pull request #2162 from Yeachan-Heo/release/4.10.2',
+      'Merge pull request #2146 from NorbergRobin/issue-2143-omc-launch-followup',
+      'Merge pull request #2162 from NorbergRobin/release/4.10.2',
       'feat(hud): add configurable call count icon format (#2151)',
     ]);
 
@@ -123,7 +123,7 @@ describe('release generation', () => {
     );
 
     expect(body).toContain('npm install -g oh-my-copilot@4.10.2');
-    expect(body).toContain('https://github.com/Yeachan-Heo/oh-my-claudecode/compare/v4.10.1...v4.10.2');
+    expect(body).toContain('https://github.com/RobinNorberg/oh-my-copilot/compare/v4.10.1...v4.10.2');
     expect(body).toContain('@blue-int @DdangJin @Yeachan-Heo');
     expect(body.match(/## Contributors/g)).toHaveLength(1);
   });

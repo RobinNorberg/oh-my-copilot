@@ -1,15 +1,19 @@
-# oh-my-copilot
-
-[![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
-[![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
-[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
-<br/>This work is based on [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo.
-
-
-
-<h1 align="center">Turbocharge your Copilot CLI with multi-agent orchestration.</h1>
-<p align="center">
+```
+     ██████╗ ██╗  ██╗     ███╗   ███╗██╗   ██╗
+    ██╔═══██╗██║  ██║     ████╗ ████║╚██╗ ██╔╝
+    ██║   ██║███████║     ██╔████╔██║ ╚████╔╝
+    ██║   ██║██╔══██║     ██║╚██╔╝██║  ╚██╔╝
+    ╚██████╔╝██║  ██║     ██║ ╚═╝ ██║   ██║
+     ╚═════╝ ╚═╝  ╚═╝     ╚═╝     ╚═╝   ╚═╝
+               ██████╗ ██████╗ ██████╗ ██╗██╗      ██████╗ ████████╗
+              ██╔════╝██╔═══██╗██╔══██╗██║██║     ██╔═══██╗╚══██╔══╝
+              ██║     ██║   ██║██████╔╝██║██║     ██║   ██║   ██║
+              ██║     ██║   ██║██╔═══╝ ██║██║     ██║   ██║   ██║
+              ╚██████╗╚██████╔╝██║     ██║███████╗╚██████╔╝   ██║
+               ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝ ╚═════╝    ╚═╝
+       Turbocharge your Copilot CLI with multi-agent orchestration
+```
+<p align="left"  style="padding-left: 100px">
   <img src="assets/omc-character.png" alt="oh-my-copilot" width="400" />
   </br>
   <strong><i>Your Copilot has been working out, learning new ways to improve your life.</i></strong>
@@ -17,35 +21,38 @@
 
 ---
 
+[![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
+[![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
+[![GitHub stars](https://img.shields.io/github/stars/RobinNorberg/oh-my-copilot?style=flat&color=yellow)](https://github.com/RobinNorberg/oh-my-copilot/stargazers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+<br/>This work is based on [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode) by Yeachan Heo, but with copilot cli focus.
+
 ## Quick Start
 
-**Step 1: Install**
-
 ```bash
+# Step 1: Install
 /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 /plugin install oh-my-copilot
-```
+# or
+npm i -g oh-my-copilot@latest
 
-**Step 2: Setup**
 
-```bash
+# Step 2: Setup
 /omc-setup
-```
 
-**Step 3: Build something**
 
+# Step 3: Build something
+/autopilot: build a todo-app
+# or
+autopilot: build a todo-app
 ```
-autopilot: build a REST API for managing tasks
-```
-
-That's it. Everything else is automatic.
 
 ### Not Sure Where to Start?
 
 If you're uncertain about requirements, have a vague idea, or want to micromanage the design:
 
 ```
-/deep-interview "I want to build a task management app"
+/deep-interview "I want to build a todo-app"
 ```
 
 The deep interview uses Socratic questioning to clarify your thinking before any code is written.
@@ -54,12 +61,12 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 
 ## Key Features
 
-- **Zero configuration required** — works out of the box with intelligent defaults
-- **Team-first orchestration** — staged pipeline with plan, PRD, exec, verify, and fix loop
+- **Copilot CLI friendly** — Perfect for development in the terminal
 - **Natural language interface** — no commands to memorize, just describe what you want
+- **Team-first orchestration** — staged pipeline with plan, exec, verify, and fix loop
 - **Automatic parallelization** — complex tasks distributed across our specialized agents
+- **Smart model routing** — Haiku for simple tasks, Sonnet for average and Opus for complex reasoning
 - **Persistent execution** — won't give up until the job is verified complete
-- **Smart model routing** — Haiku for simple tasks, Sonnet for average and Opus for complex reasoning (30–50% token savings)
 - **Azure DevOps/GitHub native** — auto-detection, work item management, PR operations, triage workflows
 - **Stop your yolo abuse** — using a layered permission model to help your agents perform safe work without your interference
 ---
@@ -91,12 +98,12 @@ Optional shortcuts for power users. Natural language works fine without them.
 
 | Keyword | Category | Effect | Example |
 | ------- | -------- | ------ | ------- |
+| `team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Canonical Team orchestration | `team 3:executor "fix all TypeScript errors"` |
 | `ask claude` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Claude Code CLI | `ask claude "review auth architecture"` |
 | `ask codex` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Codex CLI | `ask codex "security analysis"` |
 | `ask gemini` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Gemini CLI | `ask gemini "suggest UX improvements"` |
 | `ccg` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `ccg review this PR` |
 | `omc team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"` |
-| `team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Canonical Team orchestration | `team 3:executor "fix all TypeScript errors"` |
 | `code review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Code review mode | `code review the auth module` |
 | `deep-analyze` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep analysis mode | `deep-analyze why tests are failing` |
 | `deep-dive` | ![analysis](https://img.shields.io/badge/analysis-purple) | Trace → interview pipeline | `deep-dive why auth is slow` |
@@ -127,7 +134,6 @@ Optional shortcuts for power users. Natural language works fine without them.
 
 **Notes:**
 
-- **ralph includes ultrawork**: when you activate ralph mode, it automatically includes ultrawork's parallel execution.
 - **Informational filtering**: Asking "what is ralph?" or "explain ultrawork" won't trigger execution — only actionable uses activate keywords.
 
 ---
@@ -138,40 +144,16 @@ Optional shortcuts for power users. Natural language works fine without them.
 - [Quick Start](docs/get-started/quickstart.md)
 - [Full Reference](docs/REFERENCE.md)
 - [Team Mode](docs/guides/team-mode.md)
-- [GitHub Integration](docs/guides/github.md)
 - [Azure DevOps Integration](docs/guides/azure-devops.md)
+- [GitHub Integration](docs/guides/github.md)
 - [Architecture Overview](docs/architecture/overview.md)
 - [Permission Architecture](docs/architecture/permissions.md)
 
 ---
 
-## Platform Integration
-
-### GitHub
-
-When your git remote points to `github.com`, OMC auto-detects GitHub. Run `/oh-my-copilot:omc-gh-setup` to configure, then use:
-
-- `/oh-my-copilot:omc-gh-triage` — scan open issues, PRs, failing CI, and Dependabot alerts
-- `/oh-my-copilot:omc-gh-review` — interactive PR review with inline comments
-- `/oh-my-copilot:omc-gh-auto-review` — automated code review via code-reviewer agent
-- `/oh-my-copilot:omc-gh-project` — manage GitHub Projects (v2) boards
-
-### Azure DevOps
-
-When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto-detects ADO and injects MCP tool context into all agent prompts. Run `/oh-my-copilot:omc-ado-setup` to configure, then use:
-
-- `/oh-my-copilot:omc-ado-triage` — parallel scan of work items, PRs, pipelines, and security alerts
-- `/oh-my-copilot:omc-ado-review` — interactive PR review with inline comments
-- `/oh-my-copilot:omc-ado-auto-review` — automated code review via code-reviewer agent
-- `/oh-my-copilot:omc-ado-sprint` — sprint planning and work item management
-
-[GitHub guide →](docs/guides/github.md) | [Azure DevOps guide →](docs/guides/azure-devops.md)
-
----
-
 ## Requirements
 
-- [Copilot CLI](https://docs.github.com/copilot-cli)
+- [Copilot CLI](https://github.com/github/copilot-cli)
 
 ---
 
@@ -198,7 +180,7 @@ OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validati
 
 | Provider                                                      | Install                                | What it enables                                  |
 | ------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------ |
-| [Copilot CLI](https://docs.github.com/copilot-cli)            | `npm install -g @github/copilot`                     | Core orchestration platform                      |
+| [Copilot CLI](https://github.com/github/copilot-cli)            | `npm install -g @github/copilot`                     | Core orchestration platform                      |
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm install -g @anthropic-ai/claude-code` | Deep reasoning, architecture analysis            |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm install -g @google/gemini-cli`    | Design review, UI consistency (1M token context) |
 | [Codex CLI](https://github.com/openai/codex)                  | `npm install -g @openai/codex`         | Architecture validation, code review cross-check |
@@ -210,11 +192,18 @@ omc team 2:gemini "UI consistency check"
 omc team 1:copilot "review existing tests"
 ```
 Only Copilot CLI is required — the others are optional and add cross-provider validation.
+
 ---
 
-## License
+## Star History
 
-MIT
+<a href="https://www.star-history.com/?repos=RobinNorberg%2Foh-my-copilot&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=RobinNorberg/oh-my-copilot&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=RobinNorberg/oh-my-copilot&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=RobinNorberg/oh-my-copilot&type=date&legend=top-left" />
+ </picture>
+</a>
 
 ---
 
@@ -223,3 +212,17 @@ MIT
 **Inspired by:** • [oh-my-claudecode](https://github.com/yeachan-heo/oh-my-claudecode), [oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode) • [Superpowers](https://github.com/obra/superpowers) • [get-shit-done](https://github.com/gsd-build/get-shit-done) • [Ouroboros](https://github.com/Q00/ouroboros) • [BMAD](https://github.com/bmad-code-org/BMAD-METHOD)
 
 </div>
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! Open an issue or PR on [GitHub](https://github.com/RobinNorberg/oh-my-copilot) to the dev branch.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+---

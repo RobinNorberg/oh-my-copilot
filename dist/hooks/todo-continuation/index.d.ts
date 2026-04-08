@@ -127,8 +127,6 @@ export declare function isExplicitCancelCommand(context?: StopContext): boolean;
  * When context is exhausted, Copilot CLI needs to stop so it can compact.
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
- *
- * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 export declare function isContextLimitStop(context?: StopContext): boolean;
 /**
@@ -137,8 +135,6 @@ export declare function isContextLimitStop(context?: StopContext): boolean;
  * Blocking these stops causes an infinite retry loop: the persistent-mode hook
  * injects a continuation prompt, Copilot immediately hits the rate limit again,
  * stops again, and the cycle repeats indefinitely.
- *
- * Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
  */
 export declare function isRateLimitStop(context?: StopContext): boolean;
 /**

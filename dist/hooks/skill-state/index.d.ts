@@ -12,8 +12,6 @@
  * 1. A protection level registry for all skills (none/light/medium/heavy)
  * 2. Read/write/clear functions for skill-active-state.json
  * 3. A check function for the Stop hook to determine if blocking is needed
- *
- * Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1033
  */
 export type SkillProtectionLevel = 'none' | 'light' | 'medium' | 'heavy';
 export interface SkillStateConfig {

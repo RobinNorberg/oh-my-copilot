@@ -41,8 +41,6 @@ if (!target) {
  *   3. Scan the plugin cache for the latest available version that has the
  *      same script name and use that instead.
  *   4. If all else fails, return null (caller exits cleanly).
- *
- * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1007
  */
 function resolveTarget(targetPath) {
   // Fast path: target exists (common case)

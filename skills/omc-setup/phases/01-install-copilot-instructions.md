@@ -27,7 +27,7 @@ Replace `<CONFIG_TARGET>` with `local` or `global`.
 
 **FALLBACK** if curl fails:
 Tell user to manually download from:
-https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/copilot-instructions.md
+https://github.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md
 
 **Note**: The downloaded copilot-instructions.md includes Context Persistence instructions with `<remember>` tags for surviving conversation compaction.
 

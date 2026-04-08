@@ -37,7 +37,7 @@ import { getBackgroundBashPermissionFallback, getBackgroundTaskPermissionFallbac
 import { wrapUntrustedFileContent } from "../agents/prompt-helpers.js";
 const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
-const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+(split-window|new-session|new-window|join-pane|send-keys)\b/i;
+const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
 const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cgpx]\s+team\b(?!\s+api\b)/i;
 const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
 const TEAM_TERMINAL_VALUES = new Set([
@@ -1016,11 +1016,9 @@ function processPreToolUse(input) {
     const preToolMessages = enforcementResult.message ? [enforcementResult.message] : [];
     const promptPrerequisiteConfig = getPromptPrerequisiteConfig(loadConfig());
     let modifiedToolInput;
-    // Prompt prerequisites: track progress and block editing tools until context is read
-    const promptPrerequisiteProgress = recordPromptPrerequisiteProgress(directory, input.sessionId, input.toolName, input.toolInput);
-    if (promptPrerequisiteProgress?.isComplete) {
-        preToolMessages.push("[PROMPT PREREQUISITES COMPLETE] Required context tools/files were read. Editing and agent delegation are unblocked.");
-    }
+    // Check blocking BEFORE recording progress — otherwise a denied tool
+    // (e.g. Edit) that also matches a prerequisite would have its progress
+    // persisted even though the tool never actually executed.
     const promptPrerequisiteState = readPromptPrerequisiteState(directory, input.sessionId);
     if (promptPrerequisiteState?.active
         && isPromptPrerequisiteBlockingTool(input.toolName, promptPrerequisiteConfig)) {
@@ -1032,6 +1030,10 @@ function processPreToolUse(input) {
                 permissionDecisionReason: buildPromptPrerequisiteDenyReason(promptPrerequisiteState, input.toolName),
             },
         };
+    }
+    const promptPrerequisiteProgress = recordPromptPrerequisiteProgress(directory, input.sessionId, input.toolName, input.toolInput);
+    if (promptPrerequisiteProgress?.isComplete) {
+        preToolMessages.push("[PROMPT PREREQUISITES COMPLETE] Required context tools/files were read. Editing and agent delegation are unblocked.");
     }
     // Force-inherit: deny Task calls that carry a `model` parameter when
     // forceInherit is enabled (Bedrock, Vertex, CC Switch, etc.).

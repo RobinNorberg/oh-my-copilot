@@ -9,6 +9,17 @@
  */
 import { readAllPages, appendLog, } from './storage.js';
 /**
+ * Tokenize text for search, with CJK bi-gram support.
+ *
+ * Latin/numeric words: split on whitespace.
+ * CJK characters (Han, Hangul, Kana): bi-grams (2-char sliding window)
+ * plus individual characters for single-char query support.
+ * Other scripts (Cyrillic, Arabic, Thai, etc.): whitespace split (fallback).
+ */
+export function tokenize(text) {
+    return text.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+}
+/**
  * Search wiki pages by keyword and/or tags.
  *
  * Matching strategy:
@@ -27,7 +38,7 @@ export function queryWiki(root, queryText, options = {}) {
     const { tags: filterTags, category, limit = 20 } = options;
     const pages = readAllPages(root);
     const queryLower = queryText.toLowerCase();
-    const queryTerms = queryLower.split(/\s+/).filter(Boolean);
+    const queryTerms = tokenize(queryText);
     const matches = [];
     for (const page of pages) {
         // Category filter

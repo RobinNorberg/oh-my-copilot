@@ -163,9 +163,9 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath) {
     }
     if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
         if (findNodePath) {
-            return 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omc-hud.mjs';
+            return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
         }
-        return 'node $HOME/.claude/hud/omc-hud.mjs';
+        return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
     }
     const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
     if (findNodePath) {
@@ -1034,15 +1034,15 @@ export function install(options = {}) {
                     let statusLineCommand = absoluteCommand;
                     if (!isWindows()) {
                         try {
-                            const findNodeSrc = join(__dirname, '..', '..', 'scripts', 'find-node.sh');
+                            const findNodeSrc = join(getPackageDir(), 'scripts', 'find-node.sh');
                             const findNodeDest = join(HUD_DIR, 'find-node.sh');
                             copyFileSync(findNodeSrc, findNodeDest);
                             chmodSync(findNodeDest, 0o755);
-                            statusLineCommand = 'sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omc-hud.mjs';
+                            statusLineCommand = 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
                         }
                         catch {
                             // Fallback to bare node if find-node.sh copy fails
-                            statusLineCommand = 'node $HOME/.copilot/hud/omc-hud.mjs';
+                            statusLineCommand = 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
                         }
                     }
                     // Auto-migrate legacy string format (pre-v4.5) to object format

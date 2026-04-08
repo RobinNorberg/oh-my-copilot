@@ -17,7 +17,7 @@ import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { loadConfig, getConfigPaths, } from '../config/loader.js';
 import { createOmcSession } from '../index.js';
 import { checkForUpdates, performUpdate, formatUpdateNotification, getInstalledVersion, getOMCConfig, reconcileUpdateRuntime, CONFIG_FILE, } from '../features/auto-update.js';
-import { install as installOmc, isInstalled, getInstallInfo } from '../installer/index.js';
+import { install as installOmc, isInstalled, getInstallInfo, } from '../installer/index.js';
 import { waitCommand, waitStatusCommand, waitDaemonCommand, waitDetectCommand } from './commands/wait.js';
 import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
 import { teamCommand } from './commands/team.js';
@@ -765,6 +765,47 @@ Examples:
     console.log(chalk.gray('\nTo check for updates, run: oh-my-copilot update --check'));
 });
 /**
+ * Print the post-install ASCII banner with common commands.
+ */
+function printInstallBanner(result) {
+    console.log('');
+    console.log(chalk.cyan('   ██████╗ ██╗  ██╗     ███╗   ███╗██╗   ██╗'));
+    console.log(chalk.cyan('  ██╔═══██╗██║  ██║     ████╗ ████║╚██╗ ██╔╝'));
+    console.log(chalk.cyan('  ██║   ██║███████║     ██╔████╔██║ ╚████╔╝'));
+    console.log(chalk.cyan('  ██║   ██║██╔══██║     ██║╚██╔╝██║  ╚██╔╝'));
+    console.log(chalk.cyan('  ╚██████╔╝██║  ██║     ██║ ╚═╝ ██║   ██║'));
+    console.log(chalk.cyan('   ╚═════╝ ╚═╝  ╚═╝     ╚═╝     ╚═╝   ╚═╝'));
+    console.log(chalk.cyan('             ██████╗ ██████╗ ██████╗ ██╗██╗      ██████╗ ████████╗'));
+    console.log(chalk.cyan('            ██╔════╝██╔═══██╗██╔══██╗██║██║     ██╔═══██╗╚══██╔══╝'));
+    console.log(chalk.cyan('            ██║     ██║   ██║██████╔╝██║██║     ██║   ██║   ██║'));
+    console.log(chalk.cyan('            ██║     ██║   ██║██╔═══╝ ██║██║     ██║   ██║   ██║'));
+    console.log(chalk.cyan('            ╚██████╗╚██████╔╝██║     ██║███████╗╚██████╔╝   ██║'));
+    console.log(chalk.cyan('             ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝ ╚═════╝    ╚═╝'));
+    console.log(chalk.gray('     Turbocharge your Copilot CLI with multi-agent orchestration'));
+    console.log('');
+    console.log(chalk.green('  ┌─────────────────────────────────────────────────────────────┐'));
+    console.log(chalk.green('  │') + '  /autopilot          Autonomous end-to-end execution        ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /plan               Strategic planning with interview      ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /team N             Parallel coordinated agents            ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /review             Run code review                        ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /ai-slop-cleaner    Clean AI-generated code slop           ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /simplify           Simplify the code, and fix issues      ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /ralph              Loop until task is complete            ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /deepinit           Deep codebase initialization           ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /cancel             Stop any active mode                   ' + chalk.green('│'));
+    console.log(chalk.green('  │') + '  /omc-setup          Interactive setup wizard               ' + chalk.green('│'));
+    console.log(chalk.green('  └─────────────────────────────────────────────────────────────┘'));
+    console.log('');
+    console.log(chalk.gray(`  Installed: ${result.installedAgents.length} agents, ${result.installedSkills.length} skills, ${result.installedCommands.length} commands`));
+    console.log(chalk.gray(`  Location:  ${getClaudeConfigDir()}`));
+    console.log('');
+    console.log(chalk.yellow('  Quick Start:'));
+    console.log("  1. Type 'copilot' to start Copilot CLI");
+    console.log("  2. Type '/omc-setup' for guided configuration");
+    console.log("  3. Type '/autopilot create a todo-app' to engage the magic dust");
+    console.log('');
+}
+/**
  * Install command - Install agents and commands to ~/.copilot/
  */
 program
@@ -807,57 +848,7 @@ Examples:
     });
     if (result.success) {
         if (!options.quiet) {
-            console.log('');
-            console.log(chalk.green('╔═══════════════════════════════════════════════════════════╗'));
-            console.log(chalk.green('║         Installation Complete!                            ║'));
-            console.log(chalk.green('╚═══════════════════════════════════════════════════════════╝'));
-            console.log('');
-            console.log(chalk.gray(`Installed to: ${getClaudeConfigDir()}`));
-            console.log('');
-            console.log(chalk.yellow('Usage:'));
-            console.log('  copilot                        # Start Copilot CLI normally');
-            console.log('');
-            console.log(chalk.yellow('Slash Commands:'));
-            console.log('  /omg <task>              # Activate OMC orchestration mode');
-            console.log('  /omc-default             # Configure for current project');
-            console.log('  /omc-default-global      # Configure globally');
-            console.log('  /ultrawork <task>             # Maximum performance mode');
-            console.log('  /deepsearch <query>           # Thorough codebase search');
-            console.log('  /analyze <target>             # Deep analysis mode');
-            console.log('  /plan <description>           # Start planning with Planner');
-            console.log('  /review [plan-path]           # Review plan with Critic');
-            console.log('');
-            console.log(chalk.yellow('Available Agents (via Task tool):'));
-            console.log(chalk.gray('  Base Agents:'));
-            console.log('    architect              - Architecture & debugging (Opus)');
-            console.log('    document-specialist   - External docs & reference lookup (Sonnet)');
-            console.log('    explore             - Fast pattern matching (Haiku)');
-            console.log('    designer            - UI/UX specialist (Sonnet)');
-            console.log('    writer              - Technical writing (Haiku)');
-            console.log('    vision              - Visual analysis (Sonnet)');
-            console.log('    critic               - Plan review (Opus)');
-            console.log('    analyst               - Pre-planning analysis (Opus)');
-            console.log('    debugger            - Root-cause diagnosis (Sonnet)');
-            console.log('    executor            - Focused execution (Sonnet)');
-            console.log('    planner          - Strategic planning (Opus)');
-            console.log('    qa-tester           - Interactive CLI testing (Sonnet)');
-            console.log(chalk.gray('  Tiered Variants (for smart routing):'));
-            console.log('    architect-medium       - Simpler analysis (Sonnet)');
-            console.log('    architect-low          - Quick questions (Haiku)');
-            console.log('    executor-high       - Complex tasks (Opus)');
-            console.log('    executor-low        - Trivial tasks (Haiku)');
-            console.log('    designer-high       - Design systems (Opus)');
-            console.log('    designer-low        - Simple styling (Haiku)');
-            console.log('');
-            console.log(chalk.yellow('After Updates:'));
-            console.log('  Run \'/omc-default\' (project) or \'/omc-default-global\' (global)');
-            console.log('  to download the latest copilot-instructions.md configuration.');
-            console.log('  This ensures you get the newest features and agent behaviors.');
-            console.log('');
-            console.log(chalk.blue('Quick Start:'));
-            console.log('  1. Run \'copilot\' to start Copilot CLI');
-            console.log('  2. Type \'/omc-default\' for project or \'/omc-default-global\' for global');
-            console.log('  3. Or use \'/omg <task>\' for one-time activation');
+            printInstallBanner(result);
         }
     }
     else {

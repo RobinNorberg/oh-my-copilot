@@ -1177,7 +1177,6 @@ export async function checkPersistentModes(
 
   // CRITICAL: Never block context-limit/critical-context stops.
   // Blocking these causes a deadlock where Copilot CLI cannot compact or exit.
-  // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
   if (isCriticalContextStop(stopContext)) {
     return {
       shouldBlock: false,
@@ -1221,7 +1220,6 @@ export async function checkPersistentModes(
   // When the API returns 429 / quota-exhausted, Copilot CLI stops the session.
   // Blocking these stops creates an infinite retry loop: the hook injects a
   // continuation prompt → Copilot hits the rate limit again → stops again → loops.
-  // Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
   if (isRateLimitStop(stopContext)) {
     return {
       shouldBlock: false,

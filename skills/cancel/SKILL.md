@@ -43,7 +43,7 @@ The state management tools (`state_clear`, `state_read`, `state_write`, `state_l
 any state tool, you MUST first load all of them via `ToolSearch`:
 
 ```
-ToolSearch(query="select:mcp__plugin_oh-my-claudecode_t__state_clear,mcp__plugin_oh-my-claudecode_t__state_read,mcp__plugin_oh-my-claudecode_t__state_write,mcp__plugin_oh-my-claudecode_t__state_list_active,mcp__plugin_oh-my-claudecode_t__state_get_status")
+ToolSearch(query="select:mcp__plugin_oh-my-copilot_t__state_clear,mcp__plugin_oh-my-copilot_t__state_read,mcp__plugin_oh-my-copilot_t__state_write,mcp__plugin_oh-my-copilot_t__state_list_active,mcp__plugin_oh-my-copilot_t__state_get_status")
 ```
 
 If `state_clear` is unavailable or fails, use this **bash fallback** as an **emergency

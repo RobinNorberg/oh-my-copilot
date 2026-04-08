@@ -10,6 +10,11 @@ export interface ReleaseNoteEntry {
     description: string;
     prNumber: string | null;
 }
+export declare function getLatestTag(options?: {
+    cwd?: string;
+    excludeTag?: string;
+    ref?: string;
+}): string;
 export declare function extractPullRequestNumbers(subjects: string[]): string[];
 export declare function isReleasePullRequest(pr: Pick<ReleasePullRequest, 'title' | 'headRefName'>): boolean;
 export declare function deriveContributorLogins(pullRequests: Array<Pick<ReleasePullRequest, 'author'>>, compareCommitAuthors: Array<string | null | undefined>): string[];

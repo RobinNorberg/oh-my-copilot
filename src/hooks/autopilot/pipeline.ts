@@ -7,8 +7,6 @@
  * Each stage is implemented by a PipelineStageAdapter and can be skipped
  * via PipelineConfig. The orchestrator manages state transitions, signal
  * detection, and prompt generation.
- *
- * @see https://github.com/Yeachan-Heo/oh-my-copilot/issues/1130
  */
 
 import type {

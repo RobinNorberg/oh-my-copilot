@@ -8,6 +8,6 @@ export type { WikiPage, WikiPageFrontmatter, WikiLogEntry, WikiIngestInput, Wiki
 export { WIKI_SCHEMA_VERSION, DEFAULT_WIKI_CONFIG } from './types.js';
 export { getWikiDir, ensureWikiDir, withWikiLock, readPage, listPages, readAllPages, readIndex, readLog, writePage, deletePage, appendLog, titleToSlug, parseFrontmatter, serializePage, writePageUnsafe, deletePageUnsafe, updateIndexUnsafe, appendLogUnsafe, } from './storage.js';
 export { ingestKnowledge } from './ingest.js';
-export { queryWiki } from './query.js';
+export { queryWiki, tokenize } from './query.js';
 export { lintWiki } from './lint.js';
 //# sourceMappingURL=index.d.ts.map

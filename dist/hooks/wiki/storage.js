@@ -23,7 +23,8 @@ import { WIKI_SCHEMA_VERSION, } from './types.js';
 const WIKI_DIR = 'wiki';
 const INDEX_FILE = 'index.md';
 const LOG_FILE = 'log.md';
-const RESERVED_FILES = new Set([INDEX_FILE, LOG_FILE]);
+const ENVIRONMENT_FILE = 'environment.md';
+const RESERVED_FILES = new Set([INDEX_FILE, LOG_FILE, ENVIRONMENT_FILE]);
 // ============================================================================
 // Path helpers
 // ============================================================================
@@ -78,7 +79,9 @@ export function withWikiLock(root, fn) {
  * Expects content starting with `---\n...\n---\n`.
  */
 export function parseFrontmatter(raw) {
-    const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+    // Normalize CRLF to LF so files edited on Windows are still parseable
+    const normalized = raw.replace(/\r\n/g, '\n');
+    const match = normalized.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
     if (!match)
         return null;
     const yamlBlock = match[1];
@@ -114,7 +117,9 @@ function parseSimpleYaml(yaml) {
         // Strip surrounding quotes and unescape
         if ((value.startsWith('"') && value.endsWith('"')) ||
             (value.startsWith("'") && value.endsWith("'"))) {
-            value = value.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+            value = value.slice(1, -1).replace(/\\(\\|"|n|r)/g, (_, ch) => { if (ch === 'n')
+                return '\n'; if (ch === 'r')
+                return '\r'; return ch; });
         }
         if (key)
             result[key] = value;
@@ -130,14 +135,16 @@ function parseYamlArray(value) {
         return trimmed
             .slice(1, -1)
             .split(',')
-            .map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\\"/g, '"').replace(/\\\\/g, '\\'))
+            .map(s => s.trim().replace(/^["']|["']$/g, '').replace(/\\(\\|"|n|r)/g, (_, ch) => { if (ch === 'n')
+            return '\n'; if (ch === 'r')
+            return '\r'; return ch; }))
             .filter(Boolean);
     }
     return trimmed ? [trimmed] : [];
 }
 /** Escape a string for use inside YAML double quotes. */
 function escapeYaml(s) {
-    return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
 }
 /**
  * Serialize frontmatter + content to markdown string.
@@ -236,6 +243,9 @@ export function readLog(root) {
 // ============================================================================
 /** Write a wiki page to disk. MUST be called inside withWikiLock. */
 export function writePageUnsafe(root, page) {
+    if (RESERVED_FILES.has(page.filename)) {
+        throw new Error(`Cannot write to reserved wiki file: ${page.filename}`);
+    }
     const wikiDir = ensureWikiDir(root);
     const filePath = safeWikiPath(wikiDir, page.filename);
     if (!filePath)
@@ -337,10 +347,21 @@ export function appendLog(root, entry) {
 // ============================================================================
 /** Convert a title to a filename slug. */
 export function titleToSlug(title) {
-    return title
+    const base = title
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '')
-        .slice(0, 64) + '.md';
+        .slice(0, 64);
+    if (!base) {
+        // Non-ASCII-only titles (CJK, Cyrillic, etc.) produce an empty base.
+        // Generate a deterministic hash-based fallback to avoid all such titles
+        // colliding on the same ".md" hidden dotfile.
+        let hash = 0;
+        for (let i = 0; i < title.length; i++) {
+            hash = ((hash << 5) - hash + title.charCodeAt(i)) | 0;
+        }
+        return `page-${Math.abs(hash).toString(16).padStart(8, '0')}.md`;
+    }
+    return `${base}.md`;
 }
 //# sourceMappingURL=storage.js.map
