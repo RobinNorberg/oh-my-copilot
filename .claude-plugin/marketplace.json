@@ -1,6 +1,6 @@
 {
   "$schema": "https://github.com/copilot-cli/marketplace.schema.json",
-  "name": "oh-my-copilot",
+  "name": "omg",
   "description": "Copilot CLI native multi-agent orchestration - intelligent model routing, 18 agents, 32 skills",
   "owner": {
     "name": "Robin Norberg",
@@ -8,7 +8,7 @@
   },
   "plugins": [
     {
-      "name": "oh-my-copilot",
+      "name": "omg",
       "description": "Copilot CLI native multi-agent orchestration with intelligent model routing, 18 agent variants, and 32 powerful skills. Zero learning curve. Maximum power.",
       "version": "4.11.3",
       "author": {
