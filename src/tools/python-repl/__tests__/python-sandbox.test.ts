@@ -3,16 +3,19 @@ import { describe, it, expect, afterEach } from 'vitest';
 const isWindows = process.platform === 'win32';
 
 // Check python3 availability at module level for CI guard
-function isPython3Available(): boolean {
+function checkSandboxAvailable(): boolean {
   try {
-    const { execSync } = require('child_process');
-    execSync('python3 --version', { stdio: 'ignore', timeout: 5000 });
-    return true;
+    const cp = require('child_process');
+    const fs = require('fs');
+    const path = require('path');
+    cp.execSync('python3 --version', { stdio: 'ignore', timeout: 5000 });
+    const bridgePath = path.join(__dirname, '..', '..', '..', '..', 'bridge', 'gyoshu_bridge.py');
+    return fs.existsSync(bridgePath);
   } catch {
     return false;
   }
 }
-const isPython3Unavailable = !isPython3Available();
+const isPython3Unavailable = !checkSandboxAvailable();
 import { execSync } from 'child_process';
 import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
