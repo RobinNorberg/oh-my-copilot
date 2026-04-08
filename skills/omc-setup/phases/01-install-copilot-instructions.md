@@ -19,15 +19,26 @@ Set `CONFIG_TARGET` to `local` or `global` based on user's choice.
 
 **MANDATORY**: Always run this command. Do NOT skip. Do NOT use the Write tool. Use bash curl exclusively.
 
+On **Unix/macOS/WSL**:
+```bash
+bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-copilot-instructions.sh" <CONFIG_TARGET>
+```
+
+On **Windows** (Git Bash available via Copilot CLI):
 ```bash
 bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-copilot-instructions.sh" <CONFIG_TARGET>
 ```
 
 Replace `<CONFIG_TARGET>` with `local` or `global`.
 
-**FALLBACK** if curl fails:
-Tell user to manually download from:
-https://github.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md
+**IMPORTANT**: Always use the bash script. Do NOT rewrite it as PowerShell. Copilot CLI provides bash even on Windows.
+
+**IMPORTANT**: The download URL is `https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md` — do NOT use any other GitHub user or repository.
+
+**FALLBACK** if bash is truly unavailable, download with this exact URL:
+```
+https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md
+```
 
 **Note**: The downloaded copilot-instructions.md includes Context Persistence instructions with `<remember>` tags for surviving conversation compaction.
 
