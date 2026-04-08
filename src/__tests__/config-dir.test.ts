@@ -101,7 +101,7 @@ describe('getCopilotConfigDir', () => {
           ...process.env,
           HOME: homeDir,
           PATH: '/bin:/usr/bin',
-          CLAUDE_CONFIG_DIR: '~/.copilot-alt',
+          COPILOT_CONFIG_DIR: '~/.copilot-alt',
         },
         encoding: 'utf-8',
       },
@@ -112,12 +112,12 @@ describe('getCopilotConfigDir', () => {
 
   it.skipIf(process.platform === 'win32')('shared shell helper expands a ~-prefixed COPILOT_CONFIG_DIR', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-uninstall-home-'));
-    const output = execFileSync('bash', ['-lc', `. "${join(process.cwd(), 'scripts', 'lib', 'config-dir.sh')}"; resolve_claude_config_dir`], {
+    const output = execFileSync('bash', ['-lc', `. "${join(process.cwd(), 'scripts', 'lib', 'config-dir.sh')}"; resolve_copilot_config_dir`], {
       cwd: process.cwd(),
       env: {
         ...process.env,
         HOME: homeDir,
-        CLAUDE_CONFIG_DIR: '~/.copilot-alt',
+        COPILOT_CONFIG_DIR: '~/.copilot-alt',
       },
       encoding: 'utf-8',
     });
