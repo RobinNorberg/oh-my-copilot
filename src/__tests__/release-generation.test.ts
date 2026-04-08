@@ -19,8 +19,8 @@ describe('release generation', () => {
     const prNumbers = extractPullRequestNumbers([
       'feat(hud): add configurable call count icon format (#2151)',
       'fix(hud): replace misleading CLI error with installation diagnostic (#2129)',
-      'Merge pull request #2146 from NorbergRobin/issue-2143-omc-launch-followup',
-      'Merge pull request #2162 from NorbergRobin/release/4.10.2',
+      'Merge pull request #2146 from RobinNorberg/issue-2143-omc-launch-followup',
+      'Merge pull request #2162 from RobinNorberg/release/4.10.2',
       'feat(hud): add configurable call count icon format (#2151)',
     ]);
 
@@ -59,8 +59,8 @@ describe('release generation', () => {
       'blue-int',
       'DdangJin',
       'EthanJStark',
-      'tjsingleton',
       'RobinNorberg',
+      'tjsingleton',
     ]);
   });
 

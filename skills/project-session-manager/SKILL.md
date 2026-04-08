@@ -46,7 +46,7 @@ Supported formats:
 {
   "aliases": {
     "omc": {
-      "repo": "NorbergRobin/oh-my-copilot",
+      "repo": "RobinNorberg/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
     }
@@ -540,7 +540,7 @@ if [[ ! -f ~/.psm/projects.json ]]; then
 {
   "aliases": {
     "omc": {
-      "repo": "NorbergRobin/oh-my-copilot",
+      "repo": "RobinNorberg/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
     }
