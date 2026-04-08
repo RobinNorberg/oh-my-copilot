@@ -10,8 +10,20 @@ function checkSandboxAvailable(): boolean {
     const path = require('path');
     cp.execSync('python3 --version', { stdio: 'ignore', timeout: 5000 });
     const bridgePath = path.join(__dirname, '..', '..', '..', '..', 'bridge', 'gyoshu_bridge.py');
-    return fs.existsSync(bridgePath);
-  } catch {
+    if (!fs.existsSync(bridgePath)) return false;
+    // Verify sandbox actually blocks imports — if this doesn't contain
+    // 'blocked' then the sandbox isn't functional on this platform
+    const result = cp.execSync(
+      `python3 -c "import ast, builtins; exec(open('${bridgePath.replace(/'/g, "\'")}').read()); exec(compile(ast.parse('import os'), '<test>', 'exec'), {'__builtins__': builtins})"`,
+      { encoding: 'utf-8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'] }
+    );
+    return false; // If no error, sandbox didn't block — not functional
+  } catch (e: any) {
+    // If stderr contains 'blocked', sandbox is working
+    if (e.stderr && e.stderr.includes('blocked')) return true;
+    // If python3 itself is missing, not available
+    if (e.message && e.message.includes('ENOENT')) return false;
+    // Other error — sandbox may not be functional
     return false;
   }
 }
