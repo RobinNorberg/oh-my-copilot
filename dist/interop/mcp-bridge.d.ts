@@ -10,7 +10,7 @@ export type InteropMode = 'off' | 'observe' | 'active';
 export declare function getInteropMode(env?: NodeJS.ProcessEnv): InteropMode;
 export declare function canUseOmxDirectWriteBridge(env?: NodeJS.ProcessEnv): boolean;
 export declare const interopSendTaskTool: ToolDefinition<{
-    target: z.ZodEnum<['omg', 'omx']>;
+    target: z.ZodEnum<['omc', 'omx']>;
     type: z.ZodEnum<['analyze', 'implement', 'review', 'test', 'custom']>;
     description: z.ZodString;
     context: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
@@ -18,19 +18,19 @@ export declare const interopSendTaskTool: ToolDefinition<{
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>;
 export declare const interopReadResultsTool: ToolDefinition<{
-    source: z.ZodOptional<z.ZodEnum<['omg', 'omx']>>;
+    source: z.ZodOptional<z.ZodEnum<['omc', 'omx']>>;
     status: z.ZodOptional<z.ZodEnum<['pending', 'in_progress', 'completed', 'failed']>>;
     limit: z.ZodOptional<z.ZodNumber>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>;
 export declare const interopSendMessageTool: ToolDefinition<{
-    target: z.ZodEnum<['omg', 'omx']>;
+    target: z.ZodEnum<['omc', 'omx']>;
     content: z.ZodString;
     metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>;
 export declare const interopReadMessagesTool: ToolDefinition<{
-    source: z.ZodOptional<z.ZodEnum<['omg', 'omx']>>;
+    source: z.ZodOptional<z.ZodEnum<['omc', 'omx']>>;
     unreadOnly: z.ZodOptional<z.ZodBoolean>;
     limit: z.ZodOptional<z.ZodNumber>;
     markAsRead: z.ZodOptional<z.ZodBoolean>;

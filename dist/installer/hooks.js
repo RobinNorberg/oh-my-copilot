@@ -97,7 +97,7 @@ function buildHookCommand(filename) {
         return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename))}`;
     }
     if (isDefaultCopilotConfigDir()) {
-        return `node "$HOME/.copilot/hooks/${filename}"`;
+        return `node "\${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/${filename}"`;
     }
     return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
 }

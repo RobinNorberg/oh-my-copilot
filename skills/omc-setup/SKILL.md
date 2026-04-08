@@ -76,7 +76,7 @@ EXAMPLES:
   /oh-my-copilot:omc-setup --global  # Update all projects
   /oh-my-copilot:omc-setup --force   # Re-run full setup wizard
 
-For more info: https://github.com/Yeachan-Heo/oh-my-copilot
+For more info: https://github.com/NorbergRobin/oh-my-copilot
 ```
 
 ## Pre-Setup Check: Already Configured?
@@ -85,7 +85,7 @@ For more info: https://github.com/Yeachan-Heo/oh-my-copilot
 
 ```bash
 # Check if setup was already completed
-CONFIG_FILE="$HOME/.copilot/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   SETUP_COMPLETED=$(jq -r '.setupCompleted // empty' "$CONFIG_FILE" 2>/dev/null)

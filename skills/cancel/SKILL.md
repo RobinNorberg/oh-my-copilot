@@ -43,7 +43,7 @@ The state management tools (`state_clear`, `state_read`, `state_write`, `state_l
 any state tool, you MUST first load all of them via `ToolSearch`:
 
 ```
-ToolSearch(query="select:mcp__plugin_oh-my-claudecode_t__state_clear,mcp__plugin_oh-my-claudecode_t__state_read,mcp__plugin_oh-my-claudecode_t__state_write,mcp__plugin_oh-my-claudecode_t__state_list_active,mcp__plugin_oh-my-claudecode_t__state_get_status")
+ToolSearch(query="select:mcp__plugin_oh-my-copilot_t__state_clear,mcp__plugin_oh-my-copilot_t__state_read,mcp__plugin_oh-my-copilot_t__state_write,mcp__plugin_oh-my-copilot_t__state_list_active,mcp__plugin_oh-my-copilot_t__state_get_status")
 ```
 
 If `state_clear` is unavailable or fails, use this **bash fallback** as an **emergency
@@ -85,6 +85,7 @@ MODE="ralplan"  # <-- replace with the target mode
 if [ -n "$SESSION_ID" ] && [ -d "$OMC_STATE/sessions/$SESSION_ID" ]; then
   rm -f "$OMC_STATE/sessions/$SESSION_ID/${MODE}-state.json"
   rm -f "$OMC_STATE/sessions/$SESSION_ID/${MODE}-stop-breaker.json"
+  rm -f "$OMC_STATE/sessions/$SESSION_ID/skill-active-state.json"
   # Write cancel signal so stop hook detects cancellation in progress
   NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
   EXPIRES_ISO="$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || python3 - <<'PY'\nfrom datetime import datetime, timedelta, timezone\nprint((datetime.now(timezone.utc) + timedelta(seconds=30)).strftime('%Y-%m-%dT%H:%M:%SZ'))\nPY\n)"

@@ -4,6 +4,7 @@
  * Writes assembled prompts and model responses to .omg/prompts/ before/after
  * sending to Codex/Gemini, providing visibility, debugging, and compliance audit trail.
  */
+import { type ArtifactDescriptor } from '../shared/artifact-descriptor.js';
 /**
  * Convert text to a filesystem-safe slug for filename
  *
@@ -50,6 +51,7 @@ export interface PersistPromptResult {
     filePath: string;
     id: string;
     slug: string;
+    artifact: ArtifactDescriptor;
 }
 /**
  * Job status for background execution tracking
@@ -62,6 +64,8 @@ export interface JobStatus {
     pid?: number;
     promptFile: string;
     responseFile: string;
+    promptArtifact?: ArtifactDescriptor;
+    responseArtifact?: ArtifactDescriptor;
     model: string;
     agentRole: string;
     spawnedAt: string;
@@ -87,6 +91,8 @@ export interface BackgroundJobMeta {
  * Get the prompts directory path under the worktree
  */
 export declare function getPromptsDir(workingDirectory?: string): string;
+export declare function describePromptArtifact(path: string): ArtifactDescriptor;
+export declare function describeResponseArtifact(path: string): ArtifactDescriptor;
 /**
  * Persist a prompt to disk with YAML frontmatter
  *

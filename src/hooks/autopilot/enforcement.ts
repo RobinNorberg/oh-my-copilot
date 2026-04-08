@@ -10,6 +10,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { getHardMaxIterations } from '../../lib/security-config.js';
 import { OmgPaths } from '../../lib/worktree-paths.js';
 import {
   readAutopilotState,
@@ -192,6 +193,17 @@ export async function checkAutopilot(
 
   if (isAwaitingConfirmation(state)) {
     return null;
+  }
+
+  // Check hard max iterations (global security limit)
+  const hardMax = getHardMaxIterations();
+  if (hardMax > 0 && state.iteration >= hardMax) {
+    transitionPhase(workingDir, "failed", sessionId);
+    return {
+      shouldBlock: false,
+      message: `[AUTOPILOT STOPPED] Hard max iterations (${hardMax}) reached. Security limit enforced.`,
+      phase: "failed",
+    };
   }
 
   // Check max iterations (safety limit)

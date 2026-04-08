@@ -7,18 +7,22 @@
  * Cross-platform support via Node.js-based hook scripts (.mjs).
  * Bash hook scripts were removed in v3.9.0.
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
 import { isWindows, MIN_NODE_VERSION, } from './hooks.js';
 import { getRuntimePackageVersion } from '../lib/version.js';
-import { getConfigDir } from '../utils/config-dir.js';
+import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { resolveNodeBinary } from '../utils/resolve-node.js';
+import { parseFrontmatter } from '../utils/frontmatter.js';
+import { isSkininthegamebrosUser } from '../utils/skininthegamebros-user.js';
 import { generatePermissionAllowList } from './permissions.js';
 /** Copilot CLI configuration directory */
-export const COPILOT_CONFIG_DIR = getConfigDir();
+export const COPILOT_CONFIG_DIR = getClaudeConfigDir();
+/** Alias used by upstream tests and modules */
+export const CLAUDE_CONFIG_DIR = COPILOT_CONFIG_DIR;
 export const AGENTS_DIR = join(COPILOT_CONFIG_DIR, 'agents');
 export const COMMANDS_DIR = join(COPILOT_CONFIG_DIR, 'commands');
 export const SKILLS_DIR = join(COPILOT_CONFIG_DIR, 'skills');
@@ -159,9 +163,9 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath) {
     }
     if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
         if (findNodePath) {
-            return 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omc-hud.mjs';
+            return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
         }
-        return 'node $HOME/.claude/hud/omc-hud.mjs';
+        return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
     }
     const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
     if (findNodePath) {
@@ -386,6 +390,42 @@ function directoryHasMarkdownFiles(dir) {
 export function hasPluginProvidedAgentFiles() {
     return getInstalledOmcPluginRoots().some(pluginRoot => directoryHasMarkdownFiles(join(pluginRoot, 'agents')));
 }
+function directoryHasSkillDefinitions(directory) {
+    if (!existsSync(directory)) {
+        return false;
+    }
+    try {
+        return readdirSync(directory, { withFileTypes: true }).some(entry => entry.isDirectory() && existsSync(join(directory, entry.name, 'SKILL.md')));
+    }
+    catch {
+        return false;
+    }
+}
+export function hasPluginProvidedSkillFiles() {
+    return getInstalledOmcPluginRoots().some(pluginRoot => directoryHasSkillDefinitions(join(pluginRoot, 'skills')));
+}
+export function hasEnabledOmcPlugin() {
+    if (process.env.CLAUDE_PLUGIN_ROOT?.trim()) {
+        return true;
+    }
+    if (!existsSync(SETTINGS_FILE)) {
+        return false;
+    }
+    try {
+        const settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
+        const plugins = settings.plugins;
+        if (Array.isArray(plugins)) {
+            return plugins.some(plugin => typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-copilot'));
+        }
+        if (plugins && typeof plugins === 'object') {
+            return Object.entries(plugins).some(([pluginId, value]) => pluginId.toLowerCase().includes('oh-my-copilot') && value !== false);
+        }
+    }
+    catch {
+        // Ignore unreadable settings and treat plugin mode as disabled.
+    }
+    return false;
+}
 /**
  * Get the package root directory.
  * Works for both ESM (dist/installer/) and CJS bundles (bridge/).
@@ -451,15 +491,49 @@ function loadCommandDefinitions() {
 export function getRuntimePackageRoot() {
     return getPackageDir();
 }
-/**
- * Load copilot-instructions.md content from /docs/copilot-instructions.md
- */
-function loadBundledSkillContent(skillName) {
-    const skillPath = join(getPackageDir(), 'skills', skillName, 'SKILL.md');
-    if (!existsSync(skillPath)) {
-        return null;
+function toSafeStandaloneSkillName(name) {
+    const normalized = name.trim();
+    return CC_NATIVE_COMMANDS.has(normalized.toLowerCase())
+        ? `omc-${normalized}`
+        : normalized;
+}
+function syncBundledSkillDefinitions(log, options) {
+    const skillsDir = join(getPackageDir(), 'skills');
+    const installedSkills = [];
+    if (!existsSync(skillsDir)) {
+        return installedSkills;
     }
-    return readFileSync(skillPath, 'utf-8');
+    const seenTargetDirs = new Set();
+    for (const entry of readdirSync(skillsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory())
+            continue;
+        if (SKININTHEGAMEBROS_ONLY_SKILLS.has(entry.name) && !isSkininthegamebrosUser()) {
+            continue;
+        }
+        const sourceDir = join(skillsDir, entry.name);
+        const sourceSkillPath = join(sourceDir, 'SKILL.md');
+        if (!existsSync(sourceSkillPath))
+            continue;
+        let targetDirName = entry.name;
+        if (options?.safeStandaloneNames) {
+            const content = readFileSync(sourceSkillPath, 'utf-8');
+            const { metadata } = parseFrontmatter(content);
+            const rawName = typeof metadata.name === 'string' && metadata.name.trim().length > 0
+                ? metadata.name
+                : entry.name;
+            targetDirName = toSafeStandaloneSkillName(rawName);
+        }
+        const dedupeKey = targetDirName.toLowerCase();
+        if (seenTargetDirs.has(dedupeKey))
+            continue;
+        seenTargetDirs.add(dedupeKey);
+        const relativePath = join(targetDirName, 'SKILL.md');
+        const targetDir = join(SKILLS_DIR, targetDirName);
+        cpSync(sourceDir, targetDir, { recursive: true, force: true });
+        installedSkills.push(relativePath.replace(/\\/g, '/'));
+        log(`  Synced ${relativePath}`);
+    }
+    return installedSkills;
 }
 function loadClaudeMdContent() {
     const claudeMdPath = join(getPackageDir(), 'docs', 'copilot-instructions.md');
@@ -621,6 +695,9 @@ export function install(options = {}) {
     // Check if running as a plugin
     const runningAsPlugin = isRunningAsPlugin();
     const projectScoped = isProjectScopedPlugin();
+    const pluginProvidesSkillFiles = hasPluginProvidedSkillFiles();
+    const enabledOmcPlugin = hasEnabledOmcPlugin();
+    const shouldInstallBundledSkills = options.noPlugin === true || !enabledOmcPlugin || !pluginProvidesSkillFiles;
     const allowPluginHookRefresh = runningAsPlugin && options.refreshHooksInPlugin && !projectScoped;
     if (runningAsPlugin) {
         log('Detected Copilot CLI plugin context - skipping agent/command file installation');
@@ -649,8 +726,11 @@ export function install(options = {}) {
     }
     try {
         // Ensure base config directory exists (skip for project-scoped plugins)
-        if (!projectScoped && !existsSync(COPILOT_CONFIG_DIR)) {
+        if ((!projectScoped || shouldInstallBundledSkills) && !existsSync(COPILOT_CONFIG_DIR)) {
             mkdirSync(COPILOT_CONFIG_DIR, { recursive: true });
+        }
+        if (shouldInstallBundledSkills && !existsSync(SKILLS_DIR)) {
+            mkdirSync(SKILLS_DIR, { recursive: true });
         }
         // Skip agent/command/hook file installation when running as plugin
         // Plugin system handles these via ${CLAUDE_PLUGIN_ROOT}
@@ -710,24 +790,6 @@ export function install(options = {}) {
                     log(`  Installed ${filename}`);
                 }
             }
-            // NOTE: SKILL_DEFINITIONS removed - skills now only installed via COMMAND_DEFINITIONS
-            // to avoid duplicate entries in Copilot CLI's available skills list
-            const omcReferenceSkillContent = loadBundledSkillContent('omc-reference');
-            if (omcReferenceSkillContent) {
-                const omcReferenceDir = join(SKILLS_DIR, 'omc-reference');
-                const omcReferencePath = join(omcReferenceDir, 'SKILL.md');
-                if (!existsSync(omcReferenceDir)) {
-                    mkdirSync(omcReferenceDir, { recursive: true });
-                }
-                if (existsSync(omcReferencePath) && !options.force) {
-                    log('  Skipping omc-reference/SKILL.md (already exists)');
-                }
-                else {
-                    writeFileSync(omcReferencePath, omcReferenceSkillContent);
-                    result.installedSkills.push('omc-reference/SKILL.md');
-                    log('  Installed omc-reference/SKILL.md');
-                }
-            }
             // Install copilot-instructions.md with merge support
             const claudeMdPath = join(COPILOT_CONFIG_DIR, 'copilot-instructions.md');
             const homeMdPath = join(homedir(), 'copilot-instructions.md');
@@ -765,6 +827,22 @@ export function install(options = {}) {
         }
         else {
             log('Skipping agent/command/hook files (managed by plugin system)');
+        }
+        if (shouldInstallBundledSkills) {
+            log(options.noPlugin
+                ? 'Installing bundled skills from local package (--no-plugin)...'
+                : !enabledOmcPlugin
+                    ? 'Installing bundled skills from local package (no enabled OMC plugin detected)...'
+                    : 'Installing bundled skills from local package (enabled plugin skill files not found)...');
+            result.installedSkills.push(...syncBundledSkillDefinitions(log, {
+                safeStandaloneNames: !enabledOmcPlugin || options.noPlugin === true,
+            }));
+        }
+        else if (pluginProvidesSkillFiles) {
+            log('Skipping bundled skill installation (plugin-provided skills are available). Use --no-plugin to force local skill sync.');
+        }
+        else if (runningAsPlugin) {
+            log('Skipping bundled skill installation (managed by plugin system)');
         }
         // Install HUD statusline (skip for project-scoped plugins, skipHud option, or hudEnabled config)
         let hudScriptPath = null;
@@ -956,15 +1034,15 @@ export function install(options = {}) {
                     let statusLineCommand = absoluteCommand;
                     if (!isWindows()) {
                         try {
-                            const findNodeSrc = join(__dirname, '..', '..', 'scripts', 'find-node.sh');
+                            const findNodeSrc = join(getPackageDir(), 'scripts', 'find-node.sh');
                             const findNodeDest = join(HUD_DIR, 'find-node.sh');
                             copyFileSync(findNodeSrc, findNodeDest);
                             chmodSync(findNodeDest, 0o755);
-                            statusLineCommand = 'sh $HOME/.copilot/hud/find-node.sh $HOME/.copilot/hud/omc-hud.mjs';
+                            statusLineCommand = 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
                         }
                         catch {
                             // Fallback to bare node if find-node.sh copy fails
-                            statusLineCommand = 'node $HOME/.copilot/hud/omc-hud.mjs';
+                            statusLineCommand = 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
                         }
                     }
                     // Auto-migrate legacy string format (pre-v4.5) to object format

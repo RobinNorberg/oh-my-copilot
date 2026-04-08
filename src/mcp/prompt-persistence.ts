@@ -9,7 +9,14 @@ import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, readdir
 import { join } from 'path';
 import { randomBytes } from 'crypto';
 import { getWorktreeRoot } from '../lib/worktree-paths.js';
+import {
+  createArtifactDescriptorFromPath,
+  type ArtifactDescriptor,
+} from '../shared/artifact-descriptor.js';
 import { initJobDb, isJobDbInitialized, upsertJob, getJob, getActiveJobs as getActiveJobsFromDb, cleanupOldJobs as cleanupOldJobsInDb } from '../lib/job-state-db.js';
+
+const PROMPT_PERSISTENCE_PRODUCER = { system: 'omc', component: 'prompt-persistence' } as const;
+type PromptPersistenceArtifactKind = 'prompt' | 'response';
 
 // Lazy-init guard: fires initJobDb at most once per process.
 // initJobDb is async (dynamic import of better-sqlite3). If it hasn't resolved
@@ -121,6 +128,7 @@ export interface PersistPromptResult {
   filePath: string;
   id: string;
   slug: string;
+  artifact: ArtifactDescriptor;
 }
 
 /**
@@ -134,6 +142,8 @@ export interface JobStatus {
   pid?: number;
   promptFile: string;
   responseFile: string;
+  promptArtifact?: ArtifactDescriptor;
+  responseArtifact?: ArtifactDescriptor;
   model: string;
   agentRole: string;
   spawnedAt: string;
@@ -212,6 +222,22 @@ function buildResponseFrontmatter(options: PersistResponseOptions): string {
   return lines.join('\n');
 }
 
+function describePersistedArtifact(path: string, kind: PromptPersistenceArtifactKind): ArtifactDescriptor {
+  return createArtifactDescriptorFromPath(path, {
+    kind,
+    producer: PROMPT_PERSISTENCE_PRODUCER,
+    retention: 'persistent',
+  });
+}
+
+export function describePromptArtifact(path: string): ArtifactDescriptor {
+  return describePersistedArtifact(path, 'prompt');
+}
+
+export function describeResponseArtifact(path: string): ArtifactDescriptor {
+  return describePersistedArtifact(path, 'response');
+}
+
 /**
  * Persist a prompt to disk with YAML frontmatter
  *
@@ -233,7 +259,12 @@ export function persistPrompt(options: PersistPromptOptions): PersistPromptResul
 
     writeFileSync(filePath, content, { encoding: 'utf-8', mode: 0o600 });
 
-    return { filePath, id, slug };
+    return {
+      filePath,
+      id,
+      slug,
+      artifact: describePromptArtifact(filePath),
+    };
   } catch (err) {
     console.warn(`[prompt-persistence] Failed to persist prompt: ${(err as Error).message}`);
     return undefined;
@@ -310,15 +341,25 @@ export function writeJobStatus(status: JobStatus, workingDirectory?: string): vo
     const promptsDir = getPromptsDir(workingDirectory);
     mkdirSync(promptsDir, { recursive: true });
 
+    const persistedStatus: JobStatus = {
+      ...status,
+      promptArtifact: existsSync(status.promptFile)
+        ? describePromptArtifact(status.promptFile)
+        : status.promptArtifact,
+      responseArtifact: existsSync(status.responseFile)
+        ? describeResponseArtifact(status.responseFile)
+        : status.responseArtifact,
+    };
+
     const statusPath = getStatusFilePath(status.provider, status.slug, status.jobId, workingDirectory);
     const tempPath = statusPath + '.tmp';
 
-    writeFileSync(tempPath, JSON.stringify(status, null, 2), { encoding: 'utf-8', mode: 0o600 });
+    writeFileSync(tempPath, JSON.stringify(persistedStatus, null, 2), { encoding: 'utf-8', mode: 0o600 });
     renameOverwritingSync(tempPath, statusPath);
 
     // SQLite write-through: also persist to jobs.db if available
     if (isJobDbInitialized()) {
-      upsertJob(status);
+      upsertJob(persistedStatus);
     }
   } catch (err) {
     console.warn(`[prompt-persistence] Failed to write job status: ${(err as Error).message}`);

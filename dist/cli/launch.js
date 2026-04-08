@@ -6,7 +6,7 @@ import { execFileSync } from 'child_process';
 import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
 import { homedir } from 'os';
 import { basename, join } from 'path';
-import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, wrapWithLoginShell, isCopilotAvailable, } from './tmux-utils.js';
+import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, } from './tmux-utils.js';
 // Flag mapping
 const MADMAX_FLAG = '--madmax';
 const YOLO_FLAG = '--yolo';
@@ -69,10 +69,12 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = process.env.COPILOT_CO
         'hud',
         'plugins',
         'projects',
+        'rules',
         'skills',
         '.omc-config.json',
         '.omc-version.json',
         '.omc-silent-update.json',
+        'keybindings.json',
         'settings.json',
         'settings.local.json',
     ]) {
@@ -373,17 +375,46 @@ function runCopilotInsideTmux(cwd, args) {
     }
 }
 /**
+ * Env vars that must be forwarded into tmux sessions.
+ * tmux new-session inherits the *server's* environment, not the calling
+ * process's, so vars set on process.env (e.g. COPILOT_CONFIG_DIR at launch)
+ * are silently lost.  We inject them as `export` statements into the shell
+ * command that runs inside the tmux pane, *after* .zshrc/.bashrc sourcing
+ * so our values take precedence.
+ */
+export const TMUX_ENV_FORWARD = [
+    'COPILOT_CONFIG_DIR',
+    'OMC_NOTIFY',
+    'OMC_OPENCLAW',
+    'OMC_TELEGRAM',
+    'OMC_DISCORD',
+    'OMC_SLACK',
+    'OMC_WEBHOOK',
+];
+export function buildEnvExportPrefix(vars) {
+    const parts = [];
+    for (const name of vars) {
+        const value = process.env[name];
+        if (value !== undefined) {
+            parts.push(`export ${name}=${quoteShellArg(value)}`);
+        }
+    }
+    return parts.length > 0 ? parts.join('; ') + '; ' : '';
+}
+/**
  * Run Copilot outside tmux - create new session
  * Creates tmux session with Copilot
  */
 function runCopilotOutsideTmux(cwd, args, _sessionId) {
     const rawCopilotCmd = buildTmuxShellCommand('copilot', args);
+    const envPrefix = buildEnvExportPrefix(TMUX_ENV_FORWARD);
     // Drain any pending terminal Device Attributes (DA1) response from stdin.
     // When tmux attach-session sends a DA1 query, the terminal replies with
     // \e[?6c which lands in the pty buffer before Copilot reads input.
     // A short sleep lets the response arrive, then tcflush discards it.
     // Wrap in login shell so .bashrc/.zshrc are sourced (PATH, nvm, etc.)
-    const copilotCmd = wrapWithLoginShell(`sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; ${rawCopilotCmd}`);
+    // Env exports are injected after RC sourcing so they override stale tmux server env.
+    const copilotCmd = wrapWithLoginShell(`${envPrefix}sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; ${rawCopilotCmd}`);
     const sessionName = buildTmuxSessionName(cwd);
     const tmuxArgs = [
         'new-session', '-d', '-s', sessionName, '-c', cwd,

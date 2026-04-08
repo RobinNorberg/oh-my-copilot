@@ -9,6 +9,15 @@
  */
 import { type WikiQueryOptions, type WikiQueryMatch } from './types.js';
 /**
+ * Tokenize text for search, with CJK bi-gram support.
+ *
+ * Latin/numeric words: split on whitespace.
+ * CJK characters (Han, Hangul, Kana): bi-grams (2-char sliding window)
+ * plus individual characters for single-char query support.
+ * Other scripts (Cyrillic, Arabic, Thai, etc.): whitespace split (fallback).
+ */
+export declare function tokenize(text: string): string[];
+/**
  * Search wiki pages by keyword and/or tags.
  *
  * Matching strategy:

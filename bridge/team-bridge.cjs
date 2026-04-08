@@ -664,6 +664,143 @@ var fs2 = __toESM(require("fs/promises"), 1);
 var fsSync = __toESM(require("fs"), 1);
 var path2 = __toESM(require("path"), 1);
 var crypto = __toESM(require("crypto"), 1);
+function ensureDirSync(dir) {
+  if (fsSync.existsSync(dir)) {
+    return;
+  }
+  try {
+    fsSync.mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    if (err.code === "EEXIST") {
+      return;
+    }
+    throw err;
+  }
+}
+
+// src/lib/file-lock.ts
+var DEFAULT_STALE_LOCK_MS2 = 3e4;
+var DEFAULT_RETRY_DELAY_MS = 50;
+function isLockStale2(lockPath, staleLockMs) {
+  try {
+    const stat = (0, import_fs6.statSync)(lockPath);
+    const ageMs = Date.now() - stat.mtimeMs;
+    if (ageMs < staleLockMs) return false;
+    try {
+      const raw = (0, import_fs6.readFileSync)(lockPath, "utf-8");
+      const payload = JSON.parse(raw);
+      if (payload.pid && isProcessAlive(payload.pid)) return false;
+    } catch {
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+function tryAcquireSync(lockPath, staleLockMs) {
+  ensureDirSync(path3.dirname(lockPath));
+  try {
+    const fd = (0, import_fs6.openSync)(
+      lockPath,
+      import_fs6.constants.O_CREAT | import_fs6.constants.O_EXCL | import_fs6.constants.O_WRONLY,
+      384
+    );
+    try {
+      const payload = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
+      (0, import_fs6.writeSync)(fd, payload, null, "utf-8");
+    } catch (writeErr) {
+      try {
+        (0, import_fs6.closeSync)(fd);
+      } catch {
+      }
+      try {
+        (0, import_fs6.unlinkSync)(lockPath);
+      } catch {
+      }
+      throw writeErr;
+    }
+    return { fd, path: lockPath };
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && err.code === "EEXIST") {
+      if (isLockStale2(lockPath, staleLockMs)) {
+        try {
+          (0, import_fs6.unlinkSync)(lockPath);
+        } catch {
+        }
+        try {
+          const fd = (0, import_fs6.openSync)(
+            lockPath,
+            import_fs6.constants.O_CREAT | import_fs6.constants.O_EXCL | import_fs6.constants.O_WRONLY,
+            384
+          );
+          try {
+            const payload = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
+            (0, import_fs6.writeSync)(fd, payload, null, "utf-8");
+          } catch (writeErr) {
+            try {
+              (0, import_fs6.closeSync)(fd);
+            } catch {
+            }
+            try {
+              (0, import_fs6.unlinkSync)(lockPath);
+            } catch {
+            }
+            throw writeErr;
+          }
+          return { fd, path: lockPath };
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+    throw err;
+  }
+}
+function acquireFileLockSync(lockPath, opts) {
+  const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS2;
+  const timeoutMs = opts?.timeoutMs ?? 0;
+  const retryDelayMs = opts?.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  const handle = tryAcquireSync(lockPath, staleLockMs);
+  if (handle || timeoutMs <= 0) return handle;
+  const deadline = Date.now() + timeoutMs;
+  const sharedBuf = new SharedArrayBuffer(4);
+  const sharedArr = new Int32Array(sharedBuf);
+  while (Date.now() < deadline) {
+    const waitMs = Math.min(retryDelayMs, deadline - Date.now());
+    try {
+      Atomics.wait(sharedArr, 0, 0, waitMs);
+    } catch {
+      const waitUntil = Date.now() + waitMs;
+      while (Date.now() < waitUntil) {
+      }
+    }
+    const retryHandle = tryAcquireSync(lockPath, staleLockMs);
+    if (retryHandle) return retryHandle;
+  }
+  return null;
+}
+function releaseFileLockSync(handle) {
+  try {
+    (0, import_fs6.closeSync)(handle.fd);
+  } catch {
+  }
+  try {
+    (0, import_fs6.unlinkSync)(handle.path);
+  } catch {
+  }
+}
+function withFileLockSync(lockPath, fn, opts) {
+  const handle = acquireFileLockSync(lockPath, opts);
+  if (!handle) {
+    throw new Error(`Failed to acquire file lock: ${lockPath}`);
+  }
+  try {
+    return fn();
+  } finally {
+    releaseFileLockSync(handle);
+  }
+}
 
 // src/team/team-registration.ts
 function configPath(teamName) {
@@ -689,13 +826,18 @@ function unregisterMcpWorker(teamName, workerName, workingDirectory) {
     }
   }
   const shadowFile = shadowRegistryPath(workingDirectory);
-  if ((0, import_fs7.existsSync)(shadowFile)) {
-    try {
-      const registry = JSON.parse((0, import_fs7.readFileSync)(shadowFile, "utf-8"));
-      registry.workers = (registry.workers || []).filter((w) => w.name !== workerName);
-      atomicWriteJson(shadowFile, registry);
-    } catch {
-    }
+  try {
+    withFileLockSync(shadowFile + ".lock", () => {
+      if ((0, import_fs7.existsSync)(shadowFile)) {
+        try {
+          const registry = JSON.parse((0, import_fs7.readFileSync)(shadowFile, "utf-8"));
+          registry.workers = (registry.workers || []).filter((w) => w.name !== workerName);
+          atomicWriteJson(shadowFile, registry);
+        } catch {
+        }
+      }
+    });
+  } catch {
   }
 }
 function isMcpWorker(member) {

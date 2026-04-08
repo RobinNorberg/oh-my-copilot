@@ -1,6 +1,8 @@
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { join, resolve } from 'path';
 import { describe, expect, it } from 'vitest';
+import { execSync } from 'child_process';
+import { tmpdir } from 'os';
 import {
   extractPullRequestNumbers,
   isReleasePullRequest,
@@ -9,6 +11,7 @@ import {
   categorizeReleaseNoteEntries,
   generateChangelog,
   generateReleaseBody,
+  getLatestTag,
 } from '../lib/release-generation.js';
 
 describe('release generation', () => {
@@ -16,8 +19,8 @@ describe('release generation', () => {
     const prNumbers = extractPullRequestNumbers([
       'feat(hud): add configurable call count icon format (#2151)',
       'fix(hud): replace misleading CLI error with installation diagnostic (#2129)',
-      'Merge pull request #2146 from Yeachan-Heo/issue-2143-omc-launch-followup',
-      'Merge pull request #2162 from Yeachan-Heo/release/4.10.2',
+      'Merge pull request #2146 from NorbergRobin/issue-2143-omc-launch-followup',
+      'Merge pull request #2162 from NorbergRobin/release/4.10.2',
       'feat(hud): add configurable call count icon format (#2151)',
     ]);
 
@@ -86,6 +89,31 @@ describe('release generation', () => {
     expect(changelog).not.toContain('1+ PRs merged');
   });
 
+  it('excludes the current release tag when resolving the previous tag', () => {
+    const repoDir = mkdtempSync(join(tmpdir(), 'release-tag-test-'));
+
+    try {
+      execSync('git init', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git config user.name "Test User"', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git config user.email "test@example.com"', { cwd: repoDir, stdio: 'ignore' });
+
+      writeFileSync(join(repoDir, 'notes.txt'), 'first\n');
+      execSync('git add notes.txt', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git commit -m "first"', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git tag v4.10.2', { cwd: repoDir, stdio: 'ignore' });
+
+      writeFileSync(join(repoDir, 'notes.txt'), 'second\n');
+      execSync('git add notes.txt', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git commit -m "second"', { cwd: repoDir, stdio: 'ignore' });
+      execSync('git tag v4.11.0', { cwd: repoDir, stdio: 'ignore' });
+
+      expect(getLatestTag({ cwd: repoDir })).toBe('v4.11.0');
+      expect(getLatestTag({ cwd: repoDir, excludeTag: 'v4.11.0' })).toBe('v4.10.2');
+    } finally {
+      rmSync(repoDir, { recursive: true, force: true });
+    }
+  });
+
   it('assembles a single custom release body with compare link and contributors', () => {
     const body = generateReleaseBody(
       '4.10.2',
@@ -95,7 +123,7 @@ describe('release generation', () => {
     );
 
     expect(body).toContain('npm install -g oh-my-copilot@4.10.2');
-    expect(body).toContain('https://github.com/Yeachan-Heo/oh-my-claudecode/compare/v4.10.1...v4.10.2');
+    expect(body).toContain('https://github.com/RobinNorberg/oh-my-copilot/compare/v4.10.1...v4.10.2');
     expect(body).toContain('@blue-int @DdangJin @Yeachan-Heo');
     expect(body.match(/## Contributors/g)).toHaveLength(1);
   });

@@ -163,7 +163,7 @@ async function main(watchMode = false, skipInit = false) {
                 0;
             if (cols > 0) {
                 config.maxWidth = cols;
-                if (!config.wrapMode)
+                if (config.wrapMode === "truncate")
                     config.wrapMode = "wrap";
             }
         }
@@ -286,6 +286,7 @@ async function main(watchMode = false, skipInit = false) {
                 ? readSessionSummary(join(getOmcRoot(cwd), 'state'), currentSessionId)
                 : null,
             lastToolName: transcriptData.lastToolName,
+            recentTools: transcriptData.recentTools ?? [],
         };
         // Debug: log data if OMC_DEBUG is set
         if (process.env.OMC_DEBUG) {

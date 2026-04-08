@@ -36,7 +36,7 @@ function parseSinceSpec(since) {
     return Number.isNaN(parsed) ? undefined : parsed;
 }
 function encodeProjectPath(projectPath) {
-    return projectPath.replace(/[\\/]/g, '-');
+    return projectPath.replace(/[/\\.]/g, '-');
 }
 function getMainRepoRoot(projectRoot) {
     try {

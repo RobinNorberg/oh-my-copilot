@@ -10,7 +10,7 @@ set -euo pipefail
 
 MODE="${1:?Usage: setup-copilot-instructions.sh <local|global> [overwrite|preserve]}"
 INSTALL_STYLE="${2:-overwrite}"
-DOWNLOAD_URL="https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/copilot-instructions.md"
+DOWNLOAD_URL="https://github.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT_PLUGIN_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 . "$SCRIPT_DIR/lib/config-dir.sh"
@@ -298,6 +298,11 @@ else
     echo "Installed OMC companion file and preserved existing copilot-instructions.md"
   else
     # No markers: wrap new content in markers, append old content as user section
+    # Strip any preserve-mode import block left by a prior preserve install
+    if grep -Fq "$OMC_IMPORT_START" "$TARGET_PATH"; then
+      perl -0pe 's/^<!-- OMC:IMPORT:START -->\R[\s\S]*?^<!-- OMC:IMPORT:END -->(?:\R)?//msg' "$TARGET_PATH" > "${TARGET_PATH}.importless"
+      mv "${TARGET_PATH}.importless" "$TARGET_PATH"
+    fi
     OLD_CONTENT=$(cat "$TARGET_PATH")
     {
       echo '<!-- OMC:START -->'
@@ -311,6 +316,20 @@ else
     echo "Migrated existing copilot-instructions.md (added OMC markers, preserved old content)"
   fi
   rm -f "$TEMP_OMC"
+
+  # Clean up orphaned companion file from a prior preserve-mode install.
+  # If left behind, prepareOmcLaunchConfigDir reads stale companion content
+  # instead of the freshly-updated copilot-instructions.md during omc launches.
+  if [ "$MODE" = "global" ] && [ "$INSTALL_STYLE" = "overwrite" ]; then
+    COMPANION_TARGET_PATH="$CONFIG_DIR/$COMPANION_FILENAME"
+    if [ -f "$COMPANION_TARGET_PATH" ]; then
+      if [ -n "$BACKUP_DATE" ]; then
+        cp "$COMPANION_TARGET_PATH" "${COMPANION_TARGET_PATH}.backup.${BACKUP_DATE}"
+      fi
+      rm -f "$COMPANION_TARGET_PATH"
+      echo "Removed orphaned companion file from prior preserve-mode install"
+    fi
+  fi
 fi
 
 if ! grep -q '<!-- OMC:START -->' "$VALIDATION_PATH" || ! grep -q '<!-- OMC:END -->' "$VALIDATION_PATH"; then

@@ -3,8 +3,6 @@
  *
  * Masks sensitive tokens in strings to prevent exposure in logs, error messages,
  * and persisted state. Covers Slack, Telegram, and generic Bearer/Bot tokens.
- *
- * @see https://github.com/Yeachan-Heo/oh-my-copilot/issues/1162
  */
 
 /**

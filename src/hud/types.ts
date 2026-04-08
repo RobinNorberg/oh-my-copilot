@@ -383,6 +383,9 @@ export interface HudRenderContext {
 
   /** Name of the last tool called in this session */
   lastToolName?: string | null;
+
+  /** Rolling list of recent tool calls with status and target info */
+  recentTools?: RecentTool[];
 }
 
 // ============================================================================
@@ -436,6 +439,7 @@ export interface HudElementConfig {
   useHyperlinks?: boolean;   // Wrap cwd/paths in OSC 8 terminal hyperlinks (clickable in supported terminals)
   gitRepo: boolean;          // Show git repository name
   gitBranch: boolean;        // Show git branch
+  gitStatus: boolean;        // Show git working tree status (+staged !modified ?untracked ⇡ahead ⇣behind)
   gitInfoPosition: 'above' | 'below';  // Position of git info relative to main HUD line
   model: boolean;            // Show current model name
   modelFormat: ModelFormat;   // Model name verbosity level
@@ -456,6 +460,7 @@ export interface HudElementConfig {
   thinking: boolean;          // Show extended thinking indicator
   thinkingFormat: ThinkingFormat;  // Thinking indicator format
   apiKeySource: boolean;       // Show API key source (project/global/env)
+  hostname: boolean;           // Show machine hostname (useful for multi-host SSH workflows)
   profile: boolean;            // Show active profile name (from COPILOT_CONFIG_DIR)
   missionBoard?: boolean;      // Show opt-in mission board above existing HUD detail lines
   promptTime: boolean;        // Show last prompt submission time (HH:MM:SS)
@@ -467,6 +472,10 @@ export interface HudElementConfig {
   showCallCounts?: boolean;   // Show tool/agent/skill call counts on the right of the status line (default: true)
   callCountsFormat?: CallCountsFormat; // Controls call count icon rendering: auto (platform default), emoji, or ascii
   showLastTool?: boolean;      // Show name of last tool called (tool:Read)
+  showRecentTools?: boolean;   // Show rolling list of recent tools with status icons
+  recentToolsMax?: number;     // Max recent tools to display (default 5)
+  recentToolsShowTarget?: boolean; // Show target summary next to tool name (default true)
+  maxAgents?: number;          // Max agents to display (default 10)
   maxOutputLines: number;     // Max total output lines to prevent input field shrinkage
   safeMode: boolean;          // Strip ANSI codes and use ASCII-only output to prevent terminal rendering corruption (Issue #346).
                               // Default true. Set to false to explicitly disable even on Windows (e.g. Windows Terminal with ANSI support).
@@ -516,12 +525,12 @@ export interface LayoutConfig {
  * Used as fallback when no layout is configured.
  */
 export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
-  line1: ['cwd', 'gitRepo', 'gitBranch', 'model', 'apiKeySource', 'profile'],
+  line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'model', 'apiKeySource', 'profile'],
   main: [
     'omcLabel', 'rateLimits', 'customBuckets', 'permission', 'thinking',
     'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
-    'callCounts', 'lastTool', 'sessionSummary',
+    'callCounts', 'recentTools', 'lastTool', 'sessionSummary',
   ],
   detail: ['missionBoard', 'agents', 'contextWarning', 'todos'],
 };
@@ -549,13 +558,14 @@ export interface HudConfig {
 export const DEFAULT_HUD_USAGE_POLL_INTERVAL_MS = 90 * 1000;
 
 export const DEFAULT_HUD_CONFIG: HudConfig = {
-  preset: 'focused',
+  preset: 'full',
   elements: {
     cwd: false,               // Disabled by default for backward compatibility
     cwdFormat: 'relative',
     useHyperlinks: false,
     gitRepo: false,           // Disabled by default for backward compatibility
     gitBranch: false,         // Disabled by default for backward compatibility
+    gitStatus: false,         // Disabled by default for backward compatibility
     gitInfoPosition: 'above',  // Git info above main HUD line (backward compatible)
     model: false,             // Disabled by default for backward compatibility
     modelFormat: 'short',     // Short names by default for backward compatibility
@@ -576,6 +586,7 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     thinking: true,
     thinkingFormat: 'text',   // Text format for backward compatibility
     apiKeySource: false, // Disabled by default
+    hostname: false,
     profile: true,  // Show profile name when COPILOT_CONFIG_DIR is set
     missionBoard: false,  // Opt-in mission board for whole-run progress tracking
     promptTime: true,  // Show last prompt time by default
@@ -586,6 +597,10 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     showCallCounts: true,  // Show tool/agent/skill call counts by default (Issue #710)
     callCountsFormat: 'auto',  // Preserve platform-based emoji/ASCII defaults unless explicitly overridden
     showLastTool: false,
+    showRecentTools: true,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
+    maxAgents: 10,
     maxOutputLines: 4,
     safeMode: true,  // Enabled by default to prevent terminal rendering corruption (Issue #346)
     sessionSummary: false,
@@ -596,7 +611,7 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     contextCritical: 85,
     ralphWarning: 7,
   },
-  staleTaskThresholdMinutes: 30,
+  staleTaskThresholdMinutes: 10,
   contextLimitWarning: {
     threshold: 80,
     autoCompact: false,
@@ -613,6 +628,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useHyperlinks: false,
     gitRepo: false,
     gitBranch: false,
+    gitStatus: false,
     gitInfoPosition: 'above',
     model: false,
     modelFormat: 'short',
@@ -627,12 +643,14 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'count',
     agentsMaxLines: 0,
+    maxAgents: 5,
     backgroundTasks: false,
     todos: true,
     permissionStatus: false,
     thinking: false,
     thinkingFormat: 'text',
     apiKeySource: false,
+    hostname: false,
     profile: true,
     missionBoard: false,
     promptTime: false,
@@ -642,6 +660,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: false,
     showCallCounts: false,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 3,
+    recentToolsShowTarget: false,
     maxOutputLines: 2,
     safeMode: true,
     sessionSummary: false,
@@ -652,6 +673,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useHyperlinks: false,
     gitRepo: false,
     gitBranch: true,
+    gitStatus: true,
     gitInfoPosition: 'above',
     model: false,
     modelFormat: 'short',
@@ -666,12 +688,14 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 3,
+    maxAgents: 10,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
     thinking: true,
     thinkingFormat: 'text',
     apiKeySource: false,
+    hostname: false,
     profile: true,
     missionBoard: false,
     promptTime: true,
@@ -681,6 +705,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: true,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     maxOutputLines: 4,
     safeMode: true,
     sessionSummary: false,
@@ -691,6 +718,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useHyperlinks: false,
     gitRepo: true,
     gitBranch: true,
+    gitStatus: true,
     gitInfoPosition: 'above',
     model: false,
     modelFormat: 'short',
@@ -705,12 +733,14 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 10,
+    maxAgents: 15,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
     thinking: true,
     thinkingFormat: 'text',
     apiKeySource: true,
+    hostname: false,
     profile: true,
     missionBoard: false,
     promptTime: true,
@@ -720,6 +750,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: true,
+    recentToolsMax: 8,
+    recentToolsShowTarget: true,
     maxOutputLines: 12,
     safeMode: true,
     sessionSummary: false,
@@ -730,6 +763,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useHyperlinks: false,
     gitRepo: false,
     gitBranch: true,
+    gitStatus: false,
     gitInfoPosition: 'above',
     model: false,
     modelFormat: 'short',
@@ -744,12 +778,14 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'codes',
     agentsMaxLines: 0,
+    maxAgents: 10,
     backgroundTasks: false,
     todos: true,
     permissionStatus: false,
     thinking: true,
     thinkingFormat: 'text',
     apiKeySource: false,
+    hostname: false,
     profile: true,
     missionBoard: false,
     promptTime: true,
@@ -759,6 +795,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: false,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     maxOutputLines: 4,
     safeMode: true,
     sessionSummary: false,
@@ -769,6 +808,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useHyperlinks: false,
     gitRepo: true,
     gitBranch: true,
+    gitStatus: true,
     gitInfoPosition: 'above',
     model: false,
     modelFormat: 'short',
@@ -783,12 +823,14 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     agents: true,
     agentsFormat: 'multiline',
     agentsMaxLines: 5,
+    maxAgents: 10,
     backgroundTasks: true,
     todos: true,
     permissionStatus: false,
     thinking: true,
     thinkingFormat: 'text',
     apiKeySource: true,
+    hostname: false,
     profile: true,
     missionBoard: false,
     promptTime: true,
@@ -798,6 +840,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: true,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     maxOutputLines: 6,
     safeMode: true,
     sessionSummary: false,

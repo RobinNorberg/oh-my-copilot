@@ -203,7 +203,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
         0;
       if (cols > 0) {
         config.maxWidth = cols;
-        if (!config.wrapMode) config.wrapMode = "wrap";
+        if (config.wrapMode === "truncate") config.wrapMode = "wrap";
       }
     }
 
@@ -337,6 +337,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
         ? readSessionSummary(join(getOmcRoot(cwd), 'state'), currentSessionId)
         : null,
       lastToolName: transcriptData.lastToolName,
+      recentTools: transcriptData.recentTools ?? [],
     };
 
     // Debug: log data if OMC_DEBUG is set

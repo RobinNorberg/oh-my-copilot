@@ -42,7 +42,14 @@ const flushInProgress = new Set();
 function syncSleep(ms) {
     const buffer = new SharedArrayBuffer(4);
     const view = new Int32Array(buffer);
-    Atomics.wait(view, 0, 0, ms);
+    try {
+        Atomics.wait(view, 0, 0, ms);
+    }
+    catch {
+        // Main thread: Atomics.wait throws on Node <22
+        const waitUntil = Date.now() + ms;
+        while (Date.now() < waitUntil) { /* spin */ }
+    }
 }
 // ============================================================================
 // Merge Logic

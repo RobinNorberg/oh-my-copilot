@@ -14,6 +14,7 @@ import {
   executeTeamApiOperation,
   type TeamApiOperation,
 } from '../../team/api-interop.js';
+import type { CliAgentType } from '../../team/model-contract.js';
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const MIN_WORKER_COUNT = 1;
@@ -105,6 +106,112 @@ const TEAM_API_OPERATION_NOTES: Partial<Record<TeamApiOperation, string>> = {
 };
 
 // ---------------------------------------------------------------------------
+// Task decomposition helpers
+// ---------------------------------------------------------------------------
+
+export type DecompositionStrategy = 'numbered' | 'bulleted' | 'conjunction' | 'atomic';
+
+export interface DecompositionPlan {
+  strategy: DecompositionStrategy;
+  subtasks: Array<{ subject: string; description: string }>;
+}
+
+const NUMBERED_LINE_RE = /^\s*\d+[.)]\s+(.+)$/;
+const BULLETED_LINE_RE = /^\s*[-*•]\s+(.+)$/;
+// Conjunction split: "fix auth AND fix login AND fix logout" or "fix auth, fix login, and fix logout"
+const CONJUNCTION_SPLIT_RE = /\s+(?:and|,\s*and|,)\s+/i;
+
+/** Signals that a task is atomic (contains file refs, code symbols, or parallel keywords) */
+const PARALLELIZATION_KEYWORDS_RE =
+  /\b(?:parallel|concurrently|simultaneously|at the same time|independently)\b/i;
+const FILE_REF_RE = /\b\S+\.\w{1,6}\b/g;
+const CODE_SYMBOL_RE = /`[^`]+`/g;
+
+/**
+ * Count atomic parallelization signals in a task string.
+ * Returns true when the task should NOT be decomposed (it's already atomic or tightly coupled).
+ */
+export function hasAtomicParallelizationSignals(task: string, _size: string): boolean {
+  const fileRefs = (task.match(FILE_REF_RE) || []).length;
+  const codeSymbols = (task.match(CODE_SYMBOL_RE) || []).length;
+  const parallelKw = PARALLELIZATION_KEYWORDS_RE.test(task);
+  // Treat as atomic when many specific file/symbol refs present (tightly coupled)
+  return fileRefs >= 3 || codeSymbols >= 3 || parallelKw;
+}
+
+/**
+ * Resolve the effective worker count fanout limit for decomposed tasks.
+ * Caps worker count to the number of discovered subtasks when decomposition produces fewer items.
+ */
+export function resolveTeamFanoutLimit(
+  requestedWorkerCount: number,
+  _explicitAgentType: string | undefined,
+  _explicitWorkerCount: number | undefined,
+  plan: DecompositionPlan
+): number {
+  if (plan.strategy === 'atomic') return requestedWorkerCount;
+  const subtaskCount = plan.subtasks.length;
+  if (subtaskCount > 0 && subtaskCount < requestedWorkerCount) {
+    return subtaskCount;
+  }
+  return requestedWorkerCount;
+}
+
+/**
+ * Decompose a task string into a structured plan.
+ *
+ * Detects:
+ * - Numbered list: "1. fix auth\n2. fix login"
+ * - Bulleted list: "- fix auth\n- fix login"
+ * - Conjunction: "fix auth and fix login and fix logout"
+ * - Atomic: single task, no decomposition
+ */
+export function splitTaskString(task: string): DecompositionPlan {
+  const lines = task.split('\n').map(l => l.trim()).filter(Boolean);
+
+  // Check numbered list
+  if (lines.length >= 2 && lines.every(l => NUMBERED_LINE_RE.test(l))) {
+    return {
+      strategy: 'numbered',
+      subtasks: lines.map(l => {
+        const m = l.match(NUMBERED_LINE_RE)!;
+        const subject = m[1].trim();
+        return { subject: subject.slice(0, 80), description: subject };
+      }),
+    };
+  }
+
+  // Check bulleted list
+  if (lines.length >= 2 && lines.every(l => BULLETED_LINE_RE.test(l))) {
+    return {
+      strategy: 'bulleted',
+      subtasks: lines.map(l => {
+        const m = l.match(BULLETED_LINE_RE)!;
+        const subject = m[1].trim();
+        return { subject: subject.slice(0, 80), description: subject };
+      }),
+    };
+  }
+
+  // Check conjunction split (single line with "and" or commas)
+  if (lines.length === 1) {
+    const parts = lines[0].split(CONJUNCTION_SPLIT_RE).map(s => s.trim()).filter(Boolean);
+    if (parts.length >= 2) {
+      return {
+        strategy: 'conjunction',
+        subtasks: parts.map(p => ({ subject: p.slice(0, 80), description: p })),
+      };
+    }
+  }
+
+  // Atomic: no decomposition
+  return {
+    strategy: 'atomic',
+    subtasks: [{ subject: task.slice(0, 80), description: task }],
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -117,9 +224,15 @@ function slugifyTask(task: string): string {
     .slice(0, 30) || 'team-task';
 }
 
+export interface ParsedWorkerSpec {
+  agentType: string;
+  role?: string;
+}
+
 export interface ParsedTeamArgs {
   workerCount: number;
   agentTypes: string[];
+  workerSpecs: ParsedWorkerSpec[];
   role?: string;
   task: string;
   teamName: string;
@@ -178,6 +291,7 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
   const args = [...tokens];
   let workerCount = 3;
   let agentTypes: string[] = [];
+  let workerSpecs: ParsedWorkerSpec[] = [];
   let json = false;
   let newWindow = false;
 
@@ -216,6 +330,7 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
         workerCount += seg.count;
         for (let i = 0; i < seg.count; i++) {
           agentTypes.push(seg.agentType);
+          workerSpecs.push({ agentType: seg.agentType, ...(seg.role ? { role: seg.role } : {}) });
         }
       }
       if (workerCount > MAX_WORKER_COUNT) {
@@ -238,6 +353,10 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
       workerCount = normalized.count;
       role = normalized.role;
       agentTypes = Array.from({ length: workerCount }, () => normalized.agentType);
+      workerSpecs = Array.from({ length: workerCount }, () => ({
+        agentType: normalized.agentType,
+        ...(role ? { role } : {}),
+      }));
       filteredArgs.shift();
     }
   }
@@ -245,6 +364,7 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
   // Default: 3 copilot workers if no spec matched
   if (agentTypes.length === 0) {
     agentTypes = Array.from({ length: workerCount }, () => 'copilot');
+    workerSpecs = Array.from({ length: workerCount }, () => ({ agentType: 'copilot' }));
   }
 
   const task = filteredArgs.join(' ').trim();
@@ -253,7 +373,21 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
   }
 
   const teamName = slugifyTask(task);
-  return { workerCount, agentTypes, role, task, teamName, json, newWindow };
+  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow };
+}
+
+export function buildStartupTasks(parsed: ParsedTeamArgs): Array<{ subject: string; description: string; owner?: string }> {
+  return Array.from({ length: parsed.workerCount }, (_, index) => {
+    const workerSpec = parsed.workerSpecs[index];
+    const roleLabel = workerSpec?.role ? ` (${workerSpec.role})` : '';
+    return {
+      subject: parsed.workerCount === 1
+        ? parsed.task.slice(0, 80)
+        : `Worker ${index + 1}${roleLabel}: ${parsed.task}`.slice(0, 80),
+      description: parsed.task,
+      ...(workerSpec?.role ? { owner: `worker-${index + 1}` } : {}),
+    };
+  });
 }
 
 function sampleValueForField(field: string): unknown {
@@ -384,16 +518,38 @@ function parseTeamApiArgs(args: string[]): {
 async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<void> {
   assertTeamSpawnAllowed();
 
-  // Create tasks from the task description (one per worker, like OMX)
+  // Decompose the task string into subtasks when possible
+  const decomposition = splitTaskString(parsed.task);
+  const effectiveWorkerCount = resolveTeamFanoutLimit(
+    parsed.workerCount,
+    parsed.agentTypes[0],
+    parsed.workerCount,
+    decomposition
+  );
+
+  // Build the task list from decomposition subtasks or fall back to atomic replication
   const tasks: Array<{ subject: string; description: string; owner?: string }> = [];
-  for (let i = 0; i < parsed.workerCount; i++) {
-    tasks.push({
-      subject: parsed.workerCount === 1
-        ? parsed.task.slice(0, 80)
-        : `Worker ${i + 1}: ${parsed.task}`.slice(0, 80),
-      description: parsed.task,
-      owner: `worker-${i + 1}`,
-    });
+  if (decomposition.strategy !== 'atomic' && decomposition.subtasks.length > 1) {
+    // Use decomposed subtasks — one per subtask (up to effectiveWorkerCount)
+    const subtasks = decomposition.subtasks.slice(0, effectiveWorkerCount);
+    for (let i = 0; i < subtasks.length; i++) {
+      tasks.push({
+        subject: subtasks[i].subject,
+        description: subtasks[i].description,
+        owner: `worker-${i + 1}`,
+      });
+    }
+  } else {
+    // Atomic task: replicate across all workers (backward compatible)
+    for (let i = 0; i < effectiveWorkerCount; i++) {
+      tasks.push({
+        subject: effectiveWorkerCount === 1
+          ? parsed.task.slice(0, 80)
+          : `Worker ${i + 1}: ${parsed.task}`.slice(0, 80),
+        description: parsed.task,
+        owner: `worker-${i + 1}`,
+      });
+    }
   }
 
   // Load role prompt if a role was specified (e.g., 3:codex:architect)
@@ -409,11 +565,12 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
     const { startTeamV2, monitorTeamV2 } = await import('../../team/runtime-v2.js');
     const runtime = await startTeamV2({
       teamName: parsed.teamName,
-      workerCount: parsed.workerCount,
-      agentTypes: parsed.agentTypes,
+      workerCount: effectiveWorkerCount,
+      agentTypes: parsed.agentTypes.slice(0, effectiveWorkerCount),
       tasks,
       cwd,
       newWindow: parsed.newWindow,
+      workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
       ...(rolePrompt ? { roleName: parsed.role, rolePrompt } : {}),
     });
 
@@ -447,8 +604,8 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
   const { startTeam, monitorTeam } = await import('../../team/runtime.js');
   const runtime = await startTeam({
     teamName: parsed.teamName,
-    workerCount: parsed.workerCount,
-    agentTypes: parsed.agentTypes as any,
+    workerCount: effectiveWorkerCount,
+    agentTypes: parsed.agentTypes.slice(0, effectiveWorkerCount) as CliAgentType[],
     tasks,
     cwd,
     newWindow: parsed.newWindow,

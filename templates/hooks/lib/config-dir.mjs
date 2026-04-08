@@ -9,6 +9,10 @@ function stripTrailingSep(p) {
   return p === parse(p).root ? p : p.slice(0, -1);
 }
 
+export function getClaudeConfigDir() {
+  return getCopilotConfigDir();
+}
+
 export function getCopilotConfigDir() {
   const home = homedir();
   const configured = process.env.COPILOT_CONFIG_DIR?.trim();

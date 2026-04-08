@@ -1,4 +1,5 @@
-const DEFAULT_REPO_URL = 'https://github.com/Yeachan-Heo/oh-my-claudecode';
+import { execSync } from 'child_process';
+const DEFAULT_REPO_URL = 'https://github.com/RobinNorberg/oh-my-copilot';
 const CONVENTIONAL_RE = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?:\s*(?<desc>.+)$/;
 function parseConventionalSubject(raw) {
     const match = raw.match(CONVENTIONAL_RE);
@@ -9,6 +10,19 @@ function parseConventionalSubject(raw) {
         scope: match.groups.scope || '',
         description: match.groups.desc.replace(/\s*\(#\d+\)$/, '').trim(),
     };
+}
+export function getLatestTag(options = {}) {
+    const { cwd = process.cwd(), excludeTag, ref = 'HEAD' } = options;
+    try {
+        const excludeArg = excludeTag ? ` --exclude ${JSON.stringify(excludeTag)}` : '';
+        return execSync(`git describe --tags --abbrev=0${excludeArg} ${JSON.stringify(ref)}`, {
+            cwd,
+            encoding: 'utf-8',
+        }).trim();
+    }
+    catch {
+        return '';
+    }
 }
 export function extractPullRequestNumbers(subjects) {
     const numbers = new Set();

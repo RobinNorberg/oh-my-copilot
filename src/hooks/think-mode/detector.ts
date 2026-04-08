@@ -10,69 +10,9 @@
 /** English patterns for think keywords */
 const ENGLISH_PATTERNS = [/\bultrathink\b/i, /\bthink\b/i];
 
-/** Multilingual think keywords for global support */
-const MULTILINGUAL_KEYWORDS = [
-  // Hindi
-  'सोच', 'विचार',
-  // Arabic
-  'تفكير', 'تأمل',
-  // Bengali
-  'চিন্তা', 'ভাবনা',
-  // Russian
-  'думать', 'думай', 'размышлять', 'размышляй',
-  // Portuguese
-  'pensar', 'pense', 'refletir', 'reflita',
-  // Spanish
-  'piensa', 'reflexionar', 'reflexiona',
-  // French
-  'penser', 'réfléchir', 'réfléchis',
-  // German
-  'denken', 'denk', 'nachdenken',
-  // Vietnamese
-  'suy nghĩ', 'cân nhắc',
-  // Turkish
-  'düşün', 'düşünmek',
-  // Italian
-  'pensare', 'pensa', 'riflettere', 'rifletti',
-  // Thai
-  'คิด', 'พิจารณา',
-  // Polish
-  'myśl', 'myśleć', 'zastanów',
-  // Dutch
-  'nadenken',
-  // Indonesian/Malay
-  'berpikir', 'pikir', 'pertimbangkan',
-  // Ukrainian
-  'думати', 'роздумувати',
-  // Greek
-  'σκέψου', 'σκέφτομαι',
-  // Czech
-  'myslet', 'mysli', 'přemýšlet',
-  // Romanian
-  'gândește', 'gândi', 'reflectă',
-  // Swedish
-  'tänka', 'tänk', 'fundera',
-  // Hungarian
-  'gondolkodj', 'gondolkodni',
-  // Finnish
-  'ajattele', 'ajatella', 'pohdi',
-  // Danish
-  'tænk', 'tænke', 'overvej',
-  // Norwegian
-  'tenk', 'tenke', 'gruble',
-  // Hebrew
-  'חשוב', 'לחשוב', 'להרהר',
-  // Korean
-  '생각', '고려', '사고',
-  // Chinese (Simplified & Traditional)
-  '思考', '考虑', '想一想', '思索',
-  // Japanese
-  '考え', '思考', '熟考',
-];
 
-/** Combined patterns including multilingual support */
-const MULTILINGUAL_PATTERNS = MULTILINGUAL_KEYWORDS.map((kw) => new RegExp(kw, 'i'));
-const THINK_PATTERNS = [...ENGLISH_PATTERNS, ...MULTILINGUAL_PATTERNS];
+
+const THINK_PATTERNS = ENGLISH_PATTERNS;
 
 /** Regex patterns for code blocks */
 const CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;

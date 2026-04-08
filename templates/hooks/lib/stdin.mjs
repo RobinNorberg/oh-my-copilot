@@ -1,7 +1,6 @@
 /**
  * Shared stdin utilities for OMC hooks
  * Provides timeout-protected stdin reading to prevent hangs on Linux and Windows
- * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/240
  */
 
 /**

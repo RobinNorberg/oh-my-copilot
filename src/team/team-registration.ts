@@ -109,21 +109,28 @@ function registerInConfig(teamName: string, member: McpWorkerMember): void {
   const filePath = configPath(teamName);
   if (!existsSync(filePath)) return; // No config.json to write to
 
+  const lockPath = filePath + '.lock';
   try {
-    const raw = readFileSync(filePath, 'utf-8');
-    const config = JSON.parse(raw) as Record<string, unknown>;
-    const members = Array.isArray(config.members) ? config.members as Record<string, unknown>[] : [];
+    withFileLockSync(lockPath, () => {
+      try {
+        const raw = readFileSync(filePath, 'utf-8');
+        const config = JSON.parse(raw) as Record<string, unknown>;
+        const members = Array.isArray(config.members) ? config.members as Record<string, unknown>[] : [];
 
-    // Remove existing entry for this worker if present
-    const filtered = members.filter(
-      (m) => m.name !== member.name
-    );
-    filtered.push(member as unknown as Record<string, unknown>);
-    config.members = filtered;
+        // Remove existing entry for this worker if present
+        const filtered = members.filter(
+          (m) => m.name !== member.name
+        );
+        filtered.push(member as unknown as Record<string, unknown>);
+        config.members = filtered;
 
-    atomicWriteJson(filePath, config);
+        atomicWriteJson(filePath, config);
+      } catch {
+        // Config write failure is non-fatal — shadow registry is backup
+      }
+    });
   } catch {
-    // Config write failure is non-fatal — shadow registry is backup
+    // Lock acquisition failure is non-fatal — shadow registry is backup
   }
 }
 
@@ -176,15 +183,21 @@ export function unregisterMcpWorker(
 
   // Remove from shadow registry
   const shadowFile = shadowRegistryPath(workingDirectory);
-  if (existsSync(shadowFile)) {
-    try {
-      const registry = JSON.parse(readFileSync(shadowFile, 'utf-8')) as {
-        teamName: string;
-        workers: McpWorkerMember[];
-      };
-      registry.workers = (registry.workers || []).filter(w => w.name !== workerName);
-      atomicWriteJson(shadowFile, registry);
-    } catch { /* ignore */ }
+  try {
+    withFileLockSync(shadowFile + '.lock', () => {
+      if (existsSync(shadowFile)) {
+        try {
+          const registry = JSON.parse(readFileSync(shadowFile, 'utf-8')) as {
+            teamName: string;
+            workers: McpWorkerMember[];
+          };
+          registry.workers = (registry.workers || []).filter(w => w.name !== workerName);
+          atomicWriteJson(shadowFile, registry);
+        } catch { /* ignore */ }
+      }
+    });
+  } catch {
+    // Lock contention during unregister is non-fatal — best-effort cleanup
   }
 }
 

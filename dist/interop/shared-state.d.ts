@@ -1,11 +1,12 @@
 /**
  * Shared State Management for Cross-Tool Interoperability
  *
- * Manages shared state files at .omg/state/interop/ for communication
+ * Manages shared state files at .omc/state/interop/ for communication
  * between OMC (Copilot CLI) and OMX (Codex CLI).
  *
  * Uses atomic writes for safety and supports task/message passing.
  */
+import { type ArtifactDescriptor } from '../shared/artifact-descriptor.js';
 export interface InteropConfig {
     sessionId: string;
     createdAt: string;
@@ -15,23 +16,26 @@ export interface InteropConfig {
 }
 export interface SharedTask {
     id: string;
-    source: 'omg' | 'omx';
-    target: 'omg' | 'omx';
+    source: 'omc' | 'omx';
+    target: 'omc' | 'omx';
     type: 'analyze' | 'implement' | 'review' | 'test' | 'custom';
     description: string;
+    descriptionArtifact?: ArtifactDescriptor;
     context?: Record<string, unknown>;
     files?: string[];
     createdAt: string;
     status: 'pending' | 'in_progress' | 'completed' | 'failed';
     result?: string;
+    resultArtifact?: ArtifactDescriptor;
     error?: string;
     completedAt?: string;
 }
 export interface SharedMessage {
     id: string;
-    source: 'omg' | 'omx';
-    target: 'omg' | 'omx';
+    source: 'omc' | 'omx';
+    target: 'omc' | 'omx';
     content: string;
+    contentArtifact?: ArtifactDescriptor;
     metadata?: Record<string, unknown>;
     timestamp: string;
     read: boolean;
@@ -57,8 +61,8 @@ export declare function addSharedTask(cwd: string, task: Omit<SharedTask, 'id' |
  * Read all shared tasks
  */
 export declare function readSharedTasks(cwd: string, filter?: {
-    source?: 'omg' | 'omx';
-    target?: 'omg' | 'omx';
+    source?: 'omc' | 'omx';
+    target?: 'omc' | 'omx';
     status?: SharedTask['status'];
 }): SharedTask[];
 /**
@@ -73,8 +77,8 @@ export declare function addSharedMessage(cwd: string, message: Omit<SharedMessag
  * Read shared messages
  */
 export declare function readSharedMessages(cwd: string, filter?: {
-    source?: 'omg' | 'omx';
-    target?: 'omg' | 'omx';
+    source?: 'omc' | 'omx';
+    target?: 'omc' | 'omx';
     unreadOnly?: boolean;
 }): SharedMessage[];
 /**

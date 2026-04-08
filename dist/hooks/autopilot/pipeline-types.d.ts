@@ -4,8 +4,6 @@
  * Type definitions for the configurable pipeline orchestrator.
  * The pipeline unifies autopilot/ultrawork/ultrapilot into a single
  * configurable sequence: RALPLAN -> EXECUTION -> RALPH -> QA.
- *
- * @see https://github.com/Yeachan-Heo/oh-my-copilot/issues/1130
  */
 /**
  * Pipeline stage identifiers in execution order.

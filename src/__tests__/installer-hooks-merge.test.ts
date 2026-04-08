@@ -114,8 +114,21 @@ describe('isOmcHook()', () => {
     expect(isOmcHook('node "$HOME/.copilot/hooks/persistent-mode.mjs"')).toBe(true);
   });
 
+  it('recognises OMC code-simplifier command', () => {
+    expect(isOmcHook('node "$HOME/.copilot/hooks/code-simplifier.mjs"')).toBe(true);
+  });
+
   it('recognises Windows-style OMC path', () => {
     expect(isOmcHook('node "%USERPROFILE%\\.copilot\\hooks\\keyword-detector.mjs"')).toBe(true);
+  });
+
+  it('recognises custom-profile hook paths by known filename', () => {
+    expect(isOmcHook('node "/tmp/custom-copilot/hooks/keyword-detector.mjs"')).toBe(true);
+  });
+
+  it('recognises COPILOT_CONFIG_DIR-aware hook commands', () => {
+    expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/keyword-detector.mjs"')).toBe(true);
+    expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.mjs"')).toBe(true);
   });
 
   it('recognises oh-my-copilot in command path', () => {

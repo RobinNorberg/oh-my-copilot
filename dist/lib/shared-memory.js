@@ -152,7 +152,7 @@ export function writeEntry(namespace, key, value, ttl, worktreeRoot) {
     };
     // Try with lock; fall back to unlocked if lock fails (best-effort)
     try {
-        return withFileLockSync(lockPath, doWrite);
+        return withFileLockSync(lockPath, doWrite, { timeoutMs: 500, retryDelayMs: 25 });
     }
     catch {
         return doWrite();

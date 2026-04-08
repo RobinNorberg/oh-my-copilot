@@ -1,7 +1,7 @@
 ---
 name: hud
 description: Configure HUD display options (layout, presets, display elements)
-argument-hint: "[setup|minimal|focused|full|status]"
+argument-hint: "[setup|minimal|focused|full|dense|opencode|disable|status]"
 role: config-writer  # DOCUMENTATION ONLY - This skill writes to ~/.copilot/ paths
 scope: ~/.copilot/**  # DOCUMENTATION ONLY - Allowed write scope
 level: 2
@@ -20,9 +20,16 @@ Note: All `~/.copilot/...` paths in this guide respect `COPILOT_CONFIG_DIR` when
 | `/oh-my-copilot:hud` | Show current HUD status (auto-setup if needed) |
 | `/oh-my-copilot:hud setup` | Install/repair HUD statusline |
 | `/oh-my-copilot:hud minimal` | Switch to minimal display |
-| `/oh-my-copilot:hud focused` | Switch to focused display (default) |
-| `/oh-my-copilot:hud full` | Switch to full display |
+| `/oh-my-copilot:hud focused` | Switch to focused display |
+| `/oh-my-copilot:hud full` | Switch to full display (default) |
+| `/oh-my-copilot:hud dense` | Switch to dense display (compact with all features) |
+| `/oh-my-copilot:hud opencode` | Switch to opencode display (code-focused) |
+| `/oh-my-copilot:hud disable` | Disable the HUD statusline |
 | `/oh-my-copilot:hud status` | Show detailed HUD status |
+
+## Disable
+
+When the argument is `disable`, remove the `statusLine` field from `~/.copilot/settings.json` using the Edit tool. This disables the HUD entirely. Tell the user to restart Copilot CLI for changes to take effect.
 
 ## Auto-Setup
 
