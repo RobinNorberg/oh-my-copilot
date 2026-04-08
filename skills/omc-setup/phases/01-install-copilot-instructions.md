@@ -31,14 +31,29 @@ bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-copilot-instructions.sh" <CONFIG_TARG
 
 Replace `<CONFIG_TARGET>` with `local` or `global`.
 
-**IMPORTANT**: Always use the bash script. Do NOT rewrite it as PowerShell. Copilot CLI provides bash even on Windows.
+**IMPORTANT**: The download URL is `https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md` — do NOT use any other GitHub user or repository. NEVER use `Yeachan-Heo` in the URL.
 
-**IMPORTANT**: The download URL is `https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md` — do NOT use any other GitHub user or repository.
+**FALLBACK for Windows** if bash fails, use this exact PowerShell command:
 
-**FALLBACK** if bash is truly unavailable, download with this exact URL:
+For **global** (`~/.copilot/copilot-instructions.md`):
+```powershell
+$targetDir = "$env:USERPROFILE\.copilot"
+if (!(Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+$url = "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md"
+Invoke-WebRequest -Uri $url -OutFile "$targetDir\copilot-instructions.md" -UseBasicParsing
+Write-Host "Downloaded copilot-instructions.md to $targetDir"
 ```
-https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md
+
+For **local** (`.copilot/copilot-instructions.md` in current project):
+```powershell
+$targetDir = ".copilot"
+if (!(Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+$url = "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md"
+Invoke-WebRequest -Uri $url -OutFile "$targetDir\copilot-instructions.md" -UseBasicParsing
+Write-Host "Downloaded copilot-instructions.md to $targetDir"
 ```
+
+**CRITICAL**: Use the exact URL above. Do NOT substitute any part of it.
 
 **Note**: The downloaded copilot-instructions.md includes Context Persistence instructions with `<remember>` tags for surviving conversation compaction.
 
