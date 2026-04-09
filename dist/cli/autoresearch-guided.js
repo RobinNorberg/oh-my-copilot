@@ -1,4 +1,6 @@
 import { execFileSync } from 'child_process';
+import { getHostCliType } from '../utils/host-detection.js';
+import { getContract } from '../team/model-contract.js';
 import { existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join, relative, resolve, sep } from 'path';
@@ -302,9 +304,10 @@ export function spawnAutoresearchSetupTmux(repoRoot) {
     }
     const sessionName = `omc-autoresearch-setup-${Date.now().toString(36)}`;
     const codexHome = prepareAutoresearchSetupCodexHome(repoRoot, sessionName);
-    const claudeCommand = buildTmuxShellCommand('env', [`CODEX_HOME=${codexHome}`, 'claude', CLAUDE_BYPASS_FLAG]);
-    const wrappedClaudeCommand = wrapWithLoginShell(claudeCommand);
-    const paneId = execFileSync('tmux', ['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedClaudeCommand], { encoding: 'utf-8', env: tmuxEnv() }).trim();
+    const hostBinary = getContract(getHostCliType()).binary;
+    const cliCommand = buildTmuxShellCommand('env', [`CODEX_HOME=${codexHome}`, hostBinary, CLAUDE_BYPASS_FLAG]);
+    const wrappedCliCommand = wrapWithLoginShell(cliCommand);
+    const paneId = execFileSync('tmux', ['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedCliCommand], { encoding: 'utf-8', env: tmuxEnv() }).trim();
     assertTmuxSessionAvailable(sessionName);
     if (paneId) {
         execFileSync('tmux', ['send-keys', '-t', paneId, '-l', buildAutoresearchSetupSlashCommand()], { stdio: 'ignore', env: tmuxEnv() });

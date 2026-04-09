@@ -184,7 +184,7 @@ export function getContract(agentType) {
     }
     if (agentType !== 'claude' && agentType !== 'copilot' && isExternalLLMDisabled()) {
         throw new Error(`External LLM provider "${agentType}" is blocked by security policy (disableExternalLLM). ` +
-            `Only Claude workers are allowed in the current security configuration.`);
+            `Only Claude/Copilot workers are allowed in the current security configuration.`);
     }
     return contract;
 }

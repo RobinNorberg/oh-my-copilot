@@ -89,8 +89,8 @@ function resolveDefault(agentRole, config) {
             reason: `Default heuristic: role "${agentRole}" → Claude subagent "${defaultAgent}"`,
         };
     }
-    // Fall back to default provider or claude
-    const defaultProvider = config?.defaultProvider || 'claude';
+    // Fall back to default provider or copilot (this fork's default)
+    const defaultProvider = config?.defaultProvider || 'copilot';
     if (defaultProvider === 'codex' || defaultProvider === 'gemini') {
         console.warn('[OMC] Codex/Gemini MCP delegation is deprecated. Use /team to coordinate CLI workers instead.');
     }

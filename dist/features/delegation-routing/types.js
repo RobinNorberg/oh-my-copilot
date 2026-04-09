@@ -9,7 +9,7 @@
  */
 export const DEFAULT_DELEGATION_CONFIG = {
     enabled: false,
-    defaultProvider: 'claude',
+    defaultProvider: 'copilot',
     roles: {},
 };
 /**

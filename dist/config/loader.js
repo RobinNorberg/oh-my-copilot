@@ -109,7 +109,7 @@ export function buildDefaultConfig() {
         // Delegation routing configuration (opt-in feature for external model routing)
         delegationRouting: {
             enabled: false,
-            defaultProvider: 'claude',
+            defaultProvider: 'copilot',
             roles: {},
         },
         startupCodebaseMap: {
@@ -657,7 +657,7 @@ export function generateConfigSchema() {
                     defaultProvider: {
                         type: 'string',
                         enum: ['claude', 'copilot', 'codex', 'gemini'],
-                        default: 'claude',
+                        default: 'copilot',
                         description: 'Default provider for delegation routing when no specific role mapping exists'
                     },
                     roles: {

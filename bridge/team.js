@@ -1835,7 +1835,7 @@ function getContract(agentType) {
   }
   if (agentType !== "claude" && agentType !== "copilot" && isExternalLLMDisabled()) {
     throw new Error(
-      `External LLM provider "${agentType}" is blocked by security policy (disableExternalLLM). Only Claude workers are allowed in the current security configuration.`
+      `External LLM provider "${agentType}" is blocked by security policy (disableExternalLLM). Only Claude/Copilot workers are allowed in the current security configuration.`
     );
   }
   return contract;
@@ -3041,6 +3041,17 @@ var init_omc_cli_rendering = __esm({
   }
 });
 
+// src/utils/host-detection.ts
+function getHostCliType() {
+  if (process.env.CLAUDE_CODE_ENTRYPOINT) return "claude";
+  return "copilot";
+}
+var init_host_detection = __esm({
+  "src/utils/host-detection.ts"() {
+    "use strict";
+  }
+});
+
 // src/team/runtime-v2.ts
 var runtime_v2_exports = {};
 __export(runtime_v2_exports, {
@@ -3300,7 +3311,7 @@ async function spawnV2Worker(opts) {
       startupFailureReason: dispatchOutcome.reason
     };
   }
-  if (opts.agentType === "claude") {
+  if (opts.agentType === "claude" || opts.agentType === "copilot") {
     const settled = await waitForWorkerStartupEvidence(
       opts.teamName,
       opts.workerName,
@@ -3382,7 +3393,7 @@ async function startTeamV2(config) {
     }));
     const allocationWorkers = workerNames.map((name, i) => ({
       name,
-      role: config.workerRoles?.[i] ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? "claude"),
+      role: config.workerRoles?.[i] ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType()),
       currentLoad: 0
     }));
     for (const r of allocateTasksToWorkers(allocationTasks, allocationWorkers)) {
@@ -3391,7 +3402,7 @@ async function startTeamV2(config) {
   }
   for (let i = 0; i < workerNames.length; i++) {
     const wName = workerNames[i];
-    const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? "claude";
+    const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType();
     await ensureWorkerStateDir(sanitized, wName, leaderCwd);
     await writeWorkerOverlay({
       teamName: sanitized,
@@ -3416,14 +3427,14 @@ async function startTeamV2(config) {
   const workersInfo = workerNames.map((wName, i) => ({
     name: wName,
     index: i + 1,
-    role: config.workerRoles?.[i] ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? "claude"),
+    role: config.workerRoles?.[i] ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType()),
     assigned_tasks: [],
     working_dir: leaderCwd
   }));
   const teamConfig = {
     name: sanitized,
     task: config.tasks.map((t) => t.subject).join("; "),
-    agent_type: agentTypes[0] || "claude",
+    agent_type: agentTypes[0] || getHostCliType(),
     worker_launch_mode: "interactive",
     policy: DEFAULT_TEAM_TRANSPORT_POLICY,
     governance: DEFAULT_TEAM_GOVERNANCE,
@@ -3496,7 +3507,7 @@ async function startTeamV2(config) {
       teamName: sanitized,
       workerName: wName,
       workerIndex,
-      agentType: agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? "claude",
+      agentType: agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? getHostCliType(),
       task,
       taskId,
       cwd: leaderCwd,
@@ -3939,6 +3950,7 @@ var init_runtime_v2 = __esm({
     init_mcp_comm();
     init_git_worktree();
     init_omc_cli_rendering();
+    init_host_detection();
     init_swallowed_error();
     MONITOR_SIGNAL_STALE_MS = 3e4;
     CIRCUIT_BREAKER_THRESHOLD = 3;
@@ -5290,6 +5302,7 @@ init_team_name();
 // src/team/runtime.ts
 init_model_contract();
 init_team_name();
+init_host_detection();
 init_tmux_session();
 init_worker_bootstrap();
 init_git_worktree();
