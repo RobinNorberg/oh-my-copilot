@@ -227,7 +227,7 @@ None - pure markdown files.
 | Planning | omc-plan, ralplan, deep-interview, deep-dive | "ralplan", "deep-interview", "ouroboros" |
 | Analysis | deep-review, discover | "code review", "security review" |
 | Exploration | deepinit, sciomc, external-context | "deepsearch", "deep-analyze" |
-| Orchestration | c3g, omc-teams, omc-reference | "c3g", "ccg", "ask codex", "ask gemini", "ask claude" |
+| Orchestration | c3g, omc-teams, omc-reference | "c3g", "ask codex", "ask gemini", "ask claude" |
 | Visual | visual-verdict | screenshot QA |
 | Cleanup | ai-slop-cleaner | "deslop", "anti-slop" |
 | Azure DevOps | omc-ado-setup, omc-ado-review, omc-ado-auto-review, omc-ado-sprint, omc-ado-triage | "ado setup", "ado triage" |

@@ -1,6 +1,5 @@
 import { execFileSync } from 'child_process';
-import { getHostCliType } from '../utils/host-detection.js';
-import { getContract } from '../team/model-contract.js';
+import { getHostCliBinary } from '../utils/host-detection.js';
 import { existsSync, lstatSync, mkdirSync, symlinkSync, unlinkSync, writeFileSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join, relative, resolve, sep } from 'path';
@@ -416,7 +415,7 @@ export function spawnAutoresearchSetupTmux(repoRoot: string): void {
 
   const sessionName = `omc-autoresearch-setup-${Date.now().toString(36)}`;
   const codexHome = prepareAutoresearchSetupCodexHome(repoRoot, sessionName);
-  const hostBinary = getContract(getHostCliType()).binary;
+  const hostBinary = getHostCliBinary();
   const cliCommand = buildTmuxShellCommand('env', [`CODEX_HOME=${codexHome}`, hostBinary, CLAUDE_BYPASS_FLAG]);
   const wrappedCliCommand = wrapWithLoginShell(cliCommand);
   const paneId = execFileSync(

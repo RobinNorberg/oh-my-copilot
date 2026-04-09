@@ -521,7 +521,7 @@ async function main() {
 
 
     // CCG keywords (Copilot-Codex-Gemini tri-model orchestration)
-    if (isActionableKeywordAtPosition(cleanPrompt, /\b(c3g|ccg|copilot-claude-codex-gemini)\b/i)) {
+    if (isActionableKeywordAtPosition(cleanPrompt, /\b(c3g|copilot-claude-codex-gemini)\b/i)) {
       matches.push({ name: 'c3g', args: '' });
     }
 

@@ -349,7 +349,7 @@ function resolveWorkerCliForRequest(request: DispatchRequest, config: TeamConfig
   if (idx !== null) {
     const worker = workers.find((c) => Number(c.index) === idx);
     const workerCli = safeString(worker?.worker_cli).trim().toLowerCase();
-    if (workerCli === 'claude' || workerCli === 'copilot') return 'copilot';
+    if (workerCli === 'claude' || workerCli === 'copilot') return workerCli;
   }
   return 'codex';
 }

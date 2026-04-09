@@ -7,6 +7,7 @@
  */
 
 import type { CliAgentType } from '../team/model-contract.js';
+import { getContract } from '../team/model-contract.js';
 
 /**
  * Detect which CLI host this plugin is running under.
@@ -18,4 +19,12 @@ import type { CliAgentType } from '../team/model-contract.js';
 export function getHostCliType(): CliAgentType {
   if (process.env.CLAUDE_CODE_ENTRYPOINT) return 'claude';
   return 'copilot';
+}
+
+/**
+ * Get the binary name for the detected host CLI.
+ * Convenience wrapper over getContract(getHostCliType()).binary.
+ */
+export function getHostCliBinary(): string {
+  return getContract(getHostCliType()).binary;
 }

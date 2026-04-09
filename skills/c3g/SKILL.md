@@ -109,8 +109,6 @@ If all three unavailable:
 /oh-my-copilot:c3g <task description>
 ```
 
-(Backward compatible: `/oh-my-copilot:ccg` still works)
-
 Example:
 
 ```bash

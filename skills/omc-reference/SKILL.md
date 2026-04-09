@@ -44,7 +44,7 @@ Prefix: `oh-my-copilot:`. See `agents/*.md` for full prompts.
 - `/team N:executor "task"`
 - `omc team N:codex|gemini "..."`
 - `omc ask <claude|codex|gemini>`
-- `/c3g` (also `/ccg` for backward compat)
+- `/c3g`
 
 ### OMC state
 - `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
@@ -90,7 +90,7 @@ Invoke built-in workflows via `/oh-my-copilot:<name>`.
 - `"autopilot"→autopilot`
 - `"ralph"→ralph`
 - `"ulw"→ultrawork`
-- `"c3g"→c3g`, `"ccg"→c3g`
+- `"c3g"→c3g`
 - `"ralplan"→ralplan`
 - `"deep interview"→deep-interview`
 - `"deslop" / "anti-slop"→ai-slop-cleaner`

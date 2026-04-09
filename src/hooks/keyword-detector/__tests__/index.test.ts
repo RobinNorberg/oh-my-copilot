@@ -624,12 +624,6 @@ World`);
         expect(ccgMatch?.keyword).toMatch(/c3g/i);
       });
 
-      it('should detect "ccg" as backward-compat alias', () => {
-        const result = detectKeywordsWithType('ccg this feature');
-        const match = result.find((r) => r.type === 'c3g');
-        expect(match).toBeDefined();
-      });
-
       it('should detect "copilot-claude-codex-gemini" keyword', () => {
         const result = detectKeywordsWithType('use copilot-claude-codex-gemini to build this');
         const match = result.find((r) => r.type === 'c3g');
@@ -910,11 +904,6 @@ World`);
 
     it('should return c3g when c3g keyword present', () => {
       const result = getAllKeywords('c3g add a user profile feature');
-      expect(result).toContain('c3g');
-    });
-
-    it('should return c3g via ccg backward-compat alias', () => {
-      const result = getAllKeywords('ccg add a user profile feature');
       expect(result).toContain('c3g');
     });
 
