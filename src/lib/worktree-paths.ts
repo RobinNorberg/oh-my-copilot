@@ -638,7 +638,15 @@ export function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: 
     }).trim();
 
     const absoluteCommonDir = resolve(effectiveCwd, gitCommonDir);
-    const mainRepoRoot = dirname(absoluteCommonDir);
+    // For linked worktrees, git-common-dir is <repo>/.git/worktrees/<name>
+    // so dirname gives <repo>/.git/worktrees — navigate up to the actual repo root
+    let mainRepoRoot = dirname(absoluteCommonDir);
+    if (mainRepoRoot.endsWith(join('.git', 'worktrees'))) {
+      mainRepoRoot = dirname(dirname(mainRepoRoot));
+    }
+    // Resolve symlinks for consistent comparison (e.g. /tmp -> /private/tmp on macOS,
+    // ecryptfs $HOME on Linux, autofs /home, etc.)
+    try { mainRepoRoot = realpathSync(mainRepoRoot); } catch { /* keep as-is */ }
 
     const worktreeTop = execSync('git rev-parse --show-toplevel', {
       cwd: effectiveCwd,

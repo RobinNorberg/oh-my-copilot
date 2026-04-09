@@ -4,16 +4,16 @@
   "description": "Copilot CLI native multi-agent orchestration - intelligent model routing, 18 agents, 32 skills",
   "owner": {
     "name": "Robin Norberg",
-    "email": "robin@norberg.dev"
+    "email": "github@platypus.se"
   },
   "plugins": [
     {
       "name": "oh-my-copilot",
       "description": "Copilot CLI native multi-agent orchestration with intelligent model routing, 18 agent variants, and 32 powerful skills. Zero learning curve. Maximum power.",
-      "version": "4.11.2",
+      "version": "4.11.4",
       "author": {
         "name": "Robin Norberg",
-        "email": "robin@norberg.dev"
+        "email": "github@platypus.se"
       },
       "source": "./",
       "category": "productivity",
@@ -27,5 +27,5 @@
       ]
     }
   ],
-  "version": "4.11.2"
+  "version": "4.11.4"
 }

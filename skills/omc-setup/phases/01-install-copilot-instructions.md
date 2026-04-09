@@ -19,15 +19,41 @@ Set `CONFIG_TARGET` to `local` or `global` based on user's choice.
 
 **MANDATORY**: Always run this command. Do NOT skip. Do NOT use the Write tool. Use bash curl exclusively.
 
+On **Unix/macOS/WSL**:
+```bash
+bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-copilot-instructions.sh" <CONFIG_TARGET>
+```
+
+On **Windows** (Git Bash available via Copilot CLI):
 ```bash
 bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-copilot-instructions.sh" <CONFIG_TARGET>
 ```
 
 Replace `<CONFIG_TARGET>` with `local` or `global`.
 
-**FALLBACK** if curl fails:
-Tell user to manually download from:
-https://github.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md
+**IMPORTANT**: The download URL is `https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md` — do NOT use any other GitHub user or repository. NEVER use `Yeachan-Heo` in the URL.
+
+**FALLBACK for Windows** if bash fails, use this exact PowerShell command:
+
+For **global** (`~/.copilot/copilot-instructions.md`):
+```powershell
+$targetDir = "$env:USERPROFILE\.copilot"
+if (!(Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+$url = "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md"
+Invoke-WebRequest -Uri $url -OutFile "$targetDir\copilot-instructions.md" -UseBasicParsing
+Write-Host "Downloaded copilot-instructions.md to $targetDir"
+```
+
+For **local** (`.copilot/copilot-instructions.md` in current project):
+```powershell
+$targetDir = ".copilot"
+if (!(Test-Path $targetDir)) { New-Item -ItemType Directory -Path $targetDir -Force | Out-Null }
+$url = "https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/docs/copilot-instructions.md"
+Invoke-WebRequest -Uri $url -OutFile "$targetDir\copilot-instructions.md" -UseBasicParsing
+Write-Host "Downloaded copilot-instructions.md to $targetDir"
+```
+
+**CRITICAL**: Use the exact URL above. Do NOT substitute any part of it.
 
 **Note**: The downloaded copilot-instructions.md includes Context Persistence instructions with `<remember>` tags for surviving conversation compaction.
 

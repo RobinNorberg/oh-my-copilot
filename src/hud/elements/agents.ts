@@ -513,12 +513,17 @@ export function renderAgentsMultiLine(
     const duration = formatDurationPadded(durationMs);
     const durationColor = getDurationColor(durationMs);
 
+    // Show model name (capitalize first letter)
+    const modelLabel = a.model
+      ? a.model.charAt(0).toUpperCase() + a.model.slice(1).toLowerCase()
+      : 'Default';
+
     const desc = a.description || '...';
-    // Use CJK-aware truncation (45 visual columns)
-    const truncatedDesc = truncateToWidth(desc, 45);
+    // Use CJK-aware truncation (40 visual columns to make room for model label)
+    const truncatedDesc = truncateToWidth(desc, 40);
 
     detailLines.push(
-      `${dim(prefix)} ${color}${code}${RESET} ${dim(shortName)}${durationColor}${duration}${RESET}  ${truncatedDesc}`
+      `${dim(prefix)} ${color}${code}${RESET} ${dim(shortName)}${durationColor}${duration}${RESET}  ${dim(`(${modelLabel})`)} ${truncatedDesc}`
     );
   });
 

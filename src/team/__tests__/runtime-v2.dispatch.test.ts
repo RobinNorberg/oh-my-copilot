@@ -265,8 +265,8 @@ describe('runtime v2 startup inbox dispatch', () => {
     });
 
     expect(runtime.config.workers[0]?.pane_id).toBe('%2');
-    // Source assigns tasks when notification succeeds; no separate evidence gate for claude
-    expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
+    // Claude agent requires startup evidence (claim/status files); without them startupAssigned=false
+    expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
     expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
 
     const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
@@ -303,8 +303,8 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     });
 
-    // Source assigns tasks when notification succeeds regardless of mailbox content
-    expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
+    // Claude requires task claim evidence; ACK-only mailbox reply is not sufficient
+    expect(runtime.config.workers[0]?.assigned_tasks).toEqual([]);
     expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
   });
 
@@ -397,10 +397,10 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     });
 
-    // Source passes inbox path reference to getPromptModeArgs, not the full lifecycle instruction
+    // Source passes the full v2 lifecycle instruction to getPromptModeArgs (not the inbox path)
     expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith(
       'codex',
-      expect.stringContaining('.omg/state/team/dispatch-team/workers/worker-1/inbox.md'),
+      expect.stringContaining('## REQUIRED: Task Lifecycle Commands'),
     );
     expect(mocks.spawnWorkerInPane).toHaveBeenCalledWith(
       'dispatch-session',
@@ -408,7 +408,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       expect.objectContaining({
         launchBinary: '/usr/bin/codex',
         launchArgs: expect.arrayContaining([
-          expect.stringContaining('.omg/state/team/dispatch-team/workers/worker-1/inbox.md'),
+          expect.stringContaining('## REQUIRED: Task Lifecycle Commands'),
         ]),
       }),
     );

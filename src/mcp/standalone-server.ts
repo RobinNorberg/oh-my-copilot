@@ -86,28 +86,31 @@ function zodToJsonSchema(schema: z.ZodRawShape | z.ZodObject<z.ZodRawShape>): {
   };
 }
 
-function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function zodTypeToJsonSchema(zodType: unknown): Record<string, unknown> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const zt = zodType as any;
   const result: Record<string, unknown> = {};
 
   // Safety check for undefined zodType
-  if (!zodType || !zodType._def) {
+  if (!zt || !zt._def) {
     return { type: 'string' };
   }
 
   // Handle optional wrapper
   if (zodType instanceof z.ZodOptional) {
-    return zodTypeToJsonSchema(zodType._def.innerType);
+    return zodTypeToJsonSchema(zt._def.innerType);
   }
 
   // Handle default wrapper
   if (zodType instanceof z.ZodDefault) {
-    const inner = zodTypeToJsonSchema(zodType._def.innerType);
-    inner.default = zodType._def.defaultValue();
+    const inner = zodTypeToJsonSchema(zt._def.innerType);
+    inner.default = zt._def.defaultValue;
     return inner;
   }
 
   // Get description if available
-  const description = zodType._def?.description;
+  const description = zt.description;
   if (description) {
     result.description = description;
   }
@@ -116,24 +119,24 @@ function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
   if (zodType instanceof z.ZodString) {
     result.type = 'string';
   } else if (zodType instanceof z.ZodNumber) {
-    result.type = zodType._def?.checks?.some((c: { kind: string }) => c.kind === 'int')
+    result.type = zt._def?.checks?.some((c: { isInt?: boolean }) => c.isInt)
       ? 'integer'
       : 'number';
   } else if (zodType instanceof z.ZodBoolean) {
     result.type = 'boolean';
   } else if (zodType instanceof z.ZodArray) {
     result.type = 'array';
-    result.items = zodType._def?.type ? zodTypeToJsonSchema(zodType._def.type) : { type: 'string' };
+    result.items = zt._def?.element ? zodTypeToJsonSchema(zt._def.element) : { type: 'string' };
   } else if (zodType instanceof z.ZodEnum) {
     result.type = 'string';
-    result.enum = zodType._def?.values;
+    result.enum = zt._def?.entries ? Object.keys(zt._def.entries) : [];
   } else if (zodType instanceof z.ZodObject) {
-    return zodToJsonSchema(zodType.shape);
+    return zodToJsonSchema(zt.shape);
   } else if (zodType instanceof z.ZodRecord) {
     // Handle z.record() - maps to JSON object with additionalProperties
     result.type = 'object';
-    if (zodType._def?.valueType) {
-      result.additionalProperties = zodTypeToJsonSchema(zodType._def.valueType);
+    if (zt._def?.valueType) {
+      result.additionalProperties = zodTypeToJsonSchema(zt._def.valueType);
     }
   } else {
     result.type = 'string';
