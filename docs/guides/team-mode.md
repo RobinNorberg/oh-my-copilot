@@ -37,10 +37,10 @@ omc team status auth-review
 omc team shutdown auth-review
 ```
 
-For mixed Codex + Gemini work in one command, use the **`/ccg`** skill (routes via `ask-codex` + `ask-gemini`, then Copilot synthesizes):
+For multi-model work in one command, use the **`/c3g`** skill (routes via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesizes):
 
 ```bash
-/ccg Review this PR — architecture (Codex) and UI components (Gemini)
+/c3g Review this PR — architecture (Claude) security (Codex) and UI components (Gemini)
 ```
 
 ## Worker Surface Comparison
@@ -51,7 +51,7 @@ For mixed Codex + Gemini work in one command, use the **`/ccg`** skill (routes v
 | `omc team N:codex "..."`   | N Codex CLI panes       | Code review, security analysis                |
 | `omc team N:gemini "..."`  | N Gemini CLI panes      | UI/UX design, docs, large-context tasks       |
 | `omc team N:copilot "..."` | N Copilot CLI panes     | General tasks via Copilot CLI in tmux         |
-| `/ccg`                     | ask-codex + ask-gemini  | Tri-model advisor synthesis                   |
+| `/c3g`                     | ask-claude + ask-codex + ask-gemini | Quad-model advisor synthesis          |
 
 Workers spawn on-demand and die when their task completes — no idle resource usage. Requires the respective CLI tool installed and an active tmux session.
 

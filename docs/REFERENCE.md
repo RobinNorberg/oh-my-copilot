@@ -325,7 +325,7 @@ Includes **50 canonical skills**.
 | `autoresearch`            | Thin-supervisor autoresearch with keep/discard/reset             | `/oh-my-copilot:autoresearch`            |
 | `autopilot`               | Full autonomous execution from idea to working code              | `/oh-my-copilot:autopilot`               |
 | `cancel`                  | Unified cancellation for active modes                            | `/oh-my-copilot:cancel`                  |
-| `ccg`                     | Tri-model workflow via `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:ccg`                     |
+| `c3g`                     | Quad-model workflow via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:c3g`                     |
 | `configure-notifications` | Configure notifications (Teams/Discord/Telegram/Slack)           | `/oh-my-copilot:configure-notifications` |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                    | `/oh-my-copilot:deep-interview`          |
 | `deep-dive`               | 2-stage pipeline: trace → deep-interview with 3-point injection  | `/oh-my-copilot:deep-dive`               |
@@ -505,7 +505,7 @@ Use these trigger phrases in natural language prompts to activate enhanced modes
 | `ultrawork`, `ulw`                                      | Activates parallel agent orchestration                                                        |
 | `autopilot`, `build me`, `I want a`                     | Full autonomous execution                                                                     |
 | `ralph`, `don't stop`, `must complete`                  | Persistence until verified complete                                                           |
-| `ccg`, `copilot-clix-gemini`                            | Copilot-Codex-Gemini orchestration                                                             |
+| `c3g`, `copilot-claude-codex-gemini`                    | Copilot-Claude-Codex-Gemini orchestration                                                      |
 | `ralplan`                                               | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |
 | `deep interview`, `ouroboros`                           | Deep Socratic interview with mathematical clarity gating                                      |
 | `deepsearch`, `search the codebase`, `find in codebase` | Codebase-focused search mode (with informational intent filtering — questions like "what is ralph?" won't trigger the keyword) |
