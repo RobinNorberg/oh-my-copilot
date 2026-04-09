@@ -29,7 +29,9 @@ try {
 } catch (_e) { /* npm not available - native modules will gracefully degrade */ }
 `;
 
-await esbuild.build({
+const watchMode = process.argv.includes('--watch');
+
+const buildConfig = {
   entryPoints: ['src/mcp/standalone-server.ts'],
   bundle: true,
   platform: 'node',
@@ -49,6 +51,13 @@ await esbuild.build({
     '@ast-grep/napi',
     'better-sqlite3',
   ],
-});
+};
 
-console.log(`Built ${outfile}`);
+if (watchMode) {
+  const ctx = await esbuild.context(buildConfig);
+  await ctx.watch();
+  console.log(`Watching ${outfile}...`);
+} else {
+  await esbuild.build(buildConfig);
+  console.log(`Built ${outfile}`);
+}

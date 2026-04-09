@@ -17,7 +17,7 @@ import { pathToFileURL } from 'url';
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { resolveToWorktreeRoot, getOmcRoot } from "../lib/worktree-paths.js";
-import { writeModeState } from "../lib/mode-state-io.js";
+import { readModeState, writeModeState } from "../lib/mode-state-io.js";
 import { createSwallowedErrorLogger } from "../lib/swallowed-error.js";
 
 // Hot-path imports: needed on every/most hook invocations (keyword-detector, pre/post-tool-use)
@@ -273,6 +273,46 @@ function isConsensusPlanningSkillInvocation(skillName: string | null, toolInput:
   }
 
   return getSkillInvocationArgs(toolInput).toLowerCase().includes("--consensus");
+}
+
+function deactivateRalplanState(directory: string, sessionId?: string): void {
+  const state = readModeState<Record<string, unknown>>("ralplan", directory, sessionId);
+  if (!state) {
+    return;
+  }
+
+  const currentPhase =
+    typeof state.current_phase === "string" ? state.current_phase : undefined;
+  const terminalPhases = new Set([
+    "complete",
+    "completed",
+    "failed",
+    "cancelled",
+    "done",
+  ]);
+  const completedAt =
+    typeof state.completed_at === "string"
+      ? state.completed_at
+      : new Date().toISOString();
+
+  writeModeState(
+    "ralplan",
+    {
+      ...state,
+      active: false,
+      current_phase:
+        currentPhase && terminalPhases.has(currentPhase.toLowerCase())
+          ? currentPhase
+          : "complete",
+      completed_at: completedAt,
+      deactivated_reason:
+        typeof state.deactivated_reason === "string"
+          ? state.deactivated_reason
+          : "skill_completed",
+    },
+    directory,
+    sessionId,
+  );
 }
 
 function activateRalplanState(directory: string, sessionId?: string): void {
@@ -1692,6 +1732,9 @@ async function processPostToolUse(input: HookInput): Promise<HookOutput> {
       .replace(/^oh-my-copilot:/, "");
     if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
       clearSkillActiveState(directory, input.sessionId);
+    }
+    if (isConsensusPlanningSkillInvocation(skillName, input.toolInput)) {
+      deactivateRalplanState(directory, input.sessionId);
     }
   }
 
