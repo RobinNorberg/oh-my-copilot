@@ -502,20 +502,30 @@ export function hasEnabledOmcPlugin(): boolean {
 
   try {
     const settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8')) as {
+      // Modern format. The canonical field name.
+      enabledPlugins?: unknown;
+      // Legacy field name kept for backward compatibility with older
+      // installs that wrote `plugins` instead of `enabledPlugins`.
       plugins?: unknown;
     };
-    const plugins = settings.plugins;
 
-    if (Array.isArray(plugins)) {
-      return plugins.some(plugin =>
-        typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-copilot')
-      );
-    }
-
-    if (plugins && typeof plugins === 'object') {
-      return Object.entries(plugins as Record<string, unknown>).some(([pluginId, value]) =>
-        pluginId.toLowerCase().includes('oh-my-copilot') && value !== false
-      );
+    // Prefer `enabledPlugins` (modern), fall back to `plugins` (legacy).
+    // Returning on the first hit short-circuits the check whenever we find
+    // an enabled OMC plugin entry in either field.
+    for (const candidate of [settings.enabledPlugins, settings.plugins]) {
+      if (Array.isArray(candidate)) {
+        if (candidate.some(plugin =>
+          typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-copilot')
+        )) {
+          return true;
+        }
+      } else if (candidate && typeof candidate === 'object') {
+        if (Object.entries(candidate as Record<string, unknown>).some(([pluginId, value]) =>
+          pluginId.toLowerCase().includes('oh-my-copilot') && value !== false
+        )) {
+          return true;
+        }
+      }
     }
   } catch {
     // Ignore unreadable settings and treat plugin mode as disabled.
