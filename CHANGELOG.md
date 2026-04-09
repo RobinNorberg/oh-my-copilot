@@ -2,6 +2,21 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [4.11.4] - 2026-04-09
+
+### Fixed (ported from upstream oh-my-claudecode v4.11.3)
+- **Node resolution: prefer PATH over ephemeral execPath** — PATH-resolved node is now preferred over `process.execPath` which may point at CI toolcache or Homebrew Cellar version-specific paths that disappear after upgrades (#2396)
+- **Hooks: avoid .json false positives in source extension check** — `.json` and `.jsonl` files no longer trigger false "Bash command may modify source files" warnings (#2395)
+- **Autoresearch: strip TMUX env for nested session compatibility** — Autoresearch launched from inside a nested tmux session no longer silently creates sessions on the nested server (#2385)
+- **Symlink path resolution fixes** — Fixed asymmetric symlink resolution in worktree-paths, autoresearch contracts, learner finder, and team fs-utils (#2372)
+- **Installer: detect enabledPlugins field** — `hasEnabledOmcPlugin()` now checks both `enabledPlugins` (modern) and `plugins` (legacy) settings fields (#2371)
+- **Ralplan: deactivate stale state after completion** — Prevents ralplan state from rearming after consensus completion or circuit breaker exhaustion (#2370)
+- **HUD: version fallback from path** — When package.json is missing, version is extracted from the plugin cache directory path (#2362)
+
+### Changed
+- **Build scripts: --watch mode** — All esbuild scripts now support `--watch` flag for development hot-reload
+- **Plugin-dir helper** — New shared `resolvePluginDirArg()` utility for CLI plugin directory resolution
+
 ## [4.9.0-preview.1] - 2026-03-20
 
 ### Added

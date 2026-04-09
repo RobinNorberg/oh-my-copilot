@@ -2,6 +2,7 @@
 import * as esbuild from 'esbuild';
 import { mkdir } from 'fs/promises';
 
+const watchMode = process.argv.includes('--watch');
 const outfile = 'bridge/cli.cjs';
 await mkdir('bridge', { recursive: true });
 
@@ -15,7 +16,7 @@ const sharedExternal = [
   'jsonc-parser',
 ];
 
-await esbuild.build({
+const cliConfig = {
   entryPoints: ['src/cli/index.ts'],
   bundle: true,
   platform: 'node',
@@ -30,12 +31,10 @@ await esbuild.build({
     'import.meta.url': 'importMetaUrl',
   },
   external: sharedExternal,
-});
-console.log(`Built ${outfile}`);
+};
 
-// Build team CLI module separately (dynamically imported by cli.cjs)
 const teamOutfile = 'bridge/team.js';
-await esbuild.build({
+const teamConfig = {
   entryPoints: ['src/cli/team.ts'],
   bundle: true,
   platform: 'node',
@@ -43,5 +42,16 @@ await esbuild.build({
   format: 'esm',
   outfile: teamOutfile,
   external: sharedExternal,
-});
-console.log(`Built ${teamOutfile}`);
+};
+
+if (watchMode) {
+  const cliCtx = await esbuild.context(cliConfig);
+  const teamCtx = await esbuild.context(teamConfig);
+  await Promise.all([cliCtx.watch(), teamCtx.watch()]);
+  console.log(`Watching ${outfile} and ${teamOutfile}...`);
+} else {
+  await esbuild.build(cliConfig);
+  console.log(`Built ${outfile}`);
+  await esbuild.build(teamConfig);
+  console.log(`Built ${teamOutfile}`);
+}

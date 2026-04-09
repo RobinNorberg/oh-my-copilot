@@ -52,7 +52,7 @@ function safeRealpathSync(filePath: string): string {
  */
 function isWithinBoundary(realPath: string, boundary: string): boolean {
   const normalizedReal = normalize(realPath);
-  const normalizedBoundary = normalize(boundary);
+  const normalizedBoundary = normalize(safeRealpathSync(boundary));
   return normalizedReal === normalizedBoundary ||
          normalizedReal.startsWith(normalizedBoundary + sep);
 }
