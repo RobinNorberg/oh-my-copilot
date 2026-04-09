@@ -349,7 +349,7 @@ function resolveWorkerCliForRequest(request: DispatchRequest, config: TeamConfig
   if (idx !== null) {
     const worker = workers.find((c) => Number(c.index) === idx);
     const workerCli = safeString(worker?.worker_cli).trim().toLowerCase();
-    if (workerCli === 'claude') return 'copilot';
+    if (workerCli === 'claude' || workerCli === 'copilot') return 'copilot';
   }
   return 'codex';
 }
@@ -374,7 +374,8 @@ async function defaultInjector(request: DispatchRequest, config: TeamConfig, cwd
     }
   } catch { /* best effort */ }
 
-  const submitKeyPresses = resolveWorkerCliForRequest(request, config) === 'claude' ? 1 : 2;
+  const workerCli = resolveWorkerCliForRequest(request, config);
+  const submitKeyPresses = (workerCli === 'claude' || workerCli === 'copilot') ? 1 : 2;
   const attemptCountAtStart = Number.isFinite(request.attempt_count) ? Math.max(0, Math.floor(request.attempt_count)) : 0;
 
   let preCaptureHasTrigger = false;
