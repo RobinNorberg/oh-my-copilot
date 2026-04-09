@@ -92,9 +92,9 @@ function quoteCommandPath(path) {
 function buildHookCommand(filename) {
     if (isWindows()) {
         if (isDefaultCopilotConfigDir()) {
-            return `node "%USERPROFILE%\\\\.copilot\\\\hooks\\\\${filename}"`;
+            return `node "\${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/${filename}"`;
         }
-        return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename))}`;
+        return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
     }
     if (isDefaultCopilotConfigDir()) {
         return `node "\${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/${filename}"`;

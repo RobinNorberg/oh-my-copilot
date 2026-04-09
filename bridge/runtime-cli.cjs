@@ -1641,8 +1641,11 @@ function getPromptModeArgs(agentType, instruction) {
   }
   return [instruction];
 }
-function resolveClaudeWorkerModel() {
-  const explicitModel = process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL;
+function resolveClaudeWorkerModel(env = process.env) {
+  if (env.OMC_ROUTING_FORCE_INHERIT === "true") {
+    return void 0;
+  }
+  const explicitModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL;
   if (explicitModel && isProviderSpecificModelId(explicitModel)) {
     return explicitModel;
   }
@@ -1931,10 +1934,16 @@ function safeRealpath(p) {
   try {
     return (0, import_fs7.realpathSync)(p);
   } catch {
-    const parent = (0, import_path10.dirname)(p);
-    const name = (0, import_path10.basename)(p);
+    const segments = [];
+    let current = (0, import_path10.resolve)(p);
+    while (!(0, import_fs7.existsSync)(current)) {
+      segments.unshift((0, import_path10.basename)(current));
+      const parent = (0, import_path10.dirname)(current);
+      if (parent === current) break;
+      current = parent;
+    }
     try {
-      return (0, import_path10.resolve)((0, import_fs7.realpathSync)(parent), name);
+      return (0, import_path10.join)((0, import_fs7.realpathSync)(current), ...segments);
     } catch {
       return (0, import_path10.resolve)(p);
     }

@@ -90,14 +90,53 @@ const INFORMATIONAL_INTENT_PATTERNS = [
   /\bdescribe\b/i,
   /\btell\s+me\s+about\b/i,
   /\bcan\s+you\s+explain\b/i,
+  /\bwhat\s+.*\bmode\s+now\b/i,
 ];
+const INFORMATIONAL_CONTEXT_WINDOW = 80;
 
-/**
- * Returns true when the prompt appears to be asking for information about a keyword
- * rather than requesting that keyword's action be performed.
- */
-function isInformationalKeywordContext(prompt) {
-  return INFORMATIONAL_INTENT_PATTERNS.some(p => p.test(prompt));
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasActivationIntentNearKeyword(context, keyword) {
+  const escaped = escapeRegExp((keyword || '').trim());
+  if (!escaped) return false;
+
+  const patterns = [
+    new RegExp(`\\b(?:use|run|start|enable|activate|invoke|trigger|launch)\\b[^\\n]{0,28}\\b${escaped}\\b`, 'i'),
+    new RegExp(`\\b(?:fix|debug|investigate|resolve|handle|patch|address)\\b[^\\n]{0,28}\\b(?:issue|bug|problem|error)\\b[^\\n]{0,12}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
+  ];
+
+  return patterns.some((pattern) => pattern.test(context));
+}
+
+function hasDiagnosticIntentNearKeyword(context, keyword) {
+  const escaped = escapeRegExp((keyword || '').trim());
+  if (!escaped) return false;
+
+  const patterns = [
+    new RegExp(`\\b${escaped}\\b[^\\n]{0,48}\\b(?:keeps?\\s+(?:looping|re-?running)|has\\s+(?:a\\s+)?(?:bug|issue|problem|error)|is\\s+(?:stuck|broken|failing)|loop(?:ing)?)\\b`, 'i'),
+    new RegExp(`\\b(?:bug|issue|problem|error)\\b[^\\n]{0,16}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
+  ];
+
+  return patterns.some((pattern) => pattern.test(context));
+}
+
+function isInformationalKeywordContext(text, position, keywordLength, keywordText) {
+  const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
+  const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
+  const context = text.slice(start, end);
+
+  if (keywordText) {
+    if (hasActivationIntentNearKeyword(context, keywordText)) {
+      return false;
+    }
+    if (hasDiagnosticIntentNearKeyword(context, keywordText)) {
+      return true;
+    }
+  }
+
+  return INFORMATIONAL_INTENT_PATTERNS.some((pattern) => pattern.test(context));
 }
 
 /**
@@ -106,7 +145,15 @@ function isInformationalKeywordContext(prompt) {
  */
 function hasActionableKeyword(prompt, pattern) {
   if (!pattern.test(prompt)) return false;
-  if (isInformationalKeywordContext(prompt)) return false;
+
+  // Re-run to find match position for windowed context check
+  const match = prompt.match(pattern);
+  if (match && match.index !== undefined) {
+    if (isInformationalKeywordContext(prompt, match.index, match[0].length, match[0])) {
+      return false;
+    }
+  }
+
   return true;
 }
 

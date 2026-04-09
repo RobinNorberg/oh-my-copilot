@@ -75,19 +75,21 @@ function zodToJsonSchema(schema) {
  * Convert individual Zod types to JSON Schema
  */
 function zodTypeToJsonSchema(zodType) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const zt = zodType;
     const result = {};
     // Handle optional wrapper
     if (zodType instanceof z.ZodOptional) {
-        return zodTypeToJsonSchema(zodType._def.innerType);
+        return zodTypeToJsonSchema(zt._def.innerType);
     }
     // Handle default wrapper
     if (zodType instanceof z.ZodDefault) {
-        const inner = zodTypeToJsonSchema(zodType._def.innerType);
-        inner.default = zodType._def.defaultValue();
+        const inner = zodTypeToJsonSchema(zt._def.innerType);
+        inner.default = zt._def.defaultValue;
         return inner;
     }
     // Get description if available
-    const description = zodType._def.description;
+    const description = zt.description;
     if (description) {
         result.description = description;
     }
@@ -96,7 +98,7 @@ function zodTypeToJsonSchema(zodType) {
         result.type = 'string';
     }
     else if (zodType instanceof z.ZodNumber) {
-        result.type = zodType._def.checks?.some((c) => c.kind === 'int')
+        result.type = zt._def.checks?.some((c) => c.isInt)
             ? 'integer'
             : 'number';
     }
@@ -105,14 +107,14 @@ function zodTypeToJsonSchema(zodType) {
     }
     else if (zodType instanceof z.ZodArray) {
         result.type = 'array';
-        result.items = zodTypeToJsonSchema(zodType._def.type);
+        result.items = zodTypeToJsonSchema(zt._def.element);
     }
     else if (zodType instanceof z.ZodEnum) {
         result.type = 'string';
-        result.enum = zodType._def.values;
+        result.enum = Object.keys(zt._def.entries);
     }
     else if (zodType instanceof z.ZodObject) {
-        return zodToJsonSchema(zodType);
+        return zodToJsonSchema(zt);
     }
     else {
         // Fallback for unknown types

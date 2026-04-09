@@ -45,4 +45,18 @@ export interface ToolDefinition<T extends z.ZodRawShape> {
         isError?: boolean;
     }>;
 }
+/**
+ * Escape hatch for tool definitions that include Zod v4 enum schemas.
+ * Use when the schema contains z.ZodEnum (which changed internal representation in v4),
+ * making the precise generic type annotation impossible.
+ */
+export type AnyToolDefinition = ToolDefinition<any> & {
+    handler: (args: any) => Promise<{
+        content: Array<{
+            type: 'text';
+            text: string;
+        }>;
+        isError?: boolean;
+    }>;
+};
 //# sourceMappingURL=types.d.ts.map

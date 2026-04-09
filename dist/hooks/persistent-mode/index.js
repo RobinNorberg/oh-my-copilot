@@ -16,7 +16,7 @@ import { getHardMaxIterations } from '../../lib/security-config.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { readUltraworkState, writeUltraworkState, incrementReinforcement, deactivateUltrawork, getUltraworkPersistenceMessage } from '../ultrawork/index.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
-import { readModeState } from '../../lib/mode-state-io.js';
+import { readModeState, writeModeState } from '../../lib/mode-state-io.js';
 import { readRalphState, writeRalphState, incrementRalphIteration, clearRalphState, getPrdCompletionStatus, getRalphContext, readVerificationState, startVerification, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState, } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
@@ -823,9 +823,16 @@ async function checkRalplan(sessionId, directory, cancelInProgress) {
     const breakerCount = readStopBreaker(workingDir, 'ralplan', sessionId, RALPLAN_STOP_BLOCKER_TTL_MS) + 1;
     if (breakerCount > RALPLAN_STOP_BLOCKER_MAX) {
         writeStopBreaker(workingDir, 'ralplan', 0, sessionId);
+        // Deactivate the stale ralplan state so a later Stop event cannot start a
+        // brand-new reinforcement cycle (30/30 -> 1/30) after the workflow has
+        // already exhausted its breaker budget.
+        state.active = false;
+        state.deactivated_reason = 'stop_breaker_exhausted';
+        state.completed_at = new Date().toISOString();
+        writeModeState('ralplan', state, workingDir, sessionId);
         return {
             shouldBlock: false,
-            message: `[RALPLAN CIRCUIT BREAKER] Stop enforcement exceeded ${RALPLAN_STOP_BLOCKER_MAX} reinforcements. Allowing stop to prevent infinite blocking.`,
+            message: `[RALPLAN CIRCUIT BREAKER] Stop enforcement exceeded ${RALPLAN_STOP_BLOCKER_MAX} reinforcements. Allowing stop and deactivating stale ralplan state to prevent infinite restart loops.`,
             mode: 'ralplan'
         };
     }

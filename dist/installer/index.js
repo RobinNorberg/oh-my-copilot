@@ -414,12 +414,17 @@ export function hasEnabledOmcPlugin() {
     }
     try {
         const settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
-        const plugins = settings.plugins;
-        if (Array.isArray(plugins)) {
-            return plugins.some(plugin => typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-copilot'));
-        }
-        if (plugins && typeof plugins === 'object') {
-            return Object.entries(plugins).some(([pluginId, value]) => pluginId.toLowerCase().includes('oh-my-copilot') && value !== false);
+        for (const candidate of [settings.enabledPlugins, settings.plugins]) {
+            if (Array.isArray(candidate)) {
+                if (candidate.some(plugin => typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-copilot'))) {
+                    return true;
+                }
+            }
+            else if (candidate && typeof candidate === 'object') {
+                if (Object.entries(candidate).some(([pluginId, value]) => pluginId.toLowerCase().includes('oh-my-copilot') && value !== false)) {
+                    return true;
+                }
+            }
         }
     }
     catch {
@@ -877,7 +882,7 @@ export function install(options = {}) {
                     ' * Wrapper that imports from dev paths, plugin cache, or npm package',
                     ' */',
                     '',
-                    'import { existsSync, readdirSync } from "node:fs";',
+                    'import { existsSync, readdirSync, realpathSync } from "node:fs";',
                     'import { homedir } from "node:os";',
                     'import { join } from "node:path";',
                     'import { pathToFileURL } from "node:url";',
@@ -886,6 +891,7 @@ export function install(options = {}) {
                     '  const home = homedir();',
                     '  let pluginCacheVersion = null;',
                     '  let pluginCacheDir = null;',
+                    '  let lastHudLoadError = null;',
                     '  ',
                     '  // 1. Development paths (only when OMC_DEV=1)',
                     '  if (process.env.OMC_DEV === "1") {',
@@ -926,12 +932,23 @@ export function install(options = {}) {
                     '        });',
                     '        ',
                     '        if (builtVersions.length > 0) {',
-                    '          const latestVersion = builtVersions[0];',
-                    '          pluginCacheVersion = latestVersion;',
-                    '          pluginCacheDir = join(pluginCacheBase, latestVersion);',
-                    '          const pluginPath = join(pluginCacheDir, "dist/hud/index.js");',
-                    '          await import(pathToFileURL(pluginPath).href);',
-                    '          return;',
+                    '          const attemptedTargets = new Set();',
+                    '          for (const version of builtVersions) {',
+                    '            pluginCacheVersion = version;',
+                    '            pluginCacheDir = join(pluginCacheBase, version);',
+                    '            const pluginPath = join(pluginCacheDir, "dist/hud/index.js");',
+                    '            let dedupeKey = resolve(pluginPath);',
+                    '            try { dedupeKey = realpathSync(pluginPath); } catch { /* continue with resolved path fallback */ }',
+                    '            if (attemptedTargets.has(dedupeKey)) continue;',
+                    '            attemptedTargets.add(dedupeKey);',
+                    '            try {',
+                    '              await import(pathToFileURL(pluginPath).href);',
+                    '              return;',
+                    '            } catch (error) {',
+                    '              lastHudLoadError = error;',
+                    '              // continue trying older built versions',
+                    '            }',
+                    '          }',
                     '        }',
                     '      }',
                     '    } catch { /* continue */ }',
@@ -943,7 +960,10 @@ export function install(options = {}) {
                     '    try {',
                     '      await import(pathToFileURL(marketplaceHudPath).href);',
                     '      return;',
-                    '    } catch { /* continue */ }',
+                    '    } catch (error) {',
+                    '      lastHudLoadError = error;',
+                    '      /* continue */',
+                    '    }',
                     '  }',
                     '  ',
                     '  // 4. npm package (global or local install)',
@@ -959,7 +979,10 @@ export function install(options = {}) {
                     '    if (!existsSync(distDir)) {',
                     '      console.log(`[OMC HUD] Plugin installed but not built. Run: cd "${pluginCacheDir}" && npm install && npm run build`);',
                     '    } else {',
-                    '      console.log(`[OMC HUD] Plugin HUD load failed. Run: cd "${pluginCacheDir}" && npm install && npm run build`);',
+                    '      const detail = lastHudLoadError && typeof lastHudLoadError.message === "string"',
+                    '        ? ` (${lastHudLoadError.message})`',
+                    '        : "";',
+                    '      console.log(`[OMC HUD] Plugin HUD load failed${detail}. Run: cd "${pluginCacheDir}" && npm install && npm run build`);',
                     '    }',
                     '  } else if (existsSync(pluginCacheBase)) {',
                     '    // Plugin cache directory exists but no versions',

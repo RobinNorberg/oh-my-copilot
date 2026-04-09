@@ -5,12 +5,8 @@
  * (Priority Context, Working Memory, MANUAL).
  */
 import { z } from 'zod';
-import { ToolDefinition } from './types.js';
-declare const SECTION_NAMES: [string, ...string[]];
-export declare const notepadReadTool: ToolDefinition<{
-    section: z.ZodOptional<z.ZodEnum<typeof SECTION_NAMES>>;
-    workingDirectory: z.ZodOptional<z.ZodString>;
-}>;
+import { ToolDefinition, AnyToolDefinition } from './types.js';
+export declare const notepadReadTool: AnyToolDefinition;
 export declare const notepadWritePriorityTool: ToolDefinition<{
     content: z.ZodString;
     workingDirectory: z.ZodOptional<z.ZodString>;
@@ -33,10 +29,7 @@ export declare const notepadStatsTool: ToolDefinition<{
 /**
  * All notepad tools for registration
  */
-export declare const notepadTools: (ToolDefinition<{
-    section: z.ZodOptional<z.ZodEnum<typeof SECTION_NAMES>>;
-    workingDirectory: z.ZodOptional<z.ZodString>;
-}> | ToolDefinition<{
+export declare const notepadTools: (AnyToolDefinition | ToolDefinition<{
     content: z.ZodString;
     workingDirectory: z.ZodOptional<z.ZodString>;
 }> | ToolDefinition<{
@@ -45,5 +38,4 @@ export declare const notepadTools: (ToolDefinition<{
 }> | ToolDefinition<{
     workingDirectory: z.ZodOptional<z.ZodString>;
 }>)[];
-export {};
 //# sourceMappingURL=notepad-tools.d.ts.map
