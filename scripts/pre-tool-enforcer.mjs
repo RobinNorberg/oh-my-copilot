@@ -386,7 +386,7 @@ const SKILL_PROTECTION_MAP = {
   'mcp-setup': 'medium', 'project-session-manager': 'medium',
   psm: 'medium',          // alias for project-session-manager
   'writer-memory': 'medium', 'ralph-init': 'medium',
-  release: 'medium', ccg: 'medium',
+  release: 'medium', c3g: 'medium',
 
   // === Heavy protection (long-running, 10 reinforcements) ===
   deepinit: 'heavy',

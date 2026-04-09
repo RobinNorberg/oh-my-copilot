@@ -1,11 +1,11 @@
 ---
-name: ccg
+name: c3g
 description: Quadri-model orchestration — Claude, Codex, and Gemini provide independent analysis, Copilot synthesizes
 ---
 
-# CCG - Quadri-Model Orchestration
+# C3G - Copilot-Claude-Codex-Gemini Orchestration
 
-CCG fans out to three external models (Claude, Codex, Gemini) for independent analysis, then Copilot synthesizes all perspectives into one unified answer.
+C3G (3 C's + G) fans out to three external models (Claude, Codex, Gemini) for independent analysis, then Copilot synthesizes all perspectives into one unified answer.
 
 Four models participate:
 1. **Claude** — independent analysis via `omc ask claude`
@@ -101,16 +101,18 @@ If one or two providers are unavailable:
 
 If all three unavailable:
 
-- Fall back to Copilot-only answer and state CCG external advisors were unavailable
+- Fall back to Copilot-only answer and state C3G external advisors were unavailable
 
 ## Invocation
 
 ```bash
-/oh-my-copilot:ccg <task description>
+/oh-my-copilot:c3g <task description>
 ```
+
+(Backward compatible: `/oh-my-copilot:ccg` still works)
 
 Example:
 
 ```bash
-/oh-my-copilot:ccg Review this PR for security, architecture, and UX concerns
+/oh-my-copilot:c3g Review this PR for security, architecture, and UX concerns
 ```

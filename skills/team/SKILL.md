@@ -38,7 +38,7 @@ The `swarm` compatibility alias was removed in #1131.
 /team 2:codex "review architecture and suggest improvements"
 # With Gemini CLI workers (requires: npm install -g @google/gemini-cli)
 /team 2:gemini "redesign the UI components"
-# Mixed: Codex for backend analysis, Gemini for frontend (use /ccg instead for this)
+# Mixed: Codex for backend analysis, Gemini for frontend (use /c3g instead for this)
 ```
 
 ## Architecture
