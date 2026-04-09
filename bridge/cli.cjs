@@ -7080,12 +7080,12 @@ function isHudEnabledInConfig() {
 function isOmcStatusLine(statusLine) {
   if (!statusLine) return false;
   if (typeof statusLine === "string") {
-    return statusLine.includes("omc-hud");
+    return statusLine.includes("omc-hud") || statusLine.includes("copilot-hud.cmd") || statusLine.includes("oh-my-copilot");
   }
   if (typeof statusLine === "object") {
     const sl = statusLine;
     if (typeof sl.command === "string") {
-      return sl.command.includes("omc-hud");
+      return sl.command.includes("omc-hud") || sl.command.includes("copilot-hud.cmd") || sl.command.includes("oh-my-copilot");
     }
   }
   return false;
@@ -7702,9 +7702,17 @@ function install(options = {}) {
       }
       if (hudScriptPath) {
         const nodeBin = resolveNodeBinary();
-        const absoluteCommand = '"' + nodeBin + '" "' + hudScriptPath.replace(/\\/g, "/") + '"';
-        let statusLineCommand = absoluteCommand;
-        if (!isWindows()) {
+        let statusLineCommand;
+        if (isWindows()) {
+          const cmdWrapperPath = (0, import_path42.join)(COPILOT_CONFIG_DIR, "copilot-hud.cmd");
+          const hudPathNormalized = hudScriptPath.replace(/\//g, "\\");
+          const nodeBinNormalized = nodeBin.replace(/\//g, "\\");
+          (0, import_fs30.writeFileSync)(cmdWrapperPath, `@echo off\r
+"${nodeBinNormalized}" "${hudPathNormalized}"\r
+`);
+          statusLineCommand = cmdWrapperPath.replace(/\\/g, "/");
+          log3("  Created Windows HUD wrapper: copilot-hud.cmd");
+        } else {
           try {
             const findNodeSrc = (0, import_path42.join)(getPackageDir3(), "scripts", "find-node.sh");
             const findNodeDest = (0, import_path42.join)(HUD_DIR, "find-node.sh");
@@ -7715,23 +7723,33 @@ function install(options = {}) {
             statusLineCommand = "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs";
           }
         }
-        const needsMigration = typeof existingSettings.statusLine === "string" && isOmcStatusLine(existingSettings.statusLine);
-        if (!existingSettings.statusLine || needsMigration) {
-          existingSettings.statusLine = {
-            type: "command",
-            command: statusLineCommand
-          };
-          log3(needsMigration ? "  Migrated statusLine from legacy string to object format" : "  Configured statusLine");
-        } else if (options.force && isOmcStatusLine(existingSettings.statusLine)) {
-          existingSettings.statusLine = {
-            type: "command",
-            command: statusLineCommand
-          };
-          log3("  Updated statusLine (--force)");
-        } else if (options.force) {
-          log3("  statusLine owned by another tool, preserving (use manual edit to override)");
-        } else {
-          log3("  statusLine already configured, skipping (use --force to override)");
+        try {
+          let copilotConfig = {};
+          if ((0, import_fs30.existsSync)(COPILOT_CONFIG_FILE)) {
+            copilotConfig = JSON.parse((0, import_fs30.readFileSync)(COPILOT_CONFIG_FILE, "utf-8"));
+          }
+          copilotConfig.experimental = true;
+          const existingStatusLine = copilotConfig.statusLine;
+          const needsMigration = typeof existingStatusLine === "string" && isOmcStatusLine(existingStatusLine);
+          if (!existingStatusLine || needsMigration) {
+            copilotConfig.statusLine = { type: "command", command: statusLineCommand };
+            (0, import_fs30.writeFileSync)(COPILOT_CONFIG_FILE, JSON.stringify(copilotConfig, null, 2));
+            log3(needsMigration ? "  Migrated statusLine to config.json" : "  Configured statusLine in config.json");
+          } else if (options.force && isOmcStatusLine(existingStatusLine)) {
+            copilotConfig.statusLine = { type: "command", command: statusLineCommand };
+            (0, import_fs30.writeFileSync)(COPILOT_CONFIG_FILE, JSON.stringify(copilotConfig, null, 2));
+            log3("  Updated statusLine in config.json (--force)");
+          } else if (options.force) {
+            log3("  statusLine owned by another tool, preserving (use manual edit to override)");
+          } else {
+            log3("  statusLine already configured in config.json, skipping");
+          }
+        } catch (error2) {
+          log3(`  Warning: Could not update config.json: ${error2 instanceof Error ? error2.message : error2}`);
+        }
+        if (existingSettings.statusLine && isOmcStatusLine(existingSettings.statusLine)) {
+          delete existingSettings.statusLine;
+          log3("  Removed legacy statusLine from settings.json");
         }
       }
       try {
@@ -7823,7 +7841,7 @@ function getInstallInfo() {
     return null;
   }
 }
-var import_fs30, import_path42, import_url9, import_os10, import_child_process12, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, OMC_HOOK_FILENAMES;
+var import_fs30, import_path42, import_url9, import_os10, import_child_process12, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, COPILOT_CONFIG_FILE, VERSION_FILE, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, OMC_HOOK_FILENAMES;
 var init_installer = __esm({
   "src/installer/index.ts"() {
     "use strict";
@@ -7846,6 +7864,7 @@ var init_installer = __esm({
     HOOKS_DIR = (0, import_path42.join)(COPILOT_CONFIG_DIR, "hooks");
     HUD_DIR = (0, import_path42.join)(COPILOT_CONFIG_DIR, "hud");
     SETTINGS_FILE = (0, import_path42.join)(COPILOT_CONFIG_DIR, "settings.json");
+    COPILOT_CONFIG_FILE = (0, import_path42.join)(COPILOT_CONFIG_DIR, "config.json");
     VERSION_FILE = (0, import_path42.join)(COPILOT_CONFIG_DIR, ".omc-version.json");
     CORE_COMMANDS = [];
     VERSION = getRuntimePackageVersion();

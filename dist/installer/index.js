@@ -29,6 +29,7 @@ export const SKILLS_DIR = join(COPILOT_CONFIG_DIR, 'skills');
 export const HOOKS_DIR = join(COPILOT_CONFIG_DIR, 'hooks');
 export const HUD_DIR = join(COPILOT_CONFIG_DIR, 'hud');
 export const SETTINGS_FILE = join(COPILOT_CONFIG_DIR, 'settings.json');
+export const COPILOT_CONFIG_FILE = join(COPILOT_CONFIG_DIR, 'config.json');
 export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
 /**
  * Core commands - DISABLED for v3.0+
@@ -222,13 +223,13 @@ export function isOmcStatusLine(statusLine) {
         return false;
     // Legacy string format (pre-v4.5): "~/.copilot/hud/omc-hud.mjs"
     if (typeof statusLine === 'string') {
-        return statusLine.includes('omc-hud');
+        return statusLine.includes('omc-hud') || statusLine.includes('copilot-hud.cmd') || statusLine.includes('oh-my-copilot');
     }
     // Current object format: { type: "command", command: "node ...omc-hud.mjs" }
     if (typeof statusLine === 'object') {
         const sl = statusLine;
         if (typeof sl.command === 'string') {
-            return sl.command.includes('omc-hud');
+            return sl.command.includes('omc-hud') || sl.command.includes('copilot-hud.cmd') || sl.command.includes('oh-my-copilot');
         }
     }
     return false;
@@ -1023,16 +1024,23 @@ export function install(options = {}) {
                     existingSettings.hooks = Object.keys(existingHooks).length > 0 ? existingHooks : undefined;
                     result.hooksConfigured = true;
                 }
-                // 2. Configure statusLine (always, even in plugin mode)
+                // 2. Configure statusLine in config.json (Copilot CLI reads config.json, not settings.json)
                 if (hudScriptPath) {
                     const nodeBin = resolveNodeBinary();
-                    const absoluteCommand = '"' + nodeBin + '" "' + hudScriptPath.replace(/\\/g, '/') + '"';
-                    // On Unix, use find-node.sh for portable $HOME paths (multi-machine sync)
-                    // and robust node discovery (nvm/fnm in non-interactive shells).
-                    // Copy find-node.sh into the HUD directory so statusLine can reference it
-                    // without depending on CLAUDE_PLUGIN_ROOT (which is only set for hooks).
-                    let statusLineCommand = absoluteCommand;
-                    if (!isWindows()) {
+                    // Create platform-appropriate wrapper script
+                    let statusLineCommand;
+                    if (isWindows()) {
+                        // Windows: .cmd wrapper executes via cmd.exe which inherits the parent console.
+                        // Bash wrappers spawn separate console windows on Windows, breaking stdout capture.
+                        const cmdWrapperPath = join(COPILOT_CONFIG_DIR, 'copilot-hud.cmd');
+                        const hudPathNormalized = hudScriptPath.replace(/\//g, '\\');
+                        const nodeBinNormalized = nodeBin.replace(/\//g, '\\');
+                        writeFileSync(cmdWrapperPath, `@echo off\r\n"${nodeBinNormalized}" "${hudPathNormalized}"\r\n`);
+                        statusLineCommand = cmdWrapperPath.replace(/\\/g, '/');
+                        log('  Created Windows HUD wrapper: copilot-hud.cmd');
+                    }
+                    else {
+                        // Unix: .sh wrapper with find-node.sh for portable node discovery
                         try {
                             const findNodeSrc = join(getPackageDir(), 'scripts', 'find-node.sh');
                             const findNodeDest = join(HUD_DIR, 'find-node.sh');
@@ -1041,34 +1049,45 @@ export function install(options = {}) {
                             statusLineCommand = 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
                         }
                         catch {
-                            // Fallback to bare node if find-node.sh copy fails
                             statusLineCommand = 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
                         }
                     }
-                    // Auto-migrate legacy string format (pre-v4.5) to object format
-                    const needsMigration = typeof existingSettings.statusLine === 'string'
-                        && isOmcStatusLine(existingSettings.statusLine);
-                    if (!existingSettings.statusLine || needsMigration) {
-                        existingSettings.statusLine = {
-                            type: 'command',
-                            command: statusLineCommand
-                        };
-                        log(needsMigration
-                            ? '  Migrated statusLine from legacy string to object format'
-                            : '  Configured statusLine');
+                    // Write statusLine to config.json (Copilot CLI's configuration file)
+                    try {
+                        let copilotConfig = {};
+                        if (existsSync(COPILOT_CONFIG_FILE)) {
+                            copilotConfig = JSON.parse(readFileSync(COPILOT_CONFIG_FILE, 'utf-8'));
+                        }
+                        copilotConfig.experimental = true;
+                        const existingStatusLine = copilotConfig.statusLine;
+                        const needsMigration = typeof existingStatusLine === 'string'
+                            && isOmcStatusLine(existingStatusLine);
+                        if (!existingStatusLine || needsMigration) {
+                            copilotConfig.statusLine = { type: 'command', command: statusLineCommand };
+                            writeFileSync(COPILOT_CONFIG_FILE, JSON.stringify(copilotConfig, null, 2));
+                            log(needsMigration
+                                ? '  Migrated statusLine to config.json'
+                                : '  Configured statusLine in config.json');
+                        }
+                        else if (options.force && isOmcStatusLine(existingStatusLine)) {
+                            copilotConfig.statusLine = { type: 'command', command: statusLineCommand };
+                            writeFileSync(COPILOT_CONFIG_FILE, JSON.stringify(copilotConfig, null, 2));
+                            log('  Updated statusLine in config.json (--force)');
+                        }
+                        else if (options.force) {
+                            log('  statusLine owned by another tool, preserving (use manual edit to override)');
+                        }
+                        else {
+                            log('  statusLine already configured in config.json, skipping');
+                        }
                     }
-                    else if (options.force && isOmcStatusLine(existingSettings.statusLine)) {
-                        existingSettings.statusLine = {
-                            type: 'command',
-                            command: statusLineCommand
-                        };
-                        log('  Updated statusLine (--force)');
+                    catch (error) {
+                        log(`  Warning: Could not update config.json: ${error instanceof Error ? error.message : error}`);
                     }
-                    else if (options.force) {
-                        log('  statusLine owned by another tool, preserving (use manual edit to override)');
-                    }
-                    else {
-                        log('  statusLine already configured, skipping (use --force to override)');
+                    // Clean up legacy statusLine from settings.json if present
+                    if (existingSettings.statusLine && isOmcStatusLine(existingSettings.statusLine)) {
+                        delete existingSettings.statusLine;
+                        log('  Removed legacy statusLine from settings.json');
                     }
                 }
                 // 3. Persist the detected node binary path into .omc-config.json so that
