@@ -1,8 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { loadAllSkills, findMatchingSkills } from '../../hooks/learner/loader.js';
+// Isolate tests from real user-level skills by restricting search to project scope only
+vi.mock('../../hooks/learner/finder.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        findSkillFiles: (projectRoot, options) => actual.findSkillFiles(projectRoot, { ...options, scope: 'project' }),
+    };
+});
 describe('Skill Loader', () => {
     let testDir;
     let projectRoot;

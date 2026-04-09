@@ -418,6 +418,27 @@ World`);
                 expect(ultrathinkMatch).toBeDefined();
             });
         });
+        describe('informational intent filtering', () => {
+            it('should NOT detect informational mode/now phrasing', () => {
+                expect(detectKeywordsWithType('What is autopilot mode now?')).toEqual([]);
+                expect(detectKeywordsWithType('what is ralph mode now?')).toEqual([]);
+            });
+            it('should NOT detect diagnostic mentions of keywords as activation requests', () => {
+                expect(detectKeywordsWithType('ralph keeps looping, investigate')).toEqual([]);
+                expect(detectKeywordsWithType("there's an issue with ultrawork")).toEqual([]);
+                expect(detectKeywordsWithType('autopilot has a bug in this repo')).toEqual([]);
+            });
+            it('should still detect explicit activation requests that mention bug/issue context', () => {
+                const autopilot = detectKeywordsWithType('use autopilot to fix bug in payments');
+                expect(autopilot.find((r) => r.type === 'autopilot')).toBeDefined();
+                const ralph = detectKeywordsWithType('run ralph on issue in parser module');
+                expect(ralph.find((r) => r.type === 'ralph')).toBeDefined();
+                const autopilotIssue = detectKeywordsWithType('fix issue with autopilot in parser module');
+                expect(autopilotIssue.find((r) => r.type === 'autopilot')).toBeDefined();
+                const ralphProblem = detectKeywordsWithType('investigate problem with ralph state');
+                expect(ralphProblem.find((r) => r.type === 'ralph')).toBeDefined();
+            });
+        });
         describe('code block exclusion', () => {
             it('should not detect keyword inside fenced code block', () => {
                 const text = '```\nautopilot\n```';

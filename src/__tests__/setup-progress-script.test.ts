@@ -36,7 +36,7 @@ describe.skipIf(isWindows)('setup-progress.sh', () => {
       env: {
         ...process.env,
         HOME: homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
       },
       encoding: 'utf-8',
     });

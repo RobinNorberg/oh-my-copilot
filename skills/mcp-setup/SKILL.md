@@ -5,7 +5,7 @@ description: Configure popular MCP servers for enhanced agent capabilities
 
 # MCP Setup
 
-Configure Model Context Protocol (MCP) servers to extend Copilot CLI's capabilities with external tools like web search, file system access, and GitHub integration.
+Configure Model Context Protocol (MCP) servers to extend Copilot CLI's capabilities with external tools like web search, token optimization, and DevOps integration.
 
 ## Overview
 
@@ -20,10 +20,11 @@ Present the user with available MCP server options using AskUserQuestion:
 **Options:**
 1. **Context7** - Documentation and code context from popular libraries
 2. **Exa Web Search** - Enhanced web search (replaces built-in websearch)
-3. **Filesystem** - Extended file system access with additional capabilities
+3. **lean-ctx** - Token-saving compression layer for Read/Grep/Bash tools
 4. **GitHub** - GitHub API integration for issues, PRs, and repository management
-5. **All of the above** - Configure all recommended MCP servers
-6. **Custom** - Add a custom MCP server
+5. **Azure DevOps** - Work items, repos, pipelines, wiki, and test plans
+6. **All of the above** - Configure all recommended MCP servers
+7. **Custom** - Add a custom MCP server
 
 ## Step 2: Gather Required Information
 
@@ -38,13 +39,9 @@ Do you have an Exa API key?
 - Enter your API key, or type 'skip' to configure later
 ```
 
-### For Filesystem:
-Ask for allowed directories:
-```
-Which directories should the filesystem MCP have access to?
-Default: Current working directory
-Enter comma-separated paths, or press Enter for default
-```
+### For lean-ctx:
+No API key required. Installs automatically. Saves 60-80% input tokens via caching and compression.
+More info: https://github.com/yvgude/lean-ctx
 
 ### For GitHub:
 Ask for token:
@@ -54,6 +51,15 @@ Do you have a GitHub Personal Access Token?
 - Recommended scopes: repo, read:org
 - Enter your token, or type 'skip' to configure later
 ```
+
+### For Azure DevOps:
+Ask for organization:
+```
+What is your Azure DevOps organization URL?
+- Example: https://dev.azure.com/my-org
+- Enter your organization URL, or type 'skip' to configure later
+```
+More info: https://github.com/microsoft/azure-devops-mcp
 
 ## Step 3: Add MCP Servers Using CLI
 
@@ -69,10 +75,11 @@ copilot mcp add context7 -- npx -y @upstash/context7-mcp
 copilot mcp add -e EXA_API_KEY=<user-provided-key> exa -- npx -y exa-mcp-server
 ```
 
-### Filesystem Configuration:
+### lean-ctx Configuration:
 ```bash
-copilot mcp add filesystem -- npx -y @modelcontextprotocol/server-filesystem <allowed-directories>
+npx -y @anthropic-ai/lean-ctx@latest install
 ```
+> Note: lean-ctx uses its own installer rather than `copilot mcp add`. It hooks into existing tools (Read, Grep, Bash) to compress and cache results automatically.
 
 ### GitHub Configuration:
 
@@ -87,6 +94,13 @@ copilot mcp add --transport http github https://api.githubcopilot.com/mcp/
 ```
 
 > Note: Docker option requires Docker installed. HTTP option is simpler but may have different capabilities.
+
+### Azure DevOps Configuration:
+```bash
+copilot mcp add azure-devops -- npx -y @microsoft/azure-devops-mcp
+```
+
+> Note: Requires Azure DevOps authentication. Run `az login` first or configure a PAT. See https://github.com/microsoft/azure-devops-mcp for setup details.
 
 ## Step 4: Verify Installation
 
@@ -115,8 +129,9 @@ NEXT STEPS:
 USAGE TIPS:
 - Context7: Ask about library documentation (e.g., "How do I use React hooks?")
 - Exa: Use for web searches (e.g., "Search the web for latest TypeScript features")
-- Filesystem: Extended file operations beyond the working directory
+- lean-ctx: Automatic — compresses Read/Grep/Bash results to save tokens
 - GitHub: Interact with GitHub repos, issues, and PRs
+- Azure DevOps: Manage work items, pipelines, repos, and wikis
 
 TROUBLESHOOTING:
 - If MCP servers don't appear, run `copilot mcp list` to check status
@@ -173,6 +188,7 @@ copilot mcp add --transport http --header "Authorization: Bearer <token>" <serve
 ### API Key Issues
 - Exa: Verify key at https://dashboard.exa.ai
 - GitHub: Ensure token has required scopes (repo, read:org)
+- Azure DevOps: Run `az login` or check PAT permissions
 - Re-run `copilot mcp add` with correct credentials if needed
 
 ### Agents Still Using Built-in Tools

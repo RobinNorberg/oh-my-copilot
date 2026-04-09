@@ -119,12 +119,12 @@ describe('purgeStalePluginCacheVersions', () => {
         mockedReaddirSync.mockImplementation((p, _opts) => {
             const ps = n(String(p));
             if (ps === n(cacheDir))
-                return [dirent('official'), dirent('omg')];
+                return [dirent('official'), dirent('omc')];
             if (ps.endsWith('official'))
                 return [dirent('hookify')];
             if (ps.endsWith('hookify'))
                 return [dirent('aa11'), dirent('bb22'), dirent('cc33')];
-            if (ps.endsWith('omg'))
+            if (ps.endsWith('omc'))
                 return [dirent('oh-my-copilot')];
             if (ps.endsWith('oh-my-copilot'))
                 return [dirent('4.3.0')];
@@ -155,8 +155,8 @@ describe('purgeStalePluginCacheVersions', () => {
         mockedReaddirSync.mockImplementation((p, _opts) => {
             const ps = String(p);
             if (ps === cacheDir)
-                return [dirent('omg')];
-            if (ps.endsWith('omg'))
+                return [dirent('omc')];
+            if (ps.endsWith('omc'))
                 return [dirent('oh-my-copilot')];
             if (ps.endsWith('oh-my-copilot'))
                 return [dirent('4.3.0')];
@@ -191,8 +191,8 @@ describe('purgeStalePluginCacheVersions', () => {
         mockedReaddirSync.mockImplementation((p, _opts) => {
             const ps = String(p);
             if (ps === cacheDir)
-                return [dirent('omg')];
-            if (ps.endsWith('omg'))
+                return [dirent('omc')];
+            if (ps.endsWith('omc'))
                 return [dirent('plugin')];
             if (ps.endsWith('plugin'))
                 return [dirent('1.0.0')];
@@ -220,8 +220,8 @@ describe('purgeStalePluginCacheVersions', () => {
         mockedReaddirSync.mockImplementation((p, _opts) => {
             const ps = String(p);
             if (ps === cacheDir)
-                return [dirent('omg')];
-            if (ps.endsWith('omg'))
+                return [dirent('omc')];
+            if (ps.endsWith('omc'))
                 return [dirent('plugin')];
             if (ps.endsWith('plugin'))
                 return [dirent('2.0.0')];
@@ -243,8 +243,8 @@ describe('purgeStalePluginCacheVersions', () => {
         mockedReaddirSync.mockImplementation((p, _opts) => {
             const ps = String(p);
             if (ps === cacheDir)
-                return [dirent('omg')];
-            if (ps.endsWith('omg'))
+                return [dirent('omc')];
+            if (ps.endsWith('omc'))
                 return [dirent('plugin')];
             if (ps.endsWith('plugin'))
                 return [dirent('1.0.0')];

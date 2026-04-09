@@ -42,10 +42,10 @@ describe('renderCwd', () => {
         });
     });
     describe('folder format', () => {
-        it('returns only folder name', () => {
+        it('returns parent/leaf folder name', () => {
             const result = renderCwd('/Users/testuser/workspace/project', 'folder');
             expect(result).toContain('project');
-            expect(result).not.toContain('/');
+            expect(result).toContain('workspace');
         });
         it('handles nested paths', () => {
             const result = renderCwd('/a/b/c/deep/folder', 'folder');

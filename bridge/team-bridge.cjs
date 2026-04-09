@@ -103,10 +103,16 @@ function safeRealpath(p) {
   try {
     return (0, import_fs.realpathSync)(p);
   } catch {
-    const parent = (0, import_path.dirname)(p);
-    const name = (0, import_path.basename)(p);
+    const segments = [];
+    let current = (0, import_path.resolve)(p);
+    while (!(0, import_fs.existsSync)(current)) {
+      segments.unshift((0, import_path.basename)(current));
+      const parent = (0, import_path.dirname)(current);
+      if (parent === current) break;
+      current = parent;
+    }
     try {
-      return (0, import_path.resolve)((0, import_fs.realpathSync)(parent), name);
+      return (0, import_path.join)((0, import_fs.realpathSync)(current), ...segments);
     } catch {
       return (0, import_path.resolve)(p);
     }

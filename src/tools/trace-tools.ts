@@ -16,7 +16,7 @@ import {
 import {
   validateWorkingDirectory,
 } from '../lib/worktree-paths.js';
-import { ToolDefinition } from './types.js';
+import { ToolDefinition, AnyToolDefinition } from './types.js';
 
 // ============================================================================
 // Helpers
@@ -206,12 +206,7 @@ function buildExecutionFlow(events: ReplayEvent[]): string[] {
 // trace_timeline - Chronological event timeline
 // ============================================================================
 
-export const traceTimelineTool: ToolDefinition<{
-  sessionId: z.ZodOptional<z.ZodString>;
-  filter: z.ZodOptional<z.ZodEnum<['all', 'hooks', 'skills', 'agents', 'keywords', 'tools', 'modes']>>;
-  last: z.ZodOptional<z.ZodNumber>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-}> = {
+export const traceTimelineTool: AnyToolDefinition = {
   name: 'trace_timeline',
   description: 'Show chronological agent flow trace timeline. Displays hooks, keywords, skills, agents, and tools in time order. Use filter to show specific event types.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

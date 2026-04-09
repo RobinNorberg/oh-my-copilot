@@ -36,6 +36,7 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    needs: [lint-and-typecheck]
     steps:
       - uses: actions/checkout@v4
 

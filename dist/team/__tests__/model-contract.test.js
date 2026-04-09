@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { spawnSync } from 'child_process';
-import { getContract, buildLaunchArgs, buildWorkerArgv, getWorkerEnv, parseCliOutput, isPromptModeAgent, getPromptModeArgs, isCliAvailable, shouldLoadShellRc, resolveCliBinaryPath, clearResolvedPathCache, validateCliBinaryPath, _testInternals, } from '../model-contract.js';
+import { getContract, buildLaunchArgs, buildWorkerArgv, getWorkerEnv, parseCliOutput, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, isCliAvailable, shouldLoadShellRc, resolveCliBinaryPath, clearResolvedPathCache, validateCliBinaryPath, _testInternals, } from '../model-contract.js';
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     return {
@@ -315,6 +315,29 @@ describe('model-contract', () => {
         });
         it('getPromptModeArgs returns empty array for non-prompt-mode agents', () => {
             expect(getPromptModeArgs('claude', 'Read inbox')).toEqual([]);
+        });
+    });
+    describe('resolveClaudeWorkerModel (forceInherit)', () => {
+        it('returns undefined when OMC_ROUTING_FORCE_INHERIT=true even if model env vars are set', () => {
+            expect(resolveClaudeWorkerModel({
+                OMC_ROUTING_FORCE_INHERIT: 'true',
+                ANTHROPIC_MODEL: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                CLAUDE_MODEL: 'us.anthropic.claude-opus-4-6-v1:0',
+            })).toBeUndefined();
+        });
+        it('returns undefined when OMC_ROUTING_FORCE_INHERIT=true with no model vars', () => {
+            expect(resolveClaudeWorkerModel({
+                OMC_ROUTING_FORCE_INHERIT: 'true',
+            })).toBeUndefined();
+        });
+        it('returns explicit model when OMC_ROUTING_FORCE_INHERIT is not set', () => {
+            const result = resolveClaudeWorkerModel({
+                ANTHROPIC_MODEL: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+            });
+            expect(result).toBe('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+        });
+        it('returns undefined when no model env vars and no forceInherit', () => {
+            expect(resolveClaudeWorkerModel({})).toBeUndefined();
         });
     });
 });

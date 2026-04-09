@@ -1,103 +1,45 @@
 # Phase 4: Completion
 
-## Detect Upgrade from 2.x
-
-Check if user has existing 2.x configuration:
-
-```bash
-ls ~/.copilot/commands/ralph-loop.md 2>/dev/null || ls ~/.copilot/commands/ultrawork.md 2>/dev/null
-```
-
-If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
-
 ## Show Welcome Message
 
-### For New Users (IS_UPGRADE is not true):
+Display this exact output as a code block:
 
 ```
-OMC Setup Complete!
+   ██████╗ ██╗  ██╗     ███╗   ███╗██╗   ██╗
+  ██╔═══██╗██║  ██║     ████╗ ████║╚██╗ ██╔╝
+  ██║   ██║███████║     ██╔████╔██║ ╚████╔╝
+  ██║   ██║██╔══██║     ██║╚██╔╝██║  ╚██╔╝
+  ╚██████╔╝██║  ██║     ██║ ╚═╝ ██║   ██║
+   ╚═════╝ ╚═╝  ╚═╝     ╚═╝     ╚═╝   ╚═╝
+             ██████╗ ██████╗ ██████╗ ██╗██╗      ██████╗ ████████╗
+            ██╔════╝██╔═══██╗██╔══██╗██║██║     ██╔═══██╗╚══██╔══╝
+            ██║     ██║   ██║██████╔╝██║██║     ██║   ██║   ██║
+            ██║     ██║   ██║██╔═══╝ ██║██║     ██║   ██║   ██║
+            ╚██████╗╚██████╔╝██║     ██║███████╗╚██████╔╝   ██║
+             ╚═════╝ ╚═════╝ ╚═╝     ╚═╝╚══════╝ ╚═════╝    ╚═╝
+     Turbocharge your Copilot CLI with multi-agent orchestration
 
-You don't need to learn any commands. I now have intelligent behaviors that activate automatically.
+  ┌──────────────────────────────────────────────────────────────┐
+  │  /autopilot          Autonomous end-to-end execution       │
+  │  /plan               Strategic planning with interview      │
+  │  /team N             Parallel coordinated agents            │
+  │  /review             Run code review                       │
+  │  /ai-slop-cleaner    Clean AI-generated code slop           │
+  │  /simplify           Simplify the code, and fix issues      │
+  │  /ralph              Loop until task is complete            │
+  │  /deepinit           Deep codebase initialization           │
+  │  /cancel             Stop any active mode                   │
+  │  /omc-setup          Interactive setup wizard               │
+  └──────────────────────────────────────────────────────────────┘
 
-WHAT HAPPENS AUTOMATICALLY:
-- Complex tasks -> I parallelize and delegate to specialists
-- "plan this" -> I start a planning interview
-- "don't stop until done" -> I persist until verified complete
-- "stop" or "cancel" -> I intelligently stop current operation
+  Type '/autopilot create a todo-app' to engage the magic dust!
+```
 
-MAGIC KEYWORDS (optional power-user shortcuts):
-Just include these words naturally in your request:
+Then show this below the banner:
 
-| Keyword | Effect | Example |
-|---------|--------|---------|
-| ralph | Persistence mode | "ralph: fix the auth bug" |
-| ralplan | Iterative planning | "ralplan this feature" |
-| ulw | Max parallelism | "ulw refactor the API" |
-| plan | Planning interview | "plan the new endpoints" |
-| team | Coordinated agents | "/team 3:executor fix errors" |
-
-**ralph includes ultrawork:** When you activate ralph mode, it automatically includes ultrawork's parallel execution. No need to combine keywords.
-
-TEAMS:
-Spawn coordinated agents with shared task lists and real-time messaging:
-- /oh-my-copilot:team 3:executor "fix all TypeScript errors"
-- /oh-my-copilot:team 5:debugger "fix build errors in src/"
-Teams use Copilot CLI native tools (TeamCreate/SendMessage/TaskCreate).
-
-MCP SERVERS:
-Run /oh-my-copilot:mcp-setup to add tools like web search, GitHub, etc.
-
+```
 HUD STATUSLINE:
 The status bar now shows OMC state. Restart Copilot CLI to see it.
-
-CLI ANALYTICS (if installed):
-- omc           - Default analytics dashboard
-- omc cost      - View cost reports (daily/weekly/monthly)
-- omc sessions  - Inspect session history
-- omc backfill  - Import transcript analytics
-
-That's it! Just use Copilot CLI normally.
-```
-
-### For Users Upgrading from 2.x (IS_UPGRADE is true):
-
-```
-OMC Setup Complete! (Upgraded from 2.x)
-
-GOOD NEWS: Your existing commands still work!
-- /ralph, /ultrawork, /omc-plan, etc. all still function
-
-WHAT'S NEW in 3.0:
-You no longer NEED those commands. Everything is automatic now:
-- Just say "don't stop until done" instead of /ralph
-- Just say "fast" or "parallel" instead of /ultrawork
-- Just say "plan this" instead of /omc-plan
-- Just say "stop" instead of /cancel
-
-MAGIC KEYWORDS (power-user shortcuts):
-| Keyword | Same as old... | Example |
-|---------|----------------|---------|
-| ralph | /ralph | "ralph: fix the bug" |
-| ralplan | /ralplan | "ralplan this feature" |
-| ulw | /ultrawork | "ulw refactor API" |
-| omc-plan | /omc-plan | "plan the endpoints" |
-| team | (new!) | "/team 3:executor fix errors" |
-
-TEAMS (NEW!):
-Spawn coordinated agents with shared task lists and real-time messaging:
-- /oh-my-copilot:team 3:executor "fix all TypeScript errors"
-- Uses Copilot CLI native tools (TeamCreate/SendMessage/TaskCreate)
-
-HUD STATUSLINE:
-The status bar now shows OMC state. Restart Copilot CLI to see it.
-
-CLI ANALYTICS (if installed):
-- omc           - Default analytics dashboard
-- omc cost      - View cost reports (daily/weekly/monthly)
-- omc sessions  - Inspect session history
-- omc backfill  - Import transcript analytics
-
-Your workflow won't break - it just got easier!
 ```
 
 ## Optional Rule Templates
@@ -134,7 +76,7 @@ gh auth status &>/dev/null
 **Before prompting, check if the repository is already starred:**
 
 ```bash
-gh api user/starred/NorbergRobin/oh-my-copilot &>/dev/null
+gh api user/starred/RobinNorberg/oh-my-copilot &>/dev/null
 ```
 
 **If already starred (exit code 0):**
@@ -155,7 +97,7 @@ Use AskUserQuestion:
 If user chooses "Yes, star it!":
 
 ```bash
-gh api -X PUT /user/starred/NorbergRobin/oh-my-copilot 2>/dev/null && echo "Thanks for starring!" || true
+gh api -X PUT /user/starred/RobinNorberg/oh-my-copilot 2>/dev/null && echo "Thanks for starring!" || true
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.
@@ -165,7 +107,7 @@ gh api -X PUT /user/starred/NorbergRobin/oh-my-copilot 2>/dev/null && echo "Than
 ```bash
 echo ""
 echo "If you enjoy oh-my-copilot, consider starring the repo:"
-echo "  https://github.com/NorbergRobin/oh-my-copilot"
+echo "  https://github.com/RobinNorberg/oh-my-copilot"
 echo ""
 ```
 

@@ -326,6 +326,39 @@ function readTranscriptUsage(transcriptPath) {
   }
 }
 
+function readContextUsageFromHookInput(data) {
+  const contextWindow = data?.context_window;
+  if (!contextWindow || typeof contextWindow !== 'object') {
+    return null;
+  }
+
+  const usedPercentage = contextWindow.used_percentage;
+  if (Number.isFinite(usedPercentage) && usedPercentage >= 0) {
+    return Math.min(100, Math.max(0, Math.round(usedPercentage)));
+  }
+
+  const size = contextWindow.context_window_size;
+  if (!Number.isFinite(size) || size <= 0) {
+    return null;
+  }
+
+  const usage = contextWindow.current_usage;
+  if (!usage || typeof usage !== 'object') {
+    return null;
+  }
+
+  const inputTokens = Number(usage.input_tokens || 0);
+  const cacheCreationTokens = Number(usage.cache_creation_input_tokens || 0);
+  const cacheReadTokens = Number(usage.cache_read_input_tokens || 0);
+
+  const totalTokens = inputTokens + cacheCreationTokens + cacheReadTokens;
+  if (!Number.isFinite(totalTokens) || totalTokens < 0) {
+    return null;
+  }
+
+  return Math.min(100, Math.max(0, Math.round((totalTokens / size) * 100)));
+}
+
 function getPreemptiveCooldownFilePath(directory, sessionId) {
   const cooldownScope =
     sessionId && sessionId !== 'unknown'
@@ -381,9 +414,11 @@ function maybeBuildPreemptiveCompactionMessage(toolName, data, directory) {
     return '';
   }
 
-  const percentUsed = readTranscriptUsage(
+  const percentFromTranscript = readTranscriptUsage(
     resolveTranscriptPath(data.transcript_path || data.transcriptPath, directory),
   );
+  const percentUsed =
+    percentFromTranscript ?? readContextUsageFromHookInput(data);
   const warningThreshold = getPreemptiveWarningThreshold();
   const criticalThreshold = getPreemptiveCriticalThreshold();
 
@@ -418,6 +453,28 @@ function getInvokedSkillName(toolInput) {
     : normalized.toLowerCase();
 }
 
+function getSkillInvocationArgs(toolInput) {
+  if (!toolInput || typeof toolInput !== 'object') return '';
+  const candidates = [
+    toolInput.args,
+    toolInput.arguments,
+    toolInput.argument,
+    toolInput.skill_args,
+    toolInput.skillArgs,
+    toolInput.prompt,
+    toolInput.description,
+    toolInput.input,
+  ];
+  return candidates.find(value => typeof value === 'string' && value.trim().length > 0)?.trim() || '';
+}
+
+function isConsensusPlanningSkillInvocation(skillName, toolInput) {
+  if (!skillName) return false;
+  if (skillName === 'ralplan') return true;
+  if (skillName !== 'plan' && skillName !== 'omc-plan') return false;
+  return getSkillInvocationArgs(toolInput).toLowerCase().includes('--consensus');
+}
+
 function getSkillActiveStatePaths(directory, sessionId) {
   const stateDir = join(directory, '.omc', 'state');
   const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
@@ -444,6 +501,53 @@ function clearSkillActiveState(directory, sessionId) {
   for (const statePath of getSkillActiveStatePaths(directory, sessionId)) {
     try {
       unlinkSync(statePath);
+    } catch {
+      // Best-effort cleanup; never fail the hook
+    }
+  }
+}
+
+function getRalplanStatePaths(directory, sessionId) {
+  const stateDir = join(directory, '.omc', 'state');
+  const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
+  return [
+    safeSessionId ? join(stateDir, 'sessions', safeSessionId, 'ralplan-state.json') : null,
+    join(stateDir, 'ralplan-state.json'),
+  ].filter(Boolean);
+}
+
+function deactivateRalplanState(directory, sessionId) {
+  const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
+  const terminalPhases = new Set(['complete', 'completed', 'failed', 'cancelled', 'done']);
+  const now = new Date().toISOString();
+
+  for (const statePath of getRalplanStatePaths(directory, sessionId)) {
+    try {
+      if (!existsSync(statePath)) continue;
+      const state = JSON.parse(readFileSync(statePath, 'utf-8'));
+      if (!state || typeof state !== 'object') continue;
+      if (safeSessionId && typeof state.session_id === 'string' && state.session_id !== safeSessionId) {
+        continue;
+      }
+      const currentPhase = typeof state.current_phase === 'string' ? state.current_phase : '';
+      const nextPhase = terminalPhases.has(currentPhase.toLowerCase()) ? currentPhase : 'complete';
+      writeFileSync(
+        statePath,
+        JSON.stringify(
+          {
+            ...state,
+            active: false,
+            current_phase: nextPhase,
+            completed_at: typeof state.completed_at === 'string' ? state.completed_at : now,
+            deactivated_reason:
+              typeof state.deactivated_reason === 'string'
+                ? state.deactivated_reason
+                : 'skill_completed',
+          },
+          null,
+          2,
+        ),
+      );
     } catch {
       // Best-effort cleanup; never fail the hook
     }
@@ -708,12 +812,16 @@ async function main() {
 
     if (toolName === 'Skill' || toolName === 'skill') {
       const toolInput = data.tool_input || data.toolInput || {};
+      const skillName = getInvokedSkillName(toolInput);
       const currentState = readSkillActiveState(directory, sessionId);
-      const completingSkill = (getInvokedSkillName(toolInput) ?? '')
+      const completingSkill = (skillName ?? '')
         .toLowerCase()
         .replace(/^oh-my-copilot:/, '');
       if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
         clearSkillActiveState(directory, sessionId);
+      }
+      if (isConsensusPlanningSkillInvocation(skillName, toolInput)) {
+        deactivateRalplanState(directory, sessionId);
       }
     }
 

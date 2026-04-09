@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
   release:
@@ -18,7 +19,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
@@ -28,8 +29,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Run tests
-        run: npm test -- --run
+      - name: Type check
+        run: npx tsc --noEmit
 
       - name: Publish to npm
         run: |
@@ -38,19 +39,10 @@ jobs:
             echo "::warning::Version $VERSION already published to npm, skipping publish"
           else
             if echo "$VERSION" | grep -qE '(alpha|beta|rc|preview)'; then
-              npm publish --access public --tag preview
+              npm publish --access public --tag preview --provenance
             else
-              npm publish --access public
+              npm publish --access public --provenance
             fi
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          body_path: release-notes.md
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') || contains(github.ref, 'preview') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

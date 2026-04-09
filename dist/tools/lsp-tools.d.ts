@@ -11,7 +11,7 @@
  * - Code actions
  */
 import { z } from 'zod';
-import { ToolDefinition } from './types.js';
+import { ToolDefinition, AnyToolDefinition } from './types.js';
 /**
  * LSP Hover Tool - Get type information and documentation at a position
  */
@@ -53,10 +53,7 @@ export declare const lspWorkspaceSymbolsTool: ToolDefinition<{
 /**
  * LSP Diagnostics Tool - Get errors, warnings, and hints
  */
-export declare const lspDiagnosticsTool: ToolDefinition<{
-    file: z.ZodString;
-    severity: z.ZodOptional<z.ZodEnum<['error', 'warning', 'info', 'hint']>>;
-}>;
+export declare const lspDiagnosticsTool: AnyToolDefinition;
 /**
  * LSP Servers Tool - List available language servers
  */
@@ -102,14 +99,11 @@ export declare const lspCodeActionResolveTool: ToolDefinition<{
 /**
  * LSP Diagnostics Directory Tool - Get project-level diagnostics
  */
-export declare const lspDiagnosticsDirectoryTool: ToolDefinition<{
-    directory: z.ZodString;
-    strategy: z.ZodOptional<z.ZodEnum<['tsc', 'lsp', 'auto']>>;
-}>;
+export declare const lspDiagnosticsDirectoryTool: AnyToolDefinition;
 /**
  * Get all LSP tool definitions
  */
-export declare const lspTools: (ToolDefinition<{
+export declare const lspTools: (AnyToolDefinition | ToolDefinition<{
     file: z.ZodString;
     line: z.ZodNumber;
     character: z.ZodNumber;
@@ -123,9 +117,6 @@ export declare const lspTools: (ToolDefinition<{
 }> | ToolDefinition<{
     query: z.ZodString;
     file: z.ZodString;
-}> | ToolDefinition<{
-    file: z.ZodString;
-    severity: z.ZodOptional<z.ZodEnum<["error", "warning", "info", "hint"]>>;
 }> | ToolDefinition<Record<string, never>> | ToolDefinition<{
     file: z.ZodString;
     line: z.ZodNumber;
@@ -144,8 +135,5 @@ export declare const lspTools: (ToolDefinition<{
     endLine: z.ZodNumber;
     endCharacter: z.ZodNumber;
     actionIndex: z.ZodNumber;
-}> | ToolDefinition<{
-    directory: z.ZodString;
-    strategy: z.ZodOptional<z.ZodEnum<["tsc", "lsp", "auto"]>>;
 }>)[];
 //# sourceMappingURL=lsp-tools.d.ts.map

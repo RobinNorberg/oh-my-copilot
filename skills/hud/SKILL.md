@@ -124,13 +124,45 @@ async function main() {
     } catch { /* continue */ }
   }
 
-  // 3. npm package (global or local install)
+  // 3. Installed plugins (marketplace install)
+  const installedPluginPaths = [
+    join(configDir, "installed-plugins", "omg", "oh-my-copilot"),
+    join(configDir, "installed-plugins", "_direct", "oh-my-copilot"),
+  ];
+  for (const pluginDir of installedPluginPaths) {
+    const hudPath = join(pluginDir, "dist", "hud", "index.js");
+    if (existsSync(hudPath)) {
+      try {
+        await import(pathToFileURL(hudPath).href);
+        return;
+      } catch { /* continue */ }
+    }
+  }
+
+  // 4. npm global install (platform-specific paths)
+  const npmGlobalPaths = [
+    process.env.APPDATA && join(process.env.APPDATA, "npm", "node_modules", "oh-my-copilot"),
+    join(home, ".npm-global", "lib", "node_modules", "oh-my-copilot"),
+    "/usr/local/lib/node_modules/oh-my-copilot",
+    "/usr/lib/node_modules/oh-my-copilot",
+  ].filter(Boolean);
+  for (const npmDir of npmGlobalPaths) {
+    const hudPath = join(npmDir, "dist", "hud", "index.js");
+    if (existsSync(hudPath)) {
+      try {
+        await import(pathToFileURL(hudPath).href);
+        return;
+      } catch { /* continue */ }
+    }
+  }
+
+  // 5. npm package (bare import - works for local installs)
   try {
     await import("oh-my-copilot/dist/hud/index.js");
     return;
   } catch { /* continue */ }
 
-  // 4. Fallback: provide detailed error message with fix instructions
+  // 6. Fallback: provide detailed error message with fix instructions
   if (pluginCacheDir && existsSync(pluginCacheDir)) {
     // Plugin exists but dist/ folder is missing - needs build
     const distDir = join(pluginCacheDir, "dist");
@@ -156,9 +188,9 @@ main();
 node -e "if(process.platform==='win32'){console.log('Skipped (Windows)')}else{require('fs').chmodSync(require('path').join(process.env.COPILOT_CONFIG_DIR||require('path').join(require('os').homedir(),'.copilot'),'hud','omc-hud.mjs'),0o755);console.log('Done')}"
 ```
 
-**Step 4:** Update settings.json to use the HUD:
+**Step 4:** Update config.json to use the HUD:
 
-Read `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json`, then update/add the `statusLine` field.
+Read `${COPILOT_CONFIG_DIR:-~/.copilot}/config.json`, then update/add the `statusLine` field and ensure `experimental` is true.
 
 **IMPORTANT:** Do not use `~` in the command. On Unix, use `$HOME` to keep the path portable across machines. On Windows, use an absolute path because Windows does not expand `~` in shell commands.
 
@@ -169,27 +201,38 @@ node -e "const p=require('path').join(require('os').homedir(),'.copilot','hud','
 
 **IMPORTANT:** The command path MUST use forward slashes on all platforms. Copilot CLI executes statusLine commands via bash, which interprets backslashes as escape characters and breaks the path.
 
-Then set the `statusLine` field. On Unix it should stay portable and look like:
+Then set the `statusLine` and `experimental` fields in `config.json`:
+
+On **Unix/macOS**:
 ```json
 {
+  "experimental": true,
   "statusLine": {
     "type": "command",
-    "command": "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs"
+    "command": "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs"
   }
 }
 ```
 
-On Windows the path uses forward slashes (not backslashes):
+On **Windows**, first create a `.cmd` wrapper at `~/.copilot/copilot-hud.cmd`:
+```cmd
+@echo off
+node "C:\Users\username\.copilot\hud\omc-hud.mjs"
+```
+Then set `config.json`:
 ```json
 {
+  "experimental": true,
   "statusLine": {
     "type": "command",
-    "command": "node C:/Users/username/.copilot/hud/omc-hud.mjs"
+    "command": "C:/Users/username/.copilot/copilot-hud.cmd"
   }
 }
 ```
 
-Use the Edit tool to add/update this field while preserving other settings.
+**IMPORTANT**: On Windows, bash wrappers (.sh) spawn separate console windows and break stdout capture. Always use `.cmd` wrappers on Windows.
+
+Use the Edit tool to add/update these fields while preserving other settings.
 
 **Step 5:** Clean up old HUD scripts (if any):
 ```bash
@@ -345,7 +388,7 @@ If the HUD is not showing:
 
 Manual verification:
 - HUD script: `~/.copilot/hud/omc-hud.mjs`
-- Settings: `~/.copilot/settings.json` should have `statusLine` configured as an object with `type` and `command` fields
+- Config: `~/.copilot/config.json` should have `statusLine` and `experimental: true` configured
 
 ---
 

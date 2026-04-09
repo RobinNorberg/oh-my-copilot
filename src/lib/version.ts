@@ -32,5 +32,19 @@ export function getRuntimePackageVersion(): string {
   } catch {
     // Fallback
   }
+
+  // Fallback: extract version from the plugin cache directory path.
+  // When package.json is missing (e.g. Copilot CLI plugin system didn't copy it),
+  // the path itself contains the version: .../oh-my-copilot/4.11.2/dist/lib/version.js
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const pathMatch = __filename.match(/oh-my-copilot\/(\d+\.\d+\.\d+[^/]*)\//);
+    if (pathMatch?.[1]) {
+      return pathMatch[1];
+    }
+  } catch {
+    // Fallback
+  }
+
   return 'unknown';
 }

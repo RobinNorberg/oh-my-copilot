@@ -19,30 +19,19 @@ import type { PythonReplInput } from './types.js';
  * Validates and types all input parameters.
  */
 export declare const pythonReplSchema: z.ZodObject<{
-    action: z.ZodEnum<["execute", "interrupt", "reset", "get_state"]>;
+    action: z.ZodEnum<{
+        execute: "execute";
+        interrupt: "interrupt";
+        reset: "reset";
+        get_state: "get_state";
+    }>;
     researchSessionID: z.ZodString;
     code: z.ZodOptional<z.ZodString>;
     executionLabel: z.ZodOptional<z.ZodString>;
     executionTimeout: z.ZodDefault<z.ZodNumber>;
     queueTimeout: z.ZodDefault<z.ZodNumber>;
     projectDir: z.ZodOptional<z.ZodString>;
-}, "strip", z.ZodTypeAny, {
-    action: "execute" | "interrupt" | "reset" | "get_state";
-    researchSessionID: string;
-    executionTimeout: number;
-    queueTimeout: number;
-    code?: string | undefined;
-    executionLabel?: string | undefined;
-    projectDir?: string | undefined;
-}, {
-    action: "execute" | "interrupt" | "reset" | "get_state";
-    researchSessionID: string;
-    code?: string | undefined;
-    executionLabel?: string | undefined;
-    executionTimeout?: number | undefined;
-    queueTimeout?: number | undefined;
-    projectDir?: string | undefined;
-}>;
+}, z.core.$strip>;
 export type PythonReplSchemaInput = z.infer<typeof pythonReplSchema>;
 /**
  * Get and increment the execution counter for a session.
@@ -78,7 +67,12 @@ export declare const pythonReplTool: {
         openWorldHint: boolean;
     };
     schema: {
-        action: z.ZodEnum<["execute", "interrupt", "reset", "get_state"]>;
+        action: z.ZodEnum<{
+            execute: "execute";
+            interrupt: "interrupt";
+            reset: "reset";
+            get_state: "get_state";
+        }>;
         researchSessionID: z.ZodString;
         code: z.ZodOptional<z.ZodString>;
         executionLabel: z.ZodOptional<z.ZodString>;
