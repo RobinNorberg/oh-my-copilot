@@ -73480,7 +73480,7 @@ var KEYWORD_PATTERNS = {
   deepsearch: /\b(deepsearch)\b|\bsearch\s+the\s+codebase\b|\bfind\s+in\s+(the\s+)?codebase\b/i,
   analyze: /\b(deep[\s-]?analyze|deepanalyze)\b/i,
   "deep-interview": /\b(deep[\s-]interview|ouroboros)\b/i,
-  ccg: /\b(ccg|copilot-clix-gemini)\b/i,
+  c3g: /\b(c3g|ccg|copilot-claude-codex-gemini)\b/i,
   claude: /\b(ask|use|delegate\s+to)\s+claude\b/i,
   codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
   gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i
@@ -73491,7 +73491,7 @@ var KEYWORD_PRIORITY = [
   "autopilot",
   "team",
   "ultrawork",
-  "ccg",
+  "c3g",
   "ralplan",
   "tdd",
   "code-review",
@@ -81196,9 +81196,9 @@ function resolveSignalExitCode(signal) {
 }
 async function askCommand(args) {
   const parsed = parseAskArgs(args);
-  if (parsed.provider !== "claude" && isExternalLLMDisabled()) {
+  if (parsed.provider !== "claude" && parsed.provider !== "copilot" && isExternalLLMDisabled()) {
     throw new Error(
-      `[ask] External LLM provider "${parsed.provider}" is blocked by security policy (disableExternalLLM). Only "claude" is allowed in the current security configuration.`
+      `[ask] External LLM provider "${parsed.provider}" is blocked by security policy (disableExternalLLM). Only "claude" and "copilot" are allowed in the current security configuration.`
     );
   }
   const packageRoot = getPackageRoot();
