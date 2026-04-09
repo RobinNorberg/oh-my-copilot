@@ -28,7 +28,7 @@ import {
   getActiveSessionsForMode,
   type ExecutionMode
 } from '../hooks/mode-registry/index.js';
-import { ToolDefinition } from './types.js';
+import { ToolDefinition, AnyToolDefinition } from './types.js';
 
 // ExecutionMode from mode-registry (5 modes)
 const EXECUTION_MODES: [string, ...string[]] = [
@@ -68,11 +68,7 @@ function getStatePath(mode: StateToolMode, root: string): string {
 // state_read - Read state for a mode
 // ============================================================================
 
-export const stateReadTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateReadTool: AnyToolDefinition = {
   name: 'state_read',
   description: 'Read the current state for a specific mode (ralph, ultrawork, autopilot, etc.). Returns the JSON state data or indicates if no state exists.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -193,21 +189,7 @@ export const stateReadTool: ToolDefinition<{
 // state_write - Write state for a mode
 // ============================================================================
 
-export const stateWriteTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
-  active: z.ZodOptional<z.ZodBoolean>;
-  iteration: z.ZodOptional<z.ZodNumber>;
-  max_iterations: z.ZodOptional<z.ZodNumber>;
-  current_phase: z.ZodOptional<z.ZodString>;
-  task_description: z.ZodOptional<z.ZodString>;
-  plan_path: z.ZodOptional<z.ZodString>;
-  started_at: z.ZodOptional<z.ZodString>;
-  completed_at: z.ZodOptional<z.ZodString>;
-  error: z.ZodOptional<z.ZodString>;
-  state: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateWriteTool: AnyToolDefinition = {
   name: 'state_write',
   description: 'Write/update state for a specific mode. Creates the state file and directories if they do not exist. Common fields (active, iteration, phase, etc.) can be set directly as parameters. Additional custom fields can be passed via the optional `state` parameter. Note: swarm uses SQLite and cannot be written via this tool.',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -334,11 +316,7 @@ export const stateWriteTool: ToolDefinition<{
 // state_clear - Clear state for a mode
 // ============================================================================
 
-export const stateClearTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateClearTool: AnyToolDefinition = {
   name: 'state_clear',
   description: 'Clear/delete state for a specific mode. Removes the state file and any associated marker files.',
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -677,11 +655,7 @@ export const stateListActiveTool: ToolDefinition<{
 // state_get_status - Get detailed status for a mode
 // ============================================================================
 
-export const stateGetStatusTool: ToolDefinition<{
-  mode: z.ZodOptional<z.ZodEnum<typeof STATE_TOOL_MODES>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateGetStatusTool: AnyToolDefinition = {
   name: 'state_get_status',
   description: 'Get detailed status for a specific mode or all modes. Shows active status, file paths, and state contents.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

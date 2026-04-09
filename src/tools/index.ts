@@ -113,23 +113,25 @@ function zodToJsonSchema(schema: z.ZodObject<z.ZodRawShape>): {
 /**
  * Convert individual Zod types to JSON Schema
  */
-function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
+function zodTypeToJsonSchema(zodType: unknown): Record<string, unknown> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const zt = zodType as any;
   const result: Record<string, unknown> = {};
 
   // Handle optional wrapper
   if (zodType instanceof z.ZodOptional) {
-    return zodTypeToJsonSchema(zodType._def.innerType);
+    return zodTypeToJsonSchema(zt._def.innerType);
   }
 
   // Handle default wrapper
   if (zodType instanceof z.ZodDefault) {
-    const inner = zodTypeToJsonSchema(zodType._def.innerType);
-    inner.default = zodType._def.defaultValue();
+    const inner = zodTypeToJsonSchema(zt._def.innerType);
+    inner.default = zt._def.defaultValue;
     return inner;
   }
 
   // Get description if available
-  const description = zodType._def.description;
+  const description = zt.description;
   if (description) {
     result.description = description;
   }
@@ -138,19 +140,19 @@ function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
   if (zodType instanceof z.ZodString) {
     result.type = 'string';
   } else if (zodType instanceof z.ZodNumber) {
-    result.type = zodType._def.checks?.some((c: { kind: string }) => c.kind === 'int')
+    result.type = zt._def.checks?.some((c: { isInt?: boolean }) => c.isInt)
       ? 'integer'
       : 'number';
   } else if (zodType instanceof z.ZodBoolean) {
     result.type = 'boolean';
   } else if (zodType instanceof z.ZodArray) {
     result.type = 'array';
-    result.items = zodTypeToJsonSchema(zodType._def.type);
+    result.items = zodTypeToJsonSchema(zt._def.element);
   } else if (zodType instanceof z.ZodEnum) {
     result.type = 'string';
-    result.enum = zodType._def.values;
+    result.enum = Object.keys(zt._def.entries);
   } else if (zodType instanceof z.ZodObject) {
-    return zodToJsonSchema(zodType);
+    return zodToJsonSchema(zt);
   } else {
     // Fallback for unknown types
     result.type = 'string';

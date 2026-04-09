@@ -42,3 +42,14 @@ export interface ToolDefinition<T extends z.ZodRawShape> {
   schema: T;
   handler: (args: z.infer<z.ZodObject<T>>) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>;
 }
+
+/**
+ * Escape hatch for tool definitions that include Zod v4 enum schemas.
+ * Use when the schema contains z.ZodEnum (which changed internal representation in v4),
+ * making the precise generic type annotation impossible.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyToolDefinition = ToolDefinition<any> & {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handler: (args: any) => Promise<{ content: Array<{ type: 'text'; text: string }>; isError?: boolean }>;
+};

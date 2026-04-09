@@ -19,16 +19,13 @@ import {
   type UserDirective,
 } from '../hooks/project-memory/index.js';
 import { mergeProjectMemory } from '../lib/project-memory-merge.js';
-import { ToolDefinition } from './types.js';
+import { ToolDefinition, AnyToolDefinition } from './types.js';
 
 // ============================================================================
 // project_memory_read - Read project memory
 // ============================================================================
 
-export const projectMemoryReadTool: ToolDefinition<{
-  section: z.ZodOptional<z.ZodEnum<['all', 'techStack', 'build', 'conventions', 'structure', 'notes', 'directives']>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-}> = {
+export const projectMemoryReadTool: AnyToolDefinition = {
   name: 'project_memory_read',
   description: 'Read the project memory. Can read the full memory or a specific section.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -214,12 +211,7 @@ export const projectMemoryAddNoteTool: ToolDefinition<{
 // project_memory_add_directive - Add a user directive
 // ============================================================================
 
-export const projectMemoryAddDirectiveTool: ToolDefinition<{
-  directive: z.ZodString;
-  context: z.ZodOptional<z.ZodString>;
-  priority: z.ZodOptional<z.ZodEnum<['high', 'normal']>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-}> = {
+export const projectMemoryAddDirectiveTool: AnyToolDefinition = {
   name: 'project_memory_add_directive',
   description: 'Add a user directive to project memory. Directives are instructions that persist across sessions and survive compaction.',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },

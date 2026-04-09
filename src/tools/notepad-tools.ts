@@ -23,7 +23,7 @@ import {
   formatFullNotepad,
   DEFAULT_CONFIG,
 } from '../hooks/notepad/index.js';
-import { ToolDefinition } from './types.js';
+import { ToolDefinition, AnyToolDefinition } from './types.js';
 
 const SECTION_NAMES: [string, ...string[]] = ['all', 'priority', 'working', 'manual'];
 
@@ -31,10 +31,7 @@ const SECTION_NAMES: [string, ...string[]] = ['all', 'priority', 'working', 'man
 // notepad_read - Read notepad content
 // ============================================================================
 
-export const notepadReadTool: ToolDefinition<{
-  section: z.ZodOptional<z.ZodEnum<typeof SECTION_NAMES>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-}> = {
+export const notepadReadTool: AnyToolDefinition = {
   name: 'notepad_read',
   description: 'Read the notepad content. Can read the full notepad or a specific section (priority, working, manual).',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

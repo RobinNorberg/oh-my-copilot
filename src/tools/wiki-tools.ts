@@ -21,7 +21,7 @@ import { ingestKnowledge } from '../hooks/wiki/ingest.js';
 import { queryWiki } from '../hooks/wiki/query.js';
 import { lintWiki } from '../hooks/wiki/lint.js';
 import type { WikiCategory } from '../hooks/wiki/types.js';
-import { ToolDefinition } from './types.js';
+import { ToolDefinition, AnyToolDefinition } from './types.js';
 
 const WIKI_CATEGORIES: [string, ...string[]] = [
   'architecture', 'decision', 'pattern', 'debugging',
@@ -32,15 +32,7 @@ const WIKI_CATEGORIES: [string, ...string[]] = [
 // wiki_ingest
 // ============================================================================
 
-export const wikiIngestTool: ToolDefinition<{
-  title: z.ZodString;
-  content: z.ZodString;
-  tags: z.ZodArray<z.ZodString>;
-  category: z.ZodEnum<typeof WIKI_CATEGORIES>;
-  sources: z.ZodOptional<z.ZodArray<z.ZodString>>;
-  confidence: z.ZodOptional<z.ZodEnum<['high', 'medium', 'low']>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-}> = {
+export const wikiIngestTool: AnyToolDefinition = {
   name: 'wiki_ingest',
   description: 'Process knowledge into wiki pages. Creates new pages or merges into existing ones (append strategy — never replaces). A single ingest can update multiple pages via cross-references.',
   schema: {
@@ -87,13 +79,7 @@ export const wikiIngestTool: ToolDefinition<{
 // wiki_query
 // ============================================================================
 
-export const wikiQueryTool: ToolDefinition<{
-  query: z.ZodString;
-  tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
-  category: z.ZodOptional<z.ZodEnum<typeof WIKI_CATEGORIES>>;
-  limit: z.ZodOptional<z.ZodNumber>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-}> = {
+export const wikiQueryTool: AnyToolDefinition = {
   name: 'wiki_query',
   description: 'Search across all wiki pages by keywords and tags. Returns matching pages with relevance snippets. YOU synthesize answers with citations from the results — the tool returns raw matches only. NO vector embeddings.',
   schema: {
@@ -203,13 +189,7 @@ export const wikiLintTool: ToolDefinition<{
 // wiki_add
 // ============================================================================
 
-export const wikiAddTool: ToolDefinition<{
-  title: z.ZodString;
-  content: z.ZodString;
-  tags: z.ZodOptional<z.ZodArray<z.ZodString>>;
-  category: z.ZodOptional<z.ZodEnum<typeof WIKI_CATEGORIES>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-}> = {
+export const wikiAddTool: AnyToolDefinition = {
   name: 'wiki_add',
   description: 'Quick-add a wiki page. Simpler than wiki_ingest — creates a single page directly.',
   schema: {
