@@ -21,7 +21,7 @@ export type {
  */
 export const DEFAULT_DELEGATION_CONFIG: DelegationRoutingConfig = {
   enabled: false,
-  defaultProvider: 'claude',
+  defaultProvider: 'copilot',
   roles: {},
 };
 
