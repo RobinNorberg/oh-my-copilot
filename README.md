@@ -69,26 +69,6 @@ The deep interview uses Socratic questioning to clarify your thinking before any
 - **Persistent execution** — won't give up until the job is verified complete
 - **Azure DevOps/GitHub native** — auto-detection, work item management, PR operations, triage workflows
 - **Stop your yolo abuse** — using a layered permission model to help your agents perform safe work without your interference
----
-
-## Team Mode
-
-**Team** is the canonical orchestration surface. It runs a staged pipeline:
-
-`team-plan → team-prd → team-exec → team-verify → team-fix (loop)`
-
-```bash
-/team 3:executor "fix all TypeScript errors"
-```
-
-Spawn real tmux workers for cross-model tasks:
-
-```bash
-omc team 2:codex "review auth module for security issues"
-omc team 2:gemini "redesign UI components for accessibility"
-```
-
-[Full Team Mode docs →](docs/guides/team-mode.md)
 
 ---
 
@@ -99,10 +79,11 @@ Optional shortcuts for power users. Natural language works fine without them.
 | Keyword | Category | Effect | Example |
 | ------- | -------- | ------ | ------- |
 | `team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Canonical Team orchestration | `team 3:executor "fix all TypeScript errors"` |
+| `ask copilot` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Copilot CLI | `ask claude "review auth architecture"` |
 | `ask claude` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Claude Code CLI | `ask claude "review auth architecture"` |
 | `ask codex` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Codex CLI | `ask codex "security analysis"` |
 | `ask gemini` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Gemini CLI | `ask gemini "suggest UX improvements"` |
-| `ccg` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `ccg review this PR` |
+| `c3g` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `c3g review this PR` |
 | `omc team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"` |
 | `code review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Code review mode | `code review the auth module` |
 | `deep-analyze` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep analysis mode | `deep-analyze why tests are failing` |
@@ -135,6 +116,39 @@ Optional shortcuts for power users. Natural language works fine without them.
 **Notes:**
 
 - **Informational filtering**: Asking "what is ralph?" or "explain ultrawork" won't trigger execution — only actionable uses activate keywords.
+
+---
+
+## Orchestration between agents
+
+### Team Mode
+
+**Team** is the canonical orchestration surface. It runs a staged pipeline:
+
+`team-plan → team-prd → team-exec → team-verify → team-fix (loop)`
+
+```bash
+/team 3:executor "fix all TypeScript errors"
+```
+
+### C3G
+**C3g** uses multi-model advisor synthesis — fans out via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesizes the results:
+
+```bash
+/c3g "review this branch — architecture, security, and UI components"
+```
+
+### OMC Team Mode
+**Omc team** spawn real tmux CLI workers for cross-model tasks:
+
+```bash
+omc team 1:copilot "review the ingestion module for performance issues"
+omc team 2:claude "review the database module for sql issues"
+omc team 3:codex "review the auth module for security issues"
+omc team 5:gemini "redesign UI components for accessibility"
+```
+
+[Full Team Mode docs →](docs/guides/team-mode.md)
 
 ---
 
