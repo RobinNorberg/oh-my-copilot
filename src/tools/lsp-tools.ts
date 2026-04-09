@@ -26,7 +26,7 @@ import {
   countEdits
 } from './lsp/index.js';
 import { runDirectoryDiagnostics } from './diagnostics/index.js';
-import { ToolDefinition } from './types.js';
+import { ToolDefinition, AnyToolDefinition } from './types.js';
 
 /**
  * Helper to handle LSP errors gracefully.
@@ -212,10 +212,7 @@ export const lspWorkspaceSymbolsTool: ToolDefinition<{
 /**
  * LSP Diagnostics Tool - Get errors, warnings, and hints
  */
-export const lspDiagnosticsTool: ToolDefinition<{
-  file: z.ZodString;
-  severity: z.ZodOptional<z.ZodEnum<['error', 'warning', 'info', 'hint']>>;
-}> = {
+export const lspDiagnosticsTool: AnyToolDefinition = {
   name: 'lsp_diagnostics',
   description: 'Get language server diagnostics (errors, warnings, hints) for a file. Useful for finding issues without running the compiler.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -455,10 +452,7 @@ export const lspCodeActionResolveTool: ToolDefinition<{
 /**
  * LSP Diagnostics Directory Tool - Get project-level diagnostics
  */
-export const lspDiagnosticsDirectoryTool: ToolDefinition<{
-  directory: z.ZodString;
-  strategy: z.ZodOptional<z.ZodEnum<['tsc', 'lsp', 'auto']>>;
-}> = {
+export const lspDiagnosticsDirectoryTool: AnyToolDefinition = {
   name: 'lsp_diagnostics_directory',
   description: 'Run project-level diagnostics on a directory using tsc --noEmit (preferred) or LSP iteration (fallback). Useful for checking the entire codebase for errors.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },

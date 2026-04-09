@@ -120,6 +120,12 @@ export interface AstToolDefinition<T extends z.ZodRawShape> {
   ) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyAstToolDefinition = AstToolDefinition<any> & {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handler: (args: any) => Promise<{ content: Array<{ type: "text"; text: string }> }>;
+};
+
 /**
  * Supported languages for AST analysis
  * Maps to ast-grep language identifiers
@@ -276,13 +282,7 @@ function formatMatch(
 /**
  * AST Grep Search Tool - Find code patterns using AST matching
  */
-export const astGrepSearchTool: AstToolDefinition<{
-  pattern: z.ZodString;
-  language: z.ZodEnum<[string, ...string[]]>;
-  path: z.ZodOptional<z.ZodString>;
-  context: z.ZodOptional<z.ZodNumber>;
-  maxResults: z.ZodOptional<z.ZodNumber>;
-}> = {
+export const astGrepSearchTool: AnyAstToolDefinition = {
   name: "ast_grep_search",
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   description: `Search for code patterns using AST matching. More precise than text search.
@@ -428,13 +428,7 @@ Note: Patterns must be valid AST nodes for the language.`,
 /**
  * AST Grep Replace Tool - Replace code patterns using AST matching
  */
-export const astGrepReplaceTool: AstToolDefinition<{
-  pattern: z.ZodString;
-  replacement: z.ZodString;
-  language: z.ZodEnum<[string, ...string[]]>;
-  path: z.ZodOptional<z.ZodString>;
-  dryRun: z.ZodOptional<z.ZodBoolean>;
-}> = {
+export const astGrepReplaceTool: AnyAstToolDefinition = {
   name: "ast_grep_replace",
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
   description: `Replace code patterns using AST matching. Preserves matched content via meta-variables.
