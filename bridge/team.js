@@ -3049,6 +3049,7 @@ function getHostCliType() {
 var init_host_detection = __esm({
   "src/utils/host-detection.ts"() {
     "use strict";
+    init_model_contract();
   }
 });
 

@@ -30740,9 +30740,13 @@ function getHostCliType() {
   if (process.env.CLAUDE_CODE_ENTRYPOINT) return "claude";
   return "copilot";
 }
+function getHostCliBinary() {
+  return getContract(getHostCliType()).binary;
+}
 var init_host_detection = __esm({
   "src/utils/host-detection.ts"() {
     "use strict";
+    init_model_contract();
   }
 });
 
@@ -73480,7 +73484,7 @@ var KEYWORD_PATTERNS = {
   deepsearch: /\b(deepsearch)\b|\bsearch\s+the\s+codebase\b|\bfind\s+in\s+(the\s+)?codebase\b/i,
   analyze: /\b(deep[\s-]?analyze|deepanalyze)\b/i,
   "deep-interview": /\b(deep[\s-]interview|ouroboros)\b/i,
-  c3g: /\b(c3g|ccg|copilot-claude-codex-gemini)\b/i,
+  c3g: /\b(c3g|copilot-claude-codex-gemini)\b/i,
   claude: /\b(ask|use|delegate\s+to)\s+claude\b/i,
   codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
   gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i
@@ -82088,7 +82092,6 @@ function sleep5(ms) {
 var import_child_process40 = require("child_process");
 var import_fs93 = require("fs");
 init_host_detection();
-init_model_contract();
 
 // src/autoresearch/contracts.ts
 var import_child_process36 = require("child_process");
@@ -83298,7 +83301,6 @@ async function finalizeAutoresearchRunState(projectRoot, runId, updates) {
 // src/cli/autoresearch-guided.ts
 var import_child_process39 = require("child_process");
 init_host_detection();
-init_model_contract();
 var import_fs92 = require("fs");
 var import_promises17 = require("fs/promises");
 var import_path107 = require("path");
@@ -83468,7 +83470,6 @@ async function writeAutoresearchDeepInterviewArtifacts(input) {
 // src/cli/autoresearch-setup-session.ts
 var import_child_process38 = require("child_process");
 init_host_detection();
-init_model_contract();
 var import_fs91 = require("fs");
 var import_path106 = require("path");
 
@@ -83711,7 +83712,7 @@ function spawnAutoresearchSetupTmux(repoRoot) {
   }
   const sessionName2 = `omc-autoresearch-setup-${Date.now().toString(36)}`;
   const codexHome = prepareAutoresearchSetupCodexHome(repoRoot, sessionName2);
-  const hostBinary = getContract(getHostCliType()).binary;
+  const hostBinary = getHostCliBinary();
   const cliCommand = buildTmuxShellCommand("env", [`CODEX_HOME=${codexHome}`, hostBinary, CLAUDE_BYPASS_FLAG]);
   const wrappedCliCommand = wrapWithLoginShell(cliCommand);
   const paneId = (0, import_child_process39.execFileSync)(
@@ -83788,7 +83789,7 @@ function normalizeAutoresearchClaudeArgs(claudeArgs) {
 function runAutoresearchTurn(worktreePath, instructionsFile, claudeArgs) {
   const prompt = (0, import_fs93.readFileSync)(instructionsFile, "utf-8");
   const launchArgs = ["--print", ...normalizeAutoresearchClaudeArgs(claudeArgs), "-p", prompt];
-  const result = (0, import_child_process40.spawnSync)(getContract(getHostCliType()).binary, launchArgs, {
+  const result = (0, import_child_process40.spawnSync)(getHostCliBinary(), launchArgs, {
     cwd: worktreePath,
     stdio: ["pipe", "inherit", "inherit"],
     encoding: "utf-8",

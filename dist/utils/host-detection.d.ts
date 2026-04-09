@@ -14,4 +14,9 @@ import type { CliAgentType } from '../team/model-contract.js';
  * 2. Default — 'copilot' (this fork's identity)
  */
 export declare function getHostCliType(): CliAgentType;
+/**
+ * Get the binary name for the detected host CLI.
+ * Convenience wrapper over getContract(getHostCliType()).binary.
+ */
+export declare function getHostCliBinary(): string;
 //# sourceMappingURL=host-detection.d.ts.map

@@ -302,7 +302,7 @@ function resolveWorkerCliForRequest(request, config) {
         const worker = workers.find((c) => Number(c.index) === idx);
         const workerCli = safeString(worker?.worker_cli).trim().toLowerCase();
         if (workerCli === 'claude' || workerCli === 'copilot')
-            return 'copilot';
+            return workerCli;
     }
     return 'codex';
 }
