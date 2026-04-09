@@ -17,6 +17,7 @@ export declare const SKILLS_DIR: string;
 export declare const HOOKS_DIR: string;
 export declare const HUD_DIR: string;
 export declare const SETTINGS_FILE: string;
+export declare const COPILOT_CONFIG_FILE: string;
 export declare const VERSION_FILE: string;
 /**
  * Core commands - DISABLED for v3.0+
