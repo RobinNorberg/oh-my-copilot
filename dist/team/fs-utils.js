@@ -7,7 +7,7 @@
  * Atomic writes use PID+timestamp temp files to prevent collisions.
  */
 import { writeFileSync, existsSync, mkdirSync, renameSync, unlinkSync, openSync, writeSync, closeSync, realpathSync, constants } from 'fs';
-import { dirname, resolve, relative, basename } from 'path';
+import { dirname, resolve, relative, basename, join } from 'path';
 /** Atomic write: write JSON to temp file with permissions, then rename (prevents corruption on crash) */
 export function atomicWriteJson(filePath, data, mode = 0o600) {
     const dir = dirname(filePath);
@@ -65,20 +65,27 @@ export function ensureDirWithMode(dirPath, mode = 0o700) {
         mkdirSync(dirPath, { recursive: true, mode });
 }
 /** Resolve a path through symlinks where possible, falling back to resolve for non-existent paths.
- *  For paths that don't exist yet, resolves the parent via realpath and appends the filename. */
+ *  Walks up the directory tree to the nearest existing ancestor, resolves it via realpathSync,
+ *  then re-appends all non-existent segments. This handles macOS symlinks like /var -> /private/var
+ *  consistently regardless of how many intermediate directories are missing. */
 function safeRealpath(p) {
     try {
         return realpathSync(p);
     }
     catch {
-        // Path doesn't exist yet — resolve the parent directory and append the filename
-        const parent = dirname(p);
-        const name = basename(p);
+        const segments = [];
+        let current = resolve(p);
+        while (!existsSync(current)) {
+            segments.unshift(basename(current));
+            const parent = dirname(current);
+            if (parent === current)
+                break; // filesystem root
+            current = parent;
+        }
         try {
-            return resolve(realpathSync(parent), name);
+            return join(realpathSync(current), ...segments);
         }
         catch {
-            // Parent also doesn't exist, fall back to plain resolve
             return resolve(p);
         }
     }

@@ -247,7 +247,7 @@ function isStaleSkillState(state) {
 /**
  * Check if a cancel signal is in progress for the session.
  * Cancel signals are written by state_clear and expire after 30 seconds.
- * @param {string} stateDir - The .omg/state directory path
+ * @param {string} stateDir - The .omcp/state directory path
  * @param {string} sessionId - Optional session ID
  * @returns {boolean} true if cancel is in progress
  */
@@ -491,7 +491,7 @@ function countIncompleteTodos(sessionId, projectDir) {
 
   // Project-local todos only
   for (const path of [
-    join(projectDir, ".omg", "todos.json"),
+    join(projectDir, ".omcp", "todos.json"),
     join(projectDir, ".copilot", "todos.json"),
   ]) {
     try {
@@ -620,8 +620,8 @@ async function main() {
     const sessionIdRaw = data.sessionId || data.session_id || data.sessionid || "";
     const sessionId = sanitizeSessionId(sessionIdRaw);
     const hasValidSessionId = isValidSessionId(sessionIdRaw);
-    const stateDir = join(directory, ".omg", "state");
-    const globalStateDir = join(homedir(), ".omg", "state");
+    const stateDir = join(directory, ".omcp", "state");
+    const globalStateDir = join(homedir(), ".omcp", "state");
 
     // CRITICAL: Never block context-limit stops.
     // Blocking these causes a deadlock where Copilot CLI cannot compact.

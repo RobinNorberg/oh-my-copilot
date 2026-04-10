@@ -51,8 +51,8 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
 
 <Steps>
 1. **PRD Setup** (first iteration only):
-   a. Check if `prd.json` exists (in project root or `.omg/`). If it already exists, read it and proceed to Step 2.
-   b. If no `prd.json` exists, the system has auto-generated a scaffold. Read `.omg/prd.json`.
+   a. Check if `prd.json` exists (in project root or `.omcp/`). If it already exists, read it and proceed to Step 2.
+   b. If no `prd.json` exists, the system has auto-generated a scaffold. Read `.omcp/prd.json`.
    c. **CRITICAL: Refine the scaffold.** The auto-generated PRD has generic acceptance criteria ("Implementation is complete", etc.). You MUST replace these with task-specific criteria:
       - Analyze the original task and break it into right-sized user stories (each completable in one iteration)
       - Write concrete, verifiable acceptance criteria for each story (e.g., "Function X returns Y when given Z", "Test file exists at path P and passes")
@@ -92,7 +92,7 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
    - Standard changes: STANDARD tier (architect-medium / Sonnet)
    - >20 files or security/architectural changes: THOROUGH tier (architect / Opus)
    - If `--critic=critic`, use the Claude `critic` agent for the approval pass
-   - If `--critic=codex`, run `omc ask codex --agent-prompt critic "..."` for the approval pass. The Codex critic prompt MUST include:
+   - If `--critic=codex`, run `omcp ask codex --agent-prompt critic "..."` for the approval pass. The Codex critic prompt MUST include:
      1. The full list of acceptance criteria from prd.json for verification
      2. A directive to evaluate whether the implementation is **OPTIMAL** — not just correct, but whether there exists a meaningfully better approach (simpler, faster, more maintainable) that the implementation missed
      3. A directive to review **all code related to the changes** (callers, callees, shared types, adjacent modules), not only the files directly modified
@@ -115,7 +115,7 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
 <Tool_Usage>
 - Use `Task(subagent_type="oh-my-copilot:architect", ...)` for architect verification cross-checks when changes are security-sensitive, architectural, or involve complex multi-system integration
 - Use `Task(subagent_type="oh-my-copilot:critic", ...)` when `--critic=critic`
-- Use `omc ask codex --agent-prompt critic "..."` when `--critic=codex`. Construct the prompt to include: (a) prd.json acceptance criteria, (b) files changed + related files, (c) explicit optimality question: "Is there a meaningfully simpler, faster, or more maintainable approach that achieves the same acceptance criteria?"
+- Use `omcp ask codex --agent-prompt critic "..."` when `--critic=codex`. Construct the prompt to include: (a) prd.json acceptance criteria, (b) files changed + related files, (c) explicit optimality question: "Is there a meaningfully simpler, faster, or more maintainable approach that achieves the same acceptance criteria?"
 - Skip architect consultation for simple feature additions, well-tested changes, or time-critical verification
 - Proceed with architect agent verification alone -- never block on unavailable tools
 - Use `state_write` / `state_read` for ralph mode state persistence between iterations
@@ -192,7 +192,7 @@ Why bad: Did not refine scaffold criteria into task-specific ones. This is PRD t
 - Continue working when the hook system sends "The boulder never stops" -- this means the iteration continues
 - If the selected reviewer rejects verification, fix the issues and re-verify (do not stop)
 - **Do NOT stop after Step 7 approval.** The boulder continues through 7 → 7.5 → 7.6 → 8 in the same turn as a single chain. Step 7 is a checkpoint inside the loop, not a reporting moment. Treating an architect/critic APPROVED verdict as "time to summarise and wait for user acknowledgment" is a polite-stop anti-pattern — the only reporting moments in Ralph are Step 8 (successful cancel) or Step 9 (rejection).
-- If the same issue recurs across 3+ iterations, the circular fix detector triggers automatically. It generates a structured escalation report at `.omc/escalation-report.md` with error pattern analysis, occurrence timeline, and recommended manual interventions. The report includes the error hash, occurrence count, and affected files. Stop iteration and present the report.
+- If the same issue recurs across 3+ iterations, the circular fix detector triggers automatically. It generates a structured escalation report at `.omcp/escalation-report.md` with error pattern analysis, occurrence timeline, and recommended manual interventions. The report includes the error hash, occurrence count, and affected files. Stop iteration and present the report.
 </Escalation_And_Stop_Conditions>
 
 <Final_Checklist>
@@ -216,7 +216,7 @@ Ralph captures learnings from each completed story and injects them into the nex
 - Context from progress.txt is carried forward between stories
 - Each phase output is truncated to 12KB
 - Context is session-scoped and cleared on `/cancel`
-- Stored in `.omc/state/sessions/{sessionId}/phase-context.json`
+- Stored in `.omcp/state/sessions/{sessionId}/phase-context.json`
 
 ## Background Execution Rules
 

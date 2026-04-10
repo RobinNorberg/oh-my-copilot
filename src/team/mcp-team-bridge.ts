@@ -377,7 +377,7 @@ function writePromptFile(
   taskId: string,
   prompt: string,
 ): string {
-  const dir = join(config.workingDirectory, ".omg", "prompts");
+  const dir = join(config.workingDirectory, ".omcp", "prompts");
   ensureDirWithMode(dir);
   const filename = `team-${config.teamName}-task-${taskId}-${Date.now()}.md`;
   const filePath = join(dir, filename);
@@ -387,7 +387,7 @@ function writePromptFile(
 
 /** Get output file path for a task */
 function getOutputPath(config: BridgeConfig, taskId: string): string {
-  const dir = join(config.workingDirectory, ".omg", "outputs");
+  const dir = join(config.workingDirectory, ".omcp", "outputs");
   ensureDirWithMode(dir);
   const suffix = Math.random().toString(36).slice(2, 8);
   return join(

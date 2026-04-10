@@ -63,7 +63,7 @@ The system REJECTS skills that are:
 **Step 3: Save Location**
 
 - **User-level**: ${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/ - Rare. Only for truly portable insights.
-- **Project-level**: .omg/skills/ - Default. Version-controlled with repo.
+- **Project-level**: .omcp/skills/ - Default. Version-controlled with repo.
 
 ### What Makes a USEFUL Skill
 

@@ -37,7 +37,7 @@ describe('git-worktree', () => {
     it('creates worktree at correct path', () => {
       const info = createWorkerWorktree(teamName, 'worker1', repoDir);
 
-      expect(info.path.split('\\').join('/')).toContain('.omg/worktrees');
+      expect(info.path.split('\\').join('/')).toContain('.omcp/worktrees');
       expect(info.branch).toBe(`omc-team/${teamName}/worker1`);
       expect(info.workerName).toBe('worker1');
       expect(info.teamName).toBe(teamName);

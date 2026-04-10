@@ -156,9 +156,9 @@ function resolveSignalExitCode(signal) {
 }
 export async function askCommand(args) {
     const parsed = parseAskArgs(args);
-    if (parsed.provider !== 'claude' && isExternalLLMDisabled()) {
+    if (parsed.provider !== 'claude' && parsed.provider !== 'copilot' && isExternalLLMDisabled()) {
         throw new Error(`[ask] External LLM provider "${parsed.provider}" is blocked by security policy ` +
-            `(disableExternalLLM). Only "claude" is allowed in the current security configuration.`);
+            `(disableExternalLLM). Only "claude" and "copilot" are allowed in the current security configuration.`);
     }
     const packageRoot = getPackageRoot();
     const advisorScriptPath = resolveAskAdvisorScriptPath(packageRoot);

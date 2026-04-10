@@ -54,7 +54,7 @@ describe.skip('installer MCP config ownership (issue #1802)', () => {
     homeDir = join(tempRoot, 'home');
     claudeConfigDir = join(homeDir, '.copilot');
     codexHome = join(tempRoot, '.codex');
-    omcHome = join(tempRoot, '.omc');
+    omcHome = join(tempRoot, '.omcp');
 
     mkdirSync(homeDir, { recursive: true });
     mkdirSync(claudeConfigDir, { recursive: true });

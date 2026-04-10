@@ -127,4 +127,4 @@ omc config-notify-profile personal --type telegram --token <token> --chat <id>
 - `file` callbacks ignore tag options
 - All webhooks are validated for correct URL format before saving
 - Teams supports both Power Automate Workflows and legacy O365 Connector URLs
-- Notifications fire on session completion by default; per-event configuration available in `.omg-config.json`
+- Notifications fire on session completion by default; per-event configuration available in `.omcp-config.json`

@@ -108,11 +108,11 @@ Skills compose in layers:
 State files follow standardized locations:
 
 **Local Project State:**
-- `.omg/state/{name}.json` - Session state (ultrapilot, swarm, pipeline)
-- `.omg/notepads/{plan-name}/` - Plan-scoped wisdom capture
+- `.omcp/state/{name}.json` - Session state (ultrapilot, swarm, pipeline)
+- `.omcp/notepads/{plan-name}/` - Plan-scoped wisdom capture
 
 **Global State:**
-- `~/.omg/state/{name}.json` - User preferences and global config
+- `~/.omcp/state/{name}.json` - User preferences and global config
 
 Legacy locations are auto-migrated on read.
 

@@ -71,7 +71,7 @@ npm run build
 # Windows:
 robocopy . "\\server\shared\copilot-plugins\oh-my-copilot" /MIR /XD node_modules/.cache .git .omc
 # macOS/Linux:
-rsync -av --exclude='node_modules/.cache' --exclude='.git' --exclude='.omc' . /mnt/shared/copilot-plugins/oh-my-copilot/
+rsync -av --exclude='node_modules/.cache' --exclude='.git' --exclude='.omcp' . /mnt/shared/copilot-plugins/oh-my-copilot/
 ```
 
 **Colleagues:**
@@ -126,7 +126,7 @@ npm install && npm run build
 tar czf oh-my-copilot.tar.gz \
   --exclude='node_modules/.cache' \
   --exclude='.git' \
-  --exclude='.omc' \
+  --exclude='.omcp' \
   .claude-plugin/ agents/ bridge/ dist/ docs/ hooks/ scripts/ \
   skills/ src/ templates/ node_modules/ \
   package.json .mcp.json CLAUDE.md
@@ -210,7 +210,7 @@ When distributing to colleagues for hardening, share this checklist:
 - [ ] MCP tools respond (try `/oh-my-copilot:omc-doctor`)
 - [ ] Skills are discoverable (try typing `autopilot: hello world`)
 - [ ] Agent delegation works (try `/oh-my-copilot:team 1:executor "echo hello"`)
-- [ ] State persistence works (`.omg/` directory created in project root)
+- [ ] State persistence works (`.omcp/` directory created in project root)
 - [ ] Hooks fire on session start (look for OMC banner/context in prompt)
 - [ ] Report any errors, unexpected behavior, or missing functionality
 

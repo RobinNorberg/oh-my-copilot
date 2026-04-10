@@ -414,7 +414,7 @@ export async function pythonReplHandler(input) {
     // Step 1: Validate input with Zod
     const parseResult = pythonReplSchema.safeParse(input);
     if (!parseResult.success) {
-        const errors = parseResult.error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
+        const errors = parseResult.error.issues.map((e) => `${e.path.join('.')}: ${e.message}`);
         return [
             '=== Validation Error ===',
             '',

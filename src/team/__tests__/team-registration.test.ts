@@ -15,7 +15,7 @@ const CONFIG_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 
 beforeEach(() => {
   mkdirSync(TEST_DIR, { recursive: true });
-  mkdirSync(join(TEST_DIR, '.omg', 'state'), { recursive: true });
+  mkdirSync(join(TEST_DIR, '.omcp', 'state'), { recursive: true });
   mkdirSync(CONFIG_DIR, { recursive: true });
 });
 

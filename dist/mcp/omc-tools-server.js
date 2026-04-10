@@ -1,10 +1,12 @@
 /**
  * OMC Tools Server - In-process MCP server for custom tools
  *
- * Exposes 18 custom tools (12 LSP, 2 AST, 1 python_repl, 3 skills) via the Copilot Agent SDK's
- * createSdkMcpServer helper for use by subagents.
+ * Exposes custom tools (LSP, AST, python_repl, skills, state, notepad, memory, etc.)
+ * via the standard MCP SDK for use by subagents.
  */
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
+import { z } from "zod";
 import { lspTools } from "../tools/lsp-tools.js";
 import { astTools } from "../tools/ast-tools.js";
 import { pythonReplTool } from "../tools/python-repl/index.js";
@@ -87,19 +89,117 @@ const _startupDisabledGroups = parseDisabledGroups();
 const enabledTools = _startupDisabledGroups.size === 0
     ? allTools
     : allTools.filter(t => !t.category || !_startupDisabledGroups.has(t.category));
-// Convert to SDK tool format
-// The SDK's tool() expects a ZodRawShape directly (not wrapped in z.object())
-const sdkTools = enabledTools.map(t => tool(t.name, t.description, t.schema, async (args) => await t.handler(args)));
+// Convert Zod schema to JSON Schema for MCP tool registration
+function zodToJsonSchema(schema) {
+    const properties = {};
+    const required = [];
+    for (const [key, value] of Object.entries(schema)) {
+        const zodType = value;
+        properties[key] = zodTypeToJsonSchema(zodType);
+        const isOptional = zodType && typeof zodType.isOptional === 'function' && zodType.isOptional();
+        if (!isOptional) {
+            required.push(key);
+        }
+    }
+    return { type: 'object', properties, required };
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function zodTypeToJsonSchema(zodType) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const zt = zodType;
+    const result = {};
+    if (!zt || !zt._def) {
+        return { type: 'string' };
+    }
+    // Handle optional wrapper
+    if (zodType instanceof z.ZodOptional) {
+        return zodTypeToJsonSchema(zt._def.innerType);
+    }
+    // Handle default wrapper
+    if (zodType instanceof z.ZodDefault) {
+        const inner = zodTypeToJsonSchema(zt._def.innerType);
+        if (zt._def.defaultValue !== undefined) {
+            inner.default = typeof zt._def.defaultValue === 'function' ? zt._def.defaultValue() : zt._def.defaultValue;
+        }
+        return inner;
+    }
+    if (zt.description) {
+        result.description = zt.description;
+    }
+    if (zodType instanceof z.ZodString) {
+        result.type = 'string';
+    }
+    else if (zodType instanceof z.ZodNumber) {
+        const c = zt._def.checks || [];
+        result.type = c.some?.((check) => check.kind === 'int') ? 'integer' : 'number';
+    }
+    else if (zodType instanceof z.ZodBoolean) {
+        result.type = 'boolean';
+    }
+    else if (zodType instanceof z.ZodArray) {
+        result.type = 'array';
+        result.items = zodTypeToJsonSchema(zt._def.element);
+    }
+    else if (zodType instanceof z.ZodEnum) {
+        result.type = 'string';
+        result.enum = zt._def?.entries ? Object.keys(zt._def.entries) : [];
+    }
+    else if (zodType instanceof z.ZodObject) {
+        return zodToJsonSchema(zt.shape);
+    }
+    else if (zodType instanceof z.ZodRecord) {
+        result.type = 'object';
+        if (zt._def?.valueType) {
+            result.additionalProperties = zodTypeToJsonSchema(zt._def.valueType);
+        }
+    }
+    else {
+        result.type = 'string';
+    }
+    return result;
+}
 /**
  * In-process MCP server exposing all OMC custom tools
  *
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
  */
-export const omcToolsServer = createSdkMcpServer({
-    name: "t",
-    version: "1.0.0",
-    tools: sdkTools
+export const omcToolsServer = new Server({ name: "t", version: "1.0.0" }, { capabilities: { tools: {} } });
+// List available tools
+omcToolsServer.setRequestHandler(ListToolsRequestSchema, async () => {
+    return {
+        tools: enabledTools.map(t => ({
+            name: t.name,
+            description: t.description,
+            inputSchema: zodToJsonSchema(t.schema),
+        })),
+    };
+});
+// Handle tool calls
+const setOmcCallToolRequestHandler = omcToolsServer.setRequestHandler.bind(omcToolsServer);
+setOmcCallToolRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: args } = request.params;
+    const foundTool = enabledTools.find(t => t.name === name);
+    if (!foundTool) {
+        return {
+            content: [{ type: 'text', text: `Unknown tool: ${name}` }],
+            isError: true,
+        };
+    }
+    try {
+        const result = await foundTool.handler((args ?? {}));
+        return {
+            content: result.content,
+            isError: result.isError ?? false,
+        };
+    }
+    catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        return {
+            content: [{ type: 'text', text: `Error: ${errorMessage}` }],
+            isError: true,
+        };
+    }
 });
 /**
  * Tool names in MCP format for allowedTools configuration.

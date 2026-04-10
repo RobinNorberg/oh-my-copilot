@@ -111,7 +111,7 @@ function makeRuntime(cwd: string, agentType: 'gemini' | 'codex' | 'claude'): Tea
 }
 
 function setupTaskDir(cwd: string): void {
-  const tasksDir = join(cwd, '.omg/state/team/test-team/tasks');
+  const tasksDir = join(cwd, '.omcp/state/team/test-team/tasks');
   mkdirSync(tasksDir, { recursive: true });
   writeFileSync(join(tasksDir, '1.json'), JSON.stringify({
     id: '1',
@@ -120,7 +120,7 @@ function setupTaskDir(cwd: string): void {
     status: 'pending',
     owner: null,
   }));
-  const workerDir = join(cwd, '.omg/state/team/test-team/workers/worker-1');
+  const workerDir = join(cwd, '.omcp/state/team/test-team/workers/worker-1');
   mkdirSync(workerDir, { recursive: true });
 }
 
@@ -150,7 +150,7 @@ describe('spawnWorkerForTask – prompt mode (Gemini & Codex)', () => {
     // Should contain -i flag for interactive mode
     expect(launchCmd).toContain("'-i'");
     // Should contain the inbox path reference
-    expect(launchCmd).toContain('.omg/state/team/test-team/workers/worker-1/inbox.md');
+    expect(launchCmd).toContain('.omcp/state/team/test-team/workers/worker-1/inbox.md');
 
     rmSync(cwd, { recursive: true, force: true });
   });
@@ -177,7 +177,7 @@ describe('spawnWorkerForTask – prompt mode (Gemini & Codex)', () => {
 
     await spawnWorkerForTask(runtime, 'worker-1', 0);
 
-    const inboxPath = join(cwd, '.omg/state/team/test-team/workers/worker-1/inbox.md');
+    const inboxPath = join(cwd, '.omcp/state/team/test-team/workers/worker-1/inbox.md');
     const content = readFileSync(inboxPath, 'utf-8');
     expect(content).toContain('Initial Task Assignment');
     expect(content).toContain('Test task');
@@ -201,7 +201,7 @@ describe('spawnWorkerForTask – prompt mode (Gemini & Codex)', () => {
     // Should NOT contain -i flag (codex uses positional argument, not a flag)
     expect(launchCmd).not.toContain("'-i'");
     // Should contain the inbox path as a positional argument
-    expect(launchCmd).toContain('.omg/state/team/test-team/workers/worker-1/inbox.md');
+    expect(launchCmd).toContain('.omcp/state/team/test-team/workers/worker-1/inbox.md');
 
     rmSync(cwd, { recursive: true, force: true });
   });
@@ -247,7 +247,7 @@ describe('spawnWorkerForTask – prompt mode (Gemini & Codex)', () => {
 
     await expect(spawnWorkerForTask(runtime, 'worker-1', 0)).rejects.toThrow('worker_pane_not_ready:worker-1');
 
-    const taskPath = join(cwd, '.omg/state/team/test-team/tasks/1.json');
+    const taskPath = join(cwd, '.omcp/state/team/test-team/tasks/1.json');
     const task = JSON.parse(readFileSync(taskPath, 'utf-8')) as { status: string; owner: string | null };
     expect(task.status).toBe('pending');
     expect(task.owner).toBeNull();
@@ -256,7 +256,7 @@ describe('spawnWorkerForTask – prompt mode (Gemini & Codex)', () => {
   });
 
   it('returns empty and skips spawn when task is already in_progress (claim already taken)', async () => {
-    const taskPath = join(cwd, '.omg/state/team/test-team/tasks/1.json');
+    const taskPath = join(cwd, '.omcp/state/team/test-team/tasks/1.json');
     writeFileSync(taskPath, JSON.stringify({
       id: '1',
       subject: 'Test task',

@@ -140,7 +140,7 @@ describe('State Poisoning Resilience', () => {
 
   beforeEach(() => {
     testDir = mkdtempSync(join(tmpdir(), 'security-test-'));
-    mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
+    mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
   });
 
   afterEach(() => {
@@ -149,7 +149,7 @@ describe('State Poisoning Resilience', () => {
 
   it('should return null for completely invalid JSON state', () => {
     writeFileSync(
-      join(testDir, '.omg', 'state', 'autopilot-state.json'),
+      join(testDir, '.omcp', 'state', 'autopilot-state.json'),
       'THIS IS NOT JSON {{{}}}'
     );
 
@@ -159,7 +159,7 @@ describe('State Poisoning Resilience', () => {
 
   it('should return null for empty string state file', () => {
     writeFileSync(
-      join(testDir, '.omg', 'state', 'autopilot-state.json'),
+      join(testDir, '.omcp', 'state', 'autopilot-state.json'),
       ''
     );
 
@@ -169,7 +169,7 @@ describe('State Poisoning Resilience', () => {
 
   it('should return null for truncated JSON state', () => {
     writeFileSync(
-      join(testDir, '.omg', 'state', 'autopilot-state.json'),
+      join(testDir, '.omcp', 'state', 'autopilot-state.json'),
       '{"active": true, "phase": "exec'
     );
 
@@ -179,7 +179,7 @@ describe('State Poisoning Resilience', () => {
 
   it('should return null for JSON array instead of object', () => {
     writeFileSync(
-      join(testDir, '.omg', 'state', 'autopilot-state.json'),
+      join(testDir, '.omcp', 'state', 'autopilot-state.json'),
       '[1, 2, 3]'
     );
 
@@ -193,7 +193,7 @@ describe('State Poisoning Resilience', () => {
 
   it('should return null for binary data state file', () => {
     writeFileSync(
-      join(testDir, '.omg', 'state', 'autopilot-state.json'),
+      join(testDir, '.omcp', 'state', 'autopilot-state.json'),
       Buffer.from([0x00, 0x01, 0x02, 0xFF, 0xFE])
     );
 
@@ -213,7 +213,7 @@ describe('State Poisoning Resilience', () => {
     }
 
     writeFileSync(
-      join(testDir, '.omg', 'state', 'autopilot-state.json'),
+      join(testDir, '.omcp', 'state', 'autopilot-state.json'),
       nested
     );
 
@@ -224,7 +224,7 @@ describe('State Poisoning Resilience', () => {
 
   it('should handle state file with null values', () => {
     writeFileSync(
-      join(testDir, '.omg', 'state', 'autopilot-state.json'),
+      join(testDir, '.omcp', 'state', 'autopilot-state.json'),
       JSON.stringify({
         active: null,
         phase: null,

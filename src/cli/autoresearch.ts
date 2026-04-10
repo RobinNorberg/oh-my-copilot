@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
+import { getHostCliBinary } from '../utils/host-detection.js';
 import {
   type AutoresearchKeepPolicy,
   loadAutoresearchMissionContract,
@@ -27,20 +28,20 @@ import { type AutoresearchSeedInputs } from './autoresearch-intake.js';
 
 const CLAUDE_BYPASS_FLAG = '--dangerously-skip-permissions';
 
-export const AUTORESEARCH_HELP = `omc autoresearch - Launch OMC autoresearch with thin-supervisor parity semantics
+export const AUTORESEARCH_HELP = `omcp autoresearch - Launch OMC autoresearch with thin-supervisor parity semantics
 
 Usage:
-  omc autoresearch                                                (detached Claude deep-interview setup session)
-  omc autoresearch [--topic T] [--evaluator CMD] [--keep-policy P] [--slug S]
-  omc autoresearch --mission TEXT --eval CMD [--keep-policy P] [--slug S]
-  omc autoresearch init [--topic T] [--eval CMD] [--keep-policy P] [--slug S]
-  omc autoresearch <mission-dir> [claude-args...]
-  omc autoresearch --resume <run-id> [claude-args...]
+  omcp autoresearch                                                (detached Claude deep-interview setup session)
+  omcp autoresearch [--topic T] [--evaluator CMD] [--keep-policy P] [--slug S]
+  omcp autoresearch --mission TEXT --eval CMD [--keep-policy P] [--slug S]
+  omcp autoresearch init [--topic T] [--eval CMD] [--keep-policy P] [--slug S]
+  omcp autoresearch <mission-dir> [claude-args...]
+  omcp autoresearch --resume <run-id> [claude-args...]
 
 Arguments:
   (no args)        Launches a detached Claude session and starts /deep-interview --autoresearch.
                    That interview lane should clarify the mission/evaluator, then launch direct
-                   execution via omc autoresearch --mission ... --eval ... from inside Claude.
+                   execution via omcp autoresearch --mission ... --eval ... from inside Claude.
   --topic/...      Seed the legacy guided intake with draft values; still requires
                    refinement/confirmation before launch.
   --mission/       Explicit bypass path. --mission is raw mission text and --eval is the raw
@@ -49,14 +50,14 @@ Arguments:
   init             Non-interactive mission scaffolding via flags (--topic, --eval, --slug;
                    optional --keep-policy).
   <mission-dir>    Directory inside a git repository containing mission.md and sandbox.md
-  <run-id>         Existing autoresearch run id from .omc/logs/autoresearch/<run-id>/manifest.json
+  <run-id>         Existing autoresearch run id from .omcp/logs/autoresearch/<run-id>/manifest.json
 
 Behavior:
-  - guided intake writes canonical artifacts under .omc/specs before launch when using --topic/--evaluator flow
+  - guided intake writes canonical artifacts under .omcp/specs before launch when using --topic/--evaluator flow
   - validates mission.md and sandbox.md
   - requires sandbox.md YAML frontmatter with evaluator.command and evaluator.format=json
   - fresh launch creates a run-tagged autoresearch/<slug>/<run-tag> lane
-  - supervisor records baseline, candidate, keep/discard/reset, and results artifacts under .omc/logs/autoresearch/
+  - supervisor records baseline, candidate, keep/discard/reset, and results artifacts under .omcp/logs/autoresearch/
   - --resume loads the authoritative per-run manifest and continues from the last kept commit
 `;
 
@@ -88,7 +89,7 @@ export function normalizeAutoresearchClaudeArgs(claudeArgs: readonly string[]): 
 function runAutoresearchTurn(worktreePath: string, instructionsFile: string, claudeArgs: string[]): void {
   const prompt = readFileSync(instructionsFile, 'utf-8');
   const launchArgs = ['--print', ...normalizeAutoresearchClaudeArgs(claudeArgs), '-p', prompt];
-  const result = spawnSync('claude', launchArgs, {
+  const result = spawnSync(getHostCliBinary(), launchArgs, {
     cwd: worktreePath,
     stdio: ['pipe', 'inherit', 'inherit'],
     encoding: 'utf-8',

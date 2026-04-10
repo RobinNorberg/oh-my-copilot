@@ -24,6 +24,14 @@ export interface AstToolDefinition<T extends z.ZodRawShape> {
         }>;
     }>;
 }
+export type AnyAstToolDefinition = AstToolDefinition<any> & {
+    handler: (args: any) => Promise<{
+        content: Array<{
+            type: "text";
+            text: string;
+        }>;
+    }>;
+};
 /**
  * Supported languages for AST analysis
  * Maps to ast-grep language identifiers
@@ -33,37 +41,13 @@ export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
 /**
  * AST Grep Search Tool - Find code patterns using AST matching
  */
-export declare const astGrepSearchTool: AstToolDefinition<{
-    pattern: z.ZodString;
-    language: z.ZodEnum<[string, ...string[]]>;
-    path: z.ZodOptional<z.ZodString>;
-    context: z.ZodOptional<z.ZodNumber>;
-    maxResults: z.ZodOptional<z.ZodNumber>;
-}>;
+export declare const astGrepSearchTool: AnyAstToolDefinition;
 /**
  * AST Grep Replace Tool - Replace code patterns using AST matching
  */
-export declare const astGrepReplaceTool: AstToolDefinition<{
-    pattern: z.ZodString;
-    replacement: z.ZodString;
-    language: z.ZodEnum<[string, ...string[]]>;
-    path: z.ZodOptional<z.ZodString>;
-    dryRun: z.ZodOptional<z.ZodBoolean>;
-}>;
+export declare const astGrepReplaceTool: AnyAstToolDefinition;
 /**
  * Get all AST tool definitions
  */
-export declare const astTools: (AstToolDefinition<{
-    pattern: z.ZodString;
-    language: z.ZodEnum<[string, ...string[]]>;
-    path: z.ZodOptional<z.ZodString>;
-    context: z.ZodOptional<z.ZodNumber>;
-    maxResults: z.ZodOptional<z.ZodNumber>;
-}> | AstToolDefinition<{
-    pattern: z.ZodString;
-    replacement: z.ZodString;
-    language: z.ZodEnum<[string, ...string[]]>;
-    path: z.ZodOptional<z.ZodString>;
-    dryRun: z.ZodOptional<z.ZodBoolean>;
-}>)[];
+export declare const astTools: AnyAstToolDefinition[];
 //# sourceMappingURL=ast-tools.d.ts.map

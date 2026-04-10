@@ -41,8 +41,8 @@ beforeEach(() => {
 
   mkdirSync(join(TEAMS_DIR, 'outbox'), { recursive: true });
   mkdirSync(TASKS_DIR, { recursive: true });
-  mkdirSync(join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
-  mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
+  mkdirSync(join(WORK_DIR, '.omcp', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
+  mkdirSync(join(WORK_DIR, '.omcp', 'state'), { recursive: true });
 });
 
 afterEach(() => {
@@ -56,7 +56,7 @@ afterEach(() => {
 });
 
 function writeWorkerRegistry(workers: McpWorkerMember[]): void {
-  const registryPath = join(WORK_DIR, '.omg', 'state', 'team-mcp-workers.json');
+  const registryPath = join(WORK_DIR, '.omcp', 'state', 'team-mcp-workers.json');
   atomicWriteJson(registryPath, { teamName: TEST_TEAM, workers });
 }
 
@@ -71,7 +71,7 @@ function makeWorker(name: string): McpWorkerMember {
     agentType: 'mcp-codex',
     model: 'test-model',
     joinedAt: Date.now(),
-    tmuxPaneId: `omc-team-${TEST_TEAM}-${name}`,
+    tmuxPaneId: `omcp-team-${TEST_TEAM}-${name}`,
     cwd: WORK_DIR,
     backendType: 'tmux',
     subscriptions: [],

@@ -1,6 +1,6 @@
 {
   "name": "oh-my-copilot",
-  "version": "4.11.4",
+  "version": "4.11.5",
   "description": "Multi-agent orchestration system for Copilot CLI - Inspired by oh-my-opencode",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +13,7 @@
   },
   "bin": {
     "oh-my-copilot": "bridge/cli.cjs",
-    "omc": "bridge/cli.cjs"
+    "omcp": "bridge/cli.cjs"
   },
   "files": [
     "dist",

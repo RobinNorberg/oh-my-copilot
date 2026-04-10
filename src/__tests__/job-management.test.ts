@@ -340,7 +340,7 @@ describe('job-management', () => {
 
       // Mock getPromptsDir to return different paths based on workingDirectory
       (getPromptsDir as any).mockImplementation((wd?: string) =>
-        wd ? `${wd}/.omg/prompts` : '/tmp/test-prompts'
+        wd ? `${wd}/.omcp/prompts` : '/tmp/test-prompts'
       );
       (fs.existsSync as any).mockReturnValue(true);
       (fs.readdirSync as any).mockReturnValue(['codex-status-test-slug-ab12cd34.json']);
@@ -442,7 +442,7 @@ describe('job-management', () => {
       // Mock getJobWorkingDir to return a cross-directory path
       (getJobWd as any).mockReturnValue('/other/project');
       (getPromptsDir as any).mockImplementation((wd?: string) =>
-        wd ? `${wd}/.omg/prompts` : '/tmp/test-prompts'
+        wd ? `${wd}/.omcp/prompts` : '/tmp/test-prompts'
       );
       (fs.existsSync as any).mockReturnValue(true);
       (fs.readdirSync as any).mockReturnValue(['codex-status-test-slug-ab12cd34.json']);

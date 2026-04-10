@@ -235,7 +235,7 @@ export function getContract(agentType: CliAgentType): CliAgentContract {
   if (agentType !== 'claude' && agentType !== 'copilot' && isExternalLLMDisabled()) {
     throw new Error(
       `External LLM provider "${agentType}" is blocked by security policy (disableExternalLLM). ` +
-      `Only Claude workers are allowed in the current security configuration.`
+      `Only Claude/Copilot workers are allowed in the current security configuration.`
     );
   }
   return contract;
@@ -399,8 +399,16 @@ export function getPromptModeArgs(agentType: CliAgentType, instruction: string):
   return [instruction];
 }
 
-export function resolveClaudeWorkerModel(): string | undefined {
-  const explicitModel = process.env.ANTHROPIC_MODEL || process.env.CLAUDE_MODEL;
+export function resolveClaudeWorkerModel(
+  env: NodeJS.ProcessEnv = process.env,
+): string | undefined {
+  // When force-inherit routing is enabled, do not resolve/override worker model.
+  // This preserves parent model inheritance and avoids alias normalization drift.
+  if (env.OMC_ROUTING_FORCE_INHERIT === 'true') {
+    return undefined;
+  }
+
+  const explicitModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL;
   if (explicitModel && isProviderSpecificModelId(explicitModel)) {
     return explicitModel;
   }

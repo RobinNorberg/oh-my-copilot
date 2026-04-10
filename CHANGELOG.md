@@ -2,6 +2,15 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## [4.11.5] - 2026-04-09
+
+### Fixed (ported from upstream oh-my-claudecode v4.11.4)
+- **Keyword detector: narrow false-positive suppression** — Added activation and diagnostic intent detection near keywords. Prompts like "ralph keeps looping" or "what is autopilot mode now?" no longer trigger skill invocations, while explicit requests like "use autopilot to fix bug" still activate correctly (#2411)
+- **Installer: portable hook command paths on Windows** — Windows hook commands now use bash-portable `${COPILOT_CONFIG_DIR:-$HOME/.copilot}` expansion instead of CMD-only `%USERPROFILE%` syntax (#2415)
+- **HUD: fallback to older built cache versions** — When the latest cached plugin version fails to import, the HUD wrapper now tries progressively older built versions before giving up (#2416)
+- **Team: preserve forceInherit by skipping worker model resolution** — When `OMC_ROUTING_FORCE_INHERIT=true`, worker model resolution is skipped to preserve parent model inheritance (#2418)
+- **Preemptive compaction: fallback to hook context window usage** — When transcript lacks context_window fields, the hook now falls back to `context_window.used_percentage` or token-based calculation from hook input (#2412)
+
 ## [4.11.4] - 2026-04-09
 
 ### Fixed (ported from upstream oh-my-claudecode v4.11.3)
@@ -27,7 +36,7 @@ All notable changes to oh-my-copilot will be documented in this file.
 - **HUD session summary element**: AI-generated session summary (<20 chars) displayed in HUD, opt-in via `sessionSummary: true`
 - **Skill resources guidance**: Bundled skill resources discovery and rendering for better skill context
 - **MCP standalone shutdown handler**: Parent-PID polling and signal-based shutdown for orphaned MCP servers
-- **CLI commands**: `omc autoresearch`, `omc ralphthon`, HUD watch loop extraction
+- **CLI commands**: `omcp autoresearch`, `omcp ralphthon`, HUD watch loop extraction
 - **Deepsearch magic keyword**: Enhanced codebase search mode with parallel agent orchestration
 - **cmux multiplexer support**: Team sessions can now launch from cmux surfaces alongside tmux
 
@@ -60,18 +69,18 @@ All notable changes to oh-my-copilot will be documented in this file.
 
 ### Added
 - **Complexity-first phase selection**: Heuristic classifier (`src/hooks/complexity-classifier/`) classifies tasks as SIMPLE/STANDARD/COMPLEX before autopilot/ralplan runs planning. SIMPLE skips planning phases, COMPLEX adds Critic review. AI fallback model configurable via `/omc-setup` (defaults to haiku).
-- **Circular fix detection**: Error hash tracking (`src/hooks/circular-fix-detector/`) detects when the same error recurs 3+ times in ultraqa/ralph QA loops. Generates structured escalation report at `.omc/escalation-report.md` instead of retrying endlessly.
+- **Circular fix detection**: Error hash tracking (`src/hooks/circular-fix-detector/`) detects when the same error recurs 3+ times in ultraqa/ralph QA loops. Generates structured escalation report at `.omcp/escalation-report.md` instead of retrying endlessly.
 - **Stagger delay for parallel launches**: Advisory stagger hook (`src/hooks/stagger-launch/`) injects 1-second delay guidance between rapid-fire agent launches in ultrawork to prevent thundering herd rate limits. Configurable via `stagger_delay_ms` on UltraworkState.
 - **Structured recovery manager**: Orchestration-level failure classification (`src/hooks/recovery/orchestration-recovery.ts`) with mapped recovery actions (retry, retry with backoff, skip, escalate). Per-task attempt tracking with 2-hour rolling window. Integrates with circular fix detector for escalation path.
 - **Multi-pass deep review** (`/deep-review`): New skill that runs 3 parallel review passes (Security, Quality, Structural) followed by a validation pass that confirms/dismisses findings. Also accessible via `--deep` flag on code-reviewer agent.
 - **Context accumulation between phases**: Hook (`src/hooks/context-accumulator/`) captures key outputs after each autopilot phase or ralph story and injects them into the next phase's agent prompt as `<prior-phase-context>`. Truncated to 12KB per phase, session-scoped.
-- **Ideation/discovery skill** (`/discover`): Spawns 6 parallel specialist agents (Security, Quality, Tests, Performance, Documentation, Architecture) to scan a codebase and produce a prioritized improvement backlog at `.omc/discover/backlog.md`. Supports scoping to subdirectories.
+- **Ideation/discovery skill** (`/discover`): Spawns 6 parallel specialist agents (Security, Quality, Tests, Performance, Documentation, Architecture) to scan a codebase and produce a prioritized improvement backlog at `.omcp/discover/backlog.md`. Supports scoping to subdirectories.
 - **Semantic merge resolution**: Extended git-master agent with `<Merge_Conflict_Resolution>` protocol for AI-assisted merge conflict resolution — reads full file context, resolves semantically, verifies with build/tests.
 
 ## [4.8.2-preview.3] - 2026-03-18
 
 ### Added
-- Claude Code CLI as a supported team worker provider (`omc team N:claude "..."`)
+- Claude Code CLI as a supported team worker provider (`omcp team N:claude "..."`)
 - `ralph-experiment` skill documented in README and copilot-instructions
 - Hierarchical docs/ structure (get-started, guides, reference, architecture, migration)
 - `docs/index.md` as documentation table of contents

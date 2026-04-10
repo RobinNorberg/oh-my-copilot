@@ -2,15 +2,15 @@
 name: omc-ado-setup
 description: >
   Configure Azure DevOps integration for the current project.
-  WHEN: User wants to set up ADO integration, connect a project to Azure DevOps, configure .omg/config.json for ADO, or troubleshoot ADO connection issues.
+  WHEN: User wants to set up ADO integration, connect a project to Azure DevOps, configure .omcp/config.json for ADO, or troubleshoot ADO connection issues.
   DO NOT USE FOR: Work item triage (use omc-ado-triage), sprint planning (use omc-ado-sprint), PR review (use omc-ado-review), or Azure cloud service configuration (use azure-skills plugin).
 role: config-writer
-scope: .omg/**
+scope: .omcp/**
 ---
 
 # OMC ADO Setup
 
-Configure Azure DevOps integration for the current project. Detects the ADO org and project from the git remote URL, verifies authentication, and writes `.omg/config.json` with all required settings.
+Configure Azure DevOps integration for the current project. Detects the ADO org and project from the git remote URL, verifies authentication, and writes `.omcp/config.json` with all required settings.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -84,10 +84,10 @@ If no ADO remote is detected, inform the user and ask whether they want to confi
 
 ## Step 2: Probe Existing Configuration
 
-Check if `.omg/config.json` already exists:
+Check if `.omcp/config.json` already exists:
 
 ```bash
-cat .omg/config.json 2>/dev/null || echo "NOT_FOUND"
+cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
 ```
 
 If it exists and contains `ado` settings, ask the user whether to update or keep the existing configuration (use AskUserQuestion).
@@ -145,17 +145,17 @@ Default: `{project}` (root iteration, i.e. no sprint filter).
 
 ---
 
-## Step 5: Write `.omg/config.json`
+## Step 5: Write `.omcp/config.json`
 
 Create or update the config file. Preserve any existing non-ADO keys.
 
-First, ensure the `.omg/` directory exists:
+First, ensure the `.omcp/` directory exists:
 
 ```bash
-mkdir -p .omg
+mkdir -p .omcp
 ```
 
-Write `.omg/config.json` using the Write (or Edit) tool. The schema is:
+Write `.omcp/config.json` using the Write (or Edit) tool. The schema is:
 
 ```json
 {
@@ -228,7 +228,7 @@ Repository   : {repo}
 Work Item Type: {workItemType}
 Area Path    : {areaPath}
 Iteration    : {iterationPath}
-Config file  : .omg/config.json
+Config file  : .omcp/config.json
 
 Next steps:
   /oh-my-copilot:omc-ado-triage   — run a full triage of work items and PRs

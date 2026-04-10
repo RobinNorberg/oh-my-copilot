@@ -14,7 +14,7 @@ import { getSessionStartTime, recordSessionMetrics, type SessionEndInput } from 
 let tmpDir: string;
 
 function stateDir(): string {
-  return path.join(tmpDir, '.omg', 'state');
+  return path.join(tmpDir, '.omcp', 'state');
 }
 
 function writeState(filename: string, state: Record<string, unknown>): void {

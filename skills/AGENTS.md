@@ -58,7 +58,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 
 | File | Skill | Purpose |
 |-----------|-------|---------|
-| `ccg/SKILL.md` | ccg | Quadri-model orchestration — Claude, Codex, Gemini provide independent analysis, Copilot synthesizes |
+| `c3g/SKILL.md` | c3g | Quadri-model orchestration — Claude, Codex, Gemini provide independent analysis, Copilot synthesizes |
 | `omc-teams/SKILL.md` | omc-teams | CLI-team runtime for claude, codex, or gemini workers in tmux panes |
 | `omc-reference/SKILL.md` | omc-reference | OMC agent catalog, tools, team pipeline routing, commit protocol, and skills registry |
 
@@ -94,7 +94,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
 | `learner/SKILL.md` | learner | Extract reusable skill from session |
-| `ask/SKILL.md` | ask | Ask Copilot, Codex, or Gemini via `omc ask` and capture an artifact |
+| `ask/SKILL.md` | ask | Ask Copilot, Codex, or Gemini via `omcp ask` and capture an artifact |
 | `cancel/SKILL.md` | cancel | Cancel any active OMC mode |
 | `omc-doctor/SKILL.md` | omc-doctor | Diagnose installation issues |
 | `setup/SKILL.md` | setup | Unified setup entrypoint for install, diagnostics, and MCP configuration |
@@ -121,7 +121,7 @@ All plugin MCP tools use a **three-tier auto-approval system** so agents can ope
 
 Safe bash patterns (git, npm, dotnet, gh, az, grep, find, ls) are auto-approved by the `permissionRequest` hook. Shell metacharacters are always rejected.
 
-Deny escalation: 3 consecutive or 20 total denials stops the session. All decisions are audit-logged to `.omc/logs/permissions.log`.
+Deny escalation: 3 consecutive or 20 total denials stops the session. All decisions are audit-logged to `.omcp/logs/permissions.log`.
 
 See [permission architecture](../docs/architecture/permissions.md) for details.
 
@@ -227,7 +227,7 @@ None - pure markdown files.
 | Planning | omc-plan, ralplan, deep-interview, deep-dive | "ralplan", "deep-interview", "ouroboros" |
 | Analysis | deep-review, discover | "code review", "security review" |
 | Exploration | deepinit, sciomc, external-context | "deepsearch", "deep-analyze" |
-| Orchestration | ccg, omc-teams, omc-reference | "ccg", "ask codex", "ask gemini" |
+| Orchestration | c3g, omc-teams, omc-reference | "c3g", "ask codex", "ask gemini", "ask claude" |
 | Visual | visual-verdict | screenshot QA |
 | Cleanup | ai-slop-cleaner | "deslop", "anti-slop" |
 | Azure DevOps | omc-ado-setup, omc-ado-review, omc-ado-auto-review, omc-ado-sprint, omc-ado-triage | "ado setup", "ado triage" |

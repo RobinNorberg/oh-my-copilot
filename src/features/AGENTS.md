@@ -81,7 +81,7 @@ if (hasBoulder()) {
 }
 ```
 
-**State location:** `.omg/state/boulder.json`
+**State location:** `.omcp/state/boulder.json`
 
 #### Verification Protocol
 
@@ -113,7 +113,7 @@ addLearning('my-plan', 'The API requires auth headers');
 addDecision('my-plan', 'Using JWT for authentication');
 ```
 
-**Location:** `.omg/notepads/{plan-name}/`
+**Location:** `.omcp/notepads/{plan-name}/`
 
 #### Delegation Categories
 
@@ -175,14 +175,14 @@ npm test -- --grep "features"
 | Feature | Purpose | State Location |
 |---------|---------|----------------|
 | model-routing | Smart model selection | N/A (stateless) |
-| boulder-state | Plan progress tracking | `.omg/state/boulder.json` |
+| boulder-state | Plan progress tracking | `.omcp/state/boulder.json` |
 | verification | Evidence-based verification | In-memory |
-| notepad-wisdom | Knowledge capture | `.omg/notepads/` |
+| notepad-wisdom | Knowledge capture | `.omcp/notepads/` |
 | delegation-categories | Task categorization | N/A (stateless) |
 | task-decomposer | Parallelization | In-memory |
-| state-manager | File path standardization | `.omg/state/`, `~/.omg/state/` |
+| state-manager | File path standardization | `.omcp/state/`, `~/.omcp/state/` |
 | context-injector | Prompt enhancement | In-memory |
 | background-agent | Concurrency control | In-memory |
-| rate-limit-wait | Rate limit handling | `.omg/state/rate-limits.json` |
+| rate-limit-wait | Rate limit handling | `.omcp/state/rate-limits.json` |
 
 <!-- MANUAL: -->

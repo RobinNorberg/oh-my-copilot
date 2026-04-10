@@ -12,7 +12,7 @@ describe('team-ops teamUpdateTask locking', () => {
   const teamName = 'update-lock-test-team';
 
   function setupTeam(dir: string, tid: string) {
-    const root = join(dir, '.omg', 'state', 'team', teamName);
+    const root = join(dir, '.omcp', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     writeFileSync(join(root, 'config.json'), JSON.stringify({
       name: teamName,

@@ -83,9 +83,9 @@ omc-analytics cleanup --retention 60  # Keep 60 days instead of default 30
 ## Data Storage
 
 Analytics data is stored in:
-- `~/.omg/analytics/tokens/` - Token usage logs
-- `~/.omg/analytics/sessions/` - Session history
-- `~/.omg/analytics/metrics/` - Performance metrics
+- `~/.omcp/analytics/tokens/` - Token usage logs
+- `~/.omcp/analytics/sessions/` - Session history
+- `~/.omcp/analytics/metrics/` - Performance metrics
 
 ## JSON Output
 

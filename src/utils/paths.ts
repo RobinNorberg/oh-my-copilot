@@ -89,7 +89,7 @@ function getUserHomeDir(): string {
  * Legacy global OMC directory under the user's home directory.
  */
 export function getLegacyOmcDir(): string {
-  return join(getUserHomeDir(), '.omc');
+  return join(getUserHomeDir(), '.omcp');
 }
 
 /**

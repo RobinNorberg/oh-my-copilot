@@ -10,7 +10,7 @@ triggers:
 pipeline: [deep-dive, omc-plan, autopilot]
 next-skill: omc-plan
 next-skill-args: --consensus --direct
-handoff: .omc/specs/deep-dive-{slug}.md
+handoff: .omcp/specs/deep-dive-{slug}.md
 ---
 
 <Purpose>
@@ -142,7 +142,7 @@ Use **Claude built-in team mode** to run 3 parallel tracer lanes:
 
 ### Trace Output Structure
 
-Save to `.omc/specs/deep-dive-trace-{slug}.md`:
+Save to `.omcp/specs/deep-dive-trace-{slug}.md`:
 
 ```markdown
 # Deep Dive Trace: {slug}
@@ -190,7 +190,7 @@ Save to `.omc/specs/deep-dive-trace-{slug}.md`:
 ```
 
 After saving:
-- Persist `trace_path` in state: `state_write` with `state.trace_path = ".omc/specs/deep-dive-trace-{slug}.md"`
+- Persist `trace_path` in state: `state_write` with `state.trace_path = ".omcp/specs/deep-dive-trace-{slug}.md"`
 - Update `current_phase: "trace-complete"`
 
 ## Phase 4: Interview with Trace Injection
@@ -253,8 +253,8 @@ When ambiguity ≤ threshold (default 0.2), generate the spec in **standard deep
 
 - All standard sections: Goal, Constraints, Non-Goals, Acceptance Criteria, Assumptions Exposed, Technical Context, Ontology, Ontology Convergence, Interview Transcript
 - **Additional section: "Trace Findings"** — summarizes the trace results (most likely explanation, per-lane critical unknowns resolved, evidence that shaped the interview)
-- Save to `.omc/specs/deep-dive-{slug}.md`
-- Persist `spec_path` in state: `state_write` with `state.spec_path = ".omc/specs/deep-dive-{slug}.md"`
+- Save to `.omcp/specs/deep-dive-{slug}.md`
+- Persist `spec_path` in state: `state_write` with `state.spec_path = ".omcp/specs/deep-dive-{slug}.md"`
 - Update `current_phase: "spec-complete"`
 
 ## Phase 5: Execution Bridge
@@ -269,7 +269,7 @@ Present execution options via `AskUserQuestion`:
 
 1. **Ralplan → Autopilot (Recommended)**
    - Description: "3-stage pipeline: consensus-refine this spec with Planner/Architect/Critic, then execute with full autopilot. Maximum quality."
-   - Action: Invoke `Skill("oh-my-copilot:omc-plan")` with `--consensus --direct` flags and the spec file path (`spec_path` from state) as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep-dive interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omc/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
+   - Action: Invoke `Skill("oh-my-copilot:omc-plan")` with `--consensus --direct` flags and the spec file path (`spec_path` from state) as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep-dive interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omcp/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
    - Pipeline: `deep-dive spec → omc-plan --consensus --direct → autopilot execution`
 
 2. **Execute with autopilot (skip ralplan)**
@@ -312,7 +312,7 @@ Output: spec.md            Output: consensus-plan.md        Output: working code
 - Use Claude built-in team mode for 3 parallel tracer lanes (Phase 3)
 - Use `state_write(mode="deep-interview")` with `state.source = "deep-dive"` for all state persistence
 - Use `state_read(mode="deep-interview")` for resume — check `state.source === "deep-dive"` to distinguish
-- Use `Write` tool to save trace result and final spec to `.omc/specs/`
+- Use `Write` tool to save trace result and final spec to `.omcp/specs/`
 - Use `Skill()` to bridge to execution modes (Phase 5) — never implement directly
 - Wrap all trace-derived text in `<trace-context>` delimiters when injecting into prompts
 </Tool_Usage>
@@ -407,12 +407,12 @@ Why bad: Duplicates deep-interview's behavioral contract. These values should be
 - [ ] Phase 1 detects brownfield/greenfield and generates 3 hypotheses
 - [ ] Phase 2 confirms hypotheses via AskUserQuestion (1 round)
 - [ ] Phase 3 runs trace with 3 parallel lanes (team mode, sequential fallback)
-- [ ] Phase 3 saves trace result to `.omc/specs/deep-dive-trace-{slug}.md` with per-lane critical unknowns
+- [ ] Phase 3 saves trace result to `.omcp/specs/deep-dive-trace-{slug}.md` with per-lane critical unknowns
 - [ ] Phase 4 starts with 3-point injection (initial_idea, codebase_context, question_queue from per-lane unknowns)
 - [ ] Phase 4 references deep-interview SKILL.md Phases 2-4 (not duplicated inline)
 - [ ] Phase 4 handles low-confidence trace gracefully
 - [ ] Phase 4 wraps trace-derived text in `<trace-context>` delimiters (untrusted data guard)
-- [ ] Final spec saved to `.omc/specs/deep-dive-{slug}.md` in standard deep-interview format
+- [ ] Final spec saved to `.omcp/specs/deep-dive-{slug}.md` in standard deep-interview format
 - [ ] Final spec contains "Trace Findings" section
 - [ ] Phase 5 execution bridge passes spec_path explicitly to downstream skills
 - [ ] Phase 5 "Ralplan → Autopilot" option explicitly invokes autopilot after omc-plan consensus completes
@@ -445,16 +445,16 @@ If interrupted, run `/deep-dive` again. The skill reads state from `state_read(m
 
 ## Integration with Existing Pipeline
 
-Deep-dive's output (`.omc/specs/deep-dive-{slug}.md`) feeds into the standard omc pipeline:
+Deep-dive's output (`.omcp/specs/deep-dive-{slug}.md`) feeds into the standard omc pipeline:
 
 ```
 /deep-dive "problem"
   → Trace (3 parallel lanes) + Interview (Socratic Q&A)
-  → Spec: .omc/specs/deep-dive-{slug}.md
+  → Spec: .omcp/specs/deep-dive-{slug}.md
 
   → /omc-plan --consensus --direct (spec as input)
     → Planner/Architect/Critic consensus
-    → Plan: .omc/plans/ralplan-*.md
+    → Plan: .omcp/plans/ralplan-*.md
 
   → /autopilot (plan as input, skip Phase 0+1)
     → Execution → QA → Validation

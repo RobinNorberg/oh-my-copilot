@@ -30,7 +30,7 @@ describe('Shared Memory', () => {
 
   beforeEach(() => {
     testDir = join(tmpdir(), `shared-memory-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    omcDir = join(testDir, '.omg');
+    omcDir = join(testDir, '.omcp');
     mkdirSync(omcDir, { recursive: true });
     mockGetOmcRoot.mockReturnValue(omcDir);
   });

@@ -25,7 +25,7 @@ describe('watchdog done.json parsing recovery', () => {
   it('marks task completed when done.json is briefly malformed before pane-dead check', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-done-recovery-'));
     const teamName = 'done-recovery-team';
-    const root = join(cwd, '.omg', 'state', 'team', teamName);
+    const root = join(cwd, '.omcp', 'state', 'team', teamName);
     const tasksDir = join(root, 'tasks');
     const workerDir = join(root, 'workers', 'worker-1');
     const donePath = join(workerDir, 'done.json');
@@ -50,7 +50,7 @@ describe('watchdog done.json parsing recovery', () => {
 
     const runtime: TeamRuntime = {
       teamName,
-      sessionName: 'omc-team-test',
+      sessionName: 'omcp-team-test',
       leaderPaneId: '%0',
       ownsWindow: false,
       config: {

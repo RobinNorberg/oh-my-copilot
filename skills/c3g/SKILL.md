@@ -1,16 +1,16 @@
 ---
-name: ccg
+name: c3g
 description: Quadri-model orchestration — Claude, Codex, and Gemini provide independent analysis, Copilot synthesizes
 ---
 
-# CCG - Quadri-Model Orchestration
+# C3G - Copilot-Claude-Codex-Gemini Orchestration
 
-CCG fans out to three external models (Claude, Codex, Gemini) for independent analysis, then Copilot synthesizes all perspectives into one unified answer.
+C3G (3 C's + G) fans out to three external models (Claude, Codex, Gemini) for independent analysis, then Copilot synthesizes all perspectives into one unified answer.
 
 Four models participate:
-1. **Claude** — independent analysis via `omc ask claude`
-2. **Codex** — independent analysis via `omc ask codex`
-3. **Gemini** — independent analysis via `omc ask gemini`
+1. **Claude** — independent analysis via `omcp ask claude`
+2. **Codex** — independent analysis via `omcp ask codex`
+3. **Gemini** — independent analysis via `omcp ask gemini`
 4. **Copilot** — orchestrator, reads all three responses and produces the synthesis
 
 Use this when you want parallel external perspectives without launching tmux team workers.
@@ -27,7 +27,7 @@ Use this when you want parallel external perspectives without launching tmux tea
 - **Claude Code**: `npm install -g @anthropic-ai/claude-code`
 - **Codex CLI**: `npm install -g @openai/codex`
 - **Gemini CLI**: `npm install -g @google/gemini-cli`
-- `omc ask` command available
+- `omcp ask` command available
 - If any CLI is unavailable, continue with whichever providers are available and note the limitation
 
 ## How It Works
@@ -39,11 +39,11 @@ Use this when you want parallel external perspectives without launching tmux tea
    - Gemini prompt (UX/design, alternatives, docs, usability)
 
 2. Copilot runs all three via CLI in parallel:
-   - `omc ask claude "<claude prompt>"`
-   - `omc ask codex "<codex prompt>"`
-   - `omc ask gemini "<gemini prompt>"`
+   - `omcp ask claude "<claude prompt>"`
+   - `omcp ask codex "<codex prompt>"`
+   - `omcp ask gemini "<gemini prompt>"`
 
-3. Artifacts are written under `.omg/artifacts/ask/`
+3. Artifacts are written under `.omcp/artifacts/ask/`
 
 4. Copilot reads all three outputs and synthesizes into one final response
 ```
@@ -67,9 +67,9 @@ Split the user request into:
 Run all three advisors in parallel:
 
 ```bash
-omc ask claude "<claude prompt>"
-omc ask codex "<codex prompt>"
-omc ask gemini "<gemini prompt>"
+omcp ask claude "<claude prompt>"
+omcp ask codex "<codex prompt>"
+omcp ask gemini "<gemini prompt>"
 ```
 
 ### 3. Collect artifacts
@@ -77,9 +77,9 @@ omc ask gemini "<gemini prompt>"
 Read latest ask artifacts from:
 
 ```text
-.omg/artifacts/ask/claude-*.md
-.omg/artifacts/ask/codex-*.md
-.omg/artifacts/ask/gemini-*.md
+.omcp/artifacts/ask/claude-*.md
+.omcp/artifacts/ask/codex-*.md
+.omcp/artifacts/ask/gemini-*.md
 ```
 
 ### 4. Synthesize
@@ -101,16 +101,16 @@ If one or two providers are unavailable:
 
 If all three unavailable:
 
-- Fall back to Copilot-only answer and state CCG external advisors were unavailable
+- Fall back to Copilot-only answer and state C3G external advisors were unavailable
 
 ## Invocation
 
 ```bash
-/oh-my-copilot:ccg <task description>
+/oh-my-copilot:c3g <task description>
 ```
 
 Example:
 
 ```bash
-/oh-my-copilot:ccg Review this PR for security, architecture, and UX concerns
+/oh-my-copilot:c3g Review this PR for security, architecture, and UX concerns
 ```

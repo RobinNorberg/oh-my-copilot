@@ -242,7 +242,7 @@ Challenge modes are used ONCE each, then return to normal Socratic questioning. 
 When ambiguity ≤ threshold (or hard cap / early exit):
 
 1. **Generate the specification** using opus model with the full interview transcript
-2. **Write to file**: `.omg/specs/deep-interview-{slug}.md`
+2. **Write to file**: `.omcp/specs/deep-interview-{slug}.md`
 
 Spec structure:
 
@@ -335,7 +335,7 @@ After the spec is written, present execution options via `AskUserQuestion`:
 
 1. **Ralplan → Autopilot (Recommended)**
    - Description: "3-stage pipeline: consensus-refine this spec with Planner/Architect/Critic, then execute with full autopilot. Maximum quality."
-   - Action: Invoke `Skill("oh-my-copilot:omc-plan")` with `--consensus --direct` flags and the spec file path as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omg/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
+   - Action: Invoke `Skill("oh-my-copilot:omc-plan")` with `--consensus --direct` flags and the spec file path as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omcp/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
    - Pipeline: `deep-interview spec → omc-plan --consensus --direct → autopilot execution`
 
 2. **Execute with autopilot (skip ralplan)**
@@ -387,7 +387,7 @@ Skipping any stage is possible but reduces quality assurance:
 - Use `Task(subagent_type="oh-my-copilot:explore", model="haiku")` for brownfield codebase exploration (run BEFORE asking user about codebase)
 - Use opus model (temperature 0.1) for ambiguity scoring — consistency is critical
 - Use `state_write` / `state_read` for interview state persistence
-- Use `Write` tool to save the final spec to `.omg/specs/`
+- Use `Write` tool to save the final spec to `.omcp/specs/`
 - Use `Skill()` to bridge to execution modes — never implement directly
 - Challenge agent modes are prompt injections, not separate agent spawns
 </Tool_Usage>
@@ -508,7 +508,7 @@ Why bad: 45% ambiguity means nearly half the requirements are unclear. The mathe
 - [ ] Ambiguity score displayed after every round
 - [ ] Every round explicitly names the weakest dimension and why it is the next target
 - [ ] Challenge agents activated at correct thresholds (round 4, 6, 8)
-- [ ] Spec file written to `.omg/specs/deep-interview-{slug}.md`
+- [ ] Spec file written to `.omcp/specs/deep-interview-{slug}.md`
 - [ ] Spec includes: goal, constraints, acceptance criteria, clarity breakdown, transcript
 - [ ] Execution bridge presented via AskUserQuestion
 - [ ] Selected execution mode invoked via Skill() (never direct implementation)
@@ -544,7 +544,7 @@ Optional settings in `.copilot/settings.json`:
 
 ## Resume
 
-If interrupted, run `/deep-interview` again. The skill reads state from `.omg/state/deep-interview-state.json` and resumes from the last completed round.
+If interrupted, run `/deep-interview` again. The skill reads state from `.omcp/state/deep-interview-state.json` and resumes from the last completed round.
 
 ## Integration with Autopilot
 
@@ -565,14 +565,14 @@ The recommended execution path chains three quality gates:
 ```
 /deep-interview "vague idea"
   → Socratic Q&A until ambiguity ≤ 20%
-  → Spec written to .omg/specs/deep-interview-{slug}.md
+  → Spec written to .omcp/specs/deep-interview-{slug}.md
   → User selects "Ralplan → Autopilot"
   → /omc-plan --consensus --direct (spec as input, skip interview)
     → Planner creates implementation plan from spec
     → Architect reviews for architectural soundness
     → Critic validates quality and testability
     → Loop until consensus (max 5 iterations)
-    → Consensus plan written to .omg/plans/
+    → Consensus plan written to .omcp/plans/
   → /autopilot (plan as input, skip Phase 0+1)
     → Phase 2: Parallel execution via Ralph + Ultrawork
     → Phase 3: QA cycling until tests pass

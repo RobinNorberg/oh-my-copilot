@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 
 /** Storage directory for directory-readme-injector state */
-export const OMC_STORAGE_DIR = join(homedir(), '.omg');
+export const OMC_STORAGE_DIR = join(homedir(), '.omcp');
 export const README_INJECTOR_STORAGE = join(
   OMC_STORAGE_DIR,
   'directory-readme',

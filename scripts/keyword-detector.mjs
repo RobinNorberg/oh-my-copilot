@@ -11,7 +11,7 @@
  * 3. autopilot: Full autonomous execution
  * 4. team: Explicit-only via /team (not auto-triggered)
  * 5. ultrawork/ulw: Maximum parallel execution
- * 5. ccg: Copilot-Codex-Gemini tri-model orchestration
+ * 5. c3g: Copilot-Claude-Codex-Gemini quad-model orchestration
  * 6. ralplan: Iterative planning with consensus
  * 7. deep interview: Socratic interview workflow
  * 8. ai-slop-cleaner: Cleanup/deslop anti-slop workflow
@@ -167,6 +167,75 @@ function sanitizeForKeywordDetection(text) {
     .replace(/`[^`]+`/g, '');
 }
 
+// Informational intent patterns — prompts that ask "what is X" should not trigger skills
+const INFORMATIONAL_INTENT_PATTERNS = [
+  /\bwhat\s+is\b/i,
+  /\bwhat\s+are\b/i,
+  /\bhow\s+does\b/i,
+  /\bhow\s+do\b/i,
+  /\bexplain\b/i,
+  /\bdescribe\b/i,
+  /\btell\s+me\s+about\b/i,
+  /\bcan\s+you\s+explain\b/i,
+  /\bwhat\s+.*\bmode\s+now\b/i,
+];
+const INFORMATIONAL_CONTEXT_WINDOW = 80;
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasActivationIntentNearKeyword(context, keyword) {
+  const escaped = escapeRegExp((keyword || '').trim());
+  if (!escaped) return false;
+
+  const patterns = [
+    new RegExp(`\\b(?:use|run|start|enable|activate|invoke|trigger|launch)\\b[^\\n]{0,28}\\b${escaped}\\b`, 'i'),
+    new RegExp(`\\b(?:fix|debug|investigate|resolve|handle|patch|address)\\b[^\\n]{0,28}\\b(?:issue|bug|problem|error)\\b[^\\n]{0,12}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
+  ];
+
+  return patterns.some((pattern) => pattern.test(context));
+}
+
+function hasDiagnosticIntentNearKeyword(context, keyword) {
+  const escaped = escapeRegExp((keyword || '').trim());
+  if (!escaped) return false;
+
+  const patterns = [
+    new RegExp(`\\b${escaped}\\b[^\\n]{0,48}\\b(?:keeps?\\s+(?:looping|re-?running)|has\\s+(?:a\\s+)?(?:bug|issue|problem|error)|is\\s+(?:stuck|broken|failing)|loop(?:ing)?)\\b`, 'i'),
+    new RegExp(`\\b(?:bug|issue|problem|error)\\b[^\\n]{0,16}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
+  ];
+
+  return patterns.some((pattern) => pattern.test(context));
+}
+
+function isInformationalKeywordContext(text, position, keywordLength, keywordText) {
+  const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
+  const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
+  const context = text.slice(start, end);
+
+  if (keywordText) {
+    if (hasActivationIntentNearKeyword(context, keywordText)) {
+      return false;
+    }
+    if (hasDiagnosticIntentNearKeyword(context, keywordText)) {
+      return true;
+    }
+  }
+
+  return INFORMATIONAL_INTENT_PATTERNS.some((pattern) => pattern.test(context));
+}
+
+/**
+ * Check if a keyword match at a given position is actionable (not informational).
+ */
+function isActionableKeywordAtPosition(text, pattern) {
+  const match = text.match(pattern);
+  if (!match || match.index === undefined) return false;
+  if (isInformationalKeywordContext(text, match.index, match[0].length, match[0])) return false;
+  return true;
+}
+
 // Create state file for a mode
 function activateState(directory, prompt, stateName, sessionId) {
   const state = {
@@ -182,7 +251,7 @@ function activateState(directory, prompt, stateName, sessionId) {
 
   // Write to session-scoped path if sessionId available
   if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-    const sessionDir = join(directory, '.omg', 'state', 'sessions', sessionId);
+    const sessionDir = join(directory, '.omcp', 'state', 'sessions', sessionId);
     if (!existsSync(sessionDir)) {
       try { mkdirSync(sessionDir, { recursive: true }); } catch {}
     }
@@ -190,8 +259,8 @@ function activateState(directory, prompt, stateName, sessionId) {
     return; // Session-only write, skip legacy
   }
 
-  // Fallback: write to legacy local .omg/state directory (no valid sessionId)
-  const localDir = join(directory, '.omg', 'state');
+  // Fallback: write to legacy local .omcp/state directory (no valid sessionId)
+  const localDir = join(directory, '.omcp', 'state');
   if (!existsSync(localDir)) {
     try { mkdirSync(localDir, { recursive: true }); } catch {}
   }
@@ -203,13 +272,13 @@ function activateState(directory, prompt, stateName, sessionId) {
  */
 function clearStateFiles(directory, modeNames, sessionId) {
   for (const name of modeNames) {
-    const localPath = join(directory, '.omg', 'state', `${name}-state.json`);
-    const globalPath = join(homedir(), '.omg', 'state', `${name}-state.json`);
+    const localPath = join(directory, '.omcp', 'state', `${name}-state.json`);
+    const globalPath = join(homedir(), '.omcp', 'state', `${name}-state.json`);
     try { if (existsSync(localPath)) unlinkSync(localPath); } catch {}
     try { if (existsSync(globalPath)) unlinkSync(globalPath); } catch {}
     // Clear session-scoped file too
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      const sessionPath = join(directory, '.omg', 'state', 'sessions', sessionId, `${name}-state.json`);
+      const sessionPath = join(directory, '.omcp', 'state', 'sessions', sessionId, `${name}-state.json`);
       try { if (existsSync(sessionPath)) unlinkSync(sessionPath); } catch {}
     }
   }
@@ -222,9 +291,9 @@ function clearStateFiles(directory, modeNames, sessionId) {
 function linkRalphTeam(directory, sessionId) {
   const getStatePath = (modeName) => {
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      return join(directory, '.omg', 'state', 'sessions', sessionId, `${modeName}-state.json`);
+      return join(directory, '.omcp', 'state', 'sessions', sessionId, `${modeName}-state.json`);
     }
-    return join(directory, '.omg', 'state', `${modeName}-state.json`);
+    return join(directory, '.omcp', 'state', `${modeName}-state.json`);
   };
 
   // Update ralph state with linked_team
@@ -359,7 +428,7 @@ function resolveConflicts(matches) {
 
   // Sort by priority order
   const priorityOrder = ['cancel','ralph','autopilot','ultrawork',
-    'ccg','ralplan','deep-interview','ai-slop-cleaner','tdd','code-review','security-review','ultrathink','deepsearch','analyze'];
+    'c3g','ralplan','deep-interview','ai-slop-cleaner','tdd','code-review','security-review','ultrathink','deepsearch','analyze'];
   resolved.sort((a, b) => priorityOrder.indexOf(a.name) - priorityOrder.indexOf(b.name));
 
   return resolved;
@@ -418,18 +487,18 @@ async function main() {
     // Collect all matching keywords
     const matches = [];
 
-    // Cancel keywords
+    // Cancel keywords (cancel is never suppressed by informational context)
     if (/\b(cancelomc|stopomc)\b/i.test(cleanPrompt)) {
       matches.push({ name: 'cancel', args: '' });
     }
 
     // Ralph keywords
-    if (/\b(ralph|don't stop|must complete|until done)\b/i.test(cleanPrompt)) {
+    if (isActionableKeywordAtPosition(cleanPrompt, /\b(ralph|don't stop|must complete|until done)\b/i)) {
       matches.push({ name: 'ralph', args: '' });
     }
 
     // Autopilot keywords
-    if (/\b(autopilot|auto pilot|auto-pilot|autonomous|full auto|fullsend)\b/i.test(cleanPrompt) ||
+    if (isActionableKeywordAtPosition(cleanPrompt, /\b(autopilot|auto pilot|auto-pilot|autonomous|full auto|fullsend)\b/i) ||
         /\b(build|create|make)\s+me\s+(an?\s+)?(app|feature|project|tool|plugin|website|api|server|cli|script|system|service|dashboard|bot|extension)\b/i.test(cleanPrompt) ||
         /\bi\s+want\s+a\s+/i.test(cleanPrompt) ||
         /\bi\s+want\s+an\s+/i.test(cleanPrompt) ||
@@ -442,7 +511,7 @@ async function main() {
     // Ultrapilot keywords removed — routed to team which is now explicit-only (/team).
 
     // Ultrawork keywords
-    if (/\b(ultrawork|ulw|uw)\b/i.test(cleanPrompt)) {
+    if (isActionableKeywordAtPosition(cleanPrompt, /\b(ultrawork|ulw|uw)\b/i)) {
       matches.push({ name: 'ultrawork', args: '' });
     }
 
@@ -452,8 +521,8 @@ async function main() {
 
 
     // CCG keywords (Copilot-Codex-Gemini tri-model orchestration)
-    if (/\b(ccg|claude-codex-gemini)\b/i.test(cleanPrompt)) {
-      matches.push({ name: 'ccg', args: '' });
+    if (isActionableKeywordAtPosition(cleanPrompt, /\b(c3g|copilot-claude-codex-gemini)\b/i)) {
+      matches.push({ name: 'c3g', args: '' });
     }
 
     // Ralplan keyword

@@ -8,7 +8,7 @@ description: >
 
 # OMC GitHub Review
 
-Perform an interactive GitHub pull request review. Reads `.omc/config.json` for connection settings, lists open PRs, surfaces existing review threads, and supports reading diffs, posting comments, and submitting review decisions.
+Perform an interactive GitHub pull request review. Reads `.omcp/config.json` for connection settings, lists open PRs, surfaces existing review threads, and supports reading diffs, posting comments, and submitting review decisions.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -25,10 +25,10 @@ Perform an interactive GitHub pull request review. Reads `.omc/config.json` for 
 
 ## Step 1: Load Configuration
 
-Read `.omc/config.json`:
+Read `.omcp/config.json`:
 
 ```bash
-cat .omc/config.json 2>/dev/null || echo "NOT_FOUND"
+cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
 ```
 
 Extract from the `github` key:
@@ -232,7 +232,7 @@ gh pr edit {prNumber} --repo {owner}/{repo} --add-label "{label}" 2>&1
 
 | Error | Action |
 |-------|--------|
-| `.omc/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
+| `.omcp/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
 | `gh auth` required | Prompt user to authenticate; stop execution |
 | PR not found | Verify PR number and that the repository in config matches |
 | No permission to review | User may need write access to the repo |

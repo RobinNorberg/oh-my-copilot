@@ -13,12 +13,12 @@ export interface WorkerBootstrapParams {
 }
 
 export function generateTriggerMessage(teamName: string, workerName: string): string {
-  return `Read and follow the instructions in .omg/state/team/${teamName}/workers/${workerName}/inbox.md`;
+  return `Read and follow the instructions in .omcp/state/team/${teamName}/workers/${workerName}/inbox.md`;
 }
 
 export function generateMailboxTriggerMessage(teamName: string, workerName: string, count = 1): string {
   const normalizedCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
-  return `You have ${normalizedCount} new message(s). Check .omg/state/team/${teamName}/mailbox/${workerName}.json`;
+  return `You have ${normalizedCount} new message(s). Check .omcp/state/team/${teamName}/mailbox/${workerName}.json`;
 }
 
 function agentTypeGuidance(agentType: CliAgentType): string {
@@ -26,16 +26,16 @@ function agentTypeGuidance(agentType: CliAgentType): string {
     case 'codex':
       return [
         '### Agent-Type Guidance (codex)',
-        '- Prefer short, explicit `omc team api ... --json` commands and parse outputs before next step.',
+        '- Prefer short, explicit `omcp team api ... --json` commands and parse outputs before next step.',
         '- If a command fails, report the exact stderr to leader-fixed before retrying.',
-        '- You MUST run `omc team api claim-task` before starting work and `omc team api transition-task-status` when done.',
+        '- You MUST run `omcp team api claim-task` before starting work and `omcp team api transition-task-status` when done.',
       ].join('\n');
     case 'gemini':
       return [
         '### Agent-Type Guidance (gemini)',
         '- Execute task work in small, verifiable increments and report each milestone to leader-fixed.',
         '- Keep commit-sized changes scoped to assigned files only; no broad refactors.',
-        '- CRITICAL: You MUST run `omc team api claim-task` before starting work and `omc team api transition-task-status` when done. Do not exit without transitioning the task status.',
+        '- CRITICAL: You MUST run `omcp team api claim-task` before starting work and `omcp team api transition-task-status` when done. Do not exit without transitioning the task status.',
       ].join('\n');
     case 'claude':
     default:
@@ -63,11 +63,11 @@ export function generateWorkerOverlay(params: WorkerBootstrapParams): string {
     description: sanitizePromptContent(t.description),
   }));
 
-  const sentinelPath = `.omg/state/team/${teamName}/workers/${workerName}/.ready`;
-  const heartbeatPath = `.omg/state/team/${teamName}/workers/${workerName}/heartbeat.json`;
-  const inboxPath = `.omg/state/team/${teamName}/workers/${workerName}/inbox.md`;
-  const statusPath = `.omg/state/team/${teamName}/workers/${workerName}/status.json`;
-  const taskDir = `.omg/state/team/${teamName}/tasks`;
+  const sentinelPath = `.omcp/state/team/${teamName}/workers/${workerName}/.ready`;
+  const heartbeatPath = `.omcp/state/team/${teamName}/workers/${workerName}/heartbeat.json`;
+  const inboxPath = `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`;
+  const statusPath = `.omcp/state/team/${teamName}/workers/${workerName}/status.json`;
+  const taskDir = `.omcp/state/team/${teamName}/tasks`;
   const taskList = sanitizedTasks.length > 0
     ? sanitizedTasks.map(t => `- **Task ${t.id}**: ${t.subject}\n  Description: ${t.description}\n  Status: pending`).join('\n')
     : '- No tasks assigned yet. Check your inbox for assignments.';
@@ -86,14 +86,14 @@ mkdir -p $(dirname ${sentinelPath}) && touch ${sentinelPath}
 You MUST complete ALL of these steps. Do NOT skip any step. Do NOT exit without step 4.
 
 1. **Claim** your task (run this command first):
-   \`omc team api claim-task --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"worker\":\"${workerName}\"}" --json\`
+   \`omcp team api claim-task --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"worker\":\"${workerName}\"}" --json\`
    Save the \`claim_token\` from the response — you need it for step 4.
 2. **Do the work** described in your task assignment below.
 3. **Send ACK** to the leader:
-   \`omc team api send-message --input "{\"team_name\":\"${teamName}\",\"from_worker\":\"${workerName}\",\"to_worker\":\"leader-fixed\",\"body\":\"ACK: ${workerName} initialized\"}" --json\`
+   \`omcp team api send-message --input "{\"team_name\":\"${teamName}\",\"from_worker\":\"${workerName}\",\"to_worker\":\"leader-fixed\",\"body\":\"ACK: ${workerName} initialized\"}" --json\`
 4. **Transition** the task status (REQUIRED before exit):
-   - On success: \`omc team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"completed\",\"claim_token\":\"<claim_token>\"}" --json\`
-   - On failure: \`omc team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"failed\",\"claim_token\":\"<claim_token>\"}" --json\`
+   - On success: \`omcp team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"completed\",\"claim_token\":\"<claim_token>\"}" --json\`
+   - On failure: \`omcp team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"failed\",\"claim_token\":\"<claim_token>\"}" --json\`
 5. **Keep going after replies**: ACK/progress messages are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.
 
 ## Identity
@@ -108,12 +108,12 @@ ${taskList}
 ## Task Lifecycle Reference (CLI API)
 Use the CLI API for all task lifecycle operations. Do NOT directly edit task files.
 
-- Inspect task state: \`omc team api read-task --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\"}" --json\`
+- Inspect task state: \`omcp team api read-task --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\"}" --json\`
 - Task id format: State/CLI APIs use task_id: "<id>" (example: "1"), not "task-1"
-- Claim task: \`omc team api claim-task --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"worker\":\"${workerName}\"}" --json\`
-- Complete task: \`omc team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"completed\",\"claim_token\":\"<claim_token>\"}" --json\`
-- Fail task: \`omc team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"failed\",\"claim_token\":\"<claim_token>\"}" --json\`
-- Release claim (rollback): \`omc team api release-task-claim --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"claim_token\":\"<claim_token>\",\"worker\":\"${workerName}\"}" --json\`
+- Claim task: \`omcp team api claim-task --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"worker\":\"${workerName}\"}" --json\`
+- Complete task: \`omcp team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"completed\",\"claim_token\":\"<claim_token>\"}" --json\`
+- Fail task: \`omcp team api transition-task-status --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"from\":\"in_progress\",\"to\":\"failed\",\"claim_token\":\"<claim_token>\"}" --json\`
+- Release claim (rollback): \`omcp team api release-task-claim --input "{\"team_name\":\"${teamName}\",\"task_id\":\"<id>\",\"claim_token\":\"<claim_token>\",\"worker\":\"${workerName}\"}" --json\`
 
 ## Communication Protocol
 - **Inbox**: Read ${inboxPath} for new instructions
@@ -129,17 +129,17 @@ Use the CLI API for all task lifecycle operations. Do NOT directly edit task fil
 
 ## Message Protocol
 Send messages via CLI API:
-- To leader: \`omc team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json\`
-- Check mailbox: \`omc team api mailbox-list --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName}\\"}" --json\`
-- Mark delivered: \`omc team api mailbox-mark-delivered --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName}\\",\\"message_id\\":\\"<id>\\"}" --json\`
+- To leader: \`omcp team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json\`
+- Check mailbox: \`omcp team api mailbox-list --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName}\\"}" --json\`
+- Mark delivered: \`omcp team api mailbox-mark-delivered --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName}\\",\\"message_id\\":\\"<id>\\"}" --json\`
 
 ## Startup Handshake (Required)
 Before doing any task work, send exactly one startup ACK to the leader:
-\`omc team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName} initialized\\"}" --json\`
+\`omcp team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName} initialized\\"}" --json\`
 
 ## Shutdown Protocol
 When you see a shutdown request in your inbox:
-1. Write your decision to: .omg/state/team/${teamName}/workers/${workerName}/shutdown-ack.json
+1. Write your decision to: .omcp/state/team/${teamName}/workers/${workerName}/shutdown-ack.json
 2. Format:
    - Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
    - Reject: {"status":"reject","reason":"still working","updated_at":"<iso>"}
@@ -151,14 +151,14 @@ When you see a shutdown request in your inbox:
 - Do NOT write lifecycle fields (status, owner, result, error) directly in task files; use CLI API
 - Do NOT spawn sub-agents. Complete work in this worker session only.
 - Do NOT create tmux panes/sessions (\`tmux split-window\`, \`tmux new-session\`, etc.).
-- Do NOT run team spawning/orchestration commands (for example: \`omc team ...\`, \`omx team ...\`, \`$team\`, \`$ultrawork\`, \`$autopilot\`, \`$ralph\`).
-- Worker-allowed control surface is only: \`omc team api ... --json\` (and equivalent \`omx team api ... --json\` where configured).
+- Do NOT run team spawning/orchestration commands (for example: \`omcp team ...\`, \`omx team ...\`, \`$team\`, \`$ultrawork\`, \`$autopilot\`, \`$ralph\`).
+- Worker-allowed control surface is only: \`omcp team api ... --json\` (and equivalent \`omx team api ... --json\` where configured).
 - If blocked, write {"state": "blocked", "reason": "..."} to your status file
 
 ${agentTypeGuidance(agentType)}
 
 ## BEFORE YOU EXIT
-You MUST call \`omc team api transition-task-status\` to mark your task as "completed" or "failed" before exiting.
+You MUST call \`omcp team api transition-task-status\` to mark your task as "completed" or "failed" before exiting.
 If you skip this step, the leader cannot track your work and the task will appear stuck.
 
 ${bootstrapInstructions ? `## Role Context\n${bootstrapInstructions}\n` : ''}`;
@@ -173,7 +173,7 @@ export async function composeInitialInbox(
   content: string,
   cwd: string
 ): Promise<void> {
-  const inboxPath = join(cwd, `.omg/state/team/${teamName}/workers/${workerName}/inbox.md`);
+  const inboxPath = join(cwd, `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`);
   await mkdir(dirname(inboxPath), { recursive: true });
   await writeFile(inboxPath, content, 'utf-8');
 }
@@ -187,7 +187,7 @@ export async function appendToInbox(
   message: string,
   cwd: string
 ): Promise<void> {
-  const inboxPath = join(cwd, `.omg/state/team/${teamName}/workers/${workerName}/inbox.md`);
+  const inboxPath = join(cwd, `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`);
   await mkdir(dirname(inboxPath), { recursive: true });
   await appendFile(inboxPath, `\n\n---\n${message}`, 'utf-8');
 }
@@ -203,15 +203,15 @@ export async function ensureWorkerStateDir(
   workerName: string,
   cwd: string
 ): Promise<void> {
-  const workerDir = join(cwd, `.omg/state/team/${teamName}/workers/${workerName}`);
+  const workerDir = join(cwd, `.omcp/state/team/${teamName}/workers/${workerName}`);
   await mkdir(workerDir, { recursive: true });
 
   // Also ensure mailbox dir
-  const mailboxDir = join(cwd, `.omg/state/team/${teamName}/mailbox`);
+  const mailboxDir = join(cwd, `.omcp/state/team/${teamName}/mailbox`);
   await mkdir(mailboxDir, { recursive: true });
 
   // And tasks dir
-  const tasksDir = join(cwd, `.omg/state/team/${teamName}/tasks`);
+  const tasksDir = join(cwd, `.omcp/state/team/${teamName}/tasks`);
   await mkdir(tasksDir, { recursive: true });
 }
 
@@ -224,7 +224,7 @@ export async function writeWorkerOverlay(
 ): Promise<string> {
   const { teamName, workerName, cwd } = params;
   const overlay = generateWorkerOverlay(params);
-  const overlayPath = join(cwd, `.omg/state/team/${teamName}/workers/${workerName}/AGENTS.md`);
+  const overlayPath = join(cwd, `.omcp/state/team/${teamName}/workers/${workerName}/AGENTS.md`);
   await mkdir(dirname(overlayPath), { recursive: true });
   await writeFile(overlayPath, overlay, 'utf-8');
   return overlayPath;

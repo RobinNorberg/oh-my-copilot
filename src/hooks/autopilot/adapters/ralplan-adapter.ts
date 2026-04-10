@@ -29,7 +29,7 @@ export const ralplanAdapter: PipelineStageAdapter = {
   },
 
   getPrompt(context: PipelineContext): string {
-    const specPath = context.specPath || ".omg/autopilot/spec.md";
+    const specPath = context.specPath || ".omcp/autopilot/spec.md";
     const planPath = context.planPath || resolveAutopilotPlanPath();
 
     if (context.config.planning === "ralplan") {

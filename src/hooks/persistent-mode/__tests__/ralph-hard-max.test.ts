@@ -28,7 +28,7 @@ describe.skip('persistent-mode ralph hard max iterations', () => {
 
     try {
       execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
 
       writeFileSync(
@@ -64,7 +64,7 @@ describe.skip('persistent-mode ralph hard max iterations', () => {
 
     try {
       execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
 
       writeFileSync(

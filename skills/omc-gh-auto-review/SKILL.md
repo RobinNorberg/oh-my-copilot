@@ -8,7 +8,7 @@ description: >
 
 # OMC GitHub Auto Review
 
-Automatically review GitHub pull requests where the current user is requested as a reviewer. Reads `.omc/config.json` for connection settings, discovers pending PRs, fetches diffs, spawns a code-reviewer agent to analyse changes, and posts structured inline comments back to each PR as a batched review.
+Automatically review GitHub pull requests where the current user is requested as a reviewer. Reads `.omcp/config.json` for connection settings, discovers pending PRs, fetches diffs, spawns a code-reviewer agent to analyse changes, and posts structured inline comments back to each PR as a batched review.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -24,10 +24,10 @@ Automatically review GitHub pull requests where the current user is requested as
 
 ## Step 1: Load Configuration
 
-Read `.omc/config.json`:
+Read `.omcp/config.json`:
 
 ```bash
-cat .omc/config.json 2>/dev/null || echo "NOT_FOUND"
+cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
 ```
 
 Extract from the `github` key:
@@ -221,7 +221,7 @@ If `autoSubmit` is false, inform the user of the recommended decision and let th
 
 | Error | Action |
 |-------|--------|
-| `.omc/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
+| `.omcp/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
 | `gh auth` required | Prompt user to authenticate; stop execution |
 | No PRs for review | Report "No PRs pending your review" and stop |
 | PR diff too large (>`maxFilesPerReview` files) | Warn and review first N files per `maxFilesPerReview` config |
@@ -233,7 +233,7 @@ If `autoSubmit` is false, inform the user of the recommended decision and let th
 
 ## Configuration Reference
 
-`.omc/config.json` with optional `autoReview` section:
+`.omcp/config.json` with optional `autoReview` section:
 
 ```json
 {

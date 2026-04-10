@@ -38,7 +38,7 @@ The `swarm` compatibility alias was removed in #1131.
 /team 2:codex "review architecture and suggest improvements"
 # With Gemini CLI workers (requires: npm install -g @google/gemini-cli)
 /team 2:gemini "redesign the UI components"
-# Mixed: Codex for backend analysis, Gemini for frontend (use /ccg instead for this)
+# Mixed: Codex for backend analysis, Gemini for frontend (use /c3g instead for this)
 ```
 
 ## Architecture
@@ -73,7 +73,7 @@ User: "/team 3:executor fix all TypeScript errors"
                       -> SendMessage(shutdown_request) to each teammate
                       <- SendMessage(shutdown_response, approve: true)
                       -> TeamDelete("fix-ts-errors")
-                      -> rm .omg/state/team-state.json
+                      -> rm .omcp/state/team-state.json
 ```
 
 **Storage layout (managed by Copilot CLI):**
@@ -152,7 +152,7 @@ When transitioning between stages, important context — decisions made, alterna
 
 **Each completing stage MUST produce a handoff document before transitioning.**
 
-The lead writes handoffs to `.omg/handoffs/<stage-name>.md`.
+The lead writes handoffs to `.omcp/handoffs/<stage-name>.md`.
 
 #### Handoff Format
 
@@ -169,7 +169,7 @@ The lead writes handoffs to `.omg/handoffs/<stage-name>.md`.
 
 1. **Lead reads previous handoff BEFORE spawning next stage's agents.** The handoff content is included in the next stage's agent spawn prompts, ensuring agents start with full context.
 2. **Handoffs accumulate.** The verify stage can read all prior handoffs (plan → prd → exec) for full decision history.
-3. **On team cancellation, handoffs survive** in `.omg/handoffs/` for session resume. They are not deleted by `TeamDelete`.
+3. **On team cancellation, handoffs survive** in `.omcp/handoffs/` for session resume. They are not deleted by `TeamDelete`.
 4. **Handoffs are lightweight.** 10-20 lines max. They capture decisions and rationale, not full specifications (those live in deliverable files like DESIGN.md).
 
 #### Example
@@ -185,8 +185,8 @@ The lead writes handoffs to `.omg/handoffs/<stage-name>.md`.
 
 ### Resume and Cancel Semantics
 
-- **Resume:** restart from the last non-terminal stage using staged state + live task status. Read `.omg/handoffs/` to recover stage transition context.
-- **Cancel:** `/oh-my-copilot:cancel` requests teammate shutdown, waits for responses (best effort), marks phase `cancelled` with `active=false`, captures cancellation metadata, then deletes team resources and clears/preserves Team state per policy. Handoff files in `.omg/handoffs/` are preserved for potential resume.
+- **Resume:** restart from the last non-terminal stage using staged state + live task status. Read `.omcp/handoffs/` to recover stage transition context.
+- **Cancel:** `/oh-my-copilot:cancel` requests teammate shutdown, waits for responses (best effort), marks phase `cancelled` with `active=false`, captures cancellation metadata, then deletes team resources and clears/preserves Team state per policy. Handoff files in `.omcp/handoffs/` are preserved for potential resume.
 - Terminal states are `complete`, `failed`, and `cancelled`.
 
 ## Workflow
@@ -430,7 +430,7 @@ When all real tasks (non-internal) are completed or failed:
      "team_name": "fix-ts-errors"
    }
    ```
-5. **Clean OMC state** -- Remove `.omg/state/team-state.json`
+5. **Clean OMC state** -- Remove `.omcp/state/team-state.json`
 6. **Report summary** -- Present results to the user
 
 ## Agent Preamble
@@ -477,7 +477,7 @@ Do NOT mark the task as completed. Leave it in_progress so the lead can reassign
 == RULES ==
 - NEVER spawn sub-agents or use the Task tool
 - NEVER run tmux pane/session orchestration commands (for example `tmux split-window`, `tmux new-session`)
-- NEVER run team spawning/orchestration skills or commands (for example `$team`, `$ultrawork`, `$autopilot`, `$ralph`, `omc team ...`, `omx team ...`)
+- NEVER run team spawning/orchestration skills or commands (for example `$team`, `$ultrawork`, `$autopilot`, `$ralph`, `omcp team ...`, `omx team ...`)
 - ALWAYS use absolute file paths
 - ALWAYS report progress via SendMessage to "team-lead"
 - Use SendMessage with type "message" only -- never "broadcast"
@@ -488,7 +488,7 @@ Do NOT mark the task as completed. Leave it in_progress so the lead can reassign
 When composing teammate prompts, append a short addendum based on worker type:
 
 - `claude_worker`: Emphasize strict TaskList/TaskUpdate/SendMessage loop and no orchestration commands.
-- `codex_worker`: Emphasize CLI API lifecycle (`omc team api ... --json`) and explicit failure ACKs with stderr.
+- `codex_worker`: Emphasize CLI API lifecycle (`omcp team api ... --json`) and explicit failure ACKs with stderr.
 - `gemini_worker`: Emphasize bounded file ownership and milestone ACKs after each completed sub-step.
 
 This addendum must preserve the core rule: **worker = executor only, never leader/orchestrator**.
@@ -635,7 +635,7 @@ Tmux CLI workers run in dedicated tmux panes with filesystem access. They are **
 /team 3:executor "refactor auth module with security review"
 
 Task decomposition:
-#1 [codex_worker] Security review of current auth code -> output to .omg/research/auth-security.md
+#1 [codex_worker] Security review of current auth code -> output to .omcp/research/auth-security.md
 #2 [codex_worker] Refactor auth/login.ts and auth/session.ts (uses #1 findings)
 #3 [claude_worker:designer] Redesign auth UI components (login form, session indicator)
 #4 [claude_worker] Update auth tests + fix integration issues
@@ -822,7 +822,7 @@ This prevents duplicate teams and allows graceful recovery from lead failures.
 
 | Aspect | Team (Native) | Swarm (Legacy SQLite) |
 |--------|--------------|----------------------|
-| **Storage** | JSON files in `~/.copilot/teams/` and `~/.copilot/tasks/` | SQLite in `.omg/state/swarm.db` |
+| **Storage** | JSON files in `~/.copilot/teams/` and `~/.copilot/tasks/` | SQLite in `.omcp/state/swarm.db` |
 | **Dependencies** | `better-sqlite3` not needed | Requires `better-sqlite3` npm package |
 | **Task claiming** | `TaskUpdate(owner + in_progress)` -- lead pre-assigns | SQLite IMMEDIATE transaction -- atomic |
 | **Race conditions** | Possible if two agents claim same task (mitigate by pre-assigning) | None (SQLite transactions) |
@@ -865,8 +865,8 @@ When `OMC_RUNTIME_V2=1` is set, the team runtime uses an event-driven architectu
 
 - **No done.json**: Task completion is detected via CLI API lifecycle transitions (claim-task, transition-task-status)
 - **Snapshot-based monitoring**: Each poll cycle takes a point-in-time snapshot of tasks and workers, computes deltas, and emits events
-- **Event log**: All team events are appended to `.omg/state/team/{teamName}/events.jsonl`
-- **Worker status files**: Workers write status to `.omg/state/team/{teamName}/workers/{name}/status.json`
+- **Event log**: All team events are appended to `.omcp/state/team/{teamName}/events.jsonl`
+- **Worker status files**: Workers write status to `.omcp/state/team/{teamName}/workers/{name}/status.json`
 - **Preserved**: Sentinel gate (blocks premature completion), circuit breaker (dead worker detection), failure sidecars
 
 The v2 runtime is feature-flagged and can be enabled per-session. The legacy v1 runtime remains the default.
@@ -927,7 +927,7 @@ MCP workers can operate in isolated git worktrees to prevent file conflicts betw
 
 ### How It Works
 
-1. **Worktree creation**: Before spawning a worker, call `createWorkerWorktree(teamName, workerName, repoRoot)` to create an isolated worktree at `.omg/worktrees/{team}/{worker}` with branch `omc-team/{teamName}/{workerName}`.
+1. **Worktree creation**: Before spawning a worker, call `createWorkerWorktree(teamName, workerName, repoRoot)` to create an isolated worktree at `.omcp/worktrees/{team}/{worker}` with branch `omc-team/{teamName}/{workerName}`.
 
 2. **Worker isolation**: Pass the worktree path as the `workingDirectory` in the worker's `BridgeConfig`. The worker operates exclusively in its own worktree.
 

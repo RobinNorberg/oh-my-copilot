@@ -21,7 +21,7 @@ describe('runtime types', () => {
   it('monitorTeam returns performance telemetry', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-monitor-'));
     const teamName = 'monitor-team';
-    const tasksDir = join(cwd, '.omg', 'state', 'team', teamName, 'tasks');
+    const tasksDir = join(cwd, '.omcp', 'state', 'team', teamName, 'tasks');
     mkdirSync(tasksDir, { recursive: true });
     writeFileSync(join(tasksDir, '1.json'), JSON.stringify({ status: 'pending' }), 'utf-8');
     writeFileSync(join(tasksDir, '2.json'), JSON.stringify({ status: 'completed' }), 'utf-8');

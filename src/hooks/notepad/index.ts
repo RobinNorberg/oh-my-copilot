@@ -114,7 +114,7 @@ function getSectionRegexSet(header: string): SectionRegexSet {
 // ============================================================================
 
 /**
- * Get the path to notepad.md in .omg subdirectory
+ * Get the path to notepad.md in .omcp subdirectory
  */
 export function getNotepadPath(directory: string): string {
   return join(getOmcRoot(directory), NOTEPAD_FILENAME);

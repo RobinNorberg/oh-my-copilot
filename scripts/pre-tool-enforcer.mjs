@@ -170,7 +170,7 @@ function extractJsonField(input, field, defaultValue = '') {
 
 // Get agent tracking info from state file
 function getAgentTrackingInfo(directory) {
-  const trackingFile = join(directory, '.omg', 'state', 'subagent-tracking.json');
+  const trackingFile = join(directory, '.omcp', 'state', 'subagent-tracking.json');
   try {
     if (existsSync(trackingFile)) {
       const data = JSON.parse(readFileSync(trackingFile, 'utf-8'));
@@ -188,7 +188,7 @@ function getTodoStatus(directory) {
 
   // Check project-local todos
   const localPaths = [
-    join(directory, '.omg', 'todos.json'),
+    join(directory, '.omcp', 'todos.json'),
     join(directory, '.copilot', 'todos.json')
   ];
 
@@ -255,7 +255,7 @@ function hasActiveSwarmMode(stateDir, { allowSessionTagged = false } = {}) {
 }
 
 function hasActiveMode(directory, sessionId) {
-  const stateDir = join(directory, '.omg', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
 
   if (isValidSessionId(sessionId)) {
     const sessionStateDir = join(stateDir, 'sessions', sessionId);
@@ -281,11 +281,11 @@ function getActiveTeamState(directory, sessionId) {
 
   // Session-scoped path (preferred)
   if (sessionId && SESSION_ID_PATTERN.test(sessionId)) {
-    paths.push(join(directory, '.omg', 'state', 'sessions', sessionId, 'team-state.json'));
+    paths.push(join(directory, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'));
   }
 
   // Legacy path
-  paths.push(join(directory, '.omg', 'state', 'team-state.json'));
+  paths.push(join(directory, '.omcp', 'state', 'team-state.json'));
 
   for (const statePath of paths) {
     const state = readJsonFile(statePath);
@@ -386,7 +386,7 @@ const SKILL_PROTECTION_MAP = {
   'mcp-setup': 'medium', 'project-session-manager': 'medium',
   psm: 'medium',          // alias for project-session-manager
   'writer-memory': 'medium', 'ralph-init': 'medium',
-  release: 'medium', ccg: 'medium',
+  release: 'medium', c3g: 'medium',
 
   // === Heavy protection (long-running, 10 reinforcements) ===
   deepinit: 'heavy',
@@ -401,7 +401,7 @@ function getSkillProtectionLevel(skillName, rawSkillName) {
 function loadOmcConfig() {
   const configPaths = [
     join(getCopilotConfigDir(), '.omc-config.json'),
-    join(process.cwd(), '.omc', 'config.json'),
+    join(process.cwd(), '.omcp', 'config.json'),
   ];
   for (const configPath of configPaths) {
     try {
@@ -436,7 +436,7 @@ function writeSkillActiveState(directory, skillName, sessionId, rawSkillName) {
   const now = new Date().toISOString();
   const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
 
-  const stateDir = join(directory, '.omc', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_PATTERN.test(sessionId) ? sessionId : '';
   const targetDir = safeSessionId
     ? join(stateDir, 'sessions', safeSessionId)
@@ -491,7 +491,7 @@ function writeSkillActiveState(directory, skillName, sessionId, rawSkillName) {
 }
 
 function clearAwaitingConfirmationFlag(directory, stateName, sessionId) {
-  const stateDir = join(directory, '.omg', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_PATTERN.test(sessionId) ? sessionId : '';
   const paths = [
     safeSessionId ? join(stateDir, 'sessions', safeSessionId, `${stateName}-state.json`) : null,

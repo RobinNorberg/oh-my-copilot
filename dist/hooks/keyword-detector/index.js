@@ -26,7 +26,7 @@ const KEYWORD_PATTERNS = {
     deepsearch: /\b(deepsearch)\b|\bsearch\s+the\s+codebase\b|\bfind\s+in\s+(the\s+)?codebase\b/i,
     analyze: /\b(deep[\s-]?analyze|deepanalyze)\b/i,
     'deep-interview': /\b(deep[\s-]interview|ouroboros)\b/i,
-    ccg: /\b(ccg|copilot-clix-gemini)\b/i,
+    c3g: /\b(c3g|copilot-claude-codex-gemini)\b/i,
     claude: /\b(ask|use|delegate\s+to)\s+claude\b/i,
     codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
     gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i
@@ -36,7 +36,7 @@ const KEYWORD_PATTERNS = {
  */
 const KEYWORD_PRIORITY = [
     'cancel', 'ralph', 'autopilot', 'team', 'ultrawork',
-    'ccg', 'ralplan', 'tdd', 'code-review', 'security-review',
+    'c3g', 'ralplan', 'tdd', 'code-review', 'security-review',
     'ultrathink', 'deepsearch', 'analyze', 'deep-interview', 'claude', 'codex', 'gemini'
 ];
 /**
@@ -59,6 +59,59 @@ export function removeCodeBlocks(text) {
 export const NON_LATIN_SCRIPT_PATTERN = 
 // eslint-disable-next-line no-misleading-character-class -- Intentional: detecting script presence, not matching grapheme clusters
 /[\u3000-\u9FFF\uAC00-\uD7AF\u0400-\u04FF\u0600-\u06FF\u0900-\u097F\u0E00-\u0E7F\u1000-\u109F]/u;
+/**
+ * Informational intent patterns — prompts asking "what is X" or "how does X work"
+ * should NOT trigger keyword-based skill invocations.
+ */
+const INFORMATIONAL_INTENT_PATTERNS = [
+    /\bwhat\s+is\b/i,
+    /\bwhat\s+are\b/i,
+    /\bhow\s+does\b/i,
+    /\bhow\s+do\b/i,
+    /\bexplain\b/i,
+    /\bdescribe\b/i,
+    /\btell\s+me\s+about\b/i,
+    /\bcan\s+you\s+explain\b/i,
+    /\bwhat\s+.*\bmode\s+now\b/i,
+];
+const INFORMATIONAL_CONTEXT_WINDOW = 80;
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+function hasActivationIntentNearKeyword(context, keyword) {
+    const escaped = escapeRegExp(keyword.trim());
+    if (!escaped)
+        return false;
+    const patterns = [
+        new RegExp(`\\b(?:use|run|start|enable|activate|invoke|trigger|launch)\\b[^\\n]{0,28}\\b${escaped}\\b`, 'i'),
+        new RegExp(`\\b(?:fix|debug|investigate|resolve|handle|patch|address)\\b[^\\n]{0,28}\\b(?:issue|bug|problem|error)\\b[^\\n]{0,12}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
+    ];
+    return patterns.some((pattern) => pattern.test(context));
+}
+function hasDiagnosticIntentNearKeyword(context, keyword) {
+    const escaped = escapeRegExp(keyword.trim());
+    if (!escaped)
+        return false;
+    const patterns = [
+        new RegExp(`\\b${escaped}\\b[^\\n]{0,48}\\b(?:keeps?\\s+(?:looping|re-?running)|has\\s+(?:a\\s+)?(?:bug|issue|problem|error)|is\\s+(?:stuck|broken|failing)|loop(?:ing)?)\\b`, 'i'),
+        new RegExp(`\\b(?:bug|issue|problem|error)\\b[^\\n]{0,16}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
+    ];
+    return patterns.some((pattern) => pattern.test(context));
+}
+function isInformationalKeywordContext(text, position, keywordLength, keywordText) {
+    const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
+    const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
+    const context = text.slice(start, end);
+    if (keywordText) {
+        if (hasActivationIntentNearKeyword(context, keywordText)) {
+            return false;
+        }
+        if (hasDiagnosticIntentNearKeyword(context, keywordText)) {
+            return true;
+        }
+    }
+    return INFORMATIONAL_INTENT_PATTERNS.some(pattern => pattern.test(context));
+}
 /**
 * Sanitize text for keyword detection by removing structural noise.
  * Strips XML tags, URLs, file paths, and code blocks.
@@ -102,6 +155,10 @@ export function detectKeywordsWithType(text, _agentName) {
         const pattern = KEYWORD_PATTERNS[type];
         const match = cleanedText.match(pattern);
         if (match && match.index !== undefined) {
+            // Skip if the surrounding context is purely informational
+            if (isInformationalKeywordContext(cleanedText, match.index, match[0].length, match[0])) {
+                continue;
+            }
             detected.push({
                 type,
                 keyword: match[0],

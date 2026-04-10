@@ -25,6 +25,7 @@ export function detectCli(binary) {
 }
 export function detectAllClis() {
     return {
+        claude: detectCli('claude'),
         copilot: detectCli('copilot'),
         codex: detectCli('codex'),
         gemini: detectCli('gemini'),

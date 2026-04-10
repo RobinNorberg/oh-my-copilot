@@ -3,7 +3,7 @@
  *
  * Environment variable configuration for MCP (Model Context Protocol) modules:
  * - OMC_MCP_OUTPUT_PATH_POLICY=strict|redirect_output (default: strict)
- * - OMC_MCP_OUTPUT_REDIRECT_DIR=.omg/outputs (default: .omg/outputs)
+ * - OMC_MCP_OUTPUT_REDIRECT_DIR=.omcp/outputs (default: .omcp/outputs)
  * - OMC_MCP_ALLOW_EXTERNAL_PROMPT=0|1 (default: 0)
  *
  * This module provides policy resolution and path redirection logic
@@ -33,7 +33,7 @@ export interface McpConfig {
  */
 export const DEFAULT_MCP_CONFIG: McpConfig = {
   outputPathPolicy: 'strict',
-  outputRedirectDir: '.omg/outputs',
+  outputRedirectDir: '.omcp/outputs',
   allowExternalPrompt: false,
 };
 

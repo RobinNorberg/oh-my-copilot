@@ -97,7 +97,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 
 | Variable                   | Default              | Description                                                                                                                                                                                                                                                                 |
 | -------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omg/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
+| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omcp/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
 | `OMC_BRIDGE_SCRIPT`        | _(auto-detected)_    | Path to the Python bridge script                                                                                                                                                                                                                                            |
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
 | `OMC_CODEX_DEFAULT_MODEL`  | _(provider default)_ | Default model for Codex CLI workers                                                                                                                                                                                                                                         |
@@ -124,7 +124,7 @@ Or via config file (`~/.copilot/.omc-config.json`):
 
 #### Centralized State with `OMC_STATE_DIR`
 
-By default, OMC stores state in `{worktree}/.omg/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
+By default, OMC stores state in `{worktree}/.omcp/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
 
 ```bash
 # In your shell profile (~/.bashrc, ~/.zshrc, etc.)
@@ -133,7 +133,7 @@ export OMC_STATE_DIR="$HOME/.copilot/omc"
 
 This resolves to `~/.copilot/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
 
-If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
+If both a legacy `{worktree}/.omcp/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
 
 ### When to Re-run Setup
 
@@ -207,45 +207,45 @@ Tag behavior:
 
 ## CLI Commands: ask/team
 
-### `omc ask`
+### `omcp ask`
 
 ```bash
-omc ask copilot "review this patch"
-omc ask codex "review this patch from a security perspective"
-omc ask gemini --prompt "suggest UX improvements"
-omc ask copilot --agent-prompt executor --prompt "create an implementation plan"
+omcp ask copilot "review this patch"
+omcp ask codex "review this patch from a security perspective"
+omcp ask gemini --prompt "suggest UX improvements"
+omcp ask copilot --agent-prompt executor --prompt "create an implementation plan"
 ```
 
 - Provider matrix: `copilot | codex | gemini`
-- Artifacts: `.omg/artifacts/ask/{provider}-{slug}-{timestamp}.md`
+- Artifacts: `.omcp/artifacts/ask/{provider}-{slug}-{timestamp}.md`
 - Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
 - Skill shortcuts: `/oh-my-copilot:ask-codex` and `/oh-my-copilot:ask-gemini` route to this command
 
-### `omc team` (CLI runtime surface)
+### `omcp team` (CLI runtime surface)
 
 ```bash
-omc team 2:codex "review auth flow"
-omc team status review-auth-flow
-omc team shutdown review-auth-flow --force
-omc team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
+omcp team 2:codex "review auth flow"
+omcp team status review-auth-flow
+omcp team shutdown review-auth-flow --force
+omcp team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
 ```
 
-Supported entrypoints: direct start (`omc team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
+Supported entrypoints: direct start (`omcp team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
 
-### `omc autoresearch`
+### `omcp autoresearch`
 
 ```bash
-omc autoresearch <topic>
-omc autoresearch guided <topic>
-omc autoresearch intake <topic>
+omcp autoresearch <topic>
+omcp autoresearch guided <topic>
+omcp autoresearch intake <topic>
 ```
 
 Thin-supervisor autoresearch with keep/discard/reset parity. Supports guided and intake flows.
 
-### `omc ralphthon`
+### `omcp ralphthon`
 
 ```bash
-omc ralphthon <task>
+omcp ralphthon <task>
 ```
 
 Autonomous hackathon lifecycle mode with PRD-driven phases and idle detection.
@@ -320,12 +320,12 @@ Includes **50 canonical skills**.
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
-| `ask-codex`               | Ask Codex via `omc ask codex` and store an ask artifact          | `/oh-my-copilot:ask-codex`               |
-| `ask-gemini`              | Ask Gemini via `omc ask gemini` and store an ask artifact        | `/oh-my-copilot:ask-gemini`              |
+| `ask-codex`               | Ask Codex via `omcp ask codex` and store an ask artifact          | `/oh-my-copilot:ask-codex`               |
+| `ask-gemini`              | Ask Gemini via `omcp ask gemini` and store an ask artifact        | `/oh-my-copilot:ask-gemini`              |
 | `autoresearch`            | Thin-supervisor autoresearch with keep/discard/reset             | `/oh-my-copilot:autoresearch`            |
 | `autopilot`               | Full autonomous execution from idea to working code              | `/oh-my-copilot:autopilot`               |
 | `cancel`                  | Unified cancellation for active modes                            | `/oh-my-copilot:cancel`                  |
-| `ccg`                     | Tri-model workflow via `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:ccg`                     |
+| `c3g`                     | Quad-model workflow via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:c3g`                     |
 | `configure-notifications` | Configure notifications (Teams/Discord/Telegram/Slack)           | `/oh-my-copilot:configure-notifications` |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                    | `/oh-my-copilot:deep-interview`          |
 | `deep-dive`               | 2-stage pipeline: trace → deep-interview with 3-point injection  | `/oh-my-copilot:deep-dive`               |
@@ -341,7 +341,7 @@ Includes **50 canonical skills**.
 | `omc-help`                | Show OMC usage guide                                             | `/oh-my-copilot:omc-help`                |
 | `omc-plan`                | Planning workflow (`/plan` safe alias)                           | `/oh-my-copilot:omc-plan`                |
 | `omc-setup`               | One-time setup wizard                                            | `/oh-my-copilot:omc-setup`               |
-| `omc-teams`               | Legacy compatibility wrapper for `omc team` CLI                  | `/oh-my-copilot:omc-teams`               |
+| `omc-teams`               | Legacy compatibility wrapper for `omcp team` CLI                  | `/oh-my-copilot:omc-teams`               |
 | `project-session-manager` | Manage isolated dev environments (git worktrees + tmux)          | `/oh-my-copilot:project-session-manager` |
 | `ralph`                   | Persistence loop until verified completion                       | `/oh-my-copilot:ralph`                   |
 | `ralph-init`              | Initialize PRD for structured ralph execution                    | `/oh-my-copilot:ralph-init`              |
@@ -445,7 +445,7 @@ Oh-my-copilot-cli includes 31 lifecycle hooks that enhance Copilot CLI's behavio
 
 The `code-simplifier` Stop hook automatically delegates recently modified source files to the
 `code-simplifier` agent after each Copilot turn. It is **disabled by default** and must be
-explicitly enabled via `~/.omg/config.json`.
+explicitly enabled via `~/.omcp/config.json`.
 
 **Enable:**
 
@@ -505,7 +505,7 @@ Use these trigger phrases in natural language prompts to activate enhanced modes
 | `ultrawork`, `ulw`                                      | Activates parallel agent orchestration                                                        |
 | `autopilot`, `build me`, `I want a`                     | Full autonomous execution                                                                     |
 | `ralph`, `don't stop`, `must complete`                  | Persistence until verified complete                                                           |
-| `ccg`, `copilot-clix-gemini`                            | Copilot-Codex-Gemini orchestration                                                             |
+| `c3g`, `copilot-claude-codex-gemini`                    | Copilot-Claude-Codex-Gemini orchestration                                                      |
 | `ralplan`                                               | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |
 | `deep interview`, `ouroboros`                           | Deep Socratic interview with mathematical clarity gating                                      |
 | `deepsearch`, `search the codebase`, `find in codebase` | Codebase-focused search mode (with informational intent filtering — questions like "what is ralph?" won't trigger the keyword) |
@@ -623,7 +623,7 @@ For complete documentation, see **[Performance Monitoring Guide](./PERFORMANCE-M
 | ----------------------- | ----------------------------------------------- | ------------------------------------ |
 | **Agent Observatory**   | Real-time agent status, efficiency, bottlenecks | HUD / API                            |
 | **Token Analytics**     | Cost tracking, usage reports, budget warnings   | HUD (`analytics` preset), `omc cost` |
-| **Session Replay**      | Event timeline for post-session analysis        | `.omg/state/agent-replay-*.jsonl`    |
+| **Session Replay**      | Event timeline for post-session analysis        | `.omcp/state/agent-replay-*.jsonl`    |
 | **Intervention System** | Auto-detection of stale agents, cost overruns   | Automatic                            |
 
 ### CLI Commands

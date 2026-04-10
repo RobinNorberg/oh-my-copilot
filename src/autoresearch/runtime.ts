@@ -132,7 +132,7 @@ interface AutoresearchInstructionLedgerSummary {
 }
 
 const AUTORESEARCH_RESULTS_HEADER = 'iteration\tcommit\tpass\tscore\tstatus\tdescription\n';
-const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omc/'];
+const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omcp/'];
 
 // Exclusive modes that cannot run concurrently with autoresearch
 const EXCLUSIVE_MODES = ['ralph', 'ultrawork', 'autopilot', 'autoresearch'];
@@ -154,7 +154,7 @@ function buildRunId(missionSlug: string, runTag: string): string {
 }
 
 function activeRunStateFile(projectRoot: string): string {
-  return join(projectRoot, '.omc', 'state', 'autoresearch-state.json');
+  return join(projectRoot, '.omcp', 'state', 'autoresearch-state.json');
 }
 
 function trimContent(value: string, max = 4000): string {
@@ -780,7 +780,7 @@ export async function materializeAutoresearchMissionToWorktree(
 }
 
 export async function loadAutoresearchRunManifest(projectRoot: string, runId: string): Promise<AutoresearchRunManifest> {
-  const manifestFile = join(projectRoot, '.omc', 'logs', 'autoresearch', runId, 'manifest.json');
+  const manifestFile = join(projectRoot, '.omcp', 'logs', 'autoresearch', runId, 'manifest.json');
   if (!existsSync(manifestFile)) {
     throw new Error(`autoresearch_resume_manifest_missing:${runId}`);
   }
@@ -862,7 +862,7 @@ export async function prepareAutoresearchRuntime(
   const runId = buildRunId(contract.missionSlug, runTag);
   const baselineCommit = readGitShortHead(worktreePath);
   const branchName = readGit(worktreePath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
-  const runDir = join(projectRoot, '.omc', 'logs', 'autoresearch', runId);
+  const runDir = join(projectRoot, '.omcp', 'logs', 'autoresearch', runId);
   const stateFile = activeRunStateFile(projectRoot);
   const instructionsFile = join(runDir, 'bootstrap-instructions.md');
   const manifestFile = join(runDir, 'manifest.json');

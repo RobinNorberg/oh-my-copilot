@@ -1,8 +1,18 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { loadAllSkills, findMatchingSkills } from '../../hooks/learner/loader.js';
+
+// Isolate tests from real user-level skills by restricting search to project scope only
+vi.mock('../../hooks/learner/finder.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../hooks/learner/finder.js')>();
+  return {
+    ...actual,
+    findSkillFiles: (projectRoot: string | null, options?: { scope?: string }) =>
+      actual.findSkillFiles(projectRoot, { ...options, scope: 'project' }),
+  };
+});
 
 describe('Skill Loader', () => {
   let testDir: string;
@@ -11,7 +21,7 @@ describe('Skill Loader', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `skill-loader-test-${Date.now()}`);
     projectRoot = join(testDir, 'project');
-    mkdirSync(join(projectRoot, '.omg', 'skills'), { recursive: true });
+    mkdirSync(join(projectRoot, '.omcp', 'skills'), { recursive: true });
   });
 
   afterEach(() => {
@@ -33,7 +43,7 @@ ${(metadata.triggers as string[] || ['test']).map(t => `  - "${t}"`).join('\n')}
 
 Test content for ${name}.
 `;
-    const skillPath = join(projectRoot, '.omg', 'skills', `${name}.md`);
+    const skillPath = join(projectRoot, '.omcp', 'skills', `${name}.md`);
     writeFileSync(skillPath, content);
     return skillPath;
   };

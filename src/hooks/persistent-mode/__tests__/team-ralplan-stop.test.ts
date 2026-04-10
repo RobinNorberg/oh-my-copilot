@@ -16,7 +16,7 @@ function writeTeamPipelineState(
   sessionId: string,
   overrides: Record<string, unknown> = {}
 ): void {
-  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -52,7 +52,7 @@ function writeRalplanState(
   sessionId: string,
   overrides: Record<string, unknown> = {}
 ): void {
-  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -75,7 +75,7 @@ function writeRalphState(
   tempDir: string,
   sessionId: string
 ): void {
-  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -104,7 +104,7 @@ function writeStopBreaker(
   name: string,
   count: number
 ): void {
-  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -353,7 +353,7 @@ describe('team pipeline standalone stop enforcement', () => {
       writeTeamPipelineState(tempDir, sessionId);
 
       // Write cancel signal
-      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'cancel-signal-state.json'),
@@ -591,7 +591,7 @@ describe('ralplan standalone stop enforcement', () => {
       writeRalplanState(tempDir, sessionId);
 
       // Write cancel signal — caught at top-level checkPersistentModes
-      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'cancel-signal-state.json'),
@@ -635,7 +635,7 @@ describe('team pipeline fail-open behavior', () => {
 
     try {
       // Write state with no phase field
-      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'team-state.json'),

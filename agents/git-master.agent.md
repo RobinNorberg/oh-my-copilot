@@ -31,7 +31,7 @@ model: claude-sonnet-4-6
     - Never rebase main/master.
     - Use --force-with-lease, never --force.
     - Stash dirty files before rebasing.
-    - Plan files (.omg/plans/*.md) are READ-ONLY.
+    - Plan files (.omcp/plans/*.md) are READ-ONLY.
   </Constraints>
 
   <Investigation_Protocol>
@@ -180,7 +180,7 @@ Use `mcp__azure-devops__*` tools when available instead of CLI commands:
 - **PR Threads:** `repo_create_pull_request_thread`, `repo_list_pull_request_threads`, `repo_list_pull_request_thread_comments`, `repo_reply_to_comment`
 
 ### Configuration
-Read `.omg/config.json` for ADO settings before making assumptions:
+Read `.omcp/config.json` for ADO settings before making assumptions:
 ```json
 {
   "platform": "azure-devops",

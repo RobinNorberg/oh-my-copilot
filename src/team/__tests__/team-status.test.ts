@@ -11,15 +11,15 @@ import type { HeartbeatData, TaskFile, OutboxMessage, McpWorkerMember } from '..
 
 const TEST_TEAM = 'test-team-status';
 let WORK_DIR: string;
-// Canonical tasks dir: {WORK_DIR}/.omg/state/team/{TEST_TEAM}/tasks/
+// Canonical tasks dir: {WORK_DIR}/.omcp/state/team/{TEST_TEAM}/tasks/
 let TASKS_DIR: string;
 
 beforeEach(() => {
-  WORK_DIR = join(realpathSync(tmpdir()), `omc-team-status-test-${Date.now()}`);
-  TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
+  WORK_DIR = join(realpathSync(tmpdir()), `omcp-team-status-test-${Date.now()}`);
+  TASKS_DIR = join(WORK_DIR, '.omcp', 'state', 'team', TEST_TEAM, 'tasks');
   mkdirSync(TASKS_DIR, { recursive: true });
-  mkdirSync(join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
-  mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
+  mkdirSync(join(WORK_DIR, '.omcp', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
+  mkdirSync(join(WORK_DIR, '.omcp', 'state'), { recursive: true });
 });
 
 afterEach(() => {
@@ -29,7 +29,7 @@ afterEach(() => {
 });
 
 function writeWorkerRegistry(workers: McpWorkerMember[]): void {
-  const registryPath = join(WORK_DIR, '.omg', 'state', 'team-mcp-workers.json');
+  const registryPath = join(WORK_DIR, '.omcp', 'state', 'team-mcp-workers.json');
   atomicWriteJson(registryPath, { teamName: TEST_TEAM, workers });
 }
 
@@ -38,7 +38,7 @@ function writeTask(task: TaskFile): void {
 }
 
 function writeHeartbeatFile(data: HeartbeatData): void {
-  const hbPath = join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM, `${data.workerName}.heartbeat.json`);
+  const hbPath = join(WORK_DIR, '.omcp', 'state', 'team-bridge', TEST_TEAM, `${data.workerName}.heartbeat.json`);
   atomicWriteJson(hbPath, data);
 }
 
@@ -49,7 +49,7 @@ function makeWorker(name: string, provider: 'codex' | 'gemini' = 'codex'): McpWo
     agentType: `mcp-${provider}`,
     model: 'test-model',
     joinedAt: Date.now(),
-    tmuxPaneId: `omc-team-${TEST_TEAM}-${name}`,
+    tmuxPaneId: `omcp-team-${TEST_TEAM}-${name}`,
     cwd: WORK_DIR,
     backendType: 'tmux',
     subscriptions: [],

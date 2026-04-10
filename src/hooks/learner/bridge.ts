@@ -27,7 +27,7 @@ export const USER_SKILLS_DIR = join(
   "skills",
   "omc-learned",
 );
-export const GLOBAL_SKILLS_DIR = join(homedir(), ".omg", "skills");
+export const GLOBAL_SKILLS_DIR = join(homedir(), ".omcp", "skills");
 export const PROJECT_SKILLS_SUBDIR = OmgPaths.SKILLS;
 export const SKILL_EXTENSION = ".md";
 

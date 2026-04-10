@@ -128,6 +128,6 @@ When exploring Azure DevOps codebases:
 
 ### Exploration Strategy for ADO
 1. Detect ADO via git remote URL
-2. Read `.omg/config.json` for project context
+2. Read `.omcp/config.json` for project context
 3. Use `search_code` MCP tool for cross-repo pattern discovery
 4. Check wiki for architecture docs and team conventions

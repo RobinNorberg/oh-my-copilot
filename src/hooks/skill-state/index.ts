@@ -100,7 +100,7 @@ const SKILL_PROTECTION: Record<string, SkillProtectionLevel> = {
   'project-session-manager': 'medium',
   'writer-memory': 'medium',
   'ralph-init': 'medium',
-  ccg: 'medium',
+  c3g: 'medium',
 
   // === Heavy protection (long-running, 10 reinforcements) ===
   deepinit: 'heavy',

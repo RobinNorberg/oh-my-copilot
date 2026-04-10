@@ -32,6 +32,7 @@ export function detectCli(binary: string): CliInfo {
 
 export function detectAllClis(): Record<string, CliInfo> {
   return {
+    claude: detectCli('claude'),
     copilot: detectCli('copilot'),
     codex: detectCli('codex'),
     gemini: detectCli('gemini'),

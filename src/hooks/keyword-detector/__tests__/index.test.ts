@@ -511,6 +511,33 @@ World`);
       });
     });
 
+    describe('informational intent filtering', () => {
+      it('should NOT detect informational mode/now phrasing', () => {
+        expect(detectKeywordsWithType('What is autopilot mode now?')).toEqual([]);
+        expect(detectKeywordsWithType('what is ralph mode now?')).toEqual([]);
+      });
+
+      it('should NOT detect diagnostic mentions of keywords as activation requests', () => {
+        expect(detectKeywordsWithType('ralph keeps looping, investigate')).toEqual([]);
+        expect(detectKeywordsWithType("there's an issue with ultrawork")).toEqual([]);
+        expect(detectKeywordsWithType('autopilot has a bug in this repo')).toEqual([]);
+      });
+
+      it('should still detect explicit activation requests that mention bug/issue context', () => {
+        const autopilot = detectKeywordsWithType('use autopilot to fix bug in payments');
+        expect(autopilot.find((r) => r.type === 'autopilot')).toBeDefined();
+
+        const ralph = detectKeywordsWithType('run ralph on issue in parser module');
+        expect(ralph.find((r) => r.type === 'ralph')).toBeDefined();
+
+        const autopilotIssue = detectKeywordsWithType('fix issue with autopilot in parser module');
+        expect(autopilotIssue.find((r) => r.type === 'autopilot')).toBeDefined();
+
+        const ralphProblem = detectKeywordsWithType('investigate problem with ralph state');
+        expect(ralphProblem.find((r) => r.type === 'ralph')).toBeDefined();
+      });
+    });
+
     describe('code block exclusion', () => {
       it('should not detect keyword inside fenced code block', () => {
         const text = '```\nautopilot\n```';
@@ -589,42 +616,42 @@ World`);
       });
     });
 
-    describe('ccg keyword', () => {
-      it('should detect "ccg" keyword', () => {
-        const result = detectKeywordsWithType('ccg this feature');
-        const ccgMatch = result.find((r) => r.type === 'ccg');
-        expect(ccgMatch).toBeDefined();
-        expect(ccgMatch?.keyword).toMatch(/ccg/i);
+    describe('c3g keyword', () => {
+      it('should detect "c3g" keyword', () => {
+        const result = detectKeywordsWithType('c3g this feature');
+        const c3gMatch = result.find((r) => r.type === 'c3g');
+        expect(c3gMatch).toBeDefined();
+        expect(c3gMatch?.keyword).toMatch(/c3g/i);
       });
 
-      it('should detect "copilot-clix-gemini" keyword', () => {
-        const result = detectKeywordsWithType('use copilot-clix-gemini to build this');
-        const ccgMatch = result.find((r) => r.type === 'ccg');
-        expect(ccgMatch).toBeDefined();
+      it('should detect "copilot-claude-codex-gemini" keyword', () => {
+        const result = detectKeywordsWithType('use copilot-claude-codex-gemini to build this');
+        const match = result.find((r) => r.type === 'c3g');
+        expect(match).toBeDefined();
       });
 
-      it('should detect CCG in uppercase', () => {
-        const result = detectKeywordsWithType('CCG add user profile page');
-        const ccgMatch = result.find((r) => r.type === 'ccg');
-        expect(ccgMatch).toBeDefined();
+      it('should detect C3G in uppercase', () => {
+        const result = detectKeywordsWithType('C3G add user profile page');
+        const match = result.find((r) => r.type === 'c3g');
+        expect(match).toBeDefined();
       });
 
-      it('should NOT detect ccg inside code block', () => {
-        const result = detectKeywordsWithType('```\nccg mode\n```');
-        const ccgMatch = result.find((r) => r.type === 'ccg');
-        expect(ccgMatch).toBeUndefined();
+      it('should NOT detect c3g inside code block', () => {
+        const result = detectKeywordsWithType('```\nc3g mode\n```');
+        const match = result.find((r) => r.type === 'c3g');
+        expect(match).toBeUndefined();
       });
 
-      it('should NOT detect ccg inside inline code', () => {
-        const result = detectKeywordsWithType('use `ccg` command');
-        const ccgMatch = result.find((r) => r.type === 'ccg');
-        expect(ccgMatch).toBeUndefined();
+      it('should NOT detect c3g inside inline code', () => {
+        const result = detectKeywordsWithType('use `c3g` command');
+        const match = result.find((r) => r.type === 'c3g');
+        expect(match).toBeUndefined();
       });
 
-      it('should detect ccg with other text around it', () => {
-        const result = detectKeywordsWithType('please ccg this full-stack feature');
-        const ccgMatch = result.find((r) => r.type === 'ccg');
-        expect(ccgMatch).toBeDefined();
+      it('should detect c3g with other text around it', () => {
+        const result = detectKeywordsWithType('please c3g this full-stack feature');
+        const match = result.find((r) => r.type === 'c3g');
+        expect(match).toBeDefined();
       });
     });
 
@@ -875,33 +902,33 @@ World`);
       expect(result).toContain('gemini');
     });
 
-    it('should return ccg when ccg keyword present', () => {
-      const result = getAllKeywords('ccg add a user profile feature');
-      expect(result).toContain('ccg');
+    it('should return c3g when c3g keyword present', () => {
+      const result = getAllKeywords('c3g add a user profile feature');
+      expect(result).toContain('c3g');
     });
 
-    it('should return ccg with higher priority than codex/gemini', () => {
-      const result = getAllKeywords('ccg ask codex to review');
-      const ccgIdx = result.indexOf('ccg');
+    it('should return c3g with higher priority than codex/gemini', () => {
+      const result = getAllKeywords('c3g ask codex to review');
+      const c3gIdx = result.indexOf('c3g');
       const codexIdx = result.indexOf('codex');
-      expect(ccgIdx).toBeGreaterThanOrEqual(0);
+      expect(c3gIdx).toBeGreaterThanOrEqual(0);
       expect(codexIdx).toBeGreaterThanOrEqual(0);
-      expect(ccgIdx).toBeLessThan(codexIdx);
+      expect(c3gIdx).toBeLessThan(codexIdx);
     });
 
-    it('should return ralph before ccg in priority order', () => {
-      const result = getAllKeywords('ralph ccg build the app');
+    it('should return ralph before c3g in priority order', () => {
+      const result = getAllKeywords('ralph c3g build the app');
       const ralphIdx = result.indexOf('ralph');
-      const ccgIdx = result.indexOf('ccg');
+      const c3gIdx = result.indexOf('c3g');
       expect(ralphIdx).toBeGreaterThanOrEqual(0);
-      expect(ccgIdx).toBeGreaterThanOrEqual(0);
-      expect(ralphIdx).toBeLessThan(ccgIdx);
+      expect(c3gIdx).toBeGreaterThanOrEqual(0);
+      expect(ralphIdx).toBeLessThan(c3gIdx);
     });
 
-    it('should not return ccg when cancel is present', () => {
-      const result = getAllKeywords('cancelomc ccg build');
+    it('should not return c3g when cancel is present', () => {
+      const result = getAllKeywords('cancelomc c3g build');
       expect(result).toEqual(['cancel']);
-      expect(result).not.toContain('ccg');
+      expect(result).not.toContain('c3g');
     });
 
     it('should return ralph over codex in priority', () => {

@@ -8,7 +8,7 @@ When your git remote points to `github.com`, OMC automatically:
 
 - Detects the GitHub platform on session start
 - Uses `gh` CLI for all GitHub operations
-- Reads `.omc/config.json` for project-specific settings
+- Reads `.omcp/config.json` for project-specific settings
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ When your git remote points to `github.com`, OMC automatically:
 /oh-my-copilot:omc-gh-setup
 ```
 
-This configures your GitHub connection — verifies `gh` CLI auth, auto-detects owner/repo from git remote, and writes `.omc/config.json`:
+This configures your GitHub connection — verifies `gh` CLI auth, auto-detects owner/repo from git remote, and writes `.omcp/config.json`:
 
 ```json
 {
@@ -70,7 +70,7 @@ Walk through open PRs: read diffs, view existing review threads, post inline or 
 
 Discovers PRs where you are requested as reviewer, fetches diffs, spawns a `code-reviewer` agent, and posts structured inline findings as a single batched review (one notification, not one per comment).
 
-Configurable via `.omc/config.json`:
+Configurable via `.omcp/config.json`:
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
@@ -123,7 +123,7 @@ All OMC agents can invoke `gh` CLI commands when operating on a GitHub repositor
 | **Detection** | `github.com` remote | `dev.azure.com` / `*.visualstudio.com` remote |
 | **CLI** | `gh` | `az` + `azure-devops` extension |
 | **MCP Tools** | None (gh CLI only) | 70+ `mcp__azure-devops__*` tools |
-| **Config** | `.omc/config.json` → `github` key | `.omg/config.json` → `ado` key |
+| **Config** | `.omcp/config.json` → `github` key | `.omcp/config.json` → `ado` key |
 | **Triage** | Issues + PRs + Actions + Dependabot | Work items + PRs + Pipelines + AdvSec |
 | **PR Review** | 3-state (approve/request-changes/comment) | 5-value vote system (-10 to +10) |
 | **Sprint/Project** | GitHub Projects v2 (field-based) | Iterations + capacity + WIQL |

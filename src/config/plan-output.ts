@@ -2,7 +2,7 @@ import { join, posix } from "path";
 import type { PluginConfig } from "../shared/types.js";
 import { validatePath } from "../lib/worktree-paths.js";
 
-export const DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omg/plans";
+export const DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omcp/plans";
 export const DEFAULT_PLAN_OUTPUT_FILENAME_TEMPLATE = "{{name}}.md";
 
 export type PlanOutputKind = "autopilot-impl" | "open-questions";

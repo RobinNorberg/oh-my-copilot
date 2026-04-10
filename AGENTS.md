@@ -63,7 +63,7 @@ Numbers are monotonic across the session (not per type): explorer-1, executor-2,
 Single-AI example: `Agent(subagent_type="oh-my-copilot:executor", name="executor-2", ...)`
 Multi-AI example: `Agent(subagent_type="oh-my-copilot:executor", name="claude-opus-executor-2", ...)`
 
-Use multi-AI format (`{ai}-{model}-{role}-{number}`) when `omc team` involves more than one AI backend (claude, codex, gemini, copilot).
+Use multi-AI format (`{ai}-{model}-{role}-{number}`) when `omcp team` involves more than one AI backend (claude, codex, gemini, copilot).
 Use single-AI format (`{role}-{number}`) for all other agent spawning.
 </agent_naming>
 
@@ -179,7 +179,7 @@ Detection rules:
 
 Ralph / Ralplan execution gate:
 - Enforce **ralplan-first** when ralph is active and planning is not complete.
-- Planning is complete only after both `.omg/plans/prd-*.md` and `.omg/plans/test-spec-*.md` exist.
+- Planning is complete only after both `.omcp/plans/prd-*.md` and `.omcp/plans/test-spec-*.md` exist.
 - Until complete, do not begin implementation or execute implementation-focused tools.
 </keyword_detection>
 
@@ -295,7 +295,7 @@ Parallelization:
 
 Visual iteration gate:
 - For visual tasks (reference image(s) + generated screenshot), run `$visual-verdict` every iteration before the next edit.
-- Persist visual verdict JSON in `.omg/state/{scope}/ralph-progress.json` with both numeric (`score`, threshold pass/fail) and qualitative (`reasoning`, `differences`, `suggestions`, `next_actions`) feedback.
+- Persist visual verdict JSON in `.omcp/state/{scope}/ralph-progress.json` with both numeric (`score`, threshold pass/fail) and qualitative (`reasoning`, `differences`, `suggestions`, `next_actions`) feedback.
 
 Continuation:
   Before concluding, confirm: zero pending tasks, all features working, tests passing, zero errors, verification evidence collected. If any item is unchecked, continue working.
@@ -320,12 +320,12 @@ When not to cancel:
 ---
 
 <state_management>
-oh-my-copilot uses the `.omg/` directory for persistent state:
-- `.omg/state/` -- Mode state files (JSON)
-- `.omg/notepad.md` -- Session-persistent notes
-- `.omg/project-memory.json` -- Cross-session project knowledge
-- `.omg/plans/` -- Planning documents
-- `.omg/logs/` -- Audit logs
+oh-my-copilot uses the `.omcp/` directory for persistent state:
+- `.omcp/state/` -- Mode state files (JSON)
+- `.omcp/notepad.md` -- Session-persistent notes
+- `.omcp/project-memory.json` -- Cross-session project knowledge
+- `.omcp/plans/` -- Planning documents
+- `.omcp/logs/` -- Audit logs
 
 Tools are available via MCP when configured (`omc setup` registers all servers):
 

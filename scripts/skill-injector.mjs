@@ -29,8 +29,8 @@ try {
 // Constants (used by fallback)
 const cfgDir = getCopilotConfigDir();
 const USER_SKILLS_DIR = join(cfgDir, 'skills', 'omg-learned');
-const GLOBAL_SKILLS_DIR = join(homedir(), '.omg', 'skills');
-const PROJECT_SKILLS_SUBDIR = join('.omg', 'skills');
+const GLOBAL_SKILLS_DIR = join(homedir(), '.omcp', 'skills');
+const PROJECT_SKILLS_SUBDIR = join('.omcp', 'skills');
 const SKILL_EXTENSION = '.md';
 const MAX_SKILLS_PER_SESSION = 5;
 

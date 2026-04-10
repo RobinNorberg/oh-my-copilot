@@ -20,7 +20,7 @@ vi.mock('../../lib/worktree-paths.js', async () => {
 describe('memory-tools payload validation', () => {
   beforeEach(() => {
     delete process.env.OMC_STATE_DIR;
-    mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
+    mkdirSync(join(TEST_DIR, '.omcp'), { recursive: true });
   });
 
   afterEach(() => {
@@ -72,7 +72,7 @@ describe('memory-tools payload validation', () => {
     const stateDir = '/tmp/memory-tools-centralized-state';
     rmSync(stateDir, { recursive: true, force: true });
     mkdirSync(stateDir, { recursive: true });
-    rmSync(join(TEST_DIR, '.omg'), { recursive: true, force: true });
+    rmSync(join(TEST_DIR, '.omcp'), { recursive: true, force: true });
 
     try {
       process.env.OMC_STATE_DIR = stateDir;
@@ -90,7 +90,7 @@ describe('memory-tools payload validation', () => {
 
       expect(result.content[0].text).toContain(centralizedPath);
       expect(JSON.parse(readFileSync(centralizedPath, 'utf-8')).projectRoot).toBe(TEST_DIR);
-      expect(existsSync(join(TEST_DIR, '.omg', 'project-memory.json'))).toBe(false);
+      expect(existsSync(join(TEST_DIR, '.omcp', 'project-memory.json'))).toBe(false);
       expect(result.isError).toBeUndefined();
     } finally {
       rmSync(stateDir, { recursive: true, force: true });

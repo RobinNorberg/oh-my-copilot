@@ -208,7 +208,7 @@ async function main(): Promise<void> {
   } = input;
 
   const workerCount = input.workerCount ?? agentTypes.length;
-  const stateRoot = join(cwd, `.omg/state/team/${teamName}`);
+  const stateRoot = join(cwd, `.omcp/state/team/${teamName}`);
 
   const config: TeamConfig = {
     teamName,

@@ -17,7 +17,7 @@ function writeSkillState(
   skillName: string,
   overrides: Record<string, unknown> = {}
 ): void {
-  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -127,7 +127,7 @@ describe('persistent-mode skill-state stop integration (issue #1033)', () => {
 
     try {
       // Write both ralph and skill state
-      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
 
       writeFileSync(

@@ -33,6 +33,7 @@ import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generate
 import { queueInboxInstruction } from './mcp-comm.js';
 import { cleanupTeamWorktrees } from './git-worktree.js';
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
+import { getHostCliType } from '../utils/host-detection.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 // ---------------------------------------------------------------------------
 // Feature flag
@@ -307,7 +308,7 @@ async function spawnV2Worker(opts) {
             startupFailureReason: dispatchOutcome.reason,
         };
     }
-    if (opts.agentType === 'claude') {
+    if (opts.agentType === 'claude' || opts.agentType === 'copilot') {
         const settled = await waitForWorkerStartupEvidence(opts.teamName, opts.workerName, opts.taskId, opts.cwd, 6);
         if (!settled) {
             return {
@@ -394,7 +395,7 @@ export async function startTeamV2(config) {
         const allocationWorkers = workerNames.map((name, i) => ({
             name,
             role: config.workerRoles?.[i]
-                ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
+                ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType()),
             currentLoad: 0,
         }));
         for (const r of allocateTasksToWorkers(allocationTasks, allocationWorkers)) {
@@ -404,7 +405,7 @@ export async function startTeamV2(config) {
     // Set up worker state dirs and overlays (with v2 CLI API instructions)
     for (let i = 0; i < workerNames.length; i++) {
         const wName = workerNames[i];
-        const agentType = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude');
+        const agentType = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType());
         await ensureWorkerStateDir(sanitized, wName, leaderCwd);
         await writeWorkerOverlay({
             teamName: sanitized, workerName: wName, agentType,
@@ -428,7 +429,7 @@ export async function startTeamV2(config) {
         name: wName,
         index: i + 1,
         role: config.workerRoles?.[i]
-            ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
+            ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType()),
         assigned_tasks: [],
         working_dir: leaderCwd,
     }));
@@ -436,7 +437,7 @@ export async function startTeamV2(config) {
     const teamConfig = {
         name: sanitized,
         task: config.tasks.map(t => t.subject).join('; '),
-        agent_type: agentTypes[0] || 'claude',
+        agent_type: agentTypes[0] || getHostCliType(),
         worker_launch_mode: 'interactive',
         policy: DEFAULT_TEAM_TRANSPORT_POLICY,
         governance: DEFAULT_TEAM_GOVERNANCE,
@@ -513,7 +514,7 @@ export async function startTeamV2(config) {
             teamName: sanitized,
             workerName: wName,
             workerIndex,
-            agentType: (agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? 'claude'),
+            agentType: (agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? getHostCliType()),
             task,
             taskId,
             cwd: leaderCwd,

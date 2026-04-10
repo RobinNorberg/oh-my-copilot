@@ -46,11 +46,11 @@ export interface HookOutput {
 // ============================================================================
 
 const REQUIRED_DIRECTORIES = [
-  '.omg/state',
-  '.omg/logs',
-  '.omg/notepads',
-  '.omg/state/checkpoints',
-  '.omg/plans',
+  '.omcp/state',
+  '.omcp/logs',
+  '.omcp/notepads',
+  '.omcp/state/checkpoints',
+  '.omcp/plans',
 ];
 
 const CONFIG_FILES = [
@@ -342,10 +342,10 @@ export async function processSetupInit(input: SetupInput): Promise<HookOutput> {
 // ============================================================================
 
 /**
- * Prune old state files from .omg/state directory
+ * Prune old state files from .omcp/state directory
  */
 export function pruneOldStateFiles(directory: string, maxAgeDays: number = DEFAULT_STATE_MAX_AGE_DAYS): number {
-  const stateDir = join(directory, '.omg/state');
+  const stateDir = join(directory, '.omcp/state');
   if (!existsSync(stateDir)) {
     return 0;
   }
@@ -408,7 +408,7 @@ export function pruneOldStateFiles(directory: string, maxAgeDays: number = DEFAU
  * Clean up orphaned state files (state files without corresponding active sessions)
  */
 export function cleanupOrphanedState(directory: string): number {
-  const stateDir = join(directory, '.omg/state');
+  const stateDir = join(directory, '.omcp/state');
   if (!existsSync(stateDir)) {
     return 0;
   }

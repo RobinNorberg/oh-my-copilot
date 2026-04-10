@@ -43,7 +43,7 @@ const SharedTaskSchema = z.object({
     type: z.enum(['analyze', 'implement', 'review', 'test', 'custom']),
     description: z.string(),
     descriptionArtifact: ArtifactDescriptorSchema.optional(),
-    context: z.record(z.unknown()).optional(),
+    context: z.record(z.string(), z.unknown()).optional(),
     files: z.array(z.string()).optional(),
     createdAt: z.string(),
     status: z.enum(['pending', 'in_progress', 'completed', 'failed']),
@@ -58,7 +58,7 @@ const SharedMessageSchema = z.object({
     target: z.enum(['omc', 'omx']),
     content: z.string(),
     contentArtifact: ArtifactDescriptorSchema.optional(),
-    metadata: z.record(z.unknown()).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
     timestamp: z.string(),
     read: z.boolean(),
 });

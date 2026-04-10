@@ -1,5 +1,5 @@
 import { execFileSync } from 'child_process';
-import { existsSync } from 'fs';
+import { existsSync, realpathSync } from 'fs';
 import { readFile } from 'fs/promises';
 import { basename, join, relative, resolve } from 'path';
 function contractError(message) {
@@ -155,10 +155,15 @@ export function parseEvaluatorResult(raw) {
         : { pass: result.pass, score: result.score };
 }
 export async function loadAutoresearchMissionContract(missionDirArg) {
-    const missionDir = resolve(missionDirArg);
+    let missionDir = resolve(missionDirArg);
     if (!existsSync(missionDir)) {
         throw contractError(`mission-dir does not exist: ${missionDir}`);
     }
+    // Resolve symlinks so the path matches git's canonical output (e.g., /private/var on macOS)
+    try {
+        missionDir = realpathSync(missionDir);
+    }
+    catch { /* keep resolved path */ }
     const repoRoot = readGit(missionDir, ['rev-parse', '--show-toplevel']);
     ensurePathInside(repoRoot, missionDir);
     const missionFile = join(missionDir, 'mission.md');

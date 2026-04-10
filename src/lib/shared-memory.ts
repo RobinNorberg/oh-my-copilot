@@ -4,7 +4,7 @@
  * Filesystem-based key-value store for cross-session memory sync
  * between agents in /team and /pipeline workflows.
  *
- * Storage: .omg/state/shared-memory/{namespace}/{key}.json
+ * Storage: .omcp/state/shared-memory/{namespace}/{key}.json
  *
  * Each entry is a JSON file containing:
  * - key: string identifier
