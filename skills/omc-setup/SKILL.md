@@ -85,7 +85,7 @@ Before anything else, resolve `COPILOT_PLUGIN_ROOT`. Run this command and use th
 
 ```bash
 # Find the oh-my-copilot plugin root
-for d in   "${COPILOT_PLUGIN_ROOT:-}"   "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/installed-plugins/omg/oh-my-copilot"   "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/installed-plugins/_direct/oh-my-copilot"   "$(npm root -g 2>/dev/null)/oh-my-copilot"   ; do
+for d in   "${COPILOT_PLUGIN_ROOT:-}"   "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/installed-plugins/omcp/oh-my-copilot"   "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/installed-plugins/_direct/oh-my-copilot"   "$(npm root -g 2>/dev/null)/oh-my-copilot"   ; do
   [ -n "$d" ] && [ -f "$d/skills/omc-setup/SKILL.md" ] && { echo "$d"; break; }
 done
 ```
@@ -94,7 +94,7 @@ Store the output as `COPILOT_PLUGIN_ROOT` for the rest of this setup. If no path
 ```
 oh-my-copilot plugin not found. Install it first:
   /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
-  /plugin install oh-my-copilot@omg
+  /plugin install oh-my-copilot@omcp
 ```
 
 ## Pre-Setup Check: Already Configured?
