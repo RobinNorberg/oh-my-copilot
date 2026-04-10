@@ -96,61 +96,28 @@ echo "Default execution mode set to: USER_CHOICE"
 
 ## Step 2.5: Install OMC CLI Tool
 
-The OMC CLI (`omc` command) provides standalone monitoring and analytics commands.
+The OMC CLI (`omcp` command) provides standalone monitoring and analytics commands.
+The `omcp` binary coexists with upstream's `omc` binary (oh-my-claudecode) — no conflict.
 
-First, check if the CLI is already installed and which package provides it:
+First, check if the CLI is already installed:
 
 ```bash
 OMC_CLI_INSTALLED="false"
-OMC_CLI_STALE="false"
 
-if command -v omc &>/dev/null; then
-  # Detect which npm package provides the omc binary
-  OMC_BIN_PATH=$(command -v omc)
-  OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
-
-  # Check if omc comes from the legacy oh-my-claude-sisyphus package
-  if [[ "$OMC_BIN_PATH" == *"oh-my-claude-sisyphus"* ]] || npm list -g oh-my-claude-sisyphus --depth=0 2>/dev/null | grep -q "oh-my-claude-sisyphus"; then
-    echo "WARNING: omc binary comes from legacy package 'oh-my-claude-sisyphus' ($OMC_CLI_VERSION)"
-    echo "This package has been renamed to 'oh-my-copilot'."
-    OMC_CLI_STALE="true"
-  else
-    echo "OMC CLI already installed: $OMC_CLI_VERSION"
-    OMC_CLI_INSTALLED="true"
-  fi
+if command -v omcp &>/dev/null; then
+  OMC_CLI_VERSION=$(omcp --version 2>/dev/null | head -1 || echo "installed")
+  echo "OMC CLI already installed: $OMC_CLI_VERSION"
+  OMC_CLI_INSTALLED="true"
 else
   OMC_CLI_INSTALLED="false"
 fi
 ```
 
-If `OMC_CLI_INSTALLED` is `"true"` and `OMC_CLI_STALE` is `"false"`, skip the rest of this step.
+If `OMC_CLI_INSTALLED` is `"true"`, skip the rest of this step.
 
-If `OMC_CLI_STALE` is `"true"`, use AskUserQuestion:
+If `OMC_CLI_INSTALLED` is `"false"`, use AskUserQuestion:
 
-**Question:** "Found legacy package `oh-my-claude-sisyphus`. Would you like to replace it with `oh-my-copilot`?"
-
-**Options:**
-1. **Yes (Recommended)** - Uninstall legacy package and install `oh-my-copilot`
-2. **No - Skip** - Keep the legacy package for now
-
-If user chooses **Yes**:
-
-```bash
-echo "Removing legacy package oh-my-claude-sisyphus..."
-npm uninstall -g oh-my-claude-sisyphus 2>&1
-echo "Installing oh-my-copilot..."
-npm install -g oh-my-copilot 2>&1
-if command -v omc &>/dev/null; then
-  OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
-  echo "Replaced successfully. OMC CLI: $OMC_CLI_VERSION"
-else
-  echo "Installed but 'omc' not on PATH. You may need to restart your shell."
-fi
-```
-
-If `OMC_CLI_INSTALLED` is `"false"` and `OMC_CLI_STALE` is `"false"`, use AskUserQuestion:
-
-**Question:** "Would you like to install the OMC CLI globally for standalone monitoring and analytics? (`omc`, `omc cost`, `omc sessions`)"
+**Question:** "Would you like to install the OMC CLI globally for standalone monitoring and analytics? (`omcp team`, `omcp ask`)"
 
 **Options:**
 1. **Yes (Recommended)** - Install `oh-my-copilot` via `npm install -g`
@@ -165,11 +132,11 @@ if ! command -v npm &>/dev/null; then
 else
   if npm install -g oh-my-copilot 2>&1; then
     echo "OMC CLI installed successfully."
-    if command -v omc &>/dev/null; then
-      OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
-      echo "Verified: omc $OMC_CLI_VERSION"
+    if command -v omcp &>/dev/null; then
+      OMC_CLI_VERSION=$(omcp --version 2>/dev/null | head -1 || echo "installed")
+      echo "Verified: omcp $OMC_CLI_VERSION"
     else
-      echo "Installed but 'omc' not on PATH. You may need to restart your shell."
+      echo "Installed but 'omcp' not on PATH. You may need to restart your shell."
     fi
   else
     echo "WARNING: Failed to install OMC CLI (permission issue or network error)."
