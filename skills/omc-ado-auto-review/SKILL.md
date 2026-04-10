@@ -8,7 +8,7 @@ description: >
 
 # OMC ADO Auto Review
 
-Automatically review Azure DevOps pull requests where the current user is assigned as a reviewer. Reads `.omg/config.json` for connection settings, discovers pending PRs, fetches diffs, spawns a code-reviewer agent to analyse changes, and posts structured inline comments back to each PR.
+Automatically review Azure DevOps pull requests where the current user is assigned as a reviewer. Reads `.omcp/config.json` for connection settings, discovers pending PRs, fetches diffs, spawns a code-reviewer agent to analyse changes, and posts structured inline comments back to each PR.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -24,10 +24,10 @@ Automatically review Azure DevOps pull requests where the current user is assign
 
 ## Step 1: Load Configuration
 
-Read `.omg/config.json`:
+Read `.omcp/config.json`:
 
 ```bash
-cat .omg/config.json 2>/dev/null || echo "NOT_FOUND"
+cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
 ```
 
 Extract from the `ado` key:
@@ -386,7 +386,7 @@ az repos pr set-vote \
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
+| `.omcp/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
 | `az login` required | Prompt user to authenticate; stop execution |
 | No PRs for review | Report "No PRs pending your review" and stop |
 | PR diff too large (>`maxFilesPerReview` files) | Warn and review first N files per `maxFilesPerReview` config |
@@ -398,7 +398,7 @@ az repos pr set-vote \
 
 ## Configuration Reference
 
-`.omg/config.json` with optional `autoReview` section:
+`.omcp/config.json` with optional `autoReview` section:
 
 ```json
 {

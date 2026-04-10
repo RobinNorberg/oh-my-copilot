@@ -6,7 +6,7 @@
 
 ## Summary
 
-5 GitHub-specific skills for OMC, mirroring the existing Azure DevOps skill set. Skills use `gh` CLI exclusively (no MCP tools needed), auto-detect GitHub remotes from `git remote -v`, and store configuration in `.omc/config.json` under a `github` key — parallel to the existing `ado` key.
+5 GitHub-specific skills for OMC, mirroring the existing Azure DevOps skill set. Skills use `gh` CLI exclusively (no MCP tools needed), auto-detect GitHub remotes from `git remote -v`, and store configuration in `.omcp/config.json` under a `github` key — parallel to the existing `ado` key.
 
 ## Skill Inventory
 
@@ -39,7 +39,7 @@ https://github.com/{owner}/{repo}
 
 Extracted values: `owner` (org or user), `repo` (repository name). Simpler than ADO which has `org/project/repo`.
 
-### 3. Config storage: `.omc/config.json` with `github` key
+### 3. Config storage: `.omcp/config.json` with `github` key
 
 ```json
 {
@@ -76,7 +76,7 @@ A project can have both ADO and GitHub config simultaneously.
 2. Parse `git remote -v` for `github.com` URLs, extract owner/repo
 3. Verify access via `gh repo view`
 4. Discover labels for triage config
-5. Write `.omc/config.json` with `github` key
+5. Write `.omcp/config.json` with `github` key
 6. Smoke test with `gh issue list`
 
 ### 2. `omc-gh-triage`

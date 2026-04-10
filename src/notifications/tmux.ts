@@ -51,7 +51,7 @@ export function getTeamTmuxSessions(teamName: string): string[] {
   const sanitized = teamName.replace(/[^a-zA-Z0-9-]/g, "");
   if (!sanitized) return [];
 
-  const prefix = `omc-team-${sanitized}-`;
+  const prefix = `omcp-team-${sanitized}-`;
   try {
     const output = execSync("tmux list-sessions -F '#{session_name}'", {
       encoding: "utf-8",

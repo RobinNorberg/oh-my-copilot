@@ -39,7 +39,7 @@ describe('usage-tracker', () => {
       const record = makeRecord('worker1', 'task1');
       recordTaskUsage(testDir, 'test-team', record);
 
-      const logPath = join(testDir, '.omg', 'logs', 'team-usage-test-team.jsonl');
+      const logPath = join(testDir, '.omcp', 'logs', 'team-usage-test-team.jsonl');
       expect(existsSync(logPath)).toBe(true);
 
       const content = readFileSync(logPath, 'utf-8').trim();
@@ -52,7 +52,7 @@ describe('usage-tracker', () => {
       recordTaskUsage(testDir, 'test-team', makeRecord('worker1', 'task1'));
       recordTaskUsage(testDir, 'test-team', makeRecord('worker1', 'task2'));
 
-      const logPath = join(testDir, '.omg', 'logs', 'team-usage-test-team.jsonl');
+      const logPath = join(testDir, '.omcp', 'logs', 'team-usage-test-team.jsonl');
       const lines = readFileSync(logPath, 'utf-8').trim().split('\n');
       expect(lines).toHaveLength(2);
     });
@@ -60,7 +60,7 @@ describe('usage-tracker', () => {
     it.skipIf(process.platform === 'win32')('creates log with correct permissions', () => {
       recordTaskUsage(testDir, 'test-team', makeRecord('worker1', 'task1'));
 
-      const logPath = join(testDir, '.omg', 'logs', 'team-usage-test-team.jsonl');
+      const logPath = join(testDir, '.omcp', 'logs', 'team-usage-test-team.jsonl');
       const stat = statSync(logPath);
       expect(stat.mode & 0o777).toBe(0o600);
     });

@@ -26,15 +26,15 @@ Enable Copilot CLI native teams in `~/.copilot/settings.json`:
 
 ## tmux CLI Workers
 
-Use the CLI-first Team runtime (`omc team ...`) to spawn real tmux worker panes:
+Use the CLI-first Team runtime (`omcp team ...`) to spawn real tmux worker panes:
 
 ```bash
-omc team 2:claude "review auth architecture"
-omc team 2:codex "review auth module for security issues"
-omc team 2:gemini "redesign UI components for accessibility"
-omc team 1:copilot "implement the payment flow"
-omc team status auth-review
-omc team shutdown auth-review
+omcp team 2:claude "review auth architecture"
+omcp team 2:codex "review auth module for security issues"
+omcp team 2:gemini "redesign UI components for accessibility"
+omcp team 1:copilot "implement the payment flow"
+omcp team status auth-review
+omcp team shutdown auth-review
 ```
 
 For multi-model work in one command, use the **`/c3g`** skill (routes via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesizes):
@@ -47,10 +47,10 @@ For multi-model work in one command, use the **`/c3g`** skill (routes via `ask-c
 
 | Surface                    | Workers                 | Best For                                      |
 | -------------------------- | ----------------------- | --------------------------------------------- |
-| `omc team N:claude "..."`  | N Claude Code CLI panes | Deep reasoning, architecture, complex analysis |
-| `omc team N:codex "..."`   | N Codex CLI panes       | Code review, security analysis                |
-| `omc team N:gemini "..."`  | N Gemini CLI panes      | UI/UX design, docs, large-context tasks       |
-| `omc team N:copilot "..."` | N Copilot CLI panes     | General tasks via Copilot CLI in tmux         |
+| `omcp team N:claude "..."`  | N Claude Code CLI panes | Deep reasoning, architecture, complex analysis |
+| `omcp team N:codex "..."`   | N Codex CLI panes       | Code review, security analysis                |
+| `omcp team N:gemini "..."`  | N Gemini CLI panes      | UI/UX design, docs, large-context tasks       |
+| `omcp team N:copilot "..."` | N Copilot CLI panes     | General tasks via Copilot CLI in tmux         |
 | `/c3g`                     | ask-claude + ask-codex + ask-gemini | Quad-model advisor synthesis          |
 
 Workers spawn on-demand and die when their task completes — no idle resource usage. Requires the respective CLI tool installed and an active tmux session.

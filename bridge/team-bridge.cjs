@@ -219,36 +219,36 @@ function normalizeTaskFileStem(taskId) {
   return trimmed;
 }
 var TeamPaths = {
-  root: (teamName) => `.omg/state/team/${teamName}`,
-  config: (teamName) => `.omg/state/team/${teamName}/config.json`,
-  shutdown: (teamName) => `.omg/state/team/${teamName}/shutdown.json`,
-  tasks: (teamName) => `.omg/state/team/${teamName}/tasks`,
-  taskFile: (teamName, taskId) => `.omg/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
-  workers: (teamName) => `.omg/state/team/${teamName}/workers`,
-  workerDir: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}`,
-  heartbeat: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/heartbeat.json`,
-  inbox: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/inbox.md`,
-  outbox: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/outbox.jsonl`,
-  ready: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/.ready`,
-  overlay: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/AGENTS.md`,
-  shutdownAck: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/shutdown-ack.json`,
-  mailbox: (teamName, workerName) => `.omg/state/team/${teamName}/mailbox/${workerName}.json`,
-  mailboxLockDir: (teamName, workerName) => `.omg/state/team/${teamName}/mailbox/.lock-${workerName}`,
-  dispatchRequests: (teamName) => `.omg/state/team/${teamName}/dispatch/requests.json`,
-  dispatchLockDir: (teamName) => `.omg/state/team/${teamName}/dispatch/.lock`,
-  workerStatus: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/status.json`,
-  workerIdleNotify: (teamName) => `.omg/state/team/${teamName}/worker-idle-notify.json`,
-  workerPrevNotifyState: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/prev-notify-state.json`,
-  events: (teamName) => `.omg/state/team/${teamName}/events.jsonl`,
-  approval: (teamName, taskId) => `.omg/state/team/${teamName}/approvals/${taskId}.json`,
-  manifest: (teamName) => `.omg/state/team/${teamName}/manifest.json`,
-  monitorSnapshot: (teamName) => `.omg/state/team/${teamName}/monitor-snapshot.json`,
-  summarySnapshot: (teamName) => `.omg/state/team/${teamName}/summary-snapshot.json`,
-  phaseState: (teamName) => `.omg/state/team/${teamName}/phase-state.json`,
-  scalingLock: (teamName) => `.omg/state/team/${teamName}/.scaling-lock`,
-  workerIdentity: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/identity.json`,
-  workerAgentsMd: (teamName) => `.omg/state/team/${teamName}/worker-agents.md`,
-  shutdownRequest: (teamName, workerName) => `.omg/state/team/${teamName}/workers/${workerName}/shutdown-request.json`
+  root: (teamName) => `.omcp/state/team/${teamName}`,
+  config: (teamName) => `.omcp/state/team/${teamName}/config.json`,
+  shutdown: (teamName) => `.omcp/state/team/${teamName}/shutdown.json`,
+  tasks: (teamName) => `.omcp/state/team/${teamName}/tasks`,
+  taskFile: (teamName, taskId) => `.omcp/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
+  workers: (teamName) => `.omcp/state/team/${teamName}/workers`,
+  workerDir: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}`,
+  heartbeat: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/heartbeat.json`,
+  inbox: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`,
+  outbox: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/outbox.jsonl`,
+  ready: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/.ready`,
+  overlay: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/AGENTS.md`,
+  shutdownAck: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/shutdown-ack.json`,
+  mailbox: (teamName, workerName) => `.omcp/state/team/${teamName}/mailbox/${workerName}.json`,
+  mailboxLockDir: (teamName, workerName) => `.omcp/state/team/${teamName}/mailbox/.lock-${workerName}`,
+  dispatchRequests: (teamName) => `.omcp/state/team/${teamName}/dispatch/requests.json`,
+  dispatchLockDir: (teamName) => `.omcp/state/team/${teamName}/dispatch/.lock`,
+  workerStatus: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/status.json`,
+  workerIdleNotify: (teamName) => `.omcp/state/team/${teamName}/worker-idle-notify.json`,
+  workerPrevNotifyState: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/prev-notify-state.json`,
+  events: (teamName) => `.omcp/state/team/${teamName}/events.jsonl`,
+  approval: (teamName, taskId) => `.omcp/state/team/${teamName}/approvals/${taskId}.json`,
+  manifest: (teamName) => `.omcp/state/team/${teamName}/manifest.json`,
+  monitorSnapshot: (teamName) => `.omcp/state/team/${teamName}/monitor-snapshot.json`,
+  summarySnapshot: (teamName) => `.omcp/state/team/${teamName}/summary-snapshot.json`,
+  phaseState: (teamName) => `.omcp/state/team/${teamName}/phase-state.json`,
+  scalingLock: (teamName) => `.omcp/state/team/${teamName}/.scaling-lock`,
+  workerIdentity: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/identity.json`,
+  workerAgentsMd: (teamName) => `.omcp/state/team/${teamName}/worker-agents.md`,
+  shutdownRequest: (teamName, workerName) => `.omcp/state/team/${teamName}/workers/${workerName}/shutdown-request.json`
 };
 function getTaskStoragePath(cwd, teamName, taskId) {
   if (taskId !== void 0) {
@@ -331,7 +331,7 @@ function sanitizeTaskId(taskId) {
 function canonicalTasksDir(teamName, cwd) {
   const root = cwd ?? process.cwd();
   const dir = getTaskStoragePath(root, sanitizeName(teamName));
-  validateResolvedPath(dir, (0, import_path5.join)(root, ".omg", "state", "team"));
+  validateResolvedPath(dir, (0, import_path5.join)(root, ".omcp", "state", "team"));
   return dir;
 }
 function legacyTasksDir(teamName) {
@@ -815,8 +815,8 @@ function configPath(teamName) {
   return result;
 }
 function shadowRegistryPath(workingDirectory) {
-  const result = (0, import_path7.join)(workingDirectory, ".omg", "state", "team-mcp-workers.json");
-  validateResolvedPath(result, (0, import_path7.join)(workingDirectory, ".omg", "state"));
+  const result = (0, import_path7.join)(workingDirectory, ".omcp", "state", "team-mcp-workers.json");
+  validateResolvedPath(result, (0, import_path7.join)(workingDirectory, ".omcp", "state"));
   return result;
 }
 function unregisterMcpWorker(teamName, workerName, workingDirectory) {
@@ -882,7 +882,7 @@ function listMcpWorkers(teamName, workingDirectory) {
 var import_fs8 = require("fs");
 var import_path8 = require("path");
 function heartbeatPath(workingDirectory, teamName, workerName) {
-  return (0, import_path8.join)(workingDirectory, ".omg", "state", "team-bridge", sanitizeName(teamName), `${sanitizeName(workerName)}.heartbeat.json`);
+  return (0, import_path8.join)(workingDirectory, ".omcp", "state", "team-bridge", sanitizeName(teamName), `${sanitizeName(workerName)}.heartbeat.json`);
 }
 function writeHeartbeat(workingDirectory, data) {
   const filePath = heartbeatPath(workingDirectory, data.teamName, data.workerName);
@@ -923,11 +923,11 @@ function deleteHeartbeat(workingDirectory, teamName, workerName) {
 var import_node_path = require("node:path");
 var DEFAULT_MAX_LOG_SIZE = 5 * 1024 * 1024;
 function getLogPath(workingDirectory, teamName) {
-  return (0, import_node_path.join)(workingDirectory, ".omg", "logs", `team-bridge-${teamName}.jsonl`);
+  return (0, import_node_path.join)(workingDirectory, ".omcp", "logs", `team-bridge-${teamName}.jsonl`);
 }
 function logAuditEvent(workingDirectory, event) {
   const logPath = getLogPath(workingDirectory, event.teamName);
-  const dir = (0, import_node_path.join)(workingDirectory, ".omg", "logs");
+  const dir = (0, import_node_path.join)(workingDirectory, ".omcp", "logs");
   validateResolvedPath(logPath, workingDirectory);
   ensureDirWithMode(dir);
   const line = JSON.stringify(event) + "\n";
@@ -1085,11 +1085,11 @@ var import_path9 = require("path");
 var import_node_fs = require("node:fs");
 var import_node_path3 = require("node:path");
 function getUsageLogPath(workingDirectory, teamName) {
-  return (0, import_node_path3.join)(workingDirectory, ".omg", "logs", `team-usage-${teamName}.jsonl`);
+  return (0, import_node_path3.join)(workingDirectory, ".omcp", "logs", `team-usage-${teamName}.jsonl`);
 }
 function recordTaskUsage(workingDirectory, teamName, record) {
   const logPath = getUsageLogPath(workingDirectory, teamName);
-  const dir = (0, import_node_path3.join)(workingDirectory, ".omg", "logs");
+  const dir = (0, import_node_path3.join)(workingDirectory, ".omcp", "logs");
   validateResolvedPath(logPath, workingDirectory);
   ensureDirWithMode(dir);
   appendFileWithMode(logPath, JSON.stringify(record) + "\n");
@@ -1453,7 +1453,7 @@ function buildTaskPrompt(task, messages, config) {
   return result;
 }
 function writePromptFile(config, taskId, prompt) {
-  const dir = (0, import_path10.join)(config.workingDirectory, ".omg", "prompts");
+  const dir = (0, import_path10.join)(config.workingDirectory, ".omcp", "prompts");
   ensureDirWithMode(dir);
   const filename = `team-${config.teamName}-task-${taskId}-${Date.now()}.md`;
   const filePath = (0, import_path10.join)(dir, filename);
@@ -1461,7 +1461,7 @@ function writePromptFile(config, taskId, prompt) {
   return filePath;
 }
 function getOutputPath(config, taskId) {
-  const dir = (0, import_path10.join)(config.workingDirectory, ".omg", "outputs");
+  const dir = (0, import_path10.join)(config.workingDirectory, ".omcp", "outputs");
   ensureDirWithMode(dir);
   const suffix = Math.random().toString(36).slice(2, 8);
   return (0, import_path10.join)(
@@ -2081,9 +2081,9 @@ function validateConfigPath(configPath2, homeDir, claudeConfigDir) {
   const resolved = n((0, import_path12.resolve)(configPath2));
   const normHome = n((0, import_path12.resolve)(homeDir));
   const normConfigDir = n((0, import_path12.resolve)(claudeConfigDir));
-  const normOmcDir = n((0, import_path12.resolve)(homeDir, ".omg"));
+  const normOmcDir = n((0, import_path12.resolve)(homeDir, ".omcp"));
   const isUnderHome = resolved.startsWith(normHome + "/") || resolved === normHome;
-  const hasOmcComponent = resolved.includes("/.omg/") || resolved.endsWith("/.omc");
+  const hasOmcComponent = resolved.includes("/.omcp/") || resolved.endsWith("/.omc");
   const isTrustedSubpath = resolved === normConfigDir || resolved.startsWith(normConfigDir + "/") || resolved === normOmcDir || resolved.startsWith(normOmcDir + "/") || hasOmcComponent;
   if (!isUnderHome || !isTrustedSubpath) return false;
   try {
@@ -2127,7 +2127,7 @@ function main() {
   const home = (0, import_os3.homedir)();
   const claudeConfigDir = getConfigDir();
   if (!validateConfigPath(configPath2, home, claudeConfigDir)) {
-    console.error(`Config path must be under ~/ with ${claudeConfigDir} or ~/.omg/ subpath: ${configPath2}`);
+    console.error(`Config path must be under ~/ with ${claudeConfigDir} or ~/.omcp/ subpath: ${configPath2}`);
     process.exit(1);
   }
   let config;

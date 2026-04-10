@@ -7,7 +7,7 @@ import type { BridgeConfig } from '../types.js';
 
 describe('mcp-team-bridge usage recording', () => {
   it('records usage on task completion', () => {
-    const workingDirectory = mkdtempSync(join(tmpdir(), 'omc-team-usage-'));
+    const workingDirectory = mkdtempSync(join(tmpdir(), 'omcp-team-usage-'));
     const promptFile = join(workingDirectory, 'prompt.md');
     const outputFile = join(workingDirectory, 'output.md');
     writeFileSync(promptFile, 'prompt content', 'utf-8');
@@ -37,7 +37,7 @@ describe('mcp-team-bridge usage recording', () => {
       startedAtIso: new Date(Date.now() - 200).toISOString(),
     });
 
-    const logPath = join(workingDirectory, '.omg', 'logs', 'team-usage-usage-team.jsonl');
+    const logPath = join(workingDirectory, '.omcp', 'logs', 'team-usage-usage-team.jsonl');
     const content = readFileSync(logPath, 'utf-8').trim();
     const record = JSON.parse(content) as { taskId: string; workerName: string; promptChars: number; responseChars: number };
     expect(record.taskId).toBe('1');

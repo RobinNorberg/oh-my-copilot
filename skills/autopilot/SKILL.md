@@ -39,7 +39,7 @@ Before starting Phase 0, classify the task complexity:
 - **STANDARD** (default): Run the normal autopilot flow (all phases)
 - **COMPLEX** (e.g., auth systems, migrations, distributed architecture): Run all phases AND add Critic review after Phase 0 and Phase 1 for additional quality gates
 
-Complexity result is stored in `.omc/state/sessions/{sessionId}/complexity.json` for downstream phases to reference.
+Complexity result is stored in `.omcp/state/sessions/{sessionId}/complexity.json` for downstream phases to reference.
 </Complexity_Gate>
 
 <Execution_Policy>
@@ -52,18 +52,18 @@ Complexity result is stored in `.omc/state/sessions/{sessionId}/complexity.json`
 
 <Steps>
 1. **Phase 0 - Expansion**: Turn the user's idea into a detailed spec
-   - **If ralplan consensus plan exists** (`.omg/plans/ralplan-*.md` or `.omg/plans/consensus-*.md` from the 3-stage pipeline): Skip BOTH Phase 0 and Phase 1 — jump directly to Phase 2 (Execution). The plan has already been Planner/Architect/Critic validated.
-   - **If deep-interview spec exists** (`.omg/specs/deep-interview-*.md`): Skip analyst+architect expansion, use the pre-validated spec directly as Phase 0 output. Continue to Phase 1 (Planning).
+   - **If ralplan consensus plan exists** (`.omcp/plans/ralplan-*.md` or `.omcp/plans/consensus-*.md` from the 3-stage pipeline): Skip BOTH Phase 0 and Phase 1 — jump directly to Phase 2 (Execution). The plan has already been Planner/Architect/Critic validated.
+   - **If deep-interview spec exists** (`.omcp/specs/deep-interview-*.md`): Skip analyst+architect expansion, use the pre-validated spec directly as Phase 0 output. Continue to Phase 1 (Planning).
    - **If input is vague** (no file paths, function names, or concrete anchors): Offer redirect to `/deep-interview` for Socratic clarification before expanding
    - **Otherwise**: Analyst (Opus) extracts requirements, Architect (Opus) creates technical specification
-   - Output: `.omg/autopilot/spec.md`
+   - Output: `.omcp/autopilot/spec.md`
    - **Context capture**: Phase 0 output (spec summary) is captured for injection into Phase 1
 
 2. **Phase 1 - Planning**: Create an implementation plan from the spec
    - **If ralplan consensus plan exists**: Skip — already done in the 3-stage pipeline
    - Architect (Opus): Create plan (direct mode, no interview)
    - Critic (Opus): Validate plan
-   - Output: `.omg/plans/autopilot-impl.md`
+   - Output: `.omcp/plans/autopilot-impl.md`
    - **Context capture**: Phase 1 output (plan summary) is captured for injection into Phase 2
 
 3. **Phase 2 - Execution**: Implement the plan using Ralph + Ultrawork
@@ -86,7 +86,7 @@ Complexity result is stored in `.omc/state/sessions/{sessionId}/complexity.json`
    - All must approve; fix and re-validate on rejection
 
 6. **Phase 5 - Cleanup**: Delete all state files on successful completion
-   - Remove `.omg/state/autopilot-state.json`, `ralph-state.json`, `ultrawork-state.json`, `ultraqa-state.json`
+   - Remove `.omcp/state/autopilot-state.json`, `ralph-state.json`, `ultrawork-state.json`, `ultraqa-state.json`
    - Run `/oh-my-copilot:cancel` for clean exit
 </Steps>
 
@@ -144,7 +144,7 @@ Autopilot captures key outputs from each phase and injects them into the next ph
 - Phase outputs are truncated to 12KB each
 - Context is session-scoped and cleared on `/cancel`
 - Includes: spec summaries, plan summaries, implementation decisions, QA results
-- Stored in `.omc/state/sessions/{sessionId}/phase-context.json`
+- Stored in `.omcp/state/sessions/{sessionId}/phase-context.json`
 
 ## Configuration
 
@@ -179,7 +179,7 @@ If autopilot was cancelled or failed, run `/oh-my-copilot:autopilot` again to re
 
 ## Troubleshooting
 
-**Stuck in a phase?** Check TODO list for blocked tasks, review `.omg/autopilot-state.json`, or cancel and resume.
+**Stuck in a phase?** Check TODO list for blocked tasks, review `.omcp/autopilot-state.json`, or cancel and resume.
 
 **QA cycles exhausted?** The same error 3 times indicates a fundamental issue. Review the error pattern; manual intervention may be needed.
 
@@ -195,7 +195,7 @@ Autopilot: "Your request is open-ended. Would you like to run a deep interview f
   [Yes, interview first (Recommended)] [No, expand directly]
 ```
 
-If a deep-interview spec already exists at `.omg/specs/deep-interview-*.md`, autopilot uses it directly as Phase 0 output (the spec has already been mathematically validated for clarity).
+If a deep-interview spec already exists at `.omcp/specs/deep-interview-*.md`, autopilot uses it directly as Phase 0 output (the spec has already been mathematically validated for clarity).
 
 ### 3-Stage Pipeline: deep-interview → ralplan → autopilot
 
@@ -208,7 +208,7 @@ The recommended full pipeline chains three quality gates:
   → /autopilot → skips Phase 0+1, starts at Phase 2 (Execution)
 ```
 
-When autopilot detects a ralplan consensus plan (`.omg/plans/ralplan-*.md` or `.omg/plans/consensus-*.md`), it skips both Phase 0 (Expansion) and Phase 1 (Planning) because the plan has already been:
+When autopilot detects a ralplan consensus plan (`.omcp/plans/ralplan-*.md` or `.omcp/plans/consensus-*.md`), it skips both Phase 0 (Expansion) and Phase 1 (Planning) because the plan has already been:
 - Requirements-validated (deep-interview ambiguity gate)
 - Architecture-reviewed (ralplan Architect agent)
 - Quality-checked (ralplan Critic agent)

@@ -122,7 +122,7 @@ async function calculateSessionHealth(
 function showDiagnostic(): void {
   const version = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = join(configDir, 'hud', 'omc-hud.mjs');
+  const hudScript = join(configDir, 'hud', 'omcp-hud.mjs');
   const settingsFile = join(configDir, 'settings.json');
 
   const hudExists = existsSync(hudScript);
@@ -131,9 +131,9 @@ function showDiagnostic(): void {
     const settings = JSON.parse(readFileSync(settingsFile, 'utf-8'));
     const sl = settings.statusLine;
     if (sl && typeof sl === 'object' && typeof (sl as Record<string, unknown>).command === 'string') {
-      statusLineOk = ((sl as Record<string, unknown>).command as string).includes('omc-hud');
+      statusLineOk = ((sl as Record<string, unknown>).command as string).includes('omcp-hud');
     } else if (typeof sl === 'string') {
-      statusLineOk = sl.includes('omc-hud');
+      statusLineOk = sl.includes('omcp-hud');
     }
   } catch {
     /* settings.json missing or invalid */
@@ -276,7 +276,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
     }
     // Async file read to avoid blocking event loop (Issue #1273)
     try {
-      const updateCacheFile = join(homedir(), '.omg', 'update-check.json');
+      const updateCacheFile = join(homedir(), '.omcp', 'update-check.json');
       await access(updateCacheFile);
       const content = await readFile(updateCacheFile, 'utf-8');
       const cached = JSON.parse(content);
@@ -427,5 +427,5 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 // Export for programmatic use (e.g., omg hud --watch loop)
 export { main };
 
-// Auto-run (unconditional so dynamic import() via omc-hud.mjs wrapper works correctly)
+// Auto-run (unconditional so dynamic import() via omcp-hud.mjs wrapper works correctly)
 main();

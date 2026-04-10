@@ -134,7 +134,7 @@ Use `mcp__azure-devops__*` tools when available instead of CLI commands:
 - **Results:** `testplan_show_test_results_from_build_id`
 
 ### Configuration
-Read `.omg/config.json` for ADO settings before making assumptions:
+Read `.omcp/config.json` for ADO settings before making assumptions:
 ```json
 {
   "platform": "azure-devops",

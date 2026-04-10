@@ -98,7 +98,7 @@ disallowedTools: Write, Edit
     ```
 
     Do NOT attempt to write these to a file (Write and Edit tools are blocked for this agent).
-    The orchestrator or planner will persist open questions to `.omg/plans/open-questions.md` on your behalf.
+    The orchestrator or planner will persist open questions to `.omcp/plans/open-questions.md` on your behalf.
   </Open_Questions>
 
   <Final_Checklist>
@@ -123,7 +123,7 @@ When analyzing requirements in Azure DevOps projects:
 - `mcp__azure-devops__search_workitem` — Search work items by keyword
 
 ### Requirements Workflow
-1. Read `.omg/config.json` for ADO org/project settings
+1. Read `.omcp/config.json` for ADO org/project settings
 2. Query work items to understand existing requirements
 3. Check linked PRs and commits for implementation context
 4. Review work item comments for stakeholder discussions

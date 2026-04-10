@@ -98,7 +98,7 @@ The Analyst is read-only and cannot write files, so you must persist its open qu
 ### Step 3: Save Combined Spec
 
 Combine Analyst requirements + Architect technical spec into a single document.
-Save to: \`.omg/autopilot/spec.md\`
+Save to: \`.omcp/autopilot/spec.md\`
 
 ### Step 4: Signal Completion
 
@@ -415,7 +415,7 @@ export function getPhasePrompt(
       );
     case "planning":
       return getDirectPlanningPrompt(
-        context.specPath || ".omg/autopilot/spec.md",
+        context.specPath || ".omcp/autopilot/spec.md",
         context.planPath || resolveAutopilotPlanPath(),
       );
     case "execution":
@@ -423,7 +423,7 @@ export function getPhasePrompt(
     case "qa":
       return getQAPrompt();
     case "validation":
-      return getValidationPrompt(context.specPath || ".omg/autopilot/spec.md");
+      return getValidationPrompt(context.specPath || ".omcp/autopilot/spec.md");
     default:
       return "";
   }

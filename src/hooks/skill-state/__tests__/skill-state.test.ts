@@ -136,7 +136,7 @@ describe('skill-state', () => {
 
     it('creates state file on disk', () => {
       writeSkillActiveState(tempDir, 'skill', 'session-1');
-      const stateDir = join(tempDir, '.omg', 'state', 'sessions', 'session-1');
+      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', 'session-1');
       const files = existsSync(stateDir);
       expect(files).toBe(true);
     });
@@ -216,7 +216,7 @@ describe('skill-state', () => {
     });
 
     it('returns null for invalid JSON', () => {
-      const stateDir = join(tempDir, '.omg', 'state', 'sessions', 'session-1');
+      const stateDir = join(tempDir, '.omcp', 'state', 'sessions', 'session-1');
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(join(stateDir, 'skill-active-state.json'), 'not json');
       expect(readSkillActiveState(tempDir, 'session-1')).toBeNull();
@@ -380,7 +380,7 @@ describe('skill-state', () => {
       const past = new Date(Date.now() - 10 * 60 * 1000).toISOString();
       state.started_at = past;
       state.last_checked_at = past;
-      const statePath = join(tempDir, '.omg', 'state', 'sessions', 'session-1', 'skill-active-state.json');
+      const statePath = join(tempDir, '.omcp', 'state', 'sessions', 'session-1', 'skill-active-state.json');
       writeFileSync(statePath, JSON.stringify(state, null, 2));
 
       const result = checkSkillActiveState(tempDir, 'session-1');

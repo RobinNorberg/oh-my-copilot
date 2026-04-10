@@ -55,7 +55,7 @@ function writeJsonFile(path, data) {
 }
 
 async function checkForUpdates(currentVersion) {
-  const cacheFile = join(homedir(), '.omg', 'update-check.json');
+  const cacheFile = join(homedir(), '.omcp', 'update-check.json');
   const now = Date.now();
   const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -118,10 +118,10 @@ const PRIORITY_HEADER = '## Priority Context';
 const WORKING_MEMORY_HEADER = '## Working Memory';
 
 /**
- * Get notepad path in .omg directory
+ * Get notepad path in .omcp directory
  */
 function getNotepadPath(directory) {
-  return join(directory, '.omg', NOTEPAD_FILENAME);
+  return join(directory, '.omcp', NOTEPAD_FILENAME);
 }
 
 /**
@@ -226,8 +226,8 @@ function hasConflictingUltraworkRestore(state, sessionId, directory, source) {
 }
 
 function getUltraworkRestoreCandidate(directory, sessionId) {
-  const localPath = join(directory, '.omc', 'state', 'ultrawork-state.json');
-  const globalPath = join(homedir(), '.omc', 'state', 'ultrawork-state.json');
+  const localPath = join(directory, '.omcp', 'state', 'ultrawork-state.json');
+  const globalPath = join(homedir(), '.omcp', 'state', 'ultrawork-state.json');
 
   const localState = readJsonFile(localPath);
   if (hasConflictingUltraworkRestore(localState, sessionId, directory, 'local')) {
@@ -260,7 +260,7 @@ Detected an active ultrawork session for ${scope}.
 Owner session: ${ownerSession}
 Started: ${startedAt}
 
-To avoid shared \.omc/state bleed across parallel sessions, OMC suppressed the restore for this session.
+To avoid shared \.omcp/state bleed across parallel sessions, OMC suppressed the restore for this session.
 Continue normally in this session, or use a separate worktree / close the other same-root session before resuming the prior ultrawork state.
 
 </session-restore>
@@ -294,7 +294,7 @@ async function main() {
     const updateInfo = currentVersion ? await checkForUpdates(currentVersion) : null;
     if (updateInfo) {
       // Read config to check autoUpgradePrompt preference
-      const configPath = join(getCopilotConfigDir(), '.omg-config.json');
+      const configPath = join(getCopilotConfigDir(), '.omcp-config.json');
       const omcConfig = readJsonFile(configPath) || {};
       const autoUpgradePrompt = omcConfig.autoUpgradePrompt !== false; // default: true
 
@@ -308,7 +308,7 @@ oh-my-copilot v${updateInfo.latestVersion} is available (current: v${updateInfo.
 ACTION: Use AskUserQuestion to ask the user if they want to upgrade now. Offer these options:
 - "Upgrade now" (Recommended): Run \`npm install -g oh-my-copilot@latest\` via Bash, then run \`omc install --force --skip-copilot-check --refresh-hooks\` to reconcile hooks and copilot-instructions.md
 - "Skip this time": Continue the session without upgrading
-- "Don't ask again": Tell the user to set "autoUpgradePrompt": false in ~/.copilot/.omg-config.json to disable future prompts
+- "Don't ask again": Tell the user to set "autoUpgradePrompt": false in ~/.copilot/.omcp-config.json to disable future prompts
 
 Keep the prompt brief. If the user accepts, execute the upgrade commands and report the result.
 
@@ -363,7 +363,7 @@ Continue working in ultrawork mode until all tasks are complete.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [
-      join(directory, '.omg', 'todos.json'),
+      join(directory, '.omcp', 'todos.json'),
       join(directory, '.copilot', 'todos.json')
     ];
     let incompleteCount = 0;

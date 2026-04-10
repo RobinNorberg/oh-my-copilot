@@ -7,12 +7,12 @@ import { fileURLToPath } from 'url';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 
 export const ASK_USAGE = [
-  'Usage: omc ask <claude|copilot|codex|gemini> <question or task>',
-  '   or: omc ask <claude|copilot|codex|gemini> -p "<prompt>"',
-  '   or: omc ask <claude|copilot|codex|gemini> --print "<prompt>"',
-  '   or: omc ask <claude|copilot|codex|gemini> --prompt "<prompt>"',
-  '   or: omc ask <claude|copilot|codex|gemini> --agent-prompt <role> "<prompt>"',
-  '   or: omc ask <claude|copilot|codex|gemini> --agent-prompt=<role> --prompt "<prompt>"',
+  'Usage: omcp ask <claude|copilot|codex|gemini> <question or task>',
+  '   or: omcp ask <claude|copilot|codex|gemini> -p "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini> --print "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini> --prompt "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini> --agent-prompt <role> "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini> --agent-prompt=<role> --prompt "<prompt>"',
 ].join('\n');
 
 const ASK_PROVIDERS = ['claude', 'copilot', 'codex', 'gemini'] as const;

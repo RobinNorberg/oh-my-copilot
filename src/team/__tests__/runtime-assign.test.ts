@@ -24,7 +24,7 @@ describe('assignTask trigger delivery', () => {
     const { assignTask } = await import('../runtime.js');
     const cwd = mkdtempSync(join(tmpdir(), 'team-runtime-assign-'));
     const teamName = 'assign-team';
-    const root = join(cwd, '.omg', 'state', 'team', teamName);
+    const root = join(cwd, '.omcp', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     writeFileSync(join(root, 'tasks', '1.json'), JSON.stringify({
       id: '1',

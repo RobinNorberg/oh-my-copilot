@@ -13,7 +13,7 @@ vi.mock('child_process', async (importOriginal) => {
     mockedCalls.execFileArgs.push(args);
 
     if (args[0] === 'new-session') {
-      return { stdout: 'omc-team-race-team-detached:0 %91\n', stderr: '' };
+      return { stdout: 'omcp-team-race-team-detached:0 %91\n', stderr: '' };
     }
 
     if (args[0] === 'new-window') {
@@ -106,7 +106,7 @@ describe('createTeamSession context resolution', () => {
     );
     expect(detachedCreateCall).toBeDefined();
     expect(session.leaderPaneId).toBe('%91');
-    expect(session.sessionName).toBe('omc-team-race-team-detached:0');
+    expect(session.sessionName).toBe('omcp-team-race-team-detached:0');
     expect(session.workerPaneIds).toEqual([]);
     expect(session.sessionMode).toBe('detached-session');
   });

@@ -67,7 +67,7 @@ Parse the user's request to extract:
 
 Then:
 a. Create experiment branch: `git checkout -b experiment/{tag}` from current HEAD
-b. Initialize `experiment-notebook.json` in `.omg/` (see schema below)
+b. Initialize `experiment-notebook.json` in `.omcp/` (see schema below)
 c. Run the measurement command to establish **baseline metrics**
 d. Record baseline in the notebook
 
@@ -119,7 +119,7 @@ git add -A && git commit -m "experiment(EXP-{N}): {hypothesis summary}"
 
 Run the measurement command:
 ```bash
-{measurement_command} > .omg/experiment-run.log 2>&1
+{measurement_command} > .omcp/experiment-run.log 2>&1
 ```
 
 Extract metrics from output (grep, parse JSON, etc.).
@@ -208,7 +208,7 @@ Top learnings:
 
 Files changed: {list}
 Branch: experiment/{tag}
-Notebook: .omg/experiment-notebook.json
+Notebook: .omcp/experiment-notebook.json
 ```
 
 Then run `/oh-my-copilot:cancel` for clean state cleanup.

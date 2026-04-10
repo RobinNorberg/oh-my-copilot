@@ -8,7 +8,7 @@ description: >
 
 # OMC ADO Sprint
 
-Perform a full Azure DevOps sprint planning cycle for the current project. Reads `.omg/config.json` for connection settings, queries iterations and team capacity, reviews the backlog, and helps assign work items to sprints.
+Perform a full Azure DevOps sprint planning cycle for the current project. Reads `.omcp/config.json` for connection settings, queries iterations and team capacity, reviews the backlog, and helps assign work items to sprints.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -27,10 +27,10 @@ Perform a full Azure DevOps sprint planning cycle for the current project. Reads
 
 ## Step 1: Load Configuration
 
-Read `.omg/config.json`:
+Read `.omcp/config.json`:
 
 ```bash
-cat .omg/config.json 2>/dev/null || echo "NOT_FOUND"
+cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
 ```
 
 Extract from the `ado` key:
@@ -329,7 +329,7 @@ az boards iteration team add \
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
+| `.omcp/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
 | `team` not found in config | Prompt user to provide team name; use project name as default |
 | `az login` required | Prompt user to authenticate; skip that step and continue with available data |
 | Iteration not found | Verify the iteration name/path matches exactly what ADO returns in Step 2 |

@@ -56,7 +56,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   it('emits boulder fallback for unknown tools when session-scoped mode is active', () => {
     const sessionId = 'session-970';
     writeJson(
-      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json'),
+      join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json'),
       {
         active: true,
         session_id: sessionId,
@@ -76,7 +76,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   });
 
   it('does not fall back to legacy mode files when a valid session_id is provided', () => {
-    writeJson(join(tempDir, '.omg', 'state', 'ralph-state.json'), {
+    writeJson(join(tempDir, '.omcp', 'state', 'ralph-state.json'), {
       active: true,
     });
 
@@ -90,7 +90,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   });
 
   it('uses legacy mode files when session_id is not provided', () => {
-    writeJson(join(tempDir, '.omg', 'state', 'ultrawork-state.json'), {
+    writeJson(join(tempDir, '.omcp', 'state', 'ultrawork-state.json'), {
       active: true,
     });
 
@@ -109,7 +109,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   it('injects team-routing redirect when Task called without team_name during active team session', () => {
     const sessionId = 'session-1006';
     writeJson(
-      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'),
+      join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'),
       {
         active: true,
         session_id: sessionId,
@@ -138,7 +138,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   it('does NOT inject team-routing redirect when Task called WITH team_name', () => {
     const sessionId = 'session-1006b';
     writeJson(
-      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'),
+      join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'),
       {
         active: true,
         session_id: sessionId,
@@ -185,7 +185,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
   });
 
   it('reads team state from legacy path when session_id is absent', () => {
-    writeJson(join(tempDir, '.omg', 'state', 'team-state.json'), {
+    writeJson(join(tempDir, '.omcp', 'state', 'team-state.json'), {
       active: true,
       team_name: 'legacy-team',
     });
@@ -208,7 +208,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
 
   it('respects session isolation — ignores team state from different session', () => {
     writeJson(
-      join(tempDir, '.omg', 'state', 'sessions', 'other-session', 'team-state.json'),
+      join(tempDir, '.omcp', 'state', 'sessions', 'other-session', 'team-state.json'),
       {
         active: true,
         session_id: 'other-session',

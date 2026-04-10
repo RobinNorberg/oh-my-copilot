@@ -43,14 +43,14 @@ export async function loadProjectMemory(projectRoot: string): Promise<ProjectMem
 
 /**
  * Save project memory to disk
- * Creates .omg directory if it doesn't exist
+ * Creates .omcp directory if it doesn't exist
  */
 export async function saveProjectMemory(projectRoot: string, memory: ProjectMemory): Promise<void> {
   const memoryPath = getMemoryPath(projectRoot);
   const omcDir = path.dirname(memoryPath);
 
   try {
-    // Ensure .omg directory exists
+    // Ensure .omcp directory exists
     await fs.mkdir(omcDir, { recursive: true });
 
     // Write memory file atomically to prevent corruption on crash

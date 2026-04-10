@@ -131,7 +131,7 @@ Use `mcp__azure-devops__*` tools when available instead of CLI commands:
 - **Work Items:** `wit_get_work_item`, `wit_list_backlog_work_items`, `wit_get_work_items_for_iteration`
 
 ### Configuration
-Read `.omg/config.json` for ADO settings before making assumptions:
+Read `.omcp/config.json` for ADO settings before making assumptions:
 ```json
 {
   "platform": "azure-devops",

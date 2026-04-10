@@ -19,12 +19,12 @@ export interface OmpConfig {
 }
 
 /**
- * Read .omg/config.json from the given directory (or cwd).
+ * Read .omcp/config.json from the given directory (or cwd).
  * Returns null if the file doesn't exist.
  */
 export function readOmpConfig(dir?: string): OmpConfig | null {
   const base = dir || process.cwd();
-  const configPath = join(base, '.omg', 'config.json');
+  const configPath = join(base, '.omcp', 'config.json');
   if (!existsSync(configPath)) return null;
   try {
     const raw = readFileSync(configPath, 'utf-8');
@@ -35,7 +35,7 @@ export function readOmpConfig(dir?: string): OmpConfig | null {
 }
 
 /**
- * Get ADO config, merging .omg/config.json with git remote detection.
+ * Get ADO config, merging .omcp/config.json with git remote detection.
  * Config file values take precedence over auto-detected values.
  */
 export function getAdoConfig(dir?: string): AdoConfig {

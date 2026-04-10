@@ -171,7 +171,7 @@ describe("getTeamTmuxSessions", () => {
 
   it("returns sessions matching the team prefix", () => {
     mockExecSync.mockReturnValueOnce(
-      "omc-team-myteam-worker1\nomc-team-myteam-worker2\nother-session\n"
+      "omcp-team-myteam-worker1\nomcp-team-myteam-worker2\nother-session\n"
     );
     expect(getTeamTmuxSessions("myteam")).toEqual(["worker1", "worker2"]);
   });

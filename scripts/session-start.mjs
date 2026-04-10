@@ -167,7 +167,7 @@ function getPluginVersion() {
 // Get npm global package version
 function getNpmVersion() {
   try {
-    const versionFile = join(configDir, '.omg-version.json');
+    const versionFile = join(configDir, '.omcp-version.json');
     const data = readJsonFile(versionFile);
     return data?.version || null;
   } catch { return null; }
@@ -220,7 +220,7 @@ function detectVersionDrift() {
 
 // Check if we should notify (once per unique drift combination)
 function shouldNotifyDrift(driftInfo) {
-  const stateFile = join(configDir, '.omg', 'update-state.json');
+  const stateFile = join(configDir, '.omcp', 'update-state.json');
   const driftKey = `plugin:${driftInfo.pluginVersion}-npm:${driftInfo.npmVersion}-copilot:${driftInfo.claudeMdVersion}`;
 
   try {
@@ -232,7 +232,7 @@ function shouldNotifyDrift(driftInfo) {
 
   // Save new drift state
   try {
-    const dir = join(configDir, '.omg');
+    const dir = join(configDir, '.omcp');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(stateFile, JSON.stringify({
       lastNotifiedDrift: driftKey,
@@ -245,7 +245,7 @@ function shouldNotifyDrift(driftInfo) {
 
 // Check npm registry for available update (with 24h cache)
 async function checkNpmUpdate(currentVersion) {
-  const cacheFile = join(configDir, '.omg', 'update-check.json');
+  const cacheFile = join(configDir, '.omcp', 'update-check.json');
   const CACHE_DURATION = 24 * 60 * 60 * 1000;
   const now = Date.now();
 
@@ -276,7 +276,7 @@ async function checkNpmUpdate(currentVersion) {
 
     // Update cache
     try {
-      const dir = join(configDir, '.omg');
+      const dir = join(configDir, '.omcp');
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       writeFileSync(cacheFile, JSON.stringify({ timestamp: now, latestVersion, currentVersion, updateAvailable }));
     } catch {}
@@ -289,8 +289,8 @@ async function checkNpmUpdate(currentVersion) {
 async function checkHudInstallation(retryCount = 0) {
   const hudDir = join(configDir, 'hud');
   // Support current and legacy script names
-  const hudScriptOmc = join(hudDir, 'omc-hud.mjs');
-  const hudScriptLegacy = join(hudDir, 'omc-hud.js');
+  const hudScriptOmc = join(hudDir, 'omcp-hud.mjs');
+  const hudScriptLegacy = join(hudDir, 'omcp-hud.js');
   const settingsFile = join(configDir, 'settings.json');
 
   const MAX_RETRIES = 2;
@@ -332,7 +332,7 @@ async function checkHudInstallation(retryCount = 0) {
           : null);
 
       // If OMC HUD wrapper is configured, ensure at least one plugin cache version is built.
-      if (statusLineCommand?.includes('omc-hud')) {
+      if (statusLineCommand?.includes('omcp-hud')) {
         const pluginCacheBase = join(configDir, 'plugins', 'cache', 'omg', 'oh-my-copilot');
         if (existsSync(pluginCacheBase)) {
           const versions = readdirSync(pluginCacheBase)
@@ -387,10 +387,10 @@ async function detectAdoPlatform(directory) {
   return null;
 }
 
-// Read ADO config from .omg/config.json
+// Read ADO config from .omcp/config.json
 function readAdoConfig(directory) {
   try {
-    const configPath = join(directory, '.omg', 'config.json');
+    const configPath = join(directory, '.omcp', 'config.json');
     const config = readJsonFile(configPath);
     return config?.ado || null;
   } catch {
@@ -457,14 +457,14 @@ async function main() {
     let ultraworkState = null;
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
       // Session-scoped ONLY — no legacy fallback
-      ultraworkState = readJsonFile(join(directory, '.omg', 'state', 'sessions', sessionId, 'ultrawork-state.json'));
+      ultraworkState = readJsonFile(join(directory, '.omcp', 'state', 'sessions', sessionId, 'ultrawork-state.json'));
       // Validate session identity
       if (ultraworkState && ultraworkState.session_id && ultraworkState.session_id !== sessionId) {
         ultraworkState = null;
       }
     } else {
       // No session_id — legacy behavior for backward compat
-      ultraworkState = readJsonFile(join(directory, '.omg', 'state', 'ultrawork-state.json'));
+      ultraworkState = readJsonFile(join(directory, '.omcp', 'state', 'ultrawork-state.json'));
     }
 
     if (ultraworkState?.active) {
@@ -488,16 +488,16 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
     let ralphState = null;
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
       // Session-scoped ONLY — no legacy fallback
-      ralphState = readJsonFile(join(directory, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json'));
+      ralphState = readJsonFile(join(directory, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json'));
       // Validate session identity
       if (ralphState && ralphState.session_id && ralphState.session_id !== sessionId) {
         ralphState = null;
       }
     } else {
       // No session_id — legacy behavior for backward compat
-      ralphState = readJsonFile(join(directory, '.omg', 'state', 'ralph-state.json'));
+      ralphState = readJsonFile(join(directory, '.omcp', 'state', 'ralph-state.json'));
       if (!ralphState) {
-        ralphState = readJsonFile(join(directory, '.omg', 'ralph-state.json'));
+        ralphState = readJsonFile(join(directory, '.omcp', 'ralph-state.json'));
       }
     }
     if (ralphState?.active) {
@@ -524,7 +524,7 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [
-      join(directory, '.omg', 'todos.json'),
+      join(directory, '.omcp', 'todos.json'),
       join(directory, '.copilot', 'todos.json')
     ];
     let incompleteCount = 0;
@@ -573,7 +573,7 @@ ${summary}
     }
 
     // Check for notepad Priority Context
-    const notepadPath = join(directory, '.omg', 'notepad.md');
+    const notepadPath = join(directory, '.omcp', 'notepad.md');
     if (existsSync(notepadPath)) {
       try {
         const notepadContent = readFileSync(notepadPath, 'utf-8');
@@ -598,7 +598,7 @@ ${cleanContent}
     const adoRemoteUrl = await detectAdoPlatform(directory);
     if (adoRemoteUrl) {
       const adoConfig = readAdoConfig(directory);
-      let adoMsg = `[AZURE DEVOPS DETECTED]\n\nPlatform: Azure DevOps\nRemote: ${adoRemoteUrl}\n\nAvailable MCP Tools: \`mcp__azure-devops__*\`\n- Work Items: wit_get_work_item, wit_create_work_item, wit_update_work_item, wit_my_work_items, wit_list_backlog_work_items, wit_get_work_items_for_iteration, wit_get_work_items_batch_by_ids, wit_add_child_work_items, wit_link_work_item_to_pull_request, wit_work_items_link, wit_work_item_unlink, wit_add_artifact_link, wit_add_work_item_comment, wit_list_work_item_comments, wit_list_work_item_revisions, wit_update_work_items_batch\n- Queries: wit_get_query, wit_get_query_results_by_id, search_workitem\n- Repos: repo_list_repos_by_project, repo_get_repo_by_name_or_id, repo_list_pull_requests_by_repo_or_project, repo_list_pull_requests_by_commits, repo_create_pull_request, repo_get_pull_request_by_id, repo_update_pull_request, repo_update_pull_request_reviewers, repo_search_commits\n- PR Threads: repo_create_pull_request_thread, repo_list_pull_request_threads, repo_list_pull_request_thread_comments, repo_reply_to_comment, repo_update_pull_request_thread\n- Branches: repo_create_branch, repo_get_branch_by_name, repo_list_branches_by_repo, repo_list_my_branches_by_repo\n- Pipelines: pipelines_get_builds, pipelines_get_build_status, pipelines_get_build_log, pipelines_get_build_log_by_id, pipelines_get_build_changes, pipelines_get_build_definitions, pipelines_get_build_definition_revisions, pipelines_run_pipeline, pipelines_create_pipeline, pipelines_list_runs, pipelines_get_run, pipelines_update_build_stage\n- Test Plans: testplan_list_test_plans, testplan_list_test_suites, testplan_list_test_cases, testplan_create_test_plan, testplan_create_test_suite, testplan_create_test_case, testplan_add_test_cases_to_suite, testplan_update_test_case_steps, testplan_show_test_results_from_build_id\n- Wiki: wiki_list_wikis, wiki_get_wiki, wiki_list_pages, wiki_get_page, wiki_get_page_content, wiki_create_or_update_page, search_wiki\n- Search: search_code, search_workitem, search_wiki\n- Security: advsec_get_alerts, advsec_get_alert_details\n- Iterations: work_list_iterations, work_list_team_iterations, work_create_iterations, work_assign_iterations, work_get_iteration_capacities, work_get_team_capacity, work_update_team_capacity\n- Organization: core_list_projects, core_list_project_teams, core_get_identity_ids\n\nConfig file: \`.omg/config.json\` (org, project, workItemType, areaPath, iterationPath)\n\nRecommended plugins:\n- azure-devops-mcp: MCP server for ADO tools (https://github.com/microsoft/azure-devops-mcp)\n- azure-skills: Plugin for Azure cloud operations (https://github.com/microsoft/azure-skills)`;
+      let adoMsg = `[AZURE DEVOPS DETECTED]\n\nPlatform: Azure DevOps\nRemote: ${adoRemoteUrl}\n\nAvailable MCP Tools: \`mcp__azure-devops__*\`\n- Work Items: wit_get_work_item, wit_create_work_item, wit_update_work_item, wit_my_work_items, wit_list_backlog_work_items, wit_get_work_items_for_iteration, wit_get_work_items_batch_by_ids, wit_add_child_work_items, wit_link_work_item_to_pull_request, wit_work_items_link, wit_work_item_unlink, wit_add_artifact_link, wit_add_work_item_comment, wit_list_work_item_comments, wit_list_work_item_revisions, wit_update_work_items_batch\n- Queries: wit_get_query, wit_get_query_results_by_id, search_workitem\n- Repos: repo_list_repos_by_project, repo_get_repo_by_name_or_id, repo_list_pull_requests_by_repo_or_project, repo_list_pull_requests_by_commits, repo_create_pull_request, repo_get_pull_request_by_id, repo_update_pull_request, repo_update_pull_request_reviewers, repo_search_commits\n- PR Threads: repo_create_pull_request_thread, repo_list_pull_request_threads, repo_list_pull_request_thread_comments, repo_reply_to_comment, repo_update_pull_request_thread\n- Branches: repo_create_branch, repo_get_branch_by_name, repo_list_branches_by_repo, repo_list_my_branches_by_repo\n- Pipelines: pipelines_get_builds, pipelines_get_build_status, pipelines_get_build_log, pipelines_get_build_log_by_id, pipelines_get_build_changes, pipelines_get_build_definitions, pipelines_get_build_definition_revisions, pipelines_run_pipeline, pipelines_create_pipeline, pipelines_list_runs, pipelines_get_run, pipelines_update_build_stage\n- Test Plans: testplan_list_test_plans, testplan_list_test_suites, testplan_list_test_cases, testplan_create_test_plan, testplan_create_test_suite, testplan_create_test_case, testplan_add_test_cases_to_suite, testplan_update_test_case_steps, testplan_show_test_results_from_build_id\n- Wiki: wiki_list_wikis, wiki_get_wiki, wiki_list_pages, wiki_get_page, wiki_get_page_content, wiki_create_or_update_page, search_wiki\n- Search: search_code, search_workitem, search_wiki\n- Security: advsec_get_alerts, advsec_get_alert_details\n- Iterations: work_list_iterations, work_list_team_iterations, work_create_iterations, work_assign_iterations, work_get_iteration_capacities, work_get_team_capacity, work_update_team_capacity\n- Organization: core_list_projects, core_list_project_teams, core_get_identity_ids\n\nConfig file: \`.omcp/config.json\` (org, project, workItemType, areaPath, iterationPath)\n\nRecommended plugins:\n- azure-devops-mcp: MCP server for ADO tools (https://github.com/microsoft/azure-devops-mcp)\n- azure-skills: Plugin for Azure cloud operations (https://github.com/microsoft/azure-skills)`;
       if (adoConfig) {
         adoMsg += `\n\nADO Config:\n${JSON.stringify(adoConfig, null, 2)}`;
       }

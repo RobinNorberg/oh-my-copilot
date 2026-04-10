@@ -15,7 +15,7 @@ function nowIso(): string {
 
 function getTeamStatePath(directory: string, sessionId?: string): string {
   if (!sessionId) {
-    return `${directory}/.omg/state/team-state.json`;
+    return `${directory}/.omcp/state/team-state.json`;
   }
   return resolveSessionStatePath('team', sessionId, directory);
 }

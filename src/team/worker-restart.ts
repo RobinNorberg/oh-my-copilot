@@ -34,7 +34,7 @@ const DEFAULT_POLICY: RestartPolicy = {
 };
 
 function getRestartStatePath(workingDirectory: string, teamName: string, workerName: string): string {
-  return join(workingDirectory, '.omg', 'state', 'team-bridge', teamName, `${workerName}.restart.json`);
+  return join(workingDirectory, '.omcp', 'state', 'team-bridge', teamName, `${workerName}.restart.json`);
 }
 
 /**
@@ -98,7 +98,7 @@ export function recordRestart(
   const statePath = getRestartStatePath(workingDirectory, teamName, workerName);
   validateResolvedPath(statePath, workingDirectory);
 
-  const dir = join(workingDirectory, '.omg', 'state', 'team-bridge', teamName);
+  const dir = join(workingDirectory, '.omcp', 'state', 'team-bridge', teamName);
   ensureDirWithMode(dir);
 
   const existing = readRestartState(workingDirectory, teamName, workerName);

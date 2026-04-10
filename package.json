@@ -13,7 +13,7 @@
   },
   "bin": {
     "oh-my-copilot": "bridge/cli.cjs",
-    "omc": "bridge/cli.cjs"
+    "omcp": "bridge/cli.cjs"
   },
   "files": [
     "dist",

@@ -1290,7 +1290,7 @@ program
 
 /**
  * Team command - CLI API for team worker lifecycle operations
- * Exposes OMC's `omc team api` interface.
+ * Exposes OMC's `omcp team api` interface.
  *
  * helpOption(false) prevents commander from intercepting --help;
  * our teamCommand handler provides its own help output.

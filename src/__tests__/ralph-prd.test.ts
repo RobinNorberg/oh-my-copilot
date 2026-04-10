@@ -49,7 +49,7 @@ describe('Ralph PRD Module', () => {
     });
 
     it('should find prd.json in .omc directory', () => {
-      const omcDir = join(testDir, '.omg');
+      const omcDir = join(testDir, '.omcp');
       mkdirSync(omcDir, { recursive: true });
       const prdPath = join(omcDir, PRD_FILENAME);
       writeFileSync(prdPath, '{}');
@@ -58,7 +58,7 @@ describe('Ralph PRD Module', () => {
 
     it('should prefer root over .omc', () => {
       const rootPath = join(testDir, PRD_FILENAME);
-      const omcDir = join(testDir, '.omg');
+      const omcDir = join(testDir, '.omcp');
       mkdirSync(omcDir, { recursive: true });
       const omcPath = join(omcDir, PRD_FILENAME);
 
@@ -106,7 +106,7 @@ describe('Ralph PRD Module', () => {
 
     it('should create .omc directory when writing', () => {
       writePrd(testDir, samplePrd);
-      expect(existsSync(join(testDir, '.omg'))).toBe(true);
+      expect(existsSync(join(testDir, '.omcp'))).toBe(true);
     });
 
     it('should return null for malformed JSON', () => {
@@ -225,7 +225,7 @@ describe('Ralph PRD Module', () => {
     });
 
     it('should return false when no prd exists', () => {
-      rmSync(join(testDir, '.omg'), { recursive: true, force: true });
+      rmSync(join(testDir, '.omcp'), { recursive: true, force: true });
       expect(markStoryComplete(testDir, 'US-001')).toBe(false);
     });
   });

@@ -13,7 +13,7 @@ import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
 // ---------------------------------------------------------------------------
-// Planning artifacts (inlined — oh-my-copilot uses .omg/plans/)
+// Planning artifacts (inlined — oh-my-copilot uses .omcp/plans/)
 // ---------------------------------------------------------------------------
 
 export interface PlanningArtifacts {
@@ -32,7 +32,7 @@ export interface ApprovedExecutionLaunchHint {
 }
 
 function readPlanningArtifacts(cwd: string): PlanningArtifacts {
-  const plansDir = join(cwd, '.omg', 'plans');
+  const plansDir = join(cwd, '.omcp', 'plans');
   if (!existsSync(plansDir)) {
     return { prdPaths: [], testSpecPaths: [] };
   }

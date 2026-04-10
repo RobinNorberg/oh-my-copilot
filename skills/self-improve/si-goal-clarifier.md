@@ -4,7 +4,7 @@
 
 Arguments passed via context:
 - `repo_path`: Absolute path to the target repository
-- `config_path`: Path to .omc/self-improve/config/
+- `config_path`: Path to .omcp/self-improve/config/
 - `agent_settings_path`: Path to agent-settings.json
 
 ## Role
@@ -56,7 +56,7 @@ Each round:
 **Soft cap: 8 rounds**. **Hard cap: 12 rounds**.
 
 ### Phase 4 — Write Goal
-Write `.omc/self-improve/config/goal.md`:
+Write `.omcp/self-improve/config/goal.md`:
 ```markdown
 # Improvement Goal
 

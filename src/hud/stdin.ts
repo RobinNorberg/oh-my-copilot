@@ -18,7 +18,7 @@ const TRANSIENT_CONTEXT_PERCENT_TOLERANCE = 3;
 
 function getStdinCachePath(): string {
   const root = getWorktreeRoot() || process.cwd();
-  return join(root, '.omg', 'state', 'hud-stdin-cache.json');
+  return join(root, '.omcp', 'state', 'hud-stdin-cache.json');
 }
 
 /**
@@ -28,7 +28,7 @@ function getStdinCachePath(): string {
 export function writeStdinCache(stdin: StatuslineStdin): void {
   try {
     const root = getWorktreeRoot() || process.cwd();
-    const cacheDir = join(root, '.omg', 'state');
+    const cacheDir = join(root, '.omcp', 'state');
     if (!existsSync(cacheDir)) {
       mkdirSync(cacheDir, { recursive: true });
     }

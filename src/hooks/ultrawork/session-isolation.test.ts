@@ -320,7 +320,7 @@ describe('Ultrawork Session Isolation (Issue #269)', () => {
   describe('No legacy fallback with sessionId (Issue #311)', () => {
     // Helper to create legacy state file directly
     function createLegacyState(data: Record<string, unknown>) {
-      const stateDir = join(tempDir, '.omg', 'state');
+      const stateDir = join(tempDir, '.omcp', 'state');
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(join(stateDir, 'ultrawork-state.json'), JSON.stringify(data, null, 2));
     }
@@ -356,17 +356,17 @@ describe('Ultrawork Session Isolation (Issue #269)', () => {
 
   describe('Ghost legacy cleanup on deactivate (Issue #311)', () => {
     function createLegacyState(data: Record<string, unknown>) {
-      const stateDir = join(tempDir, '.omg', 'state');
+      const stateDir = join(tempDir, '.omcp', 'state');
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(join(stateDir, 'ultrawork-state.json'), JSON.stringify(data, null, 2));
     }
 
     function legacyFileExists(): boolean {
-      return existsSync(join(tempDir, '.omg', 'state', 'ultrawork-state.json'));
+      return existsSync(join(tempDir, '.omcp', 'state', 'ultrawork-state.json'));
     }
 
     function readLegacyState(): Record<string, unknown> | null {
-      const path = join(tempDir, '.omg', 'state', 'ultrawork-state.json');
+      const path = join(tempDir, '.omcp', 'state', 'ultrawork-state.json');
       if (!existsSync(path)) return null;
       return JSON.parse(readFileSync(path, 'utf-8'));
     }

@@ -128,7 +128,7 @@ function updateStats(toolName, sessionId) {
 // Read bash history config (default: enabled)
 function getBashHistoryConfig() {
   try {
-    const configPath = join(cfgDir, '.omg-config.json');
+    const configPath = join(cfgDir, '.omcp-config.json');
     if (existsSync(configPath)) {
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
       if (config.bashHistory === false) return false;
@@ -476,7 +476,7 @@ function isConsensusPlanningSkillInvocation(skillName, toolInput) {
 }
 
 function getSkillActiveStatePaths(directory, sessionId) {
-  const stateDir = join(directory, '.omc', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
   return [
     safeSessionId ? join(stateDir, 'sessions', safeSessionId, 'skill-active-state.json') : null,
@@ -508,7 +508,7 @@ function clearSkillActiveState(directory, sessionId) {
 }
 
 function getRalplanStatePaths(directory, sessionId) {
-  const stateDir = join(directory, '.omc', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
   return [
     safeSessionId ? join(stateDir, 'sessions', safeSessionId, 'ralplan-state.json') : null,
@@ -643,7 +643,7 @@ export function detectWriteFailure(output) {
 
 // Get agent completion summary from tracking state
 function getAgentCompletionSummary(directory) {
-  const trackingFile = join(directory, '.omg', 'state', 'subagent-tracking.json');
+  const trackingFile = join(directory, '.omcp', 'state', 'subagent-tracking.json');
   try {
     if (existsSync(trackingFile)) {
       const data = JSON.parse(readFileSync(trackingFile, 'utf-8'));

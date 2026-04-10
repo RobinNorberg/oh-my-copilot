@@ -230,7 +230,7 @@ function activateState(directory, prompt, stateName, sessionId) {
   }
 
   // Write to session-scoped local path when sessionId is available (must match persistent-mode.mjs reads)
-  const stateDir = join(directory, '.omg', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
   const targetDir = safeSessionId
     ? join(stateDir, 'sessions', safeSessionId)
@@ -242,7 +242,7 @@ function activateState(directory, prompt, stateName, sessionId) {
   } catch {}
 
   // Also write to global fallback
-  const globalDir = join(homedir(), '.omg', 'state');
+  const globalDir = join(homedir(), '.omcp', 'state');
   try {
     if (!existsSync(globalDir)) mkdirSync(globalDir, { recursive: true });
     atomicWriteFileSync(join(globalDir, `${stateName}-state.json`), JSON.stringify(state, null, 2));
@@ -254,8 +254,8 @@ function activateState(directory, prompt, stateName, sessionId) {
  */
 function clearStateFiles(directory, modeNames) {
   for (const name of modeNames) {
-    const localPath = join(directory, '.omg', 'state', `${name}-state.json`);
-    const globalPath = join(homedir(), '.omg', 'state', `${name}-state.json`);
+    const localPath = join(directory, '.omcp', 'state', `${name}-state.json`);
+    const globalPath = join(homedir(), '.omcp', 'state', `${name}-state.json`);
     try { if (existsSync(localPath)) unlinkSync(localPath); } catch {}
     try { if (existsSync(globalPath)) unlinkSync(globalPath); } catch {}
   }
@@ -268,9 +268,9 @@ function clearStateFiles(directory, modeNames) {
 function linkRalphTeam(directory, sessionId) {
   const getStatePath = (modeName) => {
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      return join(directory, '.omg', 'state', 'sessions', sessionId, `${modeName}-state.json`);
+      return join(directory, '.omcp', 'state', 'sessions', sessionId, `${modeName}-state.json`);
     }
-    return join(directory, '.omg', 'state', `${modeName}-state.json`);
+    return join(directory, '.omcp', 'state', `${modeName}-state.json`);
   };
 
   // Update ralph state with linked_team

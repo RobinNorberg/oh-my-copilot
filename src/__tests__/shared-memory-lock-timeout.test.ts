@@ -33,7 +33,7 @@ describe('writeEntry lock timeout', () => {
       tmpdir(),
       `shared-memory-lock-timeout-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
-    omcDir = join(testDir, '.omc');
+    omcDir = join(testDir, '.omcp');
     mkdirSync(omcDir, { recursive: true });
     mockGetOmcRoot.mockReturnValue(omcDir);
   });

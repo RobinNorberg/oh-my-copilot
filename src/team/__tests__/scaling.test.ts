@@ -15,7 +15,7 @@ describe('scaleUp duplicate worker guard', () => {
   it('skips past colliding worker names when next_worker_index is stale', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-scaling-duplicate-'));
     const teamName = 'demo-team';
-    const root = join(cwd, '.omg', 'state', 'team', teamName);
+    const root = join(cwd, '.omcp', 'state', 'team', teamName);
     await mkdir(root, { recursive: true });
     await writeFile(join(root, 'config.json'), JSON.stringify({
       name: teamName,
@@ -59,7 +59,7 @@ describe('scaleUp duplicate worker guard', () => {
   it('self-heals across multiple collisions', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-scaling-skip-'));
     const teamName = 'skip-team';
-    const root = join(cwd, '.omg', 'state', 'team', teamName);
+    const root = join(cwd, '.omcp', 'state', 'team', teamName);
     await mkdir(root, { recursive: true });
     await writeFile(join(root, 'config.json'), JSON.stringify({
       name: teamName,

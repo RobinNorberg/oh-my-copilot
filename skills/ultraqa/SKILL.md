@@ -75,7 +75,7 @@ If no structured goal provided, interpret the argument as a custom goal.
 | **Goal Met** | Exit with success: "ULTRAQA COMPLETE: Goal met after N cycles" |
 | **Cycle 5 Reached** | Exit with diagnosis: "ULTRAQA STOPPED: Max cycles. Diagnosis: ..." |
 | **Same Failure 3x** | Exit early: "ULTRAQA STOPPED: Same failure detected 3 times. Root cause: ..." |
-| **Circular Fix Detected** | Exit with escalation report: Generate structured report at `.omc/escalation-report.md` with error pattern hash, occurrence count, error timeline, and recommended manual interventions. Set ultraqa state to stopped. |
+| **Circular Fix Detected** | Exit with escalation report: Generate structured report at `.omcp/escalation-report.md` with error pattern hash, occurrence count, error timeline, and recommended manual interventions. Set ultraqa state to stopped. |
 | **Environment Error** | Exit: "ULTRAQA ERROR: [tmux/port/dependency issue]" |
 
 ## Observability
@@ -93,7 +93,7 @@ Output progress each cycle:
 
 ## State Tracking
 
-Track state in `.omg/ultraqa-state.json`:
+Track state in `.omcp/ultraqa-state.json`:
 ```json
 {
   "active": true,
@@ -118,7 +118,7 @@ User can cancel with `/oh-my-copilot:cancel` which clears the state file.
 3. **EARLY EXIT on pattern** - 3x same failure = stop and surface
 4. **CLEAR OUTPUT** - User should always know current cycle and status
 5. **CLEAN UP** - Clear state file on completion or cancellation
-6. **CIRCULAR FIX DETECTION** - The system tracks error hashes across cycles. If the same normalized error appears 3+ times within a 2-hour window, stop immediately and generate an escalation report at `.omc/escalation-report.md` instead of continuing to retry. This prevents wasting cycles on fundamentally broken fixes.
+6. **CIRCULAR FIX DETECTION** - The system tracks error hashes across cycles. If the same normalized error appears 3+ times within a 2-hour window, stop immediately and generate an escalation report at `.omcp/escalation-report.md` instead of continuing to retry. This prevents wasting cycles on fundamentally broken fixes.
 
 ## STATE CLEANUP ON COMPLETION
 
@@ -128,7 +128,7 @@ When goal is met OR max cycles reached OR exiting early:
 
 ```bash
 # Delete ultraqa state file
-rm -f .omg/state/ultraqa-state.json
+rm -f .omcp/state/ultraqa-state.json
 ```
 
 This ensures clean state for future sessions. Stale state files with `active: false` should not be left behind.

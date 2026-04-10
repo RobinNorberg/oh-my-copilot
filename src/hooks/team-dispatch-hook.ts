@@ -548,8 +548,8 @@ export async function drainPendingTeamDispatch(options: {
   injector?: Injector;
 } = { cwd: '' }): Promise<DrainResult> {
   const { cwd } = options;
-  const stateDir = options.stateDir ?? join(cwd, '.omg', 'state');
-  const logsDir = options.logsDir ?? join(cwd, '.omg', 'logs');
+  const stateDir = options.stateDir ?? join(cwd, '.omcp', 'state');
+  const logsDir = options.logsDir ?? join(cwd, '.omcp', 'logs');
   const maxPerTick = options.maxPerTick ?? 5;
   const injector = options.injector ?? defaultInjector;
 

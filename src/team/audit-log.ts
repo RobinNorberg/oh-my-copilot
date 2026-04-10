@@ -45,7 +45,7 @@ export interface AuditEvent {
 const DEFAULT_MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB
 
 function getLogPath(workingDirectory: string, teamName: string): string {
-  return join(workingDirectory, '.omg', 'logs', `team-bridge-${teamName}.jsonl`);
+  return join(workingDirectory, '.omcp', 'logs', `team-bridge-${teamName}.jsonl`);
 }
 
 /**
@@ -57,7 +57,7 @@ export function logAuditEvent(
   event: AuditEvent
 ): void {
   const logPath = getLogPath(workingDirectory, event.teamName);
-  const dir = join(workingDirectory, '.omg', 'logs');
+  const dir = join(workingDirectory, '.omcp', 'logs');
   validateResolvedPath(logPath, workingDirectory);
   ensureDirWithMode(dir);
   const line = JSON.stringify(event) + '\n';
@@ -132,7 +132,7 @@ export function rotateAuditLog(
 
   // Atomic write: write to temp, then rename
   const tmpPath = logPath + '.tmp';
-  const logsDir = join(workingDirectory, '.omg', 'logs');
+  const logsDir = join(workingDirectory, '.omcp', 'logs');
   validateResolvedPath(tmpPath, logsDir);
 
   // Prevent symlink attacks: if tmp path exists as symlink, remove it

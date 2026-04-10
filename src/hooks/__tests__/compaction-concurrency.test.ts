@@ -33,7 +33,7 @@ import {
 
 function createTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'compaction-test-'));
-  mkdirSync(join(dir, '.omg', 'state'), { recursive: true });
+  mkdirSync(join(dir, '.omcp', 'state'), { recursive: true });
   return dir;
 }
 
@@ -101,7 +101,7 @@ describe('processPreCompact - Compaction Mutex (issue #453)', () => {
     await Promise.all(Array.from({ length: 3 }, () => processPreCompact(input)));
 
     // Check checkpoint directory
-    const checkpointDir = join(tempDir, '.omg', 'state', 'checkpoints');
+    const checkpointDir = join(tempDir, '.omcp', 'state', 'checkpoints');
     if (existsSync(checkpointDir)) {
       const files = readdirSync(checkpointDir).filter(f => f.startsWith('checkpoint-'));
       // Should have exactly 1 checkpoint (not 3)
@@ -134,7 +134,7 @@ describe('processPreCompact - Compaction Mutex (issue #453)', () => {
     // Note: both calls may produce the same millisecond timestamp, causing the
     // second writeFileSync to overwrite the first (same filename). This is expected
     // behavior — the important assertion is that both calls succeed independently.
-    const checkpointDir = join(tempDir, '.omg', 'state', 'checkpoints');
+    const checkpointDir = join(tempDir, '.omcp', 'state', 'checkpoints');
     if (existsSync(checkpointDir)) {
       const files = readdirSync(checkpointDir).filter(f => f.startsWith('checkpoint-'));
       expect(files.length).toBeGreaterThanOrEqual(1);
@@ -159,8 +159,8 @@ describe('processPreCompact - Compaction Mutex (issue #453)', () => {
       expect(result2.continue).toBe(true);
 
       // Each directory should have its own checkpoint
-      const checkpointDir1 = join(tempDir, '.omg', 'state', 'checkpoints');
-      const checkpointDir2 = join(tempDir2, '.omg', 'state', 'checkpoints');
+      const checkpointDir1 = join(tempDir, '.omcp', 'state', 'checkpoints');
+      const checkpointDir2 = join(tempDir2, '.omcp', 'state', 'checkpoints');
 
       if (existsSync(checkpointDir1)) {
         const files1 = readdirSync(checkpointDir1).filter(f => f.startsWith('checkpoint-'));

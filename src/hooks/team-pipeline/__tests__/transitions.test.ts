@@ -10,7 +10,7 @@ describe('team pipeline transitions', () => {
 
     const withPlan = {
       ...toPrd.state,
-      artifacts: { ...toPrd.state.artifacts, plan_path: '.omg/plans/team.md' },
+      artifacts: { ...toPrd.state.artifacts, plan_path: '.omcp/plans/team.md' },
     };
     const toExec = transitionTeamPhase(withPlan, 'team-exec');
     expect(toExec.ok).toBe(true);
@@ -29,7 +29,7 @@ describe('team pipeline transitions', () => {
     const verifyState = {
       ...state,
       phase: 'team-verify' as const,
-      artifacts: { ...state.artifacts, plan_path: '.omg/plans/team.md' },
+      artifacts: { ...state.artifacts, plan_path: '.omcp/plans/team.md' },
     };
 
     const toFix1 = transitionTeamPhase(verifyState, 'team-fix');
@@ -99,7 +99,7 @@ describe('team-verify numeric guards', () => {
     return {
       ...base,
       phase: 'team-exec' as const,
-      artifacts: { ...base.artifacts, plan_path: '.omg/plans/team.md' },
+      artifacts: { ...base.artifacts, plan_path: '.omcp/plans/team.md' },
       execution: {
         ...base.execution,
         tasks_total: tasksTotal as number,

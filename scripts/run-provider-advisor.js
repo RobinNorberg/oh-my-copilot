@@ -160,7 +160,7 @@ function resolveOriginalTask(prompt) {
 
 async function writeArtifact({ provider, originalTask, finalPrompt, rawOutput, exitCode }) {
   const root = process.cwd();
-  const artifactDir = join(root, '.omg', 'artifacts', 'ask');
+  const artifactDir = join(root, '.omcp', 'artifacts', 'ask');
   const slug = slugify(originalTask);
   const timestamp = timestampToken();
   const artifactPath = join(artifactDir, `${provider}-${slug}-${timestamp}.md`);

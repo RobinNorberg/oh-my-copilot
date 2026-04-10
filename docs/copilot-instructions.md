@@ -21,7 +21,7 @@ Route code to `executor` (use `model=opus` for complex work). Uncertain SDK usag
 
 <model_routing>
 `haiku` (quick lookups), `sonnet` (standard), `opus` (architecture, deep analysis).
-Direct writes OK for: `~/.copilot/**`, `.omg/**`, `.copilot/**`, `copilot-instructions.md`, `AGENTS.md`.
+Direct writes OK for: `~/.copilot/**`, `.omcp/**`, `.copilot/**`, `copilot-instructions.md`, `AGENTS.md`.
 </model_routing>
 
 <agent_catalog>
@@ -31,7 +31,7 @@ explore (haiku), analyst (opus), planner (opus), architect (opus), debugger (son
 </agent_catalog>
 
 <tools>
-External AI: `/team N:executor "task"`, `omc team N:codex|gemini "..."`, `omc ask <copilot|claude|codex|gemini>`, `/c3g`
+External AI: `/team N:executor "task"`, `omcp team N:codex|gemini "..."`, `omcp ask <copilot|claude|codex|gemini>`, `/c3g`
 OMC State: `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
 Teams: `TeamCreate`, `TeamDelete`, `SendMessage`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`
 Notepad: `notepad_read`, `notepad_write_priority`, `notepad_write_working`, `notepad_write_manual`
@@ -73,7 +73,7 @@ Kill switches: `DISABLE_OMC`, `OMC_SKIP_HOOKS` (comma-separated).
 </cancellation>
 
 <worktree_paths>
-State: `.omg/state/`, `.omg/state/sessions/{sessionId}/`, `.omg/notepad.md`, `.omg/project-memory.json`, `.omg/plans/`, `.omg/research/`, `.omg/logs/`
+State: `.omcp/state/`, `.omcp/state/sessions/{sessionId}/`, `.omcp/notepad.md`, `.omcp/project-memory.json`, `.omcp/plans/`, `.omcp/research/`, `.omcp/logs/`
 </worktree_paths>
 
 ## Setup

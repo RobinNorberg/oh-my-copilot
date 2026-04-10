@@ -257,7 +257,7 @@ Use `mcp__azure-devops__*` tools when available instead of CLI commands:
 - **PR Management:** `repo_get_pull_request_by_id`, `repo_update_pull_request`, `repo_update_pull_request_reviewers`
 
 ### Configuration
-Read `.omg/config.json` for ADO settings before making assumptions:
+Read `.omcp/config.json` for ADO settings before making assumptions:
 ```json
 {
   "platform": "azure-devops",

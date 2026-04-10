@@ -34,7 +34,7 @@ function renderPlanRuntimeGuidance(availability: SkillRuntimeAvailability): stri
 
   return [
     '## Provider Runtime Availability',
-    'Codex CLI is installed and available. When `--architect codex` or `--critic codex` flags are present, use `omc ask codex --agent-prompt <role> "<prompt>"` for those passes. Do NOT report Codex as unavailable.',
+    'Codex CLI is installed and available. When `--architect codex` or `--critic codex` flags are present, use `omcp ask codex --agent-prompt <role> "<prompt>"` for those passes. Do NOT report Codex as unavailable.',
   ].join('\n');
 }
 
@@ -45,7 +45,7 @@ function renderRalphRuntimeGuidance(availability: SkillRuntimeAvailability): str
 
   return [
     '## Provider Runtime Availability',
-    'Codex CLI is installed and available. When `--critic=codex` is set, use `omc ask codex --agent-prompt critic "<prompt>"` for the approval pass. Do NOT report Codex as unavailable.',
+    'Codex CLI is installed and available. When `--critic=codex` is set, use `omcp ask codex --agent-prompt critic "<prompt>"` for the approval pass. Do NOT report Codex as unavailable.',
   ].join('\n');
 }
 

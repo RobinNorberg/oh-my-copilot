@@ -463,7 +463,7 @@ export async function handleWorkerTurn(
   cwd: string,
   tmux?: TmuxRunner,
 ): Promise<void> {
-  const stateDir = join(cwd, '.omg', 'state');
+  const stateDir = join(cwd, '.omcp', 'state');
   const parsedTeamWorker = { teamName, workerName };
 
   await updateWorkerHeartbeat(stateDir, teamName, workerName);

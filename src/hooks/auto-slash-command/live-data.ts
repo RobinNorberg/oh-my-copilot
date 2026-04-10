@@ -12,7 +12,7 @@
  * - Once per session: `!only-once npm install`
  * - Output formats: `!json docker inspect ...`, `!table ...`, `!diff git diff`
  * - Multi-line: `!begin-script bash` ... `!end-script`
- * - Security allowlist via .omg/config/live-data-policy.json
+ * - Security allowlist via .omcp/config/live-data-policy.json
  */
 
 import { execSync } from "child_process";

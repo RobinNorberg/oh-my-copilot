@@ -230,7 +230,7 @@ Batch 2: Stages 6-7 (parallel)
 ### Directory Structure
 
 ```
-.omg/research/{session-id}/
+.omcp/research/{session-id}/
   state.json              # Session state and progress
   stages/
     stage-1.md            # Stage 1 findings
@@ -485,7 +485,7 @@ Optional settings in `.copilot/settings.json`:
 
 Or say: "stop research", "cancel research", "abort"
 
-Progress is preserved in `.omg/research/{session-id}/` for resume.
+Progress is preserved in `.omcp/research/{session-id}/` for resume.
 
 ## Troubleshooting
 
