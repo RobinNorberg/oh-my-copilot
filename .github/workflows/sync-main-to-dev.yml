@@ -1,0 +1,55 @@
+name: Sync main → dev
+
+# After every push to main, ensure dev stays up to date.
+# Creates a PR to merge main into dev if they diverge.
+# This prevents dev from falling behind main and avoids merge conflicts.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    name: Create sync PR (main → dev)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Check if dev is behind main
+        id: check
+        run: |
+          git fetch origin main
+          BEHIND=$(git rev-list --count HEAD..origin/main)
+          echo "behind=$BEHIND" >> "$GITHUB_OUTPUT"
+          echo "Dev is $BEHIND commits behind main"
+
+      - name: Create or update sync PR
+        if: steps.check.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Check if a sync PR already exists
+          EXISTING_PR=$(gh pr list --base dev --head main --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Sync PR #$EXISTING_PR already exists — it will auto-update with the new main commits"
+          else
+            gh pr create \
+              --base dev \
+              --head main \
+              --title "chore: sync main → dev" \
+              --body "Automated PR to keep dev in sync with main.
+
+          This PR was created automatically after a push to main.
+          Review and merge to keep dev up to date.
+
+          > If there are conflicts, resolve them favoring dev's changes (dev has the latest development work)."
+            echo "Created new sync PR"
+          fi
