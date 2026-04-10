@@ -94,7 +94,7 @@ Store the output as `COPILOT_PLUGIN_ROOT` for the rest of this setup. If no path
 ```
 oh-my-copilot plugin not found. Install it first:
   /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
-  /plugin install oh-my-copilot@omg
+  /plugin install oh-my-copilot@omcp
 ```
 
 ## Pre-Setup Check: Already Configured?
