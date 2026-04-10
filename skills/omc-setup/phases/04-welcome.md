@@ -124,7 +124,7 @@ elif [ -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-instructions.md" ]; the
   OMC_VERSION=$(grep -m1 'OMC:VERSION:' "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-instructions.md" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 fi
 if [ -z "$OMC_VERSION" ]; then
-  OMC_VERSION=$(omc --version 2>/dev/null | head -1 || true)
+  OMC_VERSION=$(omcp --version 2>/dev/null | head -1 || true)
 fi
 if [ -z "$OMC_VERSION" ]; then
   OMC_VERSION="unknown"
