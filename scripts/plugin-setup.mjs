@@ -37,7 +37,7 @@ if (!existsSync(HUD_LIB_DIR)) {
 copyFileSync(join(__dirname, 'lib', 'config-dir.mjs'), join(HUD_LIB_DIR, 'config-dir.mjs'));
 
 // 2. Create HUD wrapper script
-const hudScriptPath = join(HUD_DIR, 'omc-hud.mjs').replace(/\\/g, '/');
+const hudScriptPath = join(HUD_DIR, 'omcp-hud.mjs').replace(/\\/g, '/');
 const hudScript = `#!/usr/bin/env node
 /**
  * OMC HUD - Statusline Script
@@ -245,9 +245,9 @@ try {
   writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
   console.log('[OMC] Configured HUD statusLine in settings.json');
 
-  // Persist the node binary path to .omg-config.json for use by find-node.sh
+  // Persist the node binary path to .omcp-config.json for use by find-node.sh
   try {
-    const configPath = join(CLAUDE_DIR, '.omg-config.json');
+    const configPath = join(CLAUDE_DIR, '.omcp-config.json');
     let omcConfig = {};
     if (existsSync(configPath)) {
       omcConfig = JSON.parse(readFileSync(configPath, 'utf-8'));

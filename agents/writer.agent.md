@@ -98,7 +98,7 @@ Use `mcp__azure-devops__*` tools when available instead of CLI commands:
 - **Search:** `search_wiki`
 
 ### Configuration
-Read `.omg/config.json` for ADO settings before making assumptions:
+Read `.omcp/config.json` for ADO settings before making assumptions:
 ```json
 {
   "platform": "azure-devops",

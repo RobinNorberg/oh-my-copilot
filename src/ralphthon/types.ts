@@ -197,7 +197,7 @@ export type OrchestratorEventHandler = (event: OrchestratorEvent) => void;
 // ============================================================================
 
 /**
- * Parsed CLI options for omc ralphthon
+ * Parsed CLI options for omcp ralphthon
  */
 export interface RalphthonCliOptions {
   /** Resume an existing session */

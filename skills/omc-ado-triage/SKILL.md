@@ -8,7 +8,7 @@ description: >
 
 # OMC ADO Triage
 
-Perform a full Azure DevOps triage cycle for the current project. Reads `.omg/config.json` for connection settings, queries all relevant ADO surfaces (work items, PRs, pipelines, security), and presents a prioritized summary with recommended actions.
+Perform a full Azure DevOps triage cycle for the current project. Reads `.omcp/config.json` for connection settings, queries all relevant ADO surfaces (work items, PRs, pipelines, security), and presents a prioritized summary with recommended actions.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -25,10 +25,10 @@ Perform a full Azure DevOps triage cycle for the current project. Reads `.omg/co
 
 ## Step 1: Load Configuration
 
-Read `.omg/config.json`:
+Read `.omcp/config.json`:
 
 ```bash
-cat .omg/config.json 2>/dev/null || echo "NOT_FOUND"
+cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
 ```
 
 Extract from the `ado` key:
@@ -286,7 +286,7 @@ az boards work-item show --id {id} --org "{org}" -o json
 
 | Error | Action |
 |-------|--------|
-| `.omg/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
+| `.omcp/config.json` missing | Tell user to run `/oh-my-copilot:omc-ado-setup` first |
 | `az login` required | Prompt user to authenticate; do not abort the whole triage — skip that section |
 | Advanced Security not enabled | Skip security alerts section, note it in summary |
 | WIQL query returns 0 results | Show the section with count "(0)" — do not omit the header |

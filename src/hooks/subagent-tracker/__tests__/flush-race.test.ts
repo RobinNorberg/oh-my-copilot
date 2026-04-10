@@ -29,7 +29,7 @@ describe('flush-race', () => {
 
   beforeEach(() => {
     testDir = join(tmpdir(), `flush-race-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
+    mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
   });
 
   afterEach(() => {
@@ -416,7 +416,7 @@ describe('flush-race', () => {
 
     it('should return empty state when no file exists', () => {
       const emptyDir = join(tmpdir(), `empty-test-${Date.now()}`);
-      mkdirSync(join(emptyDir, '.omg', 'state'), { recursive: true });
+      mkdirSync(join(emptyDir, '.omcp', 'state'), { recursive: true });
 
       try {
         const result = readDiskState(emptyDir);

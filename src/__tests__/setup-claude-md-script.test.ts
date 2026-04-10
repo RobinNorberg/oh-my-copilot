@@ -121,7 +121,7 @@ This is a summarized CLAUDE.md without markers.
     expect(existsSync(join(fixture.projectRoot, '.copilot', 'CLAUDE.md'))).toBe(false);
   });
 
-  it('adds a local git exclude block for .omc artifacts while preserving .omc/skills', () => {
+  it('adds a local git exclude block for .omc artifacts while preserving .omcp/skills', () => {
     const fixture = createPluginFixture(`<!-- OMC:START -->
 <!-- OMC:VERSION:9.9.9 -->
 
@@ -156,9 +156,9 @@ Use the real docs file.
 
     const excludeContents = readFileSync(excludePath, 'utf-8');
     expect(excludeContents).toContain('# BEGIN OMC local artifacts');
-    expect(excludeContents).toContain('.omc/*');
-    expect(excludeContents).toContain('!.omc/skills/');
-    expect(excludeContents).toContain('!.omc/skills/**');
+    expect(excludeContents).toContain('.omcp/*');
+    expect(excludeContents).toContain('!.omcp/skills/');
+    expect(excludeContents).toContain('!.omcp/skills/**');
     expect(excludeContents).toContain('# END OMC local artifacts');
   });
 

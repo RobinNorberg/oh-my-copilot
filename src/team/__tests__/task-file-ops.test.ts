@@ -33,7 +33,7 @@ function cleanupLocks(): void {
 
 beforeEach(() => {
   TEST_CWD = join(tmpdir(), `omc-task-file-ops-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  TASKS_DIR = join(TEST_CWD, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
+  TASKS_DIR = join(TEST_CWD, '.omcp', 'state', 'team', TEST_TEAM, 'tasks');
   mkdirSync(TASKS_DIR, { recursive: true });
 });
 

@@ -28,8 +28,8 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     fakeCacheBase = join(fakeHome, '.copilot', 'plugins', 'cache', 'omg', 'oh-my-copilot');
     fakeProject = join(tmpDir, 'project');
 
-    // Create fake project directory with .omg
-    mkdirSync(join(fakeProject, '.omg', 'state'), { recursive: true });
+    // Create fake project directory with .omcp
+    mkdirSync(join(fakeProject, '.omcp', 'state'), { recursive: true });
 
     // Create fake cache base
     mkdirSync(fakeCacheBase, { recursive: true });

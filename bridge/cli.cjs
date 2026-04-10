@@ -3916,7 +3916,7 @@ var init_utils = __esm({
     import_fs2 = require("fs");
     import_path3 = require("path");
     import_url = require("url");
-    OPEN_QUESTIONS_PATH = ".omg/plans/open-questions.md";
+    OPEN_QUESTIONS_PATH = ".omcp/plans/open-questions.md";
   }
 });
 
@@ -10890,7 +10890,7 @@ function isValidTranscriptPath(transcriptPath) {
   const home = (0, import_os2.homedir)();
   const allowedPrefixes = [
     getConfigDir(),
-    (0, import_path12.join)(home, ".omg"),
+    (0, import_path12.join)(home, ".omcp"),
     "/tmp",
     "/var/folders",
     // macOS temp
@@ -11061,20 +11061,20 @@ var init_worktree_paths = __esm({
     import_path12 = require("path");
     init_config_dir();
     OmgPaths = {
-      ROOT: ".omg",
-      STATE: ".omg/state",
-      SESSIONS: ".omg/state/sessions",
-      PLANS: ".omg/plans",
-      RESEARCH: ".omg/research",
-      NOTEPAD: ".omg/notepad.md",
-      PROJECT_MEMORY: ".omg/project-memory.json",
-      DRAFTS: ".omg/drafts",
-      NOTEPADS: ".omg/notepads",
-      LOGS: ".omg/logs",
-      SCIENTIST: ".omg/scientist",
-      AUTOPILOT: ".omg/autopilot",
-      SKILLS: ".omg/skills",
-      SHARED_MEMORY: ".omg/state/shared-memory"
+      ROOT: ".omcp",
+      STATE: ".omcp/state",
+      SESSIONS: ".omcp/state/sessions",
+      PLANS: ".omcp/plans",
+      RESEARCH: ".omcp/research",
+      NOTEPAD: ".omcp/notepad.md",
+      PROJECT_MEMORY: ".omcp/project-memory.json",
+      DRAFTS: ".omcp/drafts",
+      NOTEPADS: ".omcp/notepads",
+      LOGS: ".omcp/logs",
+      SCIENTIST: ".omcp/scientist",
+      AUTOPILOT: ".omcp/autopilot",
+      SKILLS: ".omcp/skills",
+      SHARED_MEMORY: ".omcp/state/shared-memory"
     };
     MAX_WORKTREE_CACHE_SIZE = 8;
     worktreeCacheMap = /* @__PURE__ */ new Map();
@@ -12083,7 +12083,7 @@ var init_constants = __esm({
     init_config_dir();
     init_worktree_paths();
     USER_SKILLS_DIR = (0, import_path16.join)(getConfigDir(), "skills", "omc-learned");
-    GLOBAL_SKILLS_DIR = (0, import_path16.join)((0, import_os4.homedir)(), ".omg", "skills");
+    GLOBAL_SKILLS_DIR = (0, import_path16.join)((0, import_os4.homedir)(), ".omcp", "skills");
     PROJECT_SKILLS_SUBDIR = OmgPaths.SKILLS;
     MAX_RECURSION_DEPTH = 10;
     SKILL_EXTENSION = ".md";
@@ -13868,12 +13868,12 @@ function isHudEnabledInConfig() {
 function isOmcStatusLine(statusLine) {
   if (!statusLine) return false;
   if (typeof statusLine === "string") {
-    return statusLine.includes("omc-hud") || statusLine.includes("copilot-hud.cmd") || statusLine.includes("oh-my-copilot");
+    return statusLine.includes("omcp-hud") || statusLine.includes("copilot-hud.cmd") || statusLine.includes("oh-my-copilot");
   }
   if (typeof statusLine === "object") {
     const sl = statusLine;
     if (typeof sl.command === "string") {
-      return sl.command.includes("omc-hud") || sl.command.includes("copilot-hud.cmd") || sl.command.includes("oh-my-copilot");
+      return sl.command.includes("omcp-hud") || sl.command.includes("copilot-hud.cmd") || sl.command.includes("oh-my-copilot");
     }
   }
   return false;
@@ -14344,7 +14344,7 @@ function install(options = {}) {
       if (!(0, import_fs28.existsSync)(HUD_DIR)) {
         (0, import_fs28.mkdirSync)(HUD_DIR, { recursive: true });
       }
-      hudScriptPath = (0, import_path37.join)(HUD_DIR, "omc-hud.mjs").replace(/\\/g, "/");
+      hudScriptPath = (0, import_path37.join)(HUD_DIR, "omcp-hud.mjs").replace(/\\/g, "/");
       const hudScriptLines = [
         "#!/usr/bin/env node",
         "/**",
@@ -14470,7 +14470,7 @@ function install(options = {}) {
       if (!isWindows()) {
         (0, import_fs28.chmodSync)(hudScriptPath, 493);
       }
-      log3("  Installed omc-hud.mjs");
+      log3("  Installed omcp-hud.mjs");
     } catch (_e) {
       log3("  Warning: Could not install HUD statusline script (non-fatal)");
       hudScriptPath = null;
@@ -14528,9 +14528,9 @@ function install(options = {}) {
             const findNodeDest = (0, import_path37.join)(HUD_DIR, "find-node.sh");
             (0, import_fs28.copyFileSync)(findNodeSrc, findNodeDest);
             (0, import_fs28.chmodSync)(findNodeDest, 493);
-            statusLineCommand = "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs";
+            statusLineCommand = "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs";
           } catch {
-            statusLineCommand = "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs";
+            statusLineCommand = "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs";
           }
         }
         try {
@@ -16257,7 +16257,7 @@ var init_types = __esm({
 // src/hooks/team-pipeline/state.ts
 function getTeamStatePath(directory, sessionId) {
   if (!sessionId) {
-    return `${directory}/.omg/state/team-state.json`;
+    return `${directory}/.omcp/state/team-state.json`;
   }
   return resolveSessionStatePath("team", sessionId, directory);
 }
@@ -18168,7 +18168,7 @@ function getSettingsFilePath() {
   return (0, import_path47.join)(getCopilotConfigDir(), "settings.json");
 }
 function getConfigFilePath() {
-  return (0, import_path47.join)(getCopilotConfigDir(), ".omg", "hud-config.json");
+  return (0, import_path47.join)(getCopilotConfigDir(), ".omcp", "hud-config.json");
 }
 function ensureStateDir(directory) {
   const baseDir = validateWorkingDirectory(directory);
@@ -19807,7 +19807,7 @@ var init_plan_output = __esm({
     "use strict";
     import_path50 = require("path");
     init_worktree_paths();
-    DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omg/plans";
+    DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omcp/plans";
     DEFAULT_PLAN_OUTPUT_FILENAME_TEMPLATE = "{{name}}.md";
   }
 });
@@ -20306,7 +20306,7 @@ The Analyst is read-only and cannot write files, so you must persist its open qu
 ### Step 3: Save Combined Spec
 
 Combine Analyst requirements + Architect technical spec into a single document.
-Save to: \`.omg/autopilot/spec.md\`
+Save to: \`.omcp/autopilot/spec.md\`
 
 ### Step 4: Signal Completion
 
@@ -20582,7 +20582,7 @@ function getPhasePrompt(phase, context) {
       );
     case "planning":
       return getDirectPlanningPrompt(
-        context.specPath || ".omg/autopilot/spec.md",
+        context.specPath || ".omcp/autopilot/spec.md",
         context.planPath || resolveAutopilotPlanPath()
       );
     case "execution":
@@ -20590,7 +20590,7 @@ function getPhasePrompt(phase, context) {
     case "qa":
       return getQAPrompt();
     case "validation":
-      return getValidationPrompt(context.specPath || ".omg/autopilot/spec.md");
+      return getValidationPrompt(context.specPath || ".omcp/autopilot/spec.md");
     default:
       return "";
   }
@@ -21112,7 +21112,7 @@ var init_ralplan_adapter = __esm({
         return config2.planning === false;
       },
       getPrompt(context) {
-        const specPath = context.specPath || ".omg/autopilot/spec.md";
+        const specPath = context.specPath || ".omcp/autopilot/spec.md";
         const planPath = context.planPath || resolveAutopilotPlanPath();
         if (context.config.planning === "ralplan") {
           return `## PIPELINE STAGE: RALPLAN (Consensus Planning)
@@ -21296,7 +21296,7 @@ var init_ralph_adapter = __esm({
         return config2.verification === false;
       },
       getPrompt(context) {
-        const specPath = context.specPath || ".omg/autopilot/spec.md";
+        const specPath = context.specPath || ".omcp/autopilot/spec.md";
         const maxIterations = context.config.verification !== false ? context.config.verification.maxIterations : 100;
         return `## PIPELINE STAGE: RALPH (Verification)
 
@@ -21681,8 +21681,8 @@ function buildContext(state, tracking) {
     idea: state.originalIdea,
     directory: state.project_path || process.cwd(),
     sessionId: state.session_id,
-    specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
-    planPath: state.planning.plan_path || ".omg/plans/autopilot-impl.md",
+    specPath: state.expansion.spec_path || ".omcp/autopilot/spec.md",
+    planPath: state.planning.plan_path || ".omcp/plans/autopilot-impl.md",
     config: tracking.pipelineConfig
   };
 }
@@ -21941,8 +21941,8 @@ function checkPipelineAutopilot(state, sessionId, directory) {
       idea: state.originalIdea,
       directory: state.project_path || directory,
       sessionId,
-      specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
-      planPath: state.planning.plan_path || ".omg/plans/autopilot-impl.md",
+      specPath: state.expansion.spec_path || ".omcp/autopilot/spec.md",
+      planPath: state.planning.plan_path || ".omcp/plans/autopilot-impl.md",
       config: tracking.pipelineConfig
     };
     const stagePrompt2 = nextAdapter.getPrompt(context2);
@@ -21979,8 +21979,8 @@ ${stagePrompt2}
     idea: state.originalIdea,
     directory: state.project_path || directory,
     sessionId,
-    specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
-    planPath: state.planning.plan_path || ".omg/plans/autopilot-impl.md",
+    specPath: state.expansion.spec_path || ".omcp/autopilot/spec.md",
+    planPath: state.planning.plan_path || ".omcp/plans/autopilot-impl.md",
     config: tracking.pipelineConfig
   };
   const stagePrompt = currentAdapter.getPrompt(context);
@@ -24972,7 +24972,7 @@ function getCurrentTmuxSession() {
 function getTeamTmuxSessions(teamName) {
   const sanitized = teamName.replace(/[^a-zA-Z0-9-]/g, "");
   if (!sanitized) return [];
-  const prefix = `omc-team-${sanitized}-`;
+  const prefix = `omcp-team-${sanitized}-`;
   try {
     const output = (0, import_child_process15.execSync)("tmux list-sessions -F '#{session_name}'", {
       encoding: "utf-8",
@@ -25962,7 +25962,7 @@ __export(session_registry_exports, {
   removeSession: () => removeSession
 });
 function getRegistryStateDir() {
-  return process.env["OMC_TEST_REGISTRY_DIR"] ?? (0, import_path58.join)((0, import_os10.homedir)(), ".omg", "state");
+  return process.env["OMC_TEST_REGISTRY_DIR"] ?? (0, import_path58.join)((0, import_os10.homedir)(), ".omcp", "state");
 }
 function getRegistryPath() {
   return (0, import_path58.join)(getRegistryStateDir(), "reply-session-registry.jsonl");
@@ -26607,7 +26607,7 @@ var init_codebase_map = __esm({
       ".venv",
       "venv",
       "env",
-      ".omg",
+      ".omcp",
       ".copilot",
       "tmp",
       "temp"
@@ -27492,7 +27492,7 @@ var init_reply_listener = __esm({
       "windir",
       "COMSPEC"
     ];
-    DEFAULT_STATE_DIR = (0, import_path61.join)((0, import_os11.homedir)(), ".omg", "state");
+    DEFAULT_STATE_DIR = (0, import_path61.join)((0, import_os11.homedir)(), ".omcp", "state");
     PID_FILE_PATH = (0, import_path61.join)(DEFAULT_STATE_DIR, "reply-listener.pid");
     STATE_FILE_PATH = (0, import_path61.join)(DEFAULT_STATE_DIR, "reply-listener-state.json");
     LOG_FILE_PATH = (0, import_path61.join)(DEFAULT_STATE_DIR, "reply-listener.log");
@@ -27729,36 +27729,36 @@ var init_state_paths = __esm({
     "use strict";
     import_path63 = require("path");
     TeamPaths = {
-      root: (teamName) => `.omg/state/team/${teamName}`,
-      config: (teamName) => `.omg/state/team/${teamName}/config.json`,
-      shutdown: (teamName) => `.omg/state/team/${teamName}/shutdown.json`,
-      tasks: (teamName) => `.omg/state/team/${teamName}/tasks`,
-      taskFile: (teamName, taskId) => `.omg/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
-      workers: (teamName) => `.omg/state/team/${teamName}/workers`,
-      workerDir: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}`,
-      heartbeat: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/heartbeat.json`,
-      inbox: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/inbox.md`,
-      outbox: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/outbox.jsonl`,
-      ready: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/.ready`,
-      overlay: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/AGENTS.md`,
-      shutdownAck: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json`,
-      mailbox: (teamName, workerName2) => `.omg/state/team/${teamName}/mailbox/${workerName2}.json`,
-      mailboxLockDir: (teamName, workerName2) => `.omg/state/team/${teamName}/mailbox/.lock-${workerName2}`,
-      dispatchRequests: (teamName) => `.omg/state/team/${teamName}/dispatch/requests.json`,
-      dispatchLockDir: (teamName) => `.omg/state/team/${teamName}/dispatch/.lock`,
-      workerStatus: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/status.json`,
-      workerIdleNotify: (teamName) => `.omg/state/team/${teamName}/worker-idle-notify.json`,
-      workerPrevNotifyState: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/prev-notify-state.json`,
-      events: (teamName) => `.omg/state/team/${teamName}/events.jsonl`,
-      approval: (teamName, taskId) => `.omg/state/team/${teamName}/approvals/${taskId}.json`,
-      manifest: (teamName) => `.omg/state/team/${teamName}/manifest.json`,
-      monitorSnapshot: (teamName) => `.omg/state/team/${teamName}/monitor-snapshot.json`,
-      summarySnapshot: (teamName) => `.omg/state/team/${teamName}/summary-snapshot.json`,
-      phaseState: (teamName) => `.omg/state/team/${teamName}/phase-state.json`,
-      scalingLock: (teamName) => `.omg/state/team/${teamName}/.scaling-lock`,
-      workerIdentity: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/identity.json`,
-      workerAgentsMd: (teamName) => `.omg/state/team/${teamName}/worker-agents.md`,
-      shutdownRequest: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/shutdown-request.json`
+      root: (teamName) => `.omcp/state/team/${teamName}`,
+      config: (teamName) => `.omcp/state/team/${teamName}/config.json`,
+      shutdown: (teamName) => `.omcp/state/team/${teamName}/shutdown.json`,
+      tasks: (teamName) => `.omcp/state/team/${teamName}/tasks`,
+      taskFile: (teamName, taskId) => `.omcp/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
+      workers: (teamName) => `.omcp/state/team/${teamName}/workers`,
+      workerDir: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}`,
+      heartbeat: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/heartbeat.json`,
+      inbox: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`,
+      outbox: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/outbox.jsonl`,
+      ready: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/.ready`,
+      overlay: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/AGENTS.md`,
+      shutdownAck: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json`,
+      mailbox: (teamName, workerName2) => `.omcp/state/team/${teamName}/mailbox/${workerName2}.json`,
+      mailboxLockDir: (teamName, workerName2) => `.omcp/state/team/${teamName}/mailbox/.lock-${workerName2}`,
+      dispatchRequests: (teamName) => `.omcp/state/team/${teamName}/dispatch/requests.json`,
+      dispatchLockDir: (teamName) => `.omcp/state/team/${teamName}/dispatch/.lock`,
+      workerStatus: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/status.json`,
+      workerIdleNotify: (teamName) => `.omcp/state/team/${teamName}/worker-idle-notify.json`,
+      workerPrevNotifyState: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/prev-notify-state.json`,
+      events: (teamName) => `.omcp/state/team/${teamName}/events.jsonl`,
+      approval: (teamName, taskId) => `.omcp/state/team/${teamName}/approvals/${taskId}.json`,
+      manifest: (teamName) => `.omcp/state/team/${teamName}/manifest.json`,
+      monitorSnapshot: (teamName) => `.omcp/state/team/${teamName}/monitor-snapshot.json`,
+      summarySnapshot: (teamName) => `.omcp/state/team/${teamName}/summary-snapshot.json`,
+      phaseState: (teamName) => `.omcp/state/team/${teamName}/phase-state.json`,
+      scalingLock: (teamName) => `.omcp/state/team/${teamName}/.scaling-lock`,
+      workerIdentity: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/identity.json`,
+      workerAgentsMd: (teamName) => `.omcp/state/team/${teamName}/worker-agents.md`,
+      shutdownRequest: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/shutdown-request.json`
     };
   }
 });
@@ -29760,7 +29760,7 @@ async function isWorkerAlive(paneId) {
 async function killWorkerPanes(opts) {
   const { paneIds, leaderPaneId, teamName, cwd, graceMs = 1e4 } = opts;
   if (!paneIds.length) return;
-  const shutdownPath = (0, import_path68.join)(cwd, ".omg", "state", "team", teamName, "shutdown.json");
+  const shutdownPath = (0, import_path68.join)(cwd, ".omcp", "state", "team", teamName, "shutdown.json");
   try {
     await import_promises8.default.writeFile(shutdownPath, JSON.stringify({ requestedAt: Date.now() }));
     await sleep4(graceMs);
@@ -29880,27 +29880,27 @@ var init_tmux_session = __esm({
 
 // src/team/worker-bootstrap.ts
 function generateTriggerMessage(teamName, workerName2) {
-  return `Read and follow the instructions in .omg/state/team/${teamName}/workers/${workerName2}/inbox.md`;
+  return `Read and follow the instructions in .omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`;
 }
 function generateMailboxTriggerMessage(teamName, workerName2, count = 1) {
   const normalizedCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
-  return `You have ${normalizedCount} new message(s). Check .omg/state/team/${teamName}/mailbox/${workerName2}.json`;
+  return `You have ${normalizedCount} new message(s). Check .omcp/state/team/${teamName}/mailbox/${workerName2}.json`;
 }
 function agentTypeGuidance(agentType) {
   switch (agentType) {
     case "codex":
       return [
         "### Agent-Type Guidance (codex)",
-        "- Prefer short, explicit `omc team api ... --json` commands and parse outputs before next step.",
+        "- Prefer short, explicit `omcp team api ... --json` commands and parse outputs before next step.",
         "- If a command fails, report the exact stderr to leader-fixed before retrying.",
-        "- You MUST run `omc team api claim-task` before starting work and `omc team api transition-task-status` when done."
+        "- You MUST run `omcp team api claim-task` before starting work and `omcp team api transition-task-status` when done."
       ].join("\n");
     case "gemini":
       return [
         "### Agent-Type Guidance (gemini)",
         "- Execute task work in small, verifiable increments and report each milestone to leader-fixed.",
         "- Keep commit-sized changes scoped to assigned files only; no broad refactors.",
-        "- CRITICAL: You MUST run `omc team api claim-task` before starting work and `omc team api transition-task-status` when done. Do not exit without transitioning the task status."
+        "- CRITICAL: You MUST run `omcp team api claim-task` before starting work and `omcp team api transition-task-status` when done. Do not exit without transitioning the task status."
       ].join("\n");
     case "claude":
     default:
@@ -29918,11 +29918,11 @@ function generateWorkerOverlay(params) {
     subject: sanitizePromptContent(t.subject),
     description: sanitizePromptContent(t.description)
   }));
-  const sentinelPath = `.omg/state/team/${teamName}/workers/${workerName2}/.ready`;
-  const heartbeatPath = `.omg/state/team/${teamName}/workers/${workerName2}/heartbeat.json`;
-  const inboxPath = `.omg/state/team/${teamName}/workers/${workerName2}/inbox.md`;
-  const statusPath = `.omg/state/team/${teamName}/workers/${workerName2}/status.json`;
-  const taskDir = `.omg/state/team/${teamName}/tasks`;
+  const sentinelPath = `.omcp/state/team/${teamName}/workers/${workerName2}/.ready`;
+  const heartbeatPath = `.omcp/state/team/${teamName}/workers/${workerName2}/heartbeat.json`;
+  const inboxPath = `.omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`;
+  const statusPath = `.omcp/state/team/${teamName}/workers/${workerName2}/status.json`;
+  const taskDir = `.omcp/state/team/${teamName}/tasks`;
   const taskList = sanitizedTasks.length > 0 ? sanitizedTasks.map((t) => `- **Task ${t.id}**: ${t.subject}
   Description: ${t.description}
   Status: pending`).join("\n") : "- No tasks assigned yet. Check your inbox for assignments.";
@@ -29940,14 +29940,14 @@ mkdir -p $(dirname ${sentinelPath}) && touch ${sentinelPath}
 You MUST complete ALL of these steps. Do NOT skip any step. Do NOT exit without step 4.
 
 1. **Claim** your task (run this command first):
-   \`omc team api claim-task --input "{"team_name":"${teamName}","task_id":"<id>","worker":"${workerName2}"}" --json\`
+   \`omcp team api claim-task --input "{"team_name":"${teamName}","task_id":"<id>","worker":"${workerName2}"}" --json\`
    Save the \`claim_token\` from the response \u2014 you need it for step 4.
 2. **Do the work** described in your task assignment below.
 3. **Send ACK** to the leader:
-   \`omc team api send-message --input "{"team_name":"${teamName}","from_worker":"${workerName2}","to_worker":"leader-fixed","body":"ACK: ${workerName2} initialized"}" --json\`
+   \`omcp team api send-message --input "{"team_name":"${teamName}","from_worker":"${workerName2}","to_worker":"leader-fixed","body":"ACK: ${workerName2} initialized"}" --json\`
 4. **Transition** the task status (REQUIRED before exit):
-   - On success: \`omc team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"completed","claim_token":"<claim_token>"}" --json\`
-   - On failure: \`omc team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"failed","claim_token":"<claim_token>"}" --json\`
+   - On success: \`omcp team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"completed","claim_token":"<claim_token>"}" --json\`
+   - On failure: \`omcp team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"failed","claim_token":"<claim_token>"}" --json\`
 5. **Keep going after replies**: ACK/progress messages are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.
 
 ## Identity
@@ -29962,12 +29962,12 @@ ${taskList}
 ## Task Lifecycle Reference (CLI API)
 Use the CLI API for all task lifecycle operations. Do NOT directly edit task files.
 
-- Inspect task state: \`omc team api read-task --input "{"team_name":"${teamName}","task_id":"<id>"}" --json\`
+- Inspect task state: \`omcp team api read-task --input "{"team_name":"${teamName}","task_id":"<id>"}" --json\`
 - Task id format: State/CLI APIs use task_id: "<id>" (example: "1"), not "task-1"
-- Claim task: \`omc team api claim-task --input "{"team_name":"${teamName}","task_id":"<id>","worker":"${workerName2}"}" --json\`
-- Complete task: \`omc team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"completed","claim_token":"<claim_token>"}" --json\`
-- Fail task: \`omc team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"failed","claim_token":"<claim_token>"}" --json\`
-- Release claim (rollback): \`omc team api release-task-claim --input "{"team_name":"${teamName}","task_id":"<id>","claim_token":"<claim_token>","worker":"${workerName2}"}" --json\`
+- Claim task: \`omcp team api claim-task --input "{"team_name":"${teamName}","task_id":"<id>","worker":"${workerName2}"}" --json\`
+- Complete task: \`omcp team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"completed","claim_token":"<claim_token>"}" --json\`
+- Fail task: \`omcp team api transition-task-status --input "{"team_name":"${teamName}","task_id":"<id>","from":"in_progress","to":"failed","claim_token":"<claim_token>"}" --json\`
+- Release claim (rollback): \`omcp team api release-task-claim --input "{"team_name":"${teamName}","task_id":"<id>","claim_token":"<claim_token>","worker":"${workerName2}"}" --json\`
 
 ## Communication Protocol
 - **Inbox**: Read ${inboxPath} for new instructions
@@ -29983,17 +29983,17 @@ Use the CLI API for all task lifecycle operations. Do NOT directly edit task fil
 
 ## Message Protocol
 Send messages via CLI API:
-- To leader: \`omc team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json\`
-- Check mailbox: \`omc team api mailbox-list --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName2}\\"}" --json\`
-- Mark delivered: \`omc team api mailbox-mark-delivered --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName2}\\",\\"message_id\\":\\"<id>\\"}" --json\`
+- To leader: \`omcp team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json\`
+- Check mailbox: \`omcp team api mailbox-list --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName2}\\"}" --json\`
+- Mark delivered: \`omcp team api mailbox-mark-delivered --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName2}\\",\\"message_id\\":\\"<id>\\"}" --json\`
 
 ## Startup Handshake (Required)
 Before doing any task work, send exactly one startup ACK to the leader:
-\`omc team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName2} initialized\\"}" --json\`
+\`omcp team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName2} initialized\\"}" --json\`
 
 ## Shutdown Protocol
 When you see a shutdown request in your inbox:
-1. Write your decision to: .omg/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json
+1. Write your decision to: .omcp/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json
 2. Format:
    - Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
    - Reject: {"status":"reject","reason":"still working","updated_at":"<iso>"}
@@ -30005,14 +30005,14 @@ When you see a shutdown request in your inbox:
 - Do NOT write lifecycle fields (status, owner, result, error) directly in task files; use CLI API
 - Do NOT spawn sub-agents. Complete work in this worker session only.
 - Do NOT create tmux panes/sessions (\`tmux split-window\`, \`tmux new-session\`, etc.).
-- Do NOT run team spawning/orchestration commands (for example: \`omc team ...\`, \`omx team ...\`, \`$team\`, \`$ultrawork\`, \`$autopilot\`, \`$ralph\`).
-- Worker-allowed control surface is only: \`omc team api ... --json\` (and equivalent \`omx team api ... --json\` where configured).
+- Do NOT run team spawning/orchestration commands (for example: \`omcp team ...\`, \`omx team ...\`, \`$team\`, \`$ultrawork\`, \`$autopilot\`, \`$ralph\`).
+- Worker-allowed control surface is only: \`omcp team api ... --json\` (and equivalent \`omx team api ... --json\` where configured).
 - If blocked, write {"state": "blocked", "reason": "..."} to your status file
 
 ${agentTypeGuidance(agentType)}
 
 ## BEFORE YOU EXIT
-You MUST call \`omc team api transition-task-status\` to mark your task as "completed" or "failed" before exiting.
+You MUST call \`omcp team api transition-task-status\` to mark your task as "completed" or "failed" before exiting.
 If you skip this step, the leader cannot track your work and the task will appear stuck.
 
 ${bootstrapInstructions ? `## Role Context
@@ -30020,22 +30020,22 @@ ${bootstrapInstructions}
 ` : ""}`;
 }
 async function composeInitialInbox(teamName, workerName2, content, cwd) {
-  const inboxPath = (0, import_path69.join)(cwd, `.omg/state/team/${teamName}/workers/${workerName2}/inbox.md`);
+  const inboxPath = (0, import_path69.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`);
   await (0, import_promises9.mkdir)((0, import_path69.dirname)(inboxPath), { recursive: true });
   await (0, import_promises9.writeFile)(inboxPath, content, "utf-8");
 }
 async function ensureWorkerStateDir(teamName, workerName2, cwd) {
-  const workerDir = (0, import_path69.join)(cwd, `.omg/state/team/${teamName}/workers/${workerName2}`);
+  const workerDir = (0, import_path69.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}`);
   await (0, import_promises9.mkdir)(workerDir, { recursive: true });
-  const mailboxDir = (0, import_path69.join)(cwd, `.omg/state/team/${teamName}/mailbox`);
+  const mailboxDir = (0, import_path69.join)(cwd, `.omcp/state/team/${teamName}/mailbox`);
   await (0, import_promises9.mkdir)(mailboxDir, { recursive: true });
-  const tasksDir = (0, import_path69.join)(cwd, `.omg/state/team/${teamName}/tasks`);
+  const tasksDir = (0, import_path69.join)(cwd, `.omcp/state/team/${teamName}/tasks`);
   await (0, import_promises9.mkdir)(tasksDir, { recursive: true });
 }
 async function writeWorkerOverlay(params) {
   const { teamName, workerName: workerName2, cwd } = params;
   const overlay = generateWorkerOverlay(params);
-  const overlayPath = (0, import_path69.join)(cwd, `.omg/state/team/${teamName}/workers/${workerName2}/AGENTS.md`);
+  const overlayPath = (0, import_path69.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}/AGENTS.md`);
   await (0, import_promises9.mkdir)((0, import_path69.dirname)(overlayPath), { recursive: true });
   await (0, import_promises9.writeFile)(overlayPath, overlay, "utf-8");
   return overlayPath;
@@ -30629,13 +30629,13 @@ var init_mcp_comm = __esm({
 
 // src/team/git-worktree.ts
 function getWorktreePath(repoRoot, teamName, workerName2) {
-  return (0, import_node_path5.join)(repoRoot, ".omg", "worktrees", sanitizeName(teamName), sanitizeName(workerName2));
+  return (0, import_node_path5.join)(repoRoot, ".omcp", "worktrees", sanitizeName(teamName), sanitizeName(workerName2));
 }
 function getBranchName(teamName, workerName2) {
   return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName2)}`;
 }
 function getMetadataPath(repoRoot, teamName) {
-  return (0, import_node_path5.join)(repoRoot, ".omg", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
+  return (0, import_node_path5.join)(repoRoot, ".omcp", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
 }
 function readMetadata(repoRoot, teamName) {
   const metaPath = getMetadataPath(repoRoot, teamName);
@@ -30652,7 +30652,7 @@ function readMetadata(repoRoot, teamName) {
 function writeMetadata(repoRoot, teamName, entries) {
   const metaPath = getMetadataPath(repoRoot, teamName);
   validateResolvedPath(metaPath, repoRoot);
-  const dir = (0, import_node_path5.join)(repoRoot, ".omg", "state", "team-bridge", sanitizeName(teamName));
+  const dir = (0, import_node_path5.join)(repoRoot, ".omcp", "state", "team-bridge", sanitizeName(teamName));
   ensureDirWithMode(dir);
   atomicWriteJson2(metaPath, entries);
 }
@@ -31051,7 +31051,7 @@ async function startTeamV2(config2) {
   }
   await (0, import_promises11.mkdir)(absPath(leaderCwd, TeamPaths.tasks(sanitized)), { recursive: true });
   await (0, import_promises11.mkdir)(absPath(leaderCwd, TeamPaths.workers(sanitized)), { recursive: true });
-  await (0, import_promises11.mkdir)((0, import_path72.join)(leaderCwd, ".omg", "state", "team", sanitized, "mailbox"), { recursive: true });
+  await (0, import_promises11.mkdir)((0, import_path72.join)(leaderCwd, ".omcp", "state", "team", sanitized, "mailbox"), { recursive: true });
   for (let i = 0; i < config2.tasks.length; i++) {
     const taskId = String(i + 1);
     const taskFilePath = absPath(leaderCwd, TeamPaths.taskFile(sanitized, taskId));
@@ -31597,7 +31597,7 @@ async function resumeTeamV2(teamName, cwd) {
     const { execFile: execFile7 } = await import("child_process");
     const { promisify: promisify7 } = await import("util");
     const execFileAsync5 = promisify7(execFile7);
-    const sessionName2 = config2.tmux_session || `omc-team-${sanitized}`;
+    const sessionName2 = config2.tmux_session || `omcp-team-${sanitized}`;
     await execFileAsync5("tmux", ["has-session", "-t", sessionName2.split(":")[0]]);
     return {
       teamName: sanitized,
@@ -31612,7 +31612,7 @@ async function resumeTeamV2(teamName, cwd) {
   }
 }
 async function findActiveTeamsV2(cwd) {
-  const root = (0, import_path72.join)(cwd, ".omc", "state", "team");
+  const root = (0, import_path72.join)(cwd, ".omcp", "state", "team");
   if (!(0, import_fs58.existsSync)(root)) return [];
   const entries = await (0, import_promises11.readdir)(root, { withFileTypes: true });
   const active = [];
@@ -31758,7 +31758,7 @@ function sanitizeTaskId(taskId) {
 function canonicalTasksDir(teamName, cwd) {
   const root = cwd ?? process.cwd();
   const dir = getTaskStoragePath(root, sanitizeName(teamName));
-  validateResolvedPath(dir, (0, import_path73.join)(root, ".omg", "state", "team"));
+  validateResolvedPath(dir, (0, import_path73.join)(root, ".omcp", "state", "team"));
   return dir;
 }
 function failureSidecarPath(teamName, taskId, cwd) {
@@ -31820,7 +31820,7 @@ function workerName(index) {
 }
 function stateRoot(cwd, teamName) {
   validateTeamName(teamName);
-  return (0, import_path74.join)(cwd, `.omg/state/team/${teamName}`);
+  return (0, import_path74.join)(cwd, `.omcp/state/team/${teamName}`);
 }
 async function writeJson(filePath, data) {
   await (0, import_promises12.mkdir)((0, import_path74.join)(filePath, ".."), { recursive: true });
@@ -31998,7 +31998,7 @@ async function allTasksTerminal(runtime) {
   return true;
 }
 function buildInitialTaskInstruction(teamName, workerName2, task, taskId) {
-  const donePath = `.omg/state/team/${teamName}/workers/${workerName2}/done.json`;
+  const donePath = `.omcp/state/team/${teamName}/workers/${workerName2}/done.json`;
   return [
     `## Initial Task Assignment`,
     `Task ID: ${taskId}`,
@@ -32295,7 +32295,7 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
   const usePromptMode = isPromptModeAgent(agentType);
   const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId);
   await composeInitialInbox(runtime.teamName, workerNameValue, instruction, runtime.cwd);
-  const relInboxPath = `.omg/state/team/${runtime.teamName}/workers/${workerNameValue}/inbox.md`;
+  const relInboxPath = `.omcp/state/team/${runtime.teamName}/workers/${workerNameValue}/inbox.md`;
   const envVars = getWorkerEnv(runtime.teamName, workerNameValue, agentType);
   const resolvedBinaryPath = runtime.resolvedBinaryPaths?.[agentType] ?? resolveValidatedBinaryPath(agentType);
   if (!runtime.resolvedBinaryPaths) {
@@ -32412,7 +32412,7 @@ async function assignTask(teamName, taskId, targetWorkerName, paneId, sessionNam
 ---
 ## New Task Assignment
 Task ID: ${taskId}
-Claim and execute task from: .omg/state/team/${teamName}/tasks/${taskId}.json
+Claim and execute task from: .omcp/state/team/${teamName}/tasks/${taskId}.json
 `;
   const { appendFile: appendFile4 } = await import("fs/promises");
   await appendFile4(inboxPath, msg, "utf-8");
@@ -32477,7 +32477,7 @@ async function resumeTeam(teamName, cwd) {
   const { execFile: execFile7 } = await import("child_process");
   const { promisify: promisify7 } = await import("util");
   const execFileAsync5 = promisify7(execFile7);
-  const sName = configData.tmuxSession || `omc-team-${teamName}`;
+  const sName = configData.tmuxSession || `omcp-team-${teamName}`;
   try {
     await execFileAsync5("tmux", ["has-session", "-t", sName.split(":")[0]]);
   } catch {
@@ -32870,7 +32870,7 @@ async function cleanupSessionOwnedTeams(directory, sessionId) {
       }
       if (Array.isArray(config2.agentTypes)) {
         const legacyConfig = config2;
-        const sessionName2 = typeof legacyConfig.tmuxSession === "string" && legacyConfig.tmuxSession.trim() !== "" ? legacyConfig.tmuxSession.trim() : `omc-team-${teamName}`;
+        const sessionName2 = typeof legacyConfig.tmuxSession === "string" && legacyConfig.tmuxSession.trim() !== "" ? legacyConfig.tmuxSession.trim() : `omcp-team-${teamName}`;
         const leaderPaneId = typeof legacyConfig.leaderPaneId === "string" && legacyConfig.leaderPaneId.trim() !== "" ? legacyConfig.leaderPaneId.trim() : void 0;
         await shutdownTeam2(teamName, sessionName2, directory, 0, void 0, leaderPaneId, legacyConfig.tmuxOwnsWindow === true);
         cleaned.push(teamName);
@@ -32998,10 +32998,10 @@ function getDb(cwd) {
   return null;
 }
 function getDbPath(cwd) {
-  return (0, import_path75.join)(cwd, ".omg", "state", "jobs.db");
+  return (0, import_path75.join)(cwd, ".omcp", "state", "jobs.db");
 }
 function ensureStateDir3(cwd) {
-  const stateDir = (0, import_path75.join)(cwd, ".omg", "state");
+  const stateDir = (0, import_path75.join)(cwd, ".omcp", "state");
   if (!(0, import_fs61.existsSync)(stateDir)) {
     (0, import_fs61.mkdirSync)(stateDir, { recursive: true });
   }
@@ -33810,7 +33810,7 @@ async function processSetupInit(input) {
   };
 }
 function pruneOldStateFiles(directory, maxAgeDays = DEFAULT_STATE_MAX_AGE_DAYS) {
-  const stateDir = (0, import_path77.join)(directory, ".omg/state");
+  const stateDir = (0, import_path77.join)(directory, ".omcp/state");
   if (!(0, import_fs64.existsSync)(stateDir)) {
     return 0;
   }
@@ -33852,7 +33852,7 @@ function pruneOldStateFiles(directory, maxAgeDays = DEFAULT_STATE_MAX_AGE_DAYS) 
   return deletedCount;
 }
 function cleanupOrphanedState(directory) {
-  const stateDir = (0, import_path77.join)(directory, ".omg/state");
+  const stateDir = (0, import_path77.join)(directory, ".omcp/state");
   if (!(0, import_fs64.existsSync)(stateDir)) {
     return 0;
   }
@@ -33933,11 +33933,11 @@ var init_setup = __esm({
     init_beads_context();
     init_config_dir();
     REQUIRED_DIRECTORIES = [
-      ".omg/state",
-      ".omg/logs",
-      ".omg/notepads",
-      ".omg/state/checkpoints",
-      ".omg/plans"
+      ".omcp/state",
+      ".omcp/logs",
+      ".omcp/notepads",
+      ".omcp/state/checkpoints",
+      ".omcp/plans"
     ];
     CONFIG_FILES = [
       ".omc-config.json"
@@ -40432,12 +40432,12 @@ var init_usage_api = __esm({
 // src/hud/stdin.ts
 function getStdinCachePath() {
   const root = getWorktreeRoot() || process.cwd();
-  return (0, import_path108.join)(root, ".omg", "state", "hud-stdin-cache.json");
+  return (0, import_path108.join)(root, ".omcp", "state", "hud-stdin-cache.json");
 }
 function writeStdinCache(stdin) {
   try {
     const root = getWorktreeRoot() || process.cwd();
-    const cacheDir = (0, import_path108.join)(root, ".omg", "state");
+    const cacheDir = (0, import_path108.join)(root, ".omcp", "state");
     if (!(0, import_fs94.existsSync)(cacheDir)) {
       (0, import_fs94.mkdirSync)(cacheDir, { recursive: true });
     }
@@ -43190,7 +43190,7 @@ async function calculateSessionHealth(sessionStart, contextPercent) {
 function showDiagnostic() {
   const version3 = getRuntimePackageVersion();
   const configDir = getConfigDir();
-  const hudScript = (0, import_path113.join)(configDir, "hud", "omc-hud.mjs");
+  const hudScript = (0, import_path113.join)(configDir, "hud", "omcp-hud.mjs");
   const settingsFile = (0, import_path113.join)(configDir, "settings.json");
   const hudExists = (0, import_fs99.existsSync)(hudScript);
   let statusLineOk = false;
@@ -43198,9 +43198,9 @@ function showDiagnostic() {
     const settings = JSON.parse((0, import_fs99.readFileSync)(settingsFile, "utf-8"));
     const sl = settings.statusLine;
     if (sl && typeof sl === "object" && typeof sl.command === "string") {
-      statusLineOk = sl.command.includes("omc-hud");
+      statusLineOk = sl.command.includes("omcp-hud");
     } else if (typeof sl === "string") {
-      statusLineOk = sl.includes("omc-hud");
+      statusLineOk = sl.includes("omcp-hud");
     }
   } catch {
   }
@@ -43284,7 +43284,7 @@ async function main2(watchMode = false, skipInit = false) {
       }
     }
     try {
-      const updateCacheFile = (0, import_path113.join)((0, import_os24.homedir)(), ".omg", "update-check.json");
+      const updateCacheFile = (0, import_path113.join)((0, import_os24.homedir)(), ".omcp", "update-check.json");
       await (0, import_promises19.access)(updateCacheFile);
       const content = await (0, import_promises19.readFile)(updateCacheFile, "utf-8");
       const cached2 = JSON.parse(content);
@@ -68944,7 +68944,7 @@ function formatSkillOutput(skills) {
 }
 var loadLocalTool = {
   name: "load_omc_skills_local",
-  description: "Load and list skills from the project-local .omg/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.",
+  description: "Load and list skills from the project-local .omcp/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.",
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: loadLocalSchema,
   handler: async (args) => {
@@ -68963,7 +68963,7 @@ ${formatSkillOutput(projectSkills)}`
 };
 var loadGlobalTool = {
   name: "load_omc_skills_global",
-  description: "Load and list skills from global user directories (~/.omg/skills/ and [$COPILOT_CONFIG_DIR|~/.copilot]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
+  description: "Load and list skills from global user directories (~/.omcp/skills/ and [$COPILOT_CONFIG_DIR|~/.copilot]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: loadGlobalSchema,
   handler: async (_args) => {
@@ -69009,8 +69009,8 @@ ${formatSkillOutput(userSkills)}`;
 No skill files were discovered in any searched directories.
 
 Searched:
-- Project: .omg/skills/
-- Global: ~/.omg/skills/
+- Project: .omcp/skills/
+- Global: ~/.omcp/skills/
 - Copilot config: ${getConfigDir()}/skills/omc-learned/`;
     }
     return {
@@ -70365,7 +70365,7 @@ var import_path23 = require("path");
 // src/hooks/rules-injector/constants.ts
 var import_path22 = require("path");
 var import_os6 = require("os");
-var OMC_STORAGE_DIR = (0, import_path22.join)((0, import_os6.homedir)(), ".omg");
+var OMC_STORAGE_DIR = (0, import_path22.join)((0, import_os6.homedir)(), ".omcp");
 var RULES_INJECTOR_STORAGE = (0, import_path22.join)(OMC_STORAGE_DIR, "rules-injector");
 
 // src/hooks/rules-injector/finder.ts
@@ -70817,7 +70817,7 @@ init_session_replay();
 init_worktree_paths();
 var REPLAY_PREFIX2 = "agent-replay-";
 function findLatestSessionId(directory) {
-  const stateDir = (0, import_path31.join)(directory, ".omg", "state");
+  const stateDir = (0, import_path31.join)(directory, ".omcp", "state");
   try {
     const files = (0, import_fs22.readdirSync)(stateDir).filter((f) => f.startsWith(REPLAY_PREFIX2) && f.endsWith(".jsonl")).map((f) => ({
       name: f,
@@ -71643,7 +71643,7 @@ var LOG_FILE = "log.md";
 var ENVIRONMENT_FILE = "environment.md";
 var RESERVED_FILES = /* @__PURE__ */ new Set([INDEX_FILE, LOG_FILE, ENVIRONMENT_FILE]);
 function getOmcDir(root) {
-  return (0, import_path33.join)(root, ".omc");
+  return (0, import_path33.join)(root, ".omcp");
 }
 function getWikiDir(root) {
   return (0, import_path33.join)(getOmcDir(root), WIKI_DIR);
@@ -72333,7 +72333,7 @@ var wikiAddTool = {
         content: [{
           type: "text",
           text: `Wiki page created: ${result.created[0]}
-Path: .omc/wiki/${result.created[0]}`
+Path: .omcp/wiki/${result.created[0]}`
         }]
       };
     } catch (error48) {
@@ -72700,19 +72700,19 @@ You ARE the planner. You ARE NOT an implementer. You DO NOT write code. You DO N
 **TOOL RESTRICTIONS (SYSTEM-ENFORCED):**
 | Tool | Allowed | Blocked |
 |------|---------|---------|
-| Write/Edit | \`.omg/**/*.md\` ONLY | Everything else |
+| Write/Edit | \`.omcp/**/*.md\` ONLY | Everything else |
 | Read | All files | - |
 | Bash | Research commands only | Implementation commands |
 | Task | explore, document-specialist | - |
 
-**IF YOU TRY TO WRITE/EDIT OUTSIDE \`.omg/\`:**
+**IF YOU TRY TO WRITE/EDIT OUTSIDE \`.omcp/\`:**
 - System will BLOCK your action
 - You will receive an error
 - DO NOT retry - you are not supposed to implement
 
 **YOUR ONLY WRITABLE PATHS:**
-- \`.omg/plans/*.md\` - Final work plans
-- \`.omg/drafts/*.md\` - Working drafts during interview
+- \`.omcp/plans/*.md\` - Final work plans
+- \`.omcp/drafts/*.md\` - Working drafts during interview
 
 **WHEN USER ASKS YOU TO IMPLEMENT:**
 REFUSE. Say: "I'm a planner. I create work plans, not implementations. Start implementing after I finish planning."
@@ -73734,8 +73734,8 @@ var import_fs40 = require("fs");
 
 // src/hooks/omc-orchestrator/constants.ts
 var ALLOWED_PATH_PATTERNS = [
-  /^\.omg\//,
-  // .omg/**
+  /^\.omcp\//,
+  // .omcp/**
   /^\.copilot\//,
   // .copilot/** (local)
   /^~?\/\.copilot\//,
@@ -73794,7 +73794,7 @@ var DIRECT_WORK_REMINDER = `
 
 [SYSTEM REMINDER - DELEGATION REQUIRED]
 
-You just performed direct file modifications outside \`.omg/\`.
+You just performed direct file modifications outside \`.omcp/\`.
 
 **You are an ORCHESTRATOR, not an IMPLEMENTER.**
 
@@ -73804,8 +73804,8 @@ As an orchestrator, you should:
 - **COORDINATE** multiple tasks and ensure completion
 
 You should NOT:
-- Write code directly (except for \`.omg/\` files like plans and notepads)
-- Make direct file edits outside \`.omg/\`
+- Write code directly (except for \`.omcp/\` files like plans and notepads)
+- Make direct file edits outside \`.omcp/\`
 - Implement features yourself
 
 **If you need to make changes:**
@@ -73823,7 +73823,7 @@ var ORCHESTRATOR_DELEGATION_REQUIRED = `
 
 **STOP. YOU ARE VIOLATING ORCHESTRATOR PROTOCOL.**
 
-You (coordinator) are attempting to directly modify a file outside \`.omg/\`.
+You (coordinator) are attempting to directly modify a file outside \`.omcp/\`.
 
 **Path attempted:** $FILE_PATH
 
@@ -73837,7 +73837,7 @@ As an ORCHESTRATOR, you MUST:
 3. **COORDINATE** - you orchestrate, you don't implement
 
 **ALLOWED direct file operations:**
-- Files inside \`.omg/\` (plans, notepads, drafts)
+- Files inside \`.omcp/\` (plans, notepads, drafts)
 - Files inside \`[$CLAUDE_CONFIG_DIR|~/.copilot]/\`
 - \`copilot-instructions.md\` and \`AGENTS.md\` files
 - Reading files for verification
@@ -73845,7 +73845,7 @@ As an ORCHESTRATOR, you MUST:
 
 **FORBIDDEN direct file operations:**
 - Writing/editing source code
-- Creating new files outside \`.omg/\`
+- Creating new files outside \`.omcp/\`
 - Any implementation work
 
 ---
@@ -75121,7 +75121,7 @@ function workerBashBlockReason(command) {
     return "Team worker cannot run tmux pane/session orchestration commands.";
   }
   if (WORKER_BLOCKED_TEAM_CLI_PATTERN.test(command)) {
-    return `Team worker cannot run team orchestration commands. Use only \`omc team api ... --json\`.`;
+    return `Team worker cannot run team orchestration commands. Use only \`omcp team api ... --json\`.`;
   }
   if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
     return "Team worker cannot invoke orchestration skills (`$team`, `$ultrawork`, `$autopilot`, `$ralph`).";
@@ -75350,9 +75350,9 @@ Running directly without heavy agent stacking. Prefix with \`quick:\`, \`simple:
       case "gemini": {
         messages.push(
           `[MAGIC KEYWORD: team]
-User intent: delegate to ${keywordType} CLI workers via omc team CLI.
+User intent: delegate to ${keywordType} CLI workers via omcp team CLI.
 Agent type: ${keywordType}. Parse N from user message (default 1).
-Invoke: omc team start --agent ${keywordType} --count N --task "<task from user message>"`
+Invoke: omcp team start --agent ${keywordType} --count N --task "<task from user message>"`
         );
         break;
       }
@@ -76011,8 +76011,8 @@ async function processAutopilot(input) {
   }
   const context = {
     idea: state.originalIdea,
-    specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
-    planPath: state.planning.plan_path || ".omg/plans/autopilot-impl.md"
+    specPath: state.expansion.spec_path || ".omcp/autopilot/spec.md",
+    planPath: state.planning.plan_path || ".omcp/plans/autopilot-impl.md"
   };
   const phasePrompt = getPhasePrompt2(state.phase, context);
   if (phasePrompt) {
@@ -76168,7 +76168,7 @@ async function processHook(hookType, rawInput) {
       }
       case "code-simplifier": {
         const directory = input.directory ?? process.cwd();
-        const stateDir = (0, import_path79.join)(resolveToWorktreeRoot(directory), ".omg", "state");
+        const stateDir = (0, import_path79.join)(resolveToWorktreeRoot(directory), ".omcp", "state");
         const { processCodeSimplifier: processCodeSimplifier2 } = await Promise.resolve().then(() => (init_code_simplifier(), code_simplifier_exports));
         const result = processCodeSimplifier2(directory, stateDir);
         if (result.shouldBlock) {
@@ -76397,12 +76397,12 @@ var import_fs72 = require("fs");
 var import_path86 = require("path");
 init_config_dir();
 var DEFAULT_TASK_TTL_MS = 30 * 60 * 1e3;
-var BACKGROUND_TASKS_DIR = (0, import_path86.join)(getConfigDir(), ".omg", "background-tasks");
+var BACKGROUND_TASKS_DIR = (0, import_path86.join)(getConfigDir(), ".omcp", "background-tasks");
 
 // src/hooks/directory-readme-injector/constants.ts
 var import_node_path7 = require("node:path");
 var import_node_os3 = require("node:os");
-var OMC_STORAGE_DIR2 = (0, import_node_path7.join)((0, import_node_os3.homedir)(), ".omg");
+var OMC_STORAGE_DIR2 = (0, import_node_path7.join)((0, import_node_os3.homedir)(), ".omcp");
 var README_INJECTOR_STORAGE = (0, import_node_path7.join)(
   OMC_STORAGE_DIR2,
   "directory-readme"
@@ -76479,7 +76479,7 @@ var import_path88 = require("path");
 // src/hooks/agent-usage-reminder/constants.ts
 var import_path87 = require("path");
 var import_os16 = require("os");
-var OMC_STORAGE_DIR3 = (0, import_path87.join)((0, import_os16.homedir)(), ".omg");
+var OMC_STORAGE_DIR3 = (0, import_path87.join)((0, import_os16.homedir)(), ".omcp");
 var AGENT_USAGE_REMINDER_STORAGE = (0, import_path87.join)(
   OMC_STORAGE_DIR3,
   "agent-usage-reminder"
@@ -76694,7 +76694,7 @@ var path21 = __toESM(require("path"), 1);
 init_atomic_write();
 init_worktree_paths();
 var os5 = __toESM(require("os"), 1);
-var GLOBAL_STATE_DIR = path21.join(os5.homedir(), ".omg", "state");
+var GLOBAL_STATE_DIR = path21.join(os5.homedir(), ".omcp", "state");
 var MAX_STATE_AGE_MS = 4 * 60 * 60 * 1e3;
 
 // src/features/verification/index.ts
@@ -76949,9 +76949,9 @@ var DEFAULT_CONFIG5 = {
   // 1 minute
   paneLinesToCapture: 15,
   verbose: false,
-  stateFilePath: (0, import_path97.join)((0, import_os19.homedir)(), ".omg", "rate-limit-daemon.json"),
-  pidFilePath: (0, import_path97.join)((0, import_os19.homedir)(), ".omg", "rate-limit-daemon.pid"),
-  logFilePath: (0, import_path97.join)((0, import_os19.homedir)(), ".omg", "rate-limit-daemon.log")
+  stateFilePath: (0, import_path97.join)((0, import_os19.homedir)(), ".omcp", "rate-limit-daemon.json"),
+  pidFilePath: (0, import_path97.join)((0, import_os19.homedir)(), ".omcp", "rate-limit-daemon.pid"),
+  logFilePath: (0, import_path97.join)((0, import_os19.homedir)(), ".omcp", "rate-limit-daemon.log")
 };
 var MAX_LOG_SIZE_BYTES2 = 1 * 1024 * 1024;
 var SECURE_FILE_MODE3 = 384;
@@ -77996,7 +77996,7 @@ function parseValidatedTaskIdArray(value, fieldName) {
 }
 function teamStateExists(teamName, candidateCwd) {
   if (!TEAM_NAME_SAFE_PATTERN.test(teamName)) return false;
-  const teamRoot = (0, import_node_path8.join)(candidateCwd, ".omg", "state", "team", teamName);
+  const teamRoot = (0, import_node_path8.join)(candidateCwd, ".omcp", "state", "team", teamName);
   return (0, import_node_fs5.existsSync)((0, import_node_path8.join)(teamRoot, "config.json")) || (0, import_node_fs5.existsSync)((0, import_node_path8.join)(teamRoot, "tasks")) || (0, import_node_fs5.existsSync)(teamRoot);
 }
 function parseTeamWorkerEnv(raw) {
@@ -78039,7 +78039,7 @@ function readTeamStateRootFromFile(path22) {
 function stateRootToWorkingDirectory(stateRoot2) {
   const absolute = (0, import_node_path8.resolve)(stateRoot2);
   const normalized = absolute.replaceAll("\\", "/");
-  for (const marker of ["/.omg/state/team/", "/.omx/state/team/"]) {
+  for (const marker of ["/.omcp/state/team/", "/.omx/state/team/"]) {
     const idx = normalized.lastIndexOf(marker);
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
@@ -78047,7 +78047,7 @@ function stateRootToWorkingDirectory(stateRoot2) {
       return (0, import_node_path8.dirname)((0, import_node_path8.dirname)((0, import_node_path8.dirname)((0, import_node_path8.dirname)(absolute))));
     }
   }
-  for (const marker of ["/.omg/state", "/.omx/state"]) {
+  for (const marker of ["/.omcp/state", "/.omx/state"]) {
     const idx = normalized.lastIndexOf(marker);
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
@@ -78058,7 +78058,7 @@ function stateRootToWorkingDirectory(stateRoot2) {
   return (0, import_node_path8.dirname)((0, import_node_path8.dirname)(absolute));
 }
 function resolveTeamWorkingDirectoryFromMetadata(teamName, candidateCwd, workerContext) {
-  const teamRoot = (0, import_node_path8.join)(candidateCwd, ".omg", "state", "team", teamName);
+  const teamRoot = (0, import_node_path8.join)(candidateCwd, ".omcp", "state", "team", teamName);
   if (!(0, import_node_fs5.existsSync)(teamRoot)) return null;
   if (workerContext?.teamName === teamName) {
     const workerRoot = readTeamStateRootFromFile((0, import_node_path8.join)(teamRoot, "workers", workerContext.workerName, "identity.json"));
@@ -78627,35 +78627,35 @@ var MIN_WORKER_COUNT = 1;
 var MAX_WORKER_COUNT = 20;
 var VALID_TEAM_CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "copilot", "codex", "gemini"]);
 var TEAM_HELP = `
-Usage: omc team [N:agent-type[:role]] [--new-window] "<task description>"
-       omc team status <team-name>
-       omc team shutdown <team-name> [--force]
-       omc team api <operation> [--input <json>] [--json]
-       omc team api --help
+Usage: omcp team [N:agent-type[:role]] [--new-window] "<task description>"
+       omcp team status <team-name>
+       omcp team shutdown <team-name> [--force]
+       omcp team api <operation> [--input <json>] [--json]
+       omcp team api --help
 
 Examples:
-  omc team 3:claude "fix failing tests"
-  omc team 2:codex:architect "design auth system"
-  omc team 1:gemini:executor "implement feature"
-  omc team 1:codex,1:gemini "compare approaches"
-  omc team 2:codex "review auth flow" --new-window
-  omc team status fix-failing-tests
-  omc team shutdown fix-failing-tests
-  omc team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
+  omcp team 3:claude "fix failing tests"
+  omcp team 2:codex:architect "design auth system"
+  omcp team 1:gemini:executor "implement feature"
+  omcp team 1:codex,1:gemini "compare approaches"
+  omcp team 2:codex "review auth flow" --new-window
+  omcp team status fix-failing-tests
+  omcp team shutdown fix-failing-tests
+  omcp team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
 
 Roles (optional): architect, executor, planner, analyst, critic, debugger, verifier,
   code-reviewer, security-reviewer, test-engineer, debugger, designer, writer, scientist
 `;
 var TEAM_API_HELP = `
-Usage: omc team api <operation> [--input <json>] [--json]
-       omc team api <operation> --help
+Usage: omcp team api <operation> [--input <json>] [--json]
+       omcp team api <operation> --help
 
 Supported operations:
   ${TEAM_API_OPERATIONS.join("\n  ")}
 
 Examples:
-  omc team api list-tasks --input '{"team_name":"my-team"}' --json
-  omc team api claim-task --input '{"team_name":"my-team","task_id":"1","worker":"worker-1","expected_version":1}' --json
+  omcp team api list-tasks --input '{"team_name":"my-team"}' --json
+  omcp team api claim-task --input '{"team_name":"my-team","task_id":"1","worker":"worker-1","expected_version":1}' --json
 `;
 var TEAM_API_OPERATION_REQUIRED_FIELDS = {
   "send-message": ["team_name", "from_worker", "to_worker", "body"],
@@ -78769,7 +78769,7 @@ function assertTeamSpawnAllowed(env2 = process.env) {
   const workerIdentity = getTeamWorkerIdentityFromEnv(env2);
   if (!workerIdentity) return;
   throw new Error(
-    `Worker context (${workerIdentity}) cannot start/spawn new teams. Use only "omc team api ..." operations from worker sessions.`
+    `Worker context (${workerIdentity}) cannot start/spawn new teams. Use only "omcp team api ..." operations from worker sessions.`
   );
 }
 function normalizeWorkerSpecSegment(match) {
@@ -78862,7 +78862,7 @@ function parseTeamArgs(tokens) {
   }
   const task = filteredArgs.join(" ").trim();
   if (!task) {
-    throw new Error('Usage: omc team [N:agent-type] "<task description>"');
+    throw new Error('Usage: omcp team [N:agent-type] "<task description>"');
   }
   const teamName = slugifyTask(task);
   return { workerCount, agentTypes, workerSpecs, role, task, teamName, json: json2, newWindow };
@@ -78955,17 +78955,17 @@ Note:
   ${TEAM_API_OPERATION_NOTES[operation]}
 ` : "";
   return `
-Usage: omc team api ${operation} --input <json> [--json]
+Usage: omcp team api ${operation} --input <json> [--json]
 
 Required input fields:
 ${required2}${optional2}${note}Example:
-  omc team api ${operation} --input '${sampleInputJson}' --json
+  omcp team api ${operation} --input '${sampleInputJson}' --json
 `.trim();
 }
 function parseTeamApiArgs(args) {
   const operation = resolveTeamApiOperation(args[0] || "");
   if (!operation) {
-    throw new Error(`Usage: omc team api <operation> [--input <json>] [--json]
+    throw new Error(`Usage: omcp team api <operation> [--input <json>] [--json]
 Supported operations: ${TEAM_API_OPERATIONS.join(", ")}`);
   }
   let input = {};
@@ -79004,7 +79004,7 @@ Supported operations: ${TEAM_API_OPERATIONS.join(", ")}`);
       }
       continue;
     }
-    throw new Error(`Unknown argument for "omc team api": ${token}`);
+    throw new Error(`Unknown argument for "omcp team api": ${token}`);
   }
   return { operation, input, json: json2 };
 }
@@ -79144,7 +79144,7 @@ async function handleTeamShutdown(teamName, cwd, force) {
     return;
   }
   const { shutdownTeam: shutdownTeam2 } = await Promise.resolve().then(() => (init_runtime(), runtime_exports));
-  await shutdownTeam2(teamName, `omc-team-${teamName}`, cwd);
+  await shutdownTeam2(teamName, `omcp-team-${teamName}`, cwd);
   console.log(`Team shutdown complete: ${teamName}`);
 }
 async function handleTeamApi(args, cwd) {
@@ -79179,7 +79179,7 @@ async function handleTeamApi(args, cwd) {
       console.log(JSON.stringify({
         ...jsonBase,
         ok: false,
-        command: "omc team api",
+        command: "omcp team api",
         operation: "unknown",
         error: {
           code: "invalid_input",
@@ -79195,7 +79195,7 @@ async function handleTeamApi(args, cwd) {
   if (parsedApi.json) {
     console.log(JSON.stringify({
       ...jsonBase,
-      command: `omc team api ${parsedApi.operation}`,
+      command: `omcp team api ${parsedApi.operation}`,
       ...envelope
     }));
     if (!envelope.ok) process.exitCode = 1;
@@ -79223,14 +79223,14 @@ async function teamCommand(args) {
   }
   if (subcommand === "status") {
     const name = args[1];
-    if (!name) throw new Error("Usage: omc team status <team-name>");
+    if (!name) throw new Error("Usage: omcp team status <team-name>");
     await handleTeamStatus(name, cwd);
     return;
   }
   if (subcommand === "shutdown") {
     const nameOrFlag = args.filter((a) => !a.startsWith("--"));
     const name = nameOrFlag[1];
-    if (!name) throw new Error("Usage: omc team shutdown <team-name> [--force]");
+    if (!name) throw new Error("Usage: omcp team shutdown <team-name> [--force]");
     const force = args.includes("--force");
     await handleTeamShutdown(name, cwd, force);
     return;
@@ -81058,12 +81058,12 @@ var import_path102 = require("path");
 var import_url13 = require("url");
 init_security_config();
 var ASK_USAGE = [
-  "Usage: omc ask <claude|copilot|codex|gemini> <question or task>",
-  '   or: omc ask <claude|copilot|codex|gemini> -p "<prompt>"',
-  '   or: omc ask <claude|copilot|codex|gemini> --print "<prompt>"',
-  '   or: omc ask <claude|copilot|codex|gemini> --prompt "<prompt>"',
-  '   or: omc ask <claude|copilot|codex|gemini> --agent-prompt <role> "<prompt>"',
-  '   or: omc ask <claude|copilot|codex|gemini> --agent-prompt=<role> --prompt "<prompt>"'
+  "Usage: omcp ask <claude|copilot|codex|gemini> <question or task>",
+  '   or: omcp ask <claude|copilot|codex|gemini> -p "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini> --print "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini> --prompt "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini> --agent-prompt <role> "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini> --agent-prompt=<role> --prompt "<prompt>"'
 ].join("\n");
 var ASK_PROVIDERS = ["claude", "copilot", "codex", "gemini"];
 var ASK_PROVIDER_SET = new Set(ASK_PROVIDERS);
@@ -81769,7 +81769,7 @@ function startOrchestratorLoop(directory, sessionId, onEvent) {
 
 // src/cli/commands/ralphthon.ts
 var RALPHTHON_HELP = `
-Usage: omc ralphthon [options] [task]
+Usage: omcp ralphthon [options] [task]
 
 Autonomous hackathon lifecycle mode.
 Generates PRD via deep-interview, executes all tasks with ralph loop,
@@ -81783,10 +81783,10 @@ Options:
   --help, -h            Show this help
 
 Examples:
-  omc ralphthon "Build a REST API for user management"
-  omc ralphthon --skip-interview "Implement auth middleware"
-  omc ralphthon --resume
-  omc ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
+  omcp ralphthon "Build a REST API for user management"
+  omcp ralphthon --skip-interview "Implement auth middleware"
+  omcp ralphthon --resume
+  omcp ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
 `;
 function parseRalphthonArgs(args) {
   const options = {
@@ -81847,7 +81847,7 @@ function buildRalphthonInterviewPrompt(task, options) {
   const sanitizedTask = task.replace(/[\r\n\0]+/g, " ").trim();
   return `/deep-interview ${sanitizedTask}
 
-After the interview, generate a ralphthon-prd.json file in .omc/ with this structure:
+After the interview, generate a ralphthon-prd.json file in .omcp/ with this structure:
 {
   "project": "<project name>",
   "branchName": "<branch>",
@@ -81978,7 +81978,7 @@ async function ralphthonCommand(args) {
     return;
   }
   if (!options.task) {
-    console.error(source_default.red('Task description required. Usage: omc ralphthon "your task"'));
+    console.error(source_default.red('Task description required. Usage: omcp ralphthon "your task"'));
     console.log(RALPHTHON_HELP);
     process.exit(1);
   }
@@ -82271,7 +82271,7 @@ var import_promises15 = require("fs/promises");
 var import_path105 = require("path");
 init_mode_state_io();
 var AUTORESEARCH_RESULTS_HEADER = "iteration	commit	pass	score	status	description\n";
-var AUTORESEARCH_WORKTREE_EXCLUDES = ["results.tsv", "run.log", "node_modules", ".omc/"];
+var AUTORESEARCH_WORKTREE_EXCLUDES = ["results.tsv", "run.log", "node_modules", ".omcp/"];
 var EXCLUSIVE_MODES2 = ["ralph", "ultrawork", "autopilot", "autoresearch"];
 function nowIso() {
   return (/* @__PURE__ */ new Date()).toISOString();
@@ -82284,7 +82284,7 @@ function buildRunId(missionSlug, runTag) {
   return `${missionSlug}-${runTag.toLowerCase()}`;
 }
 function activeRunStateFile(projectRoot) {
-  return (0, import_path105.join)(projectRoot, ".omc", "state", "autoresearch-state.json");
+  return (0, import_path105.join)(projectRoot, ".omcp", "state", "autoresearch-state.json");
 }
 function trimContent(value, max = 4e3) {
   const trimmed = value.trim();
@@ -82765,7 +82765,7 @@ async function materializeAutoresearchMissionToWorktree(contract, worktreePath) 
   };
 }
 async function loadAutoresearchRunManifest(projectRoot, runId) {
-  const manifestFile = (0, import_path105.join)(projectRoot, ".omc", "logs", "autoresearch", runId, "manifest.json");
+  const manifestFile = (0, import_path105.join)(projectRoot, ".omcp", "logs", "autoresearch", runId, "manifest.json");
   if (!(0, import_fs90.existsSync)(manifestFile)) {
     throw new Error(`autoresearch_resume_manifest_missing:${runId}`);
   }
@@ -82835,7 +82835,7 @@ async function prepareAutoresearchRuntime(contract, projectRoot, worktreePath, o
   const runId = buildRunId(contract.missionSlug, runTag);
   const baselineCommit = readGitShortHead(worktreePath);
   const branchName = readGit2(worktreePath, ["symbolic-ref", "--quiet", "--short", "HEAD"]);
-  const runDir = (0, import_path105.join)(projectRoot, ".omc", "logs", "autoresearch", runId);
+  const runDir = (0, import_path105.join)(projectRoot, ".omcp", "logs", "autoresearch", runId);
   const stateFile = activeRunStateFile(projectRoot);
   const instructionsFile = (0, import_path105.join)(runDir, "bootstrap-instructions.md");
   const manifestFile = (0, import_path105.join)(runDir, "manifest.json");
@@ -83326,10 +83326,10 @@ function defaultDraftEvaluator(topic) {
   return `TODO replace with evaluator command for: ${detail}`;
 }
 function buildArtifactDir(repoRoot, slug) {
-  return (0, import_node_path9.join)(repoRoot, ".omc", "specs", `${AUTORESEARCH_ARTIFACT_DIR_PREFIX}${slug}`);
+  return (0, import_node_path9.join)(repoRoot, ".omcp", "specs", `${AUTORESEARCH_ARTIFACT_DIR_PREFIX}${slug}`);
 }
 function buildDraftArtifactPath(repoRoot, slug) {
-  return (0, import_node_path9.join)(repoRoot, ".omc", "specs", `${DEEP_INTERVIEW_DRAFT_PREFIX}${slug}.md`);
+  return (0, import_node_path9.join)(repoRoot, ".omcp", "specs", `${DEEP_INTERVIEW_DRAFT_PREFIX}${slug}.md`);
 }
 function buildResultPath(repoRoot, slug) {
   return (0, import_node_path9.join)(buildArtifactDir(repoRoot, slug), "result.json");
@@ -83424,7 +83424,7 @@ async function writeAutoresearchDraftArtifact(input) {
     parseSandboxContract(buildSandboxContent(evaluatorCommand, input.keepPolicy));
   }
   const launchReady = blockedReasons.length === 0;
-  const specsDir = (0, import_node_path9.join)(input.repoRoot, ".omc", "specs");
+  const specsDir = (0, import_node_path9.join)(input.repoRoot, ".omcp", "specs");
   await (0, import_promises16.mkdir)(specsDir, { recursive: true });
   const path22 = buildDraftArtifactPath(input.repoRoot, slug);
   const content = buildAutoresearchDraftArtifactContent(compileTarget, input.seedInputs || {}, launchReady, blockedReasons);
@@ -83734,20 +83734,20 @@ function spawnAutoresearchSetupTmux(repoRoot) {
 
 // src/cli/autoresearch.ts
 var CLAUDE_BYPASS_FLAG2 = "--dangerously-skip-permissions";
-var AUTORESEARCH_HELP = `omc autoresearch - Launch OMC autoresearch with thin-supervisor parity semantics
+var AUTORESEARCH_HELP = `omcp autoresearch - Launch OMC autoresearch with thin-supervisor parity semantics
 
 Usage:
-  omc autoresearch                                                (detached Claude deep-interview setup session)
-  omc autoresearch [--topic T] [--evaluator CMD] [--keep-policy P] [--slug S]
-  omc autoresearch --mission TEXT --eval CMD [--keep-policy P] [--slug S]
-  omc autoresearch init [--topic T] [--eval CMD] [--keep-policy P] [--slug S]
-  omc autoresearch <mission-dir> [claude-args...]
-  omc autoresearch --resume <run-id> [claude-args...]
+  omcp autoresearch                                                (detached Claude deep-interview setup session)
+  omcp autoresearch [--topic T] [--evaluator CMD] [--keep-policy P] [--slug S]
+  omcp autoresearch --mission TEXT --eval CMD [--keep-policy P] [--slug S]
+  omcp autoresearch init [--topic T] [--eval CMD] [--keep-policy P] [--slug S]
+  omcp autoresearch <mission-dir> [claude-args...]
+  omcp autoresearch --resume <run-id> [claude-args...]
 
 Arguments:
   (no args)        Launches a detached Claude session and starts /deep-interview --autoresearch.
                    That interview lane should clarify the mission/evaluator, then launch direct
-                   execution via omc autoresearch --mission ... --eval ... from inside Claude.
+                   execution via omcp autoresearch --mission ... --eval ... from inside Claude.
   --topic/...      Seed the legacy guided intake with draft values; still requires
                    refinement/confirmation before launch.
   --mission/       Explicit bypass path. --mission is raw mission text and --eval is the raw
@@ -83756,14 +83756,14 @@ Arguments:
   init             Non-interactive mission scaffolding via flags (--topic, --eval, --slug;
                    optional --keep-policy).
   <mission-dir>    Directory inside a git repository containing mission.md and sandbox.md
-  <run-id>         Existing autoresearch run id from .omc/logs/autoresearch/<run-id>/manifest.json
+  <run-id>         Existing autoresearch run id from .omcp/logs/autoresearch/<run-id>/manifest.json
 
 Behavior:
-  - guided intake writes canonical artifacts under .omc/specs before launch when using --topic/--evaluator flow
+  - guided intake writes canonical artifacts under .omcp/specs before launch when using --topic/--evaluator flow
   - validates mission.md and sandbox.md
   - requires sandbox.md YAML frontmatter with evaluator.command and evaluator.format=json
   - fresh launch creates a run-tagged autoresearch/<slug>/<run-tag> lane
-  - supervisor records baseline, candidate, keep/discard/reset, and results artifacts under .omc/logs/autoresearch/
+  - supervisor records baseline, candidate, keep/discard/reset, and results artifacts under .omcp/logs/autoresearch/
   - --resume loads the authoritative per-run manifest and continues from the last kept commit
 `;
 var AUTORESEARCH_APPEND_INSTRUCTIONS_ENV = "OMC_AUTORESEARCH_APPEND_INSTRUCTIONS_FILE";

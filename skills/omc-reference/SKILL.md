@@ -42,8 +42,8 @@ Prefix: `oh-my-copilot:`. See `agents/*.md` for full prompts.
 
 ### External AI / orchestration
 - `/team N:executor "task"`
-- `omc team N:codex|gemini "..."`
-- `omc ask <claude|codex|gemini>`
+- `omcp team N:codex|gemini "..."`
+- `omcp ask <claude|codex|gemini>`
 - `/c3g`
 
 ### OMC state

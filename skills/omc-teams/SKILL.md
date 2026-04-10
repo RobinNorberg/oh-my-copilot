@@ -8,7 +8,7 @@ aliases: []
 
 Spawn N CLI worker processes in tmux panes to execute tasks in parallel. Supports `copilot`, `codex`, and `gemini` agent types.
 
-`/omc-teams` is a legacy compatibility skill for the CLI-first runtime: use `omc team ...` commands (not deprecated MCP runtime tools).
+`/omc-teams` is a legacy compatibility skill for the CLI-first runtime: use `omcp team ...` commands (not deprecated MCP runtime tools).
 
 ## Usage
 
@@ -64,7 +64,7 @@ state_write(mode="team", current_phase="team-exec", active=true)
 Start workers via CLI:
 
 ```bash
-omc team <N>:<copilot|codex|gemini> "<task>"
+omcp team <N>:<copilot|codex|gemini> "<task>"
 ```
 
 Team name defaults to a slug from the task text (example: `review-auth-flow`).
@@ -72,17 +72,17 @@ Team name defaults to a slug from the task text (example: `review-auth-flow`).
 ### Phase 4: Monitor + lifecycle API
 
 ```bash
-omc team status <team-name>
-omc team api list-tasks --input '{"team_name":"<team-name>"}' --json
+omcp team status <team-name>
+omcp team api list-tasks --input '{"team_name":"<team-name>"}' --json
 ```
 
-Use `omc team api ...` for task claiming, task transitions, mailbox delivery, and worker state updates.
+Use `omcp team api ...` for task claiming, task transitions, mailbox delivery, and worker state updates.
 
 ### Phase 5: Shutdown (only when needed)
 
 ```bash
-omc team shutdown <team-name>
-omc team shutdown <team-name> --force
+omcp team shutdown <team-name>
+omcp team shutdown <team-name> --force
 ```
 
 Use shutdown for intentional cancellation or stale-state cleanup. Prefer non-force shutdown first.
@@ -104,7 +104,7 @@ Legacy MCP runtime tools are deprecated for execution:
 - `omc_run_team_wait`
 - `omc_run_team_cleanup`
 
-If encountered, switch to `omc team ...` CLI commands.
+If encountered, switch to `omcp team ...` CLI commands.
 
 ## Error Reference
 
@@ -113,7 +113,7 @@ If encountered, switch to `omc team ...` CLI commands.
 | `not inside tmux`            | Shell not running inside tmux       | Start tmux and rerun                                                                |
 | `codex: command not found`   | Codex CLI not installed             | `npm install -g @openai/codex`                                                      |
 | `gemini: command not found`  | Gemini CLI not installed            | `npm install -g @google/gemini-cli`                                                 |
-| `Team <name> is not running` | stale or missing runtime state      | `omc team status <team-name>` then `omc team shutdown <team-name> --force` if stale |
+| `Team <name> is not running` | stale or missing runtime state      | `omcp team status <team-name>` then `omcp team shutdown <team-name> --force` if stale |
 | `status: failed`             | Workers exited with incomplete work | inspect runtime output, narrow scope, rerun                                         |
 
 ## Relationship to `/team`
@@ -121,6 +121,6 @@ If encountered, switch to `omc team ...` CLI commands.
 | Aspect       | `/team`                                   | `/omc-teams`                                         |
 | ------------ | ----------------------------------------- | ---------------------------------------------------- |
 | Worker type  | Copilot CLI native team agents            | copilot / codex / gemini CLI processes in tmux        |
-| Invocation   | `TeamCreate` / `Task` / `SendMessage`     | `omc team [N:agent]` + `status` + `shutdown` + `api` |
+| Invocation   | `TeamCreate` / `Task` / `SendMessage`     | `omcp team [N:agent]` + `status` + `shutdown` + `api` |
 | Coordination | Native team messaging and staged pipeline | tmux worker runtime + CLI API state files            |
 | Use when     | You want Copilot-native team orchestration | You want external CLI worker execution               |

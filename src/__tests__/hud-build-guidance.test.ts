@@ -10,7 +10,7 @@ const root = join(__dirname, '..', '..');
 describe('HUD build/load guidance', () => {
   it('session-start checks legacy hud script name and build guidance', () => {
     const content = readFileSync(join(root, 'scripts', 'session-start.mjs'), 'utf-8');
-    expect(content).toContain("const hudScriptLegacy = join(hudDir, 'omc-hud.js');");
+    expect(content).toContain("const hudScriptLegacy = join(hudDir, 'omcp-hud.js');");
     expect(content).toContain('HUD plugin cache is not built. Run: cd');
     expect(content).toContain('npm install && npm run build');
   });

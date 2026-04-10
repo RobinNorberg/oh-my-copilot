@@ -29851,20 +29851,20 @@ var import_os = require("os");
 
 // src/lib/worktree-paths.ts
 var OmgPaths = {
-  ROOT: ".omg",
-  STATE: ".omg/state",
-  SESSIONS: ".omg/state/sessions",
-  PLANS: ".omg/plans",
-  RESEARCH: ".omg/research",
-  NOTEPAD: ".omg/notepad.md",
-  PROJECT_MEMORY: ".omg/project-memory.json",
-  DRAFTS: ".omg/drafts",
-  NOTEPADS: ".omg/notepads",
-  LOGS: ".omg/logs",
-  SCIENTIST: ".omg/scientist",
-  AUTOPILOT: ".omg/autopilot",
-  SKILLS: ".omg/skills",
-  SHARED_MEMORY: ".omg/state/shared-memory"
+  ROOT: ".omcp",
+  STATE: ".omcp/state",
+  SESSIONS: ".omcp/state/sessions",
+  PLANS: ".omcp/plans",
+  RESEARCH: ".omcp/research",
+  NOTEPAD: ".omcp/notepad.md",
+  PROJECT_MEMORY: ".omcp/project-memory.json",
+  DRAFTS: ".omcp/drafts",
+  NOTEPADS: ".omcp/notepads",
+  LOGS: ".omcp/logs",
+  SCIENTIST: ".omcp/scientist",
+  AUTOPILOT: ".omcp/autopilot",
+  SKILLS: ".omcp/skills",
+  SHARED_MEMORY: ".omcp/state/shared-memory"
 };
 var MAX_WORKTREE_CACHE_SIZE = 8;
 var worktreeCacheMap = /* @__PURE__ */ new Map();
@@ -34034,7 +34034,7 @@ var import_path16 = require("path");
 // src/hooks/rules-injector/constants.ts
 var import_path15 = require("path");
 var import_os4 = require("os");
-var OMC_STORAGE_DIR = (0, import_path15.join)((0, import_os4.homedir)(), ".omg");
+var OMC_STORAGE_DIR = (0, import_path15.join)((0, import_os4.homedir)(), ".omcp");
 var RULES_INJECTOR_STORAGE = (0, import_path15.join)(OMC_STORAGE_DIR, "rules-injector");
 
 // src/hooks/project-memory/storage.ts
@@ -34667,7 +34667,7 @@ function getReplaySummary(directory, sessionId) {
 // src/tools/trace-tools.ts
 var REPLAY_PREFIX2 = "agent-replay-";
 function findLatestSessionId(directory) {
-  const stateDir = (0, import_path24.join)(directory, ".omg", "state");
+  const stateDir = (0, import_path24.join)(directory, ".omcp", "state");
   try {
     const files = (0, import_fs17.readdirSync)(stateDir).filter((f) => f.startsWith(REPLAY_PREFIX2) && f.endsWith(".jsonl")).map((f) => ({
       name: f,

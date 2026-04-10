@@ -33,7 +33,7 @@ import {
 // ============================================================================
 
 /**
- * Get the HUD state file path in the project's .omg/state directory
+ * Get the HUD state file path in the project's .omcp/state directory
  */
 function getLocalStateFilePath(directory?: string): string {
   const baseDir = validateWorkingDirectory(directory);
@@ -53,11 +53,11 @@ function getSettingsFilePath(): string {
  * Get the HUD config file path (legacy)
  */
 function getConfigFilePath(): string {
-  return join(getCopilotConfigDir(), '.omg', 'hud-config.json');
+  return join(getCopilotConfigDir(), '.omcp', 'hud-config.json');
 }
 
 /**
- * Ensure the .omg/state directory exists
+ * Ensure the .omcp/state directory exists
  */
 function ensureStateDir(directory?: string): void {
   const baseDir = validateWorkingDirectory(directory);
@@ -167,7 +167,7 @@ type HudConfigInput = Omit<
  * Read HUD state from disk (checks new local and legacy local only)
  */
 export function readHudState(directory?: string): OmcHudState | null {
-  // Check new local state first (.omg/state/hud-state.json)
+  // Check new local state first (.omcp/state/hud-state.json)
   const localStateFile = getLocalStateFilePath(directory);
   if (existsSync(localStateFile)) {
     try {
@@ -179,7 +179,7 @@ export function readHudState(directory?: string): OmcHudState | null {
     }
   }
 
-  // Check legacy local state (.omg/hud-state.json)
+  // Check legacy local state (.omcp/hud-state.json)
   const baseDir = validateWorkingDirectory(directory);
   const legacyStateFile = join(getOmcRoot(baseDir), 'hud-state.json');
   if (existsSync(legacyStateFile)) {
@@ -203,7 +203,7 @@ export function writeHudState(
   directory?: string
 ): boolean {
   try {
-    // Write to local .omg/state only
+    // Write to local .omcp/state only
     ensureStateDir(directory);
     const localStateFile = getLocalStateFilePath(directory);
     atomicWriteJsonSync(localStateFile, state);

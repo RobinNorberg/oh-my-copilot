@@ -22,7 +22,7 @@ import { sanitizeName } from './tmux-session.js';
 
 /**
  * Validate that a config path is under the user's home directory
- * and contains a trusted subpath (Copilot config dir or ~/.omg/).
+ * and contains a trusted subpath (Copilot config dir or ~/.omcp/).
  * Resolves the path first to defeat traversal attacks like ~/foo/.copilot/../../evil.json.
  */
 export function validateConfigPath(configPath: string, homeDir: string, claudeConfigDir: string): boolean {
@@ -33,10 +33,10 @@ export function validateConfigPath(configPath: string, homeDir: string, claudeCo
   // Also resolve homeDir so both get the same drive-letter prefix on Windows
   const normHome = n(resolve(homeDir));
   const normConfigDir = n(resolve(claudeConfigDir));
-  const normOmcDir = n(resolve(homeDir, '.omg')); // resolve handles forward-slash homeDir on Windows
+  const normOmcDir = n(resolve(homeDir, '.omcp')); // resolve handles forward-slash homeDir on Windows
 
   const isUnderHome = resolved.startsWith(normHome + '/') || resolved === normHome;
-  const hasOmcComponent = resolved.includes('/.omg/') || resolved.endsWith('/.omc');
+  const hasOmcComponent = resolved.includes('/.omcp/') || resolved.endsWith('/.omc');
   const isTrustedSubpath =
     resolved === normConfigDir ||
     resolved.startsWith(normConfigDir + '/') ||
@@ -107,7 +107,7 @@ function main(): void {
   const home = homedir();
   const claudeConfigDir = getCopilotConfigDir();
   if (!validateConfigPath(configPath, home, claudeConfigDir)) {
-    console.error(`Config path must be under ~/ with ${claudeConfigDir} or ~/.omg/ subpath: ${configPath}`);
+    console.error(`Config path must be under ~/ with ${claudeConfigDir} or ~/.omcp/ subpath: ${configPath}`);
     process.exit(1);
   }
 

@@ -34,18 +34,18 @@ When the argument is `disable`, remove the `statusLine` field from `~/.copilot/s
 ## Auto-Setup
 
 When you run `/oh-my-copilot:hud` or `/oh-my-copilot:hud setup`, the system will automatically:
-1. Check if `~/.copilot/hud/omc-hud.mjs` exists
+1. Check if `~/.copilot/hud/omcp-hud.mjs` exists
 2. Check if `statusLine` is configured in `~/.copilot/settings.json`
 3. If missing, create the HUD wrapper script and configure settings
 4. Report status and prompt to restart Copilot CLI if changes were made
 
-**IMPORTANT**: If the argument is `setup` OR if the HUD script doesn't exist at `~/.copilot/hud/omc-hud.mjs`, you MUST create the HUD files directly using the instructions below.
+**IMPORTANT**: If the argument is `setup` OR if the HUD script doesn't exist at `~/.copilot/hud/omcp-hud.mjs`, you MUST create the HUD files directly using the instructions below.
 
 ### Setup Instructions (Run These Commands)
 
 **Step 1:** Check if setup is needed:
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');console.log(f.existsSync(p.join(d,'hud','omc-hud.mjs'))?'EXISTS':'MISSING')"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');console.log(f.existsSync(p.join(d,'hud','omcp-hud.mjs'))?'EXISTS':'MISSING')"
 ```
 
 **Step 2:** Verify the plugin is installed:
@@ -53,14 +53,14 @@ node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DI
 node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),b=p.join(d,'plugins','cache','omc','oh-my-copilot');try{const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(v.length===0){console.log('Plugin not installed - run: /plugin install oh-my-copilot');process.exit()}const l=v[v.length-1],h=p.join(b,l,'dist','hud','index.js');console.log('Version:',l);console.log(f.existsSync(h)?'READY':'NOT_FOUND - try reinstalling: /plugin install oh-my-copilot')}catch{console.log('Plugin not installed - run: /plugin install oh-my-copilot')}"
 ```
 
-**Step 3:** If omc-hud.mjs is MISSING or argument is `setup`, create the HUD directory and script:
+**Step 3:** If omcp-hud.mjs is MISSING or argument is `setup`, create the HUD directory and script:
 
 First, create the directory:
 ```bash
 node -e "require('fs').mkdirSync(require('path').join(process.env.COPILOT_CONFIG_DIR||require('path').join(require('os').homedir(),'.copilot'),'hud'),{recursive:true})"
 ```
 
-Then, use the Write tool to create `${COPILOT_CONFIG_DIR:-~/.copilot}/hud/omc-hud.mjs` with this exact content:
+Then, use the Write tool to create `${COPILOT_CONFIG_DIR:-~/.copilot}/hud/omcp-hud.mjs` with this exact content:
 
 ```javascript
 #!/usr/bin/env node
@@ -185,7 +185,7 @@ main();
 
 **Step 3:** Make it executable (Unix only, skip on Windows):
 ```bash
-node -e "if(process.platform==='win32'){console.log('Skipped (Windows)')}else{require('fs').chmodSync(require('path').join(process.env.COPILOT_CONFIG_DIR||require('path').join(require('os').homedir(),'.copilot'),'hud','omc-hud.mjs'),0o755);console.log('Done')}"
+node -e "if(process.platform==='win32'){console.log('Skipped (Windows)')}else{require('fs').chmodSync(require('path').join(process.env.COPILOT_CONFIG_DIR||require('path').join(require('os').homedir(),'.copilot'),'hud','omcp-hud.mjs'),0o755);console.log('Done')}"
 ```
 
 **Step 4:** Update config.json to use the HUD:
@@ -196,7 +196,7 @@ Read `${COPILOT_CONFIG_DIR:-~/.copilot}/config.json`, then update/add the `statu
 
 If you are on Windows, first determine the correct path:
 ```bash
-node -e "const p=require('path').join(require('os').homedir(),'.copilot','hud','omc-hud.mjs').split(require('path').sep).join('/');console.log(JSON.stringify(p))"
+node -e "const p=require('path').join(require('os').homedir(),'.copilot','hud','omcp-hud.mjs').split(require('path').sep).join('/');console.log(JSON.stringify(p))"
 ```
 
 **IMPORTANT:** The command path MUST use forward slashes on all platforms. Copilot CLI executes statusLine commands via bash, which interprets backslashes as escape characters and breaks the path.
@@ -209,7 +209,7 @@ On **Unix/macOS**:
   "experimental": true,
   "statusLine": {
     "type": "command",
-    "command": "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs"
+    "command": "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs"
   }
 }
 ```
@@ -217,7 +217,7 @@ On **Unix/macOS**:
 On **Windows**, first create a `.cmd` wrapper at `~/.copilot/copilot-hud.cmd`:
 ```cmd
 @echo off
-node "C:\Users\username\.copilot\hud\omc-hud.mjs"
+node "C:\Users\username\.copilot\hud\omcp-hud.mjs"
 ```
 Then set `config.json`:
 ```json
@@ -236,7 +236,7 @@ Use the Edit tool to add/update these fields while preserving other settings.
 
 **Step 5:** Clean up old HUD scripts (if any):
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'hud','omc-hud.mjs');try{if(f.existsSync(t)){f.unlinkSync(t);console.log('Removed legacy script')}else{console.log('No legacy script found')}}catch{}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'hud','omcp-hud.mjs');try{if(f.existsSync(t)){f.unlinkSync(t);console.log('Removed legacy script')}else{console.log('No legacy script found')}}catch{}"
 ```
 
 **Step 6:** Tell the user to restart Copilot CLI for changes to take effect.
@@ -298,7 +298,7 @@ When agents are running, the HUD shows detailed information on separate lines:
 
 HUD config is stored in `~/.copilot/settings.json` under the `omcHud` key (or your custom config directory if `COPILOT_CONFIG_DIR` is set).
 
-Legacy config location (deprecated): `~/.copilot/.omc/hud-config.json`
+Legacy config location (deprecated): `~/.copilot/.omcp/hud-config.json`
 
 ## Manual Configuration
 
@@ -374,20 +374,20 @@ If the HUD is not showing:
 2. Restart Copilot CLI after setup completes
 3. If still not working, run `/oh-my-copilot:omc-doctor` for full diagnostics
 
-**Legacy string format migration:** Older OMC versions wrote `statusLine` as a plain string (e.g., `"~/.copilot/hud/omc-hud.mjs"`). Modern Copilot CLI (v2.1+) requires an object format. Running the installer or `/oh-my-copilot:hud setup` will auto-migrate legacy strings to the correct object format:
+**Legacy string format migration:** Older OMC versions wrote `statusLine` as a plain string (e.g., `"~/.copilot/hud/omcp-hud.mjs"`). Modern Copilot CLI (v2.1+) requires an object format. Running the installer or `/oh-my-copilot:hud setup` will auto-migrate legacy strings to the correct object format:
 ```json
 {
   "statusLine": {
     "type": "command",
-    "command": "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs"
+    "command": "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs"
   }
 }
 ```
 
-**Node 24+ compatibility:** The HUD wrapper script imports `homedir` from `node:os` (not `node:path`). If you encounter `SyntaxError: The requested module 'path' does not provide an export named 'homedir'`, re-run the installer to regenerate `omc-hud.mjs`.
+**Node 24+ compatibility:** The HUD wrapper script imports `homedir` from `node:os` (not `node:path`). If you encounter `SyntaxError: The requested module 'path' does not provide an export named 'homedir'`, re-run the installer to regenerate `omcp-hud.mjs`.
 
 Manual verification:
-- HUD script: `~/.copilot/hud/omc-hud.mjs`
+- HUD script: `~/.copilot/hud/omcp-hud.mjs`
 - Config: `~/.copilot/config.json` should have `statusLine` and `experimental: true` configured
 
 ---

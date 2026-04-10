@@ -4,7 +4,7 @@
  * Tmux Session Management for MCP Team Bridge
  *
  * Create, kill, list, and manage tmux sessions for MCP worker bridge daemons.
- * Sessions are named "omc-team-{teamName}-{workerName}".
+ * Sessions are named "omcp-team-{teamName}-{workerName}".
  */
 
 import { exec, execFile, execSync, execFileSync } from 'child_process';
@@ -16,7 +16,7 @@ import { validateTeamName } from './team-name.js';
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
-const TMUX_SESSION_PREFIX = 'omc-team';
+const TMUX_SESSION_PREFIX = 'omcp-team';
 
 const promisifiedExec = promisify(exec);
 const promisifiedExecFile = promisify(execFile);
@@ -388,7 +388,7 @@ export function sanitizeName(name: string): string {
   return sanitized.slice(0, 50);
 }
 
-/** Build session name: "omc-team-{teamName}-{workerName}" */
+/** Build session name: "omcp-team-{teamName}-{workerName}" */
 export function sessionName(teamName: string, workerName: string): string {
   return `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-${sanitizeName(workerName)}`;
 }
@@ -947,7 +947,7 @@ export async function killWorkerPanes(opts: {
   if (!paneIds.length) return;   // guard: nothing to kill
 
   // 1. Write graceful shutdown sentinel
-  const shutdownPath = join(cwd, '.omg', 'state', 'team', teamName, 'shutdown.json');
+  const shutdownPath = join(cwd, '.omcp', 'state', 'team', teamName, 'shutdown.json');
   try {
     await fs.writeFile(shutdownPath, JSON.stringify({ requestedAt: Date.now() }));
     await sleep(graceMs);

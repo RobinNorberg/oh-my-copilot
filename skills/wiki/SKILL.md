@@ -46,15 +46,15 @@ wiki_delete({ page: "outdated-page" })    # Delete a page
 ```
 
 ### Log
-View wiki operation history by reading `.omc/wiki/log.md`.
+View wiki operation history by reading `.omcp/wiki/log.md`.
 
 ## Categories
 Pages are organized by category: `architecture`, `decision`, `pattern`, `debugging`, `environment`, `session-log`
 
 ## Storage
-- Pages: `.omc/wiki/*.md` (markdown with YAML frontmatter)
-- Index: `.omc/wiki/index.md` (auto-maintained catalog)
-- Log: `.omc/wiki/log.md` (append-only operation chronicle)
+- Pages: `.omcp/wiki/*.md` (markdown with YAML frontmatter)
+- Index: `.omcp/wiki/index.md` (auto-maintained catalog)
+- Log: `.omcp/wiki/log.md` (append-only operation chronicle)
 
 ## Cross-References
 Use `[[page-name]]` wiki-link syntax to create cross-references between pages.
@@ -64,4 +64,4 @@ At session end, significant discoveries are automatically captured as session-lo
 
 ## Hard Constraints
 - NO vector embeddings — query uses keyword + tag matching only
-- Wiki pages are git-ignored by default (`.omc/wiki/` is project-local)
+- Wiki pages are git-ignored by default (`.omcp/wiki/` is project-local)

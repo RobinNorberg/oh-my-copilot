@@ -28,7 +28,7 @@ describe("subagent-tracker", () => {
 
   beforeEach(() => {
     testDir = join(tmpdir(), `subagent-test-${Date.now()}`);
-    mkdirSync(join(testDir, ".omg", "state"), { recursive: true });
+    mkdirSync(join(testDir, ".omcp", "state"), { recursive: true });
   });
 
   afterEach(() => {

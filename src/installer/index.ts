@@ -191,10 +191,10 @@ function buildStatusLineCommand(nodeBin: string, hudScriptPath: string, findNode
 
   if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
     if (findNodePath) {
-      return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
+      return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
     }
 
-    return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
+    return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
   }
 
   const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
@@ -282,15 +282,15 @@ export function isHudEnabledInConfig(): boolean {
  */
 export function isOmcStatusLine(statusLine: unknown): boolean {
   if (!statusLine) return false;
-  // Legacy string format (pre-v4.5): "~/.copilot/hud/omc-hud.mjs"
+  // Legacy string format (pre-v4.5): "~/.copilot/hud/omcp-hud.mjs"
   if (typeof statusLine === 'string') {
-    return statusLine.includes('omc-hud') || statusLine.includes('copilot-hud.cmd') || statusLine.includes('oh-my-copilot');
+    return statusLine.includes('omcp-hud') || statusLine.includes('copilot-hud.cmd') || statusLine.includes('oh-my-copilot');
   }
-  // Current object format: { type: "command", command: "node ...omc-hud.mjs" }
+  // Current object format: { type: "command", command: "node ...omcp-hud.mjs" }
   if (typeof statusLine === 'object') {
     const sl = statusLine as Record<string, unknown>;
     if (typeof sl.command === 'string') {
-      return sl.command.includes('omc-hud') || sl.command.includes('copilot-hud.cmd') || sl.command.includes('oh-my-copilot');
+      return sl.command.includes('omcp-hud') || sl.command.includes('copilot-hud.cmd') || sl.command.includes('oh-my-copilot');
     }
   }
   return false;
@@ -1033,7 +1033,7 @@ export function install(options: InstallOptions = {}): InstallResult {
 
       // Build the HUD script content (compiled from src/hud/index.ts)
       // Create a wrapper that checks multiple locations for the HUD module
-      hudScriptPath = join(HUD_DIR, 'omc-hud.mjs').replace(/\\/g, '/');
+      hudScriptPath = join(HUD_DIR, 'omcp-hud.mjs').replace(/\\/g, '/');
       const hudScriptLines = [
         '#!/usr/bin/env node',
         '/**',
@@ -1160,7 +1160,7 @@ export function install(options: InstallOptions = {}): InstallResult {
       if (!isWindows()) {
         chmodSync(hudScriptPath, 0o755);
       }
-      log('  Installed omc-hud.mjs');
+      log('  Installed omcp-hud.mjs');
     } catch (_e) {
       log('  Warning: Could not install HUD statusline script (non-fatal)');
       hudScriptPath = null;
@@ -1234,9 +1234,9 @@ export function install(options: InstallOptions = {}): InstallResult {
             const findNodeDest = join(HUD_DIR, 'find-node.sh');
             copyFileSync(findNodeSrc, findNodeDest);
             chmodSync(findNodeDest, 0o755);
-            statusLineCommand = 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
+            statusLineCommand = 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
           } catch {
-            statusLineCommand = 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
+            statusLineCommand = 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
           }
         }
 

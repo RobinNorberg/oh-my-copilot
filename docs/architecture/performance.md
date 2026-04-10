@@ -161,7 +161,7 @@ Session replay records agent lifecycle events as JSONL for post-session analysis
 
 #### Replay Files
 
-Replay data is stored at: `.omg/state/agent-replay-{sessionId}.jsonl`
+Replay data is stored at: `.omcp/state/agent-replay-{sessionId}.jsonl`
 
 Each line is a JSON event:
 ```json
@@ -377,10 +377,10 @@ Session replay is automatically enabled. Review replays after complex workflows:
 
 ```bash
 # Find replay files
-ls .omg/state/agent-replay-*.jsonl
+ls .omcp/state/agent-replay-*.jsonl
 
 # View recent events
-tail -20 .omg/state/agent-replay-*.jsonl
+tail -20 .omcp/state/agent-replay-*.jsonl
 ```
 
 ### 4. Set Cost Limits
@@ -449,7 +449,7 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 **Solutions**:
 1. Run `omc backfill` to import historical transcripts
 2. Verify HUD is running: `/oh-my-copilot:hud setup`
-3. Check `.omg/state/` directory exists
+3. Check `.omcp/state/` directory exists
 4. Review `token-tracking.jsonl` for raw data
 
 ### Stale Agent State
@@ -458,8 +458,8 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 
 **Solutions**:
 1. Run `cleanupStaleAgents(cwd)` programmatically
-2. Delete `.omg/state/subagent-tracking.json` to reset
-3. Check for orphaned lock files: `.omg/state/subagent-tracker.lock`
+2. Delete `.omcp/state/subagent-tracking.json` to reset
+3. Check for orphaned lock files: `.omcp/state/subagent-tracker.lock`
 
 ---
 
@@ -467,11 +467,11 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 
 | File | Purpose | Format |
 |------|---------|--------|
-| `.omg/state/subagent-tracking.json` | Current agent states | JSON |
-| `.omg/state/agent-replay-{id}.jsonl` | Session event timeline | JSONL |
-| `.omg/state/token-tracking.jsonl` | Token usage log | JSONL |
-| `.omg/state/analytics-summary-{id}.json` | Cached session summaries | JSON |
-| `.omg/state/subagent-tracker.lock` | Concurrent access lock | Text |
+| `.omcp/state/subagent-tracking.json` | Current agent states | JSON |
+| `.omcp/state/agent-replay-{id}.jsonl` | Session event timeline | JSONL |
+| `.omcp/state/token-tracking.jsonl` | Token usage log | JSONL |
+| `.omcp/state/analytics-summary-{id}.json` | Cached session summaries | JSON |
+| `.omcp/state/subagent-tracker.lock` | Concurrent access lock | Text |
 
 ---
 

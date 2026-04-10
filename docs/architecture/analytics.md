@@ -87,8 +87,8 @@ omc export cost csv ./costs.csv
 - `src/analytics/output-estimator.ts` - Output estimation & session ID
 - `src/analytics/analytics-summary.ts` - Fast summary loading
 - `src/hud/index.ts` - Auto-recording integration
-- `.omg/state/token-tracking.jsonl` - Append-only token log
-- `.omg/state/analytics-summary-{sessionId}.json` - Cached summaries
+- `.omcp/state/token-tracking.jsonl` - Append-only token log
+- `.omcp/state/analytics-summary-{sessionId}.json` - Cached summaries
 
 ## Offline Transcript Analysis
 

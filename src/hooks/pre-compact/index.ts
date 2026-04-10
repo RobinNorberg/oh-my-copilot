@@ -271,7 +271,7 @@ function readTodoSummary(directory: string): {
 
 /**
  * Get summary of active and recent background jobs from SQLite DB
- * Queries .omg/state/jobs.db for Codex/Gemini job statuses
+ * Queries .omcp/state/jobs.db for Codex/Gemini job statuses
  */
 async function getActiveJobsSummary(directory: string): Promise<{
   activeJobs: Array<{ jobId: string; provider: string; model: string; agentRole: string; spawnedAt: string }>;

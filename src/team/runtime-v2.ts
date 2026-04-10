@@ -238,7 +238,7 @@ export interface StartTeamV2Config {
 
 /**
  * Build the initial task instruction for v2 workers.
- * Workers use `omc team api` CLI commands for all lifecycle transitions.
+ * Workers use `omcp team api` CLI commands for all lifecycle transitions.
  */
 function buildV2TaskInstruction(
   teamName: string,
@@ -586,7 +586,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   // Create state directories
   await mkdir(absPath(leaderCwd, TeamPaths.tasks(sanitized)), { recursive: true });
   await mkdir(absPath(leaderCwd, TeamPaths.workers(sanitized)), { recursive: true });
-  await mkdir(join(leaderCwd, '.omg', 'state', 'team', sanitized, 'mailbox'), { recursive: true });
+  await mkdir(join(leaderCwd, '.omcp', 'state', 'team', sanitized, 'mailbox'), { recursive: true });
 
   // Write task files
   for (let i = 0; i < config.tasks.length; i++) {
@@ -1316,7 +1316,7 @@ export async function resumeTeamV2(
     const { execFile } = await import('child_process');
     const { promisify } = await import('util');
     const execFileAsync = promisify(execFile);
-    const sessionName = config.tmux_session || `omc-team-${sanitized}`;
+    const sessionName = config.tmux_session || `omcp-team-${sanitized}`;
     await execFileAsync('tmux', ['has-session', '-t', sessionName.split(':')[0]]);
 
     return {
@@ -1337,7 +1337,7 @@ export async function resumeTeamV2(
 // ---------------------------------------------------------------------------
 
 export async function findActiveTeamsV2(cwd: string): Promise<string[]> {
-  const root = join(cwd, '.omc', 'state', 'team');
+  const root = join(cwd, '.omcp', 'state', 'team');
   if (!existsSync(root)) return [];
   const entries = await readdir(root, { withFileTypes: true });
   const active: string[] = [];

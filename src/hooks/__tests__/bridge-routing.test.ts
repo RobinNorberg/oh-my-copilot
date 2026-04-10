@@ -179,7 +179,7 @@ describe('processHook - Routing Matrix', () => {
         expect(keywordResult.continue).toBe(true);
         expect(keywordResult.message).toContain('[RALPH + ULTRAWORK MODE ACTIVATED]');
 
-        const sessionDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+        const sessionDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
         const ralphState = JSON.parse(readFileSync(join(sessionDir, 'ralph-state.json'), 'utf-8')) as {
           awaiting_confirmation?: boolean;
           awaiting_confirmation_set_at?: string;
@@ -226,8 +226,8 @@ describe('processHook - Routing Matrix', () => {
         const result = await processHook('post-tool-use', input);
         expect(result.continue).toBe(true);
 
-        const ralphPath = join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json');
-        const ultraworkPath = join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ultrawork-state.json');
+        const ralphPath = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json');
+        const ultraworkPath = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ultrawork-state.json');
 
         expect(existsSync(ralphPath)).toBe(true);
         expect(existsSync(ultraworkPath)).toBe(true);
@@ -249,7 +249,7 @@ describe('processHook - Routing Matrix', () => {
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
         const sessionId = 'confirm-ralph-session';
-        const sessionDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+        const sessionDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
         mkdirSync(sessionDir, { recursive: true });
         writeFileSync(
           join(sessionDir, 'ralph-state.json'),
@@ -329,7 +329,7 @@ describe('processHook - Routing Matrix', () => {
       const sessionId = 'team-stage-enforced';
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-        const teamStateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+        const teamStateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
         mkdirSync(teamStateDir, { recursive: true });
         writeFileSync(
           join(teamStateDir, 'team-state.json'),
@@ -356,7 +356,7 @@ describe('processHook - Routing Matrix', () => {
       const sessionId = 'team-stage-auth-bypass';
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-        const teamStateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+        const teamStateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
         mkdirSync(teamStateDir, { recursive: true });
         writeFileSync(
           join(teamStateDir, 'team-state.json'),
@@ -383,14 +383,14 @@ describe('processHook - Routing Matrix', () => {
       const sessionId = 'ralplan-team-double-block';
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-        const sessionStateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+        const sessionStateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
         mkdirSync(sessionStateDir, { recursive: true });
         writeFileSync(
           join(sessionStateDir, 'ralplan-state.json'),
           JSON.stringify({ active: true, session_id: sessionId, current_phase: 'ralplan' }, null, 2)
         );
 
-        const globalStateDir = join(tempDir, '.omg', 'state');
+        const globalStateDir = join(tempDir, '.omcp', 'state');
         mkdirSync(globalStateDir, { recursive: true });
         writeFileSync(
           join(globalStateDir, 'team-state.json'),
@@ -982,7 +982,7 @@ describe('processHook - Routing Matrix', () => {
         const result = await processHook('pre-compact', rawInput);
         expect(result.continue).toBe(true);
         // If cwd reached the handler, it will have created the checkpoint dir
-        const checkpointDir = join(tempDir, '.omg', 'state', 'checkpoints');
+        const checkpointDir = join(tempDir, '.omcp', 'state', 'checkpoints');
         expect(existsSync(checkpointDir)).toBe(true);
       } finally {
         try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore Windows file-lock cleanup errors */ }
@@ -1044,7 +1044,7 @@ describe('processHook - Routing Matrix', () => {
 
         flushPendingWrites();
 
-        const trackingPath = join(tempDir, '.omg', 'state', 'subagent-tracking.json');
+        const trackingPath = join(tempDir, '.omcp', 'state', 'subagent-tracking.json');
         expect(existsSync(trackingPath)).toBe(true);
 
         const tracking = JSON.parse(readFileSync(trackingPath, 'utf-8')) as {

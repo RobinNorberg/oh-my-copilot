@@ -94,7 +94,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
 | `learner/SKILL.md` | learner | Extract reusable skill from session |
-| `ask/SKILL.md` | ask | Ask Copilot, Codex, or Gemini via `omc ask` and capture an artifact |
+| `ask/SKILL.md` | ask | Ask Copilot, Codex, or Gemini via `omcp ask` and capture an artifact |
 | `cancel/SKILL.md` | cancel | Cancel any active OMC mode |
 | `omc-doctor/SKILL.md` | omc-doctor | Diagnose installation issues |
 | `setup/SKILL.md` | setup | Unified setup entrypoint for install, diagnostics, and MCP configuration |
@@ -121,7 +121,7 @@ All plugin MCP tools use a **three-tier auto-approval system** so agents can ope
 
 Safe bash patterns (git, npm, dotnet, gh, az, grep, find, ls) are auto-approved by the `permissionRequest` hook. Shell metacharacters are always rejected.
 
-Deny escalation: 3 consecutive or 20 total denials stops the session. All decisions are audit-logged to `.omc/logs/permissions.log`.
+Deny escalation: 3 consecutive or 20 total denials stops the session. All decisions are audit-logged to `.omcp/logs/permissions.log`.
 
 See [permission architecture](../docs/architecture/permissions.md) for details.
 

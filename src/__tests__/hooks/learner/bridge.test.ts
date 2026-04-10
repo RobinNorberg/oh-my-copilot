@@ -41,8 +41,8 @@ describe("Skill Bridge Module", () => {
   });
 
   describe("findSkillFiles", () => {
-    it("should discover skills in project .omg/skills/", () => {
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+    it("should discover skills in project .omcp/skills/", () => {
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -60,7 +60,7 @@ describe("Skill Bridge Module", () => {
     });
 
     it("should discover skills recursively in subdirectories", () => {
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       const subDir = join(skillsDir, "subdir", "nested");
       mkdirSync(subDir, { recursive: true });
 
@@ -84,7 +84,7 @@ describe("Skill Bridge Module", () => {
     });
 
     it("should ignore non-.md files", () => {
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -175,7 +175,7 @@ Content`;
 
   describe("matchSkillsForInjection", () => {
     it("should match skills by trigger substring", () => {
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -195,7 +195,7 @@ Content`;
     });
 
     it("should not match when triggers dont match", () => {
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -213,7 +213,7 @@ Content`;
     });
 
     it("should use fuzzy matching when opt-in", () => {
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       // Skill with fuzzy matching enabled
@@ -235,7 +235,7 @@ Content`;
     });
 
     it("should respect skill limit", () => {
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       // Create 10 skills that all match "test"
@@ -290,7 +290,7 @@ Content`;
 
       const stateFile = join(
         testProjectRoot,
-        ".omg",
+        ".omcp",
         "state",
         "skill-sessions.json",
       );
@@ -304,7 +304,7 @@ Content`;
     });
 
     it("should not re-inject already injected skills", () => {
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(
@@ -337,7 +337,7 @@ Content`;
     it("should return project skills before user skills", () => {
       // We can't easily test user skills dir in isolation, but we can verify
       // that project skills come first in the returned array
-      const skillsDir = join(testProjectRoot, ".omg", "skills");
+      const skillsDir = join(testProjectRoot, ".omcp", "skills");
       mkdirSync(skillsDir, { recursive: true });
 
       writeFileSync(

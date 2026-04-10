@@ -2,7 +2,7 @@
  * Notepad Wisdom Module
  *
  * Plan-scoped notepad system for capturing learnings, decisions, issues, and problems.
- * Creates wisdom files at: .omg/notepads/{plan-name}/
+ * Creates wisdom files at: .omcp/notepads/{plan-name}/
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync } from 'fs';
@@ -48,7 +48,7 @@ function getWisdomFilePath(
 
 /**
  * Initialize notepad directory for a plan
- * Creates .omg/notepads/{plan-name}/ with 4 empty markdown files
+ * Creates .omcp/notepads/{plan-name}/ with 4 empty markdown files
  */
 export function initPlanNotepad(planName: string, directory: string = process.cwd()): boolean {
   const notepadDir = getNotepadDir(planName, directory);

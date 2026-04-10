@@ -19,7 +19,7 @@ const { readStdin } = await import(pathToFileURL(path.join(__dirname, 'lib', 'st
 // Allowed path patterns (no warning)
 // Paths are normalized to forward slashes before matching
 const ALLOWED_PATH_PATTERNS = [
-  /^\.omg\//,          // .omg/** (anchored)
+  /^\.omcp\//,          // .omcp/** (anchored)
   /^\.copilot\//,       // .copilot/** (anchored)
   /\/\.copilot\//,      // any /.copilot/ path (intentionally unanchored for absolute paths)
   /copilot-instructions\.md$/,
@@ -79,7 +79,7 @@ function workerCommandViolation(command) {
     return 'Team worker cannot run tmux pane/session orchestration commands.';
   }
   if (WORKER_BLOCKED_TEAM_CLI_PATTERN.test(command)) {
-    return 'Team worker cannot run team orchestration commands (except `omc team api ...`).';
+    return 'Team worker cannot run team orchestration commands (except `omcp team api ...`).';
   }
   if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
     return 'Team worker cannot invoke orchestration skills (`$team`, `$ultrawork`, `$autopilot`, `$ralph`).';
@@ -90,12 +90,12 @@ function workerCommandViolation(command) {
 const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 
 function clearAwaitingConfirmationFlag(directory, stateName, sessionId) {
-  const stateDir = path.join(directory, '.omc', 'state');
+  const stateDir = path.join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
   const paths = [
     safeSessionId ? path.join(stateDir, 'sessions', safeSessionId, `${stateName}-state.json`) : null,
     path.join(stateDir, `${stateName}-state.json`),
-    path.join(homedir(), '.omc', 'state', `${stateName}-state.json`),
+    path.join(homedir(), '.omcp', 'state', `${stateName}-state.json`),
   ].filter(Boolean);
 
   for (const statePath of paths) {

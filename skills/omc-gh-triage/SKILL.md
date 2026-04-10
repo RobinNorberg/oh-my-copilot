@@ -8,7 +8,7 @@ description: >
 
 # OMC GitHub Triage
 
-Perform a full GitHub triage cycle for the current project. Reads `.omc/config.json` for connection settings, queries all relevant GitHub surfaces (issues, PRs, Actions, Dependabot), and presents a prioritized summary with recommended actions.
+Perform a full GitHub triage cycle for the current project. Reads `.omcp/config.json` for connection settings, queries all relevant GitHub surfaces (issues, PRs, Actions, Dependabot), and presents a prioritized summary with recommended actions.
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
@@ -25,10 +25,10 @@ Perform a full GitHub triage cycle for the current project. Reads `.omc/config.j
 
 ## Step 1: Load Configuration
 
-Read `.omc/config.json`:
+Read `.omcp/config.json`:
 
 ```bash
-cat .omc/config.json 2>/dev/null || echo "NOT_FOUND"
+cat .omcp/config.json 2>/dev/null || echo "NOT_FOUND"
 ```
 
 Extract from the `github` key:
@@ -176,7 +176,7 @@ After presenting the summary, ask the user (via AskUserQuestion):
 
 | Error | Action |
 |-------|--------|
-| `.omc/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
+| `.omcp/config.json` missing | Tell user to run `/oh-my-copilot:omc-gh-setup` first |
 | `gh auth` required | Prompt user to authenticate; do not abort — skip that section |
 | Dependabot not enabled | Skip security alerts section, note it in summary |
 | Query returns 0 results | Show the section with count "(0)" — do not omit the header |

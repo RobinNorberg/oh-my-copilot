@@ -84,7 +84,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ask codex` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Codex CLI | `ask codex "security analysis"` |
 | `ask gemini` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Gemini CLI | `ask gemini "suggest UX improvements"` |
 | `c3g` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `c3g review this PR` |
-| `omc team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omc team 2:codex "security review"` |
+| `omcp team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omcp team 2:codex "security review"` |
 | `code review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Code review mode | `code review the auth module` |
 | `deep-analyze` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep analysis mode | `deep-analyze why tests are failing` |
 | `deep-dive` | ![analysis](https://img.shields.io/badge/analysis-purple) | Trace → interview pipeline | `deep-dive why auth is slow` |
@@ -142,10 +142,10 @@ Optional shortcuts for power users. Natural language works fine without them.
 **Omc team** spawn real tmux CLI workers for cross-model tasks:
 
 ```bash
-omc team 1:copilot "review the ingestion module for performance issues"
-omc team 2:claude "review the database module for sql issues"
-omc team 3:codex "review the auth module for security issues"
-omc team 5:gemini "redesign UI components for accessibility"
+omcp team 1:copilot "review the ingestion module for performance issues"
+omcp team 2:claude "review the database module for sql issues"
+omcp team 3:codex "review the auth module for security issues"
+omcp team 5:gemini "redesign UI components for accessibility"
 ```
 
 [Full Team Mode docs →](docs/guides/team-mode.md)
@@ -175,7 +175,7 @@ omc team 5:gemini "redesign UI components for accessibility"
 
 ### Platform & tmux
 
-OMC features like `omc team` and rate-limit detection require **tmux**:
+OMC features like `omcp team` and rate-limit detection require **tmux**:
 
 | Platform       | tmux provider                                          | Install                 |
 | -------------- | ------------------------------------------------------ | ----------------------- |
@@ -200,10 +200,10 @@ OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validati
 | [Codex CLI](https://github.com/openai/codex)                  | `npm install -g @openai/codex`         | Architecture validation, code review cross-check |
 
 ```bash
-omc team 2:claude "review auth architecture"
-omc team 2:codex "security analysis"
-omc team 2:gemini "UI consistency check"
-omc team 1:copilot "review existing tests"
+omcp team 2:claude "review auth architecture"
+omcp team 2:codex "security analysis"
+omcp team 2:gemini "UI consistency check"
+omcp team 1:copilot "review existing tests"
 ```
 Only Copilot CLI is required — the others are optional and add cross-provider validation.
 

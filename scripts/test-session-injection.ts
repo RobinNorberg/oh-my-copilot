@@ -4,7 +4,7 @@ import { join } from 'path';
 
 // Create test notepad
 const testDir = join(tmpdir(), `session-test-${Date.now()}`);
-const omcDir = join(testDir, '.omg');
+const omcDir = join(testDir, '.omcp');
 mkdirSync(omcDir, { recursive: true });
 
 const notepadContent = `# Notepad

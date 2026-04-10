@@ -377,7 +377,7 @@ User Command
 ├── .psm-session.json        # Session metadata
 ├── .psm-context.md          # Pre-loaded Copilot context
 ├── <project files>          # Actual code
-└── .omg/                    # OMC state (if applicable)
+└── .omcp/                    # OMC state (if applicable)
 ```
 
 ### 5.3 Session Metadata File

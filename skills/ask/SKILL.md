@@ -1,6 +1,6 @@
 ---
 name: ask
-description: Process-first advisor routing for Copilot, Claude, Codex, or Gemini via `omc ask`, with artifact capture and no raw CLI assembly
+description: Process-first advisor routing for Copilot, Claude, Codex, or Gemini via `omcp ask`, with artifact capture and no raw CLI assembly
 ---
 
 # Ask
@@ -27,10 +27,10 @@ Examples:
 **Required execution path — always use this command:**
 
 ```bash
-omc ask {{ARGUMENTS}}
+omcp ask {{ARGUMENTS}}
 ```
 
-**Do NOT manually construct raw provider CLI commands.** Never run `copilot`, `codex`, `claude`, or `gemini` directly to fulfill this skill. The `omc ask` wrapper handles correct flag selection, artifact persistence, and provider-version compatibility automatically. Manually assembling provider CLI flags will produce incorrect or outdated invocations.
+**Do NOT manually construct raw provider CLI commands.** Never run `copilot`, `codex`, `claude`, or `gemini` directly to fulfill this skill. The `omcp ask` wrapper handles correct flag selection, artifact persistence, and provider-version compatibility automatically. Manually assembling provider CLI flags will produce incorrect or outdated invocations.
 
 ## Requirements
 
@@ -46,10 +46,10 @@ gemini --version
 
 ## Artifacts
 
-`omc ask` writes artifacts to:
+`omcp ask` writes artifacts to:
 
 ```text
-.omg/artifacts/ask/<provider>-<slug>-<timestamp>.md
+.omcp/artifacts/ask/<provider>-<slug>-<timestamp>.md
 ```
 
 Task: {{ARGUMENTS}}

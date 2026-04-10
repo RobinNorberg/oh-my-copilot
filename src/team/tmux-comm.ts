@@ -79,7 +79,7 @@ export async function queueInboxInstruction(
   paneId: string,
   cwd: string
 ): Promise<void> {
-  const inboxPath = join(cwd, `.omg/state/team/${teamName}/workers/${workerName}/inbox.md`);
+  const inboxPath = join(cwd, `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`);
   await mkdir(join(inboxPath, '..'), { recursive: true });
 
   // Write FIRST (write-then-notify)

@@ -28,10 +28,10 @@ You are the **loop controller** for the self-improvement system. You manage the 
 
 ## State Tracking
 
-All state lives under `.omc/self-improve/`:
+All state lives under `.omcp/self-improve/`:
 
 ```
-.omc/self-improve/
+.omcp/self-improve/
 ├── config/                    # User configuration
 │   ├── settings.json          # agents, benchmark, thresholds, sealed_files
 │   ├── goal.md                # Improvement objective + target metric
@@ -52,7 +52,7 @@ All state lives under `.omc/self-improve/`:
     └── progress.png           # Generated chart
 ```
 
-OMC mode lifecycle: `.omc/state/sessions/{sessionId}/self-improve-state.json`
+OMC mode lifecycle: `.omcp/state/sessions/{sessionId}/self-improve-state.json`
 
 ---
 
@@ -85,26 +85,26 @@ Read these files at startup and at the beginning of each iteration:
 
 | File | Purpose |
 |---|---|
-| `.omc/self-improve/config/settings.json` | User config: `number_of_agents`, `benchmark_command`, `benchmark_format`, `benchmark_direction`, `max_iterations`, `plateau_threshold`, `plateau_window`, `target_value`, `primary_metric`, `sealed_files`, `regression_threshold`, `circuit_breaker_threshold`, `target_branch`, `current_repo_url`, `fork_url`, `upstream_url` |
-| `.omc/self-improve/state/agent-settings.json` | Runtime: `iterations`, `best_score`, `plateau_consecutive_count`, `circuit_breaker_count`, `status`, `goal_slug` (derived: lowercase underscore from goal objective, persisted for cross-session consistency) |
-| `.omc/self-improve/state/iteration_state.json` | Per-iteration progress for resumability |
-| `.omc/self-improve/config/goal.md` | Improvement objective, target metric, scope |
-| `.omc/self-improve/config/harness.md` | Guardrail rules (H001, H002, H003) |
+| `.omcp/self-improve/config/settings.json` | User config: `number_of_agents`, `benchmark_command`, `benchmark_format`, `benchmark_direction`, `max_iterations`, `plateau_threshold`, `plateau_window`, `target_value`, `primary_metric`, `sealed_files`, `regression_threshold`, `circuit_breaker_threshold`, `target_branch`, `current_repo_url`, `fork_url`, `upstream_url` |
+| `.omcp/self-improve/state/agent-settings.json` | Runtime: `iterations`, `best_score`, `plateau_consecutive_count`, `circuit_breaker_count`, `status`, `goal_slug` (derived: lowercase underscore from goal objective, persisted for cross-session consistency) |
+| `.omcp/self-improve/state/iteration_state.json` | Per-iteration progress for resumability |
+| `.omcp/self-improve/config/goal.md` | Improvement objective, target metric, scope |
+| `.omcp/self-improve/config/harness.md` | Guardrail rules (H001, H002, H003) |
 
 ---
 
 ## Setup Phase
 
 1. Check if target repo path exists. If not configured, ask user for the path to the repository to improve.
-2. Create `.omc/self-improve/` directory structure by copying from `templates/` in this skill directory.
-3. Read `.omc/self-improve/state/agent-settings.json`. Check `si_setting_goal`, `si_setting_benchmark`, `si_setting_harness`.
+2. Create `.omcp/self-improve/` directory structure by copying from `templates/` in this skill directory.
+3. Read `.omcp/self-improve/state/agent-settings.json`. Check `si_setting_goal`, `si_setting_benchmark`, `si_setting_harness`.
 4. **Trust confirmation** (mandatory, cannot be skipped):
    a. If `trust_confirmed` is already `true` in agent-settings.json, skip to step 5 (resume path).
    b. Display the target repo path and ask user to confirm:
       `"Self-improve will run benchmark commands inside {repo_path}. This executes arbitrary code in that repository. Confirm? [yes/no]"`
    c. If user declines: abort setup and exit. Do NOT proceed.
    d. Record consent: set `trust_confirmed: true` in agent-settings.json.
-5. If goal not set → read `si-goal-clarifier.md` from this skill directory and run the 4-dimension Socratic interview directly in this context (Objective, Metric, Target, Scope). Write result to `.omc/self-improve/config/goal.md`.
+5. If goal not set → read `si-goal-clarifier.md` from this skill directory and run the 4-dimension Socratic interview directly in this context (Objective, Metric, Target, Scope). Write result to `.omcp/self-improve/config/goal.md`.
 6. If benchmark not set → read `si-benchmark-builder.md` from this skill directory, spawn a custom Agent(model=opus) with its content as prompt. The agent surveys the repo, creates or wraps a benchmark, validates 3x, and records baseline.
    After benchmark is set, confirm the benchmark command with user:
    `"Benchmark command: {benchmark_command}. This will be run repeatedly during the loop. Confirm? [yes/no]"`
@@ -167,7 +167,7 @@ Update `state_write(mode='self-improve', active=true, status="running")`.
 Read state via `state_read(mode='self-improve')`.
 
 If state is cleared (cancel was invoked) OR status is `user_stopped`:
-  a. Set `status: "user_stopped"` in `.omc/self-improve/state/agent-settings.json`
+  a. Set `status: "user_stopped"` in `.omcp/self-improve/state/agent-settings.json`
   b. Update `iteration_state.json`: set `status: "interrupted"`, record `current_step`
   c. Clean up any active worktrees for the current round (Step 0 logic)
   d. Log: `"Self-improve stopped by user at iteration {N}, step {current_step}"`
@@ -175,7 +175,7 @@ If state is cleared (cancel was invoked) OR status is `user_stopped`:
 
 ### Step 3 — Check User Ideas
 
-Read `.omc/self-improve/config/idea.md`. If non-empty, snapshot contents for planners. Clear after planners consume.
+Read `.omcp/self-improve/config/idea.md`. If non-empty, snapshot contents for planners. Clear after planners consume.
 
 ### Step 4 — Research
 
@@ -184,12 +184,12 @@ Spawn 1 general-purpose Agent(model=opus) with the content of `si-researcher.md`
 Pass in the prompt:
 - Current iteration number
 - Path to target repo
-- Path to `.omc/self-improve/config/goal.md`
-- Path to `.omc/self-improve/state/iteration_history/` (all prior records)
-- Path to `.omc/self-improve/state/research_briefs/` (prior briefs)
+- Path to `.omcp/self-improve/config/goal.md`
+- Path to `.omcp/self-improve/state/iteration_history/` (all prior records)
+- Path to `.omcp/self-improve/state/research_briefs/` (prior briefs)
 - Content of `data_contracts.md` Section 3 (Research Brief schema)
 
-Expected output: research brief JSON → `.omc/self-improve/state/research_briefs/round_{n}.json`
+Expected output: research brief JSON → `.omcp/self-improve/state/research_briefs/round_{n}.json`
 
 If researcher fails, proceed with history only.
 
@@ -201,12 +201,12 @@ Pass in each planner's prompt:
 - Planner identity (planner_a, planner_b, planner_c...)
 - Research brief path
 - Iteration history path
-- Harness rules from `.omc/self-improve/config/harness.md`
+- Harness rules from `.omcp/self-improve/config/harness.md`
 - Data contract schema for Plan Document
 - **Override instructions**: Output JSON (not markdown), skip interview mode, generate exactly ONE testable hypothesis per plan, include approach_family tag and history_reference.
 - User ideas (if any, planner_a gets priority)
 
-Expected output: Plan Document JSON → `.omc/self-improve/plans/round_{n}/plan_planner_{id}.json`
+Expected output: Plan Document JSON → `.omcp/self-improve/plans/round_{n}/plan_planner_{id}.json`
 
 ### Step 6 — Review
 
@@ -271,17 +271,17 @@ SKILL.md does this directly (not delegated):
    If `auto_push` is `false` (default): skip push. Log: `"Push skipped (auto_push: false). Run manually: git -C {repo_path} push origin improve/{goal_slug}"`
 6. **Archive** all non-winner branches via git-master: tag + delete
 7. If no candidate survived the loop: no merge this round. Improvement branch stays at prior state.
-8. **Write Merge Report** JSON to `.omc/self-improve/state/merge_reports/round_{n}.json` (schema: data_contracts.md Section 9).
+8. **Write Merge Report** JSON to `.omcp/self-improve/state/merge_reports/round_{n}.json` (schema: data_contracts.md Section 9).
 
 ### Step 9 — Record & Visualize
 
-1. Write iteration history to `.omc/self-improve/state/iteration_history/round_{n}.json`
-2. Update `.omc/self-improve/state/agent-settings.json`:
+1. Write iteration history to `.omcp/self-improve/state/iteration_history/round_{n}.json`
+2. Update `.omcp/self-improve/state/agent-settings.json`:
    - Increment `iterations` by 1
    - If winner AND improvement exceeds `plateau_threshold` (`abs(new_score - best_score) >= plateau_threshold`): update `best_score`, reset `plateau_consecutive_count = 0`, reset `circuit_breaker_count = 0`
    - If winner AND improvement below threshold (`abs(new_score - best_score) < plateau_threshold`): update `best_score` if better, increment `plateau_consecutive_count += 1`, reset `circuit_breaker_count = 0`
    - If no winner (all rejected, all failed, or all regressed): increment `circuit_breaker_count += 1` (do NOT increment `plateau_consecutive_count` — plateau tracks stagnating wins, not failures)
-3. Append to `.omc/self-improve/tracking/raw_data.json` (one entry per candidate)
+3. Append to `.omcp/self-improve/tracking/raw_data.json` (one entry per candidate)
 4. Run `python3 {skill_dir}/scripts/plot_progress.py` for visualization
 5. Archive plans: copy current round plans to `state/plan_archive/round_{n}/`
 
@@ -318,12 +318,12 @@ If NO stop condition: immediately go back to Step 1.
 On invocation, before entering the loop:
 
 1. **Always run Step 0** (stale worktree cleanup) — even on fresh start
-2. Read `.omc/self-improve/state/agent-settings.json`:
+2. Read `.omcp/self-improve/state/agent-settings.json`:
    - If `status: "user_stopped"`: ask user `"Previous run was stopped at iteration {N}. Resume? [yes/no]"`. If no, exit. If yes, continue.
    - If `status: "running"`: session crashed — resume automatically (no user prompt)
    - If `status: "idle"`: fresh start
 3. Re-confirm trust gate only if `trust_confirmed` is `false` in agent-settings.json
-4. Read `.omc/self-improve/state/iteration_state.json`:
+4. Read `.omcp/self-improve/state/iteration_state.json`:
    - `status: "in_progress"` → resume from `current_step`, skip completed sub-steps
    - `status: "completed"` → start next iteration
    - `status: "failed"` → complete recording step if needed, start next iteration

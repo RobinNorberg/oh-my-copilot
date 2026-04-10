@@ -50,11 +50,11 @@ describe('sanitizeName', () => {
 
 describe('sessionName', () => {
   it('builds correct session name', () => {
-    expect(sessionName('myteam', 'codex1')).toBe('omc-team-myteam-codex1');
+    expect(sessionName('myteam', 'codex1')).toBe('omcp-team-myteam-codex1');
   });
 
   it('sanitizes both parts', () => {
-    expect(sessionName('my team!', 'work@er')).toBe('omc-team-myteam-worker');
+    expect(sessionName('my team!', 'work@er')).toBe('omcp-team-myteam-worker');
   });
 });
 
@@ -298,13 +298,13 @@ describe.skipIf(!hasTmux())('createSession with workingDirectory', () => {
   it('accepts optional workingDirectory param', () => {
     // Should not throw — workingDirectory is optional
     const name = createSession('tmuxtest', 'wdtest', '/tmp');
-    expect(name).toBe('omc-team-tmuxtest-wdtest');
+    expect(name).toBe('omcp-team-tmuxtest-wdtest');
     killSession('tmuxtest', 'wdtest');
   });
 
   it('works without workingDirectory param', () => {
     const name = createSession('tmuxtest', 'nowd');
-    expect(name).toBe('omc-team-tmuxtest-nowd');
+    expect(name).toBe('omcp-team-tmuxtest-nowd');
     killSession('tmuxtest', 'nowd');
   });
 });

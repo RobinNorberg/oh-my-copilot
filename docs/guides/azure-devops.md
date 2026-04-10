@@ -8,7 +8,7 @@ When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto
 
 - Detects the ADO platform on session start
 - Injects available `mcp__azure-devops__*` MCP tool context into agent prompts
-- Reads `.omg/config.json` for project-specific settings
+- Reads `.omcp/config.json` for project-specific settings
 
 ## Setup
 
@@ -16,7 +16,7 @@ When your git remote points to `dev.azure.com` or `*.visualstudio.com`, OMC auto
 /oh-my-copilot:omc-ado-setup
 ```
 
-This configures your ADO connection — verifies `az` CLI auth, auto-detects org/project from git remote, and writes `.omg/config.json`:
+This configures your ADO connection — verifies `az` CLI auth, auto-detects org/project from git remote, and writes `.omcp/config.json`:
 
 ```json
 {
@@ -76,7 +76,7 @@ Walk through open PRs: read diffs, view existing review threads, post inline or 
 
 Discovers PRs where you are assigned as reviewer, fetches diffs, spawns a `code-reviewer` agent, and posts structured inline findings as review threads.
 
-Configurable via `.omg/config.json`:
+Configurable via `.omcp/config.json`:
 
 | Setting | Default | Purpose |
 |---------|---------|---------|
@@ -160,7 +160,7 @@ All commands use `execFileSync` with WIQL escaping for security.
 | **Detection** | `dev.azure.com` / `*.visualstudio.com` remote | `github.com` remote |
 | **CLI** | `az` + `azure-devops` extension | `gh` |
 | **MCP Tools** | 70+ `mcp__azure-devops__*` tools | None (gh CLI only) |
-| **Config** | `.omg/config.json` → `ado` key | `.omc/config.json` → `github` key |
+| **Config** | `.omcp/config.json` → `ado` key | `.omcp/config.json` → `github` key |
 | **Triage** | Work items + PRs + Pipelines + AdvSec | Issues + PRs + Actions + Dependabot |
 | **PR Review** | 5-value vote system (-10 to +10) | 3-state (approve/request-changes/comment) |
 | **Sprint/Project** | Iterations + capacity + WIQL | GitHub Projects v2 (field-based) |

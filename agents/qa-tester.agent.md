@@ -109,7 +109,7 @@ Use `mcp__azure-devops__*` tools when available instead of CLI commands:
 - **Pipelines:** `pipelines_get_builds`, `pipelines_get_build_status`, `pipelines_get_build_log`
 
 ### Configuration
-Read `.omg/config.json` for ADO settings before making assumptions:
+Read `.omcp/config.json` for ADO settings before making assumptions:
 ```json
 {
   "platform": "azure-devops",

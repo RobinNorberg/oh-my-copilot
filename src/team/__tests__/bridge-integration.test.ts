@@ -11,12 +11,12 @@ import { logAuditEvent, readAuditLog } from '../audit-log.js';
 import { getClaudeConfigDir } from '../../utils/config-dir.js';
 
 const TEST_TEAM = 'test-bridge-int';
-// Task files now live in the canonical .omg/state/team path (relative to WORK_DIR)
+// Task files now live in the canonical .omcp/state/team path (relative to WORK_DIR)
 const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 // Resolve symlinks (macOS /var -> /private/var) so validateResolvedPath matches
 const WORK_DIR = join(realpathSync(tmpdir()), '__test_bridge_work__');
 // Canonical tasks dir for this team
-const TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
+const TASKS_DIR = join(WORK_DIR, '.omcp', 'state', 'team', TEST_TEAM, 'tasks');
 
 function writeTask(task: TaskFile): void {
   mkdirSync(TASKS_DIR, { recursive: true });
@@ -53,7 +53,7 @@ beforeEach(() => {
   mkdirSync(join(TEAMS_DIR, 'outbox'), { recursive: true });
   mkdirSync(join(TEAMS_DIR, 'signals'), { recursive: true });
   mkdirSync(WORK_DIR, { recursive: true });
-  mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
+  mkdirSync(join(WORK_DIR, '.omcp', 'state'), { recursive: true });
 });
 
 afterEach(() => {

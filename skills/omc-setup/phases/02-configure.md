@@ -11,13 +11,13 @@ The HUD shows real-time status in Copilot CLI's status bar. Invoke the hud skill
 Use the Skill tool to invoke: `hud` with args: `setup`
 
 This will:
-1. Install the HUD wrapper script to `~/.copilot/hud/omc-hud.mjs`
+1. Install the HUD wrapper script to `~/.copilot/hud/omcp-hud.mjs`
 2. Configure `statusLine` in `~/.copilot/settings.json`
 3. Report status and prompt to restart if needed
 
 After HUD setup completes, save progress:
 ```bash
-CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omg/state/setup-state.json" 2>/dev/null || echo "unknown")
+CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omcp/state/setup-state.json" 2>/dev/null || echo "unknown")
 bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" save 3 "$CONFIG_TYPE"
 ```
 
@@ -242,6 +242,6 @@ echo "Task tool set to: USER_CHOICE"
 ## Save Progress
 
 ```bash
-CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omg/state/setup-state.json" 2>/dev/null || echo "unknown")
+CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omcp/state/setup-state.json" 2>/dev/null || echo "unknown")
 bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" save 4 "$CONFIG_TYPE"
 ```

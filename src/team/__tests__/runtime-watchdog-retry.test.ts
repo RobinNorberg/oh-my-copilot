@@ -65,7 +65,7 @@ function makeRuntimeWithTask(cwd: string, teamName: string, taskId: string): Tea
 }
 
 function initTask(cwd: string, teamName: string): string {
-  const root = join(cwd, '.omg', 'state', 'team', teamName);
+  const root = join(cwd, '.omcp', 'state', 'team', teamName);
   mkdirSync(join(root, 'tasks'), { recursive: true });
   mkdirSync(join(root, 'workers', 'worker-1'), { recursive: true });
   writeFileSync(join(root, 'tasks', '1.json'), JSON.stringify({
@@ -260,7 +260,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', { timeout: 15000 }, () =
   it('multi-task requeue: nextPendingTaskIndex picks requeued task, not a different pending task', async () => {
     mockWorkerDiesOnceThenAlive();
     const teamName = 'multi-task-requeue-team';
-    const root = join(cwd, '.omg', 'state', 'team', teamName);
+    const root = join(cwd, '.omcp', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     mkdirSync(join(root, 'workers', 'worker-1'), { recursive: true });
 
@@ -422,7 +422,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', { timeout: 15000 }, () =
 
   it('does not requeue or increment retries when dead-pane detection races with completion', async () => {
     const teamName = 'dead-pane-completed-race-team';
-    const root = join(cwd, '.omg', 'state', 'team', teamName);
+    const root = join(cwd, '.omcp', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     mkdirSync(join(root, 'workers', 'worker-1'), { recursive: true });
 
@@ -466,7 +466,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', { timeout: 15000 }, () =
 
   it('does not requeue or increment retries when dead-pane worker no longer owns the task', async () => {
     const teamName = 'dead-pane-owner-race-team';
-    const root = join(cwd, '.omg', 'state', 'team', teamName);
+    const root = join(cwd, '.omcp', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     mkdirSync(join(root, 'workers', 'worker-1'), { recursive: true });
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // OMC Post-Tool-Use Hook (Node.js)
 // Processes <remember> tags from Task agent output
-// Saves to .omg/notepad.md for compaction-resilient memory
+// Saves to .omcp/notepad.md for compaction-resilient memory
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
@@ -27,7 +27,7 @@ const NOTEPAD_TEMPLATE = '# Notepad\n' +
 
 // Initialize notepad.md if needed
 function initNotepad(directory) {
-  const omcDir = join(directory, '.omg');
+  const omcDir = join(directory, '.omcp');
   const notepadPath = join(omcDir, 'notepad.md');
 
   if (!existsSync(omcDir)) {
@@ -81,7 +81,7 @@ function isConsensusPlanningSkillInvocation(skillName, toolInput) {
 const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 
 function getSkillActiveStatePaths(directory, sessionId) {
-  const stateDir = join(directory, '.omg', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
   return [
     safeSessionId ? join(stateDir, 'sessions', safeSessionId, 'skill-active-state.json') : null,
@@ -109,7 +109,7 @@ function clearSkillActiveState(directory, sessionId) {
 }
 
 function getRalplanStatePaths(directory, sessionId) {
-  const stateDir = join(directory, '.omg', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
   return [
     safeSessionId ? join(stateDir, 'sessions', safeSessionId, 'ralplan-state.json') : null,
@@ -154,7 +154,7 @@ function deactivateRalplanState(directory, sessionId) {
 }
 
 function activateState(directory, stateName, state, sessionId) {
-  const stateDir = join(directory, '.omg', 'state');
+  const stateDir = join(directory, '.omcp', 'state');
   const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
   const targetDir = safeSessionId
     ? join(stateDir, 'sessions', safeSessionId)
@@ -166,7 +166,7 @@ function activateState(directory, stateName, state, sessionId) {
   } catch {}
 
   // Also write to global fallback
-  const globalDir = join(homedir(), '.omg', 'state');
+  const globalDir = join(homedir(), '.omcp', 'state');
   try {
     if (!existsSync(globalDir)) mkdirSync(globalDir, { recursive: true });
     atomicWriteFileSync(join(globalDir, `${stateName}-state.json`), JSON.stringify(state, null, 2));

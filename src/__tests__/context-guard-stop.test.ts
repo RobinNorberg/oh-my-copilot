@@ -50,6 +50,6 @@ describe('context-guard-stop safe recovery messaging (issue #1373)', () => {
 
     expect(out.decision).toBe('block');
     expect(String(out.reason)).toContain('Run /compact immediately');
-    expect(String(out.reason)).toContain('.omg/state');
+    expect(String(out.reason)).toContain('.omcp/state');
   });
 });

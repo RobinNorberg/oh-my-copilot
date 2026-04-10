@@ -29,7 +29,7 @@ Codebases accumulate technical debt across many dimensions — security gaps, mi
 - Each agent focuses exclusively on its category — no overlap
 - Consolidation agent runs after all scans complete
 - Default scope: encourage explicit scoping to a subdirectory. Full-codebase scan only if user explicitly requests it
-- Output: `.omc/discover/backlog.md`
+- Output: `.omcp/discover/backlog.md`
 </Execution_Policy>
 
 <Steps>
@@ -160,7 +160,7 @@ Codebases accumulate technical debt across many dimensions — security gaps, mi
    - Sort by severity (CRITICAL > HIGH > MEDIUM > LOW), then by category
    - Count totals per category and severity
 
-4. **Generate backlog**: Write the consolidated backlog to `.omc/discover/backlog.md`:
+4. **Generate backlog**: Write the consolidated backlog to `.omcp/discover/backlog.md`:
 
    ```markdown
    # Discovery Backlog
@@ -240,6 +240,6 @@ Why bad: Scans are independent and should run in parallel.
 - [ ] Findings collected from all successful scans
 - [ ] Findings deduplicated across agents
 - [ ] Backlog sorted by severity (CRITICAL > HIGH > MEDIUM > LOW)
-- [ ] Backlog written to `.omc/discover/backlog.md`
+- [ ] Backlog written to `.omcp/discover/backlog.md`
 - [ ] Summary presented to user
 </Final_Checklist>

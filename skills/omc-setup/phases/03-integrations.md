@@ -144,6 +144,6 @@ After installing the MCP server, configure your project:
 ## Save Progress
 
 ```bash
-CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omg/state/setup-state.json" 2>/dev/null || echo "unknown")
+CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omcp/state/setup-state.json" 2>/dev/null || echo "unknown")
 bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" save 6 "$CONFIG_TYPE"
 ```

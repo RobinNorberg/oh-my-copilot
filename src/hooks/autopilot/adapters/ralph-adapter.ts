@@ -24,7 +24,7 @@ export const ralphAdapter: PipelineStageAdapter = {
   },
 
   getPrompt(context: PipelineContext): string {
-    const specPath = context.specPath || '.omg/autopilot/spec.md';
+    const specPath = context.specPath || '.omcp/autopilot/spec.md';
     const maxIterations = context.config.verification !== false
       ? context.config.verification.maxIterations
       : 100;

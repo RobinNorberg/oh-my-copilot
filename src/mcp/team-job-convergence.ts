@@ -113,7 +113,7 @@ export function clearScopedTeamState(job: Pick<OmcTeamJob, 'cwd' | 'teamName'>):
     return `team state cleanup skipped (invalid teamName): ${error instanceof Error ? error.message : String(error)}`;
   }
 
-  const stateDir = join(job.cwd, '.omg', 'state', 'team', job.teamName);
+  const stateDir = join(job.cwd, '.omcp', 'state', 'team', job.teamName);
   try {
     if (!existsSync(stateDir)) {
       return `team state dir not found at ${stateDir}.`;

@@ -104,7 +104,7 @@ export function generateTeamReport(
 
 /**
  * Write the report to disk.
- * Path: .omg/reports/team-{teamName}-{timestamp}.md
+ * Path: .omcp/reports/team-{teamName}-{timestamp}.md
  * Returns the file path.
  */
 export function saveTeamReport(
@@ -112,7 +112,7 @@ export function saveTeamReport(
   teamName: string
 ): string {
   const report = generateTeamReport(workingDirectory, teamName);
-  const dir = join(workingDirectory, '.omg', 'reports');
+  const dir = join(workingDirectory, '.omcp', 'reports');
   ensureDirWithMode(dir);
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const filePath = join(dir, `team-${teamName}-${timestamp}.md`);

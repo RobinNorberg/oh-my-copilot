@@ -59,7 +59,7 @@ Tool call
 │     └─ No match → ASK (Copilot CLI native prompt)             │
 │                                                               │
 │  4. AUDIT                                                     │
-│     Every decision logged to .omc/logs/permissions.log        │
+│     Every decision logged to .omcp/logs/permissions.log        │
 │     Deny counter updated for escalation tracking              │
 │                                                               │
 └──────────────────────────────────────────────────────────────┘
@@ -157,7 +157,7 @@ This prevents the agent from endlessly retrying a blocked operation.
 
 ### Audit Trail
 
-Every permission decision is logged to `.omc/logs/permissions.log`:
+Every permission decision is logged to `.omcp/logs/permissions.log`:
 
 ```json
 {"ts":"2026-03-31T12:00:00Z","tool":"Bash","command":"git status","decision":"allow","reason":"Safe read-only or test command","denials":0,"allows":5}
@@ -228,7 +228,7 @@ Remove its entry from `permissions.allow` in `settings.local.json`. It will be r
 | **Injection probe** | Server-side PI scanner | Relies on CLI built-in |
 | **Deny escalation** | 3 consecutive / 20 total | 3 consecutive / 20 total |
 | **Allowed list** | Built-in + user config | Annotations + settings.json + hook |
-| **Audit trail** | Internal | `.omc/logs/permissions.log` |
+| **Audit trail** | Internal | `.omcp/logs/permissions.log` |
 | **Tool annotations** | MCP readOnlyHint | MCP readOnlyHint (same spec) |
 
 ## Key Files

@@ -46,7 +46,7 @@ export function buildPreflightRecoveryAdvice(contextPercent, threshold = DEFAULT
   return `[OMC] Preflight context guard: ${contextPercent}% used ` +
     `(threshold: ${threshold}%). Avoid spawning additional agent-heavy tasks ` +
     `until context is reduced. Safe recovery: (1) pause new Task fan-out, (2) run /compact now, ` +
-    `(3) if compact fails, open a fresh session and continue from .omc/state + .omc/notepad.md.`;
+    `(3) if compact fails, open a fresh session and continue from .omcp/state + .omcp/notepad.md.`;
 }
 
 export function evaluateAgentHeavyPreflight({ toolName, transcriptPath, env = process.env }) {

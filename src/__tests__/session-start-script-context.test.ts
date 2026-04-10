@@ -16,7 +16,7 @@ describe('session-start.mjs regression #1386', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'omc-session-start-script-'));
     fakeHome = join(tempDir, 'home');
     fakeProject = join(tempDir, 'project');
-    mkdirSync(join(fakeProject, '.omg', 'state', 'sessions', 'session-1386'), { recursive: true });
+    mkdirSync(join(fakeProject, '.omcp', 'state', 'sessions', 'session-1386'), { recursive: true });
   });
 
   afterEach(() => {
@@ -25,7 +25,7 @@ describe('session-start.mjs regression #1386', () => {
 
   it('marks restored ultrawork state as prior-session context instead of imperative continuation', () => {
     writeFileSync(
-      join(fakeProject, '.omg', 'state', 'sessions', 'session-1386', 'ultrawork-state.json'),
+      join(fakeProject, '.omcp', 'state', 'sessions', 'session-1386', 'ultrawork-state.json'),
       JSON.stringify({
         active: true,
         session_id: 'session-1386',

@@ -19,7 +19,7 @@ describe("idle notification cooldown (issue #842)", () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "idle-cooldown-test-"));
-    stateDir = join(tempDir, ".omg", "state");
+    stateDir = join(tempDir, ".omcp", "state");
     mkdirSync(stateDir, { recursive: true });
   });
 
@@ -109,7 +109,7 @@ describe("idle notification cooldown (issue #842)", () => {
     });
 
     it("creates intermediate directories if they do not exist", () => {
-      const deepStateDir = join(tempDir, "new", "deep", ".omg", "state");
+      const deepStateDir = join(tempDir, "new", "deep", ".omcp", "state");
       expect(existsSync(deepStateDir)).toBe(false);
 
       recordIdleNotificationSent(deepStateDir);

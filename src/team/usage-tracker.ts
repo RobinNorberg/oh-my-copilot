@@ -7,7 +7,7 @@
  * NOTE: Token counts are not available from Codex/Gemini CLI output.
  * Character counts serve as a rough proxy for usage estimation.
  *
- * Storage: append-only JSONL at .omg/logs/team-usage-{team}.jsonl
+ * Storage: append-only JSONL at .omcp/logs/team-usage-{team}.jsonl
  */
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
@@ -44,7 +44,7 @@ export interface TeamUsageReport {
 }
 
 function getUsageLogPath(workingDirectory: string, teamName: string): string {
-  return join(workingDirectory, '.omg', 'logs', `team-usage-${teamName}.jsonl`);
+  return join(workingDirectory, '.omcp', 'logs', `team-usage-${teamName}.jsonl`);
 }
 
 /**
@@ -56,7 +56,7 @@ export function recordTaskUsage(
   record: TaskUsageRecord
 ): void {
   const logPath = getUsageLogPath(workingDirectory, teamName);
-  const dir = join(workingDirectory, '.omg', 'logs');
+  const dir = join(workingDirectory, '.omcp', 'logs');
   validateResolvedPath(logPath, workingDirectory);
   ensureDirWithMode(dir);
   appendFileWithMode(logPath, JSON.stringify(record) + '\n');

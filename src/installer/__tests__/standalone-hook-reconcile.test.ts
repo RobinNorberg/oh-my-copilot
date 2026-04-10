@@ -71,9 +71,9 @@ describe.skip('install() standalone hook reconciliation', () => {
       `node "${join(testClaudeDir, 'hooks', 'session-start.mjs').replace(/\\/g, '/')}"`,
     );
     expect((writtenSettings as { statusLine?: { command?: string } }).statusLine?.command).toContain(
-      `${join(testClaudeDir, 'hud', 'omc-hud.mjs').replace(/\\/g, '/')}`,
+      `${join(testClaudeDir, 'hud', 'omcp-hud.mjs').replace(/\\/g, '/')}`,
     );
-    expect(readFileSync(join(testClaudeDir, 'hud', 'omc-hud.mjs'), 'utf-8')).toContain(
+    expect(readFileSync(join(testClaudeDir, 'hud', 'omcp-hud.mjs'), 'utf-8')).toContain(
       'const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);',
     );
     expect(readFileSync(join(testClaudeDir, 'hud', 'lib', 'config-dir.mjs'), 'utf-8')).toContain(

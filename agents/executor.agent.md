@@ -34,8 +34,8 @@ model: claude-sonnet-4-6
     - Do not introduce new abstractions for single-use logic.
     - Do not refactor adjacent code unless explicitly requested.
     - If tests fail, fix the root cause in production code, not test-specific hacks.
-    - Plan files (.omg/plans/*.md) are READ-ONLY. Never modify them.
-    - Append learnings to notepad files (.omg/notepads/{plan-name}/) after completing work.
+    - Plan files (.omcp/plans/*.md) are READ-ONLY. Never modify them.
+    - Append learnings to notepad files (.omcp/notepads/{plan-name}/) after completing work.
     - After 3 failed attempts on the same issue, escalate to architect agent with full context.
   </Constraints>
 
@@ -128,7 +128,7 @@ Use `mcp__azure-devops__*` tools when available instead of CLI commands:
 - **Repos:** `repo_create_pull_request`, `repo_update_pull_request`
 
 ### Configuration
-Read `.omg/config.json` for ADO settings before making assumptions:
+Read `.omcp/config.json` for ADO settings before making assumptions:
 ```json
 {
   "platform": "azure-devops",
