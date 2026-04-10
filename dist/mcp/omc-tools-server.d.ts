@@ -1,9 +1,10 @@
 /**
  * OMC Tools Server - In-process MCP server for custom tools
  *
- * Exposes 18 custom tools (12 LSP, 2 AST, 1 python_repl, 3 skills) via the Copilot Agent SDK's
- * createSdkMcpServer helper for use by subagents.
+ * Exposes custom tools (LSP, AST, python_repl, skills, state, notepad, memory, etc.)
+ * via the standard MCP SDK for use by subagents.
  */
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { type ToolCategory } from "../constants/index.js";
 /**
  * Map from user-facing OMC_DISABLE_TOOLS group names to ToolCategory values.
@@ -30,7 +31,40 @@ export declare function parseDisabledGroups(envValue?: string): Set<ToolCategory
  * Tools will be available as mcp__t__<tool_name>.
  * Tools in disabled groups (via OMC_DISABLE_TOOLS) are excluded at startup.
  */
-export declare const omcToolsServer: import("@anthropic-ai/claude-agent-sdk").McpSdkServerConfigWithInstance;
+export declare const omcToolsServer: Server<{
+    method: string;
+    params?: {
+        [x: string]: unknown;
+        _meta?: {
+            [x: string]: unknown;
+            progressToken?: string | number | undefined;
+            "io.modelcontextprotocol/related-task"?: {
+                taskId: string;
+            } | undefined;
+        } | undefined;
+    } | undefined;
+}, {
+    method: string;
+    params?: {
+        [x: string]: unknown;
+        _meta?: {
+            [x: string]: unknown;
+            progressToken?: string | number | undefined;
+            "io.modelcontextprotocol/related-task"?: {
+                taskId: string;
+            } | undefined;
+        } | undefined;
+    } | undefined;
+}, {
+    [x: string]: unknown;
+    _meta?: {
+        [x: string]: unknown;
+        progressToken?: string | number | undefined;
+        "io.modelcontextprotocol/related-task"?: {
+            taskId: string;
+        } | undefined;
+    } | undefined;
+}>;
 /**
  * Tool names in MCP format for allowedTools configuration.
  * Only includes tools that are enabled (not disabled via OMC_DISABLE_TOOLS).

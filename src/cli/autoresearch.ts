@@ -1,5 +1,6 @@
 import { execFileSync, spawnSync } from 'child_process';
 import { readFileSync } from 'fs';
+import { getHostCliBinary } from '../utils/host-detection.js';
 import {
   type AutoresearchKeepPolicy,
   loadAutoresearchMissionContract,
@@ -88,7 +89,7 @@ export function normalizeAutoresearchClaudeArgs(claudeArgs: readonly string[]): 
 function runAutoresearchTurn(worktreePath: string, instructionsFile: string, claudeArgs: string[]): void {
   const prompt = readFileSync(instructionsFile, 'utf-8');
   const launchArgs = ['--print', ...normalizeAutoresearchClaudeArgs(claudeArgs), '-p', prompt];
-  const result = spawnSync('claude', launchArgs, {
+  const result = spawnSync(getHostCliBinary(), launchArgs, {
     cwd: worktreePath,
     stdio: ['pipe', 'inherit', 'inherit'],
     encoding: 'utf-8',

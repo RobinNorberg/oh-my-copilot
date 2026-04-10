@@ -155,7 +155,8 @@ ${conversationContext}
 Label:`;
 
   try {
-    const result = execFileSync('claude', ['-p', prompt], {
+    // Use copilot binary (this fork's default host CLI)
+    const result = execFileSync('copilot', ['-p', prompt], {
       encoding: 'utf-8',
       timeout: 30_000,
       stdio: ['pipe', 'pipe', 'pipe'],

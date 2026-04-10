@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import type { CliAgentType } from './model-contract.js';
 import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
+import { getHostCliType } from '../utils/host-detection.js';
 import {
   createTeamSession, spawnWorkerInPane, sendToWorker,
   isWorkerAlive, killTeamSession, resolveSplitPaneWorkerPaneIds, waitForPaneReady, applyMainVerticalLayout,
@@ -414,7 +415,7 @@ export async function startTeam(config: TeamConfig): Promise<TeamRuntime> {
   for (let i = 0; i < tasks.length; i++) {
     const wName = workerName(i);
     workerNames.push(wName);
-    const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude';
+    const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType();
     await ensureWorkerStateDir(teamName, wName, cwd);
     await writeWorkerOverlay({
       teamName, workerName: wName, agentType,
@@ -717,7 +718,7 @@ export async function spawnWorkerForTask(
   const workerIndex = parseWorkerIndex(workerNameValue);
   const agentType = runtime.config.agentTypes[workerIndex % runtime.config.agentTypes.length]
     ?? runtime.config.agentTypes[0]
-    ?? 'claude';
+    ?? getHostCliType();
   const usePromptMode = isPromptModeAgent(agentType);
 
   // Build the initial task instruction and write inbox before spawn.

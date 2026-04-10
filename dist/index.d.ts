@@ -92,17 +92,12 @@ export interface OmcSession {
  * @example
  * ```typescript
  * import { createOmcSession } from 'oh-my-copilot';
- * import { query } from '@anthropic-ai/claude-agent-sdk';
- *
  * const session = createOmcSession();
  *
- * // Use with Copilot Agent SDK
- * for await (const message of query({
- *   prompt: session.processPrompt("ultrawork refactor the authentication module"),
- *   ...session.queryOptions
- * })) {
- *   console.log(message);
- * }
+ * // Use the session's processed prompt and MCP tool servers
+ * const prompt = session.processPrompt("ultrawork refactor the authentication module");
+ * const { mcpServers, allowedTools } = session.queryOptions.options;
+ * console.log(prompt, mcpServers, allowedTools);
  * ```
  */
 export declare function createOmcSession(options?: OmcOptions): OmcSession;

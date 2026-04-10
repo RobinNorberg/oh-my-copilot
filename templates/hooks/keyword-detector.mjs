@@ -11,7 +11,7 @@
  * 3. autopilot: Full autonomous execution
  * 4. team: Explicit-only via /team (not auto-triggered)
  * 5. ultrawork/ulw: Maximum parallel execution
- * 5. ccg: Copilot-Codex-Gemini tri-model orchestration
+ * 5. c3g: Copilot-Claude-Codex-Gemini quad-model orchestration
  * 6. ralplan: Iterative planning with consensus
  * 7. deep interview: Socratic interview workflow
  * 8. tdd: Test-driven development
@@ -367,7 +367,7 @@ function resolveConflicts(matches) {
 
   // Sort by priority order
 const priorityOrder = ['cancel','ralph','autopilot','ultrawork',
-    'ccg','ralplan','deep-interview','tdd','ultrathink','deepsearch','analyze'];
+    'c3g','ralplan','deep-interview','tdd','ultrathink','deepsearch','analyze'];
   resolved.sort((a, b) => priorityOrder.indexOf(a.name) - priorityOrder.indexOf(b.name));
 
   return resolved;
@@ -476,8 +476,8 @@ async function main() {
 
 
     // CCG keywords (Copilot-Codex-Gemini tri-model orchestration)
-    if (hasActionableKeyword(cleanPrompt, /\b(ccg|copilot-clix-gemini)\b/i)) {
-      matches.push({ name: 'ccg', args: '' });
+    if (hasActionableKeyword(cleanPrompt, /\b(c3g|copilot-claude-codex-gemini)\b/i)) {
+      matches.push({ name: 'c3g', args: '' });
     }
 
     // Ralplan keyword
