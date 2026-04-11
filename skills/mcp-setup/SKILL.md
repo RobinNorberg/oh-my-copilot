@@ -77,9 +77,10 @@ copilot mcp add -e EXA_API_KEY=<user-provided-key> exa -- npx -y exa-mcp-server
 
 ### lean-ctx Configuration:
 ```bash
-npx -y @anthropic-ai/lean-ctx@latest install
+npm install -g lean-ctx-bin && lean-ctx setup
 ```
-> Note: lean-ctx uses its own installer rather than `copilot mcp add`. It hooks into existing tools (Read, Grep, Bash) to compress and cache results automatically.
+> Note: lean-ctx uses its own installer (`lean-ctx setup`) which auto-configures shell and all detected editors. It hooks into existing tools (Read, Grep, Bash) to compress and cache results automatically.
+
 
 ### GitHub Configuration:
 

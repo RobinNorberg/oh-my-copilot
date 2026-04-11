@@ -32,7 +32,7 @@
 ```bash
 # Step 1: Install
 /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
-/plugin install oh-my-copilot@omg
+/plugin install oh-my-copilot@omcp
 # or
 npm i -g oh-my-copilot@latest
 
