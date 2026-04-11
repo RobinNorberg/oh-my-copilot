@@ -19357,7 +19357,7 @@ var init_skill_state = __esm({
       "project-session-manager": "medium",
       "writer-memory": "medium",
       "ralph-init": "medium",
-      ccg: "medium",
+      c3g: "medium",
       // === Heavy protection (long-running, 10 reinforcements) ===
       deepinit: "heavy",
       "self-improve": "heavy"
@@ -73460,7 +73460,7 @@ var HEAVY_MODE_KEYWORDS = /* @__PURE__ */ new Set([
   "team",
   "ultrawork",
   "ralplan",
-  "ccg"
+  "c3g"
 ]);
 function isHeavyMode(keywordType) {
   return HEAVY_MODE_KEYWORDS.has(keywordType);

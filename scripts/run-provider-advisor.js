@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 import { spawnSync } from 'child_process';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { tmpdir } from 'os';
 import process from 'process';
 
 const PROVIDER_BINARIES = {
@@ -13,19 +15,47 @@ const PROVIDER_BINARIES = {
 const SHOULD_USE_WINDOWS_SHELL = process.platform === 'win32';
 
 /**
+ * Write prompt to a temp file and return the path.
+ * Used to avoid Windows command-line length limits when passing prompts to provider CLIs.
+ */
+function writePromptTempFile(provider, prompt) {
+  const dir = join(tmpdir(), 'omcp-ask');
+  mkdirSync(dir, { recursive: true });
+  const filePath = join(dir, `${provider}-prompt-${Date.now()}-${process.pid}.txt`);
+  writeFileSync(filePath, prompt, 'utf-8');
+  return filePath;
+}
+
+/**
  * Build CLI args for a given provider.
  * - copilot: `copilot -p <prompt>`
  * - codex: `codex exec --dangerously-bypass-approvals-and-sandbox <prompt>`
  * - gemini: `gemini -p <prompt> --yolo`
+ *
+ * On Windows, if prompt exceeds ~7KB, a temp file is used and the prompt
+ * is replaced with a short instruction to read from that file.
  */
+const PROMPT_CLI_LIMIT = 7000; // Leave headroom below Windows ~8191 char limit
+
 function buildProviderArgs(provider, prompt) {
+  let effectivePrompt = prompt;
+  let promptFile = null;
+
+  if (prompt.length > PROMPT_CLI_LIMIT) {
+    promptFile = writePromptTempFile(provider, prompt);
+    effectivePrompt = `Read the full prompt from this file and follow its instructions: ${promptFile}`;
+  }
+
+  let args;
   if (provider === 'codex') {
-    return ['exec', '--dangerously-bypass-approvals-and-sandbox', prompt];
+    args = ['exec', '--dangerously-bypass-approvals-and-sandbox', effectivePrompt];
+  } else if (provider === 'gemini') {
+    args = ['-p', effectivePrompt, '--yolo'];
+  } else {
+    args = ['-p', effectivePrompt];
   }
-  if (provider === 'gemini') {
-    return ['-p', prompt, '--yolo'];
-  }
-  return ['-p', prompt];
+
+  return { args, promptFile };
 }
 
 const ASK_ORIGINAL_TASK_ENV = 'OMC_ASK_ORIGINAL_TASK';
@@ -56,6 +86,19 @@ function parseArgs(argv) {
   if (!provider || !(provider in PROVIDER_BINARIES)) {
     usage();
     process.exit(1);
+  }
+
+  // Read prompt from temp file (set by ask.ts to avoid CLI length limits)
+  const promptFilePath = process.env.OMC_ASK_PROMPT_FILE;
+  if (promptFilePath) {
+    try {
+      const prompt = readFileSync(promptFilePath, 'utf-8').trim();
+      if (prompt) {
+        return { provider, prompt };
+      }
+    } catch {
+      // Fall through to CLI arg parsing
+    }
   }
 
   if (rest.length === 0) {
@@ -210,13 +253,18 @@ async function main() {
 
   ensureBinary(provider, binary);
 
-  const providerArgs = buildProviderArgs(provider, prompt);
+  const { args: providerArgs, promptFile: providerPromptFile } = buildProviderArgs(provider, prompt);
   const run = spawnSync(binary, providerArgs, {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
     env: buildProviderEnv(provider),
     shell: SHOULD_USE_WINDOWS_SHELL,
   });
+
+  // Clean up provider prompt temp file
+  if (providerPromptFile) {
+    try { unlinkSync(providerPromptFile); } catch { /* ignore */ }
+  }
 
   const stdout = run.stdout || '';
   const stderr = run.stderr || '';
