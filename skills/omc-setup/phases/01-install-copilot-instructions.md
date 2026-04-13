@@ -1,5 +1,11 @@
 # Phase 1: Install copilot-instructions.md
 
+## Quick Mode Behavior
+
+If `SETUP_MODE=quick`, skip the AskUserQuestion below and use `CONFIG_TARGET=global` automatically. Continue to "Download and Install copilot-instructions.md".
+
+---
+
 ## Determine Configuration Target
 
 If `--local` flag was passed, set `CONFIG_TARGET=local`.

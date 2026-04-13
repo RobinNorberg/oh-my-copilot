@@ -13,10 +13,14 @@ import {
 import type { BlockedPane } from '../../features/rate-limit-wait/types.js';
 
 // Mock child_process
-vi.mock('child_process', () => ({
-  execFileSync: vi.fn(),
-  spawnSync: vi.fn(),
-}));
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    execFileSync: vi.fn(),
+    spawnSync: vi.fn(),
+  };
+});
 
 import { execFileSync, spawnSync } from 'child_process';
 // Alias so tests can use execSync variable name

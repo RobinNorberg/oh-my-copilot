@@ -1,8 +1,12 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 
-vi.mock('child_process', () => ({
-  spawnSync: vi.fn(),
-}));
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    spawnSync: vi.fn(),
+  };
+});
 
 import { spawnSync } from 'child_process';
 

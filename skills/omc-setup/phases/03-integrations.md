@@ -2,6 +2,18 @@
 
 **Skip condition**: If resuming and `lastCompletedStep >= 6`, skip this entire phase.
 
+## Quick Mode Behavior
+
+If `SETUP_MODE=quick`:
+- **Step 3.1 (Verify plugin)**: Run automatically (no prompt)
+- **Step 3.2 (MCP servers)**: **Always offer** — go straight to MCP configuration without asking "would you like to configure MCP servers?" (jump directly to invoking `/oh-my-copilot:mcp-setup`)
+- **Step 3.3 (Team defaults)**: **Skip** — use defaults (3 agents, executor type)
+- **Azure DevOps**: Still auto-detect and recommend if ADO repo detected
+
+Then save progress and continue to Phase 4. The rest of this file documents the **interactive mode** behavior.
+
+---
+
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
