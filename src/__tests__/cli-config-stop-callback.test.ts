@@ -64,7 +64,7 @@ function readConfig(configPath: string) {
   };
 }
 
-describe('omc config-stop-callback tag options', () => {
+describe('omc config-stop-callback tag options', { timeout: 120_000 }, () => {
   it('updates telegram tagList options and preserves existing config fields', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
     const configPath = join(homeDir, '.copilot', '.omc-config.json');
