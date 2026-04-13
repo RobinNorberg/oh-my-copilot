@@ -611,9 +611,16 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 export function reconcileUpdateRuntime(options?: { verbose?: boolean }): UpdateReconcileResult {
   const errors: string[] = [];
 
-  const runningAsPlugin = isRunningAsPlugin();
   const projectScopedPlugin = isProjectScopedPlugin();
-  const shouldRefreshPluginHooks = runningAsPlugin && !projectScopedPlugin;
+  // Plugin installs execute hooks from <pluginRoot>/hooks/hooks.json. Re-running
+  // the standalone settings.json hook merge during `omcp update` re-injects the
+  // legacy ~/.copilot/hooks/* entries and causes duplicate hook execution.
+  //
+  // Reconciliation should still refresh shared installer artifacts (copilot-instructions.md,
+  // HUD, MCP registry, statusLine, etc.), but it must leave settings.json hook
+  // ownership alone for plugin installs so the plugin hook manifest remains the
+  // single source of truth.
+  const shouldRefreshPluginHooks = false;
 
   if (!projectScopedPlugin) {
     try {

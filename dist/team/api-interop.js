@@ -63,7 +63,7 @@ function parseValidatedTaskIdArray(value, fieldName) {
 function teamStateExists(teamName, candidateCwd) {
     if (!TEAM_NAME_SAFE_PATTERN.test(teamName))
         return false;
-    const teamRoot = join(candidateCwd, '.omg', 'state', 'team', teamName);
+    const teamRoot = join(candidateCwd, '.omcp', 'state', 'team', teamName);
     return existsSync(join(teamRoot, 'config.json')) || existsSync(join(teamRoot, 'tasks')) || existsSync(teamRoot);
 }
 function parseTeamWorkerEnv(raw) {
@@ -84,7 +84,7 @@ function readTeamStateRootFromEnv(env = process.env) {
     return candidate || null;
 }
 export function resolveTeamApiCliCommand(_env = process.env) {
-    return 'omc team api';
+    return 'omcp team api';
 }
 function isRuntimeV2Config(config) {
     return !!config && typeof config === 'object' && Array.isArray(config.workers);
@@ -117,7 +117,7 @@ function readTeamStateRootFromFile(path) {
 function stateRootToWorkingDirectory(stateRoot) {
     const absolute = resolvePath(stateRoot);
     const normalized = absolute.replaceAll('\\', '/');
-    for (const marker of ['/.omg/state/team/', '/.omx/state/team/']) {
+    for (const marker of ['/.omcp/state/team/', '/.omx/state/team/']) {
         const idx = normalized.lastIndexOf(marker);
         if (idx >= 0) {
             const workspaceRoot = absolute.slice(0, idx);
@@ -126,7 +126,7 @@ function stateRootToWorkingDirectory(stateRoot) {
             return dirname(dirname(dirname(dirname(absolute))));
         }
     }
-    for (const marker of ['/.omg/state', '/.omx/state']) {
+    for (const marker of ['/.omcp/state', '/.omx/state']) {
         const idx = normalized.lastIndexOf(marker);
         if (idx >= 0) {
             const workspaceRoot = absolute.slice(0, idx);
@@ -138,7 +138,7 @@ function stateRootToWorkingDirectory(stateRoot) {
     return dirname(dirname(absolute));
 }
 function resolveTeamWorkingDirectoryFromMetadata(teamName, candidateCwd, workerContext) {
-    const teamRoot = join(candidateCwd, '.omg', 'state', 'team', teamName);
+    const teamRoot = join(candidateCwd, '.omcp', 'state', 'team', teamName);
     if (!existsSync(teamRoot))
         return null;
     if (workerContext?.teamName === teamName) {

@@ -1,12 +1,12 @@
 import chalk from 'chalk';
-import { spawnSync } from 'child_process';
+import { tmuxSpawn } from './tmux-utils.js';
 
 /**
  * Check if tmux (or a compatible implementation like psmux) is available.
  */
 function hasTmuxBinary(): boolean {
   try {
-    const result = spawnSync('tmux', ['-V'], { stdio: 'pipe', timeout: 3000 });
+    const result = tmuxSpawn(['-V'], { stripTmux: true, stdio: 'pipe', timeout: 3000 });
     return result.status === 0;
   } catch {
     return false;

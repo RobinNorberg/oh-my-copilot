@@ -10,7 +10,7 @@ const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..', '..');
 const STALE_PIPELINE_SNIPPETS = [
     "matches.push({ name: 'pipeline', args: '' });",
-    "'pipeline','ccg','ralplan'",
+    "'pipeline','c3g','ralplan'",
     "'pipeline']);",
     "'swarm', 'pipeline'], sessionId);",
 ];
@@ -78,8 +78,8 @@ describe('keyword-detector packaged artifacts', () => {
         const fakeHome = mkdtempSync(join(tmpdir(), 'keyword-hook-home-'));
         try {
             for (const [scriptPath, statePath] of [
-                [templatePath, join(tempDir, '.omg', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
-                [pluginPath, join(tempDir, '.omg', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
+                [templatePath, join(tempDir, '.omcp', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
+                [pluginPath, join(tempDir, '.omcp', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
             ]) {
                 execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
                 execFileSync('node', [scriptPath], {
@@ -95,8 +95,8 @@ describe('keyword-detector packaged artifacts', () => {
                 });
                 const state = JSON.parse(readFileSync(statePath, 'utf-8'));
                 expect(state.awaiting_confirmation).toBe(true);
-                rmSync(join(tempDir, '.omg'), { recursive: true, force: true });
-                rmSync(join(fakeHome, '.omg'), { recursive: true, force: true });
+                rmSync(join(tempDir, '.omcp'), { recursive: true, force: true });
+                rmSync(join(fakeHome, '.omcp'), { recursive: true, force: true });
             }
         }
         finally {

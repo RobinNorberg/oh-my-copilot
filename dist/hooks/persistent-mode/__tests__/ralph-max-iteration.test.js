@@ -10,7 +10,7 @@ describe('persistent-mode ralph max iteration handling (#635)', () => {
         const sessionId = 'session-635';
         try {
             execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
                 active: true,

@@ -193,7 +193,7 @@ export const wikiAddTool = {
             return {
                 content: [{
                         type: 'text',
-                        text: `Wiki page created: ${result.created[0]}\nPath: .omc/wiki/${result.created[0]}`,
+                        text: `Wiki page created: ${result.created[0]}\nPath: .omcp/wiki/${result.created[0]}`,
                     }],
             };
         }

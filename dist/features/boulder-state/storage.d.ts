@@ -28,7 +28,7 @@ export declare function appendSessionId(directory: string, sessionId: string): B
 export declare function clearBoulderState(directory: string): boolean;
 /**
  * Find Planner plan files for this project.
- * Planner stores plans at: {project}/.omg/plans/{name}.md
+ * Planner stores plans at: {project}/.omcp/plans/{name}.md
  */
 export declare function findPlannerPlans(directory: string): string[];
 /**

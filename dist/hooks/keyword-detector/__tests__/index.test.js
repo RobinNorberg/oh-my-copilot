@@ -508,9 +508,9 @@ World`);
         describe('c3g keyword', () => {
             it('should detect "c3g" keyword', () => {
                 const result = detectKeywordsWithType('c3g this feature');
-                const ccgMatch = result.find((r) => r.type === 'c3g');
-                expect(ccgMatch).toBeDefined();
-                expect(ccgMatch?.keyword).toMatch(/c3g/i);
+                const c3gMatch = result.find((r) => r.type === 'c3g');
+                expect(c3gMatch).toBeDefined();
+                expect(c3gMatch?.keyword).toMatch(/c3g/i);
             });
             it('should detect "copilot-claude-codex-gemini" keyword', () => {
                 const result = detectKeywordsWithType('use copilot-claude-codex-gemini to build this');

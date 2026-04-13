@@ -50,20 +50,20 @@ var import_os = require("os");
 
 // src/lib/worktree-paths.ts
 var OmgPaths = {
-  ROOT: ".omg",
-  STATE: ".omg/state",
-  SESSIONS: ".omg/state/sessions",
-  PLANS: ".omg/plans",
-  RESEARCH: ".omg/research",
-  NOTEPAD: ".omg/notepad.md",
-  PROJECT_MEMORY: ".omg/project-memory.json",
-  DRAFTS: ".omg/drafts",
-  NOTEPADS: ".omg/notepads",
-  LOGS: ".omg/logs",
-  SCIENTIST: ".omg/scientist",
-  AUTOPILOT: ".omg/autopilot",
-  SKILLS: ".omg/skills",
-  SHARED_MEMORY: ".omg/state/shared-memory"
+  ROOT: ".omcp",
+  STATE: ".omcp/state",
+  SESSIONS: ".omcp/state/sessions",
+  PLANS: ".omcp/plans",
+  RESEARCH: ".omcp/research",
+  NOTEPAD: ".omcp/notepad.md",
+  PROJECT_MEMORY: ".omcp/project-memory.json",
+  DRAFTS: ".omcp/drafts",
+  NOTEPADS: ".omcp/notepads",
+  LOGS: ".omcp/logs",
+  SCIENTIST: ".omcp/scientist",
+  AUTOPILOT: ".omcp/autopilot",
+  SKILLS: ".omcp/skills",
+  SHARED_MEMORY: ".omcp/state/shared-memory"
 };
 
 // src/hooks/learner/bridge.ts
@@ -73,7 +73,7 @@ var USER_SKILLS_DIR = (0, import_path3.join)(
   "skills",
   "omc-learned"
 );
-var GLOBAL_SKILLS_DIR = (0, import_path3.join)((0, import_os3.homedir)(), ".omg", "skills");
+var GLOBAL_SKILLS_DIR = (0, import_path3.join)((0, import_os3.homedir)(), ".omcp", "skills");
 var PROJECT_SKILLS_SUBDIR = OmgPaths.SKILLS;
 var SKILL_EXTENSION = ".md";
 var SESSION_TTL_MS = 60 * 60 * 1e3;

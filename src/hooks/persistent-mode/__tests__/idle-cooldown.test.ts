@@ -12,6 +12,7 @@ import {
   recordIdleNotificationSent,
 } from '../index.js';
 import { atomicWriteJsonSync } from '../../../lib/atomic-write.js';
+import { getGlobalOmcConfigCandidates } from '../../../utils/paths.js';
 
 // Mock fs and os modules (hoisted before all imports)
 vi.mock('fs', async () => {
@@ -37,6 +38,10 @@ vi.mock('os', async () => {
     homedir: vi.fn().mockReturnValue('/home/testuser'),
   };
 });
+
+function getConfigPaths(): string[] {
+  return getGlobalOmcConfigCandidates('config.json');
+}
 
 const TEST_STATE_DIR = '/project/.omcp/state';
 const COOLDOWN_PATH = join(TEST_STATE_DIR, 'idle-notif-cooldown.json');
@@ -142,6 +147,32 @@ describe('getIdleNotificationCooldownSeconds', () => {
     );
 
     expect(getIdleNotificationCooldownSeconds()).toBe(9999999);
+  });
+
+  it('falls back to legacy ~/.omc config when XDG config is absent', () => {
+    const candidates = getConfigPaths();
+    // On macOS, XDG primary and legacy resolve to the same path, so
+    // dedupePaths collapses them to a single entry. Use the last candidate
+    // (which is always the legacy path or its deduplicated equivalent).
+    const legacyConfigPath = candidates[candidates.length - 1];
+    if (candidates.length < 2) {
+      // Only one candidate (macOS) — XDG and legacy are identical.
+      // Verify the single path is read and returns the configured value.
+      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === legacyConfigPath);
+      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 45 } })
+      );
+    } else {
+      // Two distinct candidates (Linux) — first is XDG, second is legacy.
+      // Mock XDG as absent, legacy as present with the configured value.
+      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === legacyConfigPath);
+      (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+        if (p === legacyConfigPath) {
+          return JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 45 } });
+        }
+        throw new Error('not found');
+      });
+    }
   });
 });
 

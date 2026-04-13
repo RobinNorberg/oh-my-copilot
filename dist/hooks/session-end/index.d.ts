@@ -64,7 +64,7 @@ export declare function cleanupModeStates(directory: string, sessionId?: string)
     modesCleaned: string[];
 };
 /**
- * Export session summary to .omg/sessions/
+ * Export session summary to .omcp/sessions/
  */
 export declare function exportSessionSummary(directory: string, metrics: SessionMetrics): void;
 /**

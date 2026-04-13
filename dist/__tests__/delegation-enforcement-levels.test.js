@@ -114,7 +114,7 @@ describe('delegation-enforcement-levels', () => {
             // Local config exists with 'off', global has 'strict'
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s))
+                if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s))
                     return true;
                 if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omc-config\.json$/.test(s))
                     return true;
@@ -122,7 +122,7 @@ describe('delegation-enforcement-levels', () => {
             });
             mockReadFileSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s)) {
+                if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s)) {
                     return JSON.stringify({ delegationEnforcementLevel: 'off' });
                 }
                 if (/[\\/]mock[\\/]home[\\/]\.copilot[\\/]\.omc-config\.json$/.test(s)) {
@@ -157,7 +157,7 @@ describe('delegation-enforcement-levels', () => {
         it('falls back to warn on invalid enforcement level in config', () => {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s))
+                if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s))
                     return true;
                 return false;
             });
@@ -172,7 +172,7 @@ describe('delegation-enforcement-levels', () => {
         it('falls back to warn on malformed JSON config', () => {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s))
+                if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s))
                     return true;
                 return false;
             });
@@ -187,7 +187,7 @@ describe('delegation-enforcement-levels', () => {
         it('supports enforcementLevel key as alternative', () => {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]tmp[\\/]test-project[\\/]\.omg[\\/]config\.json$/.test(s))
+                if (/[\\/]tmp[\\/]test-project[\\/]\.omcp[\\/]config\.json$/.test(s))
                     return true;
                 return false;
             });
@@ -204,7 +204,7 @@ describe('delegation-enforcement-levels', () => {
         function setEnforcement(level) {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]\.omg[\\/]config\.json$/.test(s))
+                if (/[\\/]\.omcp[\\/]config\.json$/.test(s))
                     return true;
                 return false;
             });
@@ -257,7 +257,7 @@ describe('delegation-enforcement-levels', () => {
         });
         describe('allowed paths always continue', () => {
             const allowedPaths = [
-                '.omg/plans/test.md',
+                '.omcp/plans/test.md',
                 '.copilot/settings.json',
                 'docs/copilot-instructions.md',
                 'AGENTS.md',
@@ -355,7 +355,7 @@ describe('delegation-enforcement-levels', () => {
             const entry = {
                 timestamp: new Date().toISOString(),
                 tool: 'Write',
-                filePath: '.omg/plans/test.md',
+                filePath: '.omcp/plans/test.md',
                 decision: 'allowed',
                 reason: 'allowed_path',
             };
@@ -434,7 +434,7 @@ describe('delegation-enforcement-levels', () => {
             // before any HUD tracking happens
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]\.omg[\\/]config\.json$/.test(s))
+                if (/[\\/]\.omcp[\\/]config\.json$/.test(s))
                     return true;
                 return false;
             });
@@ -452,7 +452,7 @@ describe('delegation-enforcement-levels', () => {
         it('blocks propagated from enforcement', async () => {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]\.omg[\\/]config\.json$/.test(s))
+                if (/[\\/]\.omcp[\\/]config\.json$/.test(s))
                     return true;
                 return false;
             });
@@ -496,8 +496,8 @@ describe('delegation-enforcement-levels', () => {
     });
     // ─── Helper function unit tests ───
     describe('isAllowedPath', () => {
-        it('returns true for .omg/ paths', () => {
-            expect(isAllowedPath('.omg/plans/test.md')).toBe(true);
+        it('returns true for .omcp/ paths', () => {
+            expect(isAllowedPath('.omcp/plans/test.md')).toBe(true);
         });
         it('returns true for .copilot/ paths', () => {
             expect(isAllowedPath('.copilot/settings.json')).toBe(true);
@@ -516,8 +516,8 @@ describe('delegation-enforcement-levels', () => {
             expect(isAllowedPath('')).toBe(true);
         });
         // Traversal bypass prevention
-        it('rejects .omg/../src/file.ts traversal', () => {
-            expect(isAllowedPath('.omg/../src/file.ts')).toBe(false);
+        it('rejects .omcp/../src/file.ts traversal', () => {
+            expect(isAllowedPath('.omcp/../src/file.ts')).toBe(false);
         });
         it('rejects .copilot/../src/file.ts traversal', () => {
             expect(isAllowedPath('.copilot/../src/file.ts')).toBe(false);
@@ -526,28 +526,28 @@ describe('delegation-enforcement-levels', () => {
             expect(isAllowedPath('../secret.ts')).toBe(false);
         });
         // Windows backslash paths
-        it('handles Windows-style .omg paths', () => {
-            expect(isAllowedPath('.omg\\plans\\test.md')).toBe(true);
+        it('handles Windows-style .omcp paths', () => {
+            expect(isAllowedPath('.omcp\\plans\\test.md')).toBe(true);
         });
-        it('rejects Windows traversal .omg\\..\\src\\file.ts', () => {
-            expect(isAllowedPath('.omg\\..\\src\\file.ts')).toBe(false);
+        it('rejects Windows traversal .omcp\\..\\src\\file.ts', () => {
+            expect(isAllowedPath('.omcp\\..\\src\\file.ts')).toBe(false);
         });
-        // Nested .omg in non-root position (should be rejected for relative paths)
-        it('rejects foo/.omg/bar.ts as relative path', () => {
-            expect(isAllowedPath('foo/.omg/bar.ts')).toBe(false);
+        // Nested .omcp in non-root position (should be rejected for relative paths)
+        it('rejects foo/.omcp/bar.ts as relative path', () => {
+            expect(isAllowedPath('foo/.omcp/bar.ts')).toBe(false);
         });
         // Windows mixed-separator edge cases
-        it('rejects mixed separator traversal .omg\\..\\..\\secret', () => {
-            expect(isAllowedPath('.omg\\..\\..\\secret')).toBe(false);
+        it('rejects mixed separator traversal .omcp\\..\\..\\secret', () => {
+            expect(isAllowedPath('.omcp\\..\\..\\secret')).toBe(false);
         });
-        it('rejects double-dot with mixed separators .omg/..\\src', () => {
-            expect(isAllowedPath('.omg/..\\src')).toBe(false);
+        it('rejects double-dot with mixed separators .omcp/..\\src', () => {
+            expect(isAllowedPath('.omcp/..\\src')).toBe(false);
         });
         it('rejects UNC paths as not relative to project', () => {
-            expect(isAllowedPath('\\\\server\\share\\.omg\\file')).toBe(false);
+            expect(isAllowedPath('\\\\server\\share\\.omcp\\file')).toBe(false);
         });
         it('rejects absolute Windows drive paths without worktree root', () => {
-            expect(isAllowedPath('C:\\repo\\.omg\\file')).toBe(false);
+            expect(isAllowedPath('C:\\repo\\.omcp\\file')).toBe(false);
         });
     });
     describe('isSourceFile', () => {

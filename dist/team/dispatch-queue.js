@@ -4,8 +4,8 @@
  * Manages dispatch/requests.json with atomic read/write, dedup, and
  * directory-based locking (O_EXCL mkdir) with stale lock detection.
  *
- * State file: .omg/state/team/{name}/dispatch/requests.json
- * Lock path:  .omg/state/team/{name}/dispatch/.lock/
+ * State file: .omcp/state/team/{name}/dispatch/requests.json
+ * Lock path:  .omcp/state/team/{name}/dispatch/.lock/
  *
  * Mirrors OMX src/team/state/dispatch.ts behavior exactly.
  */

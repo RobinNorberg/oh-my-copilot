@@ -54,7 +54,7 @@ const DAEMON_ENV_ALLOWLIST = [
     'SystemRoot', 'SYSTEMROOT', 'windir', 'COMSPEC',
 ];
 /** Default paths */
-const DEFAULT_STATE_DIR = join(homedir(), '.omg', 'state');
+const DEFAULT_STATE_DIR = join(homedir(), '.omcp', 'state');
 const PID_FILE_PATH = join(DEFAULT_STATE_DIR, 'reply-listener.pid');
 const STATE_FILE_PATH = join(DEFAULT_STATE_DIR, 'reply-listener-state.json');
 const LOG_FILE_PATH = join(DEFAULT_STATE_DIR, 'reply-listener.log');

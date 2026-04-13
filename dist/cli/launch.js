@@ -6,7 +6,7 @@ import { execFileSync } from 'child_process';
 import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
 import { homedir } from 'os';
 import { basename, join } from 'path';
-import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, } from './tmux-utils.js';
+import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, tmuxExec, } from './tmux-utils.js';
 // Flag mapping
 const MADMAX_FLAG = '--madmax';
 const YOLO_FLAG = '--yolo';
@@ -357,7 +357,7 @@ export function runCopilot(cwd, args, sessionId) {
 function runCopilotInsideTmux(cwd, args) {
     // Enable mouse scrolling in the current tmux session (non-fatal if it fails)
     try {
-        execFileSync('tmux', ['set-option', 'mouse', 'on'], { stdio: 'ignore' });
+        tmuxExec(['set-option', 'mouse', 'on'], { stdio: 'ignore' });
     }
     catch { /* non-fatal — user's tmux may not support these options */ }
     // Launch Copilot in current pane
@@ -424,7 +424,7 @@ function runCopilotOutsideTmux(cwd, args, _sessionId) {
     // Attach to session
     tmuxArgs.push(';', 'attach-session', '-t', sessionName);
     try {
-        execFileSync('tmux', tmuxArgs, { stdio: 'inherit' });
+        tmuxExec(tmuxArgs, { stdio: 'inherit' });
     }
     catch {
         // tmux failed, fall back to direct launch

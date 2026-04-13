@@ -1,20 +1,33 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { execFileSync } from 'child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
 import { scaleUp } from '../scaling.js';
 
+function killTmuxSession(sessionName: string): void {
+  try {
+    execFileSync('tmux', ['kill-session', '-t', sessionName], { stdio: 'pipe' });
+  } catch { /* session may not exist */ }
+}
+
 describe('scaleUp duplicate worker guard', () => {
   let cwd: string;
+  const tmuxSessions: string[] = [];
 
   afterEach(async () => {
+    for (const session of tmuxSessions) {
+      killTmuxSession(session);
+    }
+    tmuxSessions.length = 0;
     if (cwd) await rm(cwd, { recursive: true, force: true });
   });
 
   it('skips past colliding worker names when next_worker_index is stale', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-scaling-duplicate-'));
     const teamName = 'demo-team';
+    tmuxSessions.push('demo-session');
     const root = join(cwd, '.omcp', 'state', 'team', teamName);
     await mkdir(root, { recursive: true });
     await writeFile(join(root, 'config.json'), JSON.stringify({
@@ -59,6 +72,7 @@ describe('scaleUp duplicate worker guard', () => {
   it('self-heals across multiple collisions', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-scaling-skip-'));
     const teamName = 'skip-team';
+    tmuxSessions.push('skip-session');
     const root = join(cwd, '.omcp', 'state', 'team', teamName);
     await mkdir(root, { recursive: true });
     await writeFile(join(root, 'config.json'), JSON.stringify({

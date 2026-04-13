@@ -238,7 +238,7 @@ describe('permission-handler', () => {
     });
     describe('isActiveModeRunning', () => {
         const testDir = '/tmp/omc-permission-test';
-        const stateDir = path.join(testDir, '.omg', 'state');
+        const stateDir = path.join(testDir, '.omcp', 'state');
         beforeEach(() => {
             // Clean up any existing test directory
             if (fs.existsSync(testDir)) {
@@ -300,7 +300,7 @@ describe('permission-handler', () => {
     });
     describe('processPermissionRequest', () => {
         const testDir = '/tmp/omc-permission-test';
-        const stateDir = path.join(testDir, '.omg', 'state');
+        const stateDir = path.join(testDir, '.omcp', 'state');
         beforeEach(() => {
             if (fs.existsSync(testDir)) {
                 fs.rmSync(testDir, { recursive: true, force: true });

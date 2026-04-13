@@ -58,11 +58,11 @@ export declare const PRD_EXAMPLE_FILENAME = "prd.example.json";
  */
 export declare function getPrdPath(directory: string): string;
 /**
- * Get the path to the prd.json in .omg subdirectory
+ * Get the path to the prd.json in .omcp subdirectory
  */
 export declare function getOmcPrdPath(directory: string): string;
 /**
- * Find prd.json in a directory (checks both root and .omg)
+ * Find prd.json in a directory (checks both root and .omcp)
  */
 export declare function findPrdPath(directory: string): string | null;
 /**

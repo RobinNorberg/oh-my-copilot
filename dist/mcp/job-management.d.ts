@@ -16,7 +16,7 @@
 export declare function registerSpawnedPid(pid: number): void;
 /**
  * Find the status file for a job by provider and jobId.
- * Scans .omg/prompts/ for files matching the naming convention.
+ * Scans .omcp/prompts/ for files matching the naming convention.
  *
  * Handles 0/1/many matches:
  * - 0 matches: returns undefined

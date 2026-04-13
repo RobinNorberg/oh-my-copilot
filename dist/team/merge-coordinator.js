@@ -69,7 +69,7 @@ export function mergeWorkerBranch(workerBranch, baseBranch, repoRoot) {
     const workerName = workerBranch.split('/').pop() || workerBranch;
     try {
         // Abort if working tree has uncommitted changes to tracked files to prevent clobbering.
-        // Uses diff-index which ignores untracked files (e.g. .omg/ worktree metadata).
+        // Uses diff-index which ignores untracked files (e.g. .omcp/ worktree metadata).
         try {
             execFileSync('git', ['diff-index', '--quiet', 'HEAD', '--'], {
                 cwd: repoRoot, stdio: 'pipe'

@@ -34,7 +34,7 @@ describe('worktree-paths', () => {
     describe('resolveOmcPath', () => {
         it('should resolve paths under .omc directory', () => {
             const result = resolveOmcPath('state/ralph.json', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'state', 'ralph.json'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'state', 'ralph.json'));
         });
         it('should reject paths that escape .omc boundary', () => {
             expect(() => resolveOmcPath('../secret.txt', TEST_DIR)).toThrow('path traversal');
@@ -43,11 +43,11 @@ describe('worktree-paths', () => {
     describe('resolveStatePath', () => {
         it('should resolve state file paths with -state suffix', () => {
             const result = resolveStatePath('ralph', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'state', 'ralph-state.json'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'state', 'ralph-state.json'));
         });
         it('should handle input already having -state suffix', () => {
             const result = resolveStatePath('ultrawork-state', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'state', 'ultrawork-state.json'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'state', 'ultrawork-state.json'));
         });
         it('should resolve swarm as regular JSON path after #1131 removal', () => {
             // swarm SQLite special-casing removed in #1131
@@ -58,44 +58,44 @@ describe('worktree-paths', () => {
     describe('ensureOmcDir', () => {
         it('should create directories under .omc', () => {
             const result = ensureOmcDir('state', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'state'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'state'));
             expect(existsSync(result)).toBe(true);
         });
     });
     describe('helper functions', () => {
         it('getWorktreeNotepadPath returns correct path', () => {
             const result = getWorktreeNotepadPath(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'notepad.md'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'notepad.md'));
         });
         it('getWorktreeProjectMemoryPath returns correct path', () => {
             const result = getWorktreeProjectMemoryPath(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'project-memory.json'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'project-memory.json'));
         });
         it('getOmcRoot returns correct path', () => {
             const result = getOmcRoot(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg'));
+            expect(result).toBe(join(TEST_DIR, '.omcp'));
         });
         it('resolvePlanPath returns correct path', () => {
             const result = resolvePlanPath('my-feature', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'plans', 'my-feature.md'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'plans', 'my-feature.md'));
         });
         it('resolveResearchPath returns correct path', () => {
             const result = resolveResearchPath('api-research', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'research', 'api-research'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'research', 'api-research'));
         });
         it('resolveLogsPath returns correct path', () => {
             const result = resolveLogsPath(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'logs'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'logs'));
         });
         it('resolveWisdomPath returns correct path', () => {
             const result = resolveWisdomPath('my-plan', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg', 'notepads', 'my-plan'));
+            expect(result).toBe(join(TEST_DIR, '.omcp', 'notepads', 'my-plan'));
         });
     });
     describe('isPathUnderOmc', () => {
         it('should return true for paths under .omc', () => {
-            expect(isPathUnderOmc(join(TEST_DIR, '.omg', 'state', 'ralph.json'), TEST_DIR)).toBe(true);
-            expect(isPathUnderOmc(join(TEST_DIR, '.omg'), TEST_DIR)).toBe(true);
+            expect(isPathUnderOmc(join(TEST_DIR, '.omcp', 'state', 'ralph.json'), TEST_DIR)).toBe(true);
+            expect(isPathUnderOmc(join(TEST_DIR, '.omcp'), TEST_DIR)).toBe(true);
         });
         it('should return false for paths outside .omc', () => {
             expect(isPathUnderOmc(join(TEST_DIR, 'src', 'file.ts'), TEST_DIR)).toBe(false);
@@ -105,13 +105,13 @@ describe('worktree-paths', () => {
     describe('ensureAllOmcDirs', () => {
         it('should create all standard .omc subdirectories', () => {
             ensureAllOmcDirs(TEST_DIR);
-            expect(existsSync(join(TEST_DIR, '.omg'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omg', 'state'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omg', 'plans'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omg', 'research'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omg', 'logs'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omg', 'notepads'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omg', 'drafts'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omcp'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omcp', 'state'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omcp', 'plans'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omcp', 'research'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omcp', 'logs'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omcp', 'notepads'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omcp', 'drafts'))).toBe(true);
         });
     });
     describe('resolveToWorktreeRoot', () => {
@@ -325,7 +325,7 @@ describe('worktree-paths', () => {
         it('should return default .omc path when OMC_STATE_DIR is not set', () => {
             delete process.env.OMC_STATE_DIR;
             const result = getOmcRoot(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omg'));
+            expect(result).toBe(join(TEST_DIR, '.omcp'));
         });
         it('should return centralized path when OMC_STATE_DIR is set', () => {
             const stateDir = mkdtempSync(join(tmpdir(), 'omc-state-dir-'));
@@ -334,7 +334,7 @@ describe('worktree-paths', () => {
                 const result = getOmcRoot(TEST_DIR);
                 const projectId = getProjectIdentifier(TEST_DIR);
                 expect(result).toBe(join(stateDir, projectId));
-                expect(result).not.toContain('.omg');
+                expect(result).not.toContain('.omcp');
             }
             finally {
                 rmSync(stateDir, { recursive: true, force: true });
@@ -347,7 +347,7 @@ describe('worktree-paths', () => {
                 process.env.OMC_STATE_DIR = stateDir;
                 const projectId = getProjectIdentifier(TEST_DIR);
                 // Create both directories
-                mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
+                mkdirSync(join(TEST_DIR, '.omcp'), { recursive: true });
                 mkdirSync(join(stateDir, projectId), { recursive: true });
                 clearDualDirWarnings();
                 getOmcRoot(TEST_DIR);
@@ -365,7 +365,7 @@ describe('worktree-paths', () => {
             try {
                 process.env.OMC_STATE_DIR = stateDir;
                 const projectId = getProjectIdentifier(TEST_DIR);
-                // Create only centralized dir (no legacy .omg/)
+                // Create only centralized dir (no legacy .omcp/)
                 mkdirSync(join(stateDir, projectId), { recursive: true });
                 clearDualDirWarnings();
                 getOmcRoot(TEST_DIR);
@@ -382,7 +382,7 @@ describe('worktree-paths', () => {
             try {
                 process.env.OMC_STATE_DIR = stateDir;
                 const projectId = getProjectIdentifier(TEST_DIR);
-                mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
+                mkdirSync(join(TEST_DIR, '.omcp'), { recursive: true });
                 mkdirSync(join(stateDir, projectId), { recursive: true });
                 clearDualDirWarnings();
                 getOmcRoot(TEST_DIR);
@@ -452,7 +452,7 @@ describe('worktree-paths', () => {
             const centralPath = join(stateDir, projectId, 'state', 'ralph.json');
             expect(isPathUnderOmc(centralPath, TEST_DIR)).toBe(true);
             // Legacy path should NOT be under omc when centralized
-            expect(isPathUnderOmc(join(TEST_DIR, '.omg', 'state', 'ralph.json'), TEST_DIR)).toBe(false);
+            expect(isPathUnderOmc(join(TEST_DIR, '.omcp', 'state', 'ralph.json'), TEST_DIR)).toBe(false);
         });
         it('ensureAllOmcDirs should create dirs under centralized path', () => {
             ensureAllOmcDirs(TEST_DIR);
@@ -465,8 +465,8 @@ describe('worktree-paths', () => {
             expect(existsSync(join(centralRoot, 'logs'))).toBe(true);
             expect(existsSync(join(centralRoot, 'notepads'))).toBe(true);
             expect(existsSync(join(centralRoot, 'drafts'))).toBe(true);
-            // Legacy .omg/ should NOT be created
-            expect(existsSync(join(TEST_DIR, '.omg'))).toBe(false);
+            // Legacy .omcp/ should NOT be created
+            expect(existsSync(join(TEST_DIR, '.omcp'))).toBe(false);
         });
         it('ensureOmcDir should create dir under centralized path', () => {
             const result = ensureOmcDir('state', TEST_DIR);

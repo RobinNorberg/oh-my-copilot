@@ -50,10 +50,10 @@ function normalizeKeepPolicy(raw) {
     return raw.trim().toLowerCase() === 'pass_only' ? 'pass_only' : 'score_improvement';
 }
 function buildArtifactDir(repoRoot, slug) {
-    return join(repoRoot, '.omc', 'specs', `${AUTORESEARCH_ARTIFACT_DIR_PREFIX}${slug}`);
+    return join(repoRoot, '.omcp', 'specs', `${AUTORESEARCH_ARTIFACT_DIR_PREFIX}${slug}`);
 }
 function buildDraftArtifactPath(repoRoot, slug) {
-    return join(repoRoot, '.omc', 'specs', `${DEEP_INTERVIEW_DRAFT_PREFIX}${slug}.md`);
+    return join(repoRoot, '.omcp', 'specs', `${DEEP_INTERVIEW_DRAFT_PREFIX}${slug}.md`);
 }
 function buildResultPath(repoRoot, slug) {
     return join(buildArtifactDir(repoRoot, slug), 'result.json');
@@ -139,7 +139,7 @@ export async function writeAutoresearchDraftArtifact(input) {
         parseSandboxContract(buildSandboxContent(evaluatorCommand, input.keepPolicy));
     }
     const launchReady = blockedReasons.length === 0;
-    const specsDir = join(input.repoRoot, '.omc', 'specs');
+    const specsDir = join(input.repoRoot, '.omcp', 'specs');
     await mkdir(specsDir, { recursive: true });
     const path = buildDraftArtifactPath(input.repoRoot, slug);
     const content = buildAutoresearchDraftArtifactContent(compileTarget, input.seedInputs || {}, launchReady, blockedReasons);
@@ -252,7 +252,7 @@ async function readPersistedResult(resultPath) {
     };
 }
 async function listMarkdownDraftPaths(repoRoot) {
-    const specsDir = join(repoRoot, '.omc', 'specs');
+    const specsDir = join(repoRoot, '.omcp', 'specs');
     if (!existsSync(specsDir))
         return [];
     const entries = await readdir(specsDir, { withFileTypes: true });
@@ -261,7 +261,7 @@ async function listMarkdownDraftPaths(repoRoot) {
         .map((entry) => join(specsDir, entry.name));
 }
 export async function listAutoresearchDeepInterviewResultPaths(repoRoot) {
-    const specsDir = join(repoRoot, '.omc', 'specs');
+    const specsDir = join(repoRoot, '.omcp', 'specs');
     if (!existsSync(specsDir))
         return [];
     const entries = await readdir(specsDir, { withFileTypes: true });

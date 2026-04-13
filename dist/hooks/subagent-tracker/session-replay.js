@@ -4,7 +4,7 @@
  * Records agent lifecycle events as JSONL for timeline visualization
  * and post-session bottleneck analysis.
  *
- * Events are appended to: .omg/state/agent-replay-{sessionId}.jsonl
+ * Events are appended to: .omcp/state/agent-replay-{sessionId}.jsonl
  */
 import { existsSync, appendFileSync, readFileSync, mkdirSync, readdirSync, unlinkSync, statSync } from 'fs';
 import { join } from 'path';

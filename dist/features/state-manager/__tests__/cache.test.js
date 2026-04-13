@@ -114,7 +114,7 @@ describe('cleanupStaleStates', () => {
     let consoleWarnSpy;
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join('/tmp', 'omc-cleanup-test-'));
-        const stateDir = path.join(tmpDir, '.omg', 'state');
+        const stateDir = path.join(tmpDir, '.omcp', 'state');
         fs.mkdirSync(stateDir, { recursive: true });
         clearStateCache();
         consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
@@ -128,13 +128,13 @@ describe('cleanupStaleStates', () => {
         catch { /* best-effort */ }
     });
     function writeStateFile(name, data) {
-        const stateDir = path.join(tmpDir, '.omg', 'state');
+        const stateDir = path.join(tmpDir, '.omcp', 'state');
         const filePath = path.join(stateDir, `${name}.json`);
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
         return filePath;
     }
     function readStateFile(name) {
-        const filePath = path.join(tmpDir, '.omg', 'state', `${name}.json`);
+        const filePath = path.join(tmpDir, '.omcp', 'state', `${name}.json`);
         return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     }
     it('should deactivate stale active entries', () => {

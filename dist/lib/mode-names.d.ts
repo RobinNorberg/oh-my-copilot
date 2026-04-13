@@ -23,7 +23,7 @@ export type ModeName = typeof MODE_NAMES[keyof typeof MODE_NAMES];
 export declare const ALL_MODE_NAMES: readonly ModeName[];
 /**
  * Mode state file mapping — the canonical filename for each mode's state file
- * relative to `.omg/state/`.
+ * relative to `.omcp/state/`.
  */
 export declare const MODE_STATE_FILE_MAP: Readonly<Record<ModeName, string>>;
 /**

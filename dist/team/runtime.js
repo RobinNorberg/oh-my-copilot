@@ -13,7 +13,7 @@ function workerName(index) {
 }
 function stateRoot(cwd, teamName) {
     validateTeamName(teamName);
-    return join(cwd, `.omg/state/team/${teamName}`);
+    return join(cwd, `.omcp/state/team/${teamName}`);
 }
 async function writeJson(filePath, data) {
     await mkdir(join(filePath, '..'), { recursive: true });
@@ -204,7 +204,7 @@ export async function allTasksTerminal(runtime) {
  * Includes task ID, subject, full description, and done-signal path.
  */
 function buildInitialTaskInstruction(teamName, workerName, task, taskId) {
-    const donePath = `.omg/state/team/${teamName}/workers/${workerName}/done.json`;
+    const donePath = `.omcp/state/team/${teamName}/workers/${workerName}/done.json`;
     return [
         `## Initial Task Assignment`,
         `Task ID: ${taskId}`,
@@ -552,7 +552,7 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     // for interactive agents it is sent via tmux send-keys after startup.
     const instruction = buildInitialTaskInstruction(runtime.teamName, workerNameValue, task, taskId);
     await composeInitialInbox(runtime.teamName, workerNameValue, instruction, runtime.cwd);
-    const relInboxPath = `.omg/state/team/${runtime.teamName}/workers/${workerNameValue}/inbox.md`;
+    const relInboxPath = `.omcp/state/team/${runtime.teamName}/workers/${workerNameValue}/inbox.md`;
     const envVars = getModelWorkerEnv(runtime.teamName, workerNameValue, agentType);
     const resolvedBinaryPath = runtime.resolvedBinaryPaths?.[agentType] ?? resolveValidatedBinaryPath(agentType);
     if (!runtime.resolvedBinaryPaths) {
@@ -684,7 +684,7 @@ export async function assignTask(teamName, taskId, targetWorkerName, paneId, ses
     // Write to worker inbox
     const inboxPath = join(root, 'workers', targetWorkerName, 'inbox.md');
     await mkdir(join(inboxPath, '..'), { recursive: true });
-    const msg = `\n\n---\n## New Task Assignment\nTask ID: ${taskId}\nClaim and execute task from: .omg/state/team/${teamName}/tasks/${taskId}.json\n`;
+    const msg = `\n\n---\n## New Task Assignment\nTask ID: ${taskId}\nClaim and execute task from: .omcp/state/team/${teamName}/tasks/${taskId}.json\n`;
     const { appendFile } = await import('fs/promises');
     await appendFile(inboxPath, msg, 'utf-8');
     // Send tmux trigger
@@ -771,7 +771,7 @@ export async function resumeTeam(teamName, cwd) {
     const { execFile } = await import('child_process');
     const { promisify } = await import('util');
     const execFileAsync = promisify(execFile);
-    const sName = configData.tmuxSession || `omc-team-${teamName}`;
+    const sName = configData.tmuxSession || `omcp-team-${teamName}`;
     try {
         await execFileAsync('tmux', ['has-session', '-t', sName.split(':')[0]]);
     }

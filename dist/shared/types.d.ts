@@ -151,7 +151,7 @@ export interface PluginConfig {
     externalModels?: ExternalModelsConfig;
     delegationRouting?: DelegationRoutingConfig;
     planOutput?: {
-        /** Relative directory for generated plan artifacts. Default: .omg/plans */
+        /** Relative directory for generated plan artifacts. Default: .omcp/plans */
         directory?: string;
         /** Filename template. Supported tokens: {{name}}, {{kind}}. Default: {{name}}.md */
         filenameTemplate?: string;

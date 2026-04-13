@@ -9,8 +9,8 @@ describe('Ralph PRD-Mandatory', () => {
     beforeEach(() => {
         testDir = join(tmpdir(), `ralph-prd-mandatory-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(testDir, { recursive: true });
-        // Create .omg/state directory for ralph state files
-        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
+        // Create .omcp/state directory for ralph state files
+        mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
     });
     afterEach(() => {
         if (existsSync(testDir)) {

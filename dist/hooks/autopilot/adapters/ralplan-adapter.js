@@ -19,7 +19,7 @@ export const ralplanAdapter = {
         return config.planning === false;
     },
     getPrompt(context) {
-        const specPath = context.specPath || ".omg/autopilot/spec.md";
+        const specPath = context.specPath || ".omcp/autopilot/spec.md";
         const planPath = context.planPath || resolveAutopilotPlanPath();
         if (context.config.planning === "ralplan") {
             return `## PIPELINE STAGE: RALPLAN (Consensus Planning)

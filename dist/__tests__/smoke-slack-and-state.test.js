@@ -416,7 +416,7 @@ describe('SMOKE: State Cancel Cleanup — session-scoped I/O (issue #1143)', () 
     let omcDir;
     beforeEach(() => {
         testDir = join(tmpdir(), `smoke-state-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        omcDir = join(testDir, '.omg');
+        omcDir = join(testDir, '.omcp');
         mkdirSync(omcDir, { recursive: true });
         mockGetOmcRoot.mockReturnValue(omcDir);
     });

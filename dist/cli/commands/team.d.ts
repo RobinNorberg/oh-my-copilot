@@ -1,11 +1,11 @@
 /**
- * omc team CLI subcommand
+ * omcp team CLI subcommand
  *
- * Full team lifecycle for `omc team`:
- *   omc team [N:agent-type] "task"          Start team (spawns tmux worker panes)
- *   omc team status <team-name>             Monitor team status
- *   omc team shutdown <team-name> [--force] Shutdown team
- *   omc team api <operation> --input '...'  Worker CLI API
+ * Full team lifecycle for `omcp team`:
+ *   omcp team [N:agent-type] "task"          Start team (spawns tmux worker panes)
+ *   omcp team status <team-name>             Monitor team status
+ *   omcp team shutdown <team-name> [--force] Shutdown team
+ *   omcp team api <operation> --input '...'  Worker CLI API
  */
 export type DecompositionStrategy = 'numbered' | 'bulleted' | 'conjunction' | 'atomic';
 export interface DecompositionPlan {
@@ -59,10 +59,10 @@ export declare function buildStartupTasks(parsed: ParsedTeamArgs): Array<{
 /**
  * Main team subcommand handler.
  * Routes:
- *   omc team [N:agent-type] "task"          -> Start team
- *   omc team status <team-name>             -> Monitor
- *   omc team shutdown <team-name> [--force] -> Shutdown
- *   omc team api <operation> [--input] ...  -> Worker CLI API
+ *   omcp team [N:agent-type] "task"          -> Start team
+ *   omcp team status <team-name>             -> Monitor
+ *   omcp team shutdown <team-name> [--force] -> Shutdown
+ *   omcp team api <operation> [--input] ...  -> Worker CLI API
  */
 export declare function teamCommand(args: string[]): Promise<void>;
 //# sourceMappingURL=team.d.ts.map

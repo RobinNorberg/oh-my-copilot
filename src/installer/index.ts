@@ -957,36 +957,30 @@ export function install(options: InstallOptions = {}): InstallResult {
 
       // Install copilot-instructions.md with merge support
       const claudeMdPath = join(COPILOT_CONFIG_DIR, 'copilot-instructions.md');
-      const homeMdPath = join(homedir(), 'copilot-instructions.md');
+      const omcContent = loadClaudeMdContent();
 
-      if (!existsSync(homeMdPath)) {
-        const omcContent = loadClaudeMdContent();
+      // Read existing content if it exists
+      let existingContent: string | null = null;
+      if (existsSync(claudeMdPath)) {
+        existingContent = readFileSync(claudeMdPath, 'utf-8');
+      }
 
-        // Read existing content if it exists
-        let existingContent: string | null = null;
-        if (existsSync(claudeMdPath)) {
-          existingContent = readFileSync(claudeMdPath, 'utf-8');
-        }
+      // Always create backup before modification (if file exists)
+      if (existingContent !== null) {
+        const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0]; // YYYY-MM-DDTHH-MM-SS
+        const backupPath = join(COPILOT_CONFIG_DIR, `copilot-instructions.md.backup.${timestamp}`);
+        writeFileSync(backupPath, existingContent);
+        log(`Backed up existing copilot-instructions.md to ${backupPath}`);
+      }
 
-        // Always create backup before modification (if file exists)
-        if (existingContent !== null) {
-          const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0]; // YYYY-MM-DDTHH-MM-SS
-          const backupPath = join(COPILOT_CONFIG_DIR, `copilot-instructions.md.backup.${timestamp}`);
-          writeFileSync(backupPath, existingContent);
-          log(`Backed up existing copilot-instructions.md to ${backupPath}`);
-        }
+      // Merge OMC content with existing content
+      const mergedContent = mergeClaudeMd(existingContent, omcContent, targetVersion);
+      writeFileSync(claudeMdPath, mergedContent);
 
-        // Merge OMC content with existing content
-        const mergedContent = mergeClaudeMd(existingContent, omcContent, targetVersion);
-        writeFileSync(claudeMdPath, mergedContent);
-
-        if (existingContent) {
-          log('Updated copilot-instructions.md (merged with existing content)');
-        } else {
-          log('Created copilot-instructions.md');
-        }
+      if (existingContent) {
+        log('Updated copilot-instructions.md (merged with existing content)');
       } else {
-        log('copilot-instructions.md exists in home directory, skipping');
+        log('Created copilot-instructions.md');
       }
 
       // Note: hook scripts are no longer installed to ~/.copilot/hooks/.
