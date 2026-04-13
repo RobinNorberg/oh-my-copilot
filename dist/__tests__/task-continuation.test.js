@@ -538,9 +538,9 @@ describe('Task System Support', () => {
             const result = checkLegacyTodos('session123');
             expect(result.count).toBe(1);
         });
-        it('should read from project .omg directory', () => {
+        it('should read from project .omcp directory', () => {
             vi.mocked(fs.existsSync).mockImplementation((p) => {
-                return /[\\/]\.omg[\\/]todos\.json$/.test(p);
+                return /[\\/]\.omcp[\\/]todos\.json$/.test(p);
             });
             vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify([{ content: 'Todo', status: 'pending' }]));
             const result = checkLegacyTodos(undefined, '/project/dir');

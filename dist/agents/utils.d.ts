@@ -57,7 +57,7 @@ export declare function parseDisallowedTools(agentName: string): string[] | unde
 /**
  * Standard path for open questions file
  */
-export declare const OPEN_QUESTIONS_PATH = ".omg/plans/open-questions.md";
+export declare const OPEN_QUESTIONS_PATH = ".omcp/plans/open-questions.md";
 /**
  * Format open questions for appending to the standard open-questions.md file.
  *

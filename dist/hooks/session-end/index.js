@@ -197,7 +197,7 @@ export function cleanupTransientState(directory) {
             // Ignore cleanup errors
         }
     }
-    // Remove .tmp files in .omg/
+    // Remove .tmp files in .omcp/
     const removeTmpFiles = (dir) => {
         try {
             const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -419,7 +419,7 @@ async function cleanupSessionOwnedTeams(directory, sessionId) {
                 const legacyConfig = config;
                 const sessionName = typeof legacyConfig.tmuxSession === 'string' && legacyConfig.tmuxSession.trim() !== ''
                     ? legacyConfig.tmuxSession.trim()
-                    : `omc-team-${teamName}`;
+                    : `omcp-team-${teamName}`;
                 const leaderPaneId = typeof legacyConfig.leaderPaneId === 'string' && legacyConfig.leaderPaneId.trim() !== ''
                     ? legacyConfig.leaderPaneId.trim()
                     : undefined;
@@ -440,7 +440,7 @@ async function cleanupSessionOwnedTeams(directory, sessionId) {
     return { attempted, cleaned, failed };
 }
 /**
- * Export session summary to .omg/sessions/
+ * Export session summary to .omcp/sessions/
  */
 export function exportSessionSummary(directory, metrics) {
     const sessionsDir = path.join(getOmcRoot(directory), 'sessions');
@@ -469,7 +469,7 @@ export function exportSessionSummary(directory, metrics) {
  * Process session end
  */
 export async function processSessionEnd(input) {
-    // Normalize cwd to the git worktree root so .omg/state/ is always resolved
+    // Normalize cwd to the git worktree root so .omcp/state/ is always resolved
     // from the repo root, even when Copilot CLI is running from a subdirectory (issue #891).
     const directory = resolveToWorktreeRoot(input.cwd);
     // Record and export session metrics to disk
@@ -549,7 +549,7 @@ export async function processSessionEnd(input) {
     catch {
         // Reply listener cleanup failures should never block session end
     }
-    // Return simple response - metrics are persisted to .omg/sessions/
+    // Return simple response - metrics are persisted to .omcp/sessions/
     return { continue: true };
 }
 /**

@@ -12,7 +12,7 @@ export type TeamApiEnvelope = {
         message: string;
     };
 };
-export declare function resolveTeamApiCliCommand(_env?: NodeJS.ProcessEnv): 'omc team api';
+export declare function resolveTeamApiCliCommand(_env?: NodeJS.ProcessEnv): 'omcp team api';
 export declare function resolveTeamApiOperation(name: string): TeamApiOperation | null;
 export declare function buildLegacyTeamDeprecationHint(legacyName: string, originalArgs?: Record<string, unknown>, env?: NodeJS.ProcessEnv): string;
 export declare function executeTeamApiOperation(operation: TeamApiOperation, args: Record<string, unknown>, fallbackCwd: string): Promise<TeamApiEnvelope>;

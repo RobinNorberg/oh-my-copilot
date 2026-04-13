@@ -57,7 +57,7 @@ describe('readOmpConfig', () => {
         mockExistsSync.mockReturnValue(false);
         readOmpConfig();
         const checkedPath = mockExistsSync.mock.calls[0][0];
-        expect(checkedPath).toContain('.omg');
+        expect(checkedPath).toContain('.omcp');
         expect(checkedPath).toContain('config.json');
     });
 });

@@ -14,12 +14,12 @@ export interface OmpConfig {
     ado?: AdoConfig;
 }
 /**
- * Read .omg/config.json from the given directory (or cwd).
+ * Read .omcp/config.json from the given directory (or cwd).
  * Returns null if the file doesn't exist.
  */
 export declare function readOmpConfig(dir?: string): OmpConfig | null;
 /**
- * Get ADO config, merging .omg/config.json with git remote detection.
+ * Get ADO config, merging .omcp/config.json with git remote detection.
  * Config file values take precedence over auto-detected values.
  */
 export declare function getAdoConfig(dir?: string): AdoConfig;

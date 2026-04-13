@@ -24,6 +24,7 @@ import {
   wrapWithLoginShell,
   isCopilotAvailable,
   quoteShellArg,
+  tmuxExec,
 } from './tmux-utils.js';
 
 // Flag mapping
@@ -392,7 +393,7 @@ export function runCopilot(cwd: string, args: string[], sessionId: string): void
 function runCopilotInsideTmux(cwd: string, args: string[]): void {
   // Enable mouse scrolling in the current tmux session (non-fatal if it fails)
   try {
-    execFileSync('tmux', ['set-option', 'mouse', 'on'], { stdio: 'ignore' });
+    tmuxExec(['set-option', 'mouse', 'on'], { stdio: 'ignore' });
   } catch { /* non-fatal — user's tmux may not support these options */ }
 
   // Launch Copilot in current pane
@@ -464,7 +465,7 @@ function runCopilotOutsideTmux(cwd: string, args: string[], _sessionId: string):
   tmuxArgs.push(';', 'attach-session', '-t', sessionName);
 
   try {
-    execFileSync('tmux', tmuxArgs, { stdio: 'inherit' });
+    tmuxExec(tmuxArgs, { stdio: 'inherit' });
   } catch {
     // tmux failed, fall back to direct launch
     runCopilotDirect(cwd, args);

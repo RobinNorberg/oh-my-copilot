@@ -2,8 +2,8 @@
  * State Manager
  *
  * Unified state management that standardizes state file locations:
- * - Local state: .omg/state/{name}.json
- * - Global state: XDG-aware user OMC state with legacy ~/.omg/state fallback
+ * - Local state: .omcp/state/{name}.json
+ * - Global state: XDG-aware user OMC state with legacy ~/.omcp/state fallback
  *
  * Features:
  * - Type-safe read/write operations
@@ -25,7 +25,7 @@ function getLocalStateDir() {
  * @deprecated for mode state. Global state directory is only used for analytics and daemon state.
  * Mode state should use LOCAL_STATE_DIR exclusively.
  */
-const GLOBAL_STATE_DIR = path.join(os.homedir(), ".omg", "state");
+const GLOBAL_STATE_DIR = path.join(os.homedir(), ".omcp", "state");
 /** Maximum age for state files before they are considered stale (4 hours) */
 const MAX_STATE_AGE_MS = 4 * 60 * 60 * 1000;
 // Read cache: avoids re-reading unchanged state files within TTL
@@ -352,7 +352,7 @@ export function isStateStale(meta, now, maxAgeMs) {
  */
 export function cleanupStaleStates(directory, maxAgeMs = MAX_STATE_AGE_MS) {
     const stateDir = directory
-        ? path.join(directory, ".omg", "state")
+        ? path.join(directory, ".omcp", "state")
         : getLocalStateDir();
     if (!fs.existsSync(stateDir))
         return 0;
@@ -395,9 +395,9 @@ export function cleanupStaleStates(directory, maxAgeMs = MAX_STATE_AGE_MS) {
             // Directory read error
         }
     };
-    // Scan top-level state files (.omg/state/*.json)
+    // Scan top-level state files (.omcp/state/*.json)
     scanDir(stateDir);
-    // Scan session directories (.omg/state/sessions/*/*.json)
+    // Scan session directories (.omcp/state/sessions/*/*.json)
     const sessionsDir = path.join(stateDir, "sessions");
     if (fs.existsSync(sessionsDir)) {
         try {

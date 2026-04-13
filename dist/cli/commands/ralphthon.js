@@ -1,12 +1,12 @@
 /**
- * omc ralphthon CLI subcommand
+ * omcp ralphthon CLI subcommand
  *
  * Autonomous hackathon lifecycle:
- *   omc ralphthon "task"                  Start new ralphthon session
- *   omc ralphthon --resume                Resume existing session
- *   omc ralphthon --skip-interview "task" Skip deep-interview, use task directly
- *   omc ralphthon --max-waves 5           Set max hardening waves
- *   omc ralphthon --poll-interval 60      Set poll interval in seconds
+ *   omcp ralphthon "task"                  Start new ralphthon session
+ *   omcp ralphthon --resume                Resume existing session
+ *   omcp ralphthon --skip-interview "task" Skip deep-interview, use task directly
+ *   omcp ralphthon --max-waves 5           Set max hardening waves
+ *   omcp ralphthon --poll-interval 60      Set poll interval in seconds
  */
 import chalk from 'chalk';
 import { execSync } from 'child_process';
@@ -17,7 +17,7 @@ import { RALPHTHON_DEFAULTS } from '../../ralphthon/types.js';
 // Help Text
 // ============================================================================
 const RALPHTHON_HELP = `
-Usage: omc ralphthon [options] [task]
+Usage: omcp ralphthon [options] [task]
 
 Autonomous hackathon lifecycle mode.
 Generates PRD via deep-interview, executes all tasks with ralph loop,
@@ -31,10 +31,10 @@ Options:
   --help, -h            Show this help
 
 Examples:
-  omc ralphthon "Build a REST API for user management"
-  omc ralphthon --skip-interview "Implement auth middleware"
-  omc ralphthon --resume
-  omc ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
+  omcp ralphthon "Build a REST API for user management"
+  omcp ralphthon --skip-interview "Implement auth middleware"
+  omcp ralphthon --resume
+  omcp ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
 `;
 // ============================================================================
 // Argument Parsing
@@ -103,7 +103,7 @@ export function buildRalphthonInterviewPrompt(task, options) {
     const sanitizedTask = task.replace(/[\r\n\0]+/g, " ").trim();
     return `/deep-interview ${sanitizedTask}
 
-After the interview, generate a ralphthon-prd.json file in .omc/ with this structure:
+After the interview, generate a ralphthon-prd.json file in .omcp/ with this structure:
 {
   "project": "<project name>",
   "branchName": "<branch>",
@@ -251,7 +251,7 @@ export async function ralphthonCommand(args) {
     }
     // New session — need task description
     if (!options.task) {
-        console.error(chalk.red('Task description required. Usage: omc ralphthon "your task"'));
+        console.error(chalk.red('Task description required. Usage: omcp ralphthon "your task"'));
         console.log(RALPHTHON_HELP);
         process.exit(1);
     }

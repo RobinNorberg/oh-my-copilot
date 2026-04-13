@@ -28,13 +28,13 @@ export function getProgressPath(directory) {
     return join(directory, PROGRESS_FILENAME);
 }
 /**
- * Get the path to progress.txt in .omg subdirectory
+ * Get the path to progress.txt in .omcp subdirectory
  */
 export function getOmcProgressPath(directory) {
     return join(getOmcRoot(directory), PROGRESS_FILENAME);
 }
 /**
- * Find progress.txt in a directory (checks both root and .omg)
+ * Find progress.txt in a directory (checks both root and .omcp)
  */
 export function findProgressPath(directory) {
     const rootPath = getProgressPath(directory);

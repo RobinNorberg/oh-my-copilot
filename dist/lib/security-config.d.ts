@@ -18,7 +18,7 @@ export interface SecurityConfig {
     restrictToolPaths: boolean;
     /** Sandbox python_repl with blocked modules/builtins */
     pythonSandbox: boolean;
-    /** Disable project-level .omc/skills/ loading */
+    /** Disable project-level .omcp/skills/ loading */
     disableProjectSkills: boolean;
     /** Disable silent auto-update */
     disableAutoUpdate: boolean;

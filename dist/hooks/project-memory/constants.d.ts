@@ -2,7 +2,7 @@
  * Project Memory Constants
  */
 export declare const MEMORY_FILE = "project-memory.json";
-export declare const MEMORY_DIR = ".omg";
+export declare const MEMORY_DIR = ".omcp";
 export declare const CACHE_EXPIRY_MS: number;
 export declare const SCHEMA_VERSION = "1.0.0";
 export declare const CONFIG_PATTERNS: ({

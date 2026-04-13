@@ -8,7 +8,7 @@
 import { join } from 'path';
 import { homedir } from 'os';
 /** Storage directory for agent usage reminder state */
-export const OMC_STORAGE_DIR = join(homedir(), '.omg');
+export const OMC_STORAGE_DIR = join(homedir(), '.omcp');
 export const AGENT_USAGE_REMINDER_STORAGE = join(OMC_STORAGE_DIR, 'agent-usage-reminder');
 /** All tool names normalized to lowercase for case-insensitive matching */
 export const TARGET_TOOLS = new Set([

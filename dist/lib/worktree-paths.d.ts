@@ -1,29 +1,29 @@
 /**
  * Worktree Path Enforcement
  *
- * Provides strict path validation and resolution for .omg/ paths,
+ * Provides strict path validation and resolution for .omcp/ paths,
  * ensuring all operations stay within the worktree boundary.
  *
  * Supports OMC_STATE_DIR environment variable for centralized state storage.
  * When set, state is stored at $OMC_STATE_DIR/{project-identifier}/ instead
- * of {worktree}/.omg/. This preserves state across worktree deletions.
+ * of {worktree}/.omcp/. This preserves state across worktree deletions.
  */
-/** Standard .omc subdirectories */
+/** Standard .omcp subdirectories (formerly .omg) */
 export declare const OmgPaths: {
-    readonly ROOT: ".omg";
-    readonly STATE: ".omg/state";
-    readonly SESSIONS: ".omg/state/sessions";
-    readonly PLANS: ".omg/plans";
-    readonly RESEARCH: ".omg/research";
-    readonly NOTEPAD: ".omg/notepad.md";
-    readonly PROJECT_MEMORY: ".omg/project-memory.json";
-    readonly DRAFTS: ".omg/drafts";
-    readonly NOTEPADS: ".omg/notepads";
-    readonly LOGS: ".omg/logs";
-    readonly SCIENTIST: ".omg/scientist";
-    readonly AUTOPILOT: ".omg/autopilot";
-    readonly SKILLS: ".omg/skills";
-    readonly SHARED_MEMORY: ".omg/state/shared-memory";
+    readonly ROOT: ".omcp";
+    readonly STATE: ".omcp/state";
+    readonly SESSIONS: ".omcp/state/sessions";
+    readonly PLANS: ".omcp/plans";
+    readonly RESEARCH: ".omcp/research";
+    readonly NOTEPAD: ".omcp/notepad.md";
+    readonly PROJECT_MEMORY: ".omcp/project-memory.json";
+    readonly DRAFTS: ".omcp/drafts";
+    readonly NOTEPADS: ".omcp/notepads";
+    readonly LOGS: ".omcp/logs";
+    readonly SCIENTIST: ".omcp/scientist";
+    readonly AUTOPILOT: ".omcp/autopilot";
+    readonly SKILLS: ".omcp/skills";
+    readonly SHARED_MEMORY: ".omcp/state/shared-memory";
 };
 /**
  * Get the git worktree root for the current or specified directory.
@@ -36,6 +36,17 @@ export declare function getWorktreeRoot(cwd?: string): string | null;
  * @throws Error if path contains traversal sequences
  */
 export declare function validatePath(inputPath: string): void;
+/**
+ * Migrate a legacy .omg/ directory to .omcp/.
+ *
+ * If .omg/ exists and .omcp/ does not, renames .omg/ → .omcp/ in place.
+ * If both exist, logs a warning and uses .omcp/.
+ * If only .omcp/ exists (or neither), no action taken.
+ *
+ * @param worktreeRoot - The worktree root directory
+ * @returns true if migration was performed, false otherwise
+ */
+export declare function migrateOmgToOmcp(worktreeRoot: string): boolean;
 /**
  * Clear the dual-directory warning cache (useful for testing).
  * @internal
@@ -59,7 +70,7 @@ export declare function getProjectIdentifier(worktreeRoot?: string): string;
  * Get the .omc root directory path.
  *
  * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
- * instead of {worktree}/.omg/. This allows centralized state storage that
+ * instead of {worktree}/.omcp/. This allows centralized state storage that
  * survives worktree deletion.
  *
  * @param worktreeRoot - Optional worktree root
@@ -67,10 +78,10 @@ export declare function getProjectIdentifier(worktreeRoot?: string): string;
  */
 export declare function getOmcRoot(worktreeRoot?: string): string;
 /**
- * Resolve a relative path under .omg/ to an absolute path.
+ * Resolve a relative path under .omcp/ to an absolute path.
  * Validates the path is within the omc boundary.
  *
- * @param relativePath - Path relative to .omg/ (e.g., "state/ralph.json")
+ * @param relativePath - Path relative to .omcp/ (e.g., "state/ralph.json")
  * @param worktreeRoot - Optional worktree root (auto-detected if not provided)
  * @returns Absolute path
  * @throws Error if path would escape omc boundary
@@ -88,10 +99,10 @@ export declare function resolveOmcPath(relativePath: string, worktreeRoot?: stri
  */
 export declare function resolveStatePath(stateName: string, worktreeRoot?: string): string;
 /**
- * Ensure a directory exists under .omg/.
+ * Ensure a directory exists under .omcp/.
  * Creates parent directories as needed.
  *
- * @param relativePath - Path relative to .omg/
+ * @param relativePath - Path relative to .omcp/
  * @param worktreeRoot - Optional worktree root
  * @returns Absolute path to the created directory
  */
@@ -211,7 +222,7 @@ export declare function ensureSessionStateDir(sessionId: string, worktreeRoot?: 
  * Walks up from `directory` using `git rev-parse --show-toplevel`.
  * Falls back to `getWorktreeRoot(process.cwd())`, then `process.cwd()`.
  *
- * This ensures .omg/ state is always written at the worktree root,
+ * This ensures .omcp/ state is always written at the worktree root,
  * even when called from a subdirectory (fixes #576).
  *
  * @param directory - Any directory inside a git worktree (optional)
@@ -245,7 +256,7 @@ export declare function resolveTranscriptPath(transcriptPath: string | undefined
  * The trusted root is derived from process.cwd(), NOT from user input.
  *
  * Always returns a git worktree root — never a subdirectory.
- * This prevents .omg/state/ from being created in subdirectories (#576).
+ * This prevents .omcp/state/ from being created in subdirectories (#576).
  *
  * @param workingDirectory - User-supplied working directory
  * @returns The validated worktree root

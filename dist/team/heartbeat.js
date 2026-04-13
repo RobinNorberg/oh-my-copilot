@@ -4,7 +4,7 @@
  *
  * Each worker writes a heartbeat file every poll cycle.
  * The lead checks freshness to detect dead workers.
- * Files stored at: .omg/state/team-bridge/{team}/{worker}.heartbeat.json
+ * Files stored at: .omcp/state/team-bridge/{team}/{worker}.heartbeat.json
  */
 import { readFileSync, existsSync, readdirSync, unlinkSync, rmdirSync } from 'fs';
 import { join } from 'path';
@@ -12,11 +12,11 @@ import { sanitizeName } from './tmux-session.js';
 import { atomicWriteJson } from './fs-utils.js';
 /** Heartbeat file path */
 function heartbeatPath(workingDirectory, teamName, workerName) {
-    return join(workingDirectory, '.omg', 'state', 'team-bridge', sanitizeName(teamName), `${sanitizeName(workerName)}.heartbeat.json`);
+    return join(workingDirectory, '.omcp', 'state', 'team-bridge', sanitizeName(teamName), `${sanitizeName(workerName)}.heartbeat.json`);
 }
 /** Heartbeat directory for a team */
 function heartbeatDir(workingDirectory, teamName) {
-    return join(workingDirectory, '.omg', 'state', 'team-bridge', sanitizeName(teamName));
+    return join(workingDirectory, '.omcp', 'state', 'team-bridge', sanitizeName(teamName));
 }
 /** Write/update heartbeat. Called every poll cycle by the bridge. */
 export function writeHeartbeat(workingDirectory, data) {

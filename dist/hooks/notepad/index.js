@@ -58,7 +58,7 @@ function getSectionRegexSet(header) {
 // File Operations
 // ============================================================================
 /**
- * Get the path to notepad.md in .omg subdirectory
+ * Get the path to notepad.md in .omcp subdirectory
  */
 export function getNotepadPath(directory) {
     return join(getOmcRoot(directory), NOTEPAD_FILENAME);

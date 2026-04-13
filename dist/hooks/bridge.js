@@ -38,7 +38,7 @@ import { wrapUntrustedFileContent } from "../agents/prompt-helpers.js";
 const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
-const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cgpx]\s+team\b(?!\s+api\b)/i;
+const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom(?:cp|[cgpx])\s+team\b(?!\s+api\b)/i;
 const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|ultrawork|autopilot|ralph)\b/i;
 const TEAM_TERMINAL_VALUES = new Set([
     "completed",
@@ -363,7 +363,7 @@ function workerBashBlockReason(command) {
         return "Team worker cannot run tmux pane/session orchestration commands.";
     }
     if (WORKER_BLOCKED_TEAM_CLI_PATTERN.test(command)) {
-        return `Team worker cannot run team orchestration commands. Use only \`omc team api ... --json\`.`;
+        return `Team worker cannot run team orchestration commands. Use only \`omcp team api ... --json\`.`;
     }
     if (WORKER_BLOCKED_SKILL_PATTERN.test(command)) {
         return "Team worker cannot invoke orchestration skills (`$team`, `$ultrawork`, `$autopilot`, `$ralph`).";
@@ -630,9 +630,9 @@ async function processKeywordDetector(input) {
             case "codex":
             case "gemini": {
                 messages.push(`[MAGIC KEYWORD: team]\n` +
-                    `User intent: delegate to ${keywordType} CLI workers via omc team CLI.\n` +
+                    `User intent: delegate to ${keywordType} CLI workers via omcp team CLI.\n` +
                     `Agent type: ${keywordType}. Parse N from user message (default 1).\n` +
-                    `Invoke: omc team start --agent ${keywordType} --count N --task "<task from user message>"`);
+                    `Invoke: omcp team start --agent ${keywordType} --count N --task "<task from user message>"`);
                 break;
             }
             default:
@@ -1393,8 +1393,8 @@ async function processAutopilot(input) {
     // Check phase and inject appropriate prompt
     const context = {
         idea: state.originalIdea,
-        specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
-        planPath: state.planning.plan_path || ".omg/plans/autopilot-impl.md",
+        specPath: state.expansion.spec_path || ".omcp/autopilot/spec.md",
+        planPath: state.planning.plan_path || ".omcp/plans/autopilot-impl.md",
     };
     const phasePrompt = getPhasePrompt(state.phase, context);
     if (phasePrompt) {
@@ -1583,7 +1583,7 @@ export async function processHook(hookType, rawInput) {
             }
             case "code-simplifier": {
                 const directory = input.directory ?? process.cwd();
-                const stateDir = join(resolveToWorktreeRoot(directory), ".omg", "state");
+                const stateDir = join(resolveToWorktreeRoot(directory), ".omcp", "state");
                 const { processCodeSimplifier } = await import("./code-simplifier/index.js");
                 const result = processCodeSimplifier(directory, stateDir);
                 if (result.shouldBlock) {

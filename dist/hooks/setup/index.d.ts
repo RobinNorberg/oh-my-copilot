@@ -75,7 +75,7 @@ export declare function ensureStdinSymlink(pluginRoot: string): void;
  */
 export declare function processSetupInit(input: SetupInput): Promise<HookOutput>;
 /**
- * Prune old state files from .omg/state directory
+ * Prune old state files from .omcp/state directory
  */
 export declare function pruneOldStateFiles(directory: string, maxAgeDays?: number): number;
 /**

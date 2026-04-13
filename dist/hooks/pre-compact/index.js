@@ -185,7 +185,7 @@ function readTodoSummary(directory) {
 }
 /**
  * Get summary of active and recent background jobs from SQLite DB
- * Queries .omg/state/jobs.db for Codex/Gemini job statuses
+ * Queries .omcp/state/jobs.db for Codex/Gemini job statuses
  */
 async function getActiveJobsSummary(directory) {
     try {

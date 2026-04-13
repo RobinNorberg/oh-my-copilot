@@ -11,7 +11,7 @@ import { getSessionStartTime, recordSessionMetrics } from '../index.js';
  */
 let tmpDir;
 function stateDir() {
-    return path.join(tmpDir, '.omg', 'state');
+    return path.join(tmpDir, '.omcp', 'state');
 }
 function writeState(filename, state) {
     const dir = stateDir();

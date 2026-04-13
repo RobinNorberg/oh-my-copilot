@@ -14,7 +14,7 @@ import { ConcurrencyManager } from './concurrency.js';
 /** Default task timeout: 30 minutes */
 const DEFAULT_TASK_TTL_MS = 30 * 60 * 1000;
 /** Storage directory for task state */
-const BACKGROUND_TASKS_DIR = join(getClaudeConfigDir(), '.omg', 'background-tasks');
+const BACKGROUND_TASKS_DIR = join(getClaudeConfigDir(), '.omcp', 'background-tasks');
 /**
  * Manages background tasks for the OMC system.
  */

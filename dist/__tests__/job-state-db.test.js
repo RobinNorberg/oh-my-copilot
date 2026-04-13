@@ -4,7 +4,7 @@ import { join } from 'path';
 import { initJobDb, closeJobDb, isJobDbInitialized, getJobDb, upsertJob, getJob, getJobsByStatus, getActiveJobs, getRecentJobs, updateJobStatus, deleteJob, migrateFromJsonFiles, cleanupOldJobs, getJobStats, getJobSummaryForPreCompact, } from '../lib/job-state-db.js';
 // Test fixtures
 const TEST_DIR = join(process.cwd(), '.test-job-state-db-' + process.pid);
-const PROMPTS_DIR = join(TEST_DIR, '.omg', 'prompts');
+const PROMPTS_DIR = join(TEST_DIR, '.omcp', 'prompts');
 function createTestJob(overrides = {}) {
     return {
         provider: 'codex',
@@ -42,7 +42,7 @@ describe('job-state-db', () => {
         });
         it('should create the jobs.db file', async () => {
             await initJobDb(TEST_DIR);
-            expect(existsSync(join(TEST_DIR, '.omg', 'state', 'jobs.db'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'jobs.db'))).toBe(true);
         });
         it('should be idempotent', async () => {
             await initJobDb(TEST_DIR);

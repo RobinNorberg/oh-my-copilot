@@ -2,7 +2,7 @@
  * Project Memory Constants
  */
 export const MEMORY_FILE = 'project-memory.json';
-export const MEMORY_DIR = '.omg';
+export const MEMORY_DIR = '.omcp';
 export const CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
 export const SCHEMA_VERSION = '1.0.0';
 export const CONFIG_PATTERNS = [

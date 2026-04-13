@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { execFileSync } from 'child_process';
 import { checkPersistentModes } from '../index.js';
 function makeRalphSession(tempDir, sessionId) {
-    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
         active: true,

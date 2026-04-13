@@ -22,7 +22,7 @@ import {
   runAutoresearchSetupSession,
   type AutoresearchSetupSessionInput,
 } from './autoresearch-setup-session.js';
-import { buildTmuxShellCommand, isTmuxAvailable, quoteShellArg, wrapWithLoginShell } from './tmux-utils.js';
+import { buildTmuxShellCommand, isTmuxAvailable, quoteShellArg, tmuxExec, wrapWithLoginShell } from './tmux-utils.js';
 
 const CLAUDE_BYPASS_FLAG = '--dangerously-skip-permissions';
 const AUTORESEARCH_SETUP_SLASH_COMMAND = '/deep-interview --autoresearch';
@@ -314,18 +314,9 @@ function resolveMissionRepoRoot(missionDir: string): string {
   }).trim();
 }
 
-// Strip TMUX from the environment so tmux commands always target the default
-// server. Without this, autoresearch launched from inside a nested tmux session
-// (e.g. wtx/Worktrunk worktrees) silently creates sessions on the nested
-// server, making them unreachable from the outer session.
-function tmuxEnv(): NodeJS.ProcessEnv {
-  const { TMUX: _, ...env } = process.env;
-  return env;
-}
-
 function assertTmuxSessionAvailable(sessionName: string): void {
   try {
-    execFileSync('tmux', ['has-session', '-t', sessionName], { stdio: 'ignore', env: tmuxEnv() });
+    tmuxExec(['has-session', '-t', sessionName], { stripTmux: true, stdio: 'ignore' });
   } catch {
     throw new Error(
       `tmux session "${sessionName}" did not stay available after launch. `
@@ -342,7 +333,7 @@ export function spawnAutoresearchTmux(missionDir: string, slug: string): void {
   const sessionName = `omc-autoresearch-${slug}`;
 
   try {
-    execFileSync('tmux', ['has-session', '-t', sessionName], { stdio: 'ignore', env: tmuxEnv() });
+    tmuxExec(['has-session', '-t', sessionName], { stripTmux: true, stdio: 'ignore' });
     throw new Error(
       `tmux session "${sessionName}" already exists.\n`
       + `  Attach: tmux attach -t ${sessionName}\n`
@@ -360,7 +351,7 @@ export function spawnAutoresearchTmux(missionDir: string, slug: string): void {
   const command = buildTmuxShellCommand(process.execPath, [omcPath, 'autoresearch', missionDir]);
   const wrappedCommand = wrapWithLoginShell(command);
 
-  execFileSync('tmux', ['new-session', '-d', '-s', sessionName, '-c', repoRoot, wrappedCommand], { stdio: 'ignore', env: tmuxEnv() });
+  tmuxExec(['new-session', '-d', '-s', sessionName, '-c', repoRoot, wrappedCommand], { stripTmux: true, stdio: 'ignore' });
   assertTmuxSessionAvailable(sessionName);
 
   console.log('\nAutoresearch launched in background tmux session.');
@@ -418,17 +409,16 @@ export function spawnAutoresearchSetupTmux(repoRoot: string): void {
   const hostBinary = getHostCliBinary();
   const cliCommand = buildTmuxShellCommand('env', [`CODEX_HOME=${codexHome}`, hostBinary, CLAUDE_BYPASS_FLAG]);
   const wrappedCliCommand = wrapWithLoginShell(cliCommand);
-  const paneId = execFileSync(
-    'tmux',
+  const paneId = tmuxExec(
     ['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedCliCommand],
-    { encoding: 'utf-8', env: tmuxEnv() },
+    { stripTmux: true },
   ).trim();
 
   assertTmuxSessionAvailable(sessionName);
 
   if (paneId) {
-    execFileSync('tmux', ['send-keys', '-t', paneId, '-l', buildAutoresearchSetupSlashCommand()], { stdio: 'ignore', env: tmuxEnv() });
-    execFileSync('tmux', ['send-keys', '-t', paneId, 'Enter'], { stdio: 'ignore', env: tmuxEnv() });
+    tmuxExec(['send-keys', '-t', paneId, '-l', buildAutoresearchSetupSlashCommand()], { stripTmux: true, stdio: 'ignore' });
+    tmuxExec(['send-keys', '-t', paneId, 'Enter'], { stripTmux: true, stdio: 'ignore' });
   }
 
   console.log('\nAutoresearch setup launched in background Claude session.');

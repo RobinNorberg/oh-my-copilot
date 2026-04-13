@@ -322,8 +322,8 @@ function checkPipelineAutopilot(state, sessionId, directory) {
             idea: state.originalIdea,
             directory: state.project_path || directory,
             sessionId,
-            specPath: state.expansion.spec_path || '.omg/autopilot/spec.md',
-            planPath: state.planning.plan_path || '.omg/plans/autopilot-impl.md',
+            specPath: state.expansion.spec_path || '.omcp/autopilot/spec.md',
+            planPath: state.planning.plan_path || '.omcp/plans/autopilot-impl.md',
             config: tracking.pipelineConfig,
         };
         const stagePrompt = nextAdapter.getPrompt(context);
@@ -360,8 +360,8 @@ ${stagePrompt}
         idea: state.originalIdea,
         directory: state.project_path || directory,
         sessionId,
-        specPath: state.expansion.spec_path || '.omg/autopilot/spec.md',
-        planPath: state.planning.plan_path || '.omg/plans/autopilot-impl.md',
+        specPath: state.expansion.spec_path || '.omcp/autopilot/spec.md',
+        planPath: state.planning.plan_path || '.omcp/plans/autopilot-impl.md',
         config: tracking.pipelineConfig,
     };
     const stagePrompt = currentAdapter.getPrompt(context);

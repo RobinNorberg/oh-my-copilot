@@ -1,15 +1,58 @@
 /**
- * tmux utility functions for omg native shell launch
- * Adapted from oh-my-codex patterns for omg
+ * tmux utility functions for omcp native shell launch
+ * Adapted from oh-my-codex patterns for omcp
  */
-import { execFileSync } from 'child_process';
+import { exec, execFile, execFileSync, execSync, spawnSync, } from 'child_process';
 import { basename } from 'path';
+import { promisify } from 'util';
+const promisifiedExec = promisify(exec);
+const promisifiedExecFile = promisify(execFile);
+export function tmuxEnv() {
+    const { TMUX: _, ...env } = process.env;
+    return env;
+}
+function resolveEnv(opts) {
+    return opts?.stripTmux ? tmuxEnv() : process.env;
+}
+export function tmuxExec(args, opts) {
+    const { stripTmux: _, ...execOpts } = opts ?? {};
+    return execFileSync('tmux', args, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) });
+}
+export async function tmuxExecAsync(args, opts) {
+    const { stripTmux: _, timeout, ...rest } = opts ?? {};
+    return promisifiedExecFile('tmux', args, {
+        encoding: 'utf-8', env: resolveEnv(opts),
+        ...(timeout !== undefined ? { timeout } : {}), ...rest,
+    });
+}
+export function tmuxShell(command, opts) {
+    const { stripTmux: _, ...execOpts } = opts ?? {};
+    return execSync(`tmux ${command}`, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) });
+}
+export async function tmuxShellAsync(command, opts) {
+    const { stripTmux: _, timeout, ...rest } = opts ?? {};
+    return promisifiedExec(`tmux ${command}`, {
+        encoding: 'utf-8', env: resolveEnv(opts),
+        ...(timeout !== undefined ? { timeout } : {}), ...rest,
+    });
+}
+export function tmuxSpawn(args, opts) {
+    const { stripTmux: _, ...spawnOpts } = opts ?? {};
+    return spawnSync('tmux', args, { encoding: 'utf-8', ...spawnOpts, env: resolveEnv(opts) });
+}
+export async function tmuxCmdAsync(args, opts) {
+    if (args.some(a => a.includes('#{'))) {
+        const escaped = args.map(a => "'" + a.replace(/'/g, "'\\''") + "'").join(' ');
+        return tmuxShellAsync(escaped, opts);
+    }
+    return tmuxExecAsync(args, opts);
+}
 /**
  * Check if tmux is available on the system
  */
 export function isTmuxAvailable() {
     try {
-        execFileSync('tmux', ['-V'], { stdio: 'ignore' });
+        tmuxExec(['-V'], { stripTmux: true, stdio: 'ignore' });
         return true;
     }
     catch {
@@ -34,11 +77,23 @@ export function isCopilotAvailable() {
  * - outside-tmux: Not in tmux, create new session
  * - direct: tmux not available, run directly
  */
-export function resolveLaunchPolicy(env = process.env) {
+export function resolveLaunchPolicy(env = process.env, args = []) {
+    if (args.some((arg) => arg === '--print' || arg === '-p')) {
+        return 'direct';
+    }
     if (!isTmuxAvailable()) {
         return 'direct';
     }
-    return env.TMUX ? 'inside-tmux' : 'outside-tmux';
+    if (env.TMUX)
+        return 'inside-tmux';
+    // Terminal emulators that embed their own multiplexer (e.g. cmux, a
+    // Ghostty-based terminal) set CMUX_SURFACE_ID but not TMUX.  tmux
+    // attach-session fails in these environments because the host PTY is
+    // not directly compatible, leaving orphaned detached sessions.
+    // Fall back to direct mode so Copilot CLI launches without tmux wrapping.
+    if (env.CMUX_SURFACE_ID)
+        return 'direct';
+    return 'outside-tmux';
 }
 /**
  * Build tmux session name from directory, git branch, and UTC timestamp
@@ -155,7 +210,7 @@ export function findHudWatchPaneIds(panes, currentPaneId) {
  */
 export function listHudWatchPaneIdsInCurrentWindow(currentPaneId) {
     try {
-        const output = execFileSync('tmux', ['list-panes', '-F', '#{pane_id}\t#{pane_current_command}\t#{pane_start_command}'], { encoding: 'utf-8' });
+        const output = tmuxExec(['list-panes', '-F', '#{pane_id}\t#{pane_current_command}\t#{pane_start_command}']);
         return findHudWatchPaneIds(parseTmuxPaneSnapshot(output), currentPaneId);
     }
     catch {
@@ -169,7 +224,7 @@ export function listHudWatchPaneIdsInCurrentWindow(currentPaneId) {
 export function createHudWatchPane(cwd, hudCmd) {
     try {
         const wrappedCmd = wrapWithLoginShell(hudCmd);
-        const output = execFileSync('tmux', ['split-window', '-v', '-l', '4', '-d', '-c', cwd, '-P', '-F', '#{pane_id}', wrappedCmd], { encoding: 'utf-8' });
+        const output = tmuxExec(['split-window', '-v', '-l', '4', '-d', '-c', cwd, '-P', '-F', '#{pane_id}', wrappedCmd]);
         const paneId = output.split('\n')[0]?.trim() || '';
         return paneId.startsWith('%') ? paneId : null;
     }
@@ -184,7 +239,7 @@ export function killTmuxPane(paneId) {
     if (!paneId.startsWith('%'))
         return;
     try {
-        execFileSync('tmux', ['kill-pane', '-t', paneId], { stdio: 'ignore' });
+        tmuxExec(['kill-pane', '-t', paneId], { stripTmux: true, stdio: 'ignore' });
     }
     catch {
         // Pane may already be gone; ignore

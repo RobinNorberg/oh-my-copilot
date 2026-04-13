@@ -29,7 +29,7 @@ vi.mock('os', async () => {
         homedir: vi.fn().mockReturnValue('/home/testuser'),
     };
 });
-const TEST_STATE_DIR = '/project/.omg/state';
+const TEST_STATE_DIR = '/project/.omcp/state';
 const COOLDOWN_PATH = join(TEST_STATE_DIR, 'idle-notif-cooldown.json');
 const TEST_SESSION_ID = 'session-123';
 const SESSION_COOLDOWN_PATH = join(TEST_STATE_DIR, 'sessions', TEST_SESSION_ID, 'idle-notif-cooldown.json');

@@ -17,7 +17,7 @@ const REPLAY_PREFIX = 'agent-replay-';
  * Find the latest session ID from replay files
  */
 function findLatestSessionId(directory) {
-    const stateDir = join(directory, '.omg', 'state');
+    const stateDir = join(directory, '.omcp', 'state');
     try {
         const files = readdirSync(stateDir)
             .filter(f => f.startsWith(REPLAY_PREFIX) && f.endsWith('.jsonl'))

@@ -18,12 +18,12 @@ function configPath(teamName) {
     return result;
 }
 function shadowRegistryPath(workingDirectory) {
-    const result = join(workingDirectory, '.omg', 'state', 'team-mcp-workers.json');
-    validateResolvedPath(result, join(workingDirectory, '.omg', 'state'));
+    const result = join(workingDirectory, '.omcp', 'state', 'team-mcp-workers.json');
+    validateResolvedPath(result, join(workingDirectory, '.omcp', 'state'));
     return result;
 }
 function probeResultPath(workingDirectory) {
-    return join(workingDirectory, '.omg', 'state', 'config-probe-result.json');
+    return join(workingDirectory, '.omcp', 'state', 'config-probe-result.json');
 }
 // --- Probe result cache ---
 /** Read cached probe result. Returns null if not probed yet. */
@@ -61,7 +61,7 @@ export function getRegistrationStrategy(workingDirectory) {
  *
  * Strategy auto-selected based on cached probe result:
  * - 'config': Write member to config.json (preferred)
- * - 'shadow': Write member to .omg/state/team-mcp-workers.json (fallback)
+ * - 'shadow': Write member to .omcp/state/team-mcp-workers.json (fallback)
  *
  * Both paths use atomic write (temp + rename) to prevent corruption.
  */

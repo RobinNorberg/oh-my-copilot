@@ -444,15 +444,15 @@ describe('Team staged workflow integration', () => {
     let testDir;
     const sessionId = 'team-session-test';
     beforeEach(() => {
-        testDir = join(tmpdir(), `omc-team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(join(testDir, '.omg', 'state', 'sessions', sessionId), { recursive: true });
+        testDir = join(tmpdir(), `omcp-team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        mkdirSync(join(testDir, '.omcp', 'state', 'sessions', sessionId), { recursive: true });
         execSync('git init', { cwd: testDir });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
     });
     it('restores active Team stage on session-start', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-exec',
@@ -468,7 +468,7 @@ describe('Team staged workflow integration', () => {
         expect(result.message || '').toContain('team-exec');
     });
     it('emits terminal Team restore guidance on cancelled stage', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-fix',
@@ -484,7 +484,7 @@ describe('Team staged workflow integration', () => {
         expect(result.message || '').toContain('cancel');
     });
     it('enforces verify stage continuation while active and non-terminal', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -501,7 +501,7 @@ describe('Team staged workflow integration', () => {
         expect(result.message).toContain('Continue working');
     });
     it('enforces fix stage continuation while active and non-terminal', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-fix',
@@ -518,7 +518,7 @@ describe('Team staged workflow integration', () => {
         expect(result.message).toContain('Continue working');
     });
     it('skips Team stage continuation on authentication stop reasons', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -534,7 +534,7 @@ describe('Team staged workflow integration', () => {
         expect(result.message || '').toContain('AUTHENTICATION ERROR');
     });
     it('allows terminal cleanup when Team stage is cancelled', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -549,7 +549,7 @@ describe('Team staged workflow integration', () => {
         expect(result.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('fails open when Team stage is missing', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             team_name: 'delivery-team'
@@ -562,7 +562,7 @@ describe('Team staged workflow integration', () => {
         expect(result.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('fails open when Team stage is unknown or malformed', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: { bad: true },
@@ -574,7 +574,7 @@ describe('Team staged workflow integration', () => {
         });
         expect(malformedResult.continue).toBe(true);
         expect(malformedResult.message || '').not.toContain('[TEAM MODE CONTINUATION]');
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-unknown',
@@ -588,13 +588,13 @@ describe('Team staged workflow integration', () => {
         expect(unknownResult.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('trips Team continuation circuit breaker after max stop reinforcements', async () => {
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-exec',
             team_name: 'delivery-team'
         }));
-        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-pipeline-stop-breaker.json'), JSON.stringify({ count: 20, updated_at: new Date().toISOString() }, null, 2));
+        writeFileSync(join(testDir, '.omcp', 'state', 'sessions', sessionId, 'team-pipeline-stop-breaker.json'), JSON.stringify({ count: 20, updated_at: new Date().toISOString() }, null, 2));
         const result = await processHook('persistent-mode', {
             sessionId,
             directory: testDir,
@@ -625,8 +625,8 @@ describe('Persistent-mode reply cleanup behavior', () => {
         rmSync(tempHome, { recursive: true, force: true });
     });
     it('does not remove reply-session registry on idle Stop/persistent-mode', async () => {
-        const registryPath = join(homedir(), '.omg', 'state', 'reply-session-registry.jsonl');
-        mkdirSync(join(homedir(), '.omg', 'state'), { recursive: true });
+        const registryPath = join(homedir(), '.omcp', 'state', 'reply-session-registry.jsonl');
+        mkdirSync(join(homedir(), '.omcp', 'state'), { recursive: true });
         writeFileSync(registryPath, `${JSON.stringify({
             platform: 'telegram',
             messageId: '123',
@@ -1186,8 +1186,8 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
         // Create a unique temp directory for each test
         testDir = join(tmpdir(), `omc-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(testDir, { recursive: true });
-        mkdirSync(join(testDir, '.omg'), { recursive: true });
-        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
+        mkdirSync(join(testDir, '.omcp'), { recursive: true });
+        mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
     });
     afterEach(() => {
         // Clean up temp directory
@@ -1203,17 +1203,17 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
             expect(isUltraQAActive(testDir)).toBe(false);
         });
         it('should return true when ultraqa is active', () => {
-            const stateFile = join(testDir, '.omg', 'state', 'ultraqa-state.json');
+            const stateFile = join(testDir, '.omcp', 'state', 'ultraqa-state.json');
             writeFileSync(stateFile, JSON.stringify({ active: true }));
             expect(isUltraQAActive(testDir)).toBe(true);
         });
         it('should return false when ultraqa is not active', () => {
-            const stateFile = join(testDir, '.omg', 'state', 'ultraqa-state.json');
+            const stateFile = join(testDir, '.omcp', 'state', 'ultraqa-state.json');
             writeFileSync(stateFile, JSON.stringify({ active: false }));
             expect(isUltraQAActive(testDir)).toBe(false);
         });
         it('should return false for invalid JSON', () => {
-            const stateFile = join(testDir, '.omg', 'state', 'ultraqa-state.json');
+            const stateFile = join(testDir, '.omcp', 'state', 'ultraqa-state.json');
             writeFileSync(stateFile, 'invalid json');
             expect(isUltraQAActive(testDir)).toBe(false);
         });
@@ -1223,12 +1223,12 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
             expect(isRalphLoopActive(testDir)).toBe(false);
         });
         it('should return true when ralph is active', () => {
-            const stateFile = join(testDir, '.omg', 'state', 'ralph-state.json');
+            const stateFile = join(testDir, '.omcp', 'state', 'ralph-state.json');
             writeFileSync(stateFile, JSON.stringify({ active: true }));
             expect(isRalphLoopActive(testDir)).toBe(true);
         });
         it('should return false when ralph is not active', () => {
-            const stateFile = join(testDir, '.omg', 'state', 'ralph-state.json');
+            const stateFile = join(testDir, '.omcp', 'state', 'ralph-state.json');
             writeFileSync(stateFile, JSON.stringify({ active: false }));
             expect(isRalphLoopActive(testDir)).toBe(false);
         });
@@ -1237,7 +1237,7 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
         it('should fail to start UltraQA when Ralph is active', () => {
             // Activate Ralph first - write to session-scoped path since startUltraQA
             // passes sessionId which makes readRalphState check session path only
-            const sessionDir = join(testDir, '.omg', 'state', 'sessions', 'test-session');
+            const sessionDir = join(testDir, '.omcp', 'state', 'sessions', 'test-session');
             mkdirSync(sessionDir, { recursive: true });
             const ralphStateFile = join(sessionDir, 'ralph-state.json');
             writeFileSync(ralphStateFile, JSON.stringify({ active: true }));
@@ -1254,7 +1254,7 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
             clearUltraQAState(testDir);
         });
         it('should succeed starting UltraQA when ralph state exists but inactive', () => {
-            const ralphStateFile = join(testDir, '.omg', 'state', 'ralph-state.json');
+            const ralphStateFile = join(testDir, '.omcp', 'state', 'ralph-state.json');
             writeFileSync(ralphStateFile, JSON.stringify({ active: false }));
             const result = startUltraQA(testDir, 'tests', 'test-session');
             expect(result.success).toBe(true);
@@ -1266,7 +1266,7 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
         it('should fail to start Ralph when UltraQA is active', () => {
             // Activate UltraQA first - write to session-scoped path since startLoop
             // passes sessionId which makes isUltraQAActive check session path only
-            const sessionDir = join(testDir, '.omg', 'state', 'sessions', 'test-session');
+            const sessionDir = join(testDir, '.omcp', 'state', 'sessions', 'test-session');
             mkdirSync(sessionDir, { recursive: true });
             const ultraqaStateFile = join(sessionDir, 'ultraqa-state.json');
             writeFileSync(ultraqaStateFile, JSON.stringify({ active: true }));
@@ -1283,7 +1283,7 @@ describe('Mutual Exclusion - UltraQA and Ralph', () => {
             clearRalphState(testDir);
         });
         it('should succeed starting Ralph when ultraqa state exists but inactive', () => {
-            const ultraqaStateFile = join(testDir, '.omg', 'state', 'ultraqa-state.json');
+            const ultraqaStateFile = join(testDir, '.omcp', 'state', 'ultraqa-state.json');
             writeFileSync(ultraqaStateFile, JSON.stringify({ active: false }));
             const hook = createRalphLoopHook(testDir);
             const result = hook.startLoop('test-session', 'test prompt');

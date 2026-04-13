@@ -5,7 +5,7 @@
  * Read/write/scan task JSON files with atomic writes (temp + rename).
  *
  * Canonical task storage path:
- *   {cwd}/.omg/state/team/{teamName}/tasks/{id}.json
+ *   {cwd}/.omcp/state/team/{teamName}/tasks/{id}.json
  *
  * Legacy path (read-only fallback during migration):
  *   ~/.copilot/tasks/{teamName}/{id}.json
@@ -152,12 +152,12 @@ function sanitizeTaskId(taskId) {
 // ─── Path helpers ──────────────────────────────────────────────────────────
 /**
  * Returns the canonical tasks directory for a team.
- * All new writes go here: {cwd}/.omg/state/team/{teamName}/tasks/
+ * All new writes go here: {cwd}/.omcp/state/team/{teamName}/tasks/
  */
 function canonicalTasksDir(teamName, cwd) {
     const root = cwd ?? process.cwd();
     const dir = getTaskStoragePath(root, sanitizeName(teamName));
-    validateResolvedPath(dir, join(root, '.omg', 'state', 'team'));
+    validateResolvedPath(dir, join(root, '.omcp', 'state', 'team'));
     return dir;
 }
 /**

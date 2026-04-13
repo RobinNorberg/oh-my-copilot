@@ -22,7 +22,7 @@ describe('AutopilotCancel', () => {
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'autopilot-cancel-test-'));
         const fs = require('fs');
-        fs.mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
+        fs.mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
         vi.clearAllMocks();
     });
     afterEach(() => {
@@ -39,7 +39,7 @@ describe('AutopilotCancel', () => {
             const state = initAutopilot(testDir, 'test idea');
             if (state) {
                 state.active = false;
-                const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
+                const stateFile = join(testDir, '.omcp', 'state', 'autopilot-state.json');
                 const fs = require('fs');
                 fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
             }
@@ -265,7 +265,7 @@ describe('AutopilotCancel', () => {
             initAutopilot(testDir, 'test idea');
             cancelAutopilot(testDir);
             // Age the state file to be older than the stale threshold
-            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omcp', 'state', 'autopilot-state.json');
             const pastTime = new Date(Date.now() - STALE_STATE_MAX_AGE_MS - 60_000);
             utimesSync(stateFile, pastTime, pastTime);
             const result = canResumeAutopilot(testDir);
@@ -275,7 +275,7 @@ describe('AutopilotCancel', () => {
             initAutopilot(testDir, 'test idea');
             cancelAutopilot(testDir);
             // Age the state file
-            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omcp', 'state', 'autopilot-state.json');
             const pastTime = new Date(Date.now() - STALE_STATE_MAX_AGE_MS - 60_000);
             utimesSync(stateFile, pastTime, pastTime);
             canResumeAutopilot(testDir);
@@ -374,7 +374,7 @@ describe('AutopilotCancel', () => {
             transitionPhase(testDir, 'planning');
             cancelAutopilot(testDir);
             // Simulate passage of time — file is now older than 1 hour
-            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omcp', 'state', 'autopilot-state.json');
             const pastTime = new Date(Date.now() - STALE_STATE_MAX_AGE_MS - 60_000);
             utimesSync(stateFile, pastTime, pastTime);
             const result = resumeAutopilot(testDir);

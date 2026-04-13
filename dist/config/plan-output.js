@@ -1,6 +1,6 @@
 import { join, posix } from "path";
 import { validatePath } from "../lib/worktree-paths.js";
-export const DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omg/plans";
+export const DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omcp/plans";
 export const DEFAULT_PLAN_OUTPUT_FILENAME_TEMPLATE = "{{name}}.md";
 function sanitizePlanOutputSegment(value) {
     const sanitized = value

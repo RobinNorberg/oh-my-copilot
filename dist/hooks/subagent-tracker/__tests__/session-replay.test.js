@@ -7,7 +7,7 @@ describe('session-replay', () => {
     let testDir;
     beforeEach(() => {
         testDir = join(tmpdir(), `replay-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
+        mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
         resetSessionStartTimes();
     });
     afterEach(() => {
@@ -16,7 +16,7 @@ describe('session-replay', () => {
     describe('getReplayFilePath', () => {
         it('should return correct path for session', () => {
             const path = getReplayFilePath(testDir, 'test-session');
-            expect(path).toContain(join('.omg', 'state', 'agent-replay-test-session.jsonl'));
+            expect(path).toContain(join('.omcp', 'state', 'agent-replay-test-session.jsonl'));
         });
         it('should sanitize session ID', () => {
             const path = getReplayFilePath(testDir, 'test/../session');
@@ -128,7 +128,7 @@ describe('session-replay', () => {
         });
         it('should skip malformed JSON lines', () => {
             const filePath = getReplayFilePath(testDir, 'malformed');
-            mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
+            mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
             const { writeFileSync } = require('fs');
             writeFileSync(filePath, '{"valid": true}\nnot json\n{"also": "valid"}\n');
             const events = readReplayEvents(testDir, 'malformed');

@@ -19,7 +19,7 @@ vi.mock('fs', async () => {
 // Functions are now imported from ../index.js
 describe('readLastToolError', () => {
     const testDir = '/test';
-    const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
+    const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -86,7 +86,7 @@ describe('readLastToolError', () => {
 });
 describe('clearToolErrorState', () => {
     const testDir = '/test';
-    const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
+    const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
     beforeEach(() => {
         vi.clearAllMocks();
     });
@@ -216,7 +216,7 @@ describe('Integration: Continuation message with tool error', () => {
     });
     it('continuation message includes error context when tool error present', () => {
         const testDir = '/test';
-        const _errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
+        const _errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
         const recentError = {
             tool_name: 'Bash',
             error: 'Command not found: invalid-command',
@@ -247,7 +247,7 @@ describe('Integration: Continuation message with tool error', () => {
     });
     it('error state is cleared after reading', () => {
         const testDir = '/test';
-        const errorPath = join(testDir, '.omg', 'state', 'last-tool-error.json');
+        const errorPath = join(testDir, '.omcp', 'state', 'last-tool-error.json');
         const recentError = {
             tool_name: 'Bash',
             error: 'Some error',

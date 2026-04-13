@@ -391,8 +391,8 @@ function buildContext(state, tracking) {
         idea: state.originalIdea,
         directory: state.project_path || process.cwd(),
         sessionId: state.session_id,
-        specPath: state.expansion.spec_path || '.omg/autopilot/spec.md',
-        planPath: state.planning.plan_path || '.omg/plans/autopilot-impl.md',
+        specPath: state.expansion.spec_path || '.omcp/autopilot/spec.md',
+        planPath: state.planning.plan_path || '.omcp/plans/autopilot-impl.md',
         config: tracking.pipelineConfig,
     };
 }

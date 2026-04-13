@@ -10,7 +10,7 @@ function makeTempProject() {
     return tempDir;
 }
 function writeSkillState(tempDir, sessionId, skillName, overrides = {}) {
-    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'skill-active-state.json'), JSON.stringify({
         active: true,
@@ -101,7 +101,7 @@ describe('persistent-mode skill-state stop integration (issue #1033)', () => {
         const tempDir = makeTempProject();
         try {
             // Write both ralph and skill state
-            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omcp', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
                 active: true,

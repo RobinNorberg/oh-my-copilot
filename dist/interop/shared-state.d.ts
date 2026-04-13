@@ -1,7 +1,7 @@
 /**
  * Shared State Management for Cross-Tool Interoperability
  *
- * Manages shared state files at .omc/state/interop/ for communication
+ * Manages shared state files at .omcp/state/interop/ for communication
  * between OMC (Copilot CLI) and OMX (Codex CLI).
  *
  * Uses atomic writes for safety and supports task/message passing.

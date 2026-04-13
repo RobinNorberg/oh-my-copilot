@@ -29904,6 +29904,33 @@ function validatePath(inputPath) {
   }
 }
 var dualDirWarnings = /* @__PURE__ */ new Set();
+var omgMigrationWarnings = /* @__PURE__ */ new Set();
+function migrateOmgToOmcp(worktreeRoot) {
+  const legacyPath = (0, import_path9.join)(worktreeRoot, ".omg");
+  const newPath = (0, import_path9.join)(worktreeRoot, ".omcp");
+  if (!(0, import_fs6.existsSync)(legacyPath)) {
+    return false;
+  }
+  if ((0, import_fs6.existsSync)(newPath)) {
+    if (!omgMigrationWarnings.has(worktreeRoot)) {
+      omgMigrationWarnings.add(worktreeRoot);
+      console.warn(
+        `[omg] Both .omg/ and .omcp/ exist in ${worktreeRoot}. Using .omcp/. Remove .omg/ manually after verifying no data loss.`
+      );
+    }
+    return false;
+  }
+  try {
+    (0, import_fs6.renameSync)(legacyPath, newPath);
+    console.log(`[omg] Migrated state directory: .omg/ \u2192 .omcp/ in ${worktreeRoot}`);
+    return true;
+  } catch (err) {
+    console.warn(
+      `[omg] Failed to migrate .omg/ \u2192 .omcp/ in ${worktreeRoot}: ${err instanceof Error ? err.message : err}. Rename manually: mv .omg .omcp`
+    );
+    return false;
+  }
+}
 function getProjectIdentifier(worktreeRoot) {
   const root = worktreeRoot || getWorktreeRoot() || process.cwd();
   let source;
@@ -29938,6 +29965,7 @@ function getOmcRoot(worktreeRoot) {
     return centralizedPath;
   }
   const root = worktreeRoot || getWorktreeRoot() || process.cwd();
+  migrateOmgToOmcp(root);
   return (0, import_path9.join)(root, OmgPaths.ROOT);
 }
 function resolveOmcPath(relativePath, worktreeRoot) {
