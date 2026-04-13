@@ -1,8 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-vi.mock('child_process', () => ({
-  execSync: vi.fn(),
-}));
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    execSync: vi.fn(),
+  };
+});
 
 vi.mock('../installer/index.js', async () => {
   const actual = await vi.importActual<typeof import('../installer/index.js')>('../installer/index.js');
@@ -98,7 +102,7 @@ describe('auto-update reconciliation', () => {
       verbose: false,
       skipCopilotCheck: true,
       forceHooks: true,
-      refreshHooksInPlugin: true,
+      refreshHooksInPlugin: false,
     });
   });
 
@@ -129,14 +133,14 @@ describe('auto-update reconciliation', () => {
       verbose: false,
       skipCopilotCheck: true,
       forceHooks: true,
-      refreshHooksInPlugin: true,
+      refreshHooksInPlugin: false,
     });
     expect(mockedInstall).toHaveBeenNthCalledWith(2, {
       force: true,
       verbose: false,
       skipCopilotCheck: true,
       forceHooks: true,
-      refreshHooksInPlugin: true,
+      refreshHooksInPlugin: false,
     });
   });
 
@@ -172,7 +176,7 @@ describe('auto-update reconciliation', () => {
       verbose: false,
       skipCopilotCheck: true,
       forceHooks: true,
-      refreshHooksInPlugin: true,
+      refreshHooksInPlugin: false,
     });
 
     delete process.env.OMC_UPDATE_RECONCILE;
