@@ -45,7 +45,7 @@ export interface DetectedKeyword {
  */
 const KEYWORD_PATTERNS: Record<KeywordType, RegExp> = {
   cancel: /\b(cancelomc|stopomc)\b/i,
-  ralph: /\b(ralph)\b(?!-)|(랄프)(?!로렌)/i,
+  ralph: /\b(ralph)\b(?!-)/i,
   autopilot: /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b/i,
   ultrawork: /\b(ultrawork|ulw)\b/i,
   // Team keyword detection disabled — team mode is now explicit-only via /team skill.

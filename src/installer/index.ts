@@ -955,7 +955,16 @@ export function install(options: InstallOptions = {}): InstallResult {
         }
       }
 
-      // Install copilot-instructions.md with merge support
+      // Note: hook scripts are no longer installed to ~/.copilot/hooks/.
+      // All hooks are delivered via the plugin's hooks/hooks.json + scripts/.
+      // Legacy hook entries are cleaned up from settings.json below.
+      result.hooksConfigured = true; // Will be set properly after consolidated settings.json write
+    } else {
+      log('Skipping agent/command/hook files (managed by plugin system)');
+    }
+
+    // Install copilot-instructions.md with merge support (always, except for project-scoped plugins)
+    if (!projectScoped) {
       const claudeMdPath = join(COPILOT_CONFIG_DIR, 'copilot-instructions.md');
       const omcContent = loadClaudeMdContent();
 
@@ -982,13 +991,6 @@ export function install(options: InstallOptions = {}): InstallResult {
       } else {
         log('Created copilot-instructions.md');
       }
-
-      // Note: hook scripts are no longer installed to ~/.copilot/hooks/.
-      // All hooks are delivered via the plugin's hooks/hooks.json + scripts/.
-      // Legacy hook entries are cleaned up from settings.json below.
-      result.hooksConfigured = true; // Will be set properly after consolidated settings.json write
-    } else {
-      log('Skipping agent/command/hook files (managed by plugin system)');
     }
 
     if (shouldInstallBundledSkills) {

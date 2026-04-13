@@ -761,8 +761,11 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
   const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
   let tempRoot: string | null = null;
 
+  const originalClaudecode = process.env.CLAUDECODE;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    delete process.env.CLAUDECODE;
     tempRoot = mkdtempSync(join(tmpdir(), 'omc-launch-profile-'));
     (execFileSync as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from(''));
     (resolveLaunchPolicy as ReturnType<typeof vi.fn>).mockReturnValue('direct');

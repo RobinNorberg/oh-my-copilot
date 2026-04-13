@@ -638,7 +638,7 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean }): UpdateR
       force: true,
       verbose: options?.verbose ?? false,
       skipCopilotCheck: true,
-      forceHooks: true,
+      forceHooks: shouldRefreshPluginHooks,
       refreshHooksInPlugin: shouldRefreshPluginHooks,
     });
 

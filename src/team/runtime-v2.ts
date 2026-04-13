@@ -16,8 +16,8 @@
  * assignTask, resumeTeam as discrete operations driven by the caller.
  */
 
-import { execFile } from 'child_process';
 import { join, resolve } from 'path';
+import { tmuxExecAsync } from '../cli/tmux-utils.js';
 import { existsSync } from 'fs';
 import { mkdir, readdir, readFile, writeFile } from 'fs/promises';
 import { performance } from 'perf_hooks';
@@ -184,12 +184,12 @@ async function isWorkerPaneAlive(paneId: string | undefined): Promise<boolean> {
 
 async function captureWorkerPane(paneId: string | undefined): Promise<string> {
   if (!paneId) return '';
-  return await new Promise((resolve) => {
-    execFile('tmux', ['capture-pane', '-t', paneId, '-p', '-S', '-80'], (err, stdout) => {
-      if (err) resolve('');
-      else resolve(stdout ?? '');
-    });
-  });
+  try {
+    const { stdout } = await tmuxExecAsync(['capture-pane', '-t', paneId, '-p', '-S', '-80']);
+    return stdout;
+  } catch {
+    return '';
+  }
 }
 
 function isFreshTimestamp(value: string | undefined, maxAgeMs: number = MONITOR_SIGNAL_STALE_MS): boolean {
@@ -392,17 +392,13 @@ async function waitForWorkerStartupEvidence(
  * Writes CLI API inbox (no done.json), waits for ready, sends inbox path.
  */
 async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerResult> {
-  const { execFile } = await import('child_process');
-  const { promisify } = await import('util');
-  const execFileAsync = promisify(execFile);
-
   // Split new pane off the last existing pane (or leader if first worker)
   const splitTarget = opts.existingWorkerPaneIds.length === 0
     ? opts.leaderPaneId
     : opts.existingWorkerPaneIds[opts.existingWorkerPaneIds.length - 1];
   const splitType = opts.existingWorkerPaneIds.length === 0 ? '-h' : '-v';
 
-  const splitResult = await execFileAsync('tmux', [
+  const splitResult = await tmuxExecAsync([
     'split-window', splitType, '-t', splitTarget,
     '-d', '-P', '-F', '#{pane_id}',
     '-c', opts.cwd,
@@ -1313,11 +1309,8 @@ export async function resumeTeamV2(
 
   // Verify tmux session is alive
   try {
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const execFileAsync = promisify(execFile);
     const sessionName = config.tmux_session || `omcp-team-${sanitized}`;
-    await execFileAsync('tmux', ['has-session', '-t', sessionName.split(':')[0]]);
+    await tmuxExecAsync(['has-session', '-t', sessionName.split(':')[0]]);
 
     return {
       teamName: sanitized,

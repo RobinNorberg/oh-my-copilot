@@ -1,14 +1,11 @@
 import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 
-vi.mock('child_process', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('child_process')>();
-  return {
-    ...actual,
-    spawnSync: vi.fn(),
-  };
+vi.mock('../cli/tmux-utils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../cli/tmux-utils.js')>();
+  return { ...actual, tmuxSpawn: vi.fn() };
 });
 
-import { spawnSync } from 'child_process';
+import { tmuxSpawn } from '../cli/tmux-utils.js';
 
 describe('CLI win32 platform warning (#923)', () => {
   const originalPlatform = process.platform;
@@ -27,7 +24,7 @@ describe('CLI win32 platform warning (#923)', () => {
 
   it('should warn on win32 when tmux is not available', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-    vi.mocked(spawnSync).mockReturnValue({ status: 1 } as ReturnType<typeof spawnSync>);
+    vi.mocked(tmuxSpawn).mockReturnValue({ status: 1 } as ReturnType<typeof tmuxSpawn>);
 
     const { warnIfWin32 } = await import('../cli/win32-warning.js');
     warnIfWin32();
@@ -42,7 +39,7 @@ describe('CLI win32 platform warning (#923)', () => {
 
   it('should NOT warn on win32 when tmux (or psmux) is available', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-    vi.mocked(spawnSync).mockReturnValue({ status: 0 } as ReturnType<typeof spawnSync>);
+    vi.mocked(tmuxSpawn).mockReturnValue({ status: 0 } as ReturnType<typeof tmuxSpawn>);
 
     const { warnIfWin32 } = await import('../cli/win32-warning.js');
     warnIfWin32();
@@ -70,7 +67,7 @@ describe('CLI win32 platform warning (#923)', () => {
 
   it('should not block execution after warning', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-    vi.mocked(spawnSync).mockReturnValue({ status: 1 } as ReturnType<typeof spawnSync>);
+    vi.mocked(tmuxSpawn).mockReturnValue({ status: 1 } as ReturnType<typeof tmuxSpawn>);
 
     const { warnIfWin32 } = await import('../cli/win32-warning.js');
     let continued = false;
