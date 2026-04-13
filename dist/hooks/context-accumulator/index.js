@@ -5,7 +5,7 @@
  * and injects them into the next phase's agent prompt via a
  * <prior-phase-context> XML block.
  *
- * Stored in .omc/state/sessions/{sessionId}/phase-context.json
+ * Stored in .omcp/state/sessions/{sessionId}/phase-context.json
  */
 import { writeModeState, readModeState, clearModeStateFile } from '../../lib/mode-state-io.js';
 import { CONTEXT_ACCUMULATOR_CONFIG } from './types.js';

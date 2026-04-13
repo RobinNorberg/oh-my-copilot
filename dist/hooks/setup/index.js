@@ -14,11 +14,11 @@ import { getCopilotConfigDir } from '../../utils/config-dir.js';
 // Constants
 // ============================================================================
 const REQUIRED_DIRECTORIES = [
-    '.omg/state',
-    '.omg/logs',
-    '.omg/notepads',
-    '.omg/state/checkpoints',
-    '.omg/plans',
+    '.omcp/state',
+    '.omcp/logs',
+    '.omcp/notepads',
+    '.omcp/state/checkpoints',
+    '.omcp/plans',
 ];
 const CONFIG_FILES = [
     '.omc-config.json',
@@ -288,10 +288,10 @@ export async function processSetupInit(input) {
 // Maintenance Functions
 // ============================================================================
 /**
- * Prune old state files from .omg/state directory
+ * Prune old state files from .omcp/state directory
  */
 export function pruneOldStateFiles(directory, maxAgeDays = DEFAULT_STATE_MAX_AGE_DAYS) {
-    const stateDir = join(directory, '.omg/state');
+    const stateDir = join(directory, '.omcp/state');
     if (!existsSync(stateDir)) {
         return 0;
     }
@@ -348,7 +348,7 @@ export function pruneOldStateFiles(directory, maxAgeDays = DEFAULT_STATE_MAX_AGE
  * Clean up orphaned state files (state files without corresponding active sessions)
  */
 export function cleanupOrphanedState(directory) {
-    const stateDir = join(directory, '.omg/state');
+    const stateDir = join(directory, '.omcp/state');
     if (!existsSync(stateDir)) {
         return 0;
     }

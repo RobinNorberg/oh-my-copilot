@@ -17,7 +17,7 @@ describe('Skill Loader', () => {
     beforeEach(() => {
         testDir = join(tmpdir(), `skill-loader-test-${Date.now()}`);
         projectRoot = join(testDir, 'project');
-        mkdirSync(join(projectRoot, '.omg', 'skills'), { recursive: true });
+        mkdirSync(join(projectRoot, '.omcp', 'skills'), { recursive: true });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
@@ -37,7 +37,7 @@ ${(metadata.triggers || ['test']).map(t => `  - "${t}"`).join('\n')}
 
 Test content for ${name}.
 `;
-        const skillPath = join(projectRoot, '.omg', 'skills', `${name}.md`);
+        const skillPath = join(projectRoot, '.omcp', 'skills', `${name}.md`);
         writeFileSync(skillPath, content);
         return skillPath;
     };

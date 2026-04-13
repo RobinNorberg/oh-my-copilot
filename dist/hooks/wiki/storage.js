@@ -6,7 +6,7 @@
  * to prevent concurrent corruption.
  *
  * Storage layout:
- *   .omc/wiki/
+ *   .omcp/wiki/
  *   ├── index.md      (auto-maintained catalog)
  *   ├── log.md         (append-only operation chronicle)
  *   ├── page-slug.md   (knowledge pages)
@@ -30,7 +30,7 @@ const RESERVED_FILES = new Set([INDEX_FILE, LOG_FILE, ENVIRONMENT_FILE]);
 // ============================================================================
 /** Get the .omc root directory for a given worktree root. */
 function getOmcDir(root) {
-    return join(root, '.omc');
+    return join(root, '.omcp');
 }
 /** Get the wiki directory path. */
 export function getWikiDir(root) {
@@ -42,7 +42,7 @@ export function ensureWikiDir(root) {
     if (!existsSync(wikiDir)) {
         mkdirSync(wikiDir, { recursive: true });
     }
-    // Ensure .omc/.gitignore includes wiki/
+    // Ensure .omcp/.gitignore includes wiki/
     const omcRoot = getOmcDir(root);
     const gitignorePath = join(omcRoot, '.gitignore');
     if (existsSync(gitignorePath)) {

@@ -2,7 +2,7 @@
  * Attempt Tracker
  *
  * Persists per-task attempt history for orchestration recovery.
- * Stored in .omc/state/sessions/{sessionId}/attempt-history.json
+ * Stored in .omcp/state/sessions/{sessionId}/attempt-history.json
  */
 import type { AttemptHistory, OrchestrationFailureType, RecoveryAction } from './types.js';
 /**

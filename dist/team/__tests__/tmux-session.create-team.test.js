@@ -8,7 +8,7 @@ vi.mock('child_process', async (importOriginal) => {
     const runMockExec = (args) => {
         mockedCalls.execFileArgs.push(args);
         if (args[0] === 'new-session') {
-            return { stdout: 'omc-team-race-team-detached:0 %91\n', stderr: '' };
+            return { stdout: 'omcp-team-race-team-detached:0 %91\n', stderr: '' };
         }
         if (args[0] === 'new-window') {
             return { stdout: 'omx:5 %99\n', stderr: '' };
@@ -84,7 +84,7 @@ describe('createTeamSession context resolution', () => {
         const detachedCreateCall = mockedCalls.execFileArgs.find((args) => args[0] === 'new-session' && args.includes('-d') && args.includes('-P'));
         expect(detachedCreateCall).toBeDefined();
         expect(session.leaderPaneId).toBe('%91');
-        expect(session.sessionName).toBe('omc-team-race-team-detached:0');
+        expect(session.sessionName).toBe('omcp-team-race-team-detached:0');
         expect(session.workerPaneIds).toEqual([]);
         expect(session.sessionMode).toBe('detached-session');
     });

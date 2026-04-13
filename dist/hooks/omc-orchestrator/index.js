@@ -2,7 +2,7 @@
  * OMC Orchestrator Hook
  *
  * Enforces orchestrator behavior - delegation over direct implementation.
- * When an orchestrator agent tries to directly modify files outside .omg/,
+ * When an orchestrator agent tries to directly modify files outside .omcp/,
  * this hook injects reminders to delegate to subagents instead.
  *
  * Adapted from oh-my-opencode's omc-orchestrator hook for shell-based hooks.
@@ -31,7 +31,7 @@ export function clearEnforcementCache() {
 }
 /**
  * Read enforcement level from config.
- * Checks: .omc/config.json → [$COPILOT_CONFIG_DIR|~/.copilot]/.omc-config.json → default (warn)
+ * Checks: .omcp/config.json → [$COPILOT_CONFIG_DIR|~/.copilot]/.omc-config.json → default (warn)
  */
 function getEnforcementLevel(directory) {
     const now = Date.now();

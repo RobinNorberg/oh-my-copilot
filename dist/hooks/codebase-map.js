@@ -15,7 +15,7 @@ const SKIP_DIRS = new Set([
     '__pycache__', '.mypy_cache', '.pytest_cache', '.ruff_cache',
     'target', '.gradle', 'vendor',
     '.venv', 'venv', 'env',
-    '.omg', '.copilot',
+    '.omcp', '.copilot',
     'tmp', 'temp',
 ]);
 // File extensions considered source/config files

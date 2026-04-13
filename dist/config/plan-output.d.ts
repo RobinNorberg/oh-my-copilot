@@ -1,5 +1,5 @@
 import type { PluginConfig } from "../shared/types.js";
-export declare const DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omg/plans";
+export declare const DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omcp/plans";
 export declare const DEFAULT_PLAN_OUTPUT_FILENAME_TEMPLATE = "{{name}}.md";
 export type PlanOutputKind = "autopilot-impl" | "open-questions";
 export declare function getPlanOutputDirectory(config?: PluginConfig): string;

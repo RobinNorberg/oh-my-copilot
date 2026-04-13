@@ -84,7 +84,7 @@ export function clearBoulderState(directory) {
 }
 /**
  * Find Planner plan files for this project.
- * Planner stores plans at: {project}/.omg/plans/{name}.md
+ * Planner stores plans at: {project}/.omcp/plans/{name}.md
  */
 export function findPlannerPlans(directory) {
     const plansDir = join(directory, PLANNER_PLANS_DIR);

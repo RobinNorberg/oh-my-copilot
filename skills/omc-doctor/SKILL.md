@@ -52,21 +52,26 @@ ls -la "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-instructions.md 2>/dev/nu
 # Check for OMC markers (<!-- OMG:START --> is the canonical marker)
 grep -q "<!-- OMG:START -->" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-instructions.md" 2>/dev/null && echo "Has OMC config" || echo "Missing OMC config in copilot-instructions.md"
 
-# Check companion files for file-split pattern (e.g. copilot-omg.md)
-ls "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-*.md 2>/dev/null
-for f in "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/copilot-*.md; do
+# Check copilot-instructions.md (or deterministic companion) version marker and compare with latest installed plugin cache version
+node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.copilot');const base=p.join(d,'copilot-instructions.md');let baseContent='';try{baseContent=f.readFileSync(base,'utf8')}catch{};let candidates=[base];let referenced='';const importMatch=baseContent.match(/copilot-[^ )]*\.md/);if(importMatch){referenced=p.join(d,importMatch[0]);candidates.push(referenced)}else{const defaultCompanion=p.join(d,'copilot-omc.md');if(f.existsSync(defaultCompanion))candidates.push(defaultCompanion);try{const others=f.readdirSync(d).filter(n=>/^copilot-.*\.md$/i.test(n)).sort().map(n=>p.join(d,n));for(const o of others){if(candidates.includes(o)===false)candidates.push(o)}}catch{}};let instrV='(missing)';let instrSource='(none)';for(const file of candidates){try{const c=f.readFileSync(file,'utf8');const m=c.match(/<!--\s*OMC:VERSION:([^\s]+)\s*-->/i);if(m){instrV=m[1];instrSource=file;break}}catch{}};if(instrV==='(missing)'&&candidates.length>0){instrV='(missing marker)';instrSource='scanned deterministic copilot-instructions sources';};let pluginV='(none)';try{const b=p.join(d,'plugins','cache','omg','oh-my-copilot');const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));pluginV=v.length?v[v.length-1]:'(none)';}catch{};console.log('copilot-instructions.md OMC version:',instrV);console.log('OMC version source:',instrSource);console.log('Latest cached plugin version:',pluginV);if(instrV==='(missing)'||instrV==='(missing marker)'||pluginV==='(none)'){console.log('VERSION CHECK SKIPPED: missing OMC marker or plugin cache')}else if(instrV===pluginV){console.log('VERSION MATCH: copilot-instructions.md and plugin cache are aligned')}else{console.log('VERSION DRIFT: copilot-instructions.md and plugin versions differ')}"
+
+# Check companion files for file-split pattern (e.g. copilot-omc.md)
+find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}" -maxdepth 1 -type f -name 'copilot-*.md' -print 2>/dev/null
+while IFS= read -r f; do
   [ -f "$f" ] && grep -q "<!-- OMG:START -->" "$f" 2>/dev/null && echo "Has OMC config in companion: $f"
-done
+done < <(find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}" -maxdepth 1 -type f -name 'copilot-*.md' 2>/dev/null)
 
 # Check if copilot-instructions.md references a companion file
-grep -o "copilot-[^ )]*\.md" ~/.copilot/copilot-instructions.md 2>/dev/null
+grep -o "copilot-[^ )]*\.md" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-instructions.md" 2>/dev/null
 ```
 
 **Diagnosis**:
 - If copilot-instructions.md missing: CRITICAL - copilot-instructions.md not configured
 - If `<!-- OMG:START -->` found in copilot-instructions.md: OK
-- If `<!-- OMG:START -->` found in a companion file (e.g. `copilot-omg.md`): OK - file-split pattern detected
+- If `<!-- OMG:START -->` found in a companion file (e.g. `copilot-omc.md`): OK - file-split pattern detected
 - If no OMC markers in copilot-instructions.md or any companion file: WARN - outdated copilot-instructions.md
+- If `OMC:VERSION` marker is missing from deterministic copilot-instructions source scan (base + referenced companion): WARN - cannot verify copilot-instructions.md freshness
+- If `copilot-instructions.md OMC version` != `Latest cached plugin version`: WARN - version drift detected (run `omcp update` or `omcp setup`)
 
 ### Step 5: Check for Stale Plugin Cache
 

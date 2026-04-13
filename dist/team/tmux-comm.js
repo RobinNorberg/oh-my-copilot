@@ -51,7 +51,7 @@ export async function sendTmuxTrigger(paneId, triggerType, payload) {
  * Notified flag set only on successful trigger.
  */
 export async function queueInboxInstruction(teamName, workerName, instruction, paneId, cwd) {
-    const inboxPath = join(cwd, `.omg/state/team/${teamName}/workers/${workerName}/inbox.md`);
+    const inboxPath = join(cwd, `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`);
     await mkdir(join(inboxPath, '..'), { recursive: true });
     // Write FIRST (write-then-notify)
     const entry = `\n\n---\n${instruction}\n_queued: ${new Date().toISOString()}_\n`;

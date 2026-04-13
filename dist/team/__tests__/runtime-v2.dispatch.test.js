@@ -110,15 +110,15 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(requests[0]?.to_worker).toBe('worker-1');
         expect(requests[0]?.status).toBe('notified');
         expect(requests[0]?.inbox_correlation_key).toBe('startup:worker-1:1');
-        expect(requests[0]?.trigger_message).toContain('.omg/state/team/dispatch-team/workers/worker-1/inbox.md');
-        const inboxPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
+        expect(requests[0]?.trigger_message).toContain('.omcp/state/team/dispatch-team/workers/worker-1/inbox.md');
+        const inboxPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
         const inbox = await readFile(inboxPath, 'utf-8');
         expect(inbox).toContain('Dispatch test');
-        expect(mocks.sendToWorker).toHaveBeenCalledWith('dispatch-session', '%2', expect.stringContaining('.omg/state/team/dispatch-team/workers/worker-1/inbox.md'));
+        expect(mocks.sendToWorker).toHaveBeenCalledWith('dispatch-session', '%2', expect.stringContaining('.omcp/state/team/dispatch-team/workers/worker-1/inbox.md'));
         expect(mocks.spawnWorkerInPane).toHaveBeenCalledWith('dispatch-session', '%2', expect.objectContaining({
             envVars: expect.objectContaining({
                 OMC_TEAM_WORKER: 'dispatch-team/worker-1',
-                OMC_TEAM_STATE_ROOT: join(cwd, '.omg', 'state', 'team', 'dispatch-team'),
+                OMC_TEAM_STATE_ROOT: join(cwd, '.omcp', 'state', 'team', 'dispatch-team'),
                 OMC_TEAM_LEADER_CWD: cwd,
             }),
         }));
@@ -159,7 +159,7 @@ describe('runtime v2 startup inbox dispatch', () => {
             cwd,
         });
         expect(runtime.config.workers.map((worker) => worker.role)).toEqual(['architect', 'writer']);
-        const configPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'config.json');
+        const configPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json');
         const persisted = JSON.parse(await readFile(configPath, 'utf-8'));
         expect(persisted.workers.map((worker) => worker.role)).toEqual(['architect', 'writer']);
     });
@@ -231,7 +231,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     it('does not treat ACK-only mailbox replies as Claude startup evidence or resend the startup inbox', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-claude-evidence-ack-'));
         mocks.sendToWorker.mockImplementation(async () => {
-            const mailboxDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'mailbox');
+            const mailboxDir = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'mailbox');
             await mkdir(mailboxDir, { recursive: true });
             await writeFile(join(mailboxDir, 'leader-fixed.json'), JSON.stringify({
                 worker: 'leader-fixed',
@@ -260,7 +260,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     it('accepts Claude startup once the worker claims the task', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-claude-evidence-claim-'));
         mocks.sendToWorker.mockImplementation(async () => {
-            const taskDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks');
+            const taskDir = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'tasks');
             const taskPath = join(taskDir, 'task-1.json');
             const existing = JSON.parse(await readFile(taskPath, 'utf-8'));
             await writeFile(taskPath, JSON.stringify({
@@ -284,7 +284,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     it('accepts Claude startup once worker status shows task progress', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-claude-evidence-status-'));
         mocks.sendToWorker.mockImplementation(async () => {
-            const workerDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
+            const workerDir = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
             await mkdir(workerDir, { recursive: true });
             await writeFile(join(workerDir, 'status.json'), JSON.stringify({
                 state: 'working',
@@ -308,7 +308,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-codex-prompt-'));
         modelContractMocks.isPromptModeAgent.mockImplementation((agentType) => agentType === 'codex');
         mocks.spawnWorkerInPane.mockImplementation(async () => {
-            const taskDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks');
+            const taskDir = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'tasks');
             const canonicalTaskPath = join(taskDir, 'task-1.json');
             const legacyTaskPath = join(taskDir, '1.json');
             const taskPath = await readFile(canonicalTaskPath, 'utf-8')

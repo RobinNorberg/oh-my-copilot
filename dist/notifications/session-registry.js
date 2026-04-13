@@ -5,7 +5,7 @@
  * Uses JSONL append format for atomic writes, following the pattern from
  * session-replay.ts with secure file permissions from daemon.ts.
  *
- * Registry location: XDG-aware global OMC state (legacy ~/.omg/state fallback for reads)
+ * Registry location: XDG-aware global OMC state (legacy ~/.omcp/state fallback for reads)
  * File permissions: 0600 (owner read/write only)
  */
 import { existsSync, readFileSync, writeFileSync, mkdirSync, openSync, closeSync, writeSync, unlinkSync, statSync, constants, } from 'fs';
@@ -30,7 +30,7 @@ const LOCK_MAX_WAIT_MS = 10000;
  * can redirect all I/O to a temporary directory without touching global state.
  */
 function getRegistryStateDir() {
-    return process.env['OMC_TEST_REGISTRY_DIR'] ?? join(homedir(), '.omg', 'state');
+    return process.env['OMC_TEST_REGISTRY_DIR'] ?? join(homedir(), '.omcp', 'state');
 }
 /** Global registry JSONL path */
 function getRegistryPath() {

@@ -5,7 +5,7 @@
  * error recurs 3+ times (circular fix). When detected, generates a
  * structured escalation report instead of continuing to retry.
  *
- * Error history stored in .omc/state/sessions/{sessionId}/error-history.json
+ * Error history stored in .omcp/state/sessions/{sessionId}/error-history.json
  */
 import { writeModeState, readModeState } from '../../lib/mode-state-io.js';
 import { CIRCULAR_FIX_CONFIG } from './types.js';

@@ -21,13 +21,13 @@ describe('validateConfigPath guardrails', () => {
     const home = '/home/user';
     const claudeConfigDir = '/home/user/.copilot';
     it('rejects path outside home', () => {
-        expect(validateConfigPath('/tmp/.omg/config.json', home, claudeConfigDir)).toBe(false);
+        expect(validateConfigPath('/tmp/.omcp/config.json', home, claudeConfigDir)).toBe(false);
     });
     it('rejects path not under trusted subpaths', () => {
         expect(validateConfigPath('/home/user/project/config.json', home, claudeConfigDir)).toBe(false);
     });
     it('accepts trusted .omc path under home', () => {
-        expect(validateConfigPath('/home/user/project/.omg/state/config.json', home, claudeConfigDir)).toBe(true);
+        expect(validateConfigPath('/home/user/project/.omcp/state/config.json', home, claudeConfigDir)).toBe(true);
     });
 });
 //# sourceMappingURL=bridge-entry.guardrails.test.js.map

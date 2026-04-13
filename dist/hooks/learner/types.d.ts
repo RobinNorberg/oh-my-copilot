@@ -37,7 +37,7 @@ export interface LearnedSkill {
     path: string;
     /** Path relative to skills directory */
     relativePath: string;
-    /** Whether from user directories (~/.omg/skills or ~/.copilot/skills/omc-learned) or project (.omg/skills) */
+    /** Whether from user directories (~/.omcp/skills or ~/.copilot/skills/omc-learned) or project (.omcp/skills) */
     scope: 'user' | 'project';
     /** Parsed frontmatter metadata */
     metadata: SkillMetadata;

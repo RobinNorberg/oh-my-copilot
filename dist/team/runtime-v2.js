@@ -106,7 +106,7 @@ function findOutstandingWorkerTask(worker, taskById, inProgressByOwner) {
 // ---------------------------------------------------------------------------
 /**
  * Build the initial task instruction for v2 workers.
- * Workers use `omc team api` CLI commands for all lifecycle transitions.
+ * Workers use `omcp team api` CLI commands for all lifecycle transitions.
  */
 function buildV2TaskInstruction(teamName, workerName, task, taskId) {
     const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input '${JSON.stringify({ team_name: teamName, task_id: taskId, worker: workerName })}' --json`, {});
@@ -355,7 +355,7 @@ export async function startTeamV2(config) {
     // Create state directories
     await mkdir(absPath(leaderCwd, TeamPaths.tasks(sanitized)), { recursive: true });
     await mkdir(absPath(leaderCwd, TeamPaths.workers(sanitized)), { recursive: true });
-    await mkdir(join(leaderCwd, '.omg', 'state', 'team', sanitized, 'mailbox'), { recursive: true });
+    await mkdir(join(leaderCwd, '.omcp', 'state', 'team', sanitized, 'mailbox'), { recursive: true });
     // Write task files
     for (let i = 0; i < config.tasks.length; i++) {
         const taskId = String(i + 1);
@@ -997,7 +997,7 @@ export async function resumeTeamV2(teamName, cwd) {
         const { execFile } = await import('child_process');
         const { promisify } = await import('util');
         const execFileAsync = promisify(execFile);
-        const sessionName = config.tmux_session || `omc-team-${sanitized}`;
+        const sessionName = config.tmux_session || `omcp-team-${sanitized}`;
         await execFileAsync('tmux', ['has-session', '-t', sessionName.split(':')[0]]);
         return {
             teamName: sanitized,
@@ -1016,7 +1016,7 @@ export async function resumeTeamV2(teamName, cwd) {
 // findActiveTeams — discover running teams
 // ---------------------------------------------------------------------------
 export async function findActiveTeamsV2(cwd) {
-    const root = join(cwd, '.omc', 'state', 'team');
+    const root = join(cwd, '.omcp', 'state', 'team');
     if (!existsSync(root))
         return [];
     const entries = await readdir(root, { withFileTypes: true });

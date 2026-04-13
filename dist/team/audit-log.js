@@ -10,7 +10,7 @@ import { existsSync, readFileSync, statSync, renameSync, writeFileSync, lstatSyn
 import { appendFileWithMode, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 const DEFAULT_MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB
 function getLogPath(workingDirectory, teamName) {
-    return join(workingDirectory, '.omg', 'logs', `team-bridge-${teamName}.jsonl`);
+    return join(workingDirectory, '.omcp', 'logs', `team-bridge-${teamName}.jsonl`);
 }
 /**
  * Append an audit event to the team's audit log.
@@ -18,7 +18,7 @@ function getLogPath(workingDirectory, teamName) {
  */
 export function logAuditEvent(workingDirectory, event) {
     const logPath = getLogPath(workingDirectory, event.teamName);
-    const dir = join(workingDirectory, '.omg', 'logs');
+    const dir = join(workingDirectory, '.omcp', 'logs');
     validateResolvedPath(logPath, workingDirectory);
     ensureDirWithMode(dir);
     const line = JSON.stringify(event) + '\n';
@@ -77,7 +77,7 @@ export function rotateAuditLog(workingDirectory, teamName, maxSizeBytes = DEFAUL
     const rotated = lines.slice(keepFrom).join('\n') + '\n';
     // Atomic write: write to temp, then rename
     const tmpPath = logPath + '.tmp';
-    const logsDir = join(workingDirectory, '.omg', 'logs');
+    const logsDir = join(workingDirectory, '.omcp', 'logs');
     validateResolvedPath(tmpPath, logsDir);
     // Prevent symlink attacks: if tmp path exists as symlink, remove it
     if (existsSync(tmpPath)) {

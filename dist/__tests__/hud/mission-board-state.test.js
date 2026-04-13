@@ -7,7 +7,7 @@ const tempDirs = [];
 function makeTempDir() {
     const dir = mkdtempSync(join(tmpdir(), 'omc-mission-board-'));
     tempDirs.push(dir);
-    mkdirSync(join(dir, '.omg', 'state'), { recursive: true });
+    mkdirSync(join(dir, '.omcp', 'state'), { recursive: true });
     return dir;
 }
 afterEach(() => {
@@ -57,7 +57,7 @@ describe('mission board state tracking', () => {
             taskDescription: 'Review mission board architecture',
             at: '2026-03-09T07:00:00.000Z',
         });
-        const teamRoot = join(cwd, '.omg', 'state', 'team', 'demo');
+        const teamRoot = join(cwd, '.omcp', 'state', 'team', 'demo');
         mkdirSync(join(teamRoot, 'tasks'), { recursive: true });
         mkdirSync(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
         mkdirSync(join(teamRoot, 'workers', 'worker-2'), { recursive: true });
@@ -131,13 +131,13 @@ describe('mission board state tracking', () => {
         expect(teamMission?.agents[1]?.completedSummary).toContain('Added mission board tests');
         expect(teamMission?.timeline.some((entry) => entry.kind === 'handoff')).toBe(true);
         expect(teamMission?.timeline.some((entry) => entry.kind === 'completion')).toBe(true);
-        const persisted = JSON.parse(readFileSync(join(cwd, '.omg', 'state', 'mission-state.json'), 'utf-8'));
+        const persisted = JSON.parse(readFileSync(join(cwd, '.omcp', 'state', 'mission-state.json'), 'utf-8'));
         expect(persisted.missions.some((mission) => mission.source === 'session')).toBe(true);
         expect(persisted.missions.some((mission) => mission.source === 'team')).toBe(true);
     });
     it('marks team missions blocked when failures or blocked workers are present', () => {
         const cwd = makeTempDir();
-        const teamRoot = join(cwd, '.omg', 'state', 'team', 'blocked-demo');
+        const teamRoot = join(cwd, '.omcp', 'state', 'team', 'blocked-demo');
         mkdirSync(join(teamRoot, 'tasks'), { recursive: true });
         mkdirSync(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
         writeFileSync(join(teamRoot, 'config.json'), JSON.stringify({

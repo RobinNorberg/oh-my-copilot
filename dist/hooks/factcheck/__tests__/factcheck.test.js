@@ -18,7 +18,7 @@ function defaultPolicy() {
         mode: 'quick',
         strict_project_patterns: [],
         forbidden_path_prefixes: [join(getClaudeConfigDir(), 'plugins/cache/omc/')],
-        forbidden_path_substrings: ['/.omg/', '.omc-config.json'],
+        forbidden_path_substrings: ['/.omcp/', '.omc-config.json'],
         readonly_command_prefixes: [
             'ls ', 'cat ', 'find ', 'grep ', 'head ', 'tail ', 'stat ', 'echo ', 'wc ',
         ],

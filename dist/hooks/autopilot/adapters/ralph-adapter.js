@@ -18,7 +18,7 @@ export const ralphAdapter = {
         return config.verification === false;
     },
     getPrompt(context) {
-        const specPath = context.specPath || '.omg/autopilot/spec.md';
+        const specPath = context.specPath || '.omcp/autopilot/spec.md';
         const maxIterations = context.config.verification !== false
             ? context.config.verification.maxIterations
             : 100;

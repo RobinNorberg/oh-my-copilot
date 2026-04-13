@@ -81,6 +81,7 @@ npm install -g lean-ctx-bin && lean-ctx setup
 ```
 > Note: lean-ctx uses its own installer (`lean-ctx setup`) which auto-configures shell and all detected editors. It hooks into existing tools (Read, Grep, Bash) to compress and cache results automatically.
 
+
 ### GitHub Configuration:
 
 **Option 1: Docker (local)**

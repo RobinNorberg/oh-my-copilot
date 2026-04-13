@@ -29,13 +29,13 @@ export function getPrdPath(directory) {
     return join(directory, PRD_FILENAME);
 }
 /**
- * Get the path to the prd.json in .omg subdirectory
+ * Get the path to the prd.json in .omcp subdirectory
  */
 export function getOmcPrdPath(directory) {
     return join(getOmcRoot(directory), PRD_FILENAME);
 }
 /**
- * Find prd.json in a directory (checks both root and .omg)
+ * Find prd.json in a directory (checks both root and .omcp)
  */
 export function findPrdPath(directory) {
     const rootPath = getPrdPath(directory);
@@ -73,7 +73,7 @@ export function readPrd(directory) {
  * Write PRD to disk
  */
 export function writePrd(directory, prd) {
-    // Prefer writing to existing location, or .omg by default
+    // Prefer writing to existing location, or .omcp by default
     let prdPath = findPrdPath(directory);
     if (!prdPath) {
         const omcDir = getOmcRoot(directory);

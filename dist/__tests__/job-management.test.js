@@ -282,7 +282,7 @@ describe('job-management', () => {
             const { getPromptsDir } = await import('../mcp/prompt-persistence.js');
             const fs = await import('fs');
             // Mock getPromptsDir to return different paths based on workingDirectory
-            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omg/prompts` : '/tmp/test-prompts');
+            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omcp/prompts` : '/tmp/test-prompts');
             fs.existsSync.mockReturnValue(true);
             fs.readdirSync.mockReturnValue(['codex-status-test-slug-ab12cd34.json']);
             fs.readFileSync.mockReturnValue(JSON.stringify({
@@ -368,7 +368,7 @@ describe('job-management', () => {
             const fs = await import('fs');
             // Mock getJobWorkingDir to return a cross-directory path
             getJobWd.mockReturnValue('/other/project');
-            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omg/prompts` : '/tmp/test-prompts');
+            getPromptsDir.mockImplementation((wd) => wd ? `${wd}/.omcp/prompts` : '/tmp/test-prompts');
             fs.existsSync.mockReturnValue(true);
             fs.readdirSync.mockReturnValue(['codex-status-test-slug-ab12cd34.json']);
             const mockStatus = {

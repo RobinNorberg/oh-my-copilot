@@ -7,9 +7,9 @@ export type ExecutionMode = 'autopilot' | 'team' | 'ralph' | 'ultrawork' | 'ultr
 export interface ModeConfig {
     /** Display name for the mode */
     name: string;
-    /** Primary state file path (relative to .omg/state/) */
+    /** Primary state file path (relative to .omcp/state/) */
     stateFile: string;
-    /** Alternative/marker file path (relative to .omg/state/) */
+    /** Alternative/marker file path (relative to .omcp/state/) */
     markerFile?: string;
     /** Property to check in JSON state (if JSON-based) */
     activeProperty?: string;

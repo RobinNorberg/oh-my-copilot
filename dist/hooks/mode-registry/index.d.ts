@@ -6,7 +6,7 @@
  *
  * Mode modules import FROM this registry (unidirectional).
  *
- * All modes store state in `.omg/state/` subdirectory for consistency.
+ * All modes store state in `.omcp/state/` subdirectory for consistency.
  */
 import type { ExecutionMode, ModeConfig, ModeStatus, CanStartResult } from "./types.js";
 export type { ExecutionMode, ModeConfig, ModeStatus, CanStartResult, } from "./types.js";
@@ -14,7 +14,7 @@ export type { ExecutionMode, ModeConfig, ModeStatus, CanStartResult, } from "./t
  * Mode configuration registry
  *
  * Maps each mode to its state file location and detection method.
- * All paths are relative to .omg/state/ directory.
+ * All paths are relative to .omcp/state/ directory.
  */
 declare const MODE_CONFIGS: Record<ExecutionMode, ModeConfig>;
 export { MODE_CONFIGS };
@@ -36,7 +36,7 @@ export declare function getStateFilePath(cwd: string, mode: ExecutionMode, sessi
 export declare function getMarkerFilePath(cwd: string, mode: ExecutionMode): string | null;
 /**
  * Get the global state file path (in ~/.copilot/) for modes that support it
- * @deprecated Global state is no longer supported. All modes use local-only state in .omg/state/
+ * @deprecated Global state is no longer supported. All modes use local-only state in .omcp/state/
  * @returns Always returns null
  */
 export declare function getGlobalStateFilePath(_mode: ExecutionMode): string | null;
@@ -92,7 +92,7 @@ export declare function getAllModeStatuses(cwd: string, sessionId?: string): Mod
  * Clear all state files for a mode
  *
  * Deletes:
- * - Local state file (.omg/state/{mode}-state.json)
+ * - Local state file (.omcp/state/{mode}-state.json)
  * - Session-scoped state file if sessionId provided
  * - Local marker file if applicable
  * - Global state file if applicable (~/.copilot/{mode}-state.json)

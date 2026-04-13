@@ -15,7 +15,7 @@ const DEFAULT_POLICY = {
     backoffMultiplier: 2,
 };
 function getRestartStatePath(workingDirectory, teamName, workerName) {
-    return join(workingDirectory, '.omg', 'state', 'team-bridge', teamName, `${workerName}.restart.json`);
+    return join(workingDirectory, '.omcp', 'state', 'team-bridge', teamName, `${workerName}.restart.json`);
 }
 /**
  * Read the current restart state for a worker.
@@ -56,7 +56,7 @@ export function shouldRestart(workingDirectory, teamName, workerName, policy = D
 export function recordRestart(workingDirectory, teamName, workerName, policy = DEFAULT_POLICY) {
     const statePath = getRestartStatePath(workingDirectory, teamName, workerName);
     validateResolvedPath(statePath, workingDirectory);
-    const dir = join(workingDirectory, '.omg', 'state', 'team-bridge', teamName);
+    const dir = join(workingDirectory, '.omcp', 'state', 'team-bridge', teamName);
     ensureDirWithMode(dir);
     const existing = readRestartState(workingDirectory, teamName, workerName);
     const newState = {

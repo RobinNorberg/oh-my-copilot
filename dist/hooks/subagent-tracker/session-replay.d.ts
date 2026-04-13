@@ -4,7 +4,7 @@
  * Records agent lifecycle events as JSONL for timeline visualization
  * and post-session bottleneck analysis.
  *
- * Events are appended to: .omg/state/agent-replay-{sessionId}.jsonl
+ * Events are appended to: .omcp/state/agent-replay-{sessionId}.jsonl
  */
 export type ReplayEventType = 'agent_start' | 'agent_stop' | 'tool_start' | 'tool_end' | 'file_touch' | 'intervention' | 'error' | 'hook_fire' | 'hook_result' | 'keyword_detected' | 'skill_activated' | 'skill_invoked' | 'mode_change';
 export interface ReplayEvent {

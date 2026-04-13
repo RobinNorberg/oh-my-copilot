@@ -27,9 +27,9 @@ function isStateFileStale(filePath) {
 }
 /**
  * Resolve state file path with fallback chain:
- * 1. Session-scoped paths (.omg/state/sessions/{id}/{filename}) - newest first
- * 2. Standard path (.omg/state/{filename})
- * 3. Legacy path (.omg/{filename})
+ * 1. Session-scoped paths (.omcp/state/sessions/{id}/{filename}) - newest first
+ * 2. Standard path (.omcp/state/{filename})
+ * 3. Legacy path (.omcp/{filename})
  *
  * Returns the most recently modified matching path, or null if none found.
  * This ensures the HUD displays state from any active session (Issue #456).
@@ -133,7 +133,7 @@ export function readRalphStateForHud(directory, sessionId) {
 }
 /**
  * Read Ultrawork state for HUD display.
- * Checks only local .omg/state location.
+ * Checks only local .omcp/state location.
  */
 export function readUltraworkStateForHud(directory, sessionId) {
     // Check local state only (with new path fallback)
@@ -158,7 +158,7 @@ export function readUltraworkStateForHud(directory, sessionId) {
 }
 /**
  * Read PRD state for HUD display.
- * Checks both root prd.json and .omg/prd.json.
+ * Checks both root prd.json and .omcp/prd.json.
  */
 export function readPrdStateForHud(directory) {
     // Check root first

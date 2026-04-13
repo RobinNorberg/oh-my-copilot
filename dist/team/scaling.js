@@ -11,7 +11,8 @@
  */
 import { resolve } from 'path';
 import { mkdir } from 'fs/promises';
-import { execFileSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
+import { tmuxExec } from '../cli/tmux-utils.js';
 import { teamReadConfig, teamWriteWorkerIdentity, teamReadWorkerStatus, teamAppendEvent, writeAtomic, } from './team-ops.js';
 import { withScalingLock, saveTeamConfig } from './monitor.js';
 import { sanitizeName, isWorkerAlive, killWorkerPanes, buildWorkerStartCommand, waitForPaneReady, } from './tmux-session.js';
@@ -57,8 +58,8 @@ export async function scaleUp(teamName, count, agentType, tasks, cwd, env = proc
                 error: `Cannot add ${count} workers: would exceed max_workers (${currentCount} + ${count} > ${maxWorkers})`,
             };
         }
-        const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omg/state`;
-        const sessionName = config.tmux_session ?? `omc-team-${sanitized}`;
+        const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omcp/state`;
+        const sessionName = config.tmux_session ?? `omcp-team-${sanitized}`;
         // Resolve the monotonic worker index counter
         let nextIndex = config.next_worker_index ?? (currentCount + 1);
         const initialNextIndex = nextIndex;
@@ -71,14 +72,14 @@ export async function scaleUp(teamName, count, agentType, tasks, cwd, env = proc
                 }
                 try {
                     if (w.pane_id) {
-                        execFileSync('tmux', ['kill-pane', '-t', w.pane_id], { stdio: 'pipe' });
+                        tmuxExec(['kill-pane', '-t', w.pane_id], { stdio: 'pipe' });
                     }
                 }
                 catch { /* best-effort pane cleanup */ }
             }
             if (paneId) {
                 try {
-                    execFileSync('tmux', ['kill-pane', '-t', paneId], { stdio: 'pipe' });
+                    tmuxExec(['kill-pane', '-t', paneId], { stdio: 'pipe' });
                 }
                 catch { /* best-effort pane cleanup */ }
             }

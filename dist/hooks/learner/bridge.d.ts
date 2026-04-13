@@ -9,7 +9,7 @@
  */
 export declare const USER_SKILLS_DIR: string;
 export declare const GLOBAL_SKILLS_DIR: string;
-export declare const PROJECT_SKILLS_SUBDIR: ".omg/skills";
+export declare const PROJECT_SKILLS_SUBDIR: ".omcp/skills";
 export declare const SKILL_EXTENSION = ".md";
 /**
  * Clear skill metadata cache (for testing).

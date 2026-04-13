@@ -6,7 +6,7 @@
  * delete, and clean up shared key-value entries namespaced by
  * session group or pipeline run.
  *
- * Storage: .omg/state/shared-memory/{namespace}/{key}.json
+ * Storage: .omcp/state/shared-memory/{namespace}/{key}.json
  * Config gate: agents.sharedMemory.enabled in ~/.copilot/.omc-config.json
  *
  * @see https://github.com/anthropics/oh-my-copilot/issues/1119

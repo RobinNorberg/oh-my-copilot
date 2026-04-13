@@ -7,8 +7,8 @@ import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { OmgPaths } from '../../lib/worktree-paths.js';
 /** User-level skills directory (read by skill-injector.mjs hook) */
 export const USER_SKILLS_DIR = join(getCopilotConfigDir(), 'skills', 'omc-learned');
-/** Global skills directory (new preferred location: ~/.omg/skills) */
-export const GLOBAL_SKILLS_DIR = join(homedir(), '.omg', 'skills');
+/** Global skills directory (new preferred location: ~/.omcp/skills) */
+export const GLOBAL_SKILLS_DIR = join(homedir(), '.omcp', 'skills');
 /** Project-level skills subdirectory */
 export const PROJECT_SKILLS_SUBDIR = OmgPaths.SKILLS;
 /** Maximum recursion depth for skill file discovery */

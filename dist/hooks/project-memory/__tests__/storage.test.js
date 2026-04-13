@@ -40,7 +40,7 @@ describe('Project Memory Storage', () => {
     describe('getMemoryPath', () => {
         it('should return correct memory file path', () => {
             const memoryPath = getMemoryPath(projectRoot);
-            expect(memoryPath).toBe(path.join(projectRoot, '.omg', 'project-memory.json'));
+            expect(memoryPath).toBe(path.join(projectRoot, '.omcp', 'project-memory.json'));
         });
         it('should return centralized memory file path when OMC_STATE_DIR is set', async () => {
             const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), 'project-memory-state-'));
@@ -56,7 +56,7 @@ describe('Project Memory Storage', () => {
         });
     });
     describe('saveProjectMemory', () => {
-        it('should create .omg directory and save memory file', async () => {
+        it('should create .omcp directory and save memory file', async () => {
             const memory = createBaseMemory(projectRoot, {
                 techStack: {
                     languages: [{ name: 'TypeScript', version: '5.0.0', confidence: 'high', markers: ['tsconfig.json'] }],
@@ -86,8 +86,8 @@ describe('Project Memory Storage', () => {
                 customNotes: [],
             });
             await saveProjectMemory(projectRoot, memory);
-            // Verify .omg directory exists
-            const omcDir = path.join(projectRoot, '.omg');
+            // Verify .omcp directory exists
+            const omcDir = path.join(projectRoot, '.omcp');
             const omcStat = await fs.stat(omcDir);
             expect(omcStat.isDirectory()).toBe(true);
             // Verify memory file exists
@@ -115,7 +115,7 @@ describe('Project Memory Storage', () => {
                 const centralizedPath = path.join(stateDir, getProjectIdentifier(projectRoot), 'project-memory.json');
                 const centralizedContent = await fs.readFile(centralizedPath, 'utf-8');
                 expect(JSON.parse(centralizedContent).projectRoot).toBe(projectRoot);
-                await expect(fs.access(path.join(projectRoot, '.omg', 'project-memory.json'))).rejects.toThrow();
+                await expect(fs.access(path.join(projectRoot, '.omcp', 'project-memory.json'))).rejects.toThrow();
             }
             finally {
                 delete process.env.OMC_STATE_DIR;
@@ -178,8 +178,8 @@ describe('Project Memory Storage', () => {
             expect(loaded?.build.buildCommand).toBe('cargo build');
         });
         it('should return null for invalid JSON', async () => {
-            // Create .omg directory
-            const omcDir = path.join(projectRoot, '.omg');
+            // Create .omcp directory
+            const omcDir = path.join(projectRoot, '.omcp');
             await fs.mkdir(omcDir, { recursive: true });
             // Write invalid JSON
             const memoryPath = getMemoryPath(projectRoot);
@@ -188,8 +188,8 @@ describe('Project Memory Storage', () => {
             expect(memory).toBeNull();
         });
         it('should return null for memory with missing required fields', async () => {
-            // Create .omg directory
-            const omcDir = path.join(projectRoot, '.omg');
+            // Create .omcp directory
+            const omcDir = path.join(projectRoot, '.omcp');
             await fs.mkdir(omcDir, { recursive: true });
             // Write incomplete memory
             const memoryPath = getMemoryPath(projectRoot);
