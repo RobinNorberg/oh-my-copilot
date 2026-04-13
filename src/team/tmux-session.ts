@@ -338,7 +338,10 @@ export function buildWorkerStartCommand(config: WorkerPaneConfig): string {
 }
 
 /** Validate tmux is available. Throws with install instructions if not. */
-export function validateTmux(): void {
+export function validateTmux(hasTmuxContext = false): void {
+  if (hasTmuxContext) {
+    return;
+  }
   try {
     tmuxShell('-V', { stripTmux: true, timeout: 5000, stdio: 'pipe' });
   } catch {
@@ -467,6 +470,9 @@ export async function createTeamSession(
   const muxContext = detectTeamMultiplexerContext();
   const inTmux = muxContext === 'tmux';
   const useDedicatedWindow = Boolean(options.newWindow && inTmux);
+  if (!inTmux) {
+    validateTmux();
+  }
 
   // Prefer the invoking pane from environment to avoid focus races when users
   // switch tmux windows during startup (issue #966).

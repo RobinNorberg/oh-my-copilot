@@ -366,7 +366,7 @@ async function pollLoop(config: Required<DaemonConfig>): Promise<void> {
           : 'Usage API degraded (429/stale cache) - scanning for blocked panes';
         log(scanReason, config);
 
-        const blockedPanes = scanForBlockedPanes(config.paneLinesToCapture);
+        const blockedPanes = scanForBlockedPanes(config.paneLinesToCapture, dirname(config.stateFilePath));
 
         // Add newly detected blocked panes
         for (const pane of blockedPanes) {
@@ -646,7 +646,7 @@ export async function detectBlockedPanes(config?: DaemonConfig): Promise<DaemonR
   }
 
   const rateLimitStatus = await checkRateLimitStatus();
-  const blockedPanes = scanForBlockedPanes(cfg.paneLinesToCapture);
+  const blockedPanes = scanForBlockedPanes(cfg.paneLinesToCapture, dirname(cfg.stateFilePath));
 
   return {
     success: true,

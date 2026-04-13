@@ -166,7 +166,7 @@ type HudConfigInput = Omit<
 /**
  * Read HUD state from disk (checks new local and legacy local only)
  */
-export function readHudState(directory?: string): OmcHudState | null {
+export function readHudState(directory?: string, _sessionId?: string): OmcHudState | null {
   // Check new local state first (.omcp/state/hud-state.json)
   const localStateFile = getLocalStateFilePath(directory);
   if (existsSync(localStateFile)) {
@@ -200,7 +200,8 @@ export function readHudState(directory?: string): OmcHudState | null {
  */
 export function writeHudState(
   state: OmcHudState,
-  directory?: string
+  directory?: string,
+  _sessionId?: string,
 ): boolean {
   try {
     // Write to local .omcp/state only
@@ -402,7 +403,7 @@ export function applyPreset(preset: HudConfig["preset"]): HudConfig {
  * Initialize HUD state with cleanup of stale/orphaned tasks.
  * Should be called on HUD startup.
  */
-export async function initializeHUDState(directory?: string): Promise<void> {
+export async function initializeHUDState(directory?: string, _sessionId?: string): Promise<void> {
   // Clean up stale background tasks from previous sessions
   const removedStale = await cleanupStaleBackgroundTasks(undefined, directory);
   const markedOrphaned = await markOrphanedTasksAsStale(directory);

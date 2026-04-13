@@ -33,7 +33,7 @@ describe('LSP Server Configurations', () => {
 describe('getServerForFile', () => {
   const cases: [string, string][] = [
     ['app.ts', 'TypeScript Language Server'],
-    ['app.py', 'Python Language Server (pylsp)'],
+    ['app.py', 'Python Language Server (ty)'],
     ['main.rs', 'Rust Analyzer'],
     ['main.go', 'gopls'],
     ['main.c', 'clangd'],
@@ -74,7 +74,7 @@ describe('getServerForLanguage', () => {
   const cases: [string, string][] = [
     ['typescript', 'TypeScript Language Server'],
     ['javascript', 'TypeScript Language Server'],
-    ['python', 'Python Language Server (pylsp)'],
+    ['python', 'Python Language Server (ty)'],
     ['rust', 'Rust Analyzer'],
     ['go', 'gopls'],
     ['golang', 'gopls'],

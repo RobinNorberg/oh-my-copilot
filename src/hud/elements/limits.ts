@@ -125,6 +125,19 @@ export function renderRateLimits(limits: RateLimits | null, stale?: boolean): st
     parts.push(opusPart);
   }
 
+  if (limits.extraUsagePercent != null && limits.extraUsageLimitUsd != null) {
+    const extra = Math.min(100, Math.max(0, Math.round(limits.extraUsagePercent)));
+    const extraColor = getColor(extra);
+    const extraReset = formatResetTime(limits.extraUsageResetsAt);
+    const dollarPart = `${DIM}($${(limits.extraUsageSpentUsd ?? 0).toFixed(2)}/$${limits.extraUsageLimitUsd.toFixed(2)})${RESET}`;
+
+    const extraPart = extraReset
+      ? `${DIM}extra:${RESET}${extraColor}${extra}%${RESET}${staleMarker}${dollarPart}${DIM}(${resetPrefix}${extraReset})${RESET}`
+      : `${DIM}extra:${RESET}${extraColor}${extra}%${RESET}${staleMarker}${dollarPart}`;
+
+    parts.push(extraPart);
+  }
+
   return parts.join(' ');
 }
 
@@ -163,6 +176,12 @@ export function renderRateLimitsCompact(limits: RateLimits | null, stale?: boole
     const opus = Math.min(100, Math.max(0, Math.round(limits.opusWeeklyPercent)));
     const opusColor = getColor(opus);
     parts.push(`${opusColor}${opus}%${RESET}`);
+  }
+
+  if (limits.extraUsagePercent != null && limits.extraUsageLimitUsd != null) {
+    const extra = Math.min(100, Math.max(0, Math.round(limits.extraUsagePercent)));
+    const extraColor = getColor(extra);
+    parts.push(`${extraColor}${extra}%${RESET}`);
   }
 
   const result = parts.join('/');
@@ -255,6 +274,22 @@ export function renderRateLimitsWithBar(
       : `${DIM}op:${RESET}[${opusBar}]${opusColor}${opus}%${RESET}${staleMarker}`;
 
     parts.push(opusPart);
+  }
+
+  if (limits.extraUsagePercent != null && limits.extraUsageLimitUsd != null) {
+    const extra = Math.min(100, Math.max(0, Math.round(limits.extraUsagePercent)));
+    const extraColor = getColor(extra);
+    const extraFilled = Math.round((extra / 100) * barWidth);
+    const extraEmpty = barWidth - extraFilled;
+    const extraBar = `${extraColor}${'█'.repeat(extraFilled)}${DIM}${'░'.repeat(extraEmpty)}${RESET}`;
+    const extraReset = formatResetTime(limits.extraUsageResetsAt);
+    const dollarPart = `${DIM}($${(limits.extraUsageSpentUsd ?? 0).toFixed(2)}/$${limits.extraUsageLimitUsd.toFixed(2)})${RESET}`;
+
+    const extraPart = extraReset
+      ? `${DIM}extra:${RESET}[${extraBar}]${extraColor}${extra}%${RESET}${staleMarker}${dollarPart}${DIM}(${resetPrefix}${extraReset})${RESET}`
+      : `${DIM}extra:${RESET}[${extraBar}]${extraColor}${extra}%${RESET}${staleMarker}${dollarPart}`;
+
+    parts.push(extraPart);
   }
 
   return parts.join(' ');
