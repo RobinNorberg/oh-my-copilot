@@ -19,38 +19,19 @@ Present the user with available MCP server options using AskUserQuestion:
 
 **Options:**
 1. **Context7** - Documentation and code context from popular libraries
-2. **Exa Web Search** - Enhanced web search (replaces built-in websearch)
-3. **lean-ctx** - Token-saving compression layer for Read/Grep/Bash tools
-4. **GitHub** - GitHub API integration for issues, PRs, and repository management
-5. **Azure DevOps** - Work items, repos, pipelines, wiki, and test plans
-6. **All of the above** - Configure all recommended MCP servers
-7. **Custom** - Add a custom MCP server
+2. **lean-ctx** - Token-saving compression layer for Read/Grep/Bash tools
+3. **Azure DevOps** - Work items, repos, pipelines, wiki, and test plans
+4. **All of the above** - Configure all recommended MCP servers
+5. **Custom** - Add a custom MCP server
 
 ## Step 2: Gather Required Information
 
 ### For Context7:
 No API key required. Ready to use immediately.
 
-### For Exa Web Search:
-Ask for API key:
-```
-Do you have an Exa API key?
-- Get one at: https://exa.ai
-- Enter your API key, or type 'skip' to configure later
-```
-
 ### For lean-ctx:
 No API key required. Installs automatically. Saves 60-80% input tokens via caching and compression.
 More info: https://github.com/yvgude/lean-ctx
-
-### For GitHub:
-Ask for token:
-```
-Do you have a GitHub Personal Access Token?
-- Create one at: https://github.com/settings/tokens
-- Recommended scopes: repo, read:org
-- Enter your token, or type 'skip' to configure later
-```
 
 ### For Azure DevOps:
 Ask for organization:
@@ -70,31 +51,12 @@ Use the `copilot mcp add` command to configure each MCP server. The CLI automati
 copilot mcp add context7 -- npx -y @upstash/context7-mcp
 ```
 
-### Exa Web Search Configuration:
-```bash
-copilot mcp add -e EXA_API_KEY=<user-provided-key> exa -- npx -y exa-mcp-server
-```
-
 ### lean-ctx Configuration:
 ```bash
 npm install -g lean-ctx-bin && lean-ctx setup
 ```
 > Note: lean-ctx uses its own installer (`lean-ctx setup`) which auto-configures shell and all detected editors. It hooks into existing tools (Read, Grep, Bash) to compress and cache results automatically.
 
-
-### GitHub Configuration:
-
-**Option 1: Docker (local)**
-```bash
-copilot mcp add -e GITHUB_PERSONAL_ACCESS_TOKEN=<user-provided-token> github -- docker run -i --rm -e GITHUB_PERSONAL_ACCESS_TOKEN ghcr.io/github/github-mcp-server
-```
-
-**Option 2: HTTP (remote)**
-```bash
-copilot mcp add --transport http github https://api.githubcopilot.com/mcp/
-```
-
-> Note: Docker option requires Docker installed. HTTP option is simpler but may have different capabilities.
 
 ### Azure DevOps Configuration:
 ```bash
@@ -129,9 +91,7 @@ NEXT STEPS:
 
 USAGE TIPS:
 - Context7: Ask about library documentation (e.g., "How do I use React hooks?")
-- Exa: Use for web searches (e.g., "Search the web for latest TypeScript features")
 - lean-ctx: Automatic — compresses Read/Grep/Bash results to save tokens
-- GitHub: Interact with GitHub repos, issues, and PRs
 - Azure DevOps: Manage work items, pipelines, repos, and wikis
 
 TROUBLESHOOTING:
@@ -187,8 +147,6 @@ copilot mcp add --transport http --header "Authorization: Bearer <token>" <serve
 - Check server logs for errors
 
 ### API Key Issues
-- Exa: Verify key at https://dashboard.exa.ai
-- GitHub: Ensure token has required scopes (repo, read:org)
 - Azure DevOps: Run `az login` or check PAT permissions
 - Re-run `copilot mcp add` with correct credentials if needed
 

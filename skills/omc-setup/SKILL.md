@@ -175,11 +175,40 @@ Read the file at `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-copi
 (The phase file handles early exit for flag mode.)
 
 ### For full setup (default or --force):
-Execute phases sequentially. For each phase, read the corresponding file and follow its instructions:
+
+#### Setup Mode Selection
+
+Before executing phases, ask the user which setup mode they prefer:
+
+Use AskUserQuestion to prompt:
+
+**Question:** "How would you like to configure oh-my-copilot?"
+
+**Options:**
+1. **Quick Setup (Recommended)** - Apply sensible defaults and jump straight to MCP server configuration. You can customize later with `/omc-setup --force`.
+2. **Step-by-step Setup** - Walk through each option individually (local/global, HUD, CLI install, team defaults, etc.)
+
+Set `SETUP_MODE` to `quick` or `interactive` based on user's choice.
+
+#### Quick Setup Mode (SETUP_MODE=quick)
+
+Apply all recommended defaults automatically with minimal prompts:
+
+1. **Phase 1 - Install copilot-instructions.md (global)**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-copilot-instructions.md` and follow its instructions, but **skip the AskUserQuestion** — use `CONFIG_TARGET=global` automatically.
+
+2. **Phase 2 - Environment Configuration (auto)**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/02-configure.md` and follow its instructions in **quick mode** — apply all defaults without interactive prompts (see phase file for quick-mode behavior).
+
+3. **Phase 3 - Integration Setup (MCP focus)**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/03-integrations.md` and follow its instructions — in quick mode, skip team customization and go straight to MCP server configuration.
+
+4. **Phase 4 - Completion**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/04-welcome.md` and follow its instructions.
+
+#### Step-by-step Setup Mode (SETUP_MODE=interactive)
+
+Execute all phases with full interactive prompts:
 
 1. **Phase 1 - Install copilot-instructions.md**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-copilot-instructions.md` and follow its instructions.
 
-2. **Phase 2 - Environment Configuration**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/02-configure.md` and follow its instructions.
+2. **Phase 2 - Environment Configuration**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/02-configure.md` and follow its instructions in **interactive mode**.
 
 3. **Phase 3 - Integration Setup**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/03-integrations.md` and follow its instructions.
 
