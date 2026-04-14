@@ -13,7 +13,7 @@ import { closeSync, openSync, readSync, statSync } from 'fs';
 import { basename, join, dirname, resolve } from 'path';
 import { homedir, tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { getCopilotConfigDir } from './lib/config-dir.mjs';
+import { getClaudeConfigDir } from './lib/config-dir.mjs';
 import { readStdin } from './lib/stdin.mjs';
 
 const AGENT_OUTPUT_ANALYSIS_LIMIT = parseInt(process.env.OMC_AGENT_OUTPUT_ANALYSIS_LIMIT || '12000', 10);
@@ -23,12 +23,12 @@ const PREEMPTIVE_CRITICAL_THRESHOLD_PERCENT = parseInt(process.env.OMC_PREEMPTIV
 const PREEMPTIVE_COOLDOWN_MS = parseInt(process.env.OMC_PREEMPTIVE_COMPACTION_COOLDOWN_MS || '60000', 10);
 const PREEMPTIVE_TRANSCRIPT_TAIL_BYTES = 4096;
 const PREEMPTIVE_LARGE_OUTPUT_TOOLS = new Set(['read', 'grep', 'glob', 'bash', 'webfetch', 'task', 'taskcreate', 'taskupdate', 'taskoutput']);
-
 const QUIET_LEVEL = getQuietLevel();
 const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 
 function getQuietLevel() {
   const parsed = Number.parseInt(process.env.OMC_QUIET || '0', 10);
+  if (Number.isNaN(parsed)) return 0;
   return Math.max(0, parsed);
 }
 
@@ -67,7 +67,7 @@ const debugLog = (...args) => {
 };
 
 // State file for session tracking
-const cfgDir = getCopilotConfigDir();
+const cfgDir = getClaudeConfigDir();
 const STATE_FILE = join(cfgDir, '.session-stats.json');
 
 // Ensure state directory exists
@@ -128,7 +128,7 @@ function updateStats(toolName, sessionId) {
 // Read bash history config (default: enabled)
 function getBashHistoryConfig() {
   try {
-    const configPath = join(cfgDir, '.omcp-config.json');
+    const configPath = join(cfgDir, '.omc-config.json');
     if (existsSync(configPath)) {
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
       if (config.bashHistory === false) return false;
@@ -158,30 +158,55 @@ function appendToBashHistory(command) {
   }
 }
 
-// Pattern to match Copilot CLI temp CWD permission errors (false positives on macOS)
-// e.g. "zsh:1: permission denied: /var/folders/.../T/copilot-abc123-cwd"
-const COPILOT_TEMP_CWD_PATTERN = /zsh:\d+: permission denied:.*\/T\/copilot-[a-z0-9]+-cwd/gi;
+// Pattern to match Claude Code temp CWD permission errors (false positives on macOS)
+// e.g. "zsh:1: permission denied: /var/folders/.../T/claude-abc123-cwd"
+const CLAUDE_TEMP_CWD_PATTERN = /zsh:\d+: permission denied:.*\/T\/claude-[a-z0-9]+-cwd/gi;
 
-// Strip Copilot CLI temp CWD noise before pattern matching
+// Strip Claude Code temp CWD noise before pattern matching
 function stripClaudeTempCwdErrors(output) {
-  return output.replace(COPILOT_TEMP_CWD_PATTERN, '');
+  return output.replace(CLAUDE_TEMP_CWD_PATTERN, '');
 }
 
-// Pattern matching Copilot CLI's "Error: Exit code N" prefix line
+// Pattern matching Claude Code's "Error: Exit code N" prefix line
 // Note: no /g flag — module-level regex with /g is stateful (.lastIndex persists across calls)
 const CLAUDE_EXIT_CODE_PREFIX = /^Error: Exit code \d+\s*$/m;
+const QUOTED_SPAN_PATTERN =
+  /"[^"\n]{1,400}"|'[^'\n]{1,400}'|“[^”\n]{1,400}”|‘[^’\n]{1,400}’/g;
+const NON_ACTIONABLE_ERROR_LINES = [
+  /^\s*["']?severity["']?\s*[:=]\s*["']error["']?\s*[,}]?\s*$/i,
+  /^\s*["']?totalErrors["']?\s*[:=]\s*0\b.*$/i,
+  /^\s*totalErrors\s*[:=]\s*0\b.*$/i,
+  /^\s*["']?error["']?\s*:\s*["'][^"']*["']\s*[,}]?\s*$/i,
+  /^\s*return\s*\{[^\n]*\berror\s*:\s*["'][^"']*["'][^\n]*\}\s*;?$/i,
+];
+
+function stripQuotedSpans(output) {
+  return output.replace(QUOTED_SPAN_PATTERN, ' ');
+}
+
+function stripNonActionableErrorContext(output) {
+  if (!output) return '';
+  return output
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return true;
+      return !NON_ACTIONABLE_ERROR_LINES.some((pattern) => pattern.test(trimmed));
+    })
+    .join('\n');
+}
 
 /**
  * Detect non-zero exit code with valid stdout (issue #960).
- * Returns true when output has Copilot CLI's "Error: Exit code N" prefix
+ * Returns true when output has Claude Code's "Error: Exit code N" prefix
  * AND substantial content that doesn't itself indicate real errors.
  * Example: `gh pr checks` exits 8 (pending) but outputs valid CI status.
  */
 export function isNonZeroExitWithOutput(output) {
   if (!output) return false;
-  const cleaned = stripClaudeTempCwdErrors(output);
+  const cleaned = stripNonActionableErrorContext(stripClaudeTempCwdErrors(output));
 
-  // Must contain Copilot CLI's exit code prefix
+  // Must contain Claude Code's exit code prefix
   if (!CLAUDE_EXIT_CODE_PREFIX.test(cleaned)) return false;
 
   // Strip exit code prefix line(s) and check remaining content
@@ -203,26 +228,42 @@ export function isNonZeroExitWithOutput(output) {
     /abort/i,
   ];
 
-  return !contentErrorPatterns.some(p => p.test(remaining));
+  return !contentErrorPatterns.some(p => p.test(stripQuotedSpans(remaining)));
 }
 
 // Detect failures in Bash output
 export function detectBashFailure(output) {
+  if (!output) return false;
+
   const cleaned = stripClaudeTempCwdErrors(output);
-  const errorPatterns = [
-    /error:/i,
-    /failed/i,
-    /cannot/i,
-    /permission denied/i,
-    /command not found/i,
-    /no such file/i,
-    /exit code: [1-9]/i,
-    /exit status [1-9]/i,
-    /fatal:/i,
-    /abort/i,
+
+  const explicitExitPatterns = [
+    /(^|\n)Error: Exit code [1-9]\d*(\n|$)/i,
+    /(^|\n).*\bexit code:\s*[1-9]\d*\b/i,
+    /(^|\n).*\bexit status\s+[1-9]\d*\b/i,
   ];
 
-  return errorPatterns.some(pattern => pattern.test(cleaned));
+  if (explicitExitPatterns.some(pattern => pattern.test(cleaned))) {
+    return true;
+  }
+
+  const linePatterns = [
+    /^error:\s+/i,
+    /^(?:bash|zsh|sh): .*command not found/i,
+    /^(?:bash|zsh|sh): .*no such file/i,
+    /^(?:bash|zsh|sh): .*permission denied/i,
+    /^(?:rm|cp|mv|cat|chmod|chown|git|node|npm|pnpm|yarn|python|python3|pip|pip3|cargo|go|rustc|docker|ffmpeg): .*permission denied/i,
+    /^(?:rm|cp|mv|cat|git|node|npm|pnpm|yarn|python|python3|pip|pip3|cargo|go|rustc|docker|ffmpeg): .*no such file/i,
+    /^fatal:\s+/i,
+    /^abort(?:ed)?\b/i,
+    /^(?:build|command|task|operation) failed\b/i,
+  ];
+
+  return cleaned
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+    .some(line => linePatterns.some(pattern => pattern.test(line)));
 }
 
 // Detect background operation
@@ -246,7 +287,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
     if (existsSync(transcriptPath)) return transcriptPath;
   } catch {}
 
-  const worktreePattern = /--copilot-worktrees-[^/\\]+/;
+  const worktreePattern = /--claude-worktrees-[^/\\]+/;
   if (worktreePattern.test(transcriptPath)) {
     const resolvedPath = transcriptPath.replace(worktreePattern, '');
     try {
@@ -272,7 +313,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
     if (mainRepoRoot !== worktreeTop) {
       const sessionFile = basename(transcriptPath);
       if (sessionFile) {
-        const projectsDir = join(getCopilotConfigDir(), 'projects');
+        const projectsDir = join(getClaudeConfigDir(), 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = mainRepoRoot.replace(/[/\\]/g, '-');
           const resolvedPath = join(projectsDir, encodedMain, sessionFile);
@@ -642,7 +683,7 @@ export function detectWriteFailure(output) {
 }
 
 // Get agent completion summary from tracking state
-function getAgentCompletionSummary(directory) {
+function getAgentCompletionSummary(directory, quietLevel = QUIET_LEVEL) {
   const trackingFile = join(directory, '.omcp', 'state', 'subagent-tracking.json');
   try {
     if (existsSync(trackingFile)) {
@@ -655,10 +696,10 @@ function getAgentCompletionSummary(directory) {
       if (running.length === 0 && completed === 0 && failed === 0) return '';
 
       const parts = [];
-      if (running.length > 0) {
+      if (quietLevel < 2 && running.length > 0) {
         parts.push(`Running: ${running.length} [${running.map(a => a.agent_type.replace('oh-my-copilot:', '')).join(', ')}]`);
       }
-      if (completed > 0) parts.push(`Completed: ${completed}`);
+      if (quietLevel < 2 && completed > 0) parts.push(`Completed: ${completed}`);
       if (failed > 0) parts.push(`Failed: ${failed}`);
 
       return parts.join(' | ');
@@ -681,7 +722,7 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
         message = `Command exited with code ${code} but produced valid output. This may be expected behavior.`;
       } else if (detectBashFailure(toolOutput)) {
         message = 'Command failed. Please investigate the error and fix before continuing.';
-      } else if (detectBackgroundOperation(toolOutput)) {
+      } else if (QUIET_LEVEL < 2 && detectBackgroundOperation(toolOutput)) {
         message = 'Background operation detected. Remember to verify results before proceeding.';
       }
       break;
@@ -689,12 +730,12 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
     case 'Task':
     case 'TaskCreate':
     case 'TaskUpdate': {
-      const agentSummary = getAgentCompletionSummary(directory);
+      const agentSummary = getAgentCompletionSummary(directory, QUIET_LEVEL);
       if (detectWriteFailure(toolOutput)) {
         message = 'Task delegation failed. Verify agent name and parameters.';
-      } else if (detectBackgroundOperation(toolOutput)) {
+      } else if (QUIET_LEVEL < 2 && detectBackgroundOperation(toolOutput)) {
         message = 'Background task launched. Use TaskOutput to check results when needed.';
-      } else if (toolCount > 5) {
+      } else if (QUIET_LEVEL < 2 && toolCount > 5) {
         message = `Multiple tasks delegated (${toolCount} total). Track their completion status.`;
       }
       if (wasTruncated) {
@@ -709,7 +750,7 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
 
     case 'TaskOutput': {
       const summary = summarizeAgentResult(toolOutput);
-      if (summary) {
+      if (QUIET_LEVEL < 2 && summary) {
         message = `TaskOutput summary: ${summary}`;
       }
       if (wasTruncated) {
@@ -722,7 +763,7 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
     case 'Edit':
       if (detectWriteFailure(toolOutput)) {
         message = 'Edit operation failed. Verify file exists and content matches exactly.';
-      } else {
+      } else if (QUIET_LEVEL === 0) {
         message = 'Code modified. Verify changes work as expected before marking complete.';
       }
       break;
@@ -730,35 +771,35 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
     case 'Write':
       if (detectWriteFailure(toolOutput)) {
         message = 'Write operation failed. Check file permissions and directory existence.';
-      } else {
+      } else if (QUIET_LEVEL === 0) {
         message = 'File written. Test the changes to ensure they work correctly.';
       }
       break;
 
     case 'TodoWrite':
-      if (/created|added/i.test(toolOutput)) {
+      if (QUIET_LEVEL === 0 && /created|added/i.test(toolOutput)) {
         message = 'Todo list updated. Proceed with next task on the list.';
-      } else if (/completed|done/i.test(toolOutput)) {
+      } else if (QUIET_LEVEL === 0 && /completed|done/i.test(toolOutput)) {
         message = 'Task marked complete. Continue with remaining todos.';
-      } else if (/in_progress/i.test(toolOutput)) {
+      } else if (QUIET_LEVEL === 0 && /in_progress/i.test(toolOutput)) {
         message = 'Task marked in progress. Focus on completing this task.';
       }
       break;
 
     case 'Read':
-      if (toolCount > 10) {
+      if (QUIET_LEVEL === 0 && toolCount > 10) {
         message = `Extensive reading (${toolCount} files). Consider using Grep for pattern searches.`;
       }
       break;
 
     case 'Grep':
-      if (/^0$|no matches/i.test(toolOutput)) {
+      if (QUIET_LEVEL === 0 && /^0$|no matches/i.test(toolOutput)) {
         message = 'No matches found. Verify pattern syntax or try broader search.';
       }
       break;
 
     case 'Glob':
-      if (!toolOutput.trim() || /no files/i.test(toolOutput)) {
+      if (QUIET_LEVEL === 0 && (!toolOutput.trim() || /no files/i.test(toolOutput))) {
         message = 'No files matched pattern. Verify glob syntax and directory.';
       }
       break;
@@ -838,7 +879,7 @@ async function main() {
     const response = { continue: true };
     if (message) {
       response.hookSpecificOutput = {
-        hookEventName: 'postToolUse',
+        hookEventName: 'PostToolUse',
         additionalContext: message
       };
     } else {
