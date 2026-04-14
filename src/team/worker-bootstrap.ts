@@ -26,16 +26,18 @@ export function generateTriggerMessage(
   if (teamStateRoot !== '.omcp/state') {
     return `Read ${inboxPath}, work now, report progress.`;
   }
-  return `Read ${inboxPath}, start work now, report concrete progress (not ACK-only), and keep executing your assigned or next feasible work.`;
+  return `Read ${inboxPath}, execute now, report concrete progress.`;
 }
 
 export function generatePromptModeStartupPrompt(
   teamName: string,
   workerName: string,
   teamStateRoot = '.omcp/state',
+  cliOutputContract?: string,
 ): string {
   const inboxPath = buildInstructionPath(teamStateRoot, 'team', teamName, 'workers', workerName, 'inbox.md');
-  return `Open ${inboxPath}. Follow it and begin the assigned work.`;
+  const base = `Open ${inboxPath}. Follow it and begin the assigned work.`;
+  return cliOutputContract ? `${base}\n${cliOutputContract}` : base;
 }
 
 export function generateMailboxTriggerMessage(
@@ -49,7 +51,7 @@ export function generateMailboxTriggerMessage(
   if (teamStateRoot !== '.omcp/state') {
     return `${normalizedCount} new msg(s): check ${mailboxPath}, act and report progress.`;
   }
-  return `You have ${normalizedCount} new message(s). Check ${mailboxPath}, act now, reply with concrete progress (not ACK-only), and keep executing your assigned or next feasible work.`;
+  return `${normalizedCount} new msg(s). Read ${mailboxPath}, act now, report concrete progress.`;
 }
 
 function agentTypeGuidance(agentType: CliAgentType): string {
@@ -215,11 +217,15 @@ export async function composeInitialInbox(
   teamName: string,
   workerName: string,
   content: string,
-  cwd: string
+  cwd: string,
+  cliOutputContract?: string,
 ): Promise<void> {
   const inboxPath = join(cwd, `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`);
   await mkdir(dirname(inboxPath), { recursive: true });
-  await writeFile(inboxPath, content, 'utf-8');
+  const finalContent = cliOutputContract && !content.includes(cliOutputContract)
+    ? `${content}\n${cliOutputContract}`
+    : content;
+  await writeFile(inboxPath, finalContent, 'utf-8');
 }
 
 /**

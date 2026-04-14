@@ -1,7 +1,7 @@
 ---
 name: explore
 description: Codebase search specialist for finding files and code patterns
-model: claude-haiku-4-5
+model: haiku
 disallowedTools: Write, Edit
 ---
 

@@ -44,6 +44,7 @@ import {
   waitDetectCommand
 } from './commands/wait.js';
 import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
+import { doctorTeamRoutingCommand } from './commands/doctor-team-routing.js';
 import { teamCommand } from './commands/team.js';
 import {
   teleportCommand,
@@ -1111,10 +1112,35 @@ teleportCmd
  */
 const doctorCmd = program
   .command('doctor')
-  .description('Diagnostic tools for troubleshooting OMC installation')
+  .description('Diagnostic tools for troubleshooting OMCP installation')
+  .option('--team-routing', 'Probe CLI presence for every provider referenced by team.roleRouting')
+  .option('--json', 'Output as JSON (used with --team-routing)')
   .addHelpText('after', `
 Examples:
-  $ omc doctor conflicts         Check for plugin conflicts`);
+  $ omcp doctor conflicts                        Check for plugin conflicts
+  $ omcp doctor team-routing                     Probe /team role-routing provider CLIs
+  $ omcp doctor --team-routing                   Same as above (flag form)`)
+  .action(async (options) => {
+    if (options.teamRouting) {
+      const exitCode = await doctorTeamRoutingCommand({ json: options.json ?? false });
+      process.exit(exitCode);
+    }
+    // Without --team-routing, show help text for the parent command.
+    doctorCmd.help();
+  });
+
+doctorCmd
+  .command('team-routing')
+  .description('Probe CLI presence for every provider referenced by team.roleRouting')
+  .option('--json', 'Output as JSON')
+  .addHelpText('after', `
+Examples:
+  $ omcp doctor team-routing                     Probe configured providers
+  $ omcp doctor team-routing --json              Output results as JSON`)
+  .action(async (options) => {
+    const exitCode = await doctorTeamRoutingCommand({ json: options.json ?? false });
+    process.exit(exitCode);
+  });
 
 doctorCmd
   .command('conflicts')
