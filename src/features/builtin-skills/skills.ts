@@ -110,7 +110,13 @@ function applyDeepInterviewRuntimeSettings(template: string): string {
     .replace(
       'We\'ll proceed to execution once ambiguity drops below 20%.',
       `We'll proceed to execution once ambiguity drops below ${percent}.`,
-    );
+    )
+    // Fix #2545: replace remaining hardcoded 20%/0.2 references that conflict with runtime threshold injection
+    .replace('(default: 20%)', `(default: ${percent})`)
+    .replace('(default 0.2)', `(default: ${threshold})`)
+    .replace('Gate: ≤20% ambiguity', `Gate: ≤${percent} ambiguity`)
+    .replace('(threshold: 20%).', `(threshold: ${percent}).`)
+    .replace('ambiguity ≤ 20%', `ambiguity ≤ ${percent}`);
 }
 
 function toSafeSkillName(name: string): string {

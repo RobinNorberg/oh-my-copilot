@@ -144,7 +144,7 @@ export function formatSessionEnd(payload: NotificationPayload): string {
 
 /**
  * Format session-idle notification message.
- * Sent when Copilot stops and no persistent mode is blocking (truly idle).
+ * Sent when Claude stops and no persistent mode is blocking (truly idle).
  */
 export function formatSessionIdle(payload: NotificationPayload): string {
   const lines = [`# Session Idle`, ""];
@@ -192,9 +192,118 @@ const BARE_PROMPT_RE = /^[❯>$%#]+$/;
 /** Minimum ratio of alphanumeric characters for a line to be "meaningful". */
 const MIN_ALNUM_RATIO = 0.15;
 
+/** Review-session seed prompt outcome keywords that cause tmux alert noise. */
+const REVIEW_SEED_OUTCOME_PATTERNS = [
+  { key: "approve", pattern: /\bapprove\b/i },
+  { key: "request-changes", pattern: /\brequest[- ]changes\b/i },
+  { key: "follow-up-fix", pattern: /\bfollow[- ]up[- ]fix\b/i },
+  { key: "blocked", pattern: /\bblocked\b/i },
+  { key: "error", pattern: /\berrors?\b/i },
+  { key: "failure", pattern: /\bfail(?:ed|ure|ures)?\b/i },
+  { key: "conflict", pattern: /\bconflicts?\b/i },
+] as const;
+
+/** Instructional phrasing commonly found in seeded review prompts. */
+const REVIEW_SEED_CUE_RE =
+  /\b(review|verdict|respond|reply|return|output|classification|classify|decision|choose|label)\b/i;
+
+/** Continuation markers for bullets / enumerated option lines in seeded prompts. */
+const REVIEW_SEED_LIST_RE = /^(?:[-*•]|\d+[.)]|[A-Z][A-Z_-]+:|\([a-z0-9]+\))/;
+
+/** Static source/grep output lines that often trip keyword alerts without representing runtime failure. */
+const SOURCE_PATH_LINE_RE = /^(?:\.\/)?[A-Za-z0-9_./-]+:\d+:/;
+const STATIC_CODE_ALERT_RE = /(?:\blog_error\b|\becho\b).*?(?:"error\||"Usage:)|==\s*"error"/;
+const HELP_USAGE_LINE_RE = /^(?:Usage|Examples?|Commands?|Options?|Flags?):/i;
+const STATIC_HELP_CODE_RE = /^(?:log_error\s+"Usage:|if\s+\[\[.*==\s*"error".*\]\];?\s*then$)/;
+const DIFF_HEADER_LINE_RE = /^(?:diff --git\b|index\s+[0-9a-f]{6,}\.\.[0-9a-f]{6,}\b|@@\s+[-+]\d|---\s+\S|\+\+\+\s+\S)/i;
+const STRUCTURED_ALERT_KEYWORD_RE =
+  /\b(?:error|errors?|fail(?:ed|ure|ures)?|conflict|conflicts|operation_failed|claim_conflict|invalid_transition|blocked_dependency|worker_notify_failed)\b/i;
+const SEARCH_COMMAND_RE = /^(?:[$❯>#]\s*)?(?:rg|ripgrep|grep|egrep|fgrep)\b/i;
+const QUOTED_OR_REGEX_QUERY_RE = /(?:"[^"\n]+"|'[^'\n]+'|`[^`\n]+`|\/[^/\n]+\/[a-z]*)/i;
+const ZERO_ALERT_SUMMARY_RE =
+  /\b(?:0|zero)\s+(?:errors?|fail(?:ed|ures?)?|conflicts?)\b|\b(?:errors?|fail(?:ed|ures?)?|conflicts?)\s*[:=]\s*0\b|\btotalErrors\s*[:=]\s*0\b|\b(?:TypeScript|LSP)\s+check\s+passed:\s*0 errors,\s*0 warnings\b/i;
+const ALERT_REGEX_LITERAL_RE =
+  /(?:^|[=(:,]\s*)(?:new\s+RegExp\(|\/)(?=[^)\n;]*\b(?:error|errors?|fail(?:ed|ure|ures)?|conflict|conflicts|operation_failed|claim_conflict|invalid_transition|blocked_dependency|worker_notify_failed)\b)/i;
+const GENERIC_HOOK_FAILURE_PROSE_RE =
+  /^The Bash output indicates (?:a )?(?:command\/setup|command|setup) failure\b/i;
+const ISSUE_PROMPT_NOISE_RE =
+  /^(?:fix|review|investigate|analyze|search|find|look\s+for|debug|harden)\b.*\b(?:issue|pr)\s*#\d+\b.*\b(?:error|errors?|fail(?:ed|ure|ures)?|conflict|conflicts)\b/i;
+const JSONISH_LINE_RE =
+  /^(?:[{[]|"(?:[^"\\]|\\.)+"\s*:|'(?:[^'\\]|\\.)+'\s*:)/;
+const REQUEST_RESPONSE_LITERAL_RE =
+  /^(?:payload|request|response|input|output|args|params|body|mcp)\s*[:=]\s*[{[]/i;
+const CODE_LITERAL_PREFIX_RE =
+  /^(?:[+-]\s*(?:[{[]|"(?:[^"\\]|\\.)+"\s*:|'(?:[^'\\]|\\.)+'\s*:|(?:const|let|var|return|throw|if|await|expect|mock|vi\.)\b|[A-Za-z_$][\w$-]*\s*:)|(?:const|let|var|return|throw|if|await|expect|mock|vi\.)\b)/;
+
 /** Default maximum number of meaningful lines to include in a notification.
  * Matches DEFAULT_TMUX_TAIL_LINES in config.ts. */
 const DEFAULT_MAX_TAIL_LINES = 15;
+
+function extractReviewSeedOutcomeKeys(line: string): string[] {
+  return REVIEW_SEED_OUTCOME_PATTERNS
+    .filter(({ pattern }) => pattern.test(line))
+    .map(({ key }) => key);
+}
+
+function trimReviewSeedPrefix(lines: string[]): string[] {
+  if (lines.length === 0) return lines;
+
+  const prefix = lines.slice(0, 10);
+  const distinctOutcomes = new Set<string>();
+  let hasCue = false;
+  let hasListMarker = false;
+  let candidateEnd = -1;
+
+  for (let index = 0; index < prefix.length; index += 1) {
+    const line = prefix[index]!;
+    const outcomeKeys = extractReviewSeedOutcomeKeys(line);
+    const isCueLine = REVIEW_SEED_CUE_RE.test(line);
+    const isSeedLine =
+      outcomeKeys.length > 0 ||
+      isCueLine ||
+      (candidateEnd >= 0 && REVIEW_SEED_LIST_RE.test(line));
+
+    outcomeKeys.forEach((key) => distinctOutcomes.add(key));
+    if (isCueLine) hasCue = true;
+    if (REVIEW_SEED_LIST_RE.test(line)) hasListMarker = true;
+    if (isSeedLine) {
+      candidateEnd = index;
+      continue;
+    }
+    if (candidateEnd >= 0) break;
+  }
+
+  const qualifies =
+    candidateEnd >= 0 &&
+    hasCue &&
+    (distinctOutcomes.size >= 2 || hasListMarker);
+
+  if (!qualifies) return lines;
+  return lines.slice(candidateEnd + 1);
+}
+
+function looksLikeStructuredAlertLiteral(line: string): boolean {
+  const trimmed = line.trim();
+  if (!STRUCTURED_ALERT_KEYWORD_RE.test(trimmed)) return false;
+  if (/^(?:\{.*\}|\[.*\])$/.test(trimmed) && /["'{\[\]}:,]/.test(trimmed)) return true;
+  if (JSONISH_LINE_RE.test(trimmed)) return true;
+  if (CODE_LITERAL_PREFIX_RE.test(trimmed) && /["'`{}[\]()=>]/.test(trimmed)) return true;
+  return false;
+}
+
+function looksLikeAlertSearchCommand(line: string): boolean {
+  const trimmed = line.trim();
+  return (
+    SEARCH_COMMAND_RE.test(trimmed) &&
+    STRUCTURED_ALERT_KEYWORD_RE.test(trimmed) &&
+    (QUOTED_OR_REGEX_QUERY_RE.test(trimmed) || trimmed.includes("|"))
+  );
+}
+
+function looksLikeAlertRegexLiteral(line: string): boolean {
+  const trimmed = line.trim();
+  return STRUCTURED_ALERT_KEYWORD_RE.test(trimmed) && ALERT_REGEX_LITERAL_RE.test(trimmed);
+}
 
 /**
  * Parse raw tmux output into clean, human-readable lines.
@@ -217,6 +326,21 @@ export function parseTmuxTail(raw: string, maxLines: number = DEFAULT_MAX_TAIL_L
     if (OMC_HUD_RE.test(trimmed)) continue;
     if (BYPASS_PERM_RE.test(trimmed)) continue;
     if (BARE_PROMPT_RE.test(trimmed)) continue;
+    if (DIFF_HEADER_LINE_RE.test(trimmed)) continue;
+    if (looksLikeAlertSearchCommand(trimmed)) continue;
+    if (REQUEST_RESPONSE_LITERAL_RE.test(trimmed)) continue;
+    if (HELP_USAGE_LINE_RE.test(trimmed)) continue;
+    if (STATIC_HELP_CODE_RE.test(trimmed)) continue;
+    if (ZERO_ALERT_SUMMARY_RE.test(trimmed)) continue;
+    if (GENERIC_HOOK_FAILURE_PROSE_RE.test(trimmed)) continue;
+    if (ISSUE_PROMPT_NOISE_RE.test(trimmed)) continue;
+    if (SOURCE_PATH_LINE_RE.test(trimmed) && STATIC_CODE_ALERT_RE.test(trimmed)) continue;
+    if (SOURCE_PATH_LINE_RE.test(trimmed)) {
+      const sourceContent = trimmed.replace(SOURCE_PATH_LINE_RE, "").trim();
+      if (looksLikeStructuredAlertLiteral(sourceContent) || looksLikeAlertRegexLiteral(sourceContent)) continue;
+    }
+    if (looksLikeAlertRegexLiteral(trimmed)) continue;
+    if (looksLikeStructuredAlertLiteral(trimmed)) continue;
 
     // Alphanumeric density check: drop lines mostly composed of special characters
     const alnumCount = (trimmed.match(/[a-zA-Z0-9]/g) || []).length;
@@ -225,7 +349,8 @@ export function parseTmuxTail(raw: string, maxLines: number = DEFAULT_MAX_TAIL_L
     meaningful.push(stripped.trimEnd());
   }
 
-  return meaningful.slice(-maxLines).join("\n");
+  const trimmed = trimReviewSeedPrefix(meaningful);
+  return trimmed.slice(-maxLines).join("\n");
 }
 
 /**
@@ -285,10 +410,28 @@ export function formatAskUserQuestion(payload: NotificationPayload): string {
 }
 
 /**
- * Parse a Teams tag list entry into display name and AAD object ID.
- * Format: "DisplayName:AAD-Object-ID" (e.g. "John Doe:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
- * Returns null if the format is invalid.
+ * Format notification message based on event type.
+ * Returns a markdown-formatted string suitable for Discord/Telegram.
  */
+export function formatNotification(payload: NotificationPayload): string {
+  switch (payload.event) {
+    case "session-start":
+      return formatSessionStart(payload);
+    case "session-stop":
+      return formatSessionStop(payload);
+    case "session-end":
+      return formatSessionEnd(payload);
+    case "session-idle":
+      return formatSessionIdle(payload);
+    case "ask-user-question":
+      return formatAskUserQuestion(payload);
+    case "agent-call":
+      return formatAgentCall(payload);
+    default:
+      return payload.message || `Event: ${payload.event}`;
+  }
+}
+
 function parseTeamsMention(tag: string): { name: string; id: string } | null {
   const colonIdx = tag.indexOf(":");
   if (colonIdx <= 0 || colonIdx === tag.length - 1) return null;
@@ -493,21 +636,3 @@ export function formatTeamsAdaptiveCard(payload: NotificationPayload, tagList?: 
  * Format notification message based on event type.
  * Returns a markdown-formatted string suitable for Discord/Telegram.
  */
-export function formatNotification(payload: NotificationPayload): string {
-  switch (payload.event) {
-    case "session-start":
-      return formatSessionStart(payload);
-    case "session-stop":
-      return formatSessionStop(payload);
-    case "session-end":
-      return formatSessionEnd(payload);
-    case "session-idle":
-      return formatSessionIdle(payload);
-    case "ask-user-question":
-      return formatAskUserQuestion(payload);
-    case "agent-call":
-      return formatAgentCall(payload);
-    default:
-      return payload.message || `Event: ${payload.event}`;
-  }
-}

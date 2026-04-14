@@ -15,7 +15,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);
+const { getClaudeConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);
 
 function uniquePaths(paths) {
   return [...new Set(paths.filter(Boolean).map((candidate) => resolve(candidate)))];
@@ -89,22 +89,28 @@ async function main() {
   let pluginCacheVersion = null;
   let pluginCacheDir = null;
   let lastHudLoadError = null;
+  let lastHudLoadTarget = null;
 
-  // 1. OMC_PLUGIN_ROOT — highest priority (set by `omcp --plugin-dir <path>`)
+  // 1. OMC_PLUGIN_ROOT — highest priority (set by `omc --plugin-dir <path>`)
   try {
     const pluginRootEnv = process.env.OMC_PLUGIN_ROOT;
     if (pluginRootEnv && pluginRootEnv.trim().length > 0) {
       const envHudPath = join(pluginRootEnv, "dist/hud/index.js");
       if (existsSync(envHudPath)) {
-        await import(pathToFileURL(envHudPath).href);
-        return;
+        try {
+          await import(pathToFileURL(envHudPath).href);
+          return;
+        } catch (error) {
+          lastHudLoadError = error;
+          lastHudLoadTarget = envHudPath;
+        }
       }
     }
   } catch { /* fall through to next resolution step */ }
 
   // 2. Plugin cache (for production installs)
-  // Respect COPILOT_CONFIG_DIR so installs under a custom config dir are found
-  const configDir = getCopilotConfigDir();
+  // Respect CLAUDE_CONFIG_DIR so installs under a custom config dir are found
+  const configDir = getClaudeConfigDir();
   const pluginCacheBase = join(configDir, "plugins", "cache", "omc", "oh-my-copilot");
   if (existsSync(pluginCacheBase)) {
     try {
@@ -172,6 +178,7 @@ async function main() {
               return;
             } catch (error) {
               lastHudLoadError = error;
+              lastHudLoadTarget = pluginPath;
               // continue trying older built versions
             }
           }
@@ -188,21 +195,34 @@ async function main() {
       return;
     } catch (error) {
       lastHudLoadError = error;
+      lastHudLoadTarget = marketplaceHudPath;
       /* continue */
     }
   }
 
   // 4. npm package (current project, global install, or branded fallback)
-  const npmHudPackages = [
-    "oh-my-copilot/dist/hud/index.js",
-  ];
-  for (const hudPackage of npmHudPackages) {
-    if (await importHudPackage(hudPackage)) {
-      return;
+  // Tests can disable this fallback to avoid host-global package nondeterminism.
+  if (process.env.OMC_HUD_DISABLE_NPM_FALLBACK !== "1") {
+    const npmHudPackages = [
+      "oh-my-claude-sisyphus/dist/hud/index.js",
+      "oh-my-copilot/dist/hud/index.js",
+    ];
+    for (const hudPackage of npmHudPackages) {
+      if (await importHudPackage(hudPackage)) {
+        return;
+      }
     }
   }
 
   // 5. Fallback: provide detailed error message with fix instructions
+  if (lastHudLoadError) {
+    const detail = typeof lastHudLoadError?.message === "string"
+      ? lastHudLoadError.message
+      : String(lastHudLoadError);
+    const targetDetail = lastHudLoadTarget ? ` from ${lastHudLoadTarget}` : "";
+    console.log(`[OMC HUD] HUD import failed${targetDetail}: ${detail}`);
+  }
+
   if (pluginCacheDir && existsSync(pluginCacheDir)) {
     const distDir = join(pluginCacheDir, "dist");
     if (!existsSync(distDir)) {

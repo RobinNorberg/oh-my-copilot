@@ -19,12 +19,12 @@
  */
 
 const { spawnSync } = require('child_process');
-const { existsSync, realpathSync } = require('fs');
+const { existsSync, readFileSync, realpathSync } = require('fs');
 const { join, basename, dirname } = require('path');
 
 const target = process.argv[2];
 if (!target) {
-  // Nothing to run — exit cleanly so Copilot CLI hooks are never blocked.
+  // Nothing to run — exit cleanly so Claude Code hooks are never blocked.
   process.exit(0);
 }
 
@@ -41,6 +41,8 @@ if (!target) {
  *   3. Scan the plugin cache for the latest available version that has the
  *      same script name and use that instead.
  *   4. If all else fails, return null (caller exits cleanly).
+ *
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1007
  */
 function resolveTarget(targetPath) {
   // Fast path: target exists (common case)
@@ -55,14 +57,10 @@ function resolveTarget(targetPath) {
   }
 
   // Fallback: scan plugin cache for the same script in the latest version.
-  // CLAUDE_PLUGIN_ROOT is e.g. ~/.copilot/plugins/cache/omc/oh-my-copilot/4.2.14
-  // PLUGIN_ROOT is the Copilot CLI equivalent variable name.
-  // __dirname resolves to the scripts/ directory inside the plugin install root.
+  // CLAUDE_PLUGIN_ROOT is e.g. ~/.claude/plugins/cache/omc/oh-my-copilot/4.2.14
   // We look one level up for sibling version directories.
   try {
-    const pluginRoot = process.env.PLUGIN_ROOT
-      || process.env.CLAUDE_PLUGIN_ROOT
-      || dirname(__dirname); // __dirname = scripts/, parent = plugin root
+    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
     if (!pluginRoot) return null;
 
     const cacheBase = dirname(pluginRoot);          // .../oh-my-copilot/
@@ -95,12 +93,52 @@ function resolveTarget(targetPath) {
   return null;
 }
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function flattenHookEntries(rawHooks) {
+  if (!rawHooks || typeof rawHooks !== 'object') return [];
+  return Object.values(rawHooks).flatMap((entries) => Array.isArray(entries) ? entries : []);
+}
+
+function resolveHookTimeoutMs(targetPath, extraArgs) {
+  const pluginRoot = dirname(dirname(targetPath));
+  const hooksJsonPath = join(pluginRoot, 'hooks', 'hooks.json');
+  if (!existsSync(hooksJsonPath)) return null;
+
+  try {
+    const hooksJson = JSON.parse(readFileSync(hooksJsonPath, 'utf-8'));
+    const scriptName = basename(targetPath);
+    const scriptPattern = new RegExp(`[/\\\\]scripts[/\\\\]${escapeRegex(scriptName)}(?:\\s|$)`);
+    const argNeedles = extraArgs.filter((arg) => typeof arg === 'string' && arg.length > 0);
+
+    for (const entry of flattenHookEntries(hooksJson?.hooks)) {
+      const hooks = Array.isArray(entry?.hooks) ? entry.hooks : [];
+      for (const hook of hooks) {
+        const command = typeof hook?.command === 'string' ? hook.command : '';
+        const timeout = Number(hook?.timeout);
+        if (!scriptPattern.test(command)) continue;
+        if (!Number.isFinite(timeout) || timeout <= 0) continue;
+        if (!argNeedles.every((arg) => command.includes(` ${arg}`) || command.endsWith(` ${arg}`))) continue;
+        return Math.floor(timeout * 1000);
+      }
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
 const resolved = resolveTarget(target);
 if (!resolved) {
   // Target not found anywhere — exit cleanly so hooks are never blocked.
   // This is the graceful fallback for stale CLAUDE_PLUGIN_ROOT paths.
   process.exit(0);
 }
+
+const timeoutMs = resolveHookTimeoutMs(resolved, process.argv.slice(3));
 
 const result = spawnSync(
   process.execPath,
@@ -109,8 +147,16 @@ const result = spawnSync(
     stdio: 'inherit',
     env: process.env,
     windowsHide: true,
+    ...(timeoutMs ? {
+      timeout: timeoutMs,
+      killSignal: process.platform === 'win32' ? 'SIGTERM' : 'SIGKILL',
+    } : {}),
   }
 );
+
+if (result.error?.code === 'ETIMEDOUT' && timeoutMs) {
+  process.stderr.write(`[run.cjs] Hook ${basename(resolved)} timed out after ${timeoutMs}ms; exiting fail-open.\n`);
+}
 
 // Propagate the child exit code (null → 0 to avoid blocking hooks).
 process.exit(result.status ?? 0);

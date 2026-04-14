@@ -36,6 +36,7 @@ export {
 export {
   isTmuxAvailable,
   isInsideTmux,
+  isPaneAlive,
   listTmuxPanes,
   capturePaneContent,
   analyzePaneContent,

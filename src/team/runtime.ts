@@ -1,6 +1,7 @@
 import { mkdir, writeFile, readFile, rm, rename } from 'fs/promises';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { tmuxExecAsync } from '../cli/tmux-utils.js';
 import type { CliAgentType } from './model-contract.js';
 import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
@@ -692,15 +693,11 @@ export async function spawnWorkerForTask(
   const marked = await markTaskInProgress(root, taskId, workerNameValue, runtime.teamName, runtime.cwd);
   if (!marked) return '';
 
-  const { execFile } = await import('child_process');
-  const { promisify } = await import('util');
-  const execFileAsync = promisify(execFile);
-
   const splitTarget = runtime.workerPaneIds.length === 0
     ? runtime.leaderPaneId
     : runtime.workerPaneIds[runtime.workerPaneIds.length - 1];
   const splitType = runtime.workerPaneIds.length === 0 ? '-h' : '-v';
-  const splitResult = await execFileAsync('tmux', [
+  const splitResult = await tmuxExecAsync([
     'split-window', splitType, '-t', splitTarget,
     '-d', '-P', '-F', '#{pane_id}',
     '-c', runtime.cwd,
@@ -833,10 +830,7 @@ export async function killWorkerPane(
   paneId: string
 ): Promise<void> {
   try {
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const execFileAsync = promisify(execFile);
-    await execFileAsync('tmux', ['kill-pane', '-t', paneId]);
+    await tmuxExecAsync(['kill-pane', '-t', paneId]);
   } catch {
     // idempotent: pane may already be gone
   }
@@ -996,19 +990,16 @@ export async function resumeTeam(teamName: string, cwd: string): Promise<TeamRun
   if (!configData) return null;
 
   // Check if session is alive
-  const { execFile } = await import('child_process');
-  const { promisify } = await import('util');
-  const execFileAsync = promisify(execFile);
   const sName = configData.tmuxSession || `omcp-team-${teamName}`;
 
   try {
-    await execFileAsync('tmux', ['has-session', '-t', sName.split(':')[0]]);
+    await tmuxExecAsync(['has-session', '-t', sName.split(':')[0]]);
   } catch {
     return null; // Session not alive
   }
 
   const paneTarget = sName.includes(':') ? sName : sName.split(':')[0];
-  const panesResult = await execFileAsync('tmux', [
+  const panesResult = await tmuxExecAsync([
     'list-panes', '-t', paneTarget, '-F', '#{pane_id}'
   ]);
   const allPanes = panesResult.stdout.trim().split('\n').filter(Boolean);

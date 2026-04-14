@@ -1,69 +1,51 @@
 #!/usr/bin/env node
 import { spawnSync } from 'child_process';
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { tmpdir } from 'os';
 import process from 'process';
 
 const PROVIDER_BINARIES = {
   claude: 'claude',
-  copilot: 'copilot',
   codex: 'codex',
   gemini: 'gemini',
 };
 const SHOULD_USE_WINDOWS_SHELL = process.platform === 'win32';
 
 /**
- * Write prompt to a temp file and return the path.
- * Used to avoid Windows command-line length limits when passing prompts to provider CLIs.
- */
-function writePromptTempFile(provider, prompt) {
-  const dir = join(tmpdir(), 'omcp-ask');
-  mkdirSync(dir, { recursive: true });
-  const filePath = join(dir, `${provider}-prompt-${Date.now()}-${process.pid}.txt`);
-  writeFileSync(filePath, prompt, 'utf-8');
-  return filePath;
-}
-
-/**
  * Build CLI args for a given provider.
- * - copilot: `copilot -p <prompt>`
+ * - claude: `claude -p <prompt>`
  * - codex: `codex exec --dangerously-bypass-approvals-and-sandbox <prompt>`
  * - gemini: `gemini -p <prompt> --yolo`
- *
- * On Windows, if prompt exceeds ~7KB, a temp file is used and the prompt
- * is replaced with a short instruction to read from that file.
  */
-const PROMPT_CLI_LIMIT = 7000; // Leave headroom below Windows ~8191 char limit
-
-function buildProviderArgs(provider, prompt) {
-  let effectivePrompt = prompt;
-  let promptFile = null;
-
-  if (prompt.length > PROMPT_CLI_LIMIT) {
-    promptFile = writePromptTempFile(provider, prompt);
-    effectivePrompt = `Read the full prompt from this file and follow its instructions: ${promptFile}`;
-  }
-
-  let args;
+function buildProviderArgs(provider, prompt, { pipePromptViaStdin = false } = {}) {
   if (provider === 'codex') {
-    args = ['exec', '--dangerously-bypass-approvals-and-sandbox', effectivePrompt];
-  } else if (provider === 'gemini') {
-    args = ['-p', effectivePrompt, '--yolo'];
-  } else {
-    args = ['-p', effectivePrompt];
+    return ['exec', '--dangerously-bypass-approvals-and-sandbox', pipePromptViaStdin ? '-' : prompt];
+  }
+  if (provider === 'gemini') {
+    return pipePromptViaStdin ? ['--yolo'] : ['-p', prompt, '--yolo'];
+  }
+  return ['-p', prompt];
+}
+
+function shouldPipePromptViaStdin(provider, prompt) {
+  if (provider !== 'codex' && provider !== 'gemini') {
+    return false;
   }
 
-  return { args, promptFile };
+  if (typeof prompt === 'string' && (prompt.includes('\n') || prompt.length > 500)) {
+    return true;
+  }
+
+  return SHOULD_USE_WINDOWS_SHELL;
 }
 
 const ASK_ORIGINAL_TASK_ENV = 'OMC_ASK_ORIGINAL_TASK';
+const ASK_ORIGINAL_TASK_ENV_ALIAS = 'OMX_ASK_ORIGINAL_TASK';
 
 function usage() {
-  console.error('Usage: omp ask <claude|codex|gemini> "<prompt>"');
+  console.error('Usage: omc ask <claude|codex|gemini> "<prompt>"');
   console.error('Legacy direct usage: node scripts/run-provider-advisor.js <claude|codex|gemini> <prompt...>');
-  console.error('                 or: node scripts/run-provider-advisor.js copilot --print "<prompt>"');
+  console.error('                 or: node scripts/run-provider-advisor.js claude --print "<prompt>"');
   console.error('                 or: node scripts/run-provider-advisor.js gemini --prompt "<prompt>"');
 }
 
@@ -88,19 +70,6 @@ function parseArgs(argv) {
     process.exit(1);
   }
 
-  // Read prompt from temp file (set by ask.ts to avoid CLI length limits)
-  const promptFilePath = process.env.OMC_ASK_PROMPT_FILE;
-  if (promptFilePath) {
-    try {
-      const prompt = readFileSync(promptFilePath, 'utf-8').trim();
-      if (prompt) {
-        return { provider, prompt };
-      }
-    } catch {
-      // Fall through to CLI arg parsing
-    }
-  }
-
   if (rest.length === 0) {
     usage();
     process.exit(1);
@@ -118,8 +87,8 @@ function parseArgs(argv) {
   return { provider, prompt: rest.join(' ').trim() };
 }
 
-// Strip Copilot session markers so provider advisors do not detect or inherit the active Copilot CLI session.
-const COPILOT_SESSION_STRIPPED_ENV_VARS = new Set([
+// Strip Claude session markers so provider advisors do not detect or inherit the active Claude Code session.
+const CLAUDE_SESSION_STRIPPED_ENV_VARS = new Set([
   'CLAUDECODE',
   'CLAUDE_SESSION_ID',
   'CLAUDECODE_SESSION_ID',
@@ -129,8 +98,8 @@ const CODEX_STRIPPED_ENV_VARS = new Set(['RUST_LOG', 'RUST_BACKTRACE', 'RUST_LIB
 
 function buildProviderEnv(provider, env = process.env) {
   const strippedEnvVars = provider === 'codex'
-    ? new Set([...COPILOT_SESSION_STRIPPED_ENV_VARS, ...CODEX_STRIPPED_ENV_VARS])
-    : COPILOT_SESSION_STRIPPED_ENV_VARS;
+    ? new Set([...CLAUDE_SESSION_STRIPPED_ENV_VARS, ...CODEX_STRIPPED_ENV_VARS])
+    : CLAUDE_SESSION_STRIPPED_ENV_VARS;
 
   return Object.fromEntries(
     Object.entries(env).filter(([key]) => !strippedEnvVars.has(key)),
@@ -198,6 +167,12 @@ function resolveOriginalTask(prompt) {
     return canonical;
   }
 
+  const alias = process.env[ASK_ORIGINAL_TASK_ENV_ALIAS];
+  if (alias && alias.trim()) {
+    console.error(`[ask] DEPRECATED: ${ASK_ORIGINAL_TASK_ENV_ALIAS} is deprecated; use ${ASK_ORIGINAL_TASK_ENV} instead.`);
+    return alias;
+  }
+
   return prompt;
 }
 
@@ -253,18 +228,15 @@ async function main() {
 
   ensureBinary(provider, binary);
 
-  const { args: providerArgs, promptFile: providerPromptFile } = buildProviderArgs(provider, prompt);
+  const pipePromptViaStdin = shouldPipePromptViaStdin(provider, prompt);
+  const providerArgs = buildProviderArgs(provider, prompt, { pipePromptViaStdin });
   const run = spawnSync(binary, providerArgs, {
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024,
     env: buildProviderEnv(provider),
     shell: SHOULD_USE_WINDOWS_SHELL,
+    ...(pipePromptViaStdin ? { input: prompt } : { stdio: ['ignore', 'pipe', 'pipe'] }),
   });
-
-  // Clean up provider prompt temp file
-  if (providerPromptFile) {
-    try { unlinkSync(providerPromptFile); } catch { /* ignore */ }
-  }
 
   const stdout = run.stdout || '';
   const stderr = run.stderr || '';

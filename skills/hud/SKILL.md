@@ -20,8 +20,8 @@ Note: All `~/.copilot/...` paths in this guide respect `COPILOT_CONFIG_DIR` when
 | `/oh-my-copilot:hud` | Show current HUD status (auto-setup if needed) |
 | `/oh-my-copilot:hud setup` | Install/repair HUD statusline |
 | `/oh-my-copilot:hud minimal` | Switch to minimal display |
-| `/oh-my-copilot:hud focused` | Switch to focused display |
-| `/oh-my-copilot:hud full` | Switch to full display (default) |
+| `/oh-my-copilot:hud focused` | Switch to focused display (default) |
+| `/oh-my-copilot:hud full` | Switch to full display |
 | `/oh-my-copilot:hud dense` | Switch to dense display (compact with all features) |
 | `/oh-my-copilot:hud opencode` | Switch to opencode display (code-focused) |
 | `/oh-my-copilot:hud disable` | Disable the HUD statusline |
@@ -143,6 +143,18 @@ Shows everything including multi-line agent details:
 ├─ O architect    2m   analyzing architecture patterns...
 ├─ e explore     45s   searching for test files
 └─ s executor     1m   implementing validation logic
+```
+
+### Dense
+Compact single-line with all features — same as full but compressed:
+```
+[OMC] main|r:3/10|US-002|ulw|ctx:67%|ag:3|bg:3/5|td:2/5
+```
+
+### Opencode
+Code-focused display optimized for opencode terminal workflows:
+```
+[OMC] branch:main | ctx:67% | todos:2/5
 ```
 
 ## Multi-Line Agent Display

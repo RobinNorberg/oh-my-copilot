@@ -33,6 +33,8 @@ export interface UserStory {
   priority: number;
   /** Whether this story passes (complete and verified) */
   passes: boolean;
+  /** Whether architect verification has approved this story for progression */
+  architectVerified?: boolean;
   /** Optional notes from implementation */
   notes?: string;
 }
@@ -70,6 +72,96 @@ export interface PRDStatus {
 export const PRD_FILENAME = 'prd.json';
 export const PRD_EXAMPLE_FILENAME = 'prd.example.json';
 
+export interface EnsurePrdForStartupResult {
+  ok: boolean;
+  created: boolean;
+  path: string | null;
+  prd?: PRD;
+  error?: string;
+}
+
+function normalizeStory(candidate: unknown): UserStory | null {
+  if (!candidate || typeof candidate !== 'object') {
+    return null;
+  }
+
+  const story = candidate as Record<string, unknown>;
+  if (
+    typeof story.id !== 'string' ||
+    typeof story.title !== 'string' ||
+    typeof story.description !== 'string' ||
+    !Array.isArray(story.acceptanceCriteria) ||
+    !story.acceptanceCriteria.every(criterion => typeof criterion === 'string') ||
+    typeof story.priority !== 'number' ||
+    !Number.isFinite(story.priority) ||
+    typeof story.passes !== 'boolean'
+  ) {
+    return null;
+  }
+
+  return {
+    id: story.id,
+    title: story.title,
+    description: story.description,
+    acceptanceCriteria: [...story.acceptanceCriteria],
+    priority: story.priority,
+    passes: story.passes,
+    architectVerified: story.architectVerified === true,
+    notes: typeof story.notes === 'string' ? story.notes : undefined
+  };
+}
+
+function normalizePrd(candidate: unknown): PRD | null {
+  if (!candidate || typeof candidate !== 'object') {
+    return null;
+  }
+
+  const prd = candidate as Record<string, unknown>;
+  if (
+    typeof prd.project !== 'string' ||
+    typeof prd.branchName !== 'string' ||
+    typeof prd.description !== 'string' ||
+    !Array.isArray(prd.userStories)
+  ) {
+    return null;
+  }
+
+  const userStories = prd.userStories
+    .map(normalizeStory);
+
+  if (userStories.some(story => story === null)) {
+    return null;
+  }
+
+  return {
+    project: prd.project,
+    branchName: prd.branchName,
+    description: prd.description,
+    userStories: userStories as UserStory[]
+  };
+}
+
+function readPrdFromPath(prdPath: string): { prd?: PRD; error?: string } {
+  try {
+    const content = readFileSync(prdPath, 'utf-8');
+    const parsed = JSON.parse(content) as unknown;
+    const normalized = normalizePrd(parsed);
+
+    if (!normalized) {
+      return { error: `Invalid PRD structure in ${prdPath}.` };
+    }
+
+    return { prd: normalized };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { error: `Failed to read ${prdPath}: ${message}` };
+  }
+}
+
+function isStoryComplete(story: UserStory): boolean {
+  return story.passes && story.architectVerified === true;
+}
+
 // ============================================================================
 // File Operations
 // ============================================================================
@@ -82,14 +174,14 @@ export function getPrdPath(directory: string): string {
 }
 
 /**
- * Get the path to the prd.json in .omcp subdirectory
+ * Get the path to the prd.json in .omc subdirectory
  */
 export function getOmcPrdPath(directory: string): string {
   return join(getOmcRoot(directory), PRD_FILENAME);
 }
 
 /**
- * Find prd.json in a directory (checks both root and .omcp)
+ * Find prd.json in a directory (checks both root and .omc)
  */
 export function findPrdPath(directory: string): string | null {
   const rootPath = getPrdPath(directory);
@@ -114,26 +206,14 @@ export function readPrd(directory: string): PRD | null {
     return null;
   }
 
-  try {
-    const content = readFileSync(prdPath, 'utf-8');
-    const prd = JSON.parse(content) as PRD;
-
-    // Validate structure
-    if (!prd.userStories || !Array.isArray(prd.userStories)) {
-      return null;
-    }
-
-    return prd;
-  } catch {
-    return null;
-  }
+  return readPrdFromPath(prdPath).prd ?? null;
 }
 
 /**
  * Write PRD to disk
  */
 export function writePrd(directory: string, prd: PRD): boolean {
-  // Prefer writing to existing location, or .omcp by default
+  // Prefer writing to existing location, or .omc by default
   let prdPath = findPrdPath(directory);
 
   if (!prdPath) {
@@ -165,15 +245,15 @@ export function writePrd(directory: string, prd: PRD): boolean {
  */
 export function getPrdStatus(prd: PRD): PRDStatus {
   const stories = prd.userStories;
-  const completed = stories.filter(s => s.passes);
-  const pending = stories.filter(s => !s.passes);
+  const pending = stories.filter(s => !isStoryComplete(s));
+  const fullyCompleted = stories.filter(isStoryComplete);
 
   // Sort pending by priority to find next story
   const sortedPending = [...pending].sort((a, b) => a.priority - b.priority);
 
   return {
     total: stories.length,
-    completed: completed.length,
+    completed: fullyCompleted.length,
     pending: pending.length,
     allComplete: pending.length === 0,
     nextStory: sortedPending[0] || null,
@@ -200,6 +280,7 @@ export function markStoryComplete(
   }
 
   story.passes = true;
+  story.architectVerified = false;
   if (notes) {
     story.notes = notes;
   }
@@ -226,6 +307,33 @@ export function markStoryIncomplete(
   }
 
   story.passes = false;
+  story.architectVerified = false;
+  if (notes) {
+    story.notes = notes;
+  }
+
+  return writePrd(directory, prd);
+}
+
+/**
+ * Mark a story as architect-verified after reviewer approval
+ */
+export function markStoryArchitectVerified(
+  directory: string,
+  storyId: string,
+  notes?: string
+): boolean {
+  const prd = readPrd(directory);
+  if (!prd) {
+    return false;
+  }
+
+  const story = prd.userStories.find(s => s.id === storyId);
+  if (!story) {
+    return false;
+  }
+
+  story.architectVerified = true;
   if (notes) {
     story.notes = notes;
   }
@@ -285,7 +393,8 @@ export function createPrd(
     userStories: stories.map((s, index) => ({
       ...s,
       priority: s.priority ?? index + 1,
-      passes: false
+      passes: false,
+      architectVerified: false
     }))
   };
 }
@@ -331,6 +440,73 @@ export function initPrd(
   return writePrd(directory, prd);
 }
 
+/**
+ * Ensure Ralph startup has a valid PRD.json to work from.
+ * - Missing PRD -> create scaffold
+ * - Invalid PRD -> fail clearly
+ */
+export function ensurePrdForStartup(
+  directory: string,
+  project: string,
+  branchName: string,
+  description: string,
+  stories?: UserStoryInput[]
+): EnsurePrdForStartupResult {
+  const existingPath = findPrdPath(directory);
+
+  if (!existingPath) {
+    const created = initPrd(directory, project, branchName, description, stories);
+    const createdPath = findPrdPath(directory);
+    const prd = created ? readPrd(directory) : null;
+
+    if (!created || !createdPath || !prd) {
+      return {
+        ok: false,
+        created: false,
+        path: createdPath,
+        error: `Ralph requires a valid ${PRD_FILENAME} at startup, but scaffold creation failed.`
+      };
+    }
+
+    if (prd.userStories.length === 0) {
+      return {
+        ok: false,
+        created: true,
+        path: createdPath,
+        error: `Ralph created ${createdPath}, but it contains no user stories.`
+      };
+    }
+
+    return { ok: true, created: true, path: createdPath, prd };
+  }
+
+  const parsed = readPrdFromPath(existingPath);
+  if (!parsed.prd) {
+    return {
+      ok: false,
+      created: false,
+      path: existingPath,
+      error: parsed.error ?? `Ralph requires a valid ${PRD_FILENAME} at startup.`
+    };
+  }
+
+  if (parsed.prd.userStories.length === 0) {
+    return {
+      ok: false,
+      created: false,
+      path: existingPath,
+      error: `${existingPath} must contain at least one user story for Ralph to start.`
+    };
+  }
+
+  return {
+    ok: true,
+    created: false,
+    path: existingPath,
+    prd: parsed.prd
+  };
+}
+
 // ============================================================================
 // PRD Formatting
 // ============================================================================
@@ -362,7 +538,12 @@ export function formatStory(story: UserStory): string {
   const lines: string[] = [];
 
   lines.push(`## ${story.id}: ${story.title}`);
-  lines.push(`Status: ${story.passes ? 'COMPLETE' : 'PENDING'}`);
+  const statusLabel = isStoryComplete(story)
+    ? 'COMPLETE'
+    : story.passes
+      ? 'AWAITING ARCHITECT REVIEW'
+      : 'PENDING';
+  lines.push(`Status: ${statusLabel}`);
   lines.push(`Priority: ${story.priority}`);
   lines.push('');
   lines.push(story.description);

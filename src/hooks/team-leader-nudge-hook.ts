@@ -58,13 +58,11 @@ export interface TmuxRunner {
 }
 
 async function defaultTmuxSendKeys(target: string, text: string, literal = false): Promise<void> {
-  const { execFile } = await import('child_process');
-  const { promisify } = await import('util');
-  const execFileAsync = promisify(execFile);
+  const { tmuxExecAsync } = await import('../cli/tmux-utils.js');
   const args = literal
     ? ['send-keys', '-t', target, '-l', text]
     : ['send-keys', '-t', target, text];
-  await execFileAsync('tmux', args, { timeout: 3000 });
+  await tmuxExecAsync(args, { timeout: 3000 });
 }
 
 const defaultTmux: TmuxRunner = {
