@@ -6,21 +6,13 @@
  * Cross-platform: Windows, macOS, Linux
  */
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, writeFileSync } from 'fs';
 import { dirname, join, resolve } from 'path';
 import { execSync } from 'child_process';
-import { pathToFileURL, fileURLToPath } from 'url';
-import { getCopilotConfigDir } from './lib/config-dir.mjs';
+import { fileURLToPath, pathToFileURL } from 'url';
+import { getClaudeConfigDir } from './lib/config-dir.mjs';
 import { evaluateAgentHeavyPreflight } from './lib/pre-tool-enforcer-preflight.mjs';
 import { readStdin } from './lib/stdin.mjs';
-
-// Resolve plugin root: Copilot CLI sets PLUGIN_ROOT; legacy Claude CLI sets CLAUDE_PLUGIN_ROOT.
-// Fallback: derive from this script's own path (scripts/ -> parent = plugin root).
-const __filename = fileURLToPath(import.meta.url);
-const __scriptDir = dirname(__filename);
-const _resolvedPluginRoot = process.env.PLUGIN_ROOT
-  || process.env.CLAUDE_PLUGIN_ROOT
-  || dirname(__scriptDir);
 
 // Inlined from src/config/models.ts — avoids a dist/ import so the hook works
 // before a build and stays consistent with the TypeScript source.
@@ -61,10 +53,10 @@ function readAgentDefinitionModel(subagentType) {
   // Reject path traversal: agent names are simple identifiers; no path separators allowed.
   if (!/^[a-zA-Z0-9_-]+$/.test(agentType)) return null;
   // Build a prioritised list of agents/ directories to search.
-  // PLUGIN_ROOT is tried first when set; the script-relative path is always the
+  // CLAUDE_PLUGIN_ROOT is tried first when set; the script-relative path is always the
   // final fallback. Checking per-file (not just per-directory) means a partially-populated
   // plugin install doesn't hide agents that exist in the script-relative tree.
-  const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
+  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
   const scriptAgentsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'agents');
   const candidateDirs = [
     ...(pluginRoot ? [join(pluginRoot, 'agents')] : []),
@@ -99,7 +91,13 @@ const MODE_STATE_FILES = [
   'team-state.json',
   'omc-teams-state.json',
 ];
+const QUIET_LEVEL = getQuietLevel();
 
+function getQuietLevel() {
+  const parsed = Number.parseInt(process.env.OMC_QUIET || '0', 10);
+  if (Number.isNaN(parsed)) return 0;
+  return Math.max(0, parsed);
+}
 
 /**
  * Resolve transcript path in worktree environments.
@@ -111,7 +109,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
     if (existsSync(transcriptPath)) return transcriptPath;
   } catch { /* fallthrough */ }
 
-  const worktreePattern = /--copilot-worktrees-[^/\\]+/;
+  const worktreePattern = /--claude-worktrees-[^/\\]+/;
   if (worktreePattern.test(transcriptPath)) {
     const resolvedPath = transcriptPath.replace(worktreePattern, '');
     try {
@@ -140,7 +138,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
       const lastSep = transcriptPath.lastIndexOf('/');
       const sessionFile = lastSep !== -1 ? transcriptPath.substring(lastSep + 1) : '';
       if (sessionFile) {
-        const configDir = getCopilotConfigDir();
+        const configDir = getClaudeConfigDir();
         const projectsDir = join(configDir, 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = mainRepoRoot.replace(/[/\\]/g, '-');
@@ -188,8 +186,8 @@ function getTodoStatus(directory) {
 
   // Check project-local todos
   const localPaths = [
-    join(directory, '.omcp', 'todos.json'),
-    join(directory, '.copilot', 'todos.json')
+    join(directory, '.omc', 'todos.json'),
+    join(directory, '.claude', 'todos.json')
   ];
 
   for (const todoFile of localPaths) {
@@ -209,7 +207,7 @@ function getTodoStatus(directory) {
   }
 
   // NOTE: We intentionally do NOT scan the global
-  // [$COPILOT_CONFIG_DIR|~/.copilot]/todos/ directory.
+  // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/ directory.
   // That directory accumulates todo files from ALL past sessions across all
   // projects, causing phantom task counts in fresh sessions (see issue #354).
 
@@ -271,13 +269,80 @@ function hasActiveMode(directory, sessionId) {
   );
 }
 
+function mapCanonicalTeamPhaseToStage(rawPhase) {
+  const phase = typeof rawPhase === 'string' ? rawPhase.trim().toLowerCase() : '';
+  switch (phase) {
+    case 'initializing':
+    case 'planning':
+      return 'team-plan';
+    case 'executing':
+      return 'team-exec';
+    case 'fixing':
+      return 'team-fix';
+    case 'completed':
+      return 'complete';
+    case 'failed':
+      return 'failed';
+    default:
+      return '';
+  }
+}
+
+function readCanonicalActiveTeamState(directory, sessionId) {
+  if (!sessionId || !SESSION_ID_PATTERN.test(sessionId)) {
+    return null;
+  }
+
+  const teamRoot = join(directory, '.omcp', 'state', 'team');
+  if (!existsSync(teamRoot)) {
+    return null;
+  }
+
+  const entries = readdirSync(teamRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+
+  for (const teamName of entries) {
+    const teamDir = join(teamRoot, teamName);
+    const manifest = readJsonFile(join(teamDir, 'manifest.json'));
+    const phaseState = readJsonFile(join(teamDir, 'phase-state.json'));
+    const ownerSessionId = typeof manifest?.leader?.session_id === 'string'
+      ? manifest.leader.session_id.trim()
+      : '';
+    if (!ownerSessionId || ownerSessionId !== sessionId) {
+      continue;
+    }
+
+    const stage = mapCanonicalTeamPhaseToStage(phaseState?.current_phase);
+    if (!stage) {
+      continue;
+    }
+
+    return {
+      active: stage !== 'complete' && stage !== 'failed',
+      session_id: sessionId,
+      team_name: teamName,
+      teamName,
+      phase: stage,
+      current_phase: stage,
+      task: typeof manifest?.task === 'string' ? manifest.task : teamName,
+      started_at: typeof manifest?.created_at === 'string' ? manifest.created_at : undefined,
+      last_checked_at: typeof phaseState?.updated_at === 'string' ? phaseState.updated_at : undefined,
+    };
+  }
+
+  return null;
+}
+
 /**
  * Check if team mode is active for the given directory/session.
- * Reads team-state.json from session-scoped or legacy paths.
- * Returns the team state object if active, null otherwise.
+ * Reads team-state.json from session-scoped or legacy paths and falls back
+ * to canonical team state when the coarse file drifts or disappears.
  */
 function getActiveTeamState(directory, sessionId) {
   const paths = [];
+  let coarseState = null;
 
   // Session-scoped path (preferred)
   if (sessionId && SESSION_ID_PATTERN.test(sessionId)) {
@@ -289,20 +354,30 @@ function getActiveTeamState(directory, sessionId) {
 
   for (const statePath of paths) {
     const state = readJsonFile(statePath);
-    if (state && state.active === true) {
-      // Respect session isolation: skip state tagged to a different session
-      if (sessionId && state.session_id && state.session_id !== sessionId) {
-        continue;
-      }
+    if (!state) {
+      continue;
+    }
+    if (sessionId && state.session_id && state.session_id !== sessionId) {
+      continue;
+    }
+    coarseState = state;
+    if (state.active === true) {
       return state;
     }
   }
-  return null;
+
+  const canonical = readCanonicalActiveTeamState(directory, sessionId);
+  if (canonical && canonical.active === true) {
+    return canonical;
+  }
+
+  return coarseState && coarseState.active === true ? coarseState : null;
 }
 
 // Generate agent spawn message with metadata
 function generateAgentSpawnMessage(toolInput, directory, todoStatus, sessionId) {
   if (!toolInput || typeof toolInput !== 'object') {
+    if (QUIET_LEVEL >= 2) return '';
     return `${todoStatus}Launch multiple agents in parallel when tasks are independent. Use run_in_background for long operations.`;
   }
 
@@ -322,9 +397,11 @@ function generateAgentSpawnMessage(toolInput, directory, todoStatus, sessionId) 
       `without team_name. You MUST use TeamCreate first (if not already created), then spawn teammates with ` +
       `Task(team_name="${teamName}", name="worker-N", subagent_type="${agentType}"). ` +
       `Do NOT use Task without team_name during an active team session. ` +
-      'If TeamCreate is not available in your tools, tell the user to verify ' +
-      'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 is set in [$COPILOT_CONFIG_DIR|~/.copilot]/settings.json. Restart Copilot CLI.';
+      `If TeamCreate is not available in your tools, tell the user to verify ` +
+      'CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 is set in [$CLAUDE_CONFIG_DIR|~/.claude]/settings.json. Restart Claude Code.';
   }
+
+  if (QUIET_LEVEL >= 2) return '';
 
   const parts = [`${todoStatus}Spawning agent: ${agentType} (${model})${bg}`];
   if (desc) parts.push(`Task: ${desc}`);
@@ -335,6 +412,13 @@ function generateAgentSpawnMessage(toolInput, directory, todoStatus, sessionId) 
 
 // Generate contextual message based on tool type
 function generateMessage(toolName, todoStatus, modeActive = false) {
+  if (QUIET_LEVEL >= 1 && ['Bash', 'Edit', 'Write', 'Read', 'Grep', 'Glob'].includes(toolName)) {
+    return '';
+  }
+  if (QUIET_LEVEL >= 2 && toolName === 'TodoWrite') {
+    return '';
+  }
+
   const messages = {
     TodoWrite: `${todoStatus}Mark todos in_progress BEFORE starting, completed IMMEDIATELY after finishing.`,
     Bash: `${todoStatus}Use parallel execution for independent tasks. Use run_in_background for long operations (npm install, builds, tests).`,
@@ -386,22 +470,29 @@ const SKILL_PROTECTION_MAP = {
   'mcp-setup': 'medium', 'project-session-manager': 'medium',
   psm: 'medium',          // alias for project-session-manager
   'writer-memory': 'medium', 'ralph-init': 'medium',
-  release: 'medium', c3g: 'medium',
+  release: 'medium', ccg: 'medium',
 
   // === Heavy protection (long-running, 10 reinforcements) ===
   deepinit: 'heavy',
 };
 
 function getSkillProtectionLevel(skillName, rawSkillName) {
+  // When rawSkillName is provided, only apply protection to OMC-prefixed skills.
+  // Non-prefixed skills are project custom skills or other plugins — no protection.
+  // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1581
+  if (rawSkillName != null && typeof rawSkillName === 'string' &&
+      !rawSkillName.toLowerCase().startsWith('oh-my-copilot:')) {
+    return 'none';
+  }
   const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
-  return SKILL_PROTECTION_MAP[normalized] || 'light';
+  return SKILL_PROTECTION_MAP[normalized] || 'none';
 }
 
 // Load OMC config to check forceInherit setting (issues #1135, #1201)
 function loadOmcConfig() {
   const configPaths = [
-    join(getCopilotConfigDir(), '.omc-config.json'),
-    join(process.cwd(), '.omcp', 'config.json'),
+    join(getClaudeConfigDir(), '.omc-config.json'),
+    join(process.cwd(), '.omc', 'config.json'),
   ];
   for (const configPath of configPaths) {
     try {
@@ -450,7 +541,7 @@ function writeSkillActiveState(directory, skillName, sessionId, rawSkillName) {
   // If the SAME skill is re-invoked, allow the overwrite (idempotent refresh).
   //
   // NOTE: This read-check-write sequence has a TOCTOU race condition
-  // (non-atomic), but this is acceptable because Copilot CLI sessions are
+  // (non-atomic), but this is acceptable because Claude Code sessions are
   // single-threaded — only one tool call executes at a time within a session.
   try {
     if (existsSync(targetPath)) {
@@ -489,6 +580,7 @@ function writeSkillActiveState(directory, skillName, sessionId, rawSkillName) {
     // Best-effort; don't fail the hook
   }
 }
+
 
 function clearAwaitingConfirmationFlag(directory, stateName, sessionId) {
   const stateDir = join(directory, '.omcp', 'state');
@@ -578,7 +670,10 @@ async function main() {
       if (skillName) {
         const sid = typeof data.session_id === 'string' ? data.session_id
           : typeof data.sessionId === 'string' ? data.sessionId : '';
-        writeSkillActiveState(directory, skillName, sid);
+        // Pass rawSkillName to distinguish OMC skills from project custom skills (issue #1581)
+        const rawSkill = toolInput.skill || toolInput.skill_name || toolInput.skillName || toolInput.command || '';
+        const rawSkillName = typeof rawSkill === 'string' && rawSkill.trim() ? rawSkill.trim() : undefined;
+        writeSkillActiveState(directory, skillName, sid, rawSkillName);
         confirmSkillModeStates(directory, skillName, sid);
       }
     }
@@ -662,7 +757,7 @@ async function main() {
         }
         // Agent-definition model check: runs for any no-model call with a subagent_type,
         // independent of the sessionHasLmSuffix branch above (which may have matched and
-        // fallen through safely). Copilot CLI reads the agent definition's `model:` field
+        // fallen through safely). Claude Code reads the agent definition's `model:` field
         // AFTER this hook and injects it — if that's a bare Anthropic ID, Bedrock rejects
         // with 400. Detect it here and deny with guidance to retry with an explicit tier alias.
         if (!toolModel && toolInput.subagent_type) {
@@ -702,7 +797,7 @@ async function main() {
     // Fires in PreToolUse so users get notified BEFORE the tool blocks for input (#597)
     if (toolName === 'AskUserQuestion') {
       try {
-        const pluginRoot = _resolvedPluginRoot;
+        const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
         if (pluginRoot) {
           const { notify } = await import(pathToFileURL(join(pluginRoot, 'dist', 'notifications', 'index.js')).href);
 

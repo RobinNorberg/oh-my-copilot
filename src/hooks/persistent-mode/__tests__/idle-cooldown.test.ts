@@ -3,16 +3,17 @@
  * Verifies that idle notifications are rate-limited per session.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { getGlobalOmcConfigCandidates } from '../../../utils/paths.js';
 import {
   getIdleNotificationCooldownSeconds,
+  shouldWakeOpenClawOnStop,
   shouldSendIdleNotification,
   recordIdleNotificationSent,
 } from '../index.js';
 import { atomicWriteJsonSync } from '../../../lib/atomic-write.js';
-import { getGlobalOmcConfigCandidates } from '../../../utils/paths.js';
 
 // Mock fs and os modules (hoisted before all imports)
 vi.mock('fs', async () => {
@@ -31,17 +32,17 @@ vi.mock('../../../lib/atomic-write.js', () => ({
   atomicWriteJsonSync: vi.fn(),
 }));
 
+const { TEST_HOME } = vi.hoisted(() => ({
+  TEST_HOME: process.env.HOME || '/tmp/omc-test-home',
+}));
+
 vi.mock('os', async () => {
-  const actual = await vi.importActual('os');
+  const actual = await vi.importActual<typeof import('os')>('os');
   return {
     ...actual,
-    homedir: vi.fn().mockReturnValue('/home/testuser'),
+    homedir: vi.fn().mockReturnValue(TEST_HOME),
   };
 });
-
-function getConfigPaths(): string[] {
-  return getGlobalOmcConfigCandidates('config.json');
-}
 
 const TEST_STATE_DIR = '/project/.omcp/state';
 const COOLDOWN_PATH = join(TEST_STATE_DIR, 'idle-notif-cooldown.json');
@@ -52,11 +53,49 @@ const SESSION_COOLDOWN_PATH = join(
   TEST_SESSION_ID,
   'idle-notif-cooldown.json'
 );
-const CONFIG_PATH = '/home/testuser/.copilot/config.json';
+function getConfigPaths(): string[] {
+  return getGlobalOmcConfigCandidates('config.json');
+}
 
 describe('getIdleNotificationCooldownSeconds', () => {
+  const originalHome = process.env.HOME;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.HOME = TEST_HOME;
+    delete process.env.XDG_CONFIG_HOME;
+    delete process.env.XDG_STATE_HOME;
+    delete process.env.OMC_HOME;
+  });
+
+  const originalXdgConfigHome = process.env.XDG_CONFIG_HOME;
+  const originalXdgStateHome = process.env.XDG_STATE_HOME;
+  const originalOmcHome = process.env.OMC_HOME;
+
+  afterEach(() => {
+    if (originalHome === undefined) {
+      delete process.env.HOME;
+    } else {
+      process.env.HOME = originalHome;
+    }
+
+    if (originalXdgConfigHome === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = originalXdgConfigHome;
+    }
+
+    if (originalXdgStateHome === undefined) {
+      delete process.env.XDG_STATE_HOME;
+    } else {
+      process.env.XDG_STATE_HOME = originalXdgStateHome;
+    }
+
+    if (originalOmcHome === undefined) {
+      delete process.env.OMC_HOME;
+    } else {
+      process.env.OMC_HOME = originalOmcHome;
+    }
   });
 
   it('returns 60 when config file does not exist', () => {
@@ -65,14 +104,45 @@ describe('getIdleNotificationCooldownSeconds', () => {
     expect(getIdleNotificationCooldownSeconds()).toBe(60);
   });
 
-  it.skipIf(process.platform === 'win32')('returns configured value when set in config', () => {
+  it('returns configured value when set in config', () => {
     (existsSync as ReturnType<typeof vi.fn>).mockReturnValue(true);
     (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
       JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 120 } })
     );
 
+    const [configPath] = getConfigPaths();
+
     expect(getIdleNotificationCooldownSeconds()).toBe(120);
-    expect(readFileSync).toHaveBeenCalledWith(CONFIG_PATH, 'utf-8');
+    expect(readFileSync).toHaveBeenCalledWith(configPath, 'utf-8');
+  });
+
+  it('falls back to legacy ~/.omc config when XDG config is absent', () => {
+    const candidates = getConfigPaths();
+    // On macOS, XDG primary and legacy resolve to the same path, so
+    // dedupePaths collapses them to a single entry. Use the last candidate
+    // (which is always the legacy path or its deduplicated equivalent).
+    const legacyConfigPath = candidates[candidates.length - 1];
+    if (candidates.length < 2) {
+      // Only one candidate (macOS) — XDG and legacy are identical.
+      // Verify the single path is read and returns the configured value.
+      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === legacyConfigPath);
+      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
+        JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 45 } })
+      );
+    } else {
+      // Two distinct candidates (Linux) — first is XDG, second is legacy.
+      // Mock XDG as absent, legacy as present with the configured value.
+      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === legacyConfigPath);
+      (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+        if (p === legacyConfigPath) {
+          return JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 45 } });
+        }
+        throw new Error('not found');
+      });
+    }
+
+    expect(getIdleNotificationCooldownSeconds()).toBe(45);
+    expect(readFileSync).toHaveBeenCalledWith(legacyConfigPath, 'utf-8');
   });
 
   it('returns 0 when cooldown is disabled in config', () => {
@@ -148,35 +218,12 @@ describe('getIdleNotificationCooldownSeconds', () => {
 
     expect(getIdleNotificationCooldownSeconds()).toBe(9999999);
   });
-
-  it('falls back to legacy ~/.omc config when XDG config is absent', () => {
-    const candidates = getConfigPaths();
-    // On macOS, XDG primary and legacy resolve to the same path, so
-    // dedupePaths collapses them to a single entry. Use the last candidate
-    // (which is always the legacy path or its deduplicated equivalent).
-    const legacyConfigPath = candidates[candidates.length - 1];
-    if (candidates.length < 2) {
-      // Only one candidate (macOS) — XDG and legacy are identical.
-      // Verify the single path is read and returns the configured value.
-      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === legacyConfigPath);
-      (readFileSync as ReturnType<typeof vi.fn>).mockReturnValue(
-        JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 45 } })
-      );
-    } else {
-      // Two distinct candidates (Linux) — first is XDG, second is legacy.
-      // Mock XDG as absent, legacy as present with the configured value.
-      (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === legacyConfigPath);
-      (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-        if (p === legacyConfigPath) {
-          return JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 45 } });
-        }
-        throw new Error('not found');
-      });
-    }
-  });
 });
 
 describe('shouldSendIdleNotification', () => {
+  const zeroBacklogState = { signature: 'repo-zero', backlogZero: true };
+  const changedBacklogState = { signature: 'repo-new', backlogZero: true };
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -184,7 +231,8 @@ describe('shouldSendIdleNotification', () => {
   it('returns true when no cooldown file exists', () => {
     // config exists but no cooldown file
     (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH) return false; // use default 60s
+      const [configPath] = getConfigPaths();
+      if (p === configPath) return false; // use default 60s
       if (p === COOLDOWN_PATH) return false;
       return false;
     });
@@ -220,15 +268,17 @@ describe('shouldSendIdleNotification', () => {
     expect(shouldSendIdleNotification(TEST_STATE_DIR)).toBe(true);
   });
 
-  it.skipIf(process.platform === 'win32')('returns true when cooldown is disabled (0 seconds)', () => {
+  it('returns true when cooldown is disabled (0 seconds)', () => {
     const recentTimestamp = new Date(Date.now() - 5_000).toISOString(); // 5s ago
     (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH) return true;
+      const [configPath] = getConfigPaths();
+      if (p === configPath) return true;
       if (p === COOLDOWN_PATH) return true;
       return false;
     });
     (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH)
+      const [configPath] = getConfigPaths();
+      if (p === configPath)
         return JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 0 } });
       if (p === COOLDOWN_PATH) return JSON.stringify({ lastSentAt: recentTimestamp });
       throw new Error('not found');
@@ -263,15 +313,17 @@ describe('shouldSendIdleNotification', () => {
     expect(shouldSendIdleNotification(TEST_STATE_DIR)).toBe(true);
   });
 
-  it.skipIf(process.platform === 'win32')('respects a custom cooldown from config', () => {
+  it('respects a custom cooldown from config', () => {
     const recentTimestamp = new Date(Date.now() - 10_000).toISOString(); // 10s ago
     (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH) return true;
+      const [configPath] = getConfigPaths();
+      if (p === configPath) return true;
       if (p === COOLDOWN_PATH) return true;
       return false;
     });
     (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH)
+      const [configPath] = getConfigPaths();
+      if (p === configPath)
         return JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 5 } });
       if (p === COOLDOWN_PATH) return JSON.stringify({ lastSentAt: recentTimestamp });
       throw new Error('not found');
@@ -284,12 +336,14 @@ describe('shouldSendIdleNotification', () => {
   it('uses session-scoped cooldown file when sessionId is provided', () => {
     const recentTimestamp = new Date(Date.now() - 10_000).toISOString(); // 10s ago
     (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH) return true;
+      const [configPath] = getConfigPaths();
+      if (p === configPath) return true;
       if (p === SESSION_COOLDOWN_PATH) return true;
       return false;
     });
     (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH) {
+      const [configPath] = getConfigPaths();
+      if (p === configPath) {
         return JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 30 } });
       }
       if (p === SESSION_COOLDOWN_PATH) return JSON.stringify({ lastSentAt: recentTimestamp });
@@ -299,15 +353,51 @@ describe('shouldSendIdleNotification', () => {
     expect(shouldSendIdleNotification(TEST_STATE_DIR, TEST_SESSION_ID)).toBe(false);
   });
 
+  it('suppresses repeated zero-backlog nudges across follow-up sessions when the global repo snapshot is unchanged', () => {
+    const oldTimestamp = new Date(Date.now() - 90_000).toISOString();
+    (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === COOLDOWN_PATH);
+    (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p === COOLDOWN_PATH) {
+        return JSON.stringify({
+          lastSentAt: oldTimestamp,
+          repoSignature: zeroBacklogState.signature,
+          backlogZero: true,
+        });
+      }
+      throw new Error('not found');
+    });
+
+    expect(shouldSendIdleNotification(TEST_STATE_DIR, TEST_SESSION_ID, zeroBacklogState)).toBe(false);
+  });
+
+  it('re-enables zero-backlog nudges across follow-up sessions when the repo snapshot changes', () => {
+    const recentTimestamp = new Date(Date.now() - 5_000).toISOString();
+    (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === COOLDOWN_PATH);
+    (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p === COOLDOWN_PATH) {
+        return JSON.stringify({
+          lastSentAt: recentTimestamp,
+          repoSignature: zeroBacklogState.signature,
+          backlogZero: true,
+        });
+      }
+      throw new Error('not found');
+    });
+
+    expect(shouldSendIdleNotification(TEST_STATE_DIR, TEST_SESSION_ID, changedBacklogState)).toBe(true);
+  });
+
   it('blocks notification when within custom shorter cooldown', () => {
     const recentTimestamp = new Date(Date.now() - 10_000).toISOString(); // 10s ago
     (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH) return true;
+      const [configPath] = getConfigPaths();
+      if (p === configPath) return true;
       if (p === COOLDOWN_PATH) return true;
       return false;
     });
     (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH)
+      const [configPath] = getConfigPaths();
+      if (p === configPath)
         return JSON.stringify({ notificationCooldown: { sessionIdleSeconds: 30 } });
       if (p === COOLDOWN_PATH) return JSON.stringify({ lastSentAt: recentTimestamp });
       throw new Error('not found');
@@ -317,15 +407,17 @@ describe('shouldSendIdleNotification', () => {
     expect(shouldSendIdleNotification(TEST_STATE_DIR)).toBe(false);
   });
 
-  it.skipIf(process.platform === 'win32')('treats negative sessionIdleSeconds as 0 (disabled), always sends', () => {
+  it('treats negative sessionIdleSeconds as 0 (disabled), always sends', () => {
     const recentTimestamp = new Date(Date.now() - 5_000).toISOString(); // 5s ago
     (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH) return true;
+      const [configPath] = getConfigPaths();
+      if (p === configPath) return true;
       if (p === COOLDOWN_PATH) return true;
       return false;
     });
     (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
-      if (p === CONFIG_PATH)
+      const [configPath] = getConfigPaths();
+      if (p === configPath)
         return JSON.stringify({ notificationCooldown: { sessionIdleSeconds: -30 } });
       if (p === COOLDOWN_PATH) return JSON.stringify({ lastSentAt: recentTimestamp });
       throw new Error('not found');
@@ -334,9 +426,94 @@ describe('shouldSendIdleNotification', () => {
     // Negative cooldown clamped to 0 → treated as disabled → should send
     expect(shouldSendIdleNotification(TEST_STATE_DIR)).toBe(true);
   });
+
+  it('suppresses repeated zero-backlog nudges even after cooldown expires when repo state is unchanged', () => {
+    const oldTimestamp = new Date(Date.now() - 90_000).toISOString();
+    (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p === COOLDOWN_PATH) return true;
+      return false;
+    });
+    (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p === COOLDOWN_PATH) {
+        return JSON.stringify({
+          lastSentAt: oldTimestamp,
+          repoSignature: zeroBacklogState.signature,
+          backlogZero: true,
+        });
+      }
+      throw new Error('not found');
+    });
+
+    expect(shouldSendIdleNotification(TEST_STATE_DIR, undefined, zeroBacklogState)).toBe(false);
+  });
+
+  it('allows immediate idle notification when repo state changes even inside cooldown', () => {
+    const recentTimestamp = new Date(Date.now() - 5_000).toISOString();
+    (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p === COOLDOWN_PATH) return true;
+      return false;
+    });
+    (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p === COOLDOWN_PATH) {
+        return JSON.stringify({
+          lastSentAt: recentTimestamp,
+          repoSignature: zeroBacklogState.signature,
+          backlogZero: true,
+        });
+      }
+      throw new Error('not found');
+    });
+
+    expect(shouldSendIdleNotification(TEST_STATE_DIR, undefined, changedBacklogState)).toBe(true);
+  });
+});
+
+describe('shouldWakeOpenClawOnStop', () => {
+  const zeroBacklogState = { signature: 'repo-zero', backlogZero: true };
+  const changedBacklogState = { signature: 'repo-new', backlogZero: true };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('suppresses stop wakes when the zero-backlog repo snapshot is unchanged', () => {
+    const oldTimestamp = new Date(Date.now() - 90_000).toISOString();
+    (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === COOLDOWN_PATH);
+    (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p === COOLDOWN_PATH) {
+        return JSON.stringify({
+          lastSentAt: oldTimestamp,
+          repoSignature: zeroBacklogState.signature,
+          backlogZero: true,
+        });
+      }
+      throw new Error('not found');
+    });
+
+    expect(shouldWakeOpenClawOnStop(TEST_STATE_DIR, TEST_SESSION_ID, zeroBacklogState)).toBe(false);
+  });
+
+  it('still allows stop wakes when only the ordinary cooldown is active', () => {
+    const recentTimestamp = new Date(Date.now() - 5_000).toISOString();
+    (existsSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => p === COOLDOWN_PATH);
+    (readFileSync as ReturnType<typeof vi.fn>).mockImplementation((p: string) => {
+      if (p === COOLDOWN_PATH) {
+        return JSON.stringify({
+          lastSentAt: recentTimestamp,
+          repoSignature: changedBacklogState.signature,
+          backlogZero: false,
+        });
+      }
+      throw new Error('not found');
+    });
+
+    expect(shouldWakeOpenClawOnStop(TEST_STATE_DIR, TEST_SESSION_ID, zeroBacklogState)).toBe(true);
+  });
 });
 
 describe('recordIdleNotificationSent', () => {
+  const zeroBacklogState = { signature: 'repo-zero', backlogZero: true };
+
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -364,12 +541,47 @@ describe('recordIdleNotificationSent', () => {
     expect(calledPath).toBe(SESSION_COOLDOWN_PATH);
   });
 
+  it('mirrors zero-backlog metadata to the global cooldown file for follow-up sessions', () => {
+    recordIdleNotificationSent(TEST_STATE_DIR, TEST_SESSION_ID, zeroBacklogState);
+
+    expect(atomicWriteJsonSync).toHaveBeenCalledTimes(2);
+    expect(atomicWriteJsonSync).toHaveBeenCalledWith(
+      SESSION_COOLDOWN_PATH,
+      expect.objectContaining({
+        lastSentAt: expect.any(String),
+        repoSignature: zeroBacklogState.signature,
+        backlogZero: true,
+      })
+    );
+    expect(atomicWriteJsonSync).toHaveBeenCalledWith(
+      COOLDOWN_PATH,
+      expect.objectContaining({
+        lastSentAt: expect.any(String),
+        repoSignature: zeroBacklogState.signature,
+        backlogZero: true,
+      })
+    );
+  });
+
   it('creates state directory if it does not exist', () => {
     recordIdleNotificationSent(TEST_STATE_DIR);
 
     expect(atomicWriteJsonSync).toHaveBeenCalledOnce();
     const [calledPath] = (atomicWriteJsonSync as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(calledPath).toBe(COOLDOWN_PATH);
+  });
+
+  it('persists repo signature metadata when repo state is provided', () => {
+    recordIdleNotificationSent(TEST_STATE_DIR, undefined, zeroBacklogState);
+
+    expect(atomicWriteJsonSync).toHaveBeenCalledWith(
+      COOLDOWN_PATH,
+      expect.objectContaining({
+        lastSentAt: expect.any(String),
+        repoSignature: zeroBacklogState.signature,
+        backlogZero: true,
+      }),
+    );
   });
 
   it('does not throw when atomicWriteJsonSync fails', () => {

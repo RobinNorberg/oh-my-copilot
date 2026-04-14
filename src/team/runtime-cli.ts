@@ -11,6 +11,8 @@ import { readFile, rename, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { startTeam, monitorTeam, shutdownTeam } from './runtime.js';
 import type { TeamConfig, TeamRuntime } from './runtime.js';
+import { appendTeamEvent } from './events.js';
+import { deriveTeamLeaderGuidance } from './leader-nudge-guidance.js';
 import { waitForSentinelReadiness } from './sentinel-gate.js';
 import { isRuntimeV2Enabled, startTeamV2, monitorTeamV2, shutdownTeamV2 } from './runtime-v2.js';
 import type { TeamSnapshotV2 } from './runtime-v2.js';
@@ -40,6 +42,14 @@ interface CliOutput {
   taskResults: TaskResult[];
   duration: number;
   workerCount: number;
+}
+
+export type TerminalPhaseResult = 'complete' | 'failed' | 'cancelled';
+
+export interface TerminalCliResult {
+  output: CliOutput;
+  exitCode: number;
+  notice: string;
 }
 
 interface WatchdogFailedMarker {
@@ -127,6 +137,39 @@ export async function writeResultArtifact(
   await rename(tmpPath, resultPath);
 }
 
+export function buildCliOutput(
+  stateRoot: string,
+  teamName: string,
+  status: 'completed' | 'failed',
+  workerCount: number,
+  startTimeMs: number,
+): CliOutput {
+  const taskResults = collectTaskResults(stateRoot);
+  const duration = (Date.now() - startTimeMs) / 1000;
+  return {
+    status,
+    teamName,
+    taskResults,
+    duration,
+    workerCount,
+  };
+}
+
+export function buildTerminalCliResult(
+  stateRoot: string,
+  teamName: string,
+  phase: TerminalPhaseResult,
+  workerCount: number,
+  startTimeMs: number,
+): TerminalCliResult {
+  const status = phase === 'complete' ? 'completed' : 'failed';
+  return {
+    output: buildCliOutput(stateRoot, teamName, status, workerCount, startTimeMs),
+    exitCode: status === 'completed' ? 0 : 1,
+    notice: `[runtime-cli] phase=${phase} reached terminal state; preserving team state for inspection. Run "omc team shutdown ${teamName}" when explicit cleanup is desired.\n`,
+  };
+}
+
 async function writePanesFile(
   jobId: string | undefined,
   paneIds: string[],
@@ -169,6 +212,9 @@ function collectTaskResults(stateRoot: string): TaskResult[] {
 
 async function main(): Promise<void> {
   const startTime = Date.now();
+  const logLeaderNudgeEventFailure = createSwallowedErrorLogger(
+    'team.runtime-cli main appendTeamEvent failed',
+  );
 
   // Read stdin
   const chunks: Buffer[] = [];
@@ -208,7 +254,7 @@ async function main(): Promise<void> {
   } = input;
 
   const workerCount = input.workerCount ?? agentTypes.length;
-  const stateRoot = join(cwd, `.omcp/state/team/${teamName}`);
+  const stateRoot = join(cwd, `.omc/state/team/${teamName}`);
 
   const config: TeamConfig = {
     teamName,
@@ -224,10 +270,6 @@ async function main(): Promise<void> {
   let finalStatus: 'completed' | 'failed' = 'failed';
   let pollActive = true;
 
-  function exitCodeFor(status: 'completed' | 'failed'): number {
-    return status === 'completed' ? 0 : 1;
-  }
-
   async function doShutdown(status: 'completed' | 'failed'): Promise<void> {
     pollActive = false;
     finalStatus = status;
@@ -237,10 +279,7 @@ async function main(): Promise<void> {
       runtime.stopWatchdog();
     }
 
-    // 2. Collect task results (watchdog is now stopped, no more writes to tasks/)
-    const taskResults = collectTaskResults(stateRoot);
-
-    // 3. Shutdown team
+    // 2. Shutdown team
     if (runtime) {
       try {
         if (useV2) {
@@ -261,14 +300,7 @@ async function main(): Promise<void> {
       }
     }
 
-    const duration = (Date.now() - startTime) / 1000;
-    const output: CliOutput = {
-      status: finalStatus,
-      teamName,
-      taskResults,
-      duration,
-      workerCount,
-    };
+    const output = buildCliOutput(stateRoot, teamName, finalStatus, workerCount, startTime);
     const finishedAt = new Date().toISOString();
 
     try {
@@ -277,11 +309,20 @@ async function main(): Promise<void> {
       process.stderr.write(`[runtime-cli] Failed to persist result artifact: ${err}\n`);
     }
 
-    // 4. Write result to stdout
+    // 3. Write result to stdout
     process.stdout.write(JSON.stringify(output) + '\n');
 
-    // 5. Exit
-    process.exit(exitCodeFor(status));
+    // 4. Exit
+    process.exit(status === 'completed' ? 0 : 1);
+  }
+
+  function exitWithoutShutdown(phase: TerminalPhaseResult): void {
+    pollActive = false;
+    finalStatus = phase === 'complete' ? 'completed' : 'failed';
+    const result = buildTerminalCliResult(stateRoot, teamName, phase, workerCount, startTime);
+    process.stderr.write(result.notice);
+    process.stdout.write(JSON.stringify(result.output) + '\n');
+    process.exit(result.exitCode);
   }
 
   // Register signal handlers before poll loop
@@ -340,6 +381,7 @@ async function main(): Promise<void> {
   // ── V2 event-driven poll loop (no watchdog) ────────────────────────────
   if (useV2) {
     process.stderr.write('[runtime-cli] Using runtime v2 (event-driven, no watchdog)\n');
+    let lastLeaderNudgeReason = '';
 
     while (pollActive) {
       await new Promise(r => setTimeout(r, pollIntervalMs));
@@ -364,8 +406,45 @@ async function main(): Promise<void> {
       } catch { /* best-effort panes file write */ }
 
       process.stderr.write(
-        `[runtime-cli/v2] phase=${snap.phase} pending=${snap.tasks.pending} in_progress=${snap.tasks.in_progress} completed=${snap.tasks.completed} failed=${snap.tasks.failed} dead=${snap.deadWorkers.length} totalMs=${snap.performance.total_ms}\n`,
+        `[runtime-cli/v2] phase=${snap.phase} pending=${snap.tasks.pending} blocked=${snap.tasks.blocked} in_progress=${snap.tasks.in_progress} completed=${snap.tasks.completed} failed=${snap.tasks.failed} dead=${snap.deadWorkers.length} totalMs=${snap.performance.total_ms}\n`,
       );
+      const leaderGuidance = deriveTeamLeaderGuidance({
+        tasks: {
+          pending: snap.tasks.pending,
+          blocked: snap.tasks.blocked,
+          inProgress: snap.tasks.in_progress,
+          completed: snap.tasks.completed,
+          failed: snap.tasks.failed,
+        },
+        workers: {
+          total: snap.workers.length,
+          alive: snap.workers.filter((worker) => worker.alive).length,
+          idle: snap.workers.filter((worker) => worker.alive && (worker.status.state === 'idle' || worker.status.state === 'done')).length,
+          nonReporting: snap.nonReportingWorkers.length,
+        },
+      });
+      process.stderr.write(
+        `[runtime-cli/v2] leader_next_action=${leaderGuidance.nextAction} reason=${leaderGuidance.reason}\n`,
+      );
+      for (const recommendation of snap.recommendations) {
+        process.stderr.write(`[runtime-cli/v2] recommendation=${recommendation}\n`);
+      }
+      if (leaderGuidance.nextAction === 'keep-checking-status') {
+        lastLeaderNudgeReason = '';
+      }
+      if (
+        leaderGuidance.nextAction !== 'keep-checking-status'
+        && leaderGuidance.reason !== lastLeaderNudgeReason
+      ) {
+        await appendTeamEvent(teamName, {
+          type: 'team_leader_nudge',
+          worker: 'leader-fixed',
+          reason: leaderGuidance.reason,
+          next_action: leaderGuidance.nextAction,
+          message: leaderGuidance.message,
+        }, cwd).catch(logLeaderNudgeEventFailure);
+        lastLeaderNudgeReason = leaderGuidance.reason;
+      }
 
       // Terminal check via task counts
       const v2Observed = snap.tasks.pending + snap.tasks.in_progress + snap.tasks.completed + snap.tasks.failed;
@@ -383,6 +462,16 @@ async function main(): Promise<void> {
       }
       mismatchStreak = 0;
 
+      if (snap.phase === 'completed') {
+        exitWithoutShutdown('complete');
+        return;
+      }
+
+      if (snap.phase === 'failed') {
+        exitWithoutShutdown('failed');
+        return;
+      }
+
       if (snap.allTasksTerminal) {
         const hasFailures = snap.tasks.failed > 0;
         if (!hasFailures) {
@@ -398,13 +487,13 @@ async function main(): Promise<void> {
             process.stderr.write(
               `[runtime-cli/v2] Sentinel gate blocked: ${gateResult.blockers.join('; ')}\n`,
             );
-            await doShutdown('failed');
+            exitWithoutShutdown('failed');
             return;
           }
-          await doShutdown('completed');
+          exitWithoutShutdown('complete');
         } else {
           process.stderr.write('[runtime-cli/v2] Terminal failure detected from task counts\n');
-          await doShutdown('failed');
+          exitWithoutShutdown('failed');
         }
         return;
       }
@@ -509,7 +598,7 @@ async function main(): Promise<void> {
 
     if (deadWorkerFailure || fixingWithNoWorkers) {
       process.stderr.write(`[runtime-cli] Failure detected: deadWorkerFailure=${deadWorkerFailure} fixingWithNoWorkers=${fixingWithNoWorkers}\n`);
-      await doShutdown('failed');
+      exitWithoutShutdown('failed');
       return;
     }
   }

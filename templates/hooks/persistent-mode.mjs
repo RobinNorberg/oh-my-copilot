@@ -12,6 +12,7 @@ import {
   existsSync,
   readFileSync,
   writeFileSync,
+  renameSync,
   readdirSync,
   mkdirSync,
   unlinkSync,
@@ -22,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
+const { getClaudeConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
 
 // Dynamic import for the shared stdin module
 const { readStdin } = await import(
@@ -40,16 +41,15 @@ function readJsonFile(path) {
 
 function writeJsonFile(path, data) {
   try {
-    // Ensure directory exists
     const dir = dirname(path);
     if (dir && dir !== "." && !existsSync(dir)) {
       mkdirSync(dir, { recursive: true });
     }
-    writeFileSync(path, JSON.stringify(data, null, 2));
+    const tmpPath = path + '.tmp.' + process.pid;
+    writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+    renameSync(tmpPath, path);
     return true;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 function shouldWriteStateBack(path) {
@@ -164,16 +164,18 @@ const TEAM_ACTIVE_PHASES = new Set([
 /**
  * Check if a state is stale based on its timestamps.
  * A state is considered stale if it hasn't been updated recently.
- * We check both `last_checked_at` and `started_at` - using whichever is more recent.
+ * We check `last_checked_at`, `updated_at`, and `started_at` - using whichever is more recent.
  */
 function isStaleState(state) {
   if (!state) return true;
 
-  const lastChecked = state.last_checked_at
-    ? new Date(state.last_checked_at).getTime()
-    : 0;
-  const startedAt = state.started_at ? new Date(state.started_at).getTime() : 0;
-  const mostRecent = Math.max(lastChecked, startedAt);
+  const timestamps = [state.last_checked_at, state.updated_at, state.started_at].filter(
+    (value) => typeof value === "string" && value.length > 0,
+  );
+  const mostRecent = timestamps.reduce((max, value) => {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) && parsed > max ? parsed : max;
+  }, 0);
 
   if (mostRecent === 0) return true; // No valid timestamps
 
@@ -374,8 +376,8 @@ function isValidSessionId(sessionId) {
 
 /**
  * Read state file with session-scoped path support.
- * If sessionId is provided, ONLY reads the session-scoped path.
- * Falls back to legacy local/global paths when sessionId is not provided.
+ * If sessionId is provided, prefers the session-scoped path, then scans other
+ * session directories and legacy state for matching ownership.
  */
 
 function readStateFileWithSession(stateDir, globalStateDir, filename, sessionId) {
@@ -415,29 +417,26 @@ function readStateFileWithSession(stateDir, globalStateDir, filename, sessionId)
   return readStateFile(stateDir, globalStateDir, filename);
 }
 
-/**
- * Get the count of active subagents from subagent-tracking.json.
- * Returns 0 if the file doesn't exist or can't be read.
- */
 function getActiveSubagentCount(stateDir) {
-  const trackingPath = join(stateDir, 'subagent-tracking.json');
   try {
-    const data = readJsonFile(trackingPath);
-    if (!data || !Array.isArray(data.agents)) return 0;
-    return data.agents.filter(a => a.status === 'running' || a.status === 'active').length;
+    const tracking = readJsonFile(join(stateDir, "subagent-tracking.json"));
+    if (!tracking || !Array.isArray(tracking.agents)) {
+      return 0;
+    }
+    return tracking.agents.filter((agent) => agent?.status === "running").length;
   } catch {
     return 0;
   }
 }
 
 /**
- * Count incomplete Tasks from Copilot CLI's native Task system.
+ * Count incomplete Tasks from Claude Code's native Task system.
  */
 function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
-  const taskDir = join(getCopilotConfigDir(), "tasks", sessionId);
+  const taskDir = join(getClaudeConfigDir(), "tasks", sessionId);
   if (!existsSync(taskDir)) return 0;
 
   let count = 0;
@@ -470,7 +469,7 @@ function countIncompleteTodos(sessionId, projectDir) {
     /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)
   ) {
     const sessionTodoPath = join(
-      getCopilotConfigDir(),
+      getClaudeConfigDir(),
       "todos",
       `${sessionId}.json`,
     );
@@ -491,8 +490,8 @@ function countIncompleteTodos(sessionId, projectDir) {
 
   // Project-local todos only
   for (const path of [
-    join(projectDir, ".omcp", "todos.json"),
-    join(projectDir, ".copilot", "todos.json"),
+    join(projectDir, ".omc", "todos.json"),
+    join(projectDir, ".claude", "todos.json"),
   ]) {
     try {
       const data = readJsonFile(path);
@@ -514,9 +513,11 @@ function countIncompleteTodos(sessionId, projectDir) {
 
 /**
  * Detect if stop was triggered by context-limit related reasons.
- * When context is exhausted, Copilot CLI needs to stop so it can compact.
+ * When context is exhausted, Claude Code needs to stop so it can compact.
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
+ *
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 function isContextLimitStop(data) {
   const reason = (data.stop_reason || data.stopReason || "").toLowerCase();
@@ -620,11 +621,12 @@ async function main() {
     const sessionIdRaw = data.sessionId || data.session_id || data.sessionid || "";
     const sessionId = sanitizeSessionId(sessionIdRaw);
     const hasValidSessionId = isValidSessionId(sessionIdRaw);
-    const stateDir = join(directory, ".omcp", "state");
-    const globalStateDir = join(homedir(), ".omcp", "state");
+    const stateDir = join(directory, ".omc", "state");
+    const globalStateDir = join(homedir(), ".omc", "state");
 
     // CRITICAL: Never block context-limit stops.
-    // Blocking these causes a deadlock where Copilot CLI cannot compact.
+    // Blocking these causes a deadlock where Claude Code cannot compact.
+    // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
     if (isContextLimitStop(data)) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
@@ -698,14 +700,6 @@ async function main() {
 
     // Check if cancel is in progress - if so, allow stop immediately
     if (isSessionCancelInProgress(stateDir, sessionId)) {
-      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
-      return;
-    }
-
-    // If active subagents are running, allow the stop so the orchestrator can coordinate.
-    // Blocking here would cause the orchestrator to deadlock while waiting for subagents.
-    const activeSubagents = getActiveSubagentCount(stateDir);
-    if (activeSubagents > 0) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
@@ -793,7 +787,10 @@ async function main() {
             autopilot.state.last_checked_at = new Date().toISOString();
             writeJsonFile(autopilot.path, autopilot.state);
 
-            let reason = `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working. When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+            const cancelGuidance = hasValidSessionId && autopilot.state.session_id === sessionId
+              ? " When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /oh-my-copilot:cancel --force."
+              : "";
+            let reason = `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working.${cancelGuidance}`;
             if (errorGuidance) {
               reason = errorGuidance + reason;
             }
@@ -1000,8 +997,8 @@ async function main() {
       }
     }
 
-    // Priority 8: Ultrawork - ALWAYS continue while active (not just when tasks exist)
-    // This prevents false stops from bash errors, transient failures, etc.
+    // Priority 8: Ultrawork - reinforce only while tracked work remains incomplete.
+    // This prevents false stops from bash errors or transient failures mid-task.
     // Session isolation: only block if state belongs to this session (issue #311)
     // If state has session_id, it must match. If no session_id (legacy), allow.
     if (
@@ -1012,6 +1009,19 @@ async function main() {
         : !ultrawork.state.session_id || ultrawork.state.session_id === sessionId) &&
       isStateForCurrentProject(ultrawork.state, directory, ultrawork.isGlobal)
     ) {
+      if (totalIncomplete === 0) {
+        // Issue #2419: once tracked work is complete, auto-clear ultrawork so
+        // Stop can exit cleanly instead of forcing repeated cancel prompts.
+        try {
+          ultrawork.state.active = false;
+          ultrawork.state.deactivated_reason = 'task_completion';
+          ultrawork.state.last_checked_at = new Date().toISOString();
+          writeJsonFile(ultrawork.path, ultrawork.state);
+        } catch { /* best-effort cleanup */ }
+        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+        return;
+      }
+
       const newCount = (ultrawork.state.reinforcement_count || 0) + 1;
       const maxReinforcements = ultrawork.state.max_reinforcements || 50;
 
@@ -1074,6 +1084,11 @@ async function main() {
         const maxReinforcements = skillState.state.max_reinforcements || 3;
 
         if (count < maxReinforcements) {
+          if (getActiveSubagentCount(stateDir) > 0) {
+            console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+            return;
+          }
+
           const toolError = readLastToolError(stateDir);
           const errorGuidance = getToolErrorRetryGuidance(toolError);
 
@@ -1119,7 +1134,7 @@ async function main() {
     try {
       process.stdout.write(JSON.stringify({ continue: true, suppressOutput: true }) + "\n");
     } catch {
-      // If stdout write fails, the hook will timeout and Copilot CLI will proceed
+      // If stdout write fails, the hook will timeout and Claude Code will proceed
       // This is better than hanging forever
       process.exit(0);
     }

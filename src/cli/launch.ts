@@ -17,6 +17,8 @@ import {
 } from 'fs';
 import { homedir } from 'os';
 import { basename, join } from 'path';
+import { resolvePluginDirArg } from '../lib/plugin-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import {
   resolveLaunchPolicy,
   buildTmuxSessionName,
@@ -76,7 +78,7 @@ function ensureMirroredPath(sourcePath: string, targetPath: string): void {
   }
 }
 
-export function prepareOmcLaunchConfigDir(baseConfigDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot')): string {
+export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()): string {
   const companionPath = join(baseConfigDir, 'copilot-instructions-omc.md');
   if (!hasOmcMarkers(companionPath)) {
     return baseConfigDir;
@@ -106,12 +108,17 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = process.env.COPILOT_CO
     ensureMirroredPath(join(baseConfigDir, entry), join(runtimeConfigDir, basename(entry)));
   }
 
+
   writeFileSync(
     join(runtimeConfigDir, '.omc-launch-profile.json'),
     JSON.stringify({ sourceConfigDir: baseConfigDir, sourceClaudeMd: companionPath }, null, 2),
   );
 
   return runtimeConfigDir;
+}
+
+function isDefaultCopilotConfigDirPath(configDir: string): boolean {
+  return configDir === join(homedir(), '.copilot');
 }
 
 /**

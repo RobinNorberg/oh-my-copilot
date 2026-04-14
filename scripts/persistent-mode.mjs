@@ -24,7 +24,8 @@ import {
 import { join, dirname, resolve, normalize } from "path";
 import { homedir } from "os";
 import { fileURLToPath, pathToFileURL } from "url";
-import { getCopilotConfigDir } from "./lib/config-dir.mjs";
+import { getClaudeConfigDir } from "./lib/config-dir.mjs";
+import { resolveOmcStateRoot } from "./lib/state-root.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,8 +65,8 @@ function getHardMaxIterations() {
  */
 function readSecurityConfigValue(key) {
   const paths = [
-    join(process.cwd(), ".copilot", "omc.jsonc"),
-    join(homedir(), ".config", "copilot-omc", "config.jsonc"),
+    join(process.cwd(), ".claude", "omc.jsonc"),
+    join(homedir(), ".config", "claude-omc", "config.jsonc"),
   ];
   for (const p of paths) {
     try {
@@ -181,6 +182,7 @@ Do NOT skip this step. Do NOT move on without fixing the error.
  * from causing the stop hook to malfunction in new sessions.
  */
 const STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1000; // 2 hours
+const CANCEL_SIGNAL_TTL_MS = 30_000;
 const TEAM_TERMINAL_PHASES = new Set([
   "completed",
   "complete",
@@ -208,16 +210,18 @@ const TEAM_ACTIVE_PHASES = new Set([
 /**
  * Check if a state is stale based on its timestamps.
  * A state is considered stale if it hasn't been updated recently.
- * We check both `last_checked_at` and `started_at` - using whichever is more recent.
+ * We check `last_checked_at`, `updated_at`, and `started_at` - using whichever is more recent.
  */
 function isStaleState(state) {
   if (!state) return true;
 
-  const lastChecked = state.last_checked_at
-    ? new Date(state.last_checked_at).getTime()
-    : 0;
-  const startedAt = state.started_at ? new Date(state.started_at).getTime() : 0;
-  const mostRecent = Math.max(lastChecked, startedAt);
+  const timestamps = [state.last_checked_at, state.updated_at, state.started_at].filter(
+    (value) => typeof value === "string" && value.length > 0,
+  );
+  const mostRecent = timestamps.reduce((max, value) => {
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) && parsed > max ? parsed : max;
+  }, 0);
 
   if (mostRecent === 0) return true; // No valid timestamps
 
@@ -264,49 +268,6 @@ function isAwaitingConfirmation(state) {
   }
 
   return Date.now() - setAtMs < AWAITING_CONFIRMATION_TTL_MS;
-}
-
-const CANCEL_SIGNAL_TTL_MS = 30_000;
-
-function isSessionCancelInProgress(stateDir, sessionId) {
-  const isActiveSignal = (signalPath) => {
-    const signal = readJsonFile(signalPath);
-    if (!signal) {
-      return false;
-    }
-
-    const now = Date.now();
-    const expiresAt = signal.expires_at ? new Date(signal.expires_at).getTime() : NaN;
-    const requestedAt = signal.requested_at ? new Date(signal.requested_at).getTime() : NaN;
-    const fallbackExpiry = Number.isFinite(requestedAt) ? requestedAt + CANCEL_SIGNAL_TTL_MS : NaN;
-    const effectiveExpiry = Number.isFinite(expiresAt) ? expiresAt : fallbackExpiry;
-
-    if (Number.isFinite(effectiveExpiry) && effectiveExpiry > now) {
-      return true;
-    }
-
-    if (existsSync(signalPath)) {
-      try {
-        unlinkSync(signalPath);
-      } catch {
-        // best effort cleanup
-      }
-    }
-    return false;
-  };
-
-  if (sessionId) {
-    const sessionSignalPath = join(stateDir, "sessions", sessionId, "cancel-signal-state.json");
-    if (isActiveSignal(sessionSignalPath)) {
-      return true;
-    }
-  }
-
-  return isActiveSignal(join(stateDir, "cancel-signal-state.json"));
-}
-
-function shouldWriteStateBack(path) {
-  return Boolean(path && existsSync(path));
 }
 
 /**
@@ -409,18 +370,59 @@ function readStateFileWithSession(stateDir, globalStateDir, filename, sessionId)
   return readStateFile(stateDir, globalStateDir, filename);
 }
 
+function isSessionCancelInProgress(stateDir, sessionId) {
+  const isActiveSignal = (signalPath) => {
+    const signal = readJsonFile(signalPath);
+    if (!signal) {
+      return false;
+    }
+
+    const now = Date.now();
+    const expiresAt = signal.expires_at ? new Date(signal.expires_at).getTime() : NaN;
+    const requestedAt = signal.requested_at ? new Date(signal.requested_at).getTime() : NaN;
+    const fallbackExpiry = Number.isFinite(requestedAt) ? requestedAt + CANCEL_SIGNAL_TTL_MS : NaN;
+    const effectiveExpiry = Number.isFinite(expiresAt) ? expiresAt : fallbackExpiry;
+
+    if (Number.isFinite(effectiveExpiry) && effectiveExpiry > now) {
+      return true;
+    }
+
+    if (existsSync(signalPath)) {
+      try {
+        unlinkSync(signalPath);
+      } catch {
+        // best effort cleanup
+      }
+    }
+    return false;
+  };
+
+  if (sessionId) {
+    const sessionSignalPath = join(stateDir, "sessions", sessionId, "cancel-signal-state.json");
+    if (isActiveSignal(sessionSignalPath)) {
+      return true;
+    }
+  }
+
+  return isActiveSignal(join(stateDir, "cancel-signal-state.json"));
+}
+
+function shouldWriteStateBack(path) {
+  return Boolean(path && existsSync(path));
+}
+
 function isValidSessionId(sessionId) {
   return typeof sessionId === "string" && SESSION_ID_ALLOWLIST.test(sessionId);
 }
 
 /**
- * Count incomplete Tasks from Copilot CLI's native Task system.
+ * Count incomplete Tasks from Claude Code's native Task system.
  */
 function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
-  const cfgDir = getCopilotConfigDir();
+  const cfgDir = getClaudeConfigDir();
   const taskDir = join(cfgDir, "tasks", sessionId);
   if (!existsSync(taskDir)) return 0;
 
@@ -454,7 +456,7 @@ function countIncompleteTodos(sessionId, projectDir) {
     /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)
   ) {
     const sessionTodoPath = join(
-      getCopilotConfigDir(),
+      getClaudeConfigDir(),
       "todos",
       `${sessionId}.json`,
     );
@@ -476,7 +478,7 @@ function countIncompleteTodos(sessionId, projectDir) {
   // Project-local todos only
   for (const path of [
     join(projectDir, ".omcp", "todos.json"),
-    join(projectDir, ".copilot", "todos.json"),
+    join(projectDir, ".claude", "todos.json"),
   ]) {
     try {
       const data = readJsonFile(path);
@@ -498,12 +500,22 @@ function countIncompleteTodos(sessionId, projectDir) {
 
 /**
  * Detect if stop was triggered by context-limit related reasons.
- * When context is exhausted, Copilot CLI needs to stop so it can compact.
+ * When context is exhausted, Claude Code needs to stop so it can compact.
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
+ *
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 function isContextLimitStop(data) {
-  const reason = (data.stop_reason || data.stopReason || "").toLowerCase();
+  const reasons = [
+    data.stop_reason,
+    data.stopReason,
+    data.end_turn_reason,
+    data.endTurnReason,
+    data.reason,
+  ]
+    .filter((value) => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.toLowerCase().replace(/[\s-]+/g, "_"));
 
   const contextPatterns = [
     "context_limit",
@@ -517,20 +529,39 @@ function isContextLimitStop(data) {
     "input_too_long",
   ];
 
-  if (contextPatterns.some((p) => reason.includes(p))) {
-    return true;
-  }
+  return reasons.some((reason) => contextPatterns.some((p) => reason.includes(p)));
+}
 
-  const endTurnReason = (
-    data.end_turn_reason ||
-    data.endTurnReason ||
-    ""
-  ).toLowerCase();
-  if (endTurnReason && contextPatterns.some((p) => endTurnReason.includes(p))) {
-    return true;
-  }
+const CRITICAL_CONTEXT_STOP_PERCENT = 95;
 
-  return false;
+function estimateContextPercent(transcriptPath) {
+  if (!transcriptPath || !existsSync(transcriptPath)) return 0;
+  let fd = -1;
+  try {
+    const size = statSync(transcriptPath).size;
+    if (size === 0) return 0;
+
+    // Read only the last 4KB to avoid OOM on large transcripts (10-100MB)
+    const readSize = Math.min(4096, size);
+    const buf = Buffer.alloc(readSize);
+    fd = openSync(transcriptPath, "r");
+    readSync(fd, buf, 0, readSize, size - readSize);
+    closeSync(fd);
+    fd = -1;
+
+    const content = buf.toString("utf-8");
+    const windowMatch = content.match(/"context_window"\s{0,5}:\s{0,5}(\d+)/g);
+    const inputMatch = content.match(/"input_tokens"\s{0,5}:\s{0,5}(\d+)/g);
+    if (!windowMatch || !inputMatch) return 0;
+
+    const lastWindow = parseInt(windowMatch[windowMatch.length - 1].match(/(\d+)/)[1], 10);
+    const lastInput = parseInt(inputMatch[inputMatch.length - 1].match(/(\d+)/)[1], 10);
+    if (!Number.isFinite(lastWindow) || lastWindow <= 0 || !Number.isFinite(lastInput)) return 0;
+    return Math.round((lastInput / lastWindow) * 100);
+  } catch {
+    if (fd !== -1) try { closeSync(fd); } catch { /* best-effort */ }
+    return 0;
+  }
 }
 
 /**
@@ -600,12 +631,20 @@ async function main() {
     const sessionIdRaw = data.sessionId || data.session_id || data.sessionid || "";
     const sessionId = sanitizeSessionId(sessionIdRaw);
     const hasValidSessionId = isValidSessionId(sessionIdRaw);
-    const stateDir = join(directory, ".omcp", "state");
+    const omcRoot = await resolveOmcStateRoot(directory);
+    const stateDir = join(omcRoot, "state");
     const globalStateDir = join(homedir(), ".omcp", "state");
 
     // CRITICAL: Never block context-limit stops.
-    // Blocking these causes a deadlock where Copilot CLI cannot compact.
+    // Blocking these causes a deadlock where Claude Code cannot compact.
+    // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
     if (isContextLimitStop(data)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    const criticalTranscriptPath = data.transcript_path || data.transcriptPath || "";
+    if (estimateContextPercent(criticalTranscriptPath) >= CRITICAL_CONTEXT_STOP_PERCENT) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
@@ -672,14 +711,14 @@ async function main() {
       sessionId,
     );
 
-    // Swarm uses swarm-summary.json (not swarm-state.json) + marker file
-    const swarmMarker = existsSync(join(stateDir, "swarm-active.marker"));
-    const swarmSummary = readJsonFile(join(stateDir, "swarm-summary.json"));
-
     if (isSessionCancelInProgress(stateDir, sessionId)) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
+
+    // Swarm uses swarm-summary.json (not swarm-state.json) + marker file
+    const swarmMarker = existsSync(join(stateDir, "swarm-active.marker"));
+    const swarmSummary = readJsonFile(join(stateDir, "swarm-summary.json"));
 
     // Count incomplete items (session-specific + project-local only)
     const taskCount = countIncompleteTasks(sessionId);
@@ -719,7 +758,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason,
             }),
@@ -756,11 +794,11 @@ async function main() {
         }
         writeJsonFile(ralph.path, ralph.state);
 
+        const ralphExtendedReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`;
         console.log(
           JSON.stringify({
-            continue: false,
             decision: "block",
-            reason: `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`,
+            reason: ralphExtendedReason,
           }),
         );
         return;
@@ -788,14 +826,16 @@ async function main() {
             autopilot.state.last_checked_at = new Date().toISOString();
             writeJsonFile(autopilot.path, autopilot.state);
 
-            let reason = `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working. When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`;
+            const cancelGuidance = hasValidSessionId && autopilot.state.session_id === sessionId
+              ? " When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /oh-my-copilot:cancel --force."
+              : "";
+            let reason = `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working.${cancelGuidance}`;
             if (errorGuidance) {
               reason = errorGuidance + reason;
             }
 
             console.log(
               JSON.stringify({
-                continue: false,
                 decision: "block",
                 reason,
               }),
@@ -836,7 +876,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason,
             }),
@@ -872,7 +911,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason,
             }),
@@ -910,7 +948,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason,
             }),
@@ -920,7 +957,7 @@ async function main() {
       }
     }
 
-    // Priority 6: Team (native Copilot CLI teams / staged pipeline)
+    // Priority 6: Team (native Claude Code teams / staged pipeline)
     if (
       team.state?.active &&
       !isStaleState(team.state) &&
@@ -948,7 +985,6 @@ async function main() {
 
             console.log(
               JSON.stringify({
-                continue: false,
                 decision: "block",
                 reason,
               }),
@@ -985,7 +1021,7 @@ async function main() {
               reason = errorGuidance + reason;
             }
 
-            console.log(JSON.stringify({ continue: false, decision: "block", reason }));
+            console.log(JSON.stringify({ decision: "block", reason }));
             return;
           }
         }
@@ -1018,7 +1054,6 @@ async function main() {
 
         console.log(
           JSON.stringify({
-            continue: false,
             decision: "block",
             reason,
           }),
@@ -1077,7 +1112,7 @@ async function main() {
         reason = errorGuidance + reason;
       }
 
-      console.log(JSON.stringify({ continue: false, decision: "block", reason }));
+      console.log(JSON.stringify({ decision: "block", reason }));
       return;
     }
 

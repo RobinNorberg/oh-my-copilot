@@ -1,7 +1,4 @@
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-
-const execFileAsync = promisify(execFile);
+import { tmuxExecAsync, tmuxCmdAsync } from '../cli/tmux-utils.js';
 
 export interface LayoutStabilizerOptions {
   sessionTarget: string;
@@ -9,15 +6,6 @@ export interface LayoutStabilizerOptions {
   debounceMs?: number;
 }
 
-async function tmuxCmd(args: string[]): Promise<{ stdout: string; stderr: string }> {
-  if (args.some(a => a.includes('#{'))) {
-    const { exec } = await import('child_process');
-    const execAsync = promisify(exec);
-    const escaped = args.map(a => `"${a.replace(/"/g, '\\"')}"`).join(' ');
-    return execAsync(`tmux ${escaped}`);
-  }
-  return execFileAsync('tmux', args);
-}
 
 export class LayoutStabilizer {
   private pending: NodeJS.Timeout | null = null;
@@ -95,27 +83,27 @@ export class LayoutStabilizer {
     this.running = true;
     try {
       try {
-        await execFileAsync('tmux', ['select-layout', '-t', this.sessionTarget, 'main-vertical']);
+        await tmuxExecAsync(['select-layout', '-t', this.sessionTarget, 'main-vertical']);
       } catch {
         // ignore
       }
 
       try {
-        const widthResult = await tmuxCmd([
+        const widthResult = await tmuxCmdAsync([
           'display-message', '-p', '-t', this.sessionTarget, '#{window_width}',
         ]);
         const width = parseInt(widthResult.stdout.trim(), 10);
         if (Number.isFinite(width) && width >= 40) {
           const half = String(Math.floor(width / 2));
-          await execFileAsync('tmux', ['set-window-option', '-t', this.sessionTarget, 'main-pane-width', half]);
-          await execFileAsync('tmux', ['select-layout', '-t', this.sessionTarget, 'main-vertical']);
+          await tmuxExecAsync(['set-window-option', '-t', this.sessionTarget, 'main-pane-width', half]);
+          await tmuxExecAsync(['select-layout', '-t', this.sessionTarget, 'main-vertical']);
         }
       } catch {
         // ignore
       }
 
       try {
-        await execFileAsync('tmux', ['select-pane', '-t', this.leaderPaneId]);
+        await tmuxExecAsync(['select-pane', '-t', this.leaderPaneId]);
       } catch {
         // ignore
       }

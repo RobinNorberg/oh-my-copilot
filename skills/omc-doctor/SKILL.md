@@ -1,6 +1,7 @@
 ---
 name: omc-doctor
 description: Diagnose and fix oh-my-copilot installation issues
+level: 3
 ---
 
 # Doctor Skill

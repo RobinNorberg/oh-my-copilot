@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { getOmcRoot } from '../../lib/worktree-paths.js';
+import { getOmcRoot, getWorktreeRoot } from '../../lib/worktree-paths.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import type { ToolAnnotations } from '../../tools/types.js';
 
@@ -37,6 +37,7 @@ const SAFE_PATTERNS = [
   /^pnpm (test|run (test|lint|build|check|typecheck))/,
   /^yarn (test|run (test|lint|build|check|typecheck))/,
   /^tsc( |$)/,
+  /^gh (issue|pr) (view|list|status)\b/,
   /^eslint /,
   /^prettier /,
   /^cargo (test|check|clippy|build)/,
@@ -151,6 +152,18 @@ const SAFE_HEREDOC_PATTERNS = [
   /^git commit\b/,
   /^git tag\b/,
 ];
+
+const SAFE_RIPGREP_FLAGS = new Set([
+  '-n',
+  '--line-number',
+  '-S',
+  '--smart-case',
+  '-F',
+  '--fixed-strings',
+  '-i',
+  '--ignore-case',
+  '--no-heading',
+]);
 
 const BACKGROUND_MUTATION_SUBAGENTS = new Set([
   'executor',
@@ -306,6 +319,97 @@ export function isHeredocWithSafeBase(command: string): boolean {
 
   // Check if the first line starts with a safe pattern
   return SAFE_HEREDOC_PATTERNS.some(pattern => pattern.test(firstLine));
+}
+
+function tokenizeShellCommand(command: string): string[] | null {
+  const tokens: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+
+  for (const char of command.trim()) {
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (quote) {
+    return null;
+  }
+
+  if (current) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+function isRipgrepReadOnly(tokens: string[]): boolean {
+  if (tokens[0] !== 'rg') return false;
+  for (let i = 1; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t.startsWith('-')) {
+      if (SAFE_RIPGREP_FLAGS.has(t)) continue;
+      if (t.startsWith('--type=') || t.startsWith('--glob=') || t.startsWith('-g')) continue;
+      if (t === '--type' || t === '--glob' || t === '-g' || t === '-t') { i++; continue; }
+      return false;
+    }
+  }
+  return true;
+}
+
+function isInsideGitWorktree(cwd: string): boolean {
+  try {
+    return !!getWorktreeRoot(cwd);
+  } catch {
+    return false;
+  }
+}
+
+export function isSafeRepoInspectionCommand(command: string, cwd: string): boolean {
+  if (!isInsideGitWorktree(cwd)) return false;
+  const tokens = tokenizeShellCommand(command);
+  if (!tokens || tokens.length === 0) return false;
+  if (isRipgrepReadOnly(tokens)) return true;
+  if (/^cat( |$)/.test(command) || /^head( |$)/.test(command) || /^tail( |$)/.test(command)) return true;
+  return false;
+}
+
+export function isSafeTargetedLocalTestCommand(command: string, cwd: string): boolean {
+  if (!isInsideGitWorktree(cwd)) return false;
+  const tokens = tokenizeShellCommand(command);
+  if (!tokens || tokens.length < 2) return false;
+  const bin = tokens[0];
+  if (bin === 'npx' && tokens[1] === 'vitest' && tokens.includes('run') && tokens.some(t => t.endsWith('.test.ts') || t.endsWith('.test.js'))) return true;
+  if (bin === 'pytest' && tokens.some(t => t.endsWith('.py') || t.includes('::') || t.startsWith('tests/'))) return true;
+  if (bin === 'go' && tokens[1] === 'test' && tokens.some(t => t.startsWith('./') || t.includes('...'))) return true;
+  return false;
+}
+
+export function isSafeAutoApprovedCommand(command: string, cwd: string): boolean {
+  return isSafeCommand(command)
+    || isSafeRepoInspectionCommand(command, cwd)
+    || isSafeTargetedLocalTestCommand(command, cwd)
+    || isHeredocWithSafeBase(command);
 }
 
 /**

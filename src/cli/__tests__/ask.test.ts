@@ -569,7 +569,7 @@ describe('run-provider-advisor script contract', () => {
       });
       expect(calls[1]).toMatchObject({
         command: 'codex',
-        args: ['exec', '--dangerously-bypass-approvals-and-sandbox', 'windows cmd support'],
+        args: ['exec', '--dangerously-bypass-approvals-and-sandbox', '-'],
         options: { shell: true, encoding: 'utf8', stdio: null },
       });
     } finally {

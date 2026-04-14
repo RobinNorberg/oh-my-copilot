@@ -12,8 +12,12 @@
 
 import { resolve } from 'path';
 import { mkdir } from 'fs/promises';
-import { tmuxSpawn } from '../cli/tmux-utils.js';
-import { tmuxExec } from '../cli/tmux-utils.js';
+import { tmuxExec, tmuxSpawn } from '../cli/tmux-utils.js';
+import {
+  buildWorkerArgv,
+  getWorkerEnv as getModelWorkerEnv,
+  type CliAgentType,
+} from './model-contract.js';
 import {
   teamReadConfig,
   teamWriteWorkerIdentity,
@@ -36,6 +40,7 @@ import { TeamPaths, absPath } from './state-paths.js';
 // ── Environment gate ──────────────────────────────────────────────────────────
 
 const OMC_TEAM_SCALING_ENABLED_ENV = 'OMC_TEAM_SCALING_ENABLED';
+const CLI_AGENT_TYPES = new Set<CliAgentType>(['claude', 'codex', 'gemini']);
 
 export function isScalingEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   const raw = env[OMC_TEAM_SCALING_ENABLED_ENV];
@@ -50,6 +55,16 @@ function assertScalingEnabled(env: NodeJS.ProcessEnv = process.env): void {
       `Dynamic scaling is disabled. Set ${OMC_TEAM_SCALING_ENABLED_ENV}=1 to enable.`,
     );
   }
+}
+
+function asCliAgentType(agentType: string): CliAgentType {
+  if (CLI_AGENT_TYPES.has(agentType as CliAgentType)) {
+    return agentType as CliAgentType;
+  }
+
+  throw new Error(
+    `Unknown agent type: ${agentType}. Supported: ${Array.from(CLI_AGENT_TYPES).join(', ')}`,
+  );
 }
 
 // ── Result types ──────────────────────────────────────────────────────────────
@@ -89,6 +104,7 @@ export async function scaleUp(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<ScaleUpResult | ScaleError> {
   assertScalingEnabled(env);
+  const cliAgentType = asCliAgentType(agentType);
 
   if (!Number.isInteger(count) || count < 1) {
     return { ok: false, error: `count must be a positive integer (got ${count})` };
@@ -112,12 +128,10 @@ export async function scaleUp(
       };
     }
 
-    const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omcp/state`;
-    const sessionName = config.tmux_session ?? `omcp-team-${sanitized}`;
+    const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omc/state`;
 
     // Resolve the monotonic worker index counter
     let nextIndex = config.next_worker_index ?? (currentCount + 1);
-    const initialNextIndex = nextIndex;
     const addedWorkers: WorkerInfo[] = [];
 
     const rollbackScaleUp = async (error: string, paneId?: string): Promise<ScaleError> => {
@@ -179,20 +193,32 @@ export async function scaleUp(
 
       // Build startup command and create tmux pane
       const extraEnv: Record<string, string> = {
+        ...getModelWorkerEnv(sanitized, workerName, cliAgentType, env),
         OMC_TEAM_STATE_ROOT: teamStateRoot,
         OMC_TEAM_LEADER_CWD: leaderCwd,
-        OMC_TEAM_WORKER: `${sanitized}/${workerName}`,
       };
 
-      const cmd = buildWorkerStartCommand({
-        teamName: sanitized,
-        workerName,
-        envVars: extraEnv,
-        launchArgs: [],
-        launchBinary: 'copilot',
-        launchCmd: '',
-        cwd: leaderCwd,
-      });
+      let cmd: string;
+      try {
+        const [launchBinary, ...launchArgs] = buildWorkerArgv(cliAgentType, {
+          teamName: sanitized,
+          workerName,
+          cwd: leaderCwd,
+        });
+        cmd = buildWorkerStartCommand({
+          teamName: sanitized,
+          workerName,
+          envVars: extraEnv,
+          launchArgs,
+          launchBinary,
+          cwd: leaderCwd,
+        });
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        return await rollbackScaleUp(
+          `Failed to resolve worker launch config for ${workerName}: ${reason}`,
+        );
+      }
 
       // Split from the rightmost worker pane or the leader pane
       const splitTarget = config.workers.length > 0

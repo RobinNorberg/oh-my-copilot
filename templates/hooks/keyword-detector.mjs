@@ -11,13 +11,16 @@
  * 3. autopilot: Full autonomous execution
  * 4. team: Explicit-only via /team (not auto-triggered)
  * 5. ultrawork/ulw: Maximum parallel execution
- * 5. c3g: Copilot-Claude-Codex-Gemini quad-model orchestration
- * 6. ralplan: Iterative planning with consensus
- * 7. deep interview: Socratic interview workflow
- * 8. tdd: Test-driven development
- * 9. ultrathink: Extended reasoning
- * 10. deepsearch: Codebase search (restricted patterns)
- * 11. analyze: Analysis mode (restricted patterns)
+ * 6. ccg: Claude-Codex-Gemini tri-model orchestration
+ * 7. ralplan: Iterative planning with consensus
+ * 8. deep interview: Socratic interview workflow
+ * 9. ai-slop-cleaner: Cleanup/deslop anti-slop workflow
+ * 10. tdd: Test-driven development
+ * 11. code review: Comprehensive review mode
+ * 12. security review: Security-focused review mode
+ * 13. ultrathink: Extended reasoning
+ * 14. deepsearch: Codebase search (restricted patterns)
+ * 15. analyze: Analysis mode (restricted patterns)
  */
 
 import { writeFileSync, mkdirSync, existsSync, unlinkSync, readFileSync } from 'fs';
@@ -31,7 +34,7 @@ const __dirname = dirname(__filename);
 // Dynamic import for the shared stdin module (use pathToFileURL for Windows compatibility, #524)
 const { readStdin } = await import(pathToFileURL(join(__dirname, 'lib', 'stdin.mjs')).href);
 const { atomicWriteFileSync } = await import(pathToFileURL(join(__dirname, 'lib', 'atomic-write.mjs')).href);
-const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
+const { getClaudeConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
 
 const ULTRATHINK_MESSAGE = `<think-mode>
 
@@ -68,94 +71,32 @@ Write or update tests first when practical, confirm they fail for the right reas
 ---
 `;
 
-const SEARCH_MESSAGE = `<deepsearch-mode>
-[DEEPSEARCH MODE ACTIVATED]
-Conduct a thorough codebase search before responding:
-1. Search broadly first, then narrow to relevant areas
-2. Cross-reference findings across multiple files
-3. Synthesize a comprehensive answer from your search results
-</deepsearch-mode>
+const CODE_REVIEW_MESSAGE = `<code-review-mode>
+[CODE REVIEW MODE ACTIVATED]
+Perform a comprehensive code review of the relevant changes or target area. Focus on correctness, maintainability, edge cases, regressions, and test adequacy before recommending changes.
+</code-review-mode>
 
 ---
 `;
 
-// Informational intent patterns — prompts that ask "what is X" or "how does X work"
-// should NOT trigger keyword-based skill invocations.
-const INFORMATIONAL_INTENT_PATTERNS = [
-  /\bwhat\s+is\b/i,
-  /\bwhat\s+are\b/i,
-  /\bhow\s+does\b/i,
-  /\bhow\s+do\b/i,
-  /\bexplain\b/i,
-  /\bdescribe\b/i,
-  /\btell\s+me\s+about\b/i,
-  /\bcan\s+you\s+explain\b/i,
-  /\bwhat\s+.*\bmode\s+now\b/i,
-];
-const INFORMATIONAL_CONTEXT_WINDOW = 80;
+const SECURITY_REVIEW_MESSAGE = `<security-review-mode>
+[SECURITY REVIEW MODE ACTIVATED]
+Perform a focused security review of the relevant changes or target area. Check trust boundaries, auth/authz, data exposure, input validation, command/file access, secrets handling, and escalation risks before recommending changes.
+</security-review-mode>
 
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+---
+`;
 
-function hasActivationIntentNearKeyword(context, keyword) {
-  const escaped = escapeRegExp((keyword || '').trim());
-  if (!escaped) return false;
+const SEARCH_MESSAGE = `<search-mode>
+MAXIMIZE SEARCH EFFORT. Launch multiple background agents IN PARALLEL:
+- explore agents (codebase patterns, file structures)
+- document-specialist agents (remote repos, official docs, GitHub examples)
+Plus direct tools: Grep, Glob
+NEVER stop at first result - be exhaustive.
+</search-mode>
 
-  const patterns = [
-    new RegExp(`\\b(?:use|run|start|enable|activate|invoke|trigger|launch)\\b[^\\n]{0,28}\\b${escaped}\\b`, 'i'),
-    new RegExp(`\\b(?:fix|debug|investigate|resolve|handle|patch|address)\\b[^\\n]{0,28}\\b(?:issue|bug|problem|error)\\b[^\\n]{0,12}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
-  ];
-
-  return patterns.some((pattern) => pattern.test(context));
-}
-
-function hasDiagnosticIntentNearKeyword(context, keyword) {
-  const escaped = escapeRegExp((keyword || '').trim());
-  if (!escaped) return false;
-
-  const patterns = [
-    new RegExp(`\\b${escaped}\\b[^\\n]{0,48}\\b(?:keeps?\\s+(?:looping|re-?running)|has\\s+(?:a\\s+)?(?:bug|issue|problem|error)|is\\s+(?:stuck|broken|failing)|loop(?:ing)?)\\b`, 'i'),
-    new RegExp(`\\b(?:bug|issue|problem|error)\\b[^\\n]{0,16}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
-  ];
-
-  return patterns.some((pattern) => pattern.test(context));
-}
-
-function isInformationalKeywordContext(text, position, keywordLength, keywordText) {
-  const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
-  const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
-  const context = text.slice(start, end);
-
-  if (keywordText) {
-    if (hasActivationIntentNearKeyword(context, keywordText)) {
-      return false;
-    }
-    if (hasDiagnosticIntentNearKeyword(context, keywordText)) {
-      return true;
-    }
-  }
-
-  return INFORMATIONAL_INTENT_PATTERNS.some((pattern) => pattern.test(context));
-}
-
-/**
- * Check if a prompt contains an actionable keyword match.
- * Skips detection when the surrounding context is purely informational.
- */
-function hasActionableKeyword(prompt, pattern) {
-  if (!pattern.test(prompt)) return false;
-
-  // Re-run to find match position for windowed context check
-  const match = prompt.match(pattern);
-  if (match && match.index !== undefined) {
-    if (isInformationalKeywordContext(prompt, match.index, match[0].length, match[0])) {
-      return false;
-    }
-  }
-
-  return true;
-}
+---
+`;
 
 // Extract prompt from various JSON structures
 function extractPrompt(input) {
@@ -177,6 +118,35 @@ function extractPrompt(input) {
 }
 
 // Sanitize text to prevent false positives from code blocks, XML tags, URLs, and file paths
+const ANTI_SLOP_EXPLICIT_PATTERN = /\b(ai[\s-]?slop|anti[\s-]?slop|deslop|de[\s-]?slop)\b/i;
+const ANTI_SLOP_ACTION_PATTERN = /\b(clean(?:\s*up)?|cleanup|refactor|simplify|dedupe|de-duplicate|prune)\b/i;
+const ANTI_SLOP_SMELL_PATTERN = /\b(slop|duplicate(?:d|s)?|duplication|dead\s+code|unused\s+code|over[\s-]?abstract(?:ion|ed)?|wrapper\s+layers?|boundary\s+violations?|needless\s+abstractions?|unnecessary\s+abstractions?|ai[\s-]?generated|generated\s+code|tech\s+debt)\b/i;
+
+function isAntiSlopCleanupRequest(text) {
+  return ANTI_SLOP_EXPLICIT_PATTERN.test(text) ||
+    (ANTI_SLOP_ACTION_PATTERN.test(text) && ANTI_SLOP_SMELL_PATTERN.test(text));
+}
+
+/** Review-outcome labels that appear together in seeded review instruction text. */
+const REVIEW_SEED_OUTCOME_RES = [
+  /\bapprove\b/i,
+  /\brequest[- ]changes\b/i,
+  /\bmerge[- ]ready\b/i,
+  /\bblocked\b/i,
+];
+
+/**
+ * Returns true when the prompt looks like echoed review-instruction text
+ * (an injected outcome menu: approve / request-changes / merge-ready / blocked),
+ * not a genuine user intent to start review mode.
+ *
+ * Heuristic: ≥2 distinct outcome labels in the first 20 lines → seeded context.
+ */
+function isReviewSeedContext(text) {
+  const preview = text.split('\n').slice(0, 20).join('\n');
+  return REVIEW_SEED_OUTCOME_RES.filter(re => re.test(preview)).length >= 2;
+}
+
 function sanitizeForKeywordDetection(text) {
   return text
     // 0. Strip HTML/markdown comments before tag stripping
@@ -187,6 +157,10 @@ function sanitizeForKeywordDetection(text) {
     .replace(/<\w[\w-]*(?:\s[^>]*)?\s*\/>/g, '')
     // 3. Strip URLs: http://... or https://... up to whitespace
     .replace(/https?:\/\/[^\s)>\]]+/g, '')
+    // 3.5 Strip block quotes and markdown table rows - these are usually reference content
+    .replace(/^\s*>\s.*$/gm, '')
+    .replace(/^\s*\|(?:[^|\n]*\|){2,}\s*$/gm, '')
+    .replace(/^\s*\|?(?:\s*:?-{3,}:?\s*\|){1,}\s*$/gm, '')
     // 4. Strip file paths: /foo/bar/baz or foo/bar/baz — uses lookbehind (Node.js supports it)
     // The TypeScript version (index.ts) uses capture group + $1 replacement for broader compat
     .replace(/(?<=^|[\s"'`(])(?:\/)?(?:[\w.-]+\/)+[\w.-]+/gm, '')
@@ -194,6 +168,162 @@ function sanitizeForKeywordDetection(text) {
     .replace(/```[\s\S]*?```/g, '')
     // 6. Strip inline code (existing)
     .replace(/`[^`]+`/g, '');
+}
+
+const INFORMATIONAL_INTENT_PATTERNS = [
+  /\b(?:what(?:'s|\s+is)|what\s+are|how\s+(?:to|do\s+i)\s+use|explain|explanation|tell\s+me\s+about|describe)\b/i,
+  /(?:뭐야|뭔데|무엇(?:이야|인가요)?|어떻게|설명(?!서\s*(?:작성|만들|생성|추가|업데이트|수정|편집|쓰))|사용법|알려\s?줘|알려줄래|소개해?\s?줘|소개\s*부탁|설명해\s?줘|뭐가\s*달라|어떤\s*기능|기능\s*(?:알려|설명|뭐)|방법\s*(?:알려|설명|뭐))/u,
+  /(?:とは|って何|使い方|説明)/u,
+  /(?:什么是|什麼是|怎(?:么|樣)用|如何使用|解释|說明|说明)/u,
+];
+const INFORMATIONAL_CONTEXT_WINDOW = 80;
+const QUOTED_SPAN_PATTERN =
+  /"[^"\n]{1,400}"|'[^'\n]{1,400}'|“[^”\n]{1,400}”|‘[^’\n]{1,400}’/g;
+const REFERENCE_META_PATTERNS = [
+  /\b(?:vs\.?|versus|compared\s+to|comparison|compare|article|blog\s+post|documentation|docs?|reference)\b/i,
+  /(?:비교|차이|설명|정리|문서|자료|가이드|이\s*(?:글|비교|문서)는|블로그)/u,
+  /\b(?:this\s+(?:article|comparison|guide|documentation|doc)|quoted|quote(?:d)?)\b/i,
+];
+const REFERENCE_EXPLANATION_PATTERNS = [
+  /(?:^|\n)\s*(?:결론|특징|예시|요약|장점|단점|설명)\s*[:：]/u,
+  /\b(?:summary|conclusion|key\s+points?|example|examples|pros|cons|overview)\s*:/i,
+  /[^\n]{1,80}=\s*["“]/,
+  /[→⇒]/,
+];
+const QUESTION_FOLLOWUP_PATTERNS = [
+  /\b(?:how\s+many|how\s+much|why|what\s+happened|what\s+went\s+wrong|token\s+budget|cost|pricing)\b/i,
+  /(?:왜|얼마|몇\s*번|몇번|토큰|가격|비용|질문)/u,
+];
+const MODE_REFERENCE_PATTERN =
+  /\b(?:ralph|autopilot|auto[\s-]?pilot|ultrawork|ulw|ralplan|ultrathink|deepsearch|deep[\s-]?analyze|deepanalyze|deep[\s-]interview|ouroboros|ccg|claude-codex-gemini|deerflow)\b/gi;
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getLineBounds(text, position) {
+  const start = text.lastIndexOf('\n', Math.max(0, position - 1)) + 1;
+  const nextNewline = text.indexOf('\n', position);
+  const end = nextNewline === -1 ? text.length : nextNewline;
+  return { start, end };
+}
+
+function isWithinQuotedSpan(text, position) {
+  for (const match of text.matchAll(QUOTED_SPAN_PATTERN)) {
+    if (match.index === undefined) continue;
+    const start = match.index;
+    const end = start + match[0].length;
+    if (position >= start && position < end) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function stripQuotedSpans(text) {
+  return text.replace(QUOTED_SPAN_PATTERN, ' ');
+}
+
+function countDistinctModeReferences(text) {
+  const matches = text.match(MODE_REFERENCE_PATTERN) ?? [];
+  const normalized = new Set(
+    matches.map((match) => match.toLowerCase().replace(/\s+/g, '').replace(/-/g, '')),
+  );
+  return normalized.size;
+}
+
+function looksLikeReferenceContent(text) {
+  const hasReferenceMeta = REFERENCE_META_PATTERNS.some((pattern) => pattern.test(text));
+  const hasExplanationShape = REFERENCE_EXPLANATION_PATTERNS.some((pattern) => pattern.test(text));
+  const hasAnyModeMention = countDistinctModeReferences(text) >= 1;
+  const hasMultipleModeMentions = countDistinctModeReferences(text) >= 2;
+  const hasQuestionOutsideQuotes = QUESTION_FOLLOWUP_PATTERNS.some((pattern) =>
+    pattern.test(stripQuotedSpans(text)),
+  );
+
+  return (
+    (hasReferenceMeta && (hasExplanationShape || hasAnyModeMention || hasQuestionOutsideQuotes)) ||
+    (hasExplanationShape && (hasMultipleModeMentions || hasQuestionOutsideQuotes)) ||
+    (hasMultipleModeMentions && hasQuestionOutsideQuotes)
+  );
+}
+
+function hasActivationIntentNearKeyword(context, keyword) {
+  const escaped = escapeRegExp((keyword || '').trim());
+  if (!escaped) return false;
+
+  const patterns = [
+    new RegExp(`\\b(?:use|run|start|enable|activate|invoke|trigger|launch)\\b[^\\n]{0,28}\\b${escaped}\\b`, 'i'),
+    new RegExp(`\\b(?:fix|debug|investigate|resolve|handle|patch|address)\\b[^\\n]{0,28}\\b(?:issue|bug|problem|error)\\b[^\\n]{0,12}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
+
+  ];
+
+  return patterns.some((pattern) => pattern.test(context));
+}
+
+function hasDiagnosticIntentNearKeyword(context, keyword) {
+  const escaped = escapeRegExp((keyword || '').trim());
+  if (!escaped) return false;
+
+  const patterns = [
+    new RegExp(`\\b${escaped}\\b[^\\n]{0,48}\\b(?:keeps?\\s+(?:looping|re-?running)|has\\s+(?:a\\s+)?(?:bug|issue|problem|error)|is\\s+(?:stuck|broken|failing)|loop(?:ing)?)\\b`, 'i'),
+    new RegExp(`\\b(?:bug|issue|problem|error)\\b[^\\n]{0,16}\\b(?:with|in)\\s+\\b${escaped}\\b`, 'i'),
+    new RegExp(`${escaped}.{0,14}(?:자꾸|계속).{0,14}(?:재실행|반복|루프|멈추)`, 'u'),
+  ];
+
+  return patterns.some((pattern) => pattern.test(context));
+}
+
+function isInformationalKeywordContext(text, position, keywordLength, keywordText) {
+  const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
+  const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
+  const context = text.slice(start, end);
+  const lineBounds = getLineBounds(text, position);
+  const line = text.slice(lineBounds.start, lineBounds.end);
+  const questionOutsideQuotes = stripQuotedSpans(text);
+  const keywordInsideQuotes = isWithinQuotedSpan(text, position);
+
+  if (keywordText) {
+    if (hasActivationIntentNearKeyword(context, keywordText)) {
+      return false;
+    }
+    if (hasDiagnosticIntentNearKeyword(context, keywordText)) {
+      return true;
+    }
+  }
+
+  if (/^\s*>\s/.test(line) || /^\s*\|(?:[^|\n]*\|){2,}\s*$/.test(line)) {
+    return true;
+  }
+
+  if (keywordInsideQuotes && QUESTION_FOLLOWUP_PATTERNS.some((pattern) => pattern.test(questionOutsideQuotes))) {
+    return true;
+  }
+
+  if (looksLikeReferenceContent(text)) {
+    return true;
+  }
+
+  return INFORMATIONAL_INTENT_PATTERNS.some((pattern) => pattern.test(context));
+}
+
+function hasActionableKeyword(text, pattern) {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  const globalPattern = new RegExp(pattern.source, flags);
+
+  for (const match of text.matchAll(globalPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    if (isInformationalKeywordContext(text, match.index, match[0].length, match[0])) {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
 }
 
 // Create state file for a mode
@@ -295,7 +425,7 @@ function linkRalphTeam(directory, sessionId) {
 }
 
 /**
- * Create a skill invocation message that tells Copilot to use the Skill tool
+ * Create a skill invocation message that tells Claude to use the Skill tool
  */
 function createSkillInvocation(skillName, originalPrompt, args = '') {
   const argsSection = args ? `\nArguments: ${args}` : '';
@@ -366,15 +496,15 @@ function resolveConflicts(matches) {
   // Team keyword detection removed — team is now explicit-only via /team skill.
 
   // Sort by priority order
-const priorityOrder = ['cancel','ralph','autopilot','ultrawork',
-    'c3g','ralplan','deep-interview','tdd','ultrathink','deepsearch','analyze'];
+  const priorityOrder = ['cancel','ralph','autopilot','ultrawork',
+    'ccg','ralplan','deep-interview','ai-slop-cleaner','tdd','code-review','security-review','ultrathink','deepsearch','analyze'];
   resolved.sort((a, b) => priorityOrder.indexOf(a.name) - priorityOrder.indexOf(b.name));
 
   return resolved;
 }
 
 /**
- * Create proper hook output with additionalContext (Copilot CLI hooks API)
+ * Create proper hook output with additionalContext (Claude Code hooks API)
  * The 'message' field is NOT a valid hook output - use hookSpecificOutput.additionalContext
  */
 function createHookOutput(additionalContext) {
@@ -388,14 +518,15 @@ function createHookOutput(additionalContext) {
 }
 
 /**
- * Check if the team feature is enabled in Copilot CLI settings.
- * Reads ~/.copilot/settings.json and checks for CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var.
+ * Check if the team feature is enabled in Claude Code settings.
+ * Reads settings.json from [$CLAUDE_CONFIG_DIR|~/.claude] and checks for
+ * CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var.
  * @returns {boolean} true if team feature is enabled
  */
 function isTeamEnabled() {
   try {
     // Check settings.json first (authoritative, user-controlled)
-    const cfgDir = getCopilotConfigDir();
+    const cfgDir = getClaudeConfigDir();
     const settingsPath = join(cfgDir, 'settings.json');
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
@@ -415,8 +546,8 @@ function isTeamEnabled() {
 
 // Main
 async function main() {
-  // Skip guard: check OMP_SKIP_HOOKS env var (see issue #838)
-  const _skipHooks = (process.env.OMP_SKIP_HOOKS || '').split(',').map(s => s.trim());
+  // Skip guard: check OMC_SKIP_HOOKS env var (see issue #838)
+  const _skipHooks = (process.env.OMC_SKIP_HOOKS || '').split(',').map(s => s.trim());
   if (process.env.DISABLE_OMC === '1' || _skipHooks.includes('keyword-detector')) {
     console.log(JSON.stringify({ continue: true }));
     return;
@@ -424,7 +555,7 @@ async function main() {
 
   // Team worker guard: prevent keyword detection inside team workers to avoid
   // infinite spawning loops (worker detects "team" -> invokes team skill -> spawns more workers)
-  if (process.env.OMP_TEAM_WORKER) {
+  if (process.env.OMC_TEAM_WORKER) {
     console.log(JSON.stringify({ continue: true, suppressOutput: true }));
     return;
   }
@@ -452,65 +583,82 @@ async function main() {
     const matches = [];
 
     // Cancel keywords
-    if (/\b(cancelomc|stopomc)\b/i.test(cleanPrompt)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(cancelomc|stopomc)\b/i)) {
       matches.push({ name: 'cancel', args: '' });
     }
 
     // Ralph keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(ralph)\b/i)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ralph)\b|(랄프)(?!로렌)/i)) {
       matches.push({ name: 'ralph', args: '' });
     }
 
     // Autopilot keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b/i)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b|(오토파일럿)/i)) {
       matches.push({ name: 'autopilot', args: '' });
     }
 
     // Team keyword detection removed — team mode is now explicit-only via /team skill.
-    // This prevents infinite spawning when Copilot workers receive prompts containing "team".
+    // This prevents infinite spawning when Claude workers receive prompts containing "team".
 
     // Ultrawork keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(ultrawork|ulw)\b/i)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ultrawork|ulw)\b|(울트라워크)/i)) {
       matches.push({ name: 'ultrawork', args: '' });
     }
 
 
-    // CCG keywords (Copilot-Codex-Gemini tri-model orchestration)
-    if (hasActionableKeyword(cleanPrompt, /\b(c3g|copilot-claude-codex-gemini)\b/i)) {
-      matches.push({ name: 'c3g', args: '' });
+    // CCG keywords (Claude-Codex-Gemini tri-model orchestration)
+    if (hasActionableKeyword(cleanPrompt, /\b(ccg|claude-codex-gemini)\b|(씨씨지)/i)) {
+      matches.push({ name: 'ccg', args: '' });
     }
 
     // Ralplan keyword
-    if (hasActionableKeyword(cleanPrompt, /\b(ralplan)\b/i)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ralplan)\b|(랄플랜)/i)) {
       matches.push({ name: 'ralplan', args: '' });
     }
 
     // Deep interview keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(deep[\s-]interview|ouroboros)\b/i)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(deep[\s-]interview|ouroboros)\b|(딥인터뷰)/i)) {
       matches.push({ name: 'deep-interview', args: '' });
     }
 
+    // AI slop cleanup keywords
+    if (isAntiSlopCleanupRequest(cleanPrompt)) {
+      matches.push({ name: 'ai-slop-cleaner', args: '' });
+    }
+
     // TDD keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(tdd)\b/i) ||
+    if (hasActionableKeyword(cleanPrompt, /\b(tdd)\b|(테스트\s?퍼스트)/i) ||
         hasActionableKeyword(cleanPrompt, /\btest\s+first\b/i) ||
         hasActionableKeyword(cleanPrompt, /\bred\s+green\b/i)) {
       matches.push({ name: 'tdd', args: '' });
     }
 
+    // Code review keywords — skip when the prompt is echoed review-instruction text
+    if (!isReviewSeedContext(cleanPrompt) &&
+        hasActionableKeyword(cleanPrompt, /\b(code\s+review|review\s+code)\b|(코드\s?리뷰)(?!어)/i)) {
+      matches.push({ name: 'code-review', args: '' });
+    }
+
+    // Security review keywords — skip when the prompt is echoed review-instruction text
+    if (!isReviewSeedContext(cleanPrompt) &&
+        hasActionableKeyword(cleanPrompt, /\b(security\s+review|review\s+security)\b|(보안\s?리뷰)(?!어)/i)) {
+      matches.push({ name: 'security-review', args: '' });
+    }
+
     // Ultrathink keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(ultrathink)\b/i)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(ultrathink)\b|(울트라씽크)/i)) {
       matches.push({ name: 'ultrathink', args: '' });
     }
 
     // Deepsearch keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(deepsearch)\b/i) ||
+    if (hasActionableKeyword(cleanPrompt, /\b(deepsearch)\b|(딥\s?서치)/i) ||
         hasActionableKeyword(cleanPrompt, /\bsearch\s+the\s+codebase\b/i) ||
         hasActionableKeyword(cleanPrompt, /\bfind\s+in\s+(the\s+)?codebase\b/i)) {
       matches.push({ name: 'deepsearch', args: '' });
     }
 
     // Analyze keywords
-    if (hasActionableKeyword(cleanPrompt, /\b(deep[\s-]?analyze|deepanalyze)\b/i)) {
+    if (hasActionableKeyword(cleanPrompt, /\b(deep[\s-]?analyze|deepanalyze)\b|(딥\s?분석)/i)) {
       matches.push({ name: 'analyze', args: '' });
     }
 
@@ -557,9 +705,11 @@ async function main() {
     const additionalContextParts = [];
     for (const [keywordName, message] of [
       ['ultrathink', ULTRATHINK_MESSAGE],
+      ['deepsearch', SEARCH_MESSAGE],
       ['analyze', ANALYZE_MESSAGE],
       ['tdd', TDD_MESSAGE],
-      ['deepsearch', SEARCH_MESSAGE],
+      ['code-review', CODE_REVIEW_MESSAGE],
+      ['security-review', SECURITY_REVIEW_MESSAGE],
     ]) {
       const index = resolved.findIndex(m => m.name === keywordName);
       if (index !== -1) {

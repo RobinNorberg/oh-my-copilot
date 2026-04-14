@@ -149,7 +149,8 @@ export function readSkillActiveState(
 export function writeSkillActiveState(
   directory: string,
   skillName: string,
-  sessionId?: string
+  sessionId?: string,
+  _rawSkillName?: string,
 ): SkillActiveState | null {
   const protection = getSkillProtection(skillName);
 
