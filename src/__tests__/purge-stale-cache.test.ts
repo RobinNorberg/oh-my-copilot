@@ -11,6 +11,7 @@ vi.mock('fs', async () => {
     statSync: vi.fn(),
     rmSync: vi.fn(),
     unlinkSync: vi.fn(),
+    symlinkSync: vi.fn(),
   };
 });
 
@@ -20,7 +21,7 @@ vi.mock('../utils/config-dir.js', () => ({
   getClaudeConfigDir: vi.fn(() => '/mock/.copilot'),
 }));
 
-import { existsSync, readFileSync, readdirSync, statSync, rmSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync, rmSync, symlinkSync } from 'fs';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 
 const mockedExistsSync = vi.mocked(existsSync);
@@ -94,8 +95,8 @@ describe('purgeStalePluginCacheVersions', () => {
     });
 
     const result = purgeStalePluginCacheVersions();
-    expect(result.removed).toBe(1);
-    expect(result.removedPaths.map(n)).toEqual([n(staleVersion)]);
+    expect(result.symlinked).toBe(1);
+    expect(result.symlinkPaths.map(n)).toEqual([n(staleVersion)]);
     expect(mockedRmSync).toHaveBeenCalledWith(staleVersion, { recursive: true, force: true });
     // Active version should NOT be removed
     expect(mockedRmSync).not.toHaveBeenCalledWith(activeVersion, expect.anything());
@@ -137,9 +138,9 @@ describe('purgeStalePluginCacheVersions', () => {
     });
 
     const result = purgeStalePluginCacheVersions();
-    expect(result.removed).toBe(2);
-    expect(result.removedPaths.map(n)).toContain(n(stale1));
-    expect(result.removedPaths.map(n)).toContain(n(stale2));
+    expect(result.symlinked).toBe(2);
+    expect(result.symlinkPaths.map(n)).toContain(n(stale1));
+    expect(result.symlinkPaths.map(n)).toContain(n(stale2));
   });
 
   it('does nothing when all cache versions are active', () => {

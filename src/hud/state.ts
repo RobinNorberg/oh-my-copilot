@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { getCopilotConfigDir } from '../utils/paths.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { validateWorkingDirectory, getOmcRoot } from '../lib/worktree-paths.js';
 import {
   atomicWriteFileSync,
