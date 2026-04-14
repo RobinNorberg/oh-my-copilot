@@ -21,7 +21,7 @@ vi.mock('../utils/config-dir.js', () => ({
   getClaudeConfigDir: vi.fn(() => '/mock/.copilot'),
 }));
 
-import { existsSync, readFileSync, readdirSync, statSync, rmSync, symlinkSync } from 'fs';
+import { existsSync, readFileSync, readdirSync, statSync, rmSync, symlinkSync as _symlinkSync } from 'fs';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 
 const mockedExistsSync = vi.mocked(existsSync);

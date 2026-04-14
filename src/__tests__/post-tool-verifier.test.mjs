@@ -6,13 +6,12 @@
 import { describe, it, expect } from 'vitest';
 import { execSync } from 'child_process';
 import { join } from 'path';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import process from 'process';
 import { detectBashFailure, detectWriteFailure, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'post-tool-verifier.mjs');
-const TEMPLATE_HOOK_PATH = join(process.cwd(), 'templates', 'hooks', 'post-tool-use.mjs');
 
 function runPostToolVerifier(input, env = {}) {
   return runHookScript(SCRIPT_PATH, input, env);
@@ -37,56 +36,6 @@ function withTempDir(fn) {
   }
 }
 
-function skillStatePath(tempDir, sessionId) {
-  return join(tempDir, '.omc', 'state', 'sessions', sessionId, 'skill-active-state.json');
-}
-
-function legacySkillStatePath(tempDir) {
-  return join(tempDir, '.omc', 'state', 'skill-active-state.json');
-}
-
-function ralplanStatePath(tempDir, sessionId) {
-  return join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
-}
-
-function writeSkillStateFixtures(tempDir, sessionId, skillName = 'plan') {
-  mkdirSync(join(tempDir, '.omc', 'state', 'sessions', sessionId), { recursive: true });
-  writeFileSync(
-    skillStatePath(tempDir, sessionId),
-    JSON.stringify({
-      active: true,
-      skill_name: skillName,
-      session_id: sessionId,
-      started_at: '2026-04-01T00:00:00.000Z',
-      last_checked_at: '2026-04-01T00:00:00.000Z',
-      reinforcement_count: 0,
-      max_reinforcements: 5,
-      stale_ttl_ms: 900000,
-    }),
-  );
-  mkdirSync(join(tempDir, '.omc', 'state'), { recursive: true });
-  writeFileSync(
-    legacySkillStatePath(tempDir),
-    JSON.stringify({
-      active: true,
-      skill_name: skillName,
-    }),
-  );
-}
-
-function writeRalplanStateFixture(tempDir, sessionId, overrides = {}) {
-  mkdirSync(join(tempDir, '.omc', 'state', 'sessions', sessionId), { recursive: true });
-  writeFileSync(
-    ralplanStatePath(tempDir, sessionId),
-    JSON.stringify({
-      active: true,
-      session_id: sessionId,
-      current_phase: 'ralplan',
-      started_at: '2026-04-01T00:00:00.000Z',
-      ...overrides,
-    }),
-  );
-}
 
 describe('detectBashFailure', () => {
   describe('Claude Code temp CWD false positives (issue #696)', () => {
