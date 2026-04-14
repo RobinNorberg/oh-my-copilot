@@ -10,7 +10,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
-import { getCopilotConfigDir } from '../../utils/paths.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const DEFAULT_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.py', '.go', '.rs'];
 const DEFAULT_MAX_FILES = 10;
 /** Marker filename used to prevent re-triggering within the same turn cycle */

@@ -1,7 +1,7 @@
 /**
  * tmux Detector
  *
- * Detects Copilot CLI sessions running in tmux panes and identifies
+ * Detects Claude Code sessions running in tmux panes and identifies
  * those that are blocked due to rate limiting.
  *
  * Security considerations:
@@ -23,6 +23,18 @@ export declare function isInsideTmux(): boolean;
  */
 export declare function listTmuxPanes(): TmuxPane[];
 /**
+ * Check whether a tmux pane is alive (not in the dead/exited state).
+ *
+ * tmux sets #{pane_dead} to "1" once the child process in the pane exits.
+ * Capturing content from a dead pane returns stale scrollback and can
+ * trigger spurious keyword alerts — callers should skip capture when this
+ * returns false.
+ *
+ * Returns false for dead panes, invalid pane IDs, and when tmux is unavailable.
+ * Intentionally synchronous so it can be used in fire-and-forget hook paths.
+ */
+export declare function isPaneAlive(paneId: string): boolean;
+/**
  * Capture the content of a specific tmux pane
  *
  * @param paneId - The tmux pane ID (e.g., "%0")
@@ -30,15 +42,20 @@ export declare function listTmuxPanes(): TmuxPane[];
  */
 export declare function capturePaneContent(paneId: string, lines?: number): string;
 /**
- * Analyze pane content to determine if it shows a rate-limited Copilot CLI session
+ * Analyze pane content to determine if it shows a rate-limited Claude Code session
  */
 export declare function analyzePaneContent(content: string): PaneAnalysisResult;
 /**
- * Scan all tmux panes for blocked Copilot CLI sessions
+ * Scan all tmux panes for blocked Claude Code sessions.
  *
- * @param lines - Number of lines to capture from each pane
+ * @param lines    - Number of lines to capture from each pane
+ * @param stateDir - When provided, use cursor-tracked capture (getNewPaneTail) so
+ *                   repeated daemon polls only surface lines written since the last
+ *                   scan. Panes with no new output are skipped, preventing stale
+ *                   rate-limit messages from re-alerting after blockers are resolved.
+ *                   When omitted, falls back to a plain capturePaneContent call.
  */
-export declare function scanForBlockedPanes(lines?: number): BlockedPane[];
+export declare function scanForBlockedPanes(lines?: number, stateDir?: string): BlockedPane[];
 /**
  * Send resume sequence to a tmux pane
  *

@@ -24,9 +24,10 @@ vi.mock('../tmux-utils.js', () => ({
     wrapWithLoginShell: vi.fn((cmd) => cmd),
     quoteShellArg: vi.fn((s) => s),
     isCopilotAvailable: vi.fn(() => true),
+    tmuxExec: vi.fn(),
 }));
 import { runCopilot, launchCommand, extractNotifyFlag, extractTelegramFlag, extractDiscordFlag, extractSlackFlag, extractWebhookFlag, normalizeCopilotLaunchArgs, prepareOmcLaunchConfigDir, buildEnvExportPrefix, TMUX_ENV_FORWARD } from '../launch.js';
-import { resolveLaunchPolicy, buildTmuxShellCommand, } from '../tmux-utils.js';
+import { resolveLaunchPolicy, buildTmuxShellCommand, tmuxExec, } from '../tmux-utils.js';
 // ---------------------------------------------------------------------------
 // extractNotifyFlag
 // ---------------------------------------------------------------------------
@@ -187,9 +188,9 @@ describe('runCopilot OMC HUD behavior', () => {
     it('does not add split-window HUD pane args when launching outside tmux', () => {
         resolveLaunchPolicy.mockReturnValue('outside-tmux');
         runCopilot('/tmp/cwd', [], 'test-session');
-        const tmuxCalls = vi.mocked(execFileSync).mock.calls.filter(([cmd]) => cmd === 'tmux');
+        const tmuxCalls = vi.mocked(tmuxExec).mock.calls;
         expect(tmuxCalls.length).toBeGreaterThan(0);
-        expect(tmuxCalls.every(([, tmuxArgs]) => !tmuxArgs.includes('split-window'))).toBe(true);
+        expect(tmuxCalls.every(([tmuxArgs]) => !tmuxArgs.includes('split-window'))).toBe(true);
     });
 });
 // ---------------------------------------------------------------------------
@@ -208,11 +209,11 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
     });
     it('uses session-targeted mouse option instead of global (-t sessionName, not -g)', () => {
         runCopilot('/tmp', [], 'sid');
-        // new-session, set-option, and attach-session are all in one tmux call as ';'-separated args
-        const tmuxCalls = vi.mocked(execFileSync).mock.calls.filter(([cmd]) => cmd === 'tmux');
-        const tmuxCall = tmuxCalls.find(([, args]) => args.includes('new-session'));
+        // new-session, set-option, and attach-session are all in one tmuxExec call as ';'-separated args
+        const tmuxCalls = vi.mocked(tmuxExec).mock.calls;
+        const tmuxCall = tmuxCalls.find(([args]) => args.includes('new-session'));
         expect(tmuxCall).toBeDefined();
-        const tmuxArgs = tmuxCall[1];
+        const tmuxArgs = tmuxCall[0];
         // Must use -t <sessionName> targeting, not -g (global)
         const setOptionIdx = tmuxArgs.indexOf('set-option');
         expect(setOptionIdx).toBeGreaterThanOrEqual(0);
@@ -225,19 +226,19 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
     });
     it('does not set terminal-overrides in tmux args', () => {
         runCopilot('/tmp', [], 'sid');
-        const tmuxCalls = vi.mocked(execFileSync).mock.calls.filter(([cmd]) => cmd === 'tmux');
-        const tmuxCall = tmuxCalls.find(([, args]) => args.includes('new-session'));
+        const tmuxCalls = vi.mocked(tmuxExec).mock.calls;
+        const tmuxCall = tmuxCalls.find(([args]) => args.includes('new-session'));
         expect(tmuxCall).toBeDefined();
-        const tmuxArgs = tmuxCall[1];
+        const tmuxArgs = tmuxCall[0];
         expect(tmuxArgs).not.toContain('terminal-overrides');
         expect(tmuxArgs).not.toContain('*:smcup@:rmcup@');
     });
     it('places mouse mode setup before attach-session', () => {
         runCopilot('/tmp', [], 'sid');
-        // All commands are in one tmux call as ';'-separated args
-        const tmuxCall = vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'tmux');
+        // All commands are in one tmuxExec call as ';'-separated args
+        const tmuxCall = vi.mocked(tmuxExec).mock.calls[0];
         expect(tmuxCall).toBeDefined();
-        const tmuxArgs = tmuxCall[1];
+        const tmuxArgs = tmuxCall[0];
         const mouseIdx = tmuxArgs.indexOf('set-option');
         const attachIdx = tmuxArgs.indexOf('attach-session');
         expect(mouseIdx).toBeGreaterThanOrEqual(0);
@@ -245,9 +246,7 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
         expect(mouseIdx).toBeLessThan(attachIdx);
     });
     it('preserves a valid detached session when attach-session is interrupted', () => {
-        execFileSync.mockImplementation((cmd, args) => {
-            if (cmd !== 'tmux')
-                return Buffer.from('');
+        vi.mocked(tmuxExec).mockImplementation((args) => {
             // All commands in one call; simulate failure by throwing when attach-session is present
             if (args.includes('attach-session')) {
                 throw new Error('attach interrupted');
@@ -255,9 +254,7 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
             return Buffer.from('');
         });
         runCopilot('/tmp', [], 'sid');
-        const tmuxCalls = vi.mocked(execFileSync).mock.calls
-            .filter(([cmd]) => cmd === 'tmux')
-            .map(([, tmuxArgs]) => tmuxArgs);
+        const tmuxCalls = vi.mocked(tmuxExec).mock.calls.map(([args]) => args);
         // One combined call with new-session + set-option + attach-session
         expect(tmuxCalls.length).toBeGreaterThanOrEqual(1);
         const combinedArgs = tmuxCalls[0];
@@ -269,16 +266,15 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
         expect(vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'copilot')).toBeDefined();
     });
     it('falls back to direct launch when detached session creation fails', () => {
-        execFileSync.mockImplementation((cmd, args) => {
-            if (cmd === 'tmux' && args[0] === 'new-session') {
+        vi.mocked(tmuxExec).mockImplementation((args) => {
+            if (args[0] === 'new-session') {
                 throw new Error('tmux launch failed');
             }
             return Buffer.from('');
         });
         runCopilot('/tmp', ['--dangerously-skip-permissions'], 'sid');
-        const calls = vi.mocked(execFileSync).mock.calls;
-        expect(calls.filter(([cmd]) => cmd === 'tmux')).toHaveLength(1);
-        expect(calls.find(([cmd, args]) => cmd === 'copilot' && args[0] === '--dangerously-skip-permissions')).toBeDefined();
+        expect(vi.mocked(tmuxExec).mock.calls).toHaveLength(1);
+        expect(vi.mocked(execFileSync).mock.calls.find(([cmd, args]) => cmd === 'copilot' && args[0] === '--dangerously-skip-permissions')).toBeDefined();
     });
 });
 // ---------------------------------------------------------------------------
@@ -297,24 +293,22 @@ describe('runCopilot inside-tmux — mouse configuration (issue #890)', () => {
     });
     it('enables mouse mode before launching copilot', () => {
         runCopilot('/tmp', [], 'sid');
-        const calls = vi.mocked(execFileSync).mock.calls;
-        // First call should be tmux set-option for mouse config
-        expect(calls.length).toBeGreaterThanOrEqual(2);
-        expect(calls[0][0]).toBe('tmux');
-        expect(calls[0][1]).toEqual(['set-option', 'mouse', 'on']);
-        // Second call should be copilot
-        expect(calls[1][0]).toBe('copilot');
+        // tmuxExec should be called first with mouse set-option
+        const tmuxExecCalls = vi.mocked(tmuxExec).mock.calls;
+        expect(tmuxExecCalls.length).toBeGreaterThanOrEqual(1);
+        expect(tmuxExecCalls[0][0]).toEqual(['set-option', 'mouse', 'on']);
+        // execFileSync should be called with copilot
+        const execFileSyncCalls = vi.mocked(execFileSync).mock.calls;
+        expect(execFileSyncCalls.length).toBeGreaterThanOrEqual(1);
+        expect(execFileSyncCalls[0][0]).toBe('copilot');
     });
     it('still launches copilot even if tmux mouse config fails', () => {
-        execFileSync.mockImplementation((cmd) => {
-            if (cmd === 'tmux')
-                throw new Error('tmux set-option failed');
-            return Buffer.from('');
+        vi.mocked(tmuxExec).mockImplementation(() => {
+            throw new Error('tmux set-option failed');
         });
         runCopilot('/tmp', [], 'sid');
-        // tmux calls fail but copilot should still be called
-        const calls = vi.mocked(execFileSync).mock.calls;
-        const claudeCall = calls.find(([cmd]) => cmd === 'copilot');
+        // tmuxExec fails but copilot should still be called via execFileSync
+        const claudeCall = vi.mocked(execFileSync).mock.calls.find(([cmd]) => cmd === 'copilot');
         expect(claudeCall).toBeDefined();
     });
 });
@@ -620,8 +614,10 @@ describe('launchCommand — env var propagation', () => {
 describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () => {
     const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
     let tempRoot = null;
+    const originalClaudecode = process.env.CLAUDECODE;
     beforeEach(() => {
         vi.resetAllMocks();
+        delete process.env.CLAUDECODE;
         tempRoot = mkdtempSync(join(tmpdir(), 'omc-launch-profile-'));
         execFileSync.mockReturnValue(Buffer.from(''));
         resolveLaunchPolicy.mockReturnValue('direct');

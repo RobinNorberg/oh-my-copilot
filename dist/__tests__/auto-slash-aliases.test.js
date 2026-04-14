@@ -58,5 +58,49 @@ PSM body`);
         expect(listedNames).toContain('project-session-manager');
         expect(listedNames).not.toContain('psm');
     });
+    it('applies deep-interview threshold runtime injection in slash/materialized output', async () => {
+        mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
+        writeFileSync(join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'), `---
+name: deep-interview
+description: Deep interview
+---
+
+Purpose default: (default: 20%)
+Policy default: (default 0.2)
+State:
+"threshold": 0.2,
+"ambiguityThreshold": 0.2,
+4. **Initialize state** via \`state_write(mode="deep-interview")\`:
+Announcement: We'll proceed to execution once ambiguity drops below 20%.
+Diagram: Gate: ≤20% ambiguity
+Warning: (threshold: 20%).
+Advanced: ambiguity ≤ 20%
+`);
+        writeFileSync(join(tempConfigDir, 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }));
+        const { executeSlashCommand } = await loadExecutor();
+        const result = executeSlashCommand({
+            command: 'deep-interview',
+            args: 'improve onboarding',
+            raw: '/deep-interview improve onboarding',
+        });
+        expect(result.success).toBe(true);
+        expect(result.replacementText).toContain('ambiguityThreshold = 0.15');
+        expect(result.replacementText).toContain('(default: 15%)');
+        expect(result.replacementText).toContain('(default 0.15)');
+        expect(result.replacementText).toContain('"threshold": 0.15,');
+        expect(result.replacementText).toContain('drops below 15%.');
+        expect(result.replacementText).toContain('Gate: ≤15% ambiguity');
+        expect(result.replacementText).toContain('(threshold: 15%).');
+        expect(result.replacementText).toContain('ambiguity ≤ 15%');
+        expect(result.replacementText).toContain('"ambiguityThreshold": 0.15,');
+        expect(result.replacementText).not.toContain('(default: 20%)');
+        expect(result.replacementText).not.toContain('(default 0.2)');
+        expect(result.replacementText).not.toContain('"threshold": 0.2,');
+        expect(result.replacementText).not.toContain('drops below 20%.');
+        expect(result.replacementText).not.toContain('Gate: ≤20% ambiguity');
+        expect(result.replacementText).not.toContain('(threshold: 20%).');
+        expect(result.replacementText).not.toContain('ambiguity ≤ 20%');
+        expect(result.replacementText).not.toContain('"ambiguityThreshold": 0.2,');
+    });
 });
 //# sourceMappingURL=auto-slash-aliases.test.js.map

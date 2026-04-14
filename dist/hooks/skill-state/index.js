@@ -105,7 +105,7 @@ export function readSkillActiveState(directory, sessionId) {
  * Write skill active state.
  * Called when a skill is invoked via the Skill tool.
  */
-export function writeSkillActiveState(directory, skillName, sessionId) {
+export function writeSkillActiveState(directory, skillName, sessionId, _rawSkillName) {
     const protection = getSkillProtection(skillName);
     // Skills with 'none' protection don't need state tracking
     if (protection === 'none') {

@@ -54,6 +54,8 @@ export const DEPRECATED_ROLE_ALIASES = {
     'deep-executor': 'executor',
     'build-fixer': 'debugger',
     'harsh-critic': 'critic',
+    // User-friendly short alias for /team role routing (plan AC-4)
+    reviewer: 'code-reviewer',
 };
 /**
  * Normalize legacy role aliases to canonical role names.

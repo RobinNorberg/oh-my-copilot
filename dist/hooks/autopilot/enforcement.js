@@ -15,6 +15,7 @@ import { readAutopilotState, writeAutopilotState, transitionPhase, transitionRal
 import { getPhasePrompt } from './prompts.js';
 import { readLastToolError, getToolErrorRetryGuidance } from '../persistent-mode/index.js';
 import { readPipelineTracking, hasPipelineTracking, getCurrentStageAdapter, getCurrentCompletionSignal, advanceStage, incrementStageIteration, generateTransitionPrompt, formatPipelineHUD, } from './pipeline.js';
+import { formatAutopilotRuntimeInsight } from './runtime-insight.js';
 // ============================================================================
 // SIGNAL DETECTION
 // ============================================================================
@@ -230,6 +231,7 @@ function generateContinuationPrompt(state, directory, sessionId) {
     // Read tool error before generating message
     const toolError = readLastToolError(directory);
     const errorGuidance = getToolErrorRetryGuidance(toolError);
+    const runtimeInsight = formatAutopilotRuntimeInsight(directory, sessionId);
     // Increment iteration
     state.iteration += 1;
     writeAutopilotState(directory, state, sessionId);
@@ -240,6 +242,7 @@ function generateContinuationPrompt(state, directory, sessionId) {
     });
     const continuationPrompt = `<autopilot-continuation>
 ${errorGuidance ? errorGuidance + '\n' : ''}
+${runtimeInsight ? `${runtimeInsight}\n\n` : ''}
 [AUTOPILOT - PHASE: ${state.phase.toUpperCase()} | ITERATION ${state.iteration}/${state.max_iterations}]
 
 Your previous response did not signal phase completion. Continue working on the current phase.
@@ -351,6 +354,7 @@ ${stagePrompt}
     incrementStageIteration(directory, sessionId);
     const toolError = readLastToolError(directory);
     const errorGuidance = getToolErrorRetryGuidance(toolError);
+    const runtimeInsight = formatAutopilotRuntimeInsight(directory, sessionId);
     // Increment overall iteration
     state.iteration += 1;
     writeAutopilotState(directory, state, sessionId);
@@ -367,6 +371,7 @@ ${stagePrompt}
     const stagePrompt = currentAdapter.getPrompt(context);
     const continuationPrompt = `<autopilot-pipeline-continuation>
 ${errorGuidance ? errorGuidance + '\n' : ''}
+${runtimeInsight ? `${runtimeInsight}\n\n` : ''}
 ${hudLine}
 
 [AUTOPILOT PIPELINE - STAGE: ${currentAdapter.name.toUpperCase()} | ITERATION ${state.iteration}/${state.max_iterations}]

@@ -12,7 +12,7 @@
 // Rate limit monitor exports
 export { checkRateLimitStatus, formatTimeUntilReset, formatRateLimitStatus, isRateLimitStatusDegraded, shouldMonitorBlockedPanes, } from './rate-limit-monitor.js';
 // tmux detector exports
-export { isTmuxAvailable, isInsideTmux, listTmuxPanes, capturePaneContent, analyzePaneContent, scanForBlockedPanes, sendResumeSequence, sendToPane, formatBlockedPanesSummary, } from './tmux-detector.js';
+export { isTmuxAvailable, isInsideTmux, isPaneAlive, listTmuxPanes, capturePaneContent, analyzePaneContent, scanForBlockedPanes, sendResumeSequence, sendToPane, formatBlockedPanesSummary, } from './tmux-detector.js';
 // Daemon exports
 export { readDaemonState, isDaemonRunning, startDaemon, runDaemonForeground, stopDaemon, getDaemonStatus, detectBlockedPanes, formatDaemonState, } from './daemon.js';
 //# sourceMappingURL=index.js.map
