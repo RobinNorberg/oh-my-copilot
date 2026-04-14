@@ -27,6 +27,30 @@ validate_worktree_path() {
     return 0
 }
 
+# Best-effort dependency bootstrap for clean PR review worktrees.
+# Reuses the source repo node_modules only when package.json matches exactly.
+# This keeps focused test commands like `npm run test:run -- ...` usable
+# without forcing a full install in every review worktree.
+psm_bootstrap_review_dependencies() {
+    local local_repo="$1"
+    local worktree_path="$2"
+
+    local source_package_json="${local_repo}/package.json"
+    local target_package_json="${worktree_path}/package.json"
+    local source_node_modules="${local_repo}/node_modules"
+    local target_node_modules="${worktree_path}/node_modules"
+
+    [[ -f "$source_package_json" ]] || return 0
+    [[ -f "$target_package_json" ]] || return 0
+    [[ -d "$source_node_modules" ]] || return 0
+    [[ ! -e "$target_node_modules" ]] || return 0
+
+    cmp -s "$source_package_json" "$target_package_json" || return 0
+
+    ln -s "$source_node_modules" "$target_node_modules" 2>/dev/null || true
+    return 0
+}
+
 # Create a worktree for PR review
 # Usage: psm_create_pr_worktree <local_repo> <alias> <pr_number> <pr_branch>
 psm_create_pr_worktree() {
@@ -59,6 +83,8 @@ psm_create_pr_worktree() {
         echo "error|Failed to create worktree"
         return 1
     }
+
+    psm_bootstrap_review_dependencies "$local_repo" "$worktree_path"
 
     echo "created|$worktree_path"
     return 0
