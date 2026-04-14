@@ -44,27 +44,27 @@ describe('HUD Windows Compatibility', () => {
 
   describe('pathToFileURL for Dynamic Import', () => {
     it('installer HUD script should import pathToFileURL', () => {
-      const installerPath = join(packageRoot, 'src', 'installer', 'index.ts');
-      const content = readFileSync(installerPath, 'utf-8');
+      const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
+      const content = readFileSync(templatePath, 'utf-8');
 
-      // Should have pathToFileURL import in the generated script
-      expect(content).toContain('pathToFileURL } from "node:url"');
+      // Should have pathToFileURL import in the HUD wrapper template
+      expect(content).toContain('pathToFileURL');
     });
 
     it('installer HUD script should use pathToFileURL for dev path import', () => {
-      const installerPath = join(packageRoot, 'src', 'installer', 'index.ts');
-      const content = readFileSync(installerPath, 'utf-8');
+      const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
+      const content = readFileSync(templatePath, 'utf-8');
 
-      // Should use pathToFileURL for devPath
-      expect(content).toContain('pathToFileURL(devPath).href');
+      // Should use pathToFileURL for resolved HUD path
+      expect(content).toContain('pathToFileURL(resolvedHudPath).href');
     });
 
     it('installer HUD script should use pathToFileURL for plugin path import', () => {
-      const installerPath = join(packageRoot, 'src', 'installer', 'index.ts');
-      const content = readFileSync(installerPath, 'utf-8');
+      const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
+      const content = readFileSync(templatePath, 'utf-8');
 
-      // Should use pathToFileURL for pluginPath
-      expect(content).toContain('pathToFileURL(pluginPath).href');
+      // Should use pathToFileURL for resolved HUD path imports
+      expect(content).toContain('pathToFileURL(resolvedHudPath).href');
     });
 
     it('pathToFileURL should correctly convert Unix paths', () => {
@@ -88,11 +88,11 @@ describe('HUD Windows Compatibility', () => {
 
   describe('Numeric Version Sorting', () => {
     it('installer HUD script should use numeric version sorting', () => {
-      const installerPath = join(packageRoot, 'src', 'installer', 'index.ts');
-      const content = readFileSync(installerPath, 'utf-8');
+      const templatePath = join(packageRoot, 'scripts', 'lib', 'hud-wrapper-template.txt');
+      const content = readFileSync(templatePath, 'utf-8');
 
       // Should use localeCompare with numeric option
-      expect(content).toContain('localeCompare(b, undefined, { numeric: true })');
+      expect(content).toContain('localeCompare(String(ai), undefined, { numeric: true })');
     });
 
     it('numeric sort should correctly order versions', () => {
