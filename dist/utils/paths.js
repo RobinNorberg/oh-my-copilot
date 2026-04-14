@@ -77,7 +77,7 @@ function getUserHomeDir() {
  * Legacy global OMC directory under the user's home directory.
  */
 export function getLegacyOmcDir() {
-    return join(getUserHomeDir(), '.omc');
+    return join(getUserHomeDir(), '.omcp');
 }
 /**
  * Global OMC config directory.

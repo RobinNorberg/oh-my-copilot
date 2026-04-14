@@ -21,8 +21,11 @@ const {
   renameSync,
   statSync,
 } = require("fs");
+const { execFileSync } = require("child_process");
+const { homedir } = require("os");
 const { join, dirname, resolve, normalize } = require("path");
-const { getCopilotConfigDir } = require("./lib/config-dir.cjs");
+const { getClaudeConfigDir } = require("./lib/config-dir.cjs");
+const { resolveOmcStateRoot } = require("./lib/state-root.cjs");
 
 async function readStdin(timeoutMs = 2000) {
   return new Promise((resolve) => {
@@ -63,8 +66,12 @@ function writeJsonFile(path, data) {
   }
 }
 
+function shouldWriteStateBack(path) {
+  return Boolean(path && existsSync(path));
+}
+
 /**
- * Read the session-idle notification cooldown in seconds from ~/.omcp/config.json.
+ * Read the session-idle notification cooldown in seconds from ~/.omc/config.json.
  * Default: 60. 0 = disabled.
  */
 function getIdleCooldownSeconds() {
@@ -75,16 +82,139 @@ function getIdleCooldownSeconds() {
   return 60;
 }
 
+const COMMAND_TIMEOUT_MS = 10_000;
+const MAX_LIST_RESULTS = 100;
+const FAILURE_CONCLUSIONS = new Set([
+  'failure',
+  'timed_out',
+  'cancelled',
+  'action_required',
+  'startup_failure',
+]);
+
+function runCommand(command, args, cwd) {
+  try {
+    return execFileSync(command, args, {
+      cwd,
+      encoding: 'utf-8',
+      timeout: COMMAND_TIMEOUT_MS,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function runJsonCommand(command, args, cwd) {
+  const raw = runCommand(command, args, cwd);
+  if (raw === null) return null;
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function parseGitHubRemote(remoteUrl) {
+  const normalized = remoteUrl.trim();
+  const patterns = [
+    /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/,
+    /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/,
+    /^ssh:\/\/git@github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    if (match) {
+      return { owner: match[1], repo: match[2] };
+    }
+  }
+
+  return null;
+}
+
+function toSortedNumbers(values) {
+  return values
+    .filter((value) => Number.isInteger(value))
+    .sort((left, right) => left - right);
+}
+
+function getIdleNotificationRepoState(directory) {
+  const remoteUrl = runCommand('git', ['remote', 'get-url', 'origin'], directory);
+  if (!remoteUrl) return null;
+
+  const remote = parseGitHubRemote(remoteUrl);
+  if (!remote) return null;
+
+  const repo = `${remote.owner}/${remote.repo}`;
+  const headSha = runCommand('git', ['rev-parse', 'HEAD'], directory);
+  const porcelainStatus = runCommand('git', ['status', '--porcelain'], directory);
+  if (!headSha || porcelainStatus === null) return null;
+
+  const openPrs = runJsonCommand('gh', ['pr', 'list', '--repo', repo, '--state', 'open', '--limit', String(MAX_LIST_RESULTS), '--json', 'number'], directory);
+  if (!openPrs) return null;
+
+  const openIssues = runJsonCommand('gh', ['issue', 'list', '--repo', repo, '--state', 'open', '--limit', String(MAX_LIST_RESULTS), '--json', 'number'], directory);
+  if (!openIssues) return null;
+
+  const runs = runJsonCommand('gh', ['run', 'list', '--repo', repo, '--limit', String(MAX_LIST_RESULTS), '--json', 'databaseId,conclusion'], directory);
+  if (!runs) return null;
+
+  const failingRunIds = toSortedNumbers(
+    runs
+      .filter((run) => FAILURE_CONCLUSIONS.has(((run.conclusion || '') + '').toLowerCase()))
+      .map((run) => run.databaseId),
+  );
+  const openPrNumbers = toSortedNumbers(openPrs.map((entry) => entry.number));
+  const openIssueNumbers = toSortedNumbers(openIssues.map((entry) => entry.number));
+
+  const snapshot = {
+    repo,
+    headSha,
+    dirty: porcelainStatus.length > 0,
+    openPrNumbers,
+    openIssueNumbers,
+    failingRunIds,
+  };
+
+  return {
+    signature: JSON.stringify(snapshot),
+    backlogZero:
+      openPrNumbers.length === 0 &&
+      openIssueNumbers.length === 0 &&
+      failingRunIds.length === 0,
+  };
+}
+
+function isRepeatedZeroBacklog(record, repoState) {
+  return Boolean(
+    repoState?.backlogZero &&
+    record?.backlogZero === true &&
+    typeof record.repoSignature === 'string' &&
+    record.repoSignature === repoState.signature,
+  );
+}
+
 /**
  * Check whether the session-idle cooldown has elapsed.
  * Returns true if the notification should be sent.
  */
-function shouldSendIdleNotification(stateDir) {
+function shouldSendIdleNotification(stateDir, repoState) {
   const cooldownSecs = getIdleCooldownSeconds();
-  if (cooldownSecs === 0) return true; // cooldown disabled
-
   const cooldownPath = join(stateDir, 'idle-notif-cooldown.json');
   const data = readJsonFile(cooldownPath);
+
+  if (isRepeatedZeroBacklog(data, repoState)) {
+    return false;
+  }
+
+  if (repoState && typeof data?.repoSignature === 'string' && data.repoSignature !== repoState.signature) {
+    return true;
+  }
+
+  if (cooldownSecs === 0) return true; // cooldown disabled
+
   if (data?.lastSentAt) {
     const elapsed = (Date.now() - new Date(data.lastSentAt).getTime()) / 1000;
     if (Number.isFinite(elapsed) && elapsed < cooldownSecs) return false;
@@ -95,9 +225,14 @@ function shouldSendIdleNotification(stateDir) {
 /**
  * Record that the session-idle notification was sent.
  */
-function recordIdleNotificationSent(stateDir) {
+function recordIdleNotificationSent(stateDir, repoState) {
   const cooldownPath = join(stateDir, 'idle-notif-cooldown.json');
-  writeJsonFile(cooldownPath, { lastSentAt: new Date().toISOString() });
+  const record = { lastSentAt: new Date().toISOString() };
+  if (repoState) {
+    record.repoSignature = repoState.signature;
+    record.backlogZero = repoState.backlogZero;
+  }
+  writeJsonFile(cooldownPath, record);
 }
 
 /**
@@ -109,9 +244,7 @@ async function sendStopNotification(modeName, stateData, sessionId, directory) {
   if (stateData._stopNotified) return;
 
   try {
-    const pluginRoot = process.env.PLUGIN_ROOT
-      || process.env.CLAUDE_PLUGIN_ROOT
-      || dirname(__dirname); // __dirname = scripts/, parent = plugin root
+    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
     if (!pluginRoot) return;
 
     const { pathToFileURL } = require('url');
@@ -154,6 +287,17 @@ const TEAM_TERMINAL_PHASES = new Set([
   "aborted",
   "terminated",
   "done",
+]);
+const RALPLAN_TERMINAL_PHASES = new Set([
+  "completed",
+  "complete",
+  "failed",
+  "cancelled",
+  "canceled",
+  "aborted",
+  "terminated",
+  "done",
+  "handoff",
 ]);
 const TEAM_ACTIVE_PHASES = new Set([
   "team-plan",
@@ -200,14 +344,26 @@ function normalizeTeamPhase(state) {
   return TEAM_ACTIVE_PHASES.has(phase) ? phase : null;
 }
 
+function normalizeRalplanPhase(state) {
+  if (!state || typeof state !== "object") return null;
+
+  const rawPhase = state.current_phase ?? state.phase ?? state.status;
+  if (typeof rawPhase !== "string") return null;
+
+  const phase = rawPhase.trim().toLowerCase();
+  if (!phase) return null;
+
+  if (phase === "handoff" || phase.startsWith("handoff:") || phase.startsWith("handoff-")) {
+    return "handoff";
+  }
+
+  return phase;
+}
+
 function getSafeReinforcementCount(value) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0
     ? Math.floor(value)
     : 0;
-}
-
-function shouldWriteStateBack(path) {
-  return Boolean(path && existsSync(path));
 }
 
 const AWAITING_CONFIRMATION_TTL_MS = 2 * 60 * 1000;
@@ -390,21 +546,52 @@ function readStateFileWithSession(stateDir, filename, sessionId) {
     if (state) {
       return { state, path: sessionPath, isGlobal: false };
     }
-    // Session path not found — do NOT fall back to legacy
+    // Session path not found — fallback: scan ALL session dirs for a state
+    // whose session_id matches ours (handles path mismatches)
+    try {
+      const allSessionsDir = join(stateDir, 'sessions');
+      if (existsSync(allSessionsDir)) {
+        const dirs = readdirSync(allSessionsDir).filter(d => /^[a-zA-Z0-9]/.test(d));
+        for (const dir of dirs) {
+          const candidatePath = join(allSessionsDir, dir, filename);
+          const candidateState = readJsonFile(candidatePath);
+          if (candidateState && candidateState.session_id === sessionId) {
+            return { state: candidateState, path: candidatePath, isGlobal: false };
+          }
+        }
+      }
+    } catch { /* ignore scan errors */ }
+    // Also check legacy path if its session_id matches
+    const legacyResult = readStateFile(stateDir, filename);
+    if (legacyResult.state && legacyResult.state.session_id === sessionId) {
+      return legacyResult;
+    }
     return { state: null, path: null, isGlobal: false };
   }
   // No sessionId: fall back to legacy path (backward compat)
   return readStateFile(stateDir, filename);
 }
 
+function getActiveSubagentCount(stateDir) {
+  try {
+    const tracking = readJsonFile(join(stateDir, "subagent-tracking.json"));
+    if (!tracking || !Array.isArray(tracking.agents)) {
+      return 0;
+    }
+    return tracking.agents.filter((agent) => agent?.status === "running").length;
+  } catch {
+    return 0;
+  }
+}
+
 /**
- * Count incomplete Tasks from Copilot CLI's native Task system.
+ * Count incomplete Tasks from Claude Code's native Task system.
  */
 function countIncompleteTasks(sessionId) {
   if (!sessionId || typeof sessionId !== "string") return 0;
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) return 0;
 
-  const cfgDir = getCopilotConfigDir();
+  const cfgDir = getClaudeConfigDir();
   const taskDir = join(cfgDir, "tasks", sessionId);
   if (!existsSync(taskDir)) return 0;
 
@@ -438,7 +625,7 @@ function countIncompleteTodos(sessionId, projectDir) {
     /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)
   ) {
     const sessionTodoPath = join(
-      getCopilotConfigDir(),
+      getClaudeConfigDir(),
       "todos",
       `${sessionId}.json`,
     );
@@ -460,7 +647,7 @@ function countIncompleteTodos(sessionId, projectDir) {
   // Project-local todos only
   for (const path of [
     join(projectDir, ".omcp", "todos.json"),
-    join(projectDir, ".copilot", "todos.json"),
+    join(projectDir, ".claude", "todos.json"),
   ]) {
     try {
       const data = readJsonFile(path);
@@ -482,12 +669,22 @@ function countIncompleteTodos(sessionId, projectDir) {
 
 /**
  * Detect if stop was triggered by context-limit related reasons.
- * When context is exhausted, Copilot CLI needs to stop so it can compact.
+ * When context is exhausted, Claude Code needs to stop so it can compact.
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
+ *
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 function isContextLimitStop(data) {
-  const reason = (data.stop_reason || data.stopReason || "").toLowerCase();
+  const reasons = [
+    data.stop_reason,
+    data.stopReason,
+    data.end_turn_reason,
+    data.endTurnReason,
+    data.reason,
+  ]
+    .filter((value) => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.toLowerCase().replace(/[\s-]+/g, "_"));
 
   const contextPatterns = [
     "context_limit",
@@ -501,52 +698,39 @@ function isContextLimitStop(data) {
     "input_too_long",
   ];
 
-  if (contextPatterns.some((p) => reason.includes(p))) {
-    return true;
-  }
-
-  const endTurnReason = (
-    data.end_turn_reason ||
-    data.endTurnReason ||
-    ""
-  ).toLowerCase();
-  if (endTurnReason && contextPatterns.some((p) => endTurnReason.includes(p))) {
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * Estimate transcript context usage as a percentage.
- * Claude Code context window ≈ 200k tokens ≈ 800k chars of transcript.
- * This is a rough heuristic — exact token count is not available in hooks.
- */
-function estimateTranscriptContextPercent(data) {
-  const transcriptPath = data.transcript_path || data.transcriptPath;
-  if (!transcriptPath || typeof transcriptPath !== 'string') return 0;
-  try {
-    if (!existsSync(transcriptPath)) return 0;
-    const { statSync } = require('fs');
-    const stats = statSync(transcriptPath);
-    const estimatedCharsPerContextWindow = 800_000;
-    return Math.min(100, Math.round((stats.size / estimatedCharsPerContextWindow) * 100));
-  } catch {
-    return 0;
-  }
+  return reasons.some((reason) => contextPatterns.some((p) => reason.includes(p)));
 }
 
 const CRITICAL_CONTEXT_STOP_PERCENT = 95;
 
-/**
- * Critical context stop: fail-open when context is nearly exhausted.
- * Combines explicit stop_reason detection with transcript size heuristic.
- * At 95%+ estimated context, we must allow the stop to prevent deadlock.
- */
-function isCriticalContextStop(data) {
-  if (isContextLimitStop(data)) return true;
-  const pct = estimateTranscriptContextPercent(data);
-  return pct >= CRITICAL_CONTEXT_STOP_PERCENT;
+function estimateContextPercent(transcriptPath) {
+  if (!transcriptPath || !existsSync(transcriptPath)) return 0;
+
+  let fd = -1;
+  try {
+    const size = statSync(transcriptPath).size;
+    const readSize = 4096;
+    const offset = Math.max(0, size - readSize);
+    const buf = Buffer.alloc(Math.min(readSize, size));
+    fd = openSync(transcriptPath, "r");
+    readSync(fd, buf, 0, buf.length, offset);
+    closeSync(fd);
+    fd = -1;
+    const content = buf.toString("utf-8");
+
+    const windowMatch = content.match(/"context_window"\s{0,5}:\s{0,5}(\d+)/g);
+    const inputMatch = content.match(/"input_tokens"\s{0,5}:\s{0,5}(\d+)/g);
+    if (!windowMatch || !inputMatch) return 0;
+
+    const lastWindow = parseInt(windowMatch[windowMatch.length - 1].match(/(\d+)/)[1], 10);
+    const lastInput = parseInt(inputMatch[inputMatch.length - 1].match(/(\d+)/)[1], 10);
+    if (!Number.isFinite(lastWindow) || lastWindow <= 0 || !Number.isFinite(lastInput)) return 0;
+    return Math.round((lastInput / lastWindow) * 100);
+  } catch {
+    return 0;
+  } finally {
+    if (fd !== -1) try { closeSync(fd); } catch { /* best-effort */ }
+  }
 }
 
 /**
@@ -614,11 +798,19 @@ async function main() {
 
     const directory = data.cwd || data.directory || process.cwd();
     const sessionId = data.session_id || data.sessionId || "";
-    const stateDir = join(directory, ".omcp", "state");
+    const omcRoot = await resolveOmcStateRoot(directory);
+    const stateDir = join(omcRoot, "state");
 
     // CRITICAL: Never block context-limit stops.
-    // Blocking these causes a deadlock where Copilot CLI cannot compact.
-    if (isCriticalContextStop(data)) {
+    // Blocking these causes a deadlock where Claude Code cannot compact.
+    // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
+    if (isContextLimitStop(data)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    const criticalTranscriptPath = data.transcript_path || data.transcriptPath || "";
+    if (estimateContextPercent(criticalTranscriptPath) >= CRITICAL_CONTEXT_STOP_PERCENT) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
@@ -681,28 +873,28 @@ async function main() {
         // Fire-and-forget notification
         sendStopNotification('ralph', ralph.state, sessionId, directory).catch(() => {});
 
+        const ralphReason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-copilot:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-copilot:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
         console.log(
           JSON.stringify({
-            continue: false,
             decision: "block",
-            reason: `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-copilot:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-copilot:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`,
+            reason: ralphReason,
           }),
         );
         return;
-      }
-
-      // Do not silently stop Ralph once it hits max iterations; extend and keep going.
-      ralph.state.max_iterations = maxIter + 10;
-      ralph.state.iteration = maxIter + 1;
-      ralph.state.last_checked_at = new Date().toISOString();
-      if (!shouldWriteStateBack(ralph.path)) {
-        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      } else {
+        // Do not silently stop Ralph once it hits max iterations; extend and keep going.
+        ralph.state.max_iterations = maxIter + 10;
+        ralph.state.iteration = maxIter + 1;
+        ralph.state.last_checked_at = new Date().toISOString();
+        if (!shouldWriteStateBack(ralph.path)) {
+          console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+          return;
+        }
+        writeJsonFile(ralph.path, ralph.state);
+        const extendReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`;
+        console.log(JSON.stringify({ decision: "block", reason: extendReason }));
         return;
       }
-      writeJsonFile(ralph.path, ralph.state);
-      const extendReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`;
-      console.log(JSON.stringify({ decision: "block", reason: extendReason }));
-      return;
     }
 
     // Priority 2: Autopilot (high-level orchestration)
@@ -718,11 +910,13 @@ async function main() {
           // Fire-and-forget notification
           sendStopNotification('autopilot', autopilot.state, sessionId, directory).catch(() => {});
 
+          const cancelGuidance = typeof autopilot.state.session_id === "string" && autopilot.state.session_id === sessionId
+            ? " When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /oh-my-copilot:cancel --force."
+            : "";
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
-              reason: `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working. When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
+              reason: `[AUTOPILOT - Phase: ${phase}] Autopilot not complete. Continue working.${cancelGuidance}`,
             }),
           );
           return;
@@ -780,10 +974,10 @@ async function main() {
                   writeStopBreaker(stateDir, "team-pipeline", breakerCount, sessionId);
                   sendStopNotification("team", team.state, sessionId, directory).catch(() => {});
 
+                  const teamPipelineReason = `[TEAM PIPELINE - PHASE: ${phase.toUpperCase()} | REINFORCEMENT ${breakerCount}/${TEAM_PIPELINE_STOP_BLOCKER_MAX}] The team pipeline is active in phase "${phase}". Continue working on the team workflow. Do not stop until the pipeline reaches a terminal state (complete/failed/cancelled). When done, run /oh-my-copilot:cancel to cleanly exit.`;
                   console.log(JSON.stringify({
-                    continue: false,
                     decision: "block",
-                    reason: `[TEAM PIPELINE - PHASE: ${phase.toUpperCase()} | REINFORCEMENT ${breakerCount}/${TEAM_PIPELINE_STOP_BLOCKER_MAX}] The team pipeline is active in phase "${phase}". Continue working on the team workflow. Do not stop until the pipeline reaches a terminal state (complete/failed/cancelled). When done, run /oh-my-copilot:cancel to cleanly exit.`,
+                    reason: teamPipelineReason,
                   }));
                   return;
                 }
@@ -797,14 +991,10 @@ async function main() {
     // Priority 2.6: Ralplan (standalone consensus planning — first-class enforcement)
     if (ralplan.state?.active && !isAwaitingConfirmation(ralplan.state) && !isStaleState(ralplan.state) && isSessionMatch(ralplan.state, sessionId)) {
       // Terminal phase detection
-      const currentPhase = ralplan.state.current_phase;
-      let ralplanTerminal = false;
-      if (typeof currentPhase === "string") {
-        const terminal = ["complete", "completed", "failed", "cancelled", "canceled", "done"];
-        if (terminal.includes(currentPhase.toLowerCase())) {
-          writeStopBreaker(stateDir, "ralplan", 0, sessionId);
-          ralplanTerminal = true;
-        }
+      const currentPhase = normalizeRalplanPhase(ralplan.state);
+      const ralplanTerminal = currentPhase ? RALPLAN_TERMINAL_PHASES.has(currentPhase) : false;
+      if (ralplanTerminal) {
+        writeStopBreaker(stateDir, "ralplan", 0, sessionId);
       }
 
       if (!ralplanTerminal && !cancelInProgress) {
@@ -826,10 +1016,10 @@ async function main() {
 
           sendStopNotification("ralplan", ralplan.state, sessionId, directory).catch(() => {});
 
+          const ralplanReason = `[RALPLAN - CONSENSUS PLANNING | REINFORCEMENT ${breakerCount}/${RALPLAN_STOP_BLOCKER_MAX}] The ralplan consensus workflow is active. Continue the Planner/Architect/Critic loop. Do not stop until consensus is reached or the workflow completes. When done, run /oh-my-copilot:cancel to cleanly exit.`;
           console.log(JSON.stringify({
-            continue: false,
             decision: "block",
-            reason: `[RALPLAN - CONSENSUS PLANNING | REINFORCEMENT ${breakerCount}/${RALPLAN_STOP_BLOCKER_MAX}] The ralplan consensus workflow is active. Continue the Planner/Architect/Critic loop. Do not stop until consensus is reached or the workflow completes. When done, run /oh-my-copilot:cancel to cleanly exit.`,
+            reason: ralplanReason,
           }));
           return;
         }
@@ -854,7 +1044,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason: `[ULTRAPILOT] ${incomplete} workers still running. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
@@ -880,7 +1069,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason: `[SWARM ACTIVE] ${pending} tasks remain. Continue working. When all tasks are done, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
@@ -906,7 +1094,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason: `[PIPELINE - Stage ${currentStage + 1}/${totalStages}] Pipeline not complete. Continue working. When all stages complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
@@ -916,7 +1103,7 @@ async function main() {
       }
     }
 
-    // Priority 6: Team (native Copilot CLI teams) — fallback for cases not handled by Priority 2.5
+    // Priority 6: Team (native Claude Code teams) — fallback for cases not handled by Priority 2.5
     if (!teamPipelineHandled && team.state?.active && !isStaleState(team.state) && isSessionMatch(team.state, sessionId)) {
       const phase = normalizeTeamPhase(team.state);
       if (phase) {
@@ -931,7 +1118,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason: `[TEAM - Phase: ${phase}] Team mode active. Continue working. When all team tasks complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
@@ -956,7 +1142,6 @@ async function main() {
 
           console.log(
             JSON.stringify({
-              continue: false,
               decision: "block",
               reason: `[OMC TEAMS - Phase: ${phase}] OMC Teams workers active. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
@@ -980,7 +1165,6 @@ async function main() {
 
         console.log(
           JSON.stringify({
-            continue: false,
             decision: "block",
             reason: `[ULTRAQA - Cycle ${cycle + 1}/${maxCycles}] Tests not all passing. Continue fixing. When all tests pass, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
           }),
@@ -989,8 +1173,8 @@ async function main() {
       }
     }
 
-    // Priority 8: Ultrawork - ALWAYS continue while active (not just when tasks exist)
-    // This prevents false stops from bash errors, transient failures, etc.
+    // Priority 8: Ultrawork - reinforce only while tracked work remains incomplete.
+    // This prevents false stops from bash errors or transient failures mid-task.
     // Session isolation: only block if state belongs to this session (issue #311)
     // Project isolation: only block if state belongs to this project
     if (
@@ -999,11 +1183,31 @@ async function main() {
       isSessionMatch(ultrawork.state, sessionId) &&
       isStateForCurrentProject(ultrawork.state, directory, ultrawork.isGlobal)
     ) {
+      if (totalIncomplete === 0) {
+        // Issue #2419: once tracked work is complete, auto-clear ultrawork so
+        // Stop can exit cleanly instead of forcing repeated cancel prompts.
+        try {
+          ultrawork.state.active = false;
+          ultrawork.state.deactivated_reason = 'task_completion';
+          ultrawork.state.last_checked_at = new Date().toISOString();
+          writeJsonFile(ultrawork.path, ultrawork.state);
+        } catch { /* best-effort cleanup */ }
+        console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+        return;
+      }
+
       const newCount = (ultrawork.state.reinforcement_count || 0) + 1;
       const maxReinforcements = ultrawork.state.max_reinforcements || 50;
 
       if (newCount > maxReinforcements) {
-        // Max reinforcements reached - allow stop
+        // Max reinforcements reached - deactivate state before allowing stop
+        // Without this, state stays active: true and HUD keeps showing ultrawork
+        try {
+          ultrawork.state.active = false;
+          ultrawork.state.deactivated_reason = 'max_reinforcements_reached';
+          ultrawork.state.last_checked_at = new Date().toISOString();
+          writeJsonFile(ultrawork.path, ultrawork.state);
+        } catch { /* best-effort cleanup */ }
         console.log(JSON.stringify({ continue: true, suppressOutput: true }));
         return;
       }
@@ -1020,8 +1224,11 @@ async function main() {
       if (totalIncomplete > 0) {
         const itemType = taskCount > 0 ? "Tasks" : "todos";
         reason += ` ${totalIncomplete} incomplete ${itemType} remain. Continue working.`;
+      } else if (newCount >= 5) {
+        // Strong directive: LLM must call cancel NOW
+        reason += ` No incomplete tasks detected. You MUST invoke /oh-my-copilot:cancel immediately to exit ultrawork mode and clean up state files. Call state_clear(mode="ultrawork") if the cancel skill is unavailable.`;
       } else if (newCount >= 3) {
-        // Only suggest cancel after minimum iterations (guard against no-tasks-created scenario)
+        // Suggest cancel after minimum iterations
         reason += ` If all work is complete, run /oh-my-copilot:cancel to cleanly exit ultrawork mode and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force. Otherwise, continue working.`;
       } else {
         // Early iterations with no tasks yet - just tell LLM to continue
@@ -1032,7 +1239,7 @@ async function main() {
         reason += `\nTask: ${ultrawork.state.original_prompt}`;
       }
 
-      console.log(JSON.stringify({ continue: false, decision: "block", reason }));
+      console.log(JSON.stringify({ decision: "block", reason }));
       return;
     }
 
@@ -1055,15 +1262,20 @@ async function main() {
           const maxReinforcements = skillState.state.max_reinforcements || 3;
 
           if (count < maxReinforcements) {
+            if (getActiveSubagentCount(stateDir) > 0) {
+              console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+              return;
+            }
+
             skillState.state.reinforcement_count = count + 1;
             skillState.state.last_checked_at = new Date().toISOString();
             writeJsonFile(skillState.path, skillState.state);
 
             const skillName = skillState.state.skill_name || "unknown";
+            const skillActiveReason = `[SKILL ACTIVE: ${skillName}] The "${skillName}" skill is still executing (reinforcement ${count + 1}/${maxReinforcements}). Continue working on the skill's instructions. Do not stop until the skill completes its workflow.`;
             console.log(JSON.stringify({
-              continue: false,
               decision: "block",
-              reason: `[SKILL ACTIVE: ${skillName}] The "${skillName}" skill is still executing (reinforcement ${count + 1}/${maxReinforcements}). Continue working on the skill's instructions. Do not stop until the skill completes its workflow.`,
+              reason: skillActiveReason,
             }));
             return;
           } else {
@@ -1074,15 +1286,14 @@ async function main() {
       }
     }
 
-    // No blocking needed — Copilot is truly idle.
+    // No blocking needed — Claude is truly idle.
     // Send session-idle notification (fire-and-forget) so external integrations
     // (Telegram, Discord) know the session went idle without any active mode.
-    // Per-session cooldown prevents notification spam when the session idles repeatedly.
-    if (sessionId && shouldSendIdleNotification(stateDir)) {
+    // Back off repeated zero-backlog nudges until repo state changes.
+    const idleRepoState = getIdleNotificationRepoState(directory);
+    if (sessionId && shouldSendIdleNotification(stateDir, idleRepoState)) {
       try {
-        const pluginRoot = process.env.PLUGIN_ROOT
-          || process.env.CLAUDE_PLUGIN_ROOT
-          || dirname(__dirname); // __dirname = scripts/, parent = plugin root
+        const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
         if (pluginRoot) {
           const { pathToFileURL } = require('url');
           import(pathToFileURL(join(pluginRoot, 'dist', 'notifications', 'index.js')).href)
@@ -1093,7 +1304,7 @@ async function main() {
               }).catch(() => {})
             )
             .catch(() => {});
-          recordIdleNotificationSent(stateDir);
+          recordIdleNotificationSent(stateDir, idleRepoState);
         }
       } catch {
         // Notification module not available, skip silently

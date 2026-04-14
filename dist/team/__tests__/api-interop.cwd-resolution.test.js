@@ -7,7 +7,7 @@ describe('team api working-directory resolution', () => {
     let cwd;
     const teamName = 'resolution-team';
     async function seedTeamState() {
-        const base = join(cwd, '.omg', 'state', 'team', teamName);
+        const base = join(cwd, '.omcp', 'state', 'team', teamName);
         await mkdir(join(base, 'tasks'), { recursive: true });
         await mkdir(join(base, 'mailbox'), { recursive: true });
         await writeFile(join(base, 'config.json'), JSON.stringify({
@@ -33,7 +33,7 @@ describe('team api working-directory resolution', () => {
         return base;
     }
     beforeEach(async () => {
-        cwd = await mkdtemp(join(tmpdir(), 'omc-team-api-resolution-'));
+        cwd = await mkdtemp(join(tmpdir(), 'omcp-team-api-resolution-'));
     });
     afterEach(async () => {
         delete process.env.OMC_TEAM_STATE_ROOT;

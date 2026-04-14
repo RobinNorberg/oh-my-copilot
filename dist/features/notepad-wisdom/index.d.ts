@@ -2,12 +2,12 @@
  * Notepad Wisdom Module
  *
  * Plan-scoped notepad system for capturing learnings, decisions, issues, and problems.
- * Creates wisdom files at: .omg/notepads/{plan-name}/
+ * Creates wisdom files at: .omcp/notepads/{plan-name}/
  */
 import type { PlanWisdom } from './types.js';
 /**
  * Initialize notepad directory for a plan
- * Creates .omg/notepads/{plan-name}/ with 4 empty markdown files
+ * Creates .omcp/notepads/{plan-name}/ with 4 empty markdown files
  */
 export declare function initPlanNotepad(planName: string, directory?: string): boolean;
 /**

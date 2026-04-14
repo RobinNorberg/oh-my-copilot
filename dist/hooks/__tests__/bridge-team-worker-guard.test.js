@@ -35,15 +35,15 @@ describe('team-worker pre-tool guardrails', () => {
     it('blocks team spawn commands in Bash', async () => {
         const result = await processHook('pre-tool-use', {
             toolName: 'Bash',
-            toolInput: { command: 'omc team 3:executor "do work"' },
+            toolInput: { command: 'omcp team 3:executor "do work"' },
         });
         expect(result.continue).toBe(false);
         expect(result.reason).toBe('team-worker-bash-blocked');
     });
-    it('allows worker-safe omc team api commands', async () => {
+    it('allows worker-safe omcp team api commands', async () => {
         const result = await processHook('pre-tool-use', {
             toolName: 'Bash',
-            toolInput: { command: 'omc team api claim-task --input \'{"team_name":"demo-team","task_id":"1","worker":"worker-1"}\' --json' },
+            toolInput: { command: 'omcp team api claim-task --input \'{"team_name":"demo-team","task_id":"1","worker":"worker-1"}\' --json' },
         });
         expect(result.continue).toBe(true);
         expect(result.reason).not.toBe('team-worker-bash-blocked');

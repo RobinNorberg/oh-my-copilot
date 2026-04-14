@@ -2,6 +2,20 @@
 
 **Skip condition**: If resuming and `lastCompletedStep >= 4`, skip this entire phase.
 
+## Quick Mode Behavior
+
+If `SETUP_MODE=quick`, apply all defaults non-interactively:
+- **Step 2.1 (HUD)**: Run HUD setup automatically (no prompt needed — it doesn't ask questions)
+- **Step 2.2 (Cache)**: Run cache cleanup automatically
+- **Step 2.3 (Updates)**: Run update check automatically
+- **Step 2.4 (Execution mode)**: Set `ultrawork` automatically (it's the only option)
+- **Step 2.5 (CLI install)**: Auto-install if not already present. Before installing, inform the user: "Installing the OMC CLI (`omcp`) — this enables standalone commands like `omcp team`, `omcp ask`, and `omcp status`." Then run `npm i -g oh-my-copilot` without prompting.
+- **Step 2.6 (Task tool)**: Set `builtin` automatically (only prompt if beads/beads-rust is detected)
+
+Then save progress and continue to Phase 3. The rest of this file documents the **interactive mode** behavior.
+
+---
+
 ## Step 2.1: Setup HUD Statusline
 
 **Note**: If resuming and `lastCompletedStep >= 3`, skip to Step 2.2.

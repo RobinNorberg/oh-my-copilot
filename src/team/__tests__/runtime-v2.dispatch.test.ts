@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   applyMainVerticalLayout: vi.fn(),
   execFile: vi.fn(),
   spawnSync: vi.fn(() => ({ status: 0 })),
+  tmuxExecAsync: vi.fn(),
 }));
 
 const modelContractMocks = vi.hoisted(() => ({
@@ -24,10 +25,22 @@ const modelContractMocks = vi.hoisted(() => ({
   getPromptModeArgs: vi.fn((_agentType: string, instruction: string) => [instruction]),
 }));
 
-vi.mock('child_process', () => ({
-  execFile: mocks.execFile,
-  spawnSync: mocks.spawnSync,
-}));
+vi.mock('child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('child_process')>();
+  return {
+    ...actual,
+    execFile: mocks.execFile,
+    spawnSync: mocks.spawnSync,
+  };
+});
+
+vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../cli/tmux-utils.js')>();
+  return {
+    ...actual,
+    tmuxExecAsync: mocks.tmuxExecAsync,
+  };
+});
 
 vi.mock('../model-contract.js', () => ({
   buildWorkerArgv: modelContractMocks.buildWorkerArgv,
@@ -97,6 +110,12 @@ describe('runtime v2 startup inbox dispatch', () => {
       }
       return { stdout: '', stderr: '' };
     };
+    mocks.tmuxExecAsync.mockImplementation(async (args: string[]) => {
+      if (args[0] === 'split-window') {
+        return { stdout: '%2\n', stderr: '' };
+      }
+      return { stdout: '', stderr: '' };
+    });
   });
 
   afterEach(async () => {

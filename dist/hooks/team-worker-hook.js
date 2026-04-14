@@ -409,7 +409,7 @@ export async function maybeNotifyLeaderAllWorkersIdle(params) {
 }
 // ── Main handler ───────────────────────────────────────────────────────────
 export async function handleWorkerTurn(teamName, workerName, cwd, tmux) {
-    const stateDir = join(cwd, '.omg', 'state');
+    const stateDir = join(cwd, '.omcp', 'state');
     const parsedTeamWorker = { teamName, workerName };
     await updateWorkerHeartbeat(stateDir, teamName, workerName);
     await maybeNotifyLeaderWorkerIdle({ cwd, stateDir, parsedTeamWorker, tmux });

@@ -10,13 +10,13 @@ vi.mock('../../lib/worktree-paths.js', async () => {
     const { join } = await import('path');
     return {
         validateWorkingDirectory: (dir) => dir || testDir,
-        getOmcRoot: (dir) => join(dir || testDir, '.omg'),
+        getOmcRoot: (dir) => join(dir || testDir, '.omcp'),
     };
 });
 describe('trace-tools', () => {
     beforeEach(() => {
         testDir = join(tmpdir(), `trace-tools-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
+        mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
         resetSessionStartTimes();
     });
     afterEach(() => {
@@ -204,7 +204,7 @@ describe('trace-tools', () => {
     });
     describe('edge cases', () => {
         it('should handle malformed JSONL lines gracefully', async () => {
-            const replayPath = join(testDir, '.omg', 'state', 'agent-replay-malformed.jsonl');
+            const replayPath = join(testDir, '.omcp', 'state', 'agent-replay-malformed.jsonl');
             writeFileSync(replayPath, [
                 '{"t":0,"agent":"a1","event":"agent_start","agent_type":"executor"}',
                 'THIS IS NOT JSON',
@@ -222,13 +222,13 @@ describe('trace-tools', () => {
         });
         it('should auto-detect latest session from multiple replay files', async () => {
             // Create older session
-            const oldPath = join(testDir, '.omg', 'state', 'agent-replay-old-sess.jsonl');
+            const oldPath = join(testDir, '.omcp', 'state', 'agent-replay-old-sess.jsonl');
             writeFileSync(oldPath, '{"t":0,"agent":"a1","event":"agent_start","agent_type":"planner"}\n');
             // Wait a tick to ensure different mtime
             const now = Date.now();
             while (Date.now() - now < 50) { /* spin */ }
             // Create newer session
-            const newPath = join(testDir, '.omg', 'state', 'agent-replay-new-sess.jsonl');
+            const newPath = join(testDir, '.omcp', 'state', 'agent-replay-new-sess.jsonl');
             writeFileSync(newPath, '{"t":0,"agent":"a1","event":"agent_start","agent_type":"executor"}\n');
             // Call without sessionId — should auto-detect the newest
             const result = await traceTimelineTool.handler({ workingDirectory: testDir });

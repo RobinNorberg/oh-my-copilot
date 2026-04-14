@@ -2,8 +2,8 @@
  * State Manager
  *
  * Unified state management that standardizes state file locations:
- * - Local state: .omg/state/{name}.json
- * - Global state: XDG-aware user OMC state with legacy ~/.omg/state fallback
+ * - Local state: .omcp/state/{name}.json
+ * - Global state: XDG-aware user OMC state with legacy ~/.omcp/state fallback
  *
  * Features:
  * - Type-safe read/write operations

@@ -44,7 +44,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     });
     it('emits boulder fallback for unknown tools when session-scoped mode is active', () => {
         const sessionId = 'session-970';
-        writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json'), {
+        writeJson(join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json'), {
             active: true,
             session_id: sessionId,
         });
@@ -59,7 +59,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         expect(hookSpecificOutput.additionalContext).toContain('The boulder never stops');
     });
     it('does not fall back to legacy mode files when a valid session_id is provided', () => {
-        writeJson(join(tempDir, '.omg', 'state', 'ralph-state.json'), {
+        writeJson(join(tempDir, '.omcp', 'state', 'ralph-state.json'), {
             active: true,
         });
         const output = runPreToolEnforcer({
@@ -70,7 +70,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         expect(output).toEqual({ continue: true, suppressOutput: true });
     });
     it('uses legacy mode files when session_id is not provided', () => {
-        writeJson(join(tempDir, '.omg', 'state', 'ultrawork-state.json'), {
+        writeJson(join(tempDir, '.omcp', 'state', 'ultrawork-state.json'), {
             active: true,
         });
         const output = runPreToolEnforcer({
@@ -84,7 +84,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     // === Team-routing enforcement tests (issue #1006) ===
     it('injects team-routing redirect when Task called without team_name during active team session', () => {
         const sessionId = 'session-1006';
-        writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), {
+        writeJson(join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), {
             active: true,
             session_id: sessionId,
             team_name: 'fix-ts-errors',
@@ -107,7 +107,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     });
     it('does NOT inject team-routing redirect when Task called WITH team_name', () => {
         const sessionId = 'session-1006b';
-        writeJson(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), {
+        writeJson(join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'team-state.json'), {
             active: true,
             session_id: sessionId,
             team_name: 'fix-ts-errors',
@@ -147,7 +147,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent');
     });
     it('reads team state from legacy path when session_id is absent', () => {
-        writeJson(join(tempDir, '.omg', 'state', 'team-state.json'), {
+        writeJson(join(tempDir, '.omcp', 'state', 'team-state.json'), {
             active: true,
             team_name: 'legacy-team',
         });
@@ -166,7 +166,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         expect(hookSpecificOutput.additionalContext).toContain('legacy-team');
     });
     it('respects session isolation — ignores team state from different session', () => {
-        writeJson(join(tempDir, '.omg', 'state', 'sessions', 'other-session', 'team-state.json'), {
+        writeJson(join(tempDir, '.omcp', 'state', 'sessions', 'other-session', 'team-state.json'), {
             active: true,
             session_id: 'other-session',
             team_name: 'other-team',

@@ -58,10 +58,10 @@ describe('worker-bootstrap', () => {
         });
         it('documents CLI lifecycle examples that match the active team api contract', () => {
             const overlay = generateWorkerOverlay(baseParams);
-            expect(overlay).toContain('omc team api read-task');
-            expect(overlay).toContain('omc team api claim-task');
-            expect(overlay).toContain('omc team api transition-task-status');
-            expect(overlay).toContain('omc team api release-task-claim --input');
+            expect(overlay).toContain('omcp team api read-task');
+            expect(overlay).toContain('omcp team api claim-task');
+            expect(overlay).toContain('omcp team api transition-task-status');
+            expect(overlay).toContain('omcp team api release-task-claim --input');
             expect(overlay).toContain('claim_token');
             expect(overlay).not.toContain('Read your task file at');
         });

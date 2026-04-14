@@ -4,7 +4,7 @@
  * Ported from oh-my-opencode's boulder-state.
  */
 /** OMC state directory */
-export declare const BOULDER_DIR: ".omg";
+export declare const BOULDER_DIR: ".omcp";
 /** Boulder state file name */
 export declare const BOULDER_FILE = "boulder.json";
 /** Full path pattern for boulder state */
@@ -14,7 +14,7 @@ export declare const NOTEPAD_DIR = "notepads";
 /** Full path for notepads */
 export declare const NOTEPAD_BASE_PATH: string;
 /** Planner plan directory */
-export declare const PLANNER_PLANS_DIR: ".omg/plans";
+export declare const PLANNER_PLANS_DIR: ".omcp/plans";
 /** Plan file extension */
 export declare const PLAN_EXTENSION = ".md";
 //# sourceMappingURL=constants.d.ts.map

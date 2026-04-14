@@ -10,7 +10,7 @@
 import { readdirSync, readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 function readPlanningArtifacts(cwd) {
-    const plansDir = join(cwd, '.omg', 'plans');
+    const plansDir = join(cwd, '.omcp', 'plans');
     if (!existsSync(plansDir)) {
         return { prdPaths: [], testSpecPaths: [] };
     }

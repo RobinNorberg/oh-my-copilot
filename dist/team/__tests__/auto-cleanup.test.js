@@ -34,8 +34,8 @@ beforeEach(() => {
     process.env.COPILOT_CONFIG_DIR = tmpClaudeDir;
     mkdirSync(join(TEAMS_DIR, 'outbox'), { recursive: true });
     mkdirSync(TASKS_DIR, { recursive: true });
-    mkdirSync(join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
-    mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
+    mkdirSync(join(WORK_DIR, '.omcp', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
+    mkdirSync(join(WORK_DIR, '.omcp', 'state'), { recursive: true });
 });
 afterEach(() => {
     if (originalClaudeConfigDir === undefined) {
@@ -48,7 +48,7 @@ afterEach(() => {
     rmSync(WORK_DIR, { recursive: true, force: true });
 });
 function writeWorkerRegistry(workers) {
-    const registryPath = join(WORK_DIR, '.omg', 'state', 'team-mcp-workers.json');
+    const registryPath = join(WORK_DIR, '.omcp', 'state', 'team-mcp-workers.json');
     atomicWriteJson(registryPath, { teamName: TEST_TEAM, workers });
 }
 function writeTask(task) {
@@ -61,7 +61,7 @@ function makeWorker(name) {
         agentType: 'mcp-codex',
         model: 'test-model',
         joinedAt: Date.now(),
-        tmuxPaneId: `omc-team-${TEST_TEAM}-${name}`,
+        tmuxPaneId: `omcp-team-${TEST_TEAM}-${name}`,
         cwd: WORK_DIR,
         backendType: 'tmux',
         subscriptions: [],

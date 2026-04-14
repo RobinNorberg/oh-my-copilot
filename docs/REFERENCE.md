@@ -8,9 +8,11 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 
 - [Installation](#installation)
 - [Configuration](#configuration)
-- [CLI Commands: ask/team](#cli-commands-askteam)
-- [Agents (18 Total)](#agents-18-total)
-- [Skills (50 Total)](#skills-50-total)
+- [Plugin directory flags](#plugin-directory-flags)
+- [CLI Commands: ask/team/session](#cli-commands-askteamsession)
+- [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated)
+- [Agents (29 Total)](#agents-29-total)
+- [Skills (32 Total)](#skills-32-total)
 - [Slash Commands](#slash-commands)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -23,27 +25,27 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 
 ## Installation
 
-**Only the Copilot CLI Plugin method is supported.** Other installation methods (npm, bun, curl) are deprecated and may not work correctly.
+**Only the Claude Code Plugin method is supported.** Other installation methods (npm, bun, curl) are deprecated and may not work correctly.
 
-### Copilot CLI Plugin (Required)
+### Claude Code Plugin (Required)
 
 ```bash
 # Step 1: Add the marketplace
-/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
+/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
 
 # Step 2: Install the plugin
 /plugin install oh-my-copilot
 ```
 
-This integrates directly with Copilot CLI's plugin system and uses Node.js hooks.
+This integrates directly with Claude Code's plugin system and uses Node.js hooks.
 
 > **Note**: Direct npm/bun global installs are **not supported**. The plugin system handles all installation and hook setup automatically.
 
 ### Requirements
 
-- [Copilot CLI](https://docs.github.com/copilot-cli) installed
+- [Claude Code](https://docs.anthropic.com/claude-code) installed
 - One of:
-  - **Copilot Max/Pro subscription** (recommended for individuals)
+  - **Claude Max/Pro subscription** (recommended for individuals)
   - **Anthropic API key** (`ANTHROPIC_API_KEY` environment variable)
 
 ---
@@ -58,29 +60,30 @@ Configure omc for the current project only:
 /oh-my-copilot:omc-setup --local
 ```
 
-- Creates `./.copilot/copilot-instructions.md` in your current project
+- Creates `./.claude/CLAUDE.md` in your current project
 - Configuration applies only to this project
 - Won't affect other projects or global settings
-- **Safe**: Preserves your global copilot-instructions.md
+- **Safe**: Preserves your global CLAUDE.md
 
 ### Global Configuration
 
-Configure omc for all Copilot CLI sessions:
+Configure omc for all Claude Code sessions:
 
 ```
 /oh-my-copilot:omc-setup
 ```
 
-- Creates `~/.copilot/copilot-instructions.md` globally
+- Creates `~/.claude/CLAUDE.md` globally
 - Configuration applies to all projects
-- **Warning**: Completely overwrites existing `~/.copilot/copilot-instructions.md`
+- **Default**: explicitly overwrites existing `~/.claude/CLAUDE.md`
+- **Optional preserve mode**: keeps the base file, writes OMC to `~/.claude/CLAUDE-omc.md`, and lets `omc` force-load that companion config at launch while plain `claude` stays unchanged
 
 ### What Configuration Enables
 
 | Feature           | Without     | With omc Config            |
 | ----------------- | ----------- | -------------------------- |
 | Agent delegation  | Manual only | Automatic based on task    |
-| Keyword detection | Disabled    | ultrawork, search, with informational-query filtering |
+| Keyword detection | Disabled    | ultrawork, search |
 | Todo continuation | Basic       | Enforced completion        |
 | Model routing     | Default     | Smart tier selection       |
 | Skill composition | None        | Auto-combines skills       |
@@ -90,63 +93,74 @@ Configure omc for all Copilot CLI sessions:
 If both configurations exist, **project-scoped takes precedence** over global:
 
 ```
-./.copilot/copilot-instructions.md  (project)   →  Overrides  →  ~/.copilot/copilot-instructions.md  (global)
+./.claude/CLAUDE.md  (project)   →  Overrides  →  ~/.claude/CLAUDE.md  (global)
 ```
 
 ### Environment Variables
 
 | Variable                   | Default              | Description                                                                                                                                                                                                                                                                 |
 | -------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omcp/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
+| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omc/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
 | `OMC_BRIDGE_SCRIPT`        | _(auto-detected)_    | Path to the Python bridge script                                                                                                                                                                                                                                            |
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
 | `OMC_CODEX_DEFAULT_MODEL`  | _(provider default)_ | Default model for Codex CLI workers                                                                                                                                                                                                                                         |
 | `OMC_GEMINI_DEFAULT_MODEL` | _(provider default)_ | Default model for Gemini CLI workers                                                                                                                                                                                                                                        |
-| `OMC_LSP_TIMEOUT_MS`                | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
-| `OMC_LSP_IDLE_TIMEOUT_MS`           | `300000` (5 min)     | Idle timeout before evicting unused LSP clients                                                                                                                                                                                                                             |
-| `OMC_LSP_IDLE_CHECK_INTERVAL_MS`    | `60000` (1 min)      | Interval for checking idle LSP clients                                                                                                                                                                                                                                      |
-| `DISABLE_OMC`                       | _(unset)_            | Set to any value to disable all OMC hooks                                                                                                                                                                                                                                   |
-| `OMC_SKIP_HOOKS`                    | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
-
-### Strict Mode
-
-Strict mode is **disabled by default**. When enabled, it loads additional skills (`debug`, `remember`, `skillify`, `verify`) and applies stricter execution guidance.
-
-Enable via environment variable:
-```bash
-export OMC_STRICT_MODE=true
-```
-
-Or via config file (`~/.copilot/.omc-config.json`):
-```json
-{ "strictMode": true }
-```
+| `OMC_LSP_TIMEOUT_MS`       | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
+| `DISABLE_OMC`              | _(unset)_            | Set to any value to disable all OMC hooks                                                                                                                                                                                                                                   |
+| `OMC_SKIP_HOOKS`           | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
 
 #### Centralized State with `OMC_STATE_DIR`
 
-By default, OMC stores state in `{worktree}/.omcp/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
+By default, OMC stores state in `{worktree}/.omc/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
 
 ```bash
 # In your shell profile (~/.bashrc, ~/.zshrc, etc.)
-export OMC_STATE_DIR="$HOME/.copilot/omc"
+export OMC_STATE_DIR="$HOME/.claude/omc"
 ```
 
-This resolves to `~/.copilot/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
+This resolves to `~/.claude/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
 
-If both a legacy `{worktree}/.omcp/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
+If both a legacy `{worktree}/.omc/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
 
 ### When to Re-run Setup
 
 - **First time**: Run after installation (choose project or global)
 - **After updates**: Re-run to get the latest configuration
-- **Different machines**: Run on each machine where you use Copilot CLI
+- **Different machines**: Run on each machine where you use Claude Code
 - **New projects**: Run `/oh-my-copilot:omc-setup --local` in each project that needs omc
 
-> **NOTE**: After updating the plugin (via `npm update`, `git pull`, or Copilot CLI's plugin update), you MUST re-run `/oh-my-copilot:omc-setup` to apply the latest copilot-instructions.md changes.
+> **NOTE**: After updating the plugin (via `npm update`, `git pull`, or Claude Code's plugin update), you MUST re-run `/oh-my-copilot:omc-setup` to apply the latest CLAUDE.md changes.
+
+### Remote OMC / Remote MCP Access
+
+Issue #1653 asked whether OMC can "connect to a remote OMC" so one development machine can browse files on lab/test machines without opening an interactive SSH session.
+
+The narrow, coherent answer today is:
+
+- **Supported**: connect to a **remote MCP server** through the unified MCP registry
+- **Not implemented**: a general "OMC cluster", shared remote filesystem view, or automatic remote-OMC federation
+- **Still appropriate for full remote shell workflows**: SSH, worktrees, or a mounted/network filesystem
+
+If a remote host already exposes an MCP endpoint, add it to your MCP registry (or Claude settings and then re-run setup so OMC syncs the registry to Codex too):
+
+```json
+{
+  "mcpServers": {
+    "remoteOmc": {
+      "url": "https://lab.example.com/mcp",
+      "timeout": 30
+    }
+  }
+}
+```
+
+This gives OMC a coherent remote connection surface for MCP-backed tools. It does **not** make all remote files magically appear as a local workspace, and it does **not** replace SSH for arbitrary shell access.
+
+If you need richer cross-machine behavior in the future, that would require a separate authenticated remote execution/filesystem design rather than stretching the current local-workspace architecture.
 
 ### Agent Customization
 
-Edit agent files in `~/.copilot/agents/` to customize behavior:
+Edit agent files in `~/.claude/agents/` to customize behavior:
 
 ```yaml
 ---
@@ -160,7 +174,7 @@ Your custom system prompt here...
 
 ### Project-Level Config
 
-Create `.copilot/copilot-instructions.md` in your project for project-specific instructions:
+Create `.claude/CLAUDE.md` in your project for project-specific instructions:
 
 ```markdown
 # Project Context
@@ -205,54 +219,214 @@ Tag behavior:
 
 ---
 
-## CLI Commands: ask/team
+## Plugin directory flags
 
-### `omcp ask`
+When you launch OMC via a local development checkout instead of the marketplace plugin, you can configure how OMC discovers agents, skills, and commands.
 
-```bash
-omcp ask copilot "review this patch"
-omcp ask codex "review this patch from a security perspective"
-omcp ask gemini --prompt "suggest UX improvements"
-omcp ask copilot --agent-prompt executor --prompt "create an implementation plan"
-```
+> **Recommended for local development**: Use `omc --plugin-dir <path>` (paired with `omc setup --plugin-dir-mode`). Unlike `claude plugin marketplace add`, this flow loads agents/skills directly from your checkout with **no plugin cache**, so edits are picked up on the next session without `marketplace update` / `plugin update` round-trips — much faster iteration.
 
-- Provider matrix: `copilot | codex | gemini`
-- Artifacts: `.omcp/artifacts/ask/{provider}-{slug}-{timestamp}.md`
-- Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
-- Skill shortcuts: `/oh-my-copilot:ask-codex` and `/oh-my-copilot:ask-gemini` route to this command
+### `omc --plugin-dir <path>`
 
-### `omcp team` (CLI runtime surface)
+**Usage**: Non-consuming launcher flag that captures your local checkout path.
 
 ```bash
-omcp team 2:codex "review auth flow"
-omcp team status review-auth-flow
-omcp team shutdown review-auth-flow --force
-omcp team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
+omc --plugin-dir /path/to/oh-my-copilot setup --plugin-dir-mode
 ```
 
-Supported entrypoints: direct start (`omcp team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
+- **What it does**: Parses `--plugin-dir <path>` (or `--plugin-dir=<path>`), resolves it to an absolute path, sets `OMC_PLUGIN_ROOT` environment variable, then passes the flag through to Claude Code untouched.
+- **Non-consuming**: The flag stays in the argument list so Claude Code's plugin loader still sees it.
+- **Precedence**: Explicit `--plugin-dir` flag wins over any pre-existing `OMC_PLUGIN_ROOT` env var (with a warning if they disagree).
+- **Resolution**: Relative paths are resolved to absolute via `path.resolve()`. Note: `~` is **not** expanded — use `$HOME` or an absolute path instead.
+- **Pair with setup**: `--plugin-dir` alone only affects the current Claude session. You must **also** run `omc setup --plugin-dir-mode` (or let auto-detection kick in from `OMC_PLUGIN_ROOT`) so HUD, hooks, and CLAUDE.md are installed for the linked checkout. Skipping this step leaves `~/.claude/` pointing at a stale plugin root.
 
-### `omcp autoresearch`
+### `claude --plugin-dir <path>` (direct)
+
+**Usage**: When you launch Claude Code directly without the `omc` shim.
 
 ```bash
-omcp autoresearch <topic>
-omcp autoresearch guided <topic>
-omcp autoresearch intake <topic>
+export OMC_PLUGIN_ROOT=/path/to/oh-my-copilot
+claude --plugin-dir /path/to/oh-my-copilot
 ```
 
-Thin-supervisor autoresearch with keep/discard/reset parity. Supports guided and intake flows.
+- **Requirement**: You must manually set `OMC_PLUGIN_ROOT` environment variable so the HUD wrapper and other env-aware components can resolve the same path as the plugin loader.
+- **Why**: The HUD bundle needs to know where agents/skills/commands are located so they stay in sync with the plugin instance.
+- **Note**: Plain `claude` (without `omc`) does not automatically capture `--plugin-dir` for you.
 
-### `omcp ralphthon`
+### `omc setup --plugin-dir-mode`
+
+**Usage**: Explicit flag to enable dev plugin-dir mode during setup.
 
 ```bash
-omcp ralphthon <task>
+omc setup --plugin-dir-mode
 ```
 
-Autonomous hackathon lifecycle mode with PRD-driven phases and idle detection.
+- **What it does**: Skips copying agents and bundled skills into `~/.claude/` because the plugin already provides them at runtime via `--plugin-dir`.
+- **Still installs**:
+  - HUD bundle (`~/.claude/hud/`)
+  - Git hooks (`.git/hooks/`, if applicable)
+  - CLAUDE.md configuration files
+  - `.omc-config.json` state
+- **Conflicts with `--no-plugin`**: If both flags are set, `--no-plugin` takes precedence (with a warning).
+- **Auto-detection**: If `OMC_PLUGIN_ROOT` is already set in the environment, `--plugin-dir-mode` is auto-enabled (unless `--no-plugin` overrides it).
+
+### `omc doctor --plugin-dir <path>` (NEW)
+
+**Usage**: Run diagnostics with a specific plugin directory.
+
+```bash
+omc doctor --plugin-dir /path/to/oh-my-copilot
+omc doctor conflicts --plugin-dir /path/to/oh-my-copilot
+```
+
+- **What it does**: Resolves the provided path to absolute, sets `OMC_PLUGIN_ROOT` before the doctor action runs, matching `launch.ts` semantics.
+- **Precedence**: Explicit `--plugin-dir` flag wins over pre-existing `OMC_PLUGIN_ROOT` env var (with a warning if they disagree).
+- **Subcommand support**: Works with both `omc doctor` and `omc doctor conflicts`.
+- **Output**: Diagnostic results reflect the plugin directory you specified.
+
+### `OMC_PLUGIN_ROOT` environment variable
+
+**Usage**: Authoritative source for the active plugin root when launching Claude Code.
+
+```bash
+export OMC_PLUGIN_ROOT=/path/to/oh-my-copilot
+claude --plugin-dir /path/to/oh-my-copilot
+```
+
+- **Set by**: `omc --plugin-dir <path>` launcher (via `src/cli/launch.ts`).
+- **Read by**: HUD wrapper, setup auto-detect, doctor diagnostics.
+- **Required when**: Using `claude --plugin-dir` directly (without the `omc` shim), so downstream components can resolve the same path.
+- **Precedence**: Explicit CLI flags override this env var (with warnings).
+
+### Decision matrix: which flag/mode to use?
+
+| Your setup | Launch command | Setup command | Expected behavior |
+|---|---|---|---|
+| **Marketplace plugin** (recommended) | `omc` or `claude` (default) | `omc setup` | Normal: agents/skills copied to `~/.claude/` |
+| **Local dev checkout, want OMC shim** | `omc --plugin-dir /path` | `omc setup --plugin-dir-mode` | Dev mode: agents/skills loaded from `/path`, not copied |
+| **Local dev checkout, no OMC shim** | `claude --plugin-dir /path` + `export OMC_PLUGIN_ROOT=/path` | `omc setup --plugin-dir-mode` | Dev mode + manual env: agents/skills loaded from `/path` |
+| **Local dev, want bundled skills** | `omc --plugin-dir /path` | `omc setup --no-plugin` | Forces local bundled skills to `~/.claude/skills/`, ignoring plugin |
+| **Troubleshooting a specific path** | N/A | `omc doctor --plugin-dir /path` | Diagnostics show status for `/path` |
 
 ---
 
-## Agents (18 Total)
+## CLI Commands: ask/team/session
+
+### `omc ask`
+
+```bash
+omc ask claude "review this patch"
+omc ask codex "review this patch from a security perspective"
+omc ask gemini --prompt "suggest UX improvements"
+omc ask claude --agent-prompt executor --prompt "create an implementation plan"
+```
+
+- Provider matrix: `claude | codex | gemini`
+- Artifacts: `.omc/artifacts/ask/{provider}-{slug}-{timestamp}.md`
+- Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
+- Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
+- Skill entrypoint: `/oh-my-copilot:ask <claude|codex|gemini> <prompt>` routes to this command
+
+### `omc team` (CLI runtime surface)
+
+```bash
+omc team 2:codex "review auth flow"
+omc team status review-auth-flow
+omc team shutdown review-auth-flow --force
+omc team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
+```
+
+Supported entrypoints: direct start (`omc team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
+
+Topology behavior:
+- inside classic tmux (`$TMUX` set): reuse the current tmux surface for split-pane or `--new-window` layouts
+- inside cmux (`CMUX_SURFACE_ID` without `$TMUX`): launch a detached tmux session for team workers
+- plain terminal: launch a detached tmux session for team workers
+
+### `omc session search`
+
+```bash
+omc session search "team leader stale"
+omc session search notify-hook --since 7d
+omc session search provider-routing --project all --json
+```
+
+- Defaults to the current project/worktree scope
+- Use `--project all` to search across all local Claude project transcripts
+- Supports `--limit`, `--session`, `--since`, `--context`, `--case-sensitive`, and `--json`
+- MCP/tool surface: `session_search` returns structured JSON for agents and automations
+
+---
+
+## Legacy MCP Team Runtime Tools (Deprecated, Opt-In Only)
+
+The Team MCP runtime server is **not enabled by default**. If manually enabled, runtime tools are still **CLI-only deprecated** and return a deterministic error envelope:
+
+```json
+{
+  "code": "deprecated_cli_only",
+  "message": "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead."
+}
+```
+
+Use `omc team ...` replacements instead:
+
+| Tool                   | Purpose                                                    |
+| ---------------------- | ---------------------------------------------------------- |
+| `omc_run_team_start`   | **Deprecated** → `omc team [N:agent-type] "<task>"`        |
+| `omc_run_team_status`  | **Deprecated** → `omc team status <team-name>`             |
+| `omc_run_team_wait`    | **Deprecated** → monitor via `omc team status <team-name>` |
+| `omc_run_team_cleanup` | **Deprecated** → `omc team shutdown <team-name> [--force]` |
+
+Optional compatibility enablement (manual only):
+
+```json
+{
+  "mcpServers": {
+    "team": {
+      "command": "node",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bridge/team-mcp.cjs"]
+    }
+  }
+}
+```
+
+### Runtime status semantics
+
+- **Artifact-first terminal convergence**: team monitors prefer finalized state artifacts when present.
+- **Deterministic parse-failure handling**: malformed result artifacts are treated as terminal `failed`.
+- **Cleanup scope**: shutdown/cleanup only clears `.omc/state/team/{teamName}` for the target team (never sibling teams).
+
+### Artifact descriptors and bounded handoff
+
+OMC handoffs follow an artifact-first discipline:
+
+- **Control plane** data stays small and operational: queue state, worker claims, session state, and interop task/message envelopes.
+- **Data plane** artifacts stay durable: plans, prompts, specs, traces, and result files.
+- Large payloads should be referenced by descriptor instead of copied into control-plane state.
+- Current low-risk call sites follow this split explicitly:
+  - shared interop state writes oversized task descriptions, task results, and shared messages to `.omc/state/interop/artifacts/**`
+  - prompt persistence keeps durable prompt/response files in `.omc/prompts/**` and exposes descriptor metadata through job status records
+
+Canonical descriptor fields:
+
+| Field | Meaning |
+|------|---------|
+| `kind` | Artifact type such as `plan`, `prompt`, `result`, or `trace` |
+| `path` | Durable artifact path |
+| `contentHash?` | Optional integrity hint |
+| `createdAt` | Artifact creation timestamp |
+| `producer` | Owning worker/tool/skill |
+| `sizeBytes?` | Optional size for threshold checks |
+| `retention` | Retention/ownership hint |
+| `expiresAt?` | Optional expiry for short-lived artifacts |
+
+Bounded handoff policy:
+
+1. Keep small payloads inline only when the call site's explicit threshold allows it.
+2. For larger payloads, pass a short summary plus the descriptor.
+3. Keep durable content in artifact paths such as `.omc/plans/`, `.omc/prompts/`, and related artifact stores rather than embedding full bodies into queue or status records.
+
+## Agents (29 Total)
 
 Always use `oh-my-copilot:` prefix when calling via Task tool.
 
@@ -271,11 +445,14 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 | **Critique**     | -                       | -                     | `critic`            |
 | **Pre-Planning** | -                       | -                     | `analyst`           |
 | **Testing**      | -                       | `qa-tester`           | -                   |
+| **Tracing**      | -                       | `tracer`              | -                   |
 | **Security**     | `security-reviewer-low` | -                     | `security-reviewer` |
 | **Build**        | -                       | `debugger`            | -                   |
 | **TDD**          | -                       | `test-engineer`       | -                   |
 | **Code Review**  | -                       | -                     | `code-reviewer`     |
 | **Data Science** | -                       | `scientist`           | `scientist-high`    |
+| **Git**          | -                       | `git-master`          | -                   |
+| **Simplification** | -                     | -                     | `code-simplifier`   |
 
 ### Agent Selection Guide
 
@@ -292,13 +469,14 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 | UI component                 | `designer`                    | sonnet |
 | Complex UI system            | `designer-high`               | opus   |
 | Write docs/comments          | `writer`                      | haiku  |
-| Research docs/APIs           | `document-specialist`         | sonnet |
+| Research docs/APIs           | `document-specialist` (repo docs first; optional Context Hub / `chub`) | sonnet |
 | Analyze images/diagrams      | `vision`                      | sonnet |
 | Strategic planning           | `planner`                     | opus   |
 | Review/critique plan         | `critic`                      | opus   |
 | Pre-planning analysis        | `analyst`                     | opus   |
 | Test CLI interactively       | `qa-tester`                   | sonnet |
-| Security review              | `security-reviewer`           | opus   |
+| Evidence-driven causal tracing | `tracer`                    | sonnet |
+| Security review              | `security-reviewer`           | sonnet |
 | Quick security scan          | `security-reviewer-low`       | haiku  |
 | Fix build errors             | `debugger`                    | sonnet |
 | Simple build fix             | `debugger` (model=haiku)      | haiku  |
@@ -309,143 +487,138 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 | Data analysis/stats          | `scientist`                   | sonnet |
 | Quick data inspection        | `scientist` (model=haiku)     | haiku  |
 | Complex ML/hypothesis        | `scientist-high`              | opus   |
+| Git operations               | `git-master`                  | sonnet |
+| Code simplification          | `code-simplifier`             | opus   |
 
 ---
 
-## Skills (50 Total)
+## Skills (32 Total)
 
-> **Note:** 4 skills (`debug`, `remember`, `skillify`, `verify`) are strict-mode-only and require `OMC_STRICT_MODE=true` to load.
-
-Includes **50 canonical skills**.
+Includes **31 canonical skills + 1 deprecated alias** (`psm`). Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
-| `ask-codex`               | Ask Codex via `omcp ask codex` and store an ask artifact          | `/oh-my-copilot:ask-codex`               |
-| `ask-gemini`              | Ask Gemini via `omcp ask gemini` and store an ask artifact        | `/oh-my-copilot:ask-gemini`              |
-| `autoresearch`            | Thin-supervisor autoresearch with keep/discard/reset             | `/oh-my-copilot:autoresearch`            |
+| `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass | `/oh-my-copilot:ai-slop-cleaner`         |
+| `ask`                     | Ask Claude, Codex, or Gemini via local CLI and capture a reusable artifact | `/oh-my-copilot:ask`               |
 | `autopilot`               | Full autonomous execution from idea to working code              | `/oh-my-copilot:autopilot`               |
 | `cancel`                  | Unified cancellation for active modes                            | `/oh-my-copilot:cancel`                  |
-| `c3g`                     | Quad-model workflow via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesis | `/oh-my-copilot:c3g`                     |
-| `configure-notifications` | Configure notifications (Teams/Discord/Telegram/Slack)           | `/oh-my-copilot:configure-notifications` |
+| `ccg`                     | Tri-model workflow via `ask codex` + `ask gemini`, then Claude synthesis | `/oh-my-copilot:ccg`                     |
+| `configure-notifications` | Configure notification integrations (Telegram, Discord, Slack) via natural language | `/oh-my-copilot:configure-notifications` |
+| `deep-dive`               | Two-stage trace → deep-interview pipeline with context handoff   | `/oh-my-copilot:deep-dive`               |
 | `deep-interview`          | Socratic deep interview with ambiguity gating                    | `/oh-my-copilot:deep-interview`          |
-| `deep-dive`               | 2-stage pipeline: trace → deep-interview with 3-point injection  | `/oh-my-copilot:deep-dive`               |
-| `deep-review`             | Multi-pass code review (security, quality, structural + validation)  | `/oh-my-copilot:deep-review`             |
-| `discover`                | Parallel codebase quality scan with prioritized backlog              | `/oh-my-copilot:discover`                |
 | `deepinit`                | Generate hierarchical AGENTS.md docs                             | `/oh-my-copilot:deepinit`                |
 | `external-context`        | Parallel document-specialist research                            | `/oh-my-copilot:external-context`        |
-| `learn-about-omc`         | Analyze OMC usage patterns                                       | `/oh-my-copilot:learn-about-omc`         |
+| `hud`                     | Configure HUD/statusline                                         | `/oh-my-copilot:hud`                     |
 | `learner`                 | Extract reusable skill from session                              | `/oh-my-copilot:learner`                 |
 | `mcp-setup`               | Configure MCP servers                                            | `/oh-my-copilot:mcp-setup`               |
-| `note`                    | Save notes to notepad                                            | `/oh-my-copilot:note`                    |
 | `omc-doctor`              | Diagnose and fix installation issues                             | `/oh-my-copilot:omc-doctor`              |
-| `omc-help`                | Show OMC usage guide                                             | `/oh-my-copilot:omc-help`                |
 | `omc-plan`                | Planning workflow (`/plan` safe alias)                           | `/oh-my-copilot:omc-plan`                |
+| `omc-reference`           | Detailed OMC agent/tools/team/commit reference skill             | Auto-loaded reference only                  |
 | `omc-setup`               | One-time setup wizard                                            | `/oh-my-copilot:omc-setup`               |
-| `omc-teams`               | Legacy compatibility wrapper for `omcp team` CLI                  | `/oh-my-copilot:omc-teams`               |
+| `omc-teams`               | Spawn `claude`/`codex`/`gemini` tmux workers for parallel execution | `/oh-my-copilot:omc-teams`             |
 | `project-session-manager` | Manage isolated dev environments (git worktrees + tmux)          | `/oh-my-copilot:project-session-manager` |
+| `psm` | **Deprecated** compatibility alias for `project-session-manager` | `/oh-my-copilot:psm` |
 | `ralph`                   | Persistence loop until verified completion                       | `/oh-my-copilot:ralph`                   |
-| `ralph-init`              | Initialize PRD for structured ralph execution                    | `/oh-my-copilot:ralph-init`              |
 | `ralplan`                 | Consensus planning alias for `/omc-plan --consensus`             | `/oh-my-copilot:ralplan`                 |
-| `ralphthon`               | Autonomous hackathon lifecycle mode                              | `/oh-my-copilot:ralphthon`               |
 | `release`                 | Automated release workflow                                       | `/oh-my-copilot:release`                 |
+| `setup`                   | Unified setup entrypoint for install, diagnostics, and MCP configuration | `/oh-my-copilot:setup`              |
 | `sciomc`                  | Parallel scientist orchestration                                 | `/oh-my-copilot:sciomc`                  |
 | `skill`                   | Manage local skills (list/add/remove/search/edit)                | `/oh-my-copilot:skill`                   |
 | `team`                    | Coordinated multi-agent workflow                                 | `/oh-my-copilot:team`                    |
-| `trace`                   | Show orchestration trace timeline                                | `/oh-my-copilot:trace`                   |
+| `trace`                   | Evidence-driven tracing lane with parallel tracer hypotheses     | `/oh-my-copilot:trace`                   |
 | `ultraqa`                 | QA cycle until goal is met                                       | `/oh-my-copilot:ultraqa`                 |
 | `ultrawork`               | Maximum parallel throughput mode                                 | `/oh-my-copilot:ultrawork`               |
+| `visual-verdict`          | Structured visual QA verdict for screenshot/reference comparisons | `/oh-my-copilot:visual-verdict`          |
 | `writer-memory`           | Agentic memory system for writing projects                       | `/oh-my-copilot:writer-memory`           |
+
 
 ---
 
 ## Slash Commands
 
-All installed skills are available as slash commands with the prefix `/oh-my-copilot:`. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands.
+Each installed skill is exposed as `/oh-my-copilot:<skill-name>`. The skills table above is the full runtime-backed list; the commands below highlight common entrypoints and aliases. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands.
 
 | Command                                     | Description                                                                                   |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `/oh-my-copilot:autoresearch <topic>`    | Launch thin-supervisor autoresearch                                                           |
-| `/oh-my-copilot:autopilot <task>`        | Full autonomous execution                                                                     |
-| `/oh-my-copilot:ultrawork <task>`        | Maximum performance mode with parallel agents                                                 |
-| `/oh-my-copilot:team <N>:<agent> <task>` | Coordinated native team workflow                                                              |
-| `/oh-my-copilot:ralph-init <task>`       | Initialize PRD for structured task tracking                                                   |
-| `/oh-my-copilot:ralph <task>`            | Self-referential loop until task completion                                                   |
-| `/oh-my-copilot:ultraqa <goal>`          | Autonomous QA cycling workflow                                                                |
-| `/oh-my-copilot:omc-plan <description>`  | Start planning session (supports consensus structured deliberation)                           |
-| `/oh-my-copilot:ralplan <description>`   | Iterative planning with consensus structured deliberation (`--deliberate` for high-risk mode) |
-| `/oh-my-copilot:ralphthon <task>`        | Autonomous hackathon lifecycle                                                                |
-| `/oh-my-copilot:deep-dive <issue>`       | Trace → deep-interview pipeline                                                               |
-| `/oh-my-copilot:deep-interview <idea>`   | Socratic interview with ambiguity scoring before execution                                    |
-| `/oh-my-copilot:deep-review`           | Multi-pass code review with validation                                            |
-| `/oh-my-copilot:discover [scope]`      | Parallel specialist scan with prioritized backlog                                 |
-| `/oh-my-copilot:deepinit [path]`         | Index codebase with hierarchical AGENTS.md files                                              |
-| `/oh-my-copilot:sciomc <topic>`          | Parallel research orchestration                                                               |
-| `/oh-my-copilot:learner`                 | Extract reusable skill from session                                                           |
-| `/oh-my-copilot:note <content>`          | Save notes to notepad.md                                                                      |
-| `/oh-my-copilot:cancel`                  | Unified cancellation                                                                          |
-| `/oh-my-copilot:omc-setup`               | One-time setup wizard                                                                         |
-| `/oh-my-copilot:omc-doctor`              | Diagnose and fix installation issues                                                          |
-| `/oh-my-copilot:omc-help`                | Show OMC usage guide                                                                          |
-| `/oh-my-copilot:release`                 | Automated release workflow                                                                    |
-| `/oh-my-copilot:mcp-setup`               | Configure MCP servers                                                                         |
-| `/oh-my-copilot:trace`                   | Show orchestration trace timeline                                                             |
+| `/oh-my-copilot:ai-slop-cleaner <target>`    | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                    |
+| `/oh-my-copilot:ask <claude|codex|gemini> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact         |
+| `/oh-my-copilot:autopilot <task>`            | Full autonomous execution                                                                  |
+| `/oh-my-copilot:configure-notifications`     | Configure notification integrations                                                       |
+| `/oh-my-copilot:deep-dive <problem>`         | Run the trace → deep-interview pipeline                                                   |
+| `/oh-my-copilot:deep-interview <idea>`       | Socratic interview with ambiguity scoring before execution                                 |
+| `/oh-my-copilot:deepinit [path]`             | Index codebase with hierarchical AGENTS.md files                                           |
+| `/oh-my-copilot:mcp-setup`                   | Configure MCP servers                                                                      |
+| `/oh-my-copilot:omc-doctor`                  | Diagnose and fix installation issues                                                       |
+| `/oh-my-copilot:omc-plan <description>`      | Start planning session (supports consensus structured deliberation)                        |
+| `/oh-my-copilot:omc-setup`                   | One-time setup wizard                                                                      |
+| `/oh-my-copilot:omc-teams <N>:<agent> <task>`       | Spawn `claude`/`codex`/`gemini` tmux workers for legacy parallel execution                |
+| `/oh-my-copilot:project-session-manager <arguments>` | Manage isolated dev environments with git worktrees + tmux                         |
+| `/oh-my-copilot:psm <arguments>`             | Deprecated alias for project session manager                                               |
+| `/oh-my-copilot:ralph <task>`                | Self-referential loop until task completion (`--critic=architect|critic|codex`)           |
+| `/oh-my-copilot:ralplan <description>`       | Iterative planning with consensus structured deliberation (`--deliberate` for high-risk mode) |
+| `/oh-my-copilot:release`                     | Automated release workflow                                                                 |
+| `/oh-my-copilot:setup`                       | Unified setup entrypoint (`setup`, `setup doctor`, `setup mcp`)                           |
+| `/oh-my-copilot:sciomc <topic>`              | Parallel research orchestration                                                            |
+| `/oh-my-copilot:team <N>:<agent> <task>`     | Coordinated native team workflow                                                           |
+| `/oh-my-copilot:trace`                       | Evidence-driven tracing lane that orchestrates parallel tracer hypotheses in team mode     |
+| `/oh-my-copilot:ultraqa <goal>`              | Autonomous QA cycling workflow                                                             |
+| `/oh-my-copilot:ultrawork <task>`            | Maximum performance mode with parallel agents                                              |
+| `/oh-my-copilot:visual-verdict <task>`       | Structured visual QA verdict for screenshot/reference comparisons                          |
+
+### Skill Pipeline Metadata (Preview)
+
+Built-in skills and slash-loaded skills can now declare a lightweight pipeline/handoff contract in frontmatter:
+
+```yaml
+pipeline: [deep-interview, omc-plan, autopilot]
+next-skill: omc-plan
+next-skill-args: --consensus --direct
+handoff: .omc/specs/deep-interview-{slug}.md
+```
+
+When present, OMC appends a standardized **Skill Pipeline** section to the rendered skill prompt so the current stage, handoff artifact, and explicit next `Skill("oh-my-copilot:...")` invocation are carried forward consistently.
+
+### Skills 2.0 Compatibility (MVP)
+
+OMC's canonical project-local skill directory remains `.omc/skills/`, but the runtime now also reads compatibility skills from `.agents/skills/`.
+
+For builtin and slash-loaded skills, OMC also appends a standardized **Skill Resources** section when the skill directory contains bundled assets such as helper scripts, templates, or support libraries. This helps agents reuse packaged skill resources instead of recreating them ad hoc.
 
 ---
 
 ## Hooks System
 
-Oh-my-copilot-cli includes 31 lifecycle hooks that enhance Copilot CLI's behavior.
+OMC registers 20 hook scripts across 11 Claude Code lifecycle events. For detailed documentation, see [HOOKS.md](./HOOKS.md).
 
-### Execution Mode Hooks
+### Hooks by Lifecycle Event
 
-| Hook              | Description                                                                 |
-| ----------------- | --------------------------------------------------------------------------- |
-| `autopilot`       | Full autonomous execution from idea to working code                         |
-| `ultrawork`       | Maximum parallel agent execution                                            |
-| `ralph`           | Persistence until verified complete                                         |
-| `team-pipeline`   | Native team staged pipeline orchestration                                   |
-| `ultraqa`         | QA cycling until goal met                                                   |
-| `mode-registry`   | Tracks active execution mode state (including team/ralph/ultrawork/ralplan) |
-| `persistent-mode` | Maintains mode state across sessions                                        |
+| Event | Scripts | Timeout |
+|-------|---------|---------|
+| **UserPromptSubmit** | `keyword-detector.mjs`, `skill-injector.mjs` | 5s, 3s |
+| **SessionStart** | `session-start.mjs`, `project-memory-session.mjs`, `setup-init.mjs` (init), `setup-maintenance.mjs` (maintenance) | 5s, 5s, 30s, 60s |
+| **PreToolUse** | `pre-tool-enforcer.mjs` | 3s |
+| **PermissionRequest** | `permission-handler.mjs` (Bash only) | 5s |
+| **PostToolUse** | `post-tool-verifier.mjs`, `project-memory-posttool.mjs` | 3s, 3s |
+| **PostToolUseFailure** | `post-tool-use-failure.mjs` | 3s |
+| **SubagentStart** | `subagent-tracker.mjs start` | 3s |
+| **SubagentStop** | `subagent-tracker.mjs stop`, `verify-deliverables.mjs` | 5s, 5s |
+| **PreCompact** | `pre-compact.mjs`, `project-memory-precompact.mjs` | 10s, 5s |
+| **Stop** | `context-guard-stop.mjs`, `persistent-mode.cjs`, `code-simplifier.mjs` | 5s, 10s, 5s |
+| **SessionEnd** | `session-end.mjs` | 30s |
 
-### Core Hooks
+> **Note**: autopilot, ralph, ultrawork, and ultraqa are **skills** (activated via keyword-detector), not hooks. The `persistent-mode.cjs` hook enforces their continuation by blocking the Stop event.
 
-| Hook                 | Description                                           |
-| -------------------- | ----------------------------------------------------- |
-| `rules-injector`     | Dynamic rules injection with YAML frontmatter parsing |
-| `omc-orchestrator`   | Enforces orchestrator behavior and delegation         |
-| `auto-slash-command` | Automatic slash command detection and execution       |
-| `keyword-detector`   | Magic keyword detection (ultrawork, ralph, etc.) (with informational intent filtering — questions like "what is ralph?" won't trigger modes) |
-| `skill-state`        | Skill active-state management with collision prevention |
-| `todo-continuation`  | Ensures todo list completion                          |
-| `notepad`            | Compaction-resilient memory system                    |
-| `learner`            | Skill extraction from conversations                   |
-
-### Context & Recovery
-
-| Hook                        | Description                                      |
-| --------------------------- | ------------------------------------------------ |
-| `recovery`                  | Edit error, session, and context window recovery |
-| `preemptive-compaction`     | Context usage monitoring to prevent limits       |
-| `pre-compact`               | Pre-compaction processing                        |
-| `directory-readme-injector` | README context injection                         |
-
-### Quality & Validation
-
-| Hook                       | Description                                            |
-| -------------------------- | ------------------------------------------------------ |
-| `comment-checker`          | BDD detection and directive filtering                  |
-| `thinking-block-validator` | Extended thinking validation                           |
-| `empty-message-sanitizer`  | Empty message handling                                 |
-| `permission-handler`       | Permission requests and validation                     |
-| `think-mode`               | Extended thinking detection                            |
-| `code-simplifier`          | Auto-simplify recently modified files on Stop (opt-in) |
+### Code Simplifier Hook
 
 ### Code Simplifier Hook
 
 The `code-simplifier` Stop hook automatically delegates recently modified source files to the
-`code-simplifier` agent after each Copilot turn. It is **disabled by default** and must be
-explicitly enabled via `~/.omcp/config.json`.
+`code-simplifier` agent after each Claude turn. It is **disabled by default** and must be
+explicitly enabled via the global OMC config file:
+
+- Linux/Unix default: `${XDG_CONFIG_HOME:-~/.config}/omc/config.json`
+- macOS/Windows legacy/default path: `~/.omc/config.json`
+- Existing legacy `~/.omc/config.json` continues to be read as a fallback where applicable.
 
 **Enable:**
 
@@ -477,22 +650,10 @@ explicitly enabled via `~/.omcp/config.json`.
 
 **How it works:**
 
-1. When Copilot stops, the hook runs `git diff HEAD --name-only` to find modified files
-2. If modified source files are found, the hook injects a message asking Copilot to delegate to the `code-simplifier` agent
+1. When Claude stops, the hook runs `git diff HEAD --name-only` to find modified files
+2. If modified source files are found, the hook injects a message asking Claude to delegate to the `code-simplifier` agent
 3. The agent simplifies the files for clarity and consistency without changing behavior
 4. A turn-scoped marker prevents the hook from triggering more than once per turn cycle
-
-### Coordination & Environment
-
-| Hook                      | Description                              |
-| ------------------------- | ---------------------------------------- |
-| `subagent-tracker`        | Tracks spawned sub-agents                |
-| `session-end`             | Session termination handling             |
-| `non-interactive-env`     | CI/non-interactive environment handling  |
-| `agent-usage-reminder`    | Reminder to use specialized agents       |
-| `background-notification` | Background task completion notifications |
-| `plugin-patterns`         | Plugin pattern detection                 |
-| `setup`                   | Initial setup and configuration          |
 
 ---
 
@@ -502,23 +663,25 @@ Use these trigger phrases in natural language prompts to activate enhanced modes
 
 | Keyword                                                 | Effect                                                                                        |
 | ------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `ultrawork`, `ulw`                                      | Activates parallel agent orchestration                                                        |
-| `autopilot`, `build me`, `I want a`                     | Full autonomous execution                                                                     |
-| `ralph`, `don't stop`, `must complete`                  | Persistence until verified complete                                                           |
-| `c3g`, `copilot-claude-codex-gemini`                    | Copilot-Claude-Codex-Gemini orchestration                                                      |
+| `ultrawork`, `ulw`, `uw`                                | Activates parallel agent orchestration                                                        |
+| `autopilot`, `build me`, `I want a`, `handle it all`, `end to end`, `e2e this` | Full autonomous execution                                              |
+| `deslop`, `anti-slop`, cleanup/refactor + slop smells         | Anti-slop cleanup workflow (`ai-slop-cleaner`)                                               |
+| `ralph`, `don't stop`, `must complete`, `until done`    | Persistence until verified complete                                                           |
+| `ccg`, `claude-codex-gemini`                            | Claude-Codex-Gemini orchestration                                                             |
 | `ralplan`                                               | Iterative planning consensus with structured deliberation (`--deliberate` for high-risk mode) |
 | `deep interview`, `ouroboros`                           | Deep Socratic interview with mathematical clarity gating                                      |
-| `deepsearch`, `search the codebase`, `find in codebase` | Codebase-focused search mode (with informational intent filtering — questions like "what is ralph?" won't trigger the keyword) |
+| `deepsearch`, `search the codebase`, `find in codebase` | Codebase-focused search mode                                                                  |
 | `deepanalyze`, `deep-analyze`                           | Deep analysis mode                                                                            |
-| `ultrathink`                                            | Deep reasoning mode                                                                           |
+| `ultrathink`, `think hard`, `think deeply`              | Deep reasoning mode                                                                           |
 | `tdd`, `test first`, `red green`                        | TDD workflow enforcement                                                                      |
-| `ralphthon`                                             | Autonomous hackathon lifecycle mode                                                           |
+| `code review`, `review code`                            | Comprehensive code review mode                                                                |
+| `security review`, `review security`                    | Security-focused review mode                                                                  |
 | `cancelomc`, `stopomc`                                  | Unified cancellation                                                                          |
 
 ### Examples
 
 ```bash
-# In Copilot CLI:
+# In Claude Code:
 
 # Maximum parallelism
 ultrawork implement user authentication with OAuth
@@ -557,8 +720,8 @@ stopomc
 | Platform    | Install Method              | Hook Type      |
 | ----------- | --------------------------- | -------------- |
 | **Windows** | WSL2 recommended (see note) | Node.js (.mjs) |
-| **macOS**   | curl or npm                 | Bash (.sh)     |
-| **Linux**   | curl or npm                 | Bash (.sh)     |
+| **macOS**   | Claude Code Plugin          | Bash (.sh)     |
+| **Linux**   | Claude Code Plugin          | Bash (.sh)     |
 
 > **Note**: Bash hooks are fully portable across macOS and Linux (no GNU-specific dependencies).
 
@@ -598,7 +761,7 @@ stopomc
 | `lsp_servers`               | ✅ Implemented | List available language servers             |
 | `lsp_diagnostics_directory` | ✅ Implemented | Project-level type checking                 |
 
-> **Note**: LSP tools require language servers to be installed (typescript-language-server, pylsp, rust-analyzer, gopls, etc.). Use `lsp_servers` to check installation status.
+> **Note**: LSP tools require language servers to be installed (typescript-language-server, ty, rust-analyzer, gopls, etc.). Use `lsp_servers` to check installation status.
 
 ### AST Tools (ast-grep Integration)
 
@@ -622,35 +785,35 @@ For complete documentation, see **[Performance Monitoring Guide](./PERFORMANCE-M
 | Feature                 | Description                                     | Access                               |
 | ----------------------- | ----------------------------------------------- | ------------------------------------ |
 | **Agent Observatory**   | Real-time agent status, efficiency, bottlenecks | HUD / API                            |
-| **Token Analytics**     | Cost tracking, usage reports, budget warnings   | HUD (`analytics` preset), `omc cost` |
-| **Session Replay**      | Event timeline for post-session analysis        | `.omcp/state/agent-replay-*.jsonl`    |
+| **Session-End Summaries** | Persisted per-session summaries and callback payloads | `.omc/sessions/*.json`, `session-end` |
+| **Session Replay**      | Event timeline for post-session analysis        | `.omc/state/agent-replay-*.jsonl`    |
+| **Session Search**      | Search prior local transcript/session artifacts  | `omc session search`, `session_search` |
 | **Intervention System** | Auto-detection of stale agents, cost overruns   | Automatic                            |
 
 ### CLI Commands
 
 ```bash
-omc                # Default analytics dashboard
-omc cost daily     # Daily cost report
-omc cost weekly    # Weekly cost report
-omc backfill       # Import historical transcript data
-# Agent breakdown: use HUD observatory / replay logs
+omc hud                              # Render the current HUD statusline
+omc team status <team-name>          # Inspect a running team job
+tail -20 .omc/state/agent-replay-*.jsonl
+ls .omc/sessions/*.json
 ```
 
-### HUD Analytics Preset
+### HUD Presets
 
-Enable detailed cost tracking in your status line:
+Enable a supported preset for agent and context visibility in your status line:
 
 ```json
 {
   "omcHud": {
-    "preset": "analytics"
+    "preset": "focused"
   }
 }
 ```
 
 ### External Resources
 
-- **[MarginLab.ai](https://marginlab.ai)** - SWE-Bench-Pro performance tracking with statistical significance testing for detecting Copilot model degradation
+- **[MarginLab.ai](https://marginlab.ai)** - SWE-Bench-Pro performance tracking with statistical significance testing for detecting Claude model degradation
 
 ---
 
@@ -680,7 +843,7 @@ Installs or repairs the HUD statusline for real-time status updates.
 
 ### HUD Configuration (settings.json)
 
-Configure HUD elements in `~/.copilot/settings.json`:
+Configure HUD elements in `~/.claude/settings.json`:
 
 ```json
 {
@@ -689,24 +852,25 @@ Configure HUD elements in `~/.copilot/settings.json`:
     "elements": {
       "cwd": true,
       "gitRepo": true,
-      "gitBranch": true
+      "gitBranch": true,
+      "showTokens": true
     }
   }
 }
 ```
 
-| Element      | Description                    | Default |
-| ------------ | ------------------------------ | ------- |
-| `cwd`        | Show current working directory | `false` |
-| `gitRepo`    | Show git repository name       | `false` |
-| `gitBranch`  | Show current git branch        | `false` |
-| `omcLabel`   | Show [OMC] label               | `true`  |
-| `contextBar` | Show context window usage      | `true`  |
-| `agents`     | Show active agents count       | `true`  |
-| `todos`      | Show todo progress             | `true`  |
-| `ralph`      | Show ralph loop status         | `true`  |
-| `autopilot`      | Show autopilot status              | `true`  |
-| `sessionSummary` | Show AI-generated session summary  | `false` |
+| Element      | Description                                                                                       | Default |
+| ------------ | ------------------------------------------------------------------------------------------------- | ------- |
+| `cwd`        | Show current working directory                                                                    | `false` |
+| `gitRepo`    | Show git repository name                                                                          | `false` |
+| `gitBranch`  | Show current git branch                                                                           | `false` |
+| `omcLabel`   | Show [OMC] label                                                                                  | `true`  |
+| `contextBar` | Show context window usage                                                                         | `true`  |
+| `agents`     | Show active agents count                                                                          | `true`  |
+| `todos`      | Show todo progress                                                                                | `true`  |
+| `ralph`      | Show ralph loop status                                                                            | `true`  |
+| `autopilot`  | Show autopilot status                                                                             | `true`  |
+| `showTokens` | Show transcript-derived token usage (`tok:i1.2k/o340`, plus `r...` reasoning and `s...` session total when reliable) | `false` |
 
 Additional `omcHud` layout options (top-level):
 
@@ -722,14 +886,14 @@ Available presets: `minimal`, `focused`, `full`, `dense`, `analytics`, `opencode
 | Issue                 | Solution                                                                         |
 | --------------------- | -------------------------------------------------------------------------------- |
 | Commands not found    | Re-run `/oh-my-copilot:omc-setup`                                             |
-| Hooks not executing   | Check hook permissions: `chmod +x ~/.copilot/hooks/**/*.sh`                       |
-| Agents not delegating | Verify copilot-instructions.md is loaded: check `./.copilot/copilot-instructions.md` or `~/.copilot/copilot-instructions.md` |
+| Hooks not executing   | Check hook permissions: `chmod +x ~/.claude/hooks/**/*.sh`                       |
+| Agents not delegating | Verify CLAUDE.md is loaded: check `./.claude/CLAUDE.md` or `~/.claude/CLAUDE.md` |
 | LSP tools not working | Install language servers: `npm install -g typescript-language-server`            |
 | Token limit errors    | Use `/oh-my-copilot:` for token-efficient execution                           |
 
 ### Auto-Update
 
-Oh-my-copilot-cli includes a silent auto-update system that checks for updates in the background.
+Oh-my-claudecode includes a silent auto-update system that checks for updates in the background.
 
 Features:
 
@@ -737,19 +901,21 @@ Features:
 - **Concurrent-safe**: Lock file prevents simultaneous update attempts
 - **Cross-platform**: Works on both macOS and Linux
 
-To manually update, re-run the plugin install command or use Copilot CLI's built-in update mechanism.
+To manually update, re-run the plugin install command or use Claude Code's built-in update mechanism.
 
 ### Uninstall
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/RobinNorberg/oh-my-copilot/main/scripts/uninstall.sh | bash
+Use Claude Code's plugin management:
+
+```
+/plugin uninstall oh-my-copilot@oh-my-copilot
 ```
 
-Or manually:
+Or manually remove the installed files:
 
 ```bash
-rm ~/.copilot/agents/{architect,document-specialist,explore,designer,writer,vision,critic,analyst,executor,qa-tester}.md
-rm ~/.copilot/commands/{analyze,autopilot,deepsearch,plan,review,ultrawork}.md
+rm ~/.claude/agents/{architect,document-specialist,explore,designer,writer,vision,critic,analyst,executor,qa-tester}.md
+rm ~/.claude/commands/{analyze,autopilot,deepsearch,plan,review,ultrawork}.md
 ```
 
 ---

@@ -10,10 +10,10 @@
  * Enhancement in v3.5: Now uses RECURSIVE discovery (skills in subdirectories included)
  */
 
-import { existsSync, readdirSync, readFileSync, realpathSync } from 'fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'fs';
 import { join, basename } from 'path';
 import { homedir } from 'os';
-import { getCopilotConfigDir } from './lib/config-dir.mjs';
+import { getClaudeConfigDir } from './lib/config-dir.mjs';
 import { readStdin } from './lib/stdin.mjs';
 import { createRequire } from 'module';
 
@@ -27,10 +27,10 @@ try {
 }
 
 // Constants (used by fallback)
-const cfgDir = getCopilotConfigDir();
-const USER_SKILLS_DIR = join(cfgDir, 'skills', 'omg-learned');
-const GLOBAL_SKILLS_DIR = join(homedir(), '.omcp', 'skills');
-const PROJECT_SKILLS_SUBDIR = join('.omcp', 'skills');
+const cfgDir = getClaudeConfigDir();
+const USER_SKILLS_DIR = join(cfgDir, 'skills', 'omc-learned');
+const GLOBAL_SKILLS_DIR = join(homedir(), '.omc', 'skills');
+const PROJECT_SKILLS_SUBDIR = join('.omc', 'skills');
 const SKILL_EXTENSION = '.md';
 const MAX_SKILLS_PER_SESSION = 5;
 
@@ -38,8 +38,30 @@ const MAX_SKILLS_PER_SESSION = 5;
 // Fallback Implementation (used when bridge bundle not available)
 // =============================================================================
 
-// In-memory cache (resets each process - known limitation, fixed by bridge)
-const injectedCacheFallback = new Map();
+// File-based session dedup for fallback path (issue #2577 bug 1).
+// UserPromptSubmit spawns a NEW Node.js process on every prompt turn, so an
+// in-memory Map always starts empty — skills were re-injected on every turn.
+// Persisting to a JSON state file at {cwd}/.omcp/state/skill-sessions-fallback.json
+// preserves the injected-set across process spawns, matching bridge behaviour.
+const FALLBACK_SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour (same as bridge)
+
+function readFallbackState(directory) {
+  const stateFile = join(directory, '.omcp', 'state', 'skill-sessions-fallback.json');
+  try {
+    if (existsSync(stateFile)) {
+      return JSON.parse(readFileSync(stateFile, 'utf-8'));
+    }
+  } catch { /* ignore read/parse errors */ }
+  return { sessions: {} };
+}
+
+function writeFallbackState(directory, state) {
+  const stateDir = join(directory, '.omcp', 'state');
+  try {
+    mkdirSync(stateDir, { recursive: true });
+    writeFileSync(join(stateDir, 'skill-sessions-fallback.json'), JSON.stringify(state, null, 2));
+  } catch { /* non-critical — dedup fails open */ }
+}
 
 // Parse YAML frontmatter from skill file (fallback)
 function parseSkillFrontmatterFallback(content) {
@@ -131,12 +153,23 @@ function findMatchingSkillsFallback(prompt, directory, sessionId) {
   const candidates = findSkillFilesFallback(directory);
   const matches = [];
 
-  // Get or create session cache (cap size to prevent unbounded growth)
-  if (!injectedCacheFallback.has(sessionId)) {
-    if (injectedCacheFallback.size > 500) injectedCacheFallback.clear();
-    injectedCacheFallback.set(sessionId, new Set());
+  // File-based session dedup (persists across process spawns)
+  const state = readFallbackState(directory);
+  const now = Date.now();
+
+  // Prune expired sessions to keep the state file small
+  for (const [id, sess] of Object.entries(state.sessions)) {
+    if (now - sess.timestamp > FALLBACK_SESSION_TTL_MS) {
+      delete state.sessions[id];
+    }
   }
-  const alreadyInjected = injectedCacheFallback.get(sessionId);
+
+  const sessionData = state.sessions[sessionId];
+  const alreadyInjected = new Set(
+    sessionData && now - sessionData.timestamp <= FALLBACK_SESSION_TTL_MS
+      ? (sessionData.injectedPaths ?? [])
+      : []
+  );
 
   for (const candidate of candidates) {
     // Skip if already injected this session
@@ -174,9 +207,14 @@ function findMatchingSkillsFallback(prompt, directory, sessionId) {
   matches.sort((a, b) => b.score - a.score);
   const selected = matches.slice(0, MAX_SKILLS_PER_SESSION);
 
-  // Mark as injected
-  for (const skill of selected) {
-    alreadyInjected.add(skill.path);
+  // Persist injected paths back to file so future process spawns skip them
+  if (selected.length > 0) {
+    const existing = state.sessions[sessionId]?.injectedPaths ?? [];
+    state.sessions[sessionId] = {
+      injectedPaths: [...new Set([...existing, ...selected.map(s => s.path)])],
+      timestamp: now,
+    };
+    writeFallbackState(directory, state);
   }
 
   return selected;
@@ -202,7 +240,7 @@ function findMatchingSkills(prompt, directory, sessionId) {
     return matches;
   }
 
-  // Fallback (NON-RECURSIVE, in-memory cache)
+  // Fallback (NON-RECURSIVE, file-based dedup via skill-sessions-fallback.json)
   return findMatchingSkillsFallback(prompt, directory, sessionId);
 }
 
@@ -278,7 +316,7 @@ async function main() {
       console.log(JSON.stringify({
         continue: true,
         hookSpecificOutput: {
-          hookEventName: 'userPromptSubmitted',
+          hookEventName: 'UserPromptSubmit',
           additionalContext: formatSkillsMessage(matchingSkills)
         }
       }));

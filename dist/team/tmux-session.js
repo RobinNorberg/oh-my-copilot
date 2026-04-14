@@ -3,16 +3,17 @@
  * Tmux Session Management for MCP Team Bridge
  *
  * Create, kill, list, and manage tmux sessions for MCP worker bridge daemons.
- * Sessions are named "omc-team-{teamName}-{workerName}".
+ * Sessions are named "omcp-team-{teamName}-{workerName}".
  */
-import { exec, execFile, execSync, execFileSync } from 'child_process';
+import { exec, execFile, execSync } from 'child_process';
+import { tmuxExec } from '../cli/tmux-utils.js';
 import { existsSync } from 'fs';
 import { join, basename, isAbsolute, win32 } from 'path';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import { validateTeamName } from './team-name.js';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-const TMUX_SESSION_PREFIX = 'omc-team';
+const TMUX_SESSION_PREFIX = 'omcp-team';
 const promisifiedExec = promisify(exec);
 const promisifiedExecFile = promisify(execFile);
 /**
@@ -317,7 +318,7 @@ export function sanitizeName(name) {
     // Truncate to safe length for tmux session names
     return sanitized.slice(0, 50);
 }
-/** Build session name: "omc-team-{teamName}-{workerName}" */
+/** Build session name: "omcp-team-{teamName}-{workerName}" */
 export function sessionName(teamName, workerName) {
     return `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-${sanitizeName(workerName)}`;
 }
@@ -327,7 +328,7 @@ export function createSession(teamName, workerName, workingDirectory) {
     const name = sessionName(teamName, workerName);
     // Kill existing session if present (stale from previous run)
     try {
-        execFileSync('tmux', ['kill-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
+        tmuxExec(['kill-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
     }
     catch { /* ignore — session may not exist */ }
     // Create detached session with reasonable terminal size
@@ -335,7 +336,7 @@ export function createSession(teamName, workerName, workingDirectory) {
     if (workingDirectory) {
         args.push('-c', workingDirectory);
     }
-    execFileSync('tmux', args, { stdio: 'pipe', timeout: 5000 });
+    tmuxExec(args, { stdio: 'pipe', timeout: 5000 });
     return name;
 }
 /** @deprecated Use killTeamSession() instead */
@@ -343,7 +344,7 @@ export function createSession(teamName, workerName, workingDirectory) {
 export function killSession(teamName, workerName) {
     const name = sessionName(teamName, workerName);
     try {
-        execFileSync('tmux', ['kill-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
+        tmuxExec(['kill-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
     }
     catch { /* ignore — session may not exist */ }
 }
@@ -352,7 +353,7 @@ export function killSession(teamName, workerName) {
 export function isSessionAlive(teamName, workerName) {
     const name = sessionName(teamName, workerName);
     try {
-        execFileSync('tmux', ['has-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
+        tmuxExec(['has-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
         return true;
     }
     catch {
@@ -386,7 +387,7 @@ export function listActiveSessions(teamName) {
  */
 export function spawnBridgeInSession(tmuxSession, bridgeScriptPath, configFilePath) {
     const cmd = `node "${bridgeScriptPath}" --config "${configFilePath}"`;
-    execFileSync('tmux', ['send-keys', '-t', tmuxSession, cmd, 'Enter'], { stdio: 'pipe', timeout: 5000 });
+    tmuxExec(['send-keys', '-t', tmuxSession, cmd, 'Enter'], { stdio: 'pipe', timeout: 5000 });
 }
 /**
  * Create a tmux team topology for a team leader/worker layout.
@@ -799,7 +800,7 @@ export async function killWorkerPanes(opts) {
     if (!paneIds.length)
         return; // guard: nothing to kill
     // 1. Write graceful shutdown sentinel
-    const shutdownPath = join(cwd, '.omg', 'state', 'team', teamName, 'shutdown.json');
+    const shutdownPath = join(cwd, '.omcp', 'state', 'team', teamName, 'shutdown.json');
     try {
         await fs.writeFile(shutdownPath, JSON.stringify({ requestedAt: Date.now() }));
         await sleep(graceMs);

@@ -12,6 +12,13 @@ import { atomicWriteFileSync } from './lib/atomic-write.mjs';
 const RETRY_WINDOW_MS = 60000; // 60 seconds
 const MAX_ERROR_LENGTH = 500;
 const MAX_INPUT_PREVIEW_LENGTH = 200;
+const OPTIONAL_STARTUP_READ_TOOL_NAMES = new Set([
+  'mcp__omx_state__state_read',
+  'mcp__omx_state__state_get_status',
+  'mcp__omx_state__state_list_active',
+  'mcp__omx_memory__notepad_read',
+  'mcp__omx_memory__project_memory_read',
+]);
 
 // Validate that targetPath is contained within basePath (prevent path traversal)
 function isPathContained(targetPath, basePath) {
@@ -20,7 +27,7 @@ function isPathContained(targetPath, basePath) {
   return normalizedTarget.startsWith(normalizedBase + sep) || normalizedTarget === normalizedBase;
 }
 
-// Initialize .omcp directory if needed
+// Initialize .omc directory if needed
 function initOmcDir(directory) {
   const cwd = process.cwd();
   // Validate directory is contained within cwd
@@ -28,7 +35,7 @@ function initOmcDir(directory) {
     // Fallback to cwd if directory attempts traversal
     directory = cwd;
   }
-  const omcDir = join(directory, '.omcp');
+  const omcDir = join(directory, '.omc');
   const stateDir = join(omcDir, 'state');
 
   if (!existsSync(omcDir)) {
@@ -110,6 +117,14 @@ function writeErrorState(stateDir, toolName, toolInputPreview, error, retryCount
   } catch {}
 }
 
+function shouldSuppressOptionalStartupMethodNotFound(toolName, error) {
+  if (!OPTIONAL_STARTUP_READ_TOOL_NAMES.has(toolName)) {
+    return false;
+  }
+
+  return /\bmethod not found\b/i.test(String(error || ''));
+}
+
 async function main() {
   try {
     const input = await readStdin();
@@ -130,6 +145,11 @@ async function main() {
 
     // Skip if no tool name or error
     if (!toolName || !error) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    if (shouldSuppressOptionalStartupMethodNotFound(toolName, error)) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }
@@ -164,7 +184,7 @@ async function main() {
     console.log(JSON.stringify({
       continue: true,
       hookSpecificOutput: {
-        hookEventName: 'errorOccurred',
+        hookEventName: 'PostToolUseFailure',
         additionalContext: guidance,
       },
     }));

@@ -13,7 +13,7 @@ const TRANSIENT_CONTEXT_PERCENT_TOLERANCE = 3;
 // ============================================================================
 function getStdinCachePath() {
     const root = getWorktreeRoot() || process.cwd();
-    return join(root, '.omg', 'state', 'hud-stdin-cache.json');
+    return join(root, '.omcp', 'state', 'hud-stdin-cache.json');
 }
 /**
  * Persist the last successful stdin read to disk.
@@ -22,7 +22,7 @@ function getStdinCachePath() {
 export function writeStdinCache(stdin) {
     try {
         const root = getWorktreeRoot() || process.cwd();
-        const cacheDir = join(root, '.omg', 'state');
+        const cacheDir = join(root, '.omcp', 'state');
         if (!existsSync(cacheDir)) {
             mkdirSync(cacheDir, { recursive: true });
         }

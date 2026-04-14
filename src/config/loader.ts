@@ -9,7 +9,11 @@
 
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
-import type { PluginConfig, ExternalModelsConfig } from '../shared/types.js';
+import type {
+  PluginConfig,
+  ExternalModelsConfig,
+  DelegationProvider,
+} from '../shared/types.js';
 import { getConfigDir as getCopilotConfigDir } from '../utils/config-dir.js';
 import { parseJsonc } from '../utils/jsonc.js';
 import {
@@ -371,6 +375,30 @@ export function loadEnvConfig(): Partial<PluginConfig> {
 /**
  * Load and merge all configuration sources
  */
+function warnOnDeprecatedDelegationRouting(config: PluginConfig): void {
+  const deprecatedProviders = new Set<DelegationProvider>();
+  const defaultProvider = config.delegationRouting?.defaultProvider;
+  if (defaultProvider === "codex" || defaultProvider === "gemini") {
+    deprecatedProviders.add(defaultProvider);
+  }
+
+  const roles = config.delegationRouting?.roles ?? {};
+  for (const route of Object.values(roles)) {
+    const provider = route?.provider;
+    if (provider === "codex" || provider === "gemini") {
+      deprecatedProviders.add(provider);
+    }
+  }
+
+  if (deprecatedProviders.size === 0) {
+    return;
+  }
+
+  console.warn(
+    "[OMC] delegationRouting to Codex/Gemini is deprecated and falls back to Claude Task. Use /team for Codex/Gemini CLI workers instead.",
+  );
+}
+
 export function loadConfig(): PluginConfig {
   const paths = getConfigPaths();
 
@@ -410,7 +438,54 @@ export function loadConfig(): PluginConfig {
     };
   }
 
+  warnOnDeprecatedDelegationRouting(config);
+
   return config;
+}
+
+const OMC_STARTUP_COMPACTABLE_SECTIONS = [
+  "agent_catalog",
+  "skills",
+  "team_compositions",
+] as const;
+
+function looksLikeOmcGuidance(content: string): boolean {
+  return (
+    content.includes("<guidance_schema_contract>") &&
+    /oh-my-(claudecode|codex|copilot)/i.test(content) &&
+    OMC_STARTUP_COMPACTABLE_SECTIONS.some(
+      (section) =>
+        content.includes(`<${section}>`) && content.includes(`</${section}>`),
+    )
+  );
+}
+
+export function compactOmcStartupGuidance(content: string): string {
+  if (!looksLikeOmcGuidance(content)) {
+    return content;
+  }
+
+  let compacted = content;
+  let removedAny = false;
+
+  for (const section of OMC_STARTUP_COMPACTABLE_SECTIONS) {
+    const pattern = new RegExp(
+      `\n*<${section}>[\\s\\S]*?<\\/${section}>\n*`,
+      "g",
+    );
+    const next = compacted.replace(pattern, "\n\n");
+    removedAny = removedAny || next !== compacted;
+    compacted = next;
+  }
+
+  if (!removedAny) {
+    return content;
+  }
+
+  return compacted
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\n\n---\n\n---\n\n/g, "\n\n---\n\n")
+    .trim();
 }
 
 /**

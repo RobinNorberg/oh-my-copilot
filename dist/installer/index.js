@@ -164,9 +164,9 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath) {
     }
     if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
         if (findNodePath) {
-            return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
+            return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
         }
-        return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
+        return 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
     }
     const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
     if (findNodePath) {
@@ -221,15 +221,15 @@ export function isHudEnabledInConfig() {
 export function isOmcStatusLine(statusLine) {
     if (!statusLine)
         return false;
-    // Legacy string format (pre-v4.5): "~/.copilot/hud/omc-hud.mjs"
+    // Legacy string format (pre-v4.5): "~/.copilot/hud/omcp-hud.mjs"
     if (typeof statusLine === 'string') {
-        return statusLine.includes('omc-hud') || statusLine.includes('copilot-hud.cmd') || statusLine.includes('oh-my-copilot');
+        return statusLine.includes('omcp-hud') || statusLine.includes('copilot-hud.cmd') || statusLine.includes('oh-my-copilot');
     }
-    // Current object format: { type: "command", command: "node ...omc-hud.mjs" }
+    // Current object format: { type: "command", command: "node ...omcp-hud.mjs" }
     if (typeof statusLine === 'object') {
         const sl = statusLine;
         if (typeof sl.command === 'string') {
-            return sl.command.includes('omc-hud') || sl.command.includes('copilot-hud.cmd') || sl.command.includes('oh-my-copilot');
+            return sl.command.includes('omcp-hud') || sl.command.includes('copilot-hud.cmd') || sl.command.includes('oh-my-copilot');
         }
     }
     return false;
@@ -798,33 +798,27 @@ export function install(options = {}) {
             }
             // Install copilot-instructions.md with merge support
             const claudeMdPath = join(COPILOT_CONFIG_DIR, 'copilot-instructions.md');
-            const homeMdPath = join(homedir(), 'copilot-instructions.md');
-            if (!existsSync(homeMdPath)) {
-                const omcContent = loadClaudeMdContent();
-                // Read existing content if it exists
-                let existingContent = null;
-                if (existsSync(claudeMdPath)) {
-                    existingContent = readFileSync(claudeMdPath, 'utf-8');
-                }
-                // Always create backup before modification (if file exists)
-                if (existingContent !== null) {
-                    const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0]; // YYYY-MM-DDTHH-MM-SS
-                    const backupPath = join(COPILOT_CONFIG_DIR, `copilot-instructions.md.backup.${timestamp}`);
-                    writeFileSync(backupPath, existingContent);
-                    log(`Backed up existing copilot-instructions.md to ${backupPath}`);
-                }
-                // Merge OMC content with existing content
-                const mergedContent = mergeClaudeMd(existingContent, omcContent, targetVersion);
-                writeFileSync(claudeMdPath, mergedContent);
-                if (existingContent) {
-                    log('Updated copilot-instructions.md (merged with existing content)');
-                }
-                else {
-                    log('Created copilot-instructions.md');
-                }
+            const omcContent = loadClaudeMdContent();
+            // Read existing content if it exists
+            let existingContent = null;
+            if (existsSync(claudeMdPath)) {
+                existingContent = readFileSync(claudeMdPath, 'utf-8');
+            }
+            // Always create backup before modification (if file exists)
+            if (existingContent !== null) {
+                const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0]; // YYYY-MM-DDTHH-MM-SS
+                const backupPath = join(COPILOT_CONFIG_DIR, `copilot-instructions.md.backup.${timestamp}`);
+                writeFileSync(backupPath, existingContent);
+                log(`Backed up existing copilot-instructions.md to ${backupPath}`);
+            }
+            // Merge OMC content with existing content
+            const mergedContent = mergeClaudeMd(existingContent, omcContent, targetVersion);
+            writeFileSync(claudeMdPath, mergedContent);
+            if (existingContent) {
+                log('Updated copilot-instructions.md (merged with existing content)');
             }
             else {
-                log('copilot-instructions.md exists in home directory, skipping');
+                log('Created copilot-instructions.md');
             }
             // Note: hook scripts are no longer installed to ~/.copilot/hooks/.
             // All hooks are delivered via the plugin's hooks/hooks.json + scripts/.
@@ -874,7 +868,7 @@ export function install(options = {}) {
                 }
                 // Build the HUD script content (compiled from src/hud/index.ts)
                 // Create a wrapper that checks multiple locations for the HUD module
-                hudScriptPath = join(HUD_DIR, 'omc-hud.mjs').replace(/\\/g, '/');
+                hudScriptPath = join(HUD_DIR, 'omcp-hud.mjs').replace(/\\/g, '/');
                 const hudScriptLines = [
                     '#!/usr/bin/env node',
                     '/**',
@@ -1000,7 +994,7 @@ export function install(options = {}) {
                 if (!isWindows()) {
                     chmodSync(hudScriptPath, 0o755);
                 }
-                log('  Installed omc-hud.mjs');
+                log('  Installed omcp-hud.mjs');
             }
             catch (_e) {
                 log('  Warning: Could not install HUD statusline script (non-fatal)');
@@ -1069,10 +1063,10 @@ export function install(options = {}) {
                             const findNodeDest = join(HUD_DIR, 'find-node.sh');
                             copyFileSync(findNodeSrc, findNodeDest);
                             chmodSync(findNodeDest, 0o755);
-                            statusLineCommand = 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
+                            statusLineCommand = 'sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
                         }
                         catch {
-                            statusLineCommand = 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omc-hud.mjs';
+                            statusLineCommand = 'node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs';
                         }
                     }
                     // Write statusLine to config.json (Copilot CLI's configuration file)

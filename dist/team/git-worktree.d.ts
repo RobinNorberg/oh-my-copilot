@@ -7,7 +7,7 @@ export interface WorktreeInfo {
 }
 /**
  * Create a git worktree for a team worker.
- * Path: {repoRoot}/.omg/worktrees/{team}/{worker}
+ * Path: {repoRoot}/.omcp/worktrees/{team}/{worker}
  * Branch: omc-team/{teamName}/{workerName}
  */
 export declare function createWorkerWorktree(teamName: string, workerName: string, repoRoot: string, baseBranch?: string): WorktreeInfo;

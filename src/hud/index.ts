@@ -183,12 +183,6 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 
     const cwd = resolveToWorktreeRoot(stdin.cwd || undefined);
 
-    // Initialize HUD state (cleanup stale/orphaned tasks)
-    // Must happen after cwd resolution so cleanup targets the correct project directory
-    if (!skipInit) {
-      await initializeHUDState(cwd);
-    }
-
     // Read configuration (before transcript parsing so we can use staleTaskThresholdMinutes)
     // Clone to avoid mutating shared DEFAULT_HUD_CONFIG when applying runtime width detection
     const config = { ...readHudConfig() };
@@ -219,6 +213,12 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       resolvedTranscriptPath ?? stdin.transcript_path ?? "",
     );
 
+    // Initialize HUD state (cleanup stale/orphaned tasks)
+    // Must happen after cwd resolution so cleanup targets the correct project directory
+    if (!skipInit) {
+      await initializeHUDState(cwd, currentSessionId ?? undefined);
+    }
+
     // Read OMC state files
     const ralph = readRalphStateForHud(cwd, currentSessionId ?? undefined);
     const ultrawork = readUltraworkStateForHud(cwd, currentSessionId ?? undefined);
@@ -226,7 +226,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
     const autopilot = readAutopilotStateForHud(cwd, currentSessionId ?? undefined);
 
     // Read HUD state for background tasks
-    const hudState = readHudState(cwd);
+    const hudState = readHudState(cwd, currentSessionId ?? undefined);
     const _backgroundTasks = hudState?.backgroundTasks || [];
 
     // Persist session start time to survive tail-parsing resets (#528)
@@ -249,7 +249,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       stateToWrite.sessionStartTimestamp = sessionStart.toISOString();
       stateToWrite.sessionId = currentSessionId ?? undefined;
       stateToWrite.timestamp = new Date().toISOString();
-      writeHudState(stateToWrite, cwd);
+      writeHudState(stateToWrite, cwd, currentSessionId ?? undefined);
     }
 
     // Fetch rate limits from OAuth API (if available)

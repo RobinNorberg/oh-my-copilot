@@ -1,18 +1,24 @@
 /**
  * Tests for post-tool-verifier.mjs failure detection
- * Covers issue #696: false positive "permission denied" from Copilot CLI temp CWD errors on macOS
+ * Covers issue #696: false positive "permission denied" from Claude Code temp CWD errors on macOS
  */
 
 import { describe, it, expect } from 'vitest';
 import { execSync } from 'child_process';
 import { join } from 'path';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
 import process from 'process';
 import { detectBashFailure, detectWriteFailure, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'post-tool-verifier.mjs');
 
 function runPostToolVerifier(input, env = {}) {
-  const stdout = execSync(`node "${SCRIPT_PATH}"`, {
+  return runHookScript(SCRIPT_PATH, input, env);
+}
+
+function runHookScript(scriptPath, input, env = {}) {
+  const stdout = execSync(`node "${scriptPath}"`, {
     input: JSON.stringify(input),
     encoding: 'utf-8',
     timeout: 5000,
@@ -21,27 +27,37 @@ function runPostToolVerifier(input, env = {}) {
   return JSON.parse(stdout.trim());
 }
 
+function withTempDir(fn) {
+  const tempDir = mkdtempSync(join(tmpdir(), 'post-tool-verifier-'));
+  try {
+    return fn(tempDir);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+
 describe('detectBashFailure', () => {
-  describe('Copilot CLI temp CWD false positives (issue #696)', () => {
+  describe('Claude Code temp CWD false positives (issue #696)', () => {
     it('should not flag macOS temp CWD permission error as a failure', () => {
-      const output = 'zsh:1: permission denied: /var/folders/xx/yyyyyyy/T/copilot-abc123def-cwd';
+      const output = 'zsh:1: permission denied: /var/folders/xx/yyyyyyy/T/claude-abc123def-cwd';
       expect(detectBashFailure(output)).toBe(false);
     });
 
     it('should not flag temp CWD error with different session id', () => {
-      const output = 'zsh:1: permission denied: /var/folders/ab/cdefgh/T/copilot-xyz789-cwd';
+      const output = 'zsh:1: permission denied: /var/folders/ab/cdefgh/T/claude-xyz789-cwd';
       expect(detectBashFailure(output)).toBe(false);
     });
 
     it('should not flag temp CWD error with different zsh line numbers', () => {
-      const output = 'zsh:42: permission denied: /var/folders/ab/cdefgh/T/copilot-abc000-cwd';
+      const output = 'zsh:42: permission denied: /var/folders/ab/cdefgh/T/claude-abc000-cwd';
       expect(detectBashFailure(output)).toBe(false);
     });
 
     it('should not flag output that contains only a temp CWD error line', () => {
       const output = [
         'some normal output',
-        'zsh:1: permission denied: /var/folders/xx/yyyyy/T/copilot-abc123-cwd',
+        'zsh:1: permission denied: /var/folders/xx/yyyyy/T/claude-abc123-cwd',
         'more normal output',
       ].join('\n');
       expect(detectBashFailure(output)).toBe(false);
@@ -54,7 +70,7 @@ describe('detectBashFailure', () => {
 
     it('should flag real permission denied even when temp CWD noise is also present', () => {
       const output = [
-        'zsh:1: permission denied: /var/folders/xx/yyyyy/T/copilot-abc123-cwd',
+        'zsh:1: permission denied: /var/folders/xx/yyyyy/T/claude-abc123-cwd',
         'rm: /protected/file: permission denied',
       ].join('\n');
       expect(detectBashFailure(output)).toBe(true);
@@ -66,7 +82,7 @@ describe('detectBashFailure', () => {
       expect(detectBashFailure('error: file not found')).toBe(true);
     });
 
-    it('should detect "failed" pattern', () => {
+    it('should detect "failed" pattern when it is a failure summary line', () => {
       expect(detectBashFailure('Build failed')).toBe(true);
     });
 
@@ -74,7 +90,11 @@ describe('detectBashFailure', () => {
       expect(detectBashFailure('zsh: command not found: foo')).toBe(true);
     });
 
-    it('should detect exit code failures', () => {
+    it('should detect Claude exit code failures', () => {
+      expect(detectBashFailure('Error: Exit code 1')).toBe(true);
+    });
+
+    it('should detect textual exit code failures', () => {
       expect(detectBashFailure('exit code: 1')).toBe(true);
     });
 
@@ -82,8 +102,55 @@ describe('detectBashFailure', () => {
       expect(detectBashFailure('fatal: not a git repository')).toBe(true);
     });
 
+    it('should not flag successful pytest output containing failure words', () => {
+      const output = [
+        'tests/test_render.py::TestRender::test_ffmpeg_failure_raises PASSED',
+        'tests/test_render.py::TestRender::test_qa_failure_propagates PASSED',
+        '80 passed in 0.24s',
+      ].join('\n');
+      expect(detectBashFailure(output)).toBe(false);
+    });
+
+    it('should not flag successful grep output containing "Command failed" text', () => {
+      const output = 'scripts/post-tool-verifier.mjs:683:        message = \'Command failed. Please investigate the error and fix before continuing.\'';
+      expect(detectBashFailure(output)).toBe(false);
+    });
+
+    it('should not flag successful output when the word "error" appears mid-line', () => {
+      const output = [
+        'frame=   15 fps=0.0 q=-0.0 size=       0kB time=00:00:00.50 bitrate=   0.8kbits/s speed=5.6x',
+        'codec-side-data: some harmless error metric label',
+        'video:4kB audio:0kB subtitle:0kB other streams:0kB global headers:0kB muxing overhead: 0.000000%',
+      ].join('\n');
+      expect(detectBashFailure(output)).toBe(false);
+    });
+
     it('should return false for clean output', () => {
       expect(detectBashFailure('All tests passed')).toBe(false);
+    });
+
+    it('should ignore quoted error field string literals', () => {
+      expect(detectBashFailure(`return { rateLimits: fallbackData, error: 'network', stale: true };`)).toBe(false);
+    });
+
+    it('should ignore severity metadata lines', () => {
+      expect(detectBashFailure(`"severity": "error"`)).toBe(false);
+    });
+
+    it('should ignore quoted field names inside inert object literals', () => {
+      expect(detectBashFailure(`{ "error": "rate limit", "severity": "warning" }`)).toBe(false);
+    });
+
+    it('should ignore zero-error summaries', () => {
+      expect(detectBashFailure('totalErrors: 0, totalWarnings: 3')).toBe(false);
+    });
+
+    it('should still detect real stack traces and command failures', () => {
+      const output = [
+        'Error: build failed',
+        '    at runBuild (/workspace/scripts/build.mjs:12:7)',
+      ].join('\n');
+      expect(detectBashFailure(output)).toBe(true);
     });
 
     it('should return false for empty output', () => {
@@ -158,6 +225,23 @@ describe('isNonZeroExitWithOutput (issue #960)', () => {
       expect(isNonZeroExitWithOutput('some normal output')).toBe(false);
     });
 
+    it('keeps valid stdout classification when remaining lines are only non-actionable error metadata', () => {
+      const output = [
+        'Error: Exit code 8',
+        '"severity": "error"',
+        'totalErrors: 0',
+      ].join('\n');
+      expect(isNonZeroExitWithOutput(output)).toBe(false);
+    });
+
+    it('keeps quoted inert literals from being treated as real failure content', () => {
+      const output = [
+        'Error: Exit code 8',
+        `return { error: 'network', totalErrors: 0 };`,
+      ].join('\n');
+      expect(isNonZeroExitWithOutput(output)).toBe(false);
+    });
+
     it('empty string', () => {
       expect(isNonZeroExitWithOutput('')).toBe(false);
     });
@@ -170,15 +254,15 @@ describe('isNonZeroExitWithOutput (issue #960)', () => {
 });
 
 describe('detectWriteFailure', () => {
-  describe('Copilot CLI temp CWD false positives (issue #696)', () => {
+  describe('Claude Code temp CWD false positives (issue #696)', () => {
     it('should not flag macOS temp CWD permission error as a write failure', () => {
-      const output = 'zsh:1: permission denied: /var/folders/xx/yyyyyyy/T/copilot-abc123def-cwd';
+      const output = 'zsh:1: permission denied: /var/folders/xx/yyyyyyy/T/claude-abc123def-cwd';
       expect(detectWriteFailure(output)).toBe(false);
     });
 
     it('should not flag temp CWD error alongside successful write output', () => {
       const output = [
-        'zsh:1: permission denied: /var/folders/xx/yyyyy/T/copilot-abc123-cwd',
+        'zsh:1: permission denied: /var/folders/xx/yyyyy/T/claude-abc123-cwd',
         'File written successfully.',
       ].join('\n');
       expect(detectWriteFailure(output)).toBe(false);
@@ -311,3 +395,84 @@ describe('agent output summarization / truncation (issue #1373)', () => {
     expect(out.hookSpecificOutput?.additionalContext).toContain('TaskOutput clipped');
   });
 });
+
+describe('OMC_QUIET hook message suppression (issue #1646)', () => {
+  it('suppresses routine success/advice messages at OMC_QUIET=1 while keeping failures', () => {
+    const edit = runPostToolVerifier(
+      {
+        tool_name: 'Edit',
+        tool_response: 'File updated successfully',
+        session_id: 'quiet-1',
+        cwd: process.cwd(),
+      },
+      { OMC_QUIET: '1' },
+    );
+
+    expect(edit).toEqual({ continue: true, suppressOutput: true });
+
+    const grep = runPostToolVerifier(
+      {
+        tool_name: 'Grep',
+        tool_response: '0',
+        session_id: 'quiet-1',
+        cwd: process.cwd(),
+      },
+      { OMC_QUIET: '1' },
+    );
+
+    expect(grep).toEqual({ continue: true, suppressOutput: true });
+
+    const writeFailure = runPostToolVerifier(
+      {
+        tool_name: 'Write',
+        tool_response: 'Write failed: permission denied on /etc/hosts',
+        session_id: 'quiet-1',
+        cwd: process.cwd(),
+      },
+      { OMC_QUIET: '1' },
+    );
+
+    expect(writeFailure.hookSpecificOutput?.additionalContext)
+      .toContain('Write operation failed');
+  });
+
+  it('keeps important warnings at OMC_QUIET=2 but suppresses routine task summaries', () => {
+    const nonZero = runPostToolVerifier(
+      {
+        tool_name: 'Bash',
+        tool_response: 'Error: Exit code 8\nLint pass\nTest pending',
+        session_id: 'quiet-2',
+        cwd: process.cwd(),
+      },
+      { OMC_QUIET: '2' },
+    );
+
+    expect(nonZero.hookSpecificOutput?.additionalContext)
+      .toContain('produced valid output');
+
+    const taskSummary = withTempDir((tempDir) => {
+      mkdirSync(join(tempDir, '.omc', 'state'), { recursive: true });
+      writeFileSync(
+        join(tempDir, '.omc', 'state', 'subagent-tracking.json'),
+        JSON.stringify({
+          agents: [{ status: 'running', agent_type: 'oh-my-copilot:executor' }],
+          total_completed: 1,
+          total_failed: 0,
+        }),
+      );
+
+      return runPostToolVerifier(
+        {
+          tool_name: 'TaskOutput',
+          tool_response: 'Completed worker step A\nUpdated src/foo.ts\nTests: 12 passed',
+          session_id: 'quiet-2',
+          cwd: tempDir,
+        },
+        { OMC_QUIET: '2' },
+      );
+    });
+
+    expect(taskSummary).toEqual({ continue: true, suppressOutput: true });
+  });
+});
+

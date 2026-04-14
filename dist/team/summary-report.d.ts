@@ -4,7 +4,7 @@
 export declare function generateTeamReport(workingDirectory: string, teamName: string): string;
 /**
  * Write the report to disk.
- * Path: .omg/reports/team-{teamName}-{timestamp}.md
+ * Path: .omcp/reports/team-{teamName}-{timestamp}.md
  * Returns the file path.
  */
 export declare function saveTeamReport(workingDirectory: string, teamName: string): string;

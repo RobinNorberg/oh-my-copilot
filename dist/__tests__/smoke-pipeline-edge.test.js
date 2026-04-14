@@ -47,7 +47,7 @@ describe('EDGE: Pipeline Orchestrator (issue #1132)', () => {
         // Pipeline state uses getOmcRoot(worktreeRoot) — mock returns <dir>/.omc for any arg
         mockGetOmcRoot.mockImplementation((dir) => {
             const base = dir || testDir;
-            const omcDir = join(base, '.omg');
+            const omcDir = join(base, '.omcp');
             mkdirSync(omcDir, { recursive: true });
             return omcDir;
         });
@@ -204,7 +204,7 @@ describe('EDGE: Shared Memory (issue #1137)', () => {
     let testDir;
     beforeEach(() => {
         testDir = join(tmpdir(), `edge-shmem-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        const omcDir = join(testDir, '.omg');
+        const omcDir = join(testDir, '.omcp');
         mkdirSync(omcDir, { recursive: true });
         mockGetOmcRoot.mockReturnValue(omcDir);
     });

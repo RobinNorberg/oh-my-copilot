@@ -1,6 +1,6 @@
 /**
  * Validate that a config path is under the user's home directory
- * and contains a trusted subpath (Copilot config dir or ~/.omg/).
+ * and contains a trusted subpath (Copilot config dir or ~/.omcp/).
  * Resolves the path first to defeat traversal attacks like ~/foo/.copilot/../../evil.json.
  */
 export declare function validateConfigPath(configPath: string, homeDir: string, claudeConfigDir: string): boolean;

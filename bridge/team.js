@@ -675,6 +675,36 @@ var init_mcp_comm = __esm({
   }
 });
 
+// src/cli/tmux-utils.ts
+import {
+  exec,
+  execFile,
+  execFileSync,
+  execSync,
+  spawnSync
+} from "child_process";
+import { basename as basename2 } from "path";
+import { promisify } from "util";
+function tmuxEnv() {
+  const { TMUX: _, ...env } = process.env;
+  return env;
+}
+function resolveEnv(opts) {
+  return opts?.stripTmux ? tmuxEnv() : process.env;
+}
+function tmuxExec(args, opts) {
+  const { stripTmux: _, ...execOpts } = opts ?? {};
+  return execFileSync("tmux", args, { encoding: "utf-8", ...execOpts, env: resolveEnv(opts) });
+}
+var promisifiedExec, promisifiedExecFile;
+var init_tmux_utils = __esm({
+  "src/cli/tmux-utils.ts"() {
+    "use strict";
+    promisifiedExec = promisify(exec);
+    promisifiedExecFile = promisify(execFile);
+  }
+});
+
 // src/team/team-name.ts
 function validateTeamName(teamName) {
   if (!TEAM_NAME_PATTERN.test(teamName)) {
@@ -726,10 +756,10 @@ __export(tmux_session_exports, {
   validateTmux: () => validateTmux,
   waitForPaneReady: () => waitForPaneReady
 });
-import { exec, execFile, execSync, execFileSync } from "child_process";
+import { exec as exec2, execFile as execFile2, execSync as execSync2 } from "child_process";
 import { existsSync as existsSync5 } from "fs";
-import { join as join6, basename as basename2, isAbsolute as isAbsolute2, win32 } from "path";
-import { promisify } from "util";
+import { join as join6, basename as basename3, isAbsolute as isAbsolute2, win32 } from "path";
+import { promisify as promisify2 } from "util";
 import fs from "fs/promises";
 function isUnixLikeOnWindows() {
   return process.platform === "win32" && !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
@@ -737,9 +767,9 @@ function isUnixLikeOnWindows() {
 async function tmuxAsync(args) {
   if (args.some((a) => a.includes("#{"))) {
     const escaped = args.map((a) => "'" + a.replace(/'/g, "'\\''") + "'").join(" ");
-    return promisifiedExec(`tmux ${escaped}`);
+    return promisifiedExec2(`tmux ${escaped}`);
   }
-  return promisifiedExecFile("tmux", args);
+  return promisifiedExecFile2("tmux", args);
 }
 function detectTeamMultiplexerContext(env = process.env) {
   if (env.TMUX) return "tmux";
@@ -747,9 +777,9 @@ function detectTeamMultiplexerContext(env = process.env) {
   return "none";
 }
 async function applyMainVerticalLayout(teamTarget) {
-  const { execFile: execFile4 } = await import("child_process");
-  const { promisify: promisify3 } = await import("util");
-  const execFileAsync2 = promisify3(execFile4);
+  const { execFile: execFile5 } = await import("child_process");
+  const { promisify: promisify4 } = await import("util");
+  const execFileAsync2 = promisify4(execFile5);
   try {
     await execFileAsync2("tmux", ["select-layout", "-t", teamTarget, "main-vertical"]);
   } catch {
@@ -776,7 +806,7 @@ function getDefaultShell() {
     return process.env.COMSPEC || "cmd.exe";
   }
   const shell = process.env.SHELL || "/bin/bash";
-  const name = basename2(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = basename3(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
   }
@@ -786,7 +816,7 @@ function pathEntries(envPath) {
   return (envPath ?? "").split(process.platform === "win32" ? ";" : ":").map((entry) => entry.trim()).filter(Boolean);
 }
 function pathCandidateNames(candidatePath) {
-  const base = basename2(candidatePath.replace(/\\/g, "/"));
+  const base = basename3(candidatePath.replace(/\\/g, "/"));
   const bare = base.replace(/\.(exe|cmd|bat)$/i, "");
   if (process.platform === "win32") {
     return Array.from(/* @__PURE__ */ new Set([`${bare}.exe`, `${bare}.cmd`, `${bare}.bat`, bare]));
@@ -812,7 +842,7 @@ function resolveShellFromCandidates(paths, rcFile) {
 }
 function resolveSupportedShellAffinity(shellPath) {
   if (!shellPath) return null;
-  const name = basename2(shellPath.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = basename3(shellPath.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (name !== "zsh" && name !== "bash") return null;
   if (!existsSync5(shellPath)) return null;
   const home = process.env.HOME ?? "";
@@ -838,7 +868,7 @@ function escapeForCmdSet(value) {
   return value.replace(/"/g, '""');
 }
 function shellNameFromPath(shellPath) {
-  const shellName = basename2(shellPath.replace(/\\/g, "/"));
+  const shellName = basename3(shellPath.replace(/\\/g, "/"));
   return shellName.replace(/\.(exe|cmd|bat)$/i, "");
 }
 function shellEscape(value) {
@@ -939,7 +969,7 @@ function buildWorkerStartCommand(config) {
 }
 function validateTmux() {
   try {
-    execSync("tmux -V", { encoding: "utf-8", timeout: 5e3, stdio: "pipe" });
+    execSync2("tmux -V", { encoding: "utf-8", timeout: 5e3, stdio: "pipe" });
   } catch {
     throw new Error(
       "tmux is not available. Install it:\n  macOS: brew install tmux\n  Ubuntu/Debian: sudo apt-get install tmux\n  Fedora: sudo dnf install tmux\n  Arch: sudo pacman -S tmux\n  Windows: winget install psmux"
@@ -962,27 +992,27 @@ function sessionName(teamName, workerName) {
 function createSession(teamName, workerName, workingDirectory) {
   const name = sessionName(teamName, workerName);
   try {
-    execFileSync("tmux", ["kill-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
+    tmuxExec(["kill-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
   } catch {
   }
   const args = ["new-session", "-d", "-s", name, "-x", "200", "-y", "50"];
   if (workingDirectory) {
     args.push("-c", workingDirectory);
   }
-  execFileSync("tmux", args, { stdio: "pipe", timeout: 5e3 });
+  tmuxExec(args, { stdio: "pipe", timeout: 5e3 });
   return name;
 }
 function killSession(teamName, workerName) {
   const name = sessionName(teamName, workerName);
   try {
-    execFileSync("tmux", ["kill-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
+    tmuxExec(["kill-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
   } catch {
   }
 }
 function isSessionAlive(teamName, workerName) {
   const name = sessionName(teamName, workerName);
   try {
-    execFileSync("tmux", ["has-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
+    tmuxExec(["has-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
     return true;
   } catch {
     return false;
@@ -991,7 +1021,7 @@ function isSessionAlive(teamName, workerName) {
 function listActiveSessions(teamName) {
   const prefix = `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-`;
   try {
-    const output2 = execSync("tmux list-sessions -F '#{session_name}'", {
+    const output2 = execSync2("tmux list-sessions -F '#{session_name}'", {
       encoding: "utf-8",
       timeout: 5e3,
       stdio: ["pipe", "pipe", "pipe"]
@@ -1003,12 +1033,12 @@ function listActiveSessions(teamName) {
 }
 function spawnBridgeInSession(tmuxSession, bridgeScriptPath, configFilePath) {
   const cmd = `node "${bridgeScriptPath}" --config "${configFilePath}"`;
-  execFileSync("tmux", ["send-keys", "-t", tmuxSession, cmd, "Enter"], { stdio: "pipe", timeout: 5e3 });
+  tmuxExec(["send-keys", "-t", tmuxSession, cmd, "Enter"], { stdio: "pipe", timeout: 5e3 });
 }
 async function createTeamSession(teamName, workerCount, cwd, options = {}) {
-  const { execFile: execFile4 } = await import("child_process");
-  const { promisify: promisify3 } = await import("util");
-  const execFileAsync2 = promisify3(execFile4);
+  const { execFile: execFile5 } = await import("child_process");
+  const { promisify: promisify4 } = await import("util");
+  const execFileAsync2 = promisify4(execFile5);
   const muxContext = detectTeamMultiplexerContext();
   const inTmux = muxContext === "tmux";
   const useDedicatedWindow = Boolean(options.newWindow && inTmux);
@@ -1144,9 +1174,9 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
   return { sessionName: teamTarget, leaderPaneId, workerPaneIds, sessionMode };
 }
 async function spawnWorkerInPane(sessionName2, paneId, config) {
-  const { execFile: execFile4 } = await import("child_process");
-  const { promisify: promisify3 } = await import("util");
-  const execFileAsync2 = promisify3(execFile4);
+  const { execFile: execFile5 } = await import("child_process");
+  const { promisify: promisify4 } = await import("util");
+  const execFileAsync2 = promisify4(execFile5);
   validateTeamName(config.teamName);
   const startCmd = buildWorkerStartCommand(config);
   await execFileAsync2("tmux", [
@@ -1200,7 +1230,7 @@ async function waitForPaneReady(paneId, opts = {}) {
   const pollIntervalMs = Number.isFinite(opts.pollIntervalMs) && (opts.pollIntervalMs ?? 0) > 0 ? Number(opts.pollIntervalMs) : 250;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const captured = await capturePaneAsync(paneId, promisifiedExecFile);
+    const captured = await capturePaneAsync(paneId, promisifiedExecFile2);
     if (paneLooksReady(captured) && !paneHasActiveTask(captured)) {
       return true;
     }
@@ -1239,9 +1269,9 @@ async function sendToWorker(_sessionName, paneId, message) {
     return false;
   }
   try {
-    const { execFile: execFile4 } = await import("child_process");
-    const { promisify: promisify3 } = await import("util");
-    const execFileAsync2 = promisify3(execFile4);
+    const { execFile: execFile5 } = await import("child_process");
+    const { promisify: promisify4 } = await import("util");
+    const execFileAsync2 = promisify4(execFile5);
     const sleep3 = (ms) => new Promise((r) => setTimeout(r, ms));
     const sendKey = async (key) => {
       await execFileAsync2("tmux", ["send-keys", "-t", paneId, key]);
@@ -1326,9 +1356,9 @@ async function sendToWorker(_sessionName, paneId, message) {
 async function injectToLeaderPane(sessionName2, leaderPaneId, message) {
   const prefixed = `[OMC_TMUX_INJECT] ${message}`.slice(0, 500);
   try {
-    const { execFile: execFile4 } = await import("child_process");
-    const { promisify: promisify3 } = await import("util");
-    const execFileAsync2 = promisify3(execFile4);
+    const { execFile: execFile5 } = await import("child_process");
+    const { promisify: promisify4 } = await import("util");
+    const execFileAsync2 = promisify4(execFile5);
     if (await paneInCopyMode(leaderPaneId)) {
       return false;
     }
@@ -1343,9 +1373,9 @@ async function injectToLeaderPane(sessionName2, leaderPaneId, message) {
 }
 async function isWorkerAlive(paneId) {
   try {
-    const { execFile: execFile4 } = await import("child_process");
-    const { promisify: promisify3 } = await import("util");
-    const execFileAsync2 = promisify3(execFile4);
+    const { execFile: execFile5 } = await import("child_process");
+    const { promisify: promisify4 } = await import("util");
+    const execFileAsync2 = promisify4(execFile5);
     const result = await tmuxAsync([
       "display-message",
       "-t",
@@ -1367,9 +1397,9 @@ async function killWorkerPanes(opts) {
     await sleep(graceMs);
   } catch {
   }
-  const { execFile: execFile4 } = await import("child_process");
-  const { promisify: promisify3 } = await import("util");
-  const execFileAsync2 = promisify3(execFile4);
+  const { execFile: execFile5 } = await import("child_process");
+  const { promisify: promisify4 } = await import("util");
+  const execFileAsync2 = promisify4(execFile5);
   for (const paneId of paneIds) {
     if (paneId === leaderPaneId) continue;
     try {
@@ -1379,9 +1409,9 @@ async function killWorkerPanes(opts) {
   }
 }
 async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, options = {}) {
-  const { execFile: execFile4 } = await import("child_process");
-  const { promisify: promisify3 } = await import("util");
-  const execFileAsync2 = promisify3(execFile4);
+  const { execFile: execFile5 } = await import("child_process");
+  const { promisify: promisify4 } = await import("util");
+  const execFileAsync2 = promisify4(execFile5);
   const sessionMode = options.sessionMode ?? (sessionName2.includes(":") ? "split-pane" : "detached-session");
   if (sessionMode === "split-pane") {
     if (!workerPaneIds?.length) return;
@@ -1436,9 +1466,9 @@ async function resolveSplitPaneWorkerPaneIds(sessionName2, configPaneIds, leader
   const deduped = dedupeWorkerPaneIds(configPaneIds);
   if (!sessionName2 || deduped.length === 0) return deduped;
   try {
-    const { execFile: execFile4 } = await import("child_process");
-    const { promisify: promisify3 } = await import("util");
-    const execFileAsync2 = promisify3(execFile4);
+    const { execFile: execFile5 } = await import("child_process");
+    const { promisify: promisify4 } = await import("util");
+    const execFileAsync2 = promisify4(execFile5);
     const target = sessionName2.includes(":") ? sessionName2 : sessionName2.split(":")[0];
     const result = await execFileAsync2("tmux", [
       "list-panes",
@@ -1458,15 +1488,16 @@ async function resolveSplitPaneWorkerPaneIds(sessionName2, configPaneIds, leader
     return deduped;
   }
 }
-var sleep, TMUX_SESSION_PREFIX, promisifiedExec, promisifiedExecFile, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
+var sleep, TMUX_SESSION_PREFIX, promisifiedExec2, promisifiedExecFile2, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
+    init_tmux_utils();
     init_team_name();
     sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-    TMUX_SESSION_PREFIX = "omc-team";
-    promisifiedExec = promisify(exec);
-    promisifiedExecFile = promisify(execFile);
+    TMUX_SESSION_PREFIX = "omcp-team";
+    promisifiedExec2 = promisify2(exec2);
+    promisifiedExecFile2 = promisify2(execFile2);
     SUPPORTED_POSIX_SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "fish", "ksh"]);
     ZSH_CANDIDATES = ["/bin/zsh", "/usr/bin/zsh", "/usr/local/bin/zsh", "/opt/homebrew/bin/zsh"];
     BASH_CANDIDATES = ["/bin/bash", "/usr/bin/bash"];
@@ -1476,7 +1507,7 @@ var init_tmux_session = __esm({
 
 // src/agents/utils.ts
 import { readFileSync } from "fs";
-import { join as join7, dirname as dirname4, basename as basename3, resolve as resolve2, relative as relative2, isAbsolute as isAbsolute3 } from "path";
+import { join as join7, dirname as dirname4, basename as basename4, resolve as resolve2, relative as relative2, isAbsolute as isAbsolute3 } from "path";
 import { fileURLToPath } from "url";
 var init_utils = __esm({
   "src/agents/utils.ts"() {
@@ -1513,12 +1544,12 @@ var init_strict_mode_guidance = __esm({
 
 // src/agents/prompt-helpers.ts
 import { readdirSync } from "fs";
-import { join as join10, dirname as dirname5, basename as basename4 } from "path";
+import { join as join10, dirname as dirname5, basename as basename5 } from "path";
 import { fileURLToPath as fileURLToPath2 } from "url";
 function getPackageDir() {
   if (typeof __dirname !== "undefined" && __dirname) {
-    const currentDirName = basename4(__dirname);
-    const parentDirName = basename4(dirname5(__dirname));
+    const currentDirName = basename5(__dirname);
+    const parentDirName = basename5(dirname5(__dirname));
     if (currentDirName === "bridge") {
       return join10(__dirname, "..");
     }
@@ -1546,7 +1577,7 @@ function getValidAgentRoles() {
   try {
     const agentsDir = join10(getPackageDir(), "agents");
     const files = readdirSync(agentsDir);
-    _cachedRoles = files.filter((f) => f.endsWith(".md") && f !== "AGENTS.md").map((f) => basename4(f, ".md").replace(/\.agent$/, "")).sort();
+    _cachedRoles = files.filter((f) => f.endsWith(".md") && f !== "AGENTS.md").map((f) => basename5(f, ".md").replace(/\.agent$/, "")).sort();
   } catch (err) {
     console.error("[prompt-injection] CRITICAL: Could not scan agents/ directory for role discovery:", err);
     _cachedRoles = [];
@@ -1771,7 +1802,7 @@ var init_security_config = __esm({
 });
 
 // src/team/model-contract.ts
-import { spawnSync } from "child_process";
+import { spawnSync as spawnSync2 } from "child_process";
 import { isAbsolute as isAbsolute4, normalize as normalize2, win32 as win32Path } from "path";
 function getTrustedPrefixes() {
   const trusted = [
@@ -1803,7 +1834,7 @@ function resolveCliBinaryPath(binary) {
   const cached = resolvedPathCache.get(binary);
   if (cached) return cached;
   const finder = process.platform === "win32" ? "where" : "which";
-  const result = spawnSync(finder, [binary], {
+  const result = spawnSync2(finder, [binary], {
     timeout: 5e3,
     env: process.env
   });
@@ -1850,7 +1881,7 @@ function resolveBinaryPath(binary) {
   if (isAbsolute4(binary)) return binary;
   try {
     const resolver = process.platform === "win32" ? "where" : "which";
-    const result = spawnSync(resolver, [binary], { timeout: 5e3, encoding: "utf8" });
+    const result = spawnSync2(resolver, [binary], { timeout: 5e3, encoding: "utf8" });
     if (result.status !== 0) return binary;
     const lines = result.stdout?.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) ?? [];
     const firstPath = lines[0];
@@ -2713,8 +2744,8 @@ var init_atomic_write = __esm({
 });
 
 // src/platform/process-utils.ts
-import { execSync as execSync2, execFile as execFile2 } from "child_process";
-import { promisify as promisify2 } from "util";
+import { execSync as execSync3, execFile as execFile3 } from "child_process";
+import { promisify as promisify3 } from "util";
 import * as fsPromises from "fs/promises";
 function isProcessAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -2732,7 +2763,7 @@ var execFileAsync;
 var init_process_utils = __esm({
   "src/platform/process-utils.ts"() {
     "use strict";
-    execFileAsync = promisify2(execFile2);
+    execFileAsync = promisify3(execFile3);
   }
 });
 
@@ -3007,10 +3038,10 @@ var init_git_worktree = __esm({
 });
 
 // src/utils/omc-cli-rendering.ts
-import { spawnSync as spawnSync2 } from "child_process";
+import { spawnSync as spawnSync3 } from "child_process";
 function commandExists(command, env) {
   const lookupCommand = process.platform === "win32" ? "where" : "which";
-  const result = spawnSync2(lookupCommand, [command], {
+  const result = spawnSync3(lookupCommand, [command], {
     stdio: "ignore",
     env
   });
@@ -3066,7 +3097,7 @@ __export(runtime_v2_exports, {
   startTeamV2: () => startTeamV2,
   writeWatchdogFailedMarker: () => writeWatchdogFailedMarker
 });
-import { execFile as execFile3 } from "child_process";
+import { execFile as execFile4 } from "child_process";
 import { join as join16, resolve as resolve3 } from "path";
 import { existsSync as existsSync13 } from "fs";
 import { mkdir as mkdir6, readdir as readdir3, readFile as readFile8, writeFile as writeFile4 } from "fs/promises";
@@ -3094,7 +3125,7 @@ async function isWorkerPaneAlive(paneId) {
 async function captureWorkerPane(paneId) {
   if (!paneId) return "";
   return await new Promise((resolve4) => {
-    execFile3("tmux", ["capture-pane", "-t", paneId, "-p", "-S", "-80"], (err, stdout) => {
+    execFile4("tmux", ["capture-pane", "-t", paneId, "-p", "-S", "-80"], (err, stdout) => {
       if (err) resolve4("");
       else resolve4(stdout ?? "");
     });
@@ -3200,9 +3231,9 @@ async function waitForWorkerStartupEvidence(teamName, workerName, taskId, cwd, a
   return false;
 }
 async function spawnV2Worker(opts) {
-  const { execFile: execFile4 } = await import("child_process");
-  const { promisify: promisify3 } = await import("util");
-  const execFileAsync2 = promisify3(execFile4);
+  const { execFile: execFile5 } = await import("child_process");
+  const { promisify: promisify4 } = await import("util");
+  const execFileAsync2 = promisify4(execFile5);
   const splitTarget = opts.existingWorkerPaneIds.length === 0 ? opts.leaderPaneId : opts.existingWorkerPaneIds[opts.existingWorkerPaneIds.length - 1];
   const splitType = opts.existingWorkerPaneIds.length === 0 ? "-h" : "-v";
   const splitResult = await execFileAsync2("tmux", [
@@ -3902,9 +3933,9 @@ async function resumeTeamV2(teamName, cwd) {
   const config = await readTeamConfig(sanitized, cwd);
   if (!config) return null;
   try {
-    const { execFile: execFile4 } = await import("child_process");
-    const { promisify: promisify3 } = await import("util");
-    const execFileAsync2 = promisify3(execFile4);
+    const { execFile: execFile5 } = await import("child_process");
+    const { promisify: promisify4 } = await import("util");
+    const execFileAsync2 = promisify4(execFile5);
     const sessionName2 = config.tmux_session || `omcp-team-${sanitized}`;
     await execFileAsync2("tmux", ["has-session", "-t", sessionName2.split(":")[0]]);
     return {
@@ -5475,9 +5506,9 @@ async function resumeTeam(teamName, cwd) {
   const root = stateRoot(cwd, teamName);
   const configData = await readJsonSafe3(join19(root, "config.json"));
   if (!configData) return null;
-  const { execFile: execFile4 } = await import("child_process");
-  const { promisify: promisify3 } = await import("util");
-  const execFileAsync2 = promisify3(execFile4);
+  const { execFile: execFile5 } = await import("child_process");
+  const { promisify: promisify4 } = await import("util");
+  const execFileAsync2 = promisify4(execFile5);
   const sName = configData.tmuxSession || `omcp-team-${teamName}`;
   try {
     await execFileAsync2("tmux", ["has-session", "-t", sName.split(":")[0]]);

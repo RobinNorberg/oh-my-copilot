@@ -170,7 +170,7 @@ describe('summary-report', () => {
             const filePath = saveTeamReport(testDir, teamName);
             expect(existsSync(filePath)).toBe(true);
             // Normalize separators for cross-platform path assertion
-            expect(filePath.split('\\').join('/')).toContain('.omg/reports/');
+            expect(filePath.split('\\').join('/')).toContain('.omcp/reports/');
             expect(filePath).toContain(teamName);
             if (process.platform !== 'win32') {
                 const stat = statSync(filePath);

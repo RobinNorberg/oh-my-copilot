@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { recordTaskCompletionUsage } from '../mcp-team-bridge.js';
 describe('mcp-team-bridge usage recording', () => {
     it('records usage on task completion', () => {
-        const workingDirectory = mkdtempSync(join(tmpdir(), 'omc-team-usage-'));
+        const workingDirectory = mkdtempSync(join(tmpdir(), 'omcp-team-usage-'));
         const promptFile = join(workingDirectory, 'prompt.md');
         const outputFile = join(workingDirectory, 'output.md');
         writeFileSync(promptFile, 'prompt content', 'utf-8');
@@ -32,7 +32,7 @@ describe('mcp-team-bridge usage recording', () => {
             startedAt: Date.now() - 200,
             startedAtIso: new Date(Date.now() - 200).toISOString(),
         });
-        const logPath = join(workingDirectory, '.omg', 'logs', 'team-usage-usage-team.jsonl');
+        const logPath = join(workingDirectory, '.omcp', 'logs', 'team-usage-usage-team.jsonl');
         const content = readFileSync(logPath, 'utf-8').trim();
         const record = JSON.parse(content);
         expect(record.taskId).toBe('1');

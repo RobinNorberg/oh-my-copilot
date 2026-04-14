@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'path';
 import { readModeState, writeModeState, } from '../lib/mode-state-io.js';
 import { parseEvaluatorResult, } from './contracts.js';
 const AUTORESEARCH_RESULTS_HEADER = 'iteration\tcommit\tpass\tscore\tstatus\tdescription\n';
-const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omc/'];
+const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omcp/'];
 // Exclusive modes that cannot run concurrently with autoresearch
 const EXCLUSIVE_MODES = ['ralph', 'ultrawork', 'autopilot', 'autoresearch'];
 function nowIso() {
@@ -22,7 +22,7 @@ function buildRunId(missionSlug, runTag) {
     return `${missionSlug}-${runTag.toLowerCase()}`;
 }
 function activeRunStateFile(projectRoot) {
-    return join(projectRoot, '.omc', 'state', 'autoresearch-state.json');
+    return join(projectRoot, '.omcp', 'state', 'autoresearch-state.json');
 }
 function trimContent(value, max = 4000) {
     const trimmed = value.trim();
@@ -557,7 +557,7 @@ export async function materializeAutoresearchMissionToWorktree(contract, worktre
     };
 }
 export async function loadAutoresearchRunManifest(projectRoot, runId) {
-    const manifestFile = join(projectRoot, '.omc', 'logs', 'autoresearch', runId, 'manifest.json');
+    const manifestFile = join(projectRoot, '.omcp', 'logs', 'autoresearch', runId, 'manifest.json');
     if (!existsSync(manifestFile)) {
         throw new Error(`autoresearch_resume_manifest_missing:${runId}`);
     }
@@ -622,7 +622,7 @@ export async function prepareAutoresearchRuntime(contract, projectRoot, worktree
     const runId = buildRunId(contract.missionSlug, runTag);
     const baselineCommit = readGitShortHead(worktreePath);
     const branchName = readGit(worktreePath, ['symbolic-ref', '--quiet', '--short', 'HEAD']);
-    const runDir = join(projectRoot, '.omc', 'logs', 'autoresearch', runId);
+    const runDir = join(projectRoot, '.omcp', 'logs', 'autoresearch', runId);
     const stateFile = activeRunStateFile(projectRoot);
     const instructionsFile = join(runDir, 'bootstrap-instructions.md');
     const manifestFile = join(runDir, 'manifest.json');

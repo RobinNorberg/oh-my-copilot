@@ -80,9 +80,14 @@ function writeAdvisorStub(dir) {
     const stubPath = join(dir, 'advisor-stub.js');
     writeFileSync(stubPath, [
         '#!/usr/bin/env node',
+        "import { readFileSync } from 'fs';",
+        '// Read prompt from temp file (new protocol) or fall back to argv (legacy/wrapper)',
+        'let prompt = process.argv[3] ?? null;',
+        'const promptFile = process.env.OMC_ASK_PROMPT_FILE;',
+        'if (promptFile) { try { prompt = readFileSync(promptFile, "utf-8").trim(); } catch {} }',
         'const payload = {',
         '  provider: process.argv[2],',
-        '  prompt: process.argv[3],',
+        '  prompt,',
         '  originalTask: process.env.OMC_ASK_ORIGINAL_TASK ?? null,',
         '  passthrough: process.env.ASK_WRAPPER_TOKEN ?? null,',
         '};',
@@ -247,7 +252,7 @@ describe('parseAskArgs', () => {
         expect(() => parseAskArgs(['openai', 'hi'])).toThrow(/Invalid provider/i);
     });
 });
-describe('omc ask command', () => {
+describe('omcp ask command', () => {
     it('accepts canonical advisor env and forwards prompt/task to advisor', () => {
         const wd = mkdtempSync(join(tmpdir(), 'omc-ask-canonical-'));
         try {
@@ -335,7 +340,7 @@ describe('omc ask command', () => {
 });
 const PATH_SEP = process.platform === 'win32' ? ';' : ':';
 describe('run-provider-advisor script contract', () => {
-    it('writes artifact to .omg/artifacts/ask/{provider}-{slug}-{timestamp}.md', () => {
+    it('writes artifact to .omcp/artifacts/ask/{provider}-{slug}-{timestamp}.md', () => {
         const wd = mkdtempSync(join(tmpdir(), 'omc-ask-artifact-'));
         try {
             const binDir = writeFakeProviderBinary(wd, 'claude');
@@ -344,7 +349,7 @@ describe('run-provider-advisor script contract', () => {
             expect(result.error).toBeUndefined();
             expect(result.status).toBe(0);
             const artifactPath = result.stdout.trim();
-            expect(artifactPath).toContain(join('.omg', 'artifacts', 'ask', 'claude-artifact-contract-'));
+            expect(artifactPath).toContain(join('.omcp', 'artifacts', 'ask', 'claude-artifact-contract-'));
             expect(existsSync(artifactPath)).toBe(true);
             const artifact = readFileSync(artifactPath, 'utf8');
             expect(artifact).toContain('FAKE_PROVIDER_OK:artifact-contract');

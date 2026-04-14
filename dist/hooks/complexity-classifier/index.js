@@ -5,7 +5,7 @@
  * When heuristics are inconclusive (returns null), the orchestrating agent should
  * spawn an explore agent (haiku) for AI-based assessment.
  *
- * Complexity result is stored in .omc/state/sessions/{sessionId}/complexity.json
+ * Complexity result is stored in .omcp/state/sessions/{sessionId}/complexity.json
  */
 import { SIMPLE_PATTERNS, COMPLEX_PATTERNS, WORD_COUNT_THRESHOLDS, DEFAULT_COMPLEXITY_MODEL } from './patterns.js';
 import { writeModeState, readModeState } from '../../lib/mode-state-io.js';

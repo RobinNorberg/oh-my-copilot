@@ -10,13 +10,13 @@ describe('Skill Finder', () => {
     beforeEach(() => {
         testDir = join(tmpdir(), `skill-test-${Date.now()}`);
         projectRoot = join(testDir, 'project');
-        mkdirSync(join(projectRoot, '.omg', 'skills'), { recursive: true });
+        mkdirSync(join(projectRoot, '.omcp', 'skills'), { recursive: true });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
     });
     it('should find project-level skills', () => {
-        const skillPath = join(projectRoot, '.omg', 'skills', 'test-skill.md');
+        const skillPath = join(projectRoot, '.omcp', 'skills', 'test-skill.md');
         writeFileSync(skillPath, '# Test Skill');
         const candidates = findSkillFiles(projectRoot);
         const projectCandidates = candidates.filter(c => c.scope === 'project');
@@ -27,7 +27,7 @@ describe('Skill Finder', () => {
     });
     it('should prioritize project skills over user skills', () => {
         // Create project skill
-        const projectSkillPath = join(projectRoot, '.omg', 'skills', 'skill.md');
+        const projectSkillPath = join(projectRoot, '.omcp', 'skills', 'skill.md');
         writeFileSync(projectSkillPath, '# Project Skill');
         const candidates = findSkillFiles(projectRoot);
         // Project skill should come first
@@ -48,7 +48,7 @@ describe('Skill Finder', () => {
     });
     it('should get skills directory for project scope', () => {
         const projectDir = getSkillsDir('project', projectRoot);
-        expect(projectDir).toContain('.omg');
+        expect(projectDir).toContain('.omcp');
         expect(projectDir).toContain('skills');
     });
     it('should throw for project scope without root', () => {
@@ -59,22 +59,22 @@ describe('Skill Finder', () => {
         expect(result).toBe(true);
     });
     it('should populate sourceDir for project skills', () => {
-        const skillPath = join(projectRoot, '.omg', 'skills', 'test-skill.md');
+        const skillPath = join(projectRoot, '.omcp', 'skills', 'test-skill.md');
         writeFileSync(skillPath, '# Test Skill');
         const candidates = findSkillFiles(projectRoot);
         const projectCandidate = candidates.find(c => c.scope === 'project');
         expect(projectCandidate).toBeDefined();
-        expect(projectCandidate.sourceDir).toBe(join(projectRoot, '.omg', 'skills'));
+        expect(projectCandidate.sourceDir).toBe(join(projectRoot, '.omcp', 'skills'));
     });
     it('should filter by scope: project only', () => {
-        const skillPath = join(projectRoot, '.omg', 'skills', 'test-skill.md');
+        const skillPath = join(projectRoot, '.omcp', 'skills', 'test-skill.md');
         writeFileSync(skillPath, '# Test Skill');
         const candidates = findSkillFiles(projectRoot, { scope: 'project' });
         expect(candidates.every(c => c.scope === 'project')).toBe(true);
         expect(candidates.length).toBeGreaterThanOrEqual(1);
     });
     it('should filter by scope: user only', () => {
-        const skillPath = join(projectRoot, '.omg', 'skills', 'test-skill.md');
+        const skillPath = join(projectRoot, '.omcp', 'skills', 'test-skill.md');
         writeFileSync(skillPath, '# Test Skill');
         const candidates = findSkillFiles(projectRoot, { scope: 'user' });
         // Should NOT include the project skill
@@ -83,7 +83,7 @@ describe('Skill Finder', () => {
     });
     it('should respect depth limit for deep directories', () => {
         // Create a deeply nested directory structure (15 levels)
-        let deepDir = join(projectRoot, '.omg', 'skills');
+        let deepDir = join(projectRoot, '.omcp', 'skills');
         for (let i = 0; i < 15; i++) {
             deepDir = join(deepDir, `level-${i}`);
             mkdirSync(deepDir, { recursive: true });
@@ -101,7 +101,7 @@ describe('Skill Finder', () => {
     it('should construct PROJECT_SKILLS_SUBDIR with path.join', () => {
         // Normalize separators for cross-platform comparison
         const normalize = (p) => p.split('\\').join('/');
-        expect(normalize(PROJECT_SKILLS_SUBDIR)).toBe(normalize(join('.omg', 'skills')));
+        expect(normalize(PROJECT_SKILLS_SUBDIR)).toBe(normalize(join('.omcp', 'skills')));
     });
 });
 //# sourceMappingURL=finder.test.js.map

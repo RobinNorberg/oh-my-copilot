@@ -139,7 +139,7 @@ async function main() {
     }
     const { teamName, agentTypes, tasks, cwd, newWindow = false, pollIntervalMs = 5000, sentinelGateTimeoutMs = 30_000, sentinelGatePollIntervalMs = 250, } = input;
     const workerCount = input.workerCount ?? agentTypes.length;
-    const stateRoot = join(cwd, `.omg/state/team/${teamName}`);
+    const stateRoot = join(cwd, `.omcp/state/team/${teamName}`);
     const config = {
         teamName,
         workerCount,

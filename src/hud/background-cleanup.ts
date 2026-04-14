@@ -28,9 +28,10 @@ function getTaskStartMs(task: BackgroundTask): number {
  */
 export async function cleanupStaleBackgroundTasks(
   thresholdMs: number = STALE_TASK_THRESHOLD_MS,
-  directory?: string
+  directory?: string,
+  sessionId?: string
 ): Promise<number> {
-  const state = readHudState(directory);
+  const state = readHudState(directory, sessionId);
 
   if (!state || !state.backgroundTasks) {
     return 0;
@@ -92,7 +93,7 @@ export async function cleanupStaleBackgroundTasks(
 
   if (removedCount > 0 || statusChanged) {
     state.timestamp = new Date().toISOString();
-    writeHudState(state, directory);
+    writeHudState(state, directory, sessionId);
   }
 
   return removedCount;
@@ -104,8 +105,11 @@ export async function cleanupStaleBackgroundTasks(
  *
  * @returns Array of orphaned tasks
  */
-export async function detectOrphanedTasks(directory?: string): Promise<BackgroundTask[]> {
-  const state = readHudState(directory);
+export async function detectOrphanedTasks(
+  directory?: string,
+  sessionId?: string,
+): Promise<BackgroundTask[]> {
+  const state = readHudState(directory, sessionId);
 
   if (!state || !state.backgroundTasks) {
     return [];
@@ -136,14 +140,17 @@ export async function detectOrphanedTasks(directory?: string): Promise<Backgroun
  *
  * @returns Number of tasks marked
  */
-export async function markOrphanedTasksAsStale(directory?: string): Promise<number> {
-  const state = readHudState(directory);
+export async function markOrphanedTasksAsStale(
+  directory?: string,
+  sessionId?: string,
+): Promise<number> {
+  const state = readHudState(directory, sessionId);
 
   if (!state || !state.backgroundTasks) {
     return 0;
   }
 
-  const orphaned = await detectOrphanedTasks(directory);
+  const orphaned = await detectOrphanedTasks(directory, sessionId);
   let marked = 0;
 
   for (const orphanedTask of orphaned) {
@@ -155,7 +162,7 @@ export async function markOrphanedTasksAsStale(directory?: string): Promise<numb
   }
 
   if (marked > 0) {
-    writeHudState(state, directory);
+    writeHudState(state, directory, sessionId);
   }
 
   return marked;

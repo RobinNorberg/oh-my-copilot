@@ -3,7 +3,7 @@
  * Git worktree manager for team worker isolation.
  *
  * Each MCP worker gets its own git worktree at:
- *   {repoRoot}/.omg/worktrees/{team}/{worker}
+ *   {repoRoot}/.omcp/worktrees/{team}/{worker}
  * Branch naming: omc-team/{teamName}/{workerName}
  */
 import { existsSync, readFileSync } from 'node:fs';
@@ -14,7 +14,7 @@ import { sanitizeName } from './tmux-session.js';
 import { withFileLockSync } from '../lib/file-lock.js';
 /** Get worktree path for a worker */
 function getWorktreePath(repoRoot, teamName, workerName) {
-    return join(repoRoot, '.omg', 'worktrees', sanitizeName(teamName), sanitizeName(workerName));
+    return join(repoRoot, '.omcp', 'worktrees', sanitizeName(teamName), sanitizeName(workerName));
 }
 /** Get branch name for a worker */
 function getBranchName(teamName, workerName) {
@@ -22,7 +22,7 @@ function getBranchName(teamName, workerName) {
 }
 /** Get worktree metadata path */
 function getMetadataPath(repoRoot, teamName) {
-    return join(repoRoot, '.omg', 'state', 'team-bridge', sanitizeName(teamName), 'worktrees.json');
+    return join(repoRoot, '.omcp', 'state', 'team-bridge', sanitizeName(teamName), 'worktrees.json');
 }
 /** Read worktree metadata */
 function readMetadata(repoRoot, teamName) {
@@ -43,13 +43,13 @@ function readMetadata(repoRoot, teamName) {
 function writeMetadata(repoRoot, teamName, entries) {
     const metaPath = getMetadataPath(repoRoot, teamName);
     validateResolvedPath(metaPath, repoRoot);
-    const dir = join(repoRoot, '.omg', 'state', 'team-bridge', sanitizeName(teamName));
+    const dir = join(repoRoot, '.omcp', 'state', 'team-bridge', sanitizeName(teamName));
     ensureDirWithMode(dir);
     atomicWriteJson(metaPath, entries);
 }
 /**
  * Create a git worktree for a team worker.
- * Path: {repoRoot}/.omg/worktrees/{team}/{worker}
+ * Path: {repoRoot}/.omcp/worktrees/{team}/{worker}
  * Branch: omc-team/{teamName}/{workerName}
  */
 export function createWorkerWorktree(teamName, workerName, repoRoot, baseBranch) {
@@ -74,7 +74,7 @@ export function createWorkerWorktree(teamName, workerName, repoRoot, baseBranch)
     }
     catch { /* branch doesn't exist, fine */ }
     // Create worktree directory
-    const wtDir = join(repoRoot, '.omg', 'worktrees', sanitizeName(teamName));
+    const wtDir = join(repoRoot, '.omcp', 'worktrees', sanitizeName(teamName));
     ensureDirWithMode(wtDir);
     // Create worktree with new branch
     const args = ['worktree', 'add', '-b', branch, wtPath];

@@ -5,7 +5,7 @@
  * (task completions, failures, worker state changes, shutdown gates)
  * are recorded as structured events for observability and replay.
  *
- * Events are appended to: .omg/state/team/{teamName}/events.jsonl
+ * Events are appended to: .omcp/state/team/{teamName}/events.jsonl
  */
 import type { TeamEventType } from './contracts.js';
 import type { TeamEvent } from './types.js';

@@ -293,7 +293,7 @@ export const stateClearTool = {
                 if (MODE_CONFIGS[mode]) {
                     const success = clearModeState(mode, root, sessionId);
                     // Ghost-legacy cleanup: after clearing session file, also remove
-                    // any legacy file at .omg/state/{mode}-state.json if it belongs
+                    // any legacy file at .omcp/state/{mode}-state.json if it belongs
                     // to this session (matching _meta.sessionId) or has no _meta block.
                     let ghostCleaned = false;
                     try {

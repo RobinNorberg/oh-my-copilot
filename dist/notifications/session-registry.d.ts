@@ -5,7 +5,7 @@
  * Uses JSONL append format for atomic writes, following the pattern from
  * session-replay.ts with secure file permissions from daemon.ts.
  *
- * Registry location: XDG-aware global OMC state (legacy ~/.omg/state fallback for reads)
+ * Registry location: XDG-aware global OMC state (legacy ~/.omcp/state fallback for reads)
  * File permissions: 0600 (owner read/write only)
  */
 export interface SessionMapping {

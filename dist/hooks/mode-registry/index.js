@@ -6,7 +6,7 @@
  *
  * Mode modules import FROM this registry (unidirectional).
  *
- * All modes store state in `.omg/state/` subdirectory for consistency.
+ * All modes store state in `.omcp/state/` subdirectory for consistency.
  */
 import { existsSync, readFileSync, unlinkSync, mkdirSync, readdirSync, statSync, rmdirSync, rmSync, } from "fs";
 import { atomicWriteJsonSync } from "../../lib/atomic-write.js";
@@ -17,7 +17,7 @@ import { MODE_STATE_FILE_MAP, MODE_NAMES } from "../../lib/mode-names.js";
  * Mode configuration registry
  *
  * Maps each mode to its state file location and detection method.
- * All paths are relative to .omg/state/ directory.
+ * All paths are relative to .omcp/state/ directory.
  */
 const MODE_CONFIGS = {
     [MODE_NAMES.AUTOPILOT]: {
@@ -90,7 +90,7 @@ export function getMarkerFilePath(cwd, mode) {
 }
 /**
  * Get the global state file path (in ~/.copilot/) for modes that support it
- * @deprecated Global state is no longer supported. All modes use local-only state in .omg/state/
+ * @deprecated Global state is no longer supported. All modes use local-only state in .omcp/state/
  * @returns Always returns null
  */
 export function getGlobalStateFilePath(_mode) {
@@ -240,7 +240,7 @@ export function getAllModeStatuses(cwd, sessionId) {
  * Clear all state files for a mode
  *
  * Deletes:
- * - Local state file (.omg/state/{mode}-state.json)
+ * - Local state file (.omcp/state/{mode}-state.json)
  * - Session-scoped state file if sessionId provided
  * - Local marker file if applicable
  * - Global state file if applicable (~/.copilot/{mode}-state.json)

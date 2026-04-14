@@ -60,6 +60,14 @@ export interface StaleBridgeCleanupResult {
   errors: string[];
 }
 
+const ownedBridgeSessionIds = new Set<string>();
+
+export function trackOwnedBridgeSession(sessionId: string): void {
+  if (sessionId) {
+    ownedBridgeSessionIds.add(sessionId);
+  }
+}
+
 // =============================================================================
 // BRIDGE PATH RESOLUTION
 // =============================================================================
@@ -73,7 +81,15 @@ export interface StaleBridgeCleanupResult {
 function getBridgeScriptPath(): string {
   // Check for OMC_BRIDGE_SCRIPT environment variable first (set by MCP server context)
   if (process.env.OMC_BRIDGE_SCRIPT) {
-    return process.env.OMC_BRIDGE_SCRIPT;
+    const override = path.resolve(process.env.OMC_BRIDGE_SCRIPT);
+    const overrideBasename = path.basename(override);
+    if (overrideBasename !== 'gyoshu_bridge.py') {
+      throw new Error(`OMC_BRIDGE_SCRIPT must point to gyoshu_bridge.py, got: ${overrideBasename}`);
+    }
+    if (!fs.existsSync(override)) {
+      throw new Error(`OMC_BRIDGE_SCRIPT file not found: ${override}`);
+    }
+    return override;
   }
 
   let moduleDir: string;
@@ -142,6 +158,7 @@ async function ensurePythonEnvironment(projectRoot: string): Promise<PythonEnvIn
   // Fallback: try system python3
   try {
     await execFileAsync('python3', ['--version']);
+    // type is 'venv' because PythonEnvInfo only supports 'venv'; this is a system fallback
     return { pythonPath: 'python3', type: 'venv' };
   } catch {
     // python3 not available
@@ -456,8 +473,12 @@ export async function spawnBridgeServer(
     effectiveSocketPath = `tcp:${port}`;
   }
 
+  if (proc.pid === undefined) {
+    throw new Error('Bridge process failed to spawn: pid is undefined');
+  }
+
   const meta: BridgeMeta = {
-    pid: proc.pid!,
+    pid: proc.pid,
     socketPath: effectiveSocketPath,
     startedAt: new Date().toISOString(),
     sessionId,
@@ -468,6 +489,7 @@ export async function spawnBridgeServer(
   // Persist metadata
   const metaPath = getBridgeMetaPath(sessionId);
   await atomicWriteJson(metaPath, meta);
+  trackOwnedBridgeSession(sessionId);
 
   return meta;
 }
@@ -566,18 +588,21 @@ export async function killBridgeWithEscalation(
   const meta = await safeReadJson<BridgeMeta>(metaPath);
 
   if (!meta || !isValidBridgeMeta(meta)) {
+    ownedBridgeSessionIds.delete(sessionId);
     return { terminated: true }; // Already dead or no metadata
   }
 
   // Anti-poisoning check
   if (meta.sessionId !== sessionId) {
     await deleteBridgeMeta(sessionId);
+    ownedBridgeSessionIds.delete(sessionId);
     return { terminated: true };
   }
 
   // Verify we're killing the right process
   if (!(await verifyProcessIdentity(meta))) {
     await deleteBridgeMeta(sessionId);
+    ownedBridgeSessionIds.delete(sessionId);
     return { terminated: true }; // Process already dead or PID reused
   }
 
@@ -614,6 +639,7 @@ export async function killBridgeWithEscalation(
 
   // Cleanup
   await deleteBridgeMeta(sessionId);
+  ownedBridgeSessionIds.delete(sessionId);
 
   const sessionDir = getSessionDir(sessionId);
   const socketPath = meta.socketPath;
@@ -648,6 +674,7 @@ export async function cleanupBridgeSessions(
 
   for (const sessionId of uniqueSessionIds) {
     try {
+      ownedBridgeSessionIds.delete(sessionId);
       const metaPath = getBridgeMetaPath(sessionId);
       const socketPath = getBridgeSocketPath(sessionId);
       const portPath = getBridgePortPath(sessionId);
@@ -681,6 +708,12 @@ export async function cleanupBridgeSessions(
   }
 
   return result;
+}
+
+export async function cleanupOwnedBridgeSessions(): Promise<BridgeSessionCleanupResult> {
+  const ownedSessions = [...ownedBridgeSessionIds];
+  ownedBridgeSessionIds.clear();
+  return cleanupBridgeSessions(ownedSessions);
 }
 
 /**
@@ -718,6 +751,9 @@ export async function cleanupStaleBridges(): Promise<StaleBridgeCleanupResult> {
     }
 
     const sessionDir = path.join(runtimeDir, entry.name);
+    // Paths are constructed directly here instead of using getBridgeMetaPath/etc
+    // because entry.name is the short hash from the directory listing, not the
+    // original sessionId that the path helpers expect.
     const metaPath = path.join(sessionDir, 'bridge_meta.json');
     const socketPath = path.join(sessionDir, 'bridge.sock');
     const portPath = path.join(sessionDir, 'bridge.port');

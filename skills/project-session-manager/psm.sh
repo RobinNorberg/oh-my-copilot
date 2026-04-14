@@ -78,14 +78,14 @@ Commands:
   status                 Show current session info
 
 Reference formats:
-  "omc#123               Project alias + number
+  omc#123               Project alias + number
   owner/repo#123        Full GitHub reference
   https://...           GitHub URL
   #123                  Number only (uses current repo)
 
 Examples:
-  psm review "omc#123
-  psm fix RobinNorberg/oh-my-copilot#42
+  psm review omc#123
+  psm fix Yeachan-Heo/oh-my-copilot#42
   psm feature omc add-webhooks
   psm list
   psm attach omc:pr-123
@@ -145,6 +145,8 @@ cmd_review() {
     local head_branch=$(echo "$pr_info" | jq -r '.headRefName')
     local base_branch=$(echo "$pr_info" | jq -r '.baseRefName')
     local pr_url=$(echo "$pr_info" | jq -r '.url')
+    local pr_body=$(echo "$pr_info" | jq -r '.body // ""')
+    local changed_files=$(echo "$pr_info" | jq -r '.files[]?.path // empty' 2>/dev/null | head -50 || true)
 
     log_info "PR: #${pr_number} - ${pr_title}"
     log_info "Author: @${pr_author}"
@@ -190,6 +192,24 @@ cmd_review() {
 
     log_success "Worktree created at $worktree_path"
 
+    # Render PR review context file into the worktree so Claude starts with full task context
+    local context_rel=".psm/review.md"
+    local context_file="${worktree_path}/${context_rel}"
+    mkdir -p "$(dirname "$context_file")"
+    if ! psm_render_template "$SCRIPT_DIR/templates/pr-review.md" \
+            "PR_NUMBER=${pr_number}" \
+            "PR_TITLE=${pr_title}" \
+            "PR_AUTHOR=${pr_author}" \
+            "PR_URL=${pr_url}" \
+            "HEAD_BRANCH=${head_branch}" \
+            "BASE_BRANCH=${base_branch}" \
+            "PR_BODY=${pr_body}" \
+            "CHANGED_FILES=${changed_files}" \
+            > "$context_file"; then
+        log_warn "Failed to render review template; Claude will start without task context"
+        context_rel=""
+    fi
+
     # Create tmux session
     local session_name="psm:${alias}:pr-${pr_number}"
     local session_id="${alias}:pr-${pr_number}"
@@ -209,10 +229,10 @@ cmd_review() {
         else
             log_success "Tmux session created: $session_name"
 
-            # Launch Copilot CLI
+            # Launch Claude Code with review context so it starts on the PR task
             if [[ "$no_claude" != "true" ]]; then
-                log_info "Launching Copilot CLI..."
-                psm_launch_claude "$session_name"
+                log_info "Launching Claude Code..."
+                psm_launch_claude "$session_name" "$context_rel"
             fi
         fi
     fi
@@ -284,6 +304,7 @@ cmd_fix() {
 
     # Fetch issue info
     local issue_info
+    local issue_body="" issue_labels=""
     if [[ "$provider" == "jira" ]]; then
         issue_info=$(provider_call "jira" fetch_issue "$provider_ref") || {
             log_error "Failed to fetch Jira issue ${provider_ref}"
@@ -291,6 +312,7 @@ cmd_fix() {
         }
         local issue_title=$(echo "$issue_info" | jq -r '.fields.summary')
         local issue_url=$(echo "$issue_info" | jq -r '.self // empty')
+        issue_body=$(echo "$issue_info" | jq -r '.fields.description // ""')
     else
         issue_info=$(provider_call "github" fetch_issue "$issue_number" "$repo") || {
             log_error "Failed to fetch issue #${issue_number}"
@@ -298,6 +320,8 @@ cmd_fix() {
         }
         local issue_title=$(echo "$issue_info" | jq -r '.title')
         local issue_url=$(echo "$issue_info" | jq -r '.url')
+        issue_body=$(echo "$issue_info" | jq -r '.body // ""')
+        issue_labels=$(echo "$issue_info" | jq -r '[.labels[].name] | join(", ")' 2>/dev/null || true)
     fi
     local slug=$(psm_slugify "$issue_title" 20)
 
@@ -345,6 +369,22 @@ cmd_fix() {
     log_success "Worktree created at $worktree_path"
     log_info "Branch: $branch_name"
 
+    # Render issue fix context file into the worktree so Claude starts with full task context
+    local fix_context_rel=".psm/fix.md"
+    local fix_context_file="${worktree_path}/${fix_context_rel}"
+    mkdir -p "$(dirname "$fix_context_file")"
+    if ! psm_render_template "$SCRIPT_DIR/templates/issue-fix.md" \
+            "ISSUE_NUMBER=${issue_number}" \
+            "ISSUE_TITLE=${issue_title}" \
+            "ISSUE_URL=${issue_url}" \
+            "ISSUE_LABELS=${issue_labels}" \
+            "ISSUE_BODY=${issue_body}" \
+            "BRANCH_NAME=${branch_name}" \
+            > "$fix_context_file"; then
+        log_warn "Failed to render issue fix template; Claude will start without task context"
+        fix_context_rel=""
+    fi
+
     # Create tmux session
     local session_name="psm:${alias}:issue-${issue_number}"
     local session_id="${alias}:issue-${issue_number}"
@@ -353,7 +393,7 @@ cmd_fix() {
     psm_create_tmux_session "$session_name" "$worktree_path"
 
     if [[ "$no_claude" != "true" ]]; then
-        psm_launch_claude "$session_name"
+        psm_launch_claude "$session_name" "$fix_context_rel"
     fi
 
     # Create metadata
@@ -423,7 +463,8 @@ cmd_feature() {
     local session_id="${project}:feat-${safe_name}"
 
     psm_create_tmux_session "$session_name" "$worktree_path"
-    psm_launch_claude "$session_name"
+    local feature_prompt="Implement feature \"${feature_name}\" for project ${project}. Working branch: ${branch_name}. Build the feature, add tests, and open a PR when ready: gh pr create --title \"feat: ${feature_name}\""
+    psm_launch_claude "$session_name" "$feature_prompt"
 
     psm_add_session "$session_id" "feature" "$project" "feat-${safe_name}" "$branch_name" "$base" "$session_name" "$worktree_path" "$local_path" "{}"
 

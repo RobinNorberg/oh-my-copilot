@@ -49,7 +49,7 @@ vi.mock('../../team/runtime.js', async (importOriginal) => {
 describe('team cli', () => {
     let jobsDir;
     beforeEach(() => {
-        jobsDir = mkdtempSync(join(tmpdir(), 'omc-team-cli-jobs-'));
+        jobsDir = mkdtempSync(join(tmpdir(), 'omcp-team-cli-jobs-'));
         process.env.OMC_JOBS_DIR = jobsDir;
         process.env.OMC_RUNTIME_CLI_PATH = '/tmp/runtime-cli.cjs';
         mocks.spawn.mockReset();
@@ -223,8 +223,8 @@ describe('team cli', () => {
     it('cleanupTeamJob kills worker panes and clears team state root', async () => {
         const { cleanupTeamJob } = await import('../team.js');
         const jobId = 'omc-cleanup1';
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-cleanup-'));
-        const stateRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
+        const cwd = mkdtempSync(join(tmpdir(), 'omcp-team-cli-cleanup-'));
+        const stateRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         mkdirSync(stateRoot, { recursive: true });
         writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
             status: 'running',
@@ -254,8 +254,8 @@ describe('team cli', () => {
     it('cleanupTeamJob removes a dedicated team tmux window when recorded', async () => {
         const { cleanupTeamJob } = await import('../team.js');
         const jobId = 'omc-cleanup2';
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-window-cleanup-'));
-        const stateRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
+        const cwd = mkdtempSync(join(tmpdir(), 'omcp-team-cli-window-cleanup-'));
+        const stateRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         mkdirSync(stateRoot, { recursive: true });
         writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
             status: 'running',
@@ -292,8 +292,8 @@ describe('team cli', () => {
             performance: { total_ms: 1, list_tasks_ms: 1, worker_scan_ms: 0, mailbox_delivery_ms: 0, updated_at: new Date().toISOString() },
             monitorPerformance: { listTasksMs: 0, workerScanMs: 0, totalMs: 0 },
         });
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-v2-status-'));
-        const root = join(cwd, '.omg', 'state', 'team', 'demo-team');
+        const cwd = mkdtempSync(join(tmpdir(), 'omcp-team-cli-v2-status-'));
+        const root = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         mkdirSync(root, { recursive: true });
         writeFileSync(join(root, 'config.json'), JSON.stringify({
             name: 'demo-team',
@@ -325,7 +325,7 @@ describe('team cli', () => {
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         mocks.resumeTeam.mockResolvedValue({
             teamName: 'demo-team',
-            sessionName: 'omc-team-demo:0',
+            sessionName: 'omcp-team-demo:0',
             leaderPaneId: '%0',
             config: { teamName: 'demo-team', workerCount: 1, agentTypes: ['codex'], tasks: [], cwd: '/tmp/demo' },
             workerNames: ['worker-1'],
@@ -354,7 +354,7 @@ describe('team cli', () => {
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         mocks.resumeTeam.mockResolvedValue({
             teamName: 'alpha-team',
-            sessionName: 'omc-team-alpha:0',
+            sessionName: 'omcp-team-alpha:0',
             leaderPaneId: '%0',
             config: { teamName: 'alpha-team', workerCount: 1, agentTypes: ['codex'], tasks: [], cwd: '/tmp/demo' },
             workerNames: ['worker-1'],
@@ -374,8 +374,8 @@ describe('team cli', () => {
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         mocks.isRuntimeV2Enabled.mockReturnValue(true);
         mocks.shutdownTeamV2.mockResolvedValue(undefined);
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-v2-shutdown-'));
-        const root = join(cwd, '.omg', 'state', 'team', 'beta-team');
+        const cwd = mkdtempSync(join(tmpdir(), 'omcp-team-cli-v2-shutdown-'));
+        const root = join(cwd, '.omcp', 'state', 'team', 'beta-team');
         mkdirSync(root, { recursive: true });
         writeFileSync(join(root, 'config.json'), JSON.stringify({
             name: 'beta-team',
@@ -408,7 +408,7 @@ describe('team cli', () => {
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         mocks.resumeTeam.mockResolvedValue({
             teamName: 'beta-team',
-            sessionName: 'omc-team-beta:0',
+            sessionName: 'omcp-team-beta:0',
             leaderPaneId: '%0',
             config: { teamName: 'beta-team', workerCount: 1, agentTypes: ['codex'], tasks: [], cwd: '/tmp/demo' },
             workerNames: ['worker-1'],
@@ -417,7 +417,7 @@ describe('team cli', () => {
             cwd: '/tmp/demo',
         });
         await teamCommand(['shutdown', 'beta-team', '--force', '--json']);
-        expect(mocks.shutdownTeam).toHaveBeenCalledWith('beta-team', 'omc-team-beta:0', '/tmp/demo', 0, ['%1'], '%0', undefined);
+        expect(mocks.shutdownTeam).toHaveBeenCalledWith('beta-team', 'omcp-team-beta:0', '/tmp/demo', 0, ['%1'], '%0', undefined);
         const payload = JSON.parse(logSpy.mock.calls[0][0]);
         expect(payload.shutdown).toBe(true);
         expect(payload.forced).toBe(true);
@@ -448,8 +448,8 @@ describe('team cli', () => {
     it('team api legacy facade delegates send-message to canonical mailbox state', async () => {
         const { teamCommand } = await import('../team.js');
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-send-'));
-        const root = join(cwd, '.omg', 'state', 'team', 'api-team');
+        const cwd = mkdtempSync(join(tmpdir(), 'omcp-team-cli-send-'));
+        const root = join(cwd, '.omcp', 'state', 'team', 'api-team');
         mkdirSync(join(root, 'tasks'), { recursive: true });
         mkdirSync(join(root, 'mailbox'), { recursive: true });
         writeFileSync(join(root, 'config.json'), JSON.stringify({
@@ -489,8 +489,8 @@ describe('team cli', () => {
     it('team api legacy facade supports mailbox-mark-notified through canonical semantics', async () => {
         const { teamCommand } = await import('../team.js');
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-notified-'));
-        const root = join(cwd, '.omg', 'state', 'team', 'api-team');
+        const cwd = mkdtempSync(join(tmpdir(), 'omcp-team-cli-notified-'));
+        const root = join(cwd, '.omcp', 'state', 'team', 'api-team');
         mkdirSync(join(root, 'mailbox'), { recursive: true });
         writeFileSync(join(root, 'config.json'), JSON.stringify({
             name: 'api-team',
@@ -537,8 +537,8 @@ describe('team cli', () => {
     it('team api supports list-tasks and read-config', async () => {
         const { teamCommand } = await import('../team.js');
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-api-'));
-        const root = join(cwd, '.omg', 'state', 'team', 'api-team');
+        const cwd = mkdtempSync(join(tmpdir(), 'omcp-team-cli-api-'));
+        const root = join(cwd, '.omcp', 'state', 'team', 'api-team');
         mkdirSync(join(root, 'tasks'), { recursive: true });
         writeFileSync(join(root, 'tasks', 'task-1.json'), JSON.stringify({
             id: '1',

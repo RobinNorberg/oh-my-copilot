@@ -5,7 +5,7 @@
  * When heuristics are inconclusive (returns null), the orchestrating agent should
  * spawn an explore agent (haiku) for AI-based assessment.
  *
- * Complexity result is stored in .omc/state/sessions/{sessionId}/complexity.json
+ * Complexity result is stored in .omcp/state/sessions/{sessionId}/complexity.json
  */
 export type ComplexityTier = 'simple' | 'standard' | 'complex';
 export interface ComplexityResult {

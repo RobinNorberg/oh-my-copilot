@@ -8,7 +8,8 @@
  * - Pane IDs are validated before use in shell commands
  * - Text inputs are sanitized to prevent command injection
  */
-import { execFileSync, spawnSync } from 'child_process';
+import { spawnSync } from 'child_process';
+import { tmuxExec } from '../../cli/tmux-utils.js';
 /**
  * Validate tmux pane ID format to prevent command injection
  * Valid formats: %0, %1, %123, etc.
@@ -92,8 +93,7 @@ export function listTmuxPanes() {
     try {
         // Format: session_name:window_index.pane_index pane_id pane_active window_name pane_title
         const format = '#{session_name}:#{window_index}.#{pane_index} #{pane_id} #{pane_active} #{window_name} #{pane_title}';
-        const result = execFileSync('tmux', ['list-panes', '-a', '-F', format], {
-            encoding: 'utf-8',
+        const result = tmuxExec(['list-panes', '-a', '-F', format], {
             timeout: 5000,
         });
         const panes = [];
@@ -142,8 +142,7 @@ export function capturePaneContent(paneId, lines = 15) {
     const safeLines = Math.max(1, Math.min(100, Math.floor(lines)));
     try {
         // Capture the last N lines from the pane
-        const result = execFileSync('tmux', ['capture-pane', '-t', paneId, '-p', '-S', `-${safeLines}`], {
-            encoding: 'utf-8',
+        const result = tmuxExec(['capture-pane', '-t', paneId, '-p', '-S', `-${safeLines}`], {
             timeout: 5000,
         });
         return result;
@@ -247,7 +246,7 @@ export function sendResumeSequence(paneId) {
     }
     try {
         // Send "1" to select the first option (typically "Continue" or similar)
-        execFileSync('tmux', ['send-keys', '-t', paneId, '1', 'Enter'], {
+        tmuxExec(['send-keys', '-t', paneId, '1', 'Enter'], {
             timeout: 2000,
         });
         // Wait a moment for the response
@@ -274,12 +273,12 @@ export function sendToPane(paneId, text, pressEnter = true) {
     try {
         const sanitizedText = sanitizeForTmux(text);
         // Send text with -l flag (literal) to avoid key interpretation issues in TUI apps
-        execFileSync('tmux', ['send-keys', '-t', paneId, '-l', sanitizedText], {
+        tmuxExec(['send-keys', '-t', paneId, '-l', sanitizedText], {
             timeout: 2000,
         });
         // Send Enter as a separate command so it is interpreted as a key press
         if (pressEnter) {
-            execFileSync('tmux', ['send-keys', '-t', paneId, 'Enter'], {
+            tmuxExec(['send-keys', '-t', paneId, 'Enter'], {
                 timeout: 2000,
             });
         }
