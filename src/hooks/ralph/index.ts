@@ -44,7 +44,9 @@ export {
   type RalphLoopHook,
   type PRD,
   type PRDStatus,
-  type UserStory
+  type UserStory,
+  detectCriticModeFlag,
+  stripCriticModeFlag,
 } from './loop.js';
 
 // ============================================================================
@@ -63,6 +65,7 @@ export {
   getPrdStatus,
   markStoryComplete,
   markStoryIncomplete,
+  markStoryArchitectVerified,
   getStory,
   getNextStory,
 
@@ -70,6 +73,7 @@ export {
   createPrd,
   createSimplePrd,
   initPrd,
+  ensurePrdForStartup,
 
   // Formatting
   formatPrdStatus,
