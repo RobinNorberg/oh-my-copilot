@@ -39,7 +39,7 @@ async function resolveOmcStateRoot(directory) {
     const dirName = basename(directory).replace(/[^a-zA-Z0-9_-]/g, '_');
     return join(customDir, `${dirName}-${hash}`);
   }
-  return join(directory, '.omc');
+  return join(directory, '.omcp');
 }
 
 module.exports = { resolveOmcStateRoot };

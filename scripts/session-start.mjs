@@ -9,13 +9,14 @@
 import { existsSync, readFileSync, readdirSync, rmSync, mkdirSync, writeFileSync, symlinkSync, lstatSync, readlinkSync, unlinkSync, renameSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { getCopilotConfigDir } from './lib/config-dir.mjs';
+import { getClaudeConfigDir } from './lib/config-dir.mjs';
+import { resolveOmcStateRoot } from './lib/state-root.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/** Copilot config directory (respects COPILOT_CONFIG_DIR env var) */
-const configDir = getCopilotConfigDir();
+/** Claude config directory (respects CLAUDE_CONFIG_DIR env var) */
+const configDir = getClaudeConfigDir();
 
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
@@ -142,22 +143,16 @@ function semverCompare(a, b) {
   return 0;
 }
 
-// Extract OMC version from copilot-instructions.md content
+// Extract OMC version from CLAUDE.md content
 function extractOmcVersion(content) {
   const match = content.match(/<!-- OMC:VERSION:(\d+\.\d+\.\d+[^\s]*?) -->/);
   return match ? match[1] : null;
 }
 
-// Resolve plugin root: Copilot CLI sets PLUGIN_ROOT; legacy Claude CLI sets CLAUDE_PLUGIN_ROOT.
-// Fallback: __dirname is scripts/, parent is the plugin install root.
-const _resolvedPluginRoot = process.env.PLUGIN_ROOT
-  || process.env.CLAUDE_PLUGIN_ROOT
-  || dirname(__dirname);
-
-// Get plugin version from plugin root
+// Get plugin version from CLAUDE_PLUGIN_ROOT
 function getPluginVersion() {
   try {
-    const pluginRoot = _resolvedPluginRoot;
+    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
     if (!pluginRoot) return null;
     const pkg = readJsonFile(join(pluginRoot, 'package.json'));
     return pkg?.version || null;
@@ -167,16 +162,16 @@ function getPluginVersion() {
 // Get npm global package version
 function getNpmVersion() {
   try {
-    const versionFile = join(configDir, '.omcp-version.json');
+    const versionFile = join(configDir, '.omc-version.json');
     const data = readJsonFile(versionFile);
     return data?.version || null;
   } catch { return null; }
 }
 
-// Get copilot-instructions.md version
+// Get CLAUDE.md version
 function getClaudeMdVersion() {
   try {
-    const claudeMdPath = join(configDir, 'copilot-instructions.md');
+    const claudeMdPath = join(configDir, 'CLAUDE.md');
     if (!existsSync(claudeMdPath)) return null;  // File doesn't exist
     const content = readFileSync(claudeMdPath, 'utf-8');
     const version = extractOmcVersion(content);
@@ -196,18 +191,18 @@ function detectVersionDrift() {
   const drift = [];
 
   if (npmVersion && npmVersion !== pluginVersion) {
-    drift.push({ component: 'npm package (omp CLI)', current: npmVersion, expected: pluginVersion });
+    drift.push({ component: 'npm package (omc CLI)', current: npmVersion, expected: pluginVersion });
   }
 
   if (claudeMdVersion === 'unknown') {
     drift.push({
-      component: 'copilot-instructions.md instructions',
+      component: 'CLAUDE.md instructions',
       current: 'unknown (needs migration)',
       expected: pluginVersion
     });
   } else if (claudeMdVersion && claudeMdVersion !== pluginVersion) {
     drift.push({
-      component: 'copilot-instructions.md instructions',
+      component: 'CLAUDE.md instructions',
       current: claudeMdVersion,
       expected: pluginVersion
     });
@@ -220,8 +215,8 @@ function detectVersionDrift() {
 
 // Check if we should notify (once per unique drift combination)
 function shouldNotifyDrift(driftInfo) {
-  const stateFile = join(configDir, '.omcp', 'update-state.json');
-  const driftKey = `plugin:${driftInfo.pluginVersion}-npm:${driftInfo.npmVersion}-copilot:${driftInfo.claudeMdVersion}`;
+  const stateFile = join(configDir, '.omc', 'update-state.json');
+  const driftKey = `plugin:${driftInfo.pluginVersion}-npm:${driftInfo.npmVersion}-claude:${driftInfo.claudeMdVersion}`;
 
   try {
     if (existsSync(stateFile)) {
@@ -232,7 +227,7 @@ function shouldNotifyDrift(driftInfo) {
 
   // Save new drift state
   try {
-    const dir = join(configDir, '.omcp');
+    const dir = join(configDir, '.omc');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(stateFile, JSON.stringify({
       lastNotifiedDrift: driftKey,
@@ -245,7 +240,7 @@ function shouldNotifyDrift(driftInfo) {
 
 // Check npm registry for available update (with 24h cache)
 async function checkNpmUpdate(currentVersion) {
-  const cacheFile = join(configDir, '.omcp', 'update-check.json');
+  const cacheFile = join(configDir, '.omc', 'update-check.json');
   const CACHE_DURATION = 24 * 60 * 60 * 1000;
   const now = Date.now();
 
@@ -265,7 +260,7 @@ async function checkNpmUpdate(currentVersion) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch('https://registry.npmjs.org/oh-my-copilot/latest', {
+    const response = await fetch('https://registry.npmjs.org/oh-my-claude-sisyphus/latest', {
       signal: controller.signal
     });
     if (!response.ok) return null;
@@ -276,7 +271,7 @@ async function checkNpmUpdate(currentVersion) {
 
     // Update cache
     try {
-      const dir = join(configDir, '.omcp');
+      const dir = join(configDir, '.omc');
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
       writeFileSync(cacheFile, JSON.stringify({ timestamp: now, latestVersion, currentVersion, updateAvailable }));
     } catch {}
@@ -369,35 +364,6 @@ async function checkHudInstallation(retryCount = 0) {
   return { installed: true };
 }
 
-// Detect Azure DevOps platform from git remote URL
-async function detectAdoPlatform(directory) {
-  try {
-    const { execSync } = await import('child_process');
-    const remoteUrl = execSync('git remote get-url origin', {
-      cwd: directory,
-      timeout: 3000,
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).toString().trim();
-    if (remoteUrl.includes('dev.azure.com') || remoteUrl.includes('visualstudio.com')) {
-      return remoteUrl;
-    }
-  } catch {
-    // Not a git repo or no remote configured — skip silently
-  }
-  return null;
-}
-
-// Read ADO config from .omcp/config.json
-function readAdoConfig(directory) {
-  try {
-    const configPath = join(directory, '.omcp', 'config.json');
-    const config = readJsonFile(configPath);
-    return config?.ado || null;
-  } catch {
-    return null;
-  }
-}
-
 // Main
 async function main() {
   try {
@@ -407,8 +373,9 @@ async function main() {
 
     const directory = data.cwd || data.directory || process.cwd();
     const sessionId = data.session_id || data.sessionId || '';
-    const projectMemoryModules = await loadProjectMemoryModules();
+    const omcRoot = await resolveOmcStateRoot(directory);
     const messages = [];
+    const projectMemoryModules = await loadProjectMemoryModules();
 
     // Check for version drift between components
     const driftInfo = detectVersionDrift();
@@ -428,7 +395,7 @@ async function main() {
       if (pluginVersion) {
         const updateInfo = await checkNpmUpdate(pluginVersion);
         if (updateInfo) {
-          messages.push(`<session-restore>\n\n[OMC UPDATE AVAILABLE]\n\nA new version of oh-my-copilot is available: v${updateInfo.latestVersion} (current: v${updateInfo.currentVersion})\n\nTo update, run: omc update\n(This syncs plugin, npm package, and copilot-instructions.md together)\n\n</session-restore>\n\n---\n`);
+          messages.push(`<session-restore>\n\n[OMC UPDATE AVAILABLE]\n\nA new version of oh-my-copilot is available: v${updateInfo.latestVersion} (current: v${updateInfo.currentVersion})\n\nTo update, run: omc update\n(This syncs plugin, npm package, and CLAUDE.md together)\n\n</session-restore>\n\n---\n`);
         }
       }
     } catch {}
@@ -448,7 +415,7 @@ async function main() {
     const hudCheck = await checkHudInstallation();
     if (!hudCheck.installed) {
       messages.push(`<system-reminder>
-[OMC] HUD not configured (${hudCheck.reason}). Run /hud setup then restart Copilot CLI.
+[OMC] HUD not configured (${hudCheck.reason}). Run /hud setup then restart Claude Code.
 </system-reminder>`);
     }
 
@@ -457,14 +424,14 @@ async function main() {
     let ultraworkState = null;
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
       // Session-scoped ONLY — no legacy fallback
-      ultraworkState = readJsonFile(join(directory, '.omcp', 'state', 'sessions', sessionId, 'ultrawork-state.json'));
+      ultraworkState = readJsonFile(join(omcRoot, 'state', 'sessions', sessionId, 'ultrawork-state.json'));
       // Validate session identity
       if (ultraworkState && ultraworkState.session_id && ultraworkState.session_id !== sessionId) {
         ultraworkState = null;
       }
     } else {
       // No session_id — legacy behavior for backward compat
-      ultraworkState = readJsonFile(join(directory, '.omcp', 'state', 'ultrawork-state.json'));
+      ultraworkState = readJsonFile(join(omcRoot, 'state', 'ultrawork-state.json'));
     }
 
     if (ultraworkState?.active) {
@@ -488,16 +455,16 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
     let ralphState = null;
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
       // Session-scoped ONLY — no legacy fallback
-      ralphState = readJsonFile(join(directory, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json'));
+      ralphState = readJsonFile(join(omcRoot, 'state', 'sessions', sessionId, 'ralph-state.json'));
       // Validate session identity
       if (ralphState && ralphState.session_id && ralphState.session_id !== sessionId) {
         ralphState = null;
       }
     } else {
       // No session_id — legacy behavior for backward compat
-      ralphState = readJsonFile(join(directory, '.omcp', 'state', 'ralph-state.json'));
+      ralphState = readJsonFile(join(omcRoot, 'state', 'ralph-state.json'));
       if (!ralphState) {
-        ralphState = readJsonFile(join(directory, '.omcp', 'ralph-state.json'));
+        ralphState = readJsonFile(join(omcRoot, 'ralph-state.json'));
       }
     }
     if (ralphState?.active) {
@@ -518,14 +485,14 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
     }
 
     // Check for incomplete todos (project-local only, not global
-    // [$COPILOT_CONFIG_DIR|~/.copilot]/todos/)
+    // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/)
     // NOTE: We intentionally do NOT scan the global
-    // [$COPILOT_CONFIG_DIR|~/.copilot]/todos/ directory.
+    // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/ directory.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [
-      join(directory, '.omcp', 'todos.json'),
-      join(directory, '.copilot', 'todos.json')
+      join(omcRoot, 'todos.json'),
+      join(directory, '.claude', 'todos.json')
     ];
     let incompleteCount = 0;
     for (const todoFile of localTodoPaths) {
@@ -573,7 +540,7 @@ ${summary}
     }
 
     // Check for notepad Priority Context
-    const notepadPath = join(directory, '.omcp', 'notepad.md');
+    const notepadPath = join(omcRoot, 'notepad.md');
     if (existsSync(notepadPath)) {
       try {
         const notepadContent = readFileSync(notepadPath, 'utf-8');
@@ -592,17 +559,6 @@ ${cleanContent}
       } catch (err) {
         // Silently ignore notepad read errors
       }
-    }
-
-    // Detect Azure DevOps platform and inject context
-    const adoRemoteUrl = await detectAdoPlatform(directory);
-    if (adoRemoteUrl) {
-      const adoConfig = readAdoConfig(directory);
-      let adoMsg = `[AZURE DEVOPS DETECTED]\n\nPlatform: Azure DevOps\nRemote: ${adoRemoteUrl}\n\nAvailable MCP Tools: \`mcp__azure-devops__*\`\n- Work Items: wit_get_work_item, wit_create_work_item, wit_update_work_item, wit_my_work_items, wit_list_backlog_work_items, wit_get_work_items_for_iteration, wit_get_work_items_batch_by_ids, wit_add_child_work_items, wit_link_work_item_to_pull_request, wit_work_items_link, wit_work_item_unlink, wit_add_artifact_link, wit_add_work_item_comment, wit_list_work_item_comments, wit_list_work_item_revisions, wit_update_work_items_batch\n- Queries: wit_get_query, wit_get_query_results_by_id, search_workitem\n- Repos: repo_list_repos_by_project, repo_get_repo_by_name_or_id, repo_list_pull_requests_by_repo_or_project, repo_list_pull_requests_by_commits, repo_create_pull_request, repo_get_pull_request_by_id, repo_update_pull_request, repo_update_pull_request_reviewers, repo_search_commits\n- PR Threads: repo_create_pull_request_thread, repo_list_pull_request_threads, repo_list_pull_request_thread_comments, repo_reply_to_comment, repo_update_pull_request_thread\n- Branches: repo_create_branch, repo_get_branch_by_name, repo_list_branches_by_repo, repo_list_my_branches_by_repo\n- Pipelines: pipelines_get_builds, pipelines_get_build_status, pipelines_get_build_log, pipelines_get_build_log_by_id, pipelines_get_build_changes, pipelines_get_build_definitions, pipelines_get_build_definition_revisions, pipelines_run_pipeline, pipelines_create_pipeline, pipelines_list_runs, pipelines_get_run, pipelines_update_build_stage\n- Test Plans: testplan_list_test_plans, testplan_list_test_suites, testplan_list_test_cases, testplan_create_test_plan, testplan_create_test_suite, testplan_create_test_case, testplan_add_test_cases_to_suite, testplan_update_test_case_steps, testplan_show_test_results_from_build_id\n- Wiki: wiki_list_wikis, wiki_get_wiki, wiki_list_pages, wiki_get_page, wiki_get_page_content, wiki_create_or_update_page, search_wiki\n- Search: search_code, search_workitem, search_wiki\n- Security: advsec_get_alerts, advsec_get_alert_details\n- Iterations: work_list_iterations, work_list_team_iterations, work_create_iterations, work_assign_iterations, work_get_iteration_capacities, work_get_team_capacity, work_update_team_capacity\n- Organization: core_list_projects, core_list_project_teams, core_get_identity_ids\n\nConfig file: \`.omcp/config.json\` (org, project, workItemType, areaPath, iterationPath)\n\nRecommended plugins:\n- azure-devops-mcp: MCP server for ADO tools (https://github.com/microsoft/azure-devops-mcp)\n- azure-skills: Plugin for Azure cloud operations (https://github.com/microsoft/azure-skills)`;
-      if (adoConfig) {
-        adoMsg += `\n\nADO Config:\n${JSON.stringify(adoConfig, null, 2)}`;
-      }
-      messages.push(`<system-reminder>\n${adoMsg}\n</system-reminder>`);
     }
 
     // Cleanup old plugin cache versions (keep latest 2, symlink the rest)
@@ -673,7 +629,7 @@ ${cleanContent}
 
     // Send session-start notification (non-blocking, fire-and-forget)
     try {
-      const pluginRoot = _resolvedPluginRoot;
+      const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
       if (pluginRoot) {
         const { notify } = await import(pathToFileURL(join(pluginRoot, 'dist', 'notifications', 'index.js')).href);
         // Fire and forget - don't await, don't block session start
@@ -702,7 +658,7 @@ ${cleanContent}
       console.log(JSON.stringify({
         continue: true,
         hookSpecificOutput: {
-          hookEventName: 'sessionStart',
+          hookEventName: 'SessionStart',
           additionalContext: messages.join('\n')
         }
       }));
