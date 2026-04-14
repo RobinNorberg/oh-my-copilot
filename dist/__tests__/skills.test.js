@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createBuiltinSkills, getBuiltinSkill, listBuiltinSkillNames, clearSkillsCache } from '../features/builtin-skills/skills.js';
@@ -253,6 +253,22 @@ describe('Builtin Skills', () => {
         });
     });
     describe('deep-interview threshold injection (issue #2545)', () => {
+        it('refreshes cached deep-interview output when the configured threshold changes without requiring manual cache clearing', () => {
+            const projectDir = mkdtempSync(join(tmpdir(), 'omcp-skill-cache-refresh-'));
+            tempDirs.push(projectDir);
+            mkdirSync(join(projectDir, '.claude'), { recursive: true });
+            process.chdir(projectDir);
+            writeFileSync(join(projectDir, '.claude', 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.12 } } }));
+            const first = getBuiltinSkill('deep-interview');
+            expect(first?.template).toContain('ambiguityThreshold = 0.12');
+            expect(first?.template).toContain('"threshold": 0.12,');
+            writeFileSync(join(projectDir, '.claude', 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.33 } } }));
+            const second = getBuiltinSkill('deep-interview');
+            expect(second?.template).toContain('ambiguityThreshold = 0.33');
+            expect(second?.template).toContain('"threshold": 0.33,');
+            expect(second?.template).not.toContain('ambiguityThreshold = 0.12');
+            expect(second?.template).not.toContain('"threshold": 0.12,');
+        });
         it('replaces all hardcoded 20%/0.2 threshold references in deep-interview template', () => {
             const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-2545-'));
             tempDirs.push(profileDir);

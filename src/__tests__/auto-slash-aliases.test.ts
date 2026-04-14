@@ -129,4 +129,24 @@ Advanced: ambiguity ≤ 20%
     expect(result.replacementText).not.toContain('ambiguity ≤ 20%');
     expect(result.replacementText).not.toContain('"ambiguityThreshold": 0.2,');
   });
+
+  it('keeps /c3g advisor asks on omcp ask inside an active Claude session', async () => {
+    process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
+    process.env.PATH = '';
+    process.env.CLAUDECODE = '1';
+    process.env.CLAUDE_SESSION_ID = 'session-123';
+
+    const { executeSlashCommand } = await loadExecutor();
+    const result = executeSlashCommand({
+      command: 'c3g',
+      args: 'review this auth flow',
+      raw: '/c3g review this auth flow',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('`omc ask codex "<codex prompt>"`');
+    expect(result.replacementText).toContain('`omc ask gemini "<gemini prompt>"`');
+    expect(result.replacementText).not.toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex');
+    expect(result.replacementText).not.toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini');
+  });
 });

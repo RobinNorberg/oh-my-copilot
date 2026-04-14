@@ -17790,6 +17790,11 @@ var init_loop = __esm({
 });
 
 // src/utils/omc-cli-rendering.ts
+function isClaudeSession(env2) {
+  return Boolean(
+    env2.CLAUDECODE?.trim() || env2.CLAUDE_SESSION_ID?.trim() || env2.CLAUDECODE_SESSION_ID?.trim()
+  );
+}
 function commandExists2(command, env2) {
   const lookupCommand = process.platform === "win32" ? "where" : "which";
   const result = (0, import_child_process14.spawnSync)(lookupCommand, [command], {
@@ -17810,16 +17815,29 @@ function resolveOmcCliPrefix(options = {}) {
   }
   return OMC_CLI_BINARY;
 }
+function resolveInvocationPrefix(commandSuffix, options = {}) {
+  const env2 = options.env ?? process.env;
+  const normalizedSuffix = commandSuffix.trim();
+  if (/^ask(?:\s|$)/.test(normalizedSuffix) && isClaudeSession(env2)) {
+    return OMC_CLI_BINARY;
+  }
+  return resolveOmcCliPrefix(options);
+}
 function formatOmcCliInvocation(commandSuffix, options = {}) {
   const suffix = commandSuffix.trim().replace(/^omc\s+/, "");
-  return `${resolveOmcCliPrefix(options)} ${suffix}`.trim();
+  return `${resolveInvocationPrefix(suffix, options)} ${suffix}`.trim();
 }
 function rewriteOmcCliInvocations(text, options = {}) {
-  const prefix = resolveOmcCliPrefix(options);
-  if (prefix === OMC_CLI_BINARY || !text.includes("omc ")) {
+  if (!text.includes("omc ")) {
     return text;
   }
-  return text.replace(/`omc (?=[^`\r\n]+`)/g, `\`${prefix} `).replace(/(^|\n)([ \t>*-]*)omc (?=\S)/g, `$1$2${prefix} `);
+  return text.replace(/`omc ([^`\r\n]+)`/g, (_match, suffix) => {
+    const prefix = resolveInvocationPrefix(suffix, options);
+    return `\`${prefix} ${suffix}\``;
+  }).replace(/(^|\n)([ \t>*-]*)omc ([^\n]+)/g, (_match, lineStart, leader, suffix) => {
+    const prefix = resolveInvocationPrefix(suffix, options);
+    return `${lineStart}${leader}${prefix} ${suffix}`;
+  });
 }
 var import_child_process14, OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX;
 var init_omc_cli_rendering = __esm({
@@ -81729,9 +81747,17 @@ function loadSkillsFromDirectory() {
   return skills;
 }
 var cachedSkills = null;
+var cachedSkillsKey = null;
+function getBuiltinSkillsCacheKey() {
+  return JSON.stringify({
+    deepInterviewAmbiguityThreshold: getDeepInterviewAmbiguityThreshold()
+  });
+}
 function createBuiltinSkills() {
-  if (cachedSkills === null) {
+  const cacheKey = getBuiltinSkillsCacheKey();
+  if (cachedSkills === null || cachedSkillsKey !== cacheKey) {
     cachedSkills = loadSkillsFromDirectory();
+    cachedSkillsKey = cacheKey;
   }
   return cachedSkills;
 }
