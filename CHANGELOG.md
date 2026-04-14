@@ -2,6 +2,15 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+## Unreleased
+
+### New Features
+
+- **feat(team): per-role provider and model routing via `.copilot/omg.jsonc` with resolved-routing snapshot** — declare which provider (`claude`/`codex`/`gemini`) and model tier backs each canonical role (critic, code-reviewer, executor, planner, etc.) in `team.roleRouting`. Routing resolves once at team creation, persists in `TeamConfig.resolved_routing`, and is reused across spawn/scale-up/restart. Env override via `OMCP_TEAM_ROLE_OVERRIDES`. Missing CLIs fall back to Claude with a visible warning. See `skills/team/SKILL.md` § Per-Role Provider & Model Routing.
+- **fix(team): honor alias-keyed role routing and restrict `ops.defaultAgentType` to runtime-supported CLI providers** — accepted aliases like `reviewer` now affect resolved snapshot/stage routing, and `team.ops.defaultAgentType` now matches actual `/team` launcher semantics (`claude`/`codex`/`gemini` only).
+
+---
+
 ## [4.11.5] - 2026-04-09
 
 ### Fixed (ported from upstream oh-my-claudecode v4.11.4)

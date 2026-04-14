@@ -1,14 +1,30 @@
-import { describe, it, expect, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeEach, afterAll, afterEach } from 'vitest';
+import { mkdtempSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { tmpdir } from 'os';
 import { createBuiltinSkills, getBuiltinSkill, listBuiltinSkillNames, clearSkillsCache } from '../features/builtin-skills/skills.js';
 
 describe('Builtin Skills', () => {
   // Enable strict mode so all skills (including strict-mode-only) are loaded
   const originalStrictMode = process.env.OMC_STRICT_MODE;
+  const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
   process.env.OMC_STRICT_MODE = 'true';
+  const tempDirs: string[] = [];
 
   afterAll(() => {
     if (originalStrictMode === undefined) delete process.env.OMC_STRICT_MODE;
     else process.env.OMC_STRICT_MODE = originalStrictMode;
+  });
+
+  afterEach(() => {
+    if (originalClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+    while (tempDirs.length > 0) {
+      try {
+        const { rmSync } = require('fs');
+        rmSync(tempDirs.pop()!, { recursive: true, force: true });
+      } catch {}
+    }
   });
 
   // Clear cache before each test to ensure fresh loads
@@ -158,6 +174,35 @@ describe('Builtin Skills', () => {
       const skill = getBuiltinSkill('non-existent-skill');
       expect(skill).toBeUndefined();
     });
+
+    it('stages mcp-setup AskUserQuestion menus so each prompt stays within the current option limit', () => {
+      const skill = getBuiltinSkill('mcp-setup');
+      expect(skill).toBeDefined();
+
+      const template = skill!.template;
+      expect(template).toContain('no more than 3 options per question');
+
+      const blocks = template
+        .split(/AskUserQuestion(?: with [^:\n]+)?[:]?/g)
+        .slice(1)
+        .map((block) => block.split(/## Step|### Step|### For |## Custom MCP Server/)[0]);
+
+      expect(blocks.length).toBeGreaterThanOrEqual(3);
+
+      for (const block of blocks) {
+        const optionLines = block
+          .split('\n')
+          .map((line) => line.trim())
+          .filter((line) => /^\d+\. \*\*/.test(line));
+        expect(optionLines.length).toBeLessThanOrEqual(3);
+      }
+
+      expect(template).toContain('Recommended starter setup');
+      expect(template).toContain('Individual popular server');
+      expect(template).toContain('More server choices');
+      expect(template).not.toContain('5. **All of the above**');
+      expect(template).not.toContain('6. **Custom**');
+    });
   });
 
   describe('listBuiltinSkillNames()', () => {
@@ -235,6 +280,41 @@ describe('Builtin Skills', () => {
       skills.forEach((skill) => {
         expect(skill.template.length).toBeGreaterThan(100);
       });
+    });
+  });
+
+  describe('deep-interview threshold injection (issue #2545)', () => {
+    it('replaces all hardcoded 20%/0.2 threshold references in deep-interview template', () => {
+      const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-2545-'));
+      tempDirs.push(profileDir);
+
+      process.env.CLAUDE_CONFIG_DIR = profileDir;
+      writeFileSync(
+        join(profileDir, 'settings.json'),
+        JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }),
+      );
+
+      clearSkillsCache();
+
+      const skill = getBuiltinSkill('deep-interview');
+      expect(skill).toBeDefined();
+      const t = skill!.template;
+
+      expect(t).toContain('"threshold": 0.15,');
+      expect(t).toContain('drops below 15%.');
+      expect(t).toContain('(default: 15%)');
+      expect(t).toContain('(default 0.15)');
+      expect(t).toContain('Gate: ≤15% ambiguity');
+      expect(t).toContain('(threshold: 15%).');
+      expect(t).toContain('ambiguity ≤ 15%');
+      expect(t).toContain('"ambiguityThreshold": 0.15,');
+
+      expect(t).not.toContain('(default: 20%)');
+      expect(t).not.toContain('(default 0.2)');
+      expect(t).not.toContain('Gate: ≤20% ambiguity');
+      expect(t).not.toContain('(threshold: 20%).');
+      expect(t).not.toContain('ambiguity ≤ 20%');
+      expect(t).not.toContain('"ambiguityThreshold": 0.2,');
     });
   });
 });
