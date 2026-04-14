@@ -1,4 +1,3 @@
-// @ts-nocheck — Upstream Zod v3 internals; needs rewrite for Zod v4
 /**
  * Tool Registry for the Standalone MCP Server
  *
@@ -65,7 +64,7 @@ export const allTools: ToolDef[] = [
 // Zod → JSON Schema helpers (mirrors what the MCP server sends over the wire)
 // ---------------------------------------------------------------------------
 
-function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
+function zodTypeToJsonSchema(zodType: any): Record<string, unknown> {
   const result: Record<string, unknown> = {};
 
   if (!zodType || !zodType._def) {
@@ -78,7 +77,7 @@ function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
 
   if (zodType instanceof z.ZodDefault) {
     const inner = zodTypeToJsonSchema(zodType._def.innerType);
-    inner.default = zodType._def.defaultValue();
+    inner.default = (zodType._def as any).defaultValue();
     return inner;
   }
 
@@ -90,7 +89,7 @@ function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
   if (zodType instanceof z.ZodString) {
     result.type = 'string';
   } else if (zodType instanceof z.ZodNumber) {
-    result.type = zodType._def?.checks?.some((c: { kind: string }) => c.kind === 'int')
+    result.type = (zodType._def as any)?.checks?.some((c: { kind: string }) => c.kind === 'int')
       ? 'integer'
       : 'number';
   } else if (zodType instanceof z.ZodBoolean) {
@@ -100,7 +99,7 @@ function zodTypeToJsonSchema(zodType: z.ZodTypeAny): Record<string, unknown> {
     result.items = zodType._def?.type ? zodTypeToJsonSchema(zodType._def.type) : { type: 'string' };
   } else if (zodType instanceof z.ZodEnum) {
     result.type = 'string';
-    result.enum = zodType._def?.values;
+    result.enum = (zodType._def as any)?.values;
   } else if (zodType instanceof z.ZodObject) {
     return zodToJsonSchema(zodType.shape);
   } else if (zodType instanceof z.ZodRecord) {
