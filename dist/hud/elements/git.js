@@ -169,7 +169,7 @@ export function renderGitBranch(cwd) {
 }
 /**
  * Get git working tree status counts.
- * Parses `git status --porcelain -b` for staged, modified, untracked,
+ * Parses `git --no-optional-locks status --porcelain -b` for staged, modified, untracked,
  * ahead, and behind counts.
  *
  * @param cwd - Working directory
@@ -183,7 +183,7 @@ export function getGitStatusCounts(cwd) {
     }
     let result = null;
     try {
-        const output = execSync('git status --porcelain -b', {
+        const output = execSync('git --no-optional-locks status --porcelain -b', {
             cwd,
             encoding: 'utf-8',
             timeout: 1000,

@@ -47306,7 +47306,7 @@ function getGitStatusCounts(cwd) {
   }
   let result = null;
   try {
-    const output = (0, import_node_child_process7.execSync)("git status --porcelain -b", {
+    const output = (0, import_node_child_process7.execSync)("git --no-optional-locks status --porcelain -b", {
       cwd,
       encoding: "utf-8",
       timeout: 1e3,
