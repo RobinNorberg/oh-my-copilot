@@ -55,7 +55,7 @@ export function parseCliArgs(
     agents: defaultAgents,
     fixture: null,
     outputDir: defaultOutputDir,
-    model: 'gpt-4.1',
+    model: 'claude-opus-4-6',
     dryRun: false,
   };
 
