@@ -27,7 +27,7 @@ import { appendTeamEvent, emitMonitorDerivedEvents } from './events.js';
 import { DEFAULT_TEAM_GOVERNANCE, DEFAULT_TEAM_TRANSPORT_POLICY, getConfigGovernance, } from './governance.js';
 import { inferPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
-import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, } from './model-contract.js';
+import { buildWorkerArgv, getContract, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, } from './model-contract.js';
 import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
@@ -106,6 +106,21 @@ function sanitizeTeamName(name) {
     if (!sanitized)
         throw new Error(`Invalid team name: "${name}" produces empty slug after sanitization`);
     return sanitized;
+}
+function shouldUseLaunchTimeCliResolution(reason) {
+    return /untrusted location|relative path/i.test(reason);
+}
+function resolvePreflightBinaryPath(agentType) {
+    try {
+        return { path: resolveValidatedBinaryPath(agentType), degraded: false };
+    }
+    catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        if (shouldUseLaunchTimeCliResolution(reason)) {
+            return { path: getContract(agentType).binary, degraded: true, reason };
+        }
+        throw err;
+    }
 }
 // ---------------------------------------------------------------------------
 // Helper: check worker liveness via tmux pane
@@ -423,7 +438,7 @@ export async function startTeamV2(config) {
     const missingBinaryReasons = [];
     for (const agentType of [...new Set(agentTypes)]) {
         try {
-            resolvedBinaryPaths[agentType] = resolveValidatedBinaryPath(agentType);
+            resolvedBinaryPaths[agentType] = resolvePreflightBinaryPath(agentType).path;
         }
         catch (err) {
             const reason = err instanceof Error ? err.message : String(err);
@@ -440,7 +455,7 @@ export async function startTeamV2(config) {
         if (missingBinaryReasons.some((m) => m.agentType === provider))
             continue;
         try {
-            resolvedBinaryPaths[provider] = resolveValidatedBinaryPath(provider);
+            resolvedBinaryPaths[provider] = resolvePreflightBinaryPath(provider).path;
         }
         catch (err) {
             const reason = err instanceof Error ? err.message : String(err);

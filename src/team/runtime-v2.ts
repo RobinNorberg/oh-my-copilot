@@ -56,7 +56,7 @@ import type { TeamPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
 import type { CliAgentType } from './model-contract.js';
 import {
-  buildWorkerArgv, resolveValidatedBinaryPath,
+  buildWorkerArgv, getContract, resolveValidatedBinaryPath,
   getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs,
   resolveClaudeWorkerModel,
 } from './model-contract.js';
@@ -240,6 +240,22 @@ function sanitizeTeamName(name: string): string {
   const sanitized = name.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30);
   if (!sanitized) throw new Error(`Invalid team name: "${name}" produces empty slug after sanitization`);
   return sanitized;
+}
+
+function shouldUseLaunchTimeCliResolution(reason: string): boolean {
+  return /untrusted location|relative path/i.test(reason);
+}
+
+function resolvePreflightBinaryPath(agentType: CliAgentType): { path: string; degraded: boolean; reason?: string } {
+  try {
+    return { path: resolveValidatedBinaryPath(agentType), degraded: false };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    if (shouldUseLaunchTimeCliResolution(reason)) {
+      return { path: getContract(agentType).binary, degraded: true, reason };
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -709,7 +725,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   const missingBinaryReasons: Array<{ agentType: CliAgentType; reason: string }> = [];
   for (const agentType of [...new Set(agentTypes)]) {
     try {
-      resolvedBinaryPaths[agentType] = resolveValidatedBinaryPath(agentType);
+      resolvedBinaryPaths[agentType] = resolvePreflightBinaryPath(agentType).path;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       missingBinaryReasons.push({ agentType, reason });
@@ -723,7 +739,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     if (resolvedBinaryPaths[provider]) continue;
     if (missingBinaryReasons.some((m) => m.agentType === provider)) continue;
     try {
-      resolvedBinaryPaths[provider] = resolveValidatedBinaryPath(provider);
+      resolvedBinaryPaths[provider] = resolvePreflightBinaryPath(provider).path;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       missingBinaryReasons.push({ agentType: provider, reason });

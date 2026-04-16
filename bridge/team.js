@@ -4361,6 +4361,20 @@ function sanitizeTeamName(name) {
   if (!sanitized) throw new Error(`Invalid team name: "${name}" produces empty slug after sanitization`);
   return sanitized;
 }
+function shouldUseLaunchTimeCliResolution(reason) {
+  return /untrusted location|relative path/i.test(reason);
+}
+function resolvePreflightBinaryPath(agentType) {
+  try {
+    return { path: resolveValidatedBinaryPath(agentType), degraded: false };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    if (shouldUseLaunchTimeCliResolution(reason)) {
+      return { path: getContract(agentType).binary, degraded: true, reason };
+    }
+    throw err;
+  }
+}
 async function isWorkerPaneAlive(paneId) {
   if (!paneId) return false;
   try {
@@ -4653,7 +4667,7 @@ async function startTeamV2(config) {
   const missingBinaryReasons = [];
   for (const agentType of [...new Set(agentTypes)]) {
     try {
-      resolvedBinaryPaths[agentType] = resolveValidatedBinaryPath(agentType);
+      resolvedBinaryPaths[agentType] = resolvePreflightBinaryPath(agentType).path;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       missingBinaryReasons.push({ agentType, reason });
@@ -4664,7 +4678,7 @@ async function startTeamV2(config) {
     if (resolvedBinaryPaths[provider]) continue;
     if (missingBinaryReasons.some((m) => m.agentType === provider)) continue;
     try {
-      resolvedBinaryPaths[provider] = resolveValidatedBinaryPath(provider);
+      resolvedBinaryPaths[provider] = resolvePreflightBinaryPath(provider).path;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       missingBinaryReasons.push({ agentType: provider, reason });
