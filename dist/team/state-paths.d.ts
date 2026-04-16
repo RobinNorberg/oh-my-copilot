@@ -3,7 +3,7 @@
  * All paths are relative to cwd.
  *
  * State layout:
- *   .omc/state/team/{teamName}/
+ *   .omcp/state/team/{teamName}/
  *     config.json
  *     shutdown.json
  *     tasks/
@@ -64,10 +64,10 @@ export declare function teamStateRoot(cwd: string, teamName: string): string;
  * Canonical task storage path builder.
  *
  * All task files live at:
- *   {cwd}/.omc/state/team/{teamName}/tasks/task-{taskId}.json
+ *   {cwd}/.omcp/state/team/{teamName}/tasks/task-{taskId}.json
  *
  * When taskId is omitted, returns the tasks directory:
- *   {cwd}/.omc/state/team/{teamName}/tasks/
+ *   {cwd}/.omcp/state/team/{teamName}/tasks/
  *
  * Use this as the single source of truth for task file locations.
  * New writes always use this canonical path.

@@ -31802,36 +31802,36 @@ var init_state_paths = __esm({
     "use strict";
     import_path71 = require("path");
     TeamPaths = {
-      root: (teamName) => `.omc/state/team/${teamName}`,
-      config: (teamName) => `.omc/state/team/${teamName}/config.json`,
-      shutdown: (teamName) => `.omc/state/team/${teamName}/shutdown.json`,
-      tasks: (teamName) => `.omc/state/team/${teamName}/tasks`,
-      taskFile: (teamName, taskId) => `.omc/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
-      workers: (teamName) => `.omc/state/team/${teamName}/workers`,
-      workerDir: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}`,
-      heartbeat: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/heartbeat.json`,
-      inbox: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/inbox.md`,
-      outbox: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/outbox.jsonl`,
-      ready: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/.ready`,
-      overlay: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/AGENTS.md`,
-      shutdownAck: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json`,
-      mailbox: (teamName, workerName2) => `.omc/state/team/${teamName}/mailbox/${workerName2}.json`,
-      mailboxLockDir: (teamName, workerName2) => `.omc/state/team/${teamName}/mailbox/.lock-${workerName2}`,
-      dispatchRequests: (teamName) => `.omc/state/team/${teamName}/dispatch/requests.json`,
-      dispatchLockDir: (teamName) => `.omc/state/team/${teamName}/dispatch/.lock`,
-      workerStatus: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/status.json`,
-      workerIdleNotify: (teamName) => `.omc/state/team/${teamName}/worker-idle-notify.json`,
-      workerPrevNotifyState: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/prev-notify-state.json`,
-      events: (teamName) => `.omc/state/team/${teamName}/events.jsonl`,
-      approval: (teamName, taskId) => `.omc/state/team/${teamName}/approvals/${taskId}.json`,
-      manifest: (teamName) => `.omc/state/team/${teamName}/manifest.json`,
-      monitorSnapshot: (teamName) => `.omc/state/team/${teamName}/monitor-snapshot.json`,
-      summarySnapshot: (teamName) => `.omc/state/team/${teamName}/summary-snapshot.json`,
-      phaseState: (teamName) => `.omc/state/team/${teamName}/phase-state.json`,
-      scalingLock: (teamName) => `.omc/state/team/${teamName}/.scaling-lock`,
-      workerIdentity: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/identity.json`,
-      workerAgentsMd: (teamName) => `.omc/state/team/${teamName}/worker-agents.md`,
-      shutdownRequest: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/shutdown-request.json`
+      root: (teamName) => `.omcp/state/team/${teamName}`,
+      config: (teamName) => `.omcp/state/team/${teamName}/config.json`,
+      shutdown: (teamName) => `.omcp/state/team/${teamName}/shutdown.json`,
+      tasks: (teamName) => `.omcp/state/team/${teamName}/tasks`,
+      taskFile: (teamName, taskId) => `.omcp/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
+      workers: (teamName) => `.omcp/state/team/${teamName}/workers`,
+      workerDir: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}`,
+      heartbeat: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/heartbeat.json`,
+      inbox: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`,
+      outbox: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/outbox.jsonl`,
+      ready: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/.ready`,
+      overlay: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/AGENTS.md`,
+      shutdownAck: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json`,
+      mailbox: (teamName, workerName2) => `.omcp/state/team/${teamName}/mailbox/${workerName2}.json`,
+      mailboxLockDir: (teamName, workerName2) => `.omcp/state/team/${teamName}/mailbox/.lock-${workerName2}`,
+      dispatchRequests: (teamName) => `.omcp/state/team/${teamName}/dispatch/requests.json`,
+      dispatchLockDir: (teamName) => `.omcp/state/team/${teamName}/dispatch/.lock`,
+      workerStatus: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/status.json`,
+      workerIdleNotify: (teamName) => `.omcp/state/team/${teamName}/worker-idle-notify.json`,
+      workerPrevNotifyState: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/prev-notify-state.json`,
+      events: (teamName) => `.omcp/state/team/${teamName}/events.jsonl`,
+      approval: (teamName, taskId) => `.omcp/state/team/${teamName}/approvals/${taskId}.json`,
+      manifest: (teamName) => `.omcp/state/team/${teamName}/manifest.json`,
+      monitorSnapshot: (teamName) => `.omcp/state/team/${teamName}/monitor-snapshot.json`,
+      summarySnapshot: (teamName) => `.omcp/state/team/${teamName}/summary-snapshot.json`,
+      phaseState: (teamName) => `.omcp/state/team/${teamName}/phase-state.json`,
+      scalingLock: (teamName) => `.omcp/state/team/${teamName}/.scaling-lock`,
+      workerIdentity: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/identity.json`,
+      workerAgentsMd: (teamName) => `.omcp/state/team/${teamName}/worker-agents.md`,
+      shutdownRequest: (teamName, workerName2) => `.omcp/state/team/${teamName}/workers/${workerName2}/shutdown-request.json`
     };
   }
 });
@@ -33922,23 +33922,23 @@ var init_tmux_session = __esm({
 function buildInstructionPath(...parts) {
   return (0, import_path77.join)(...parts).replaceAll("\\", "/");
 }
-function generateTriggerMessage(teamName, workerName2, teamStateRoot2 = ".omc/state") {
+function generateTriggerMessage(teamName, workerName2, teamStateRoot2 = ".omcp/state") {
   const inboxPath = buildInstructionPath(teamStateRoot2, "team", teamName, "workers", workerName2, "inbox.md");
-  if (teamStateRoot2 !== ".omc/state") {
+  if (teamStateRoot2 !== ".omcp/state") {
     return `Read ${inboxPath}, work now, report progress.`;
   }
   return `Read ${inboxPath}, execute now, report concrete progress.`;
 }
-function generatePromptModeStartupPrompt(teamName, workerName2, teamStateRoot2 = ".omc/state", cliOutputContract) {
+function generatePromptModeStartupPrompt(teamName, workerName2, teamStateRoot2 = ".omcp/state", cliOutputContract) {
   const inboxPath = buildInstructionPath(teamStateRoot2, "team", teamName, "workers", workerName2, "inbox.md");
   const base = `Open ${inboxPath}. Follow it and begin the assigned work.`;
   return cliOutputContract ? `${base}
 ${cliOutputContract}` : base;
 }
-function generateMailboxTriggerMessage(teamName, workerName2, count = 1, teamStateRoot2 = ".omc/state") {
+function generateMailboxTriggerMessage(teamName, workerName2, count = 1, teamStateRoot2 = ".omcp/state") {
   const normalizedCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
   const mailboxPath = buildInstructionPath(teamStateRoot2, "team", teamName, "mailbox", `${workerName2}.json`);
-  if (teamStateRoot2 !== ".omc/state") {
+  if (teamStateRoot2 !== ".omcp/state") {
     return `${normalizedCount} new msg(s): check ${mailboxPath}, act and report progress.`;
   }
   return `${normalizedCount} new msg(s). Read ${mailboxPath}, act now, report concrete progress.`;
@@ -33978,10 +33978,10 @@ function generateWorkerOverlay(params) {
     subject: sanitizePromptContent(t.subject),
     description: sanitizePromptContent(t.description)
   }));
-  const sentinelPath = `.omc/state/team/${teamName}/workers/${workerName2}/.ready`;
-  const heartbeatPath = `.omc/state/team/${teamName}/workers/${workerName2}/heartbeat.json`;
-  const inboxPath = `.omc/state/team/${teamName}/workers/${workerName2}/inbox.md`;
-  const statusPath = `.omc/state/team/${teamName}/workers/${workerName2}/status.json`;
+  const sentinelPath = `.omcp/state/team/${teamName}/workers/${workerName2}/.ready`;
+  const heartbeatPath = `.omcp/state/team/${teamName}/workers/${workerName2}/heartbeat.json`;
+  const inboxPath = `.omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`;
+  const statusPath = `.omcp/state/team/${teamName}/workers/${workerName2}/status.json`;
   const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"worker\\":\\"${workerName2}\\"}" --json`);
   const sendAckCommand = formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName2}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName2} initialized\\"}" --json`);
   const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"from\\":\\"in_progress\\",\\"to\\":\\"completed\\",\\"claim_token\\":\\"<claim_token>\\"}" --json`);
@@ -34062,7 +34062,7 @@ Before doing any task work, send exactly one startup ACK to the leader:
 
 ## Shutdown Protocol
 When you see a shutdown request in your inbox:
-1. Write your decision to: .omc/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json
+1. Write your decision to: .omcp/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json
 2. Format:
    - Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
    - Reject: {"status":"reject","reason":"still working","updated_at":"<iso>"}
@@ -34089,24 +34089,24 @@ ${bootstrapInstructions}
 ` : ""}`;
 }
 async function composeInitialInbox(teamName, workerName2, content, cwd, cliOutputContract) {
-  const inboxPath = (0, import_path77.join)(cwd, `.omc/state/team/${teamName}/workers/${workerName2}/inbox.md`);
+  const inboxPath = (0, import_path77.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`);
   await (0, import_promises9.mkdir)((0, import_path77.dirname)(inboxPath), { recursive: true });
   const finalContent = cliOutputContract && !content.includes(cliOutputContract) ? `${content}
 ${cliOutputContract}` : content;
   await (0, import_promises9.writeFile)(inboxPath, finalContent, "utf-8");
 }
 async function ensureWorkerStateDir(teamName, workerName2, cwd) {
-  const workerDir = (0, import_path77.join)(cwd, `.omc/state/team/${teamName}/workers/${workerName2}`);
+  const workerDir = (0, import_path77.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}`);
   await (0, import_promises9.mkdir)(workerDir, { recursive: true });
-  const mailboxDir = (0, import_path77.join)(cwd, `.omc/state/team/${teamName}/mailbox`);
+  const mailboxDir = (0, import_path77.join)(cwd, `.omcp/state/team/${teamName}/mailbox`);
   await (0, import_promises9.mkdir)(mailboxDir, { recursive: true });
-  const tasksDir = (0, import_path77.join)(cwd, `.omc/state/team/${teamName}/tasks`);
+  const tasksDir = (0, import_path77.join)(cwd, `.omcp/state/team/${teamName}/tasks`);
   await (0, import_promises9.mkdir)(tasksDir, { recursive: true });
 }
 async function writeWorkerOverlay(params) {
   const { teamName, workerName: workerName2, cwd } = params;
   const overlay = generateWorkerOverlay(params);
-  const overlayPath = (0, import_path77.join)(cwd, `.omc/state/team/${teamName}/workers/${workerName2}/AGENTS.md`);
+  const overlayPath = (0, import_path77.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}/AGENTS.md`);
   await (0, import_promises9.mkdir)((0, import_path77.dirname)(overlayPath), { recursive: true });
   await (0, import_promises9.writeFile)(overlayPath, overlay, "utf-8");
   return overlayPath;
@@ -35592,7 +35592,7 @@ async function startTeamV2(config2) {
   }
   await (0, import_promises11.mkdir)(absPath(leaderCwd, TeamPaths.tasks(sanitized)), { recursive: true });
   await (0, import_promises11.mkdir)(absPath(leaderCwd, TeamPaths.workers(sanitized)), { recursive: true });
-  await (0, import_promises11.mkdir)((0, import_path80.join)(leaderCwd, ".omc", "state", "team", sanitized, "mailbox"), { recursive: true });
+  await (0, import_promises11.mkdir)((0, import_path80.join)(leaderCwd, ".omcp", "state", "team", sanitized, "mailbox"), { recursive: true });
   const missingBinaryLogFailure = createSwallowedErrorLogger(
     "team.runtime-v2.startTeamV2 cli_binary_missing event failed"
   );
@@ -36311,7 +36311,7 @@ async function resumeTeamV2(teamName, cwd) {
   }
 }
 async function findActiveTeamsV2(cwd) {
-  const root = (0, import_path80.join)(cwd, ".omc", "state", "team");
+  const root = (0, import_path80.join)(cwd, ".omcp", "state", "team");
   if (!(0, import_fs64.existsSync)(root)) return [];
   const entries = await (0, import_promises11.readdir)(root, { withFileTypes: true });
   const active = [];
@@ -81754,7 +81754,7 @@ function applyDeepInterviewRuntimeSettings(template) {
   ).replace('"threshold": 0.2,', `"threshold": ${threshold},`).replace(
     "We'll proceed to execution once ambiguity drops below 20%.",
     `We'll proceed to execution once ambiguity drops below ${percent}.`
-  ).replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`).replace("(default: 20%)", `(default: ${percent})`).replace("(default 0.2)", `(default ${threshold})`).replace("Gate: \u226420% ambiguity", `Gate: \u2264${percent} ambiguity`).replace("(threshold: 20%).", `(threshold: ${percent}).`).replace("ambiguity \u2264 20%", `ambiguity \u2264 ${percent}`);
+  ).replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`).replace("(default: 20%)", `(default: ${percent})`).replace("(default 0.2)", `(default: ${threshold})`).replace("Gate: \u226420% ambiguity", `Gate: \u2264${percent} ambiguity`).replace("(threshold: 20%).", `(threshold: ${percent}).`).replace("ambiguity \u2264 20%", `ambiguity \u2264 ${percent}`);
 }
 function renderBundledSkillBody(skillName, body) {
   const rewrittenBody = rewriteOmcCliInvocations(body.trim());

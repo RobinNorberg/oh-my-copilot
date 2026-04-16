@@ -290,11 +290,11 @@ describe('Builtin Skills', () => {
       const projectDir = mkdtempSync(join(tmpdir(), 'omcp-skill-cache-refresh-'));
       tempDirs.push(projectDir);
 
-      mkdirSync(join(projectDir, '.claude'), { recursive: true });
+      mkdirSync(join(projectDir, '.copilot'), { recursive: true });
       process.chdir(projectDir);
 
       writeFileSync(
-        join(projectDir, '.claude', 'settings.json'),
+        join(projectDir, '.copilot', 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.12 } } }),
       );
 
@@ -303,7 +303,7 @@ describe('Builtin Skills', () => {
       expect(first?.template).toContain('"threshold": 0.12,');
 
       writeFileSync(
-        join(projectDir, '.claude', 'settings.json'),
+        join(projectDir, '.copilot', 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.33 } } }),
       );
 

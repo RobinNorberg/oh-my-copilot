@@ -95,7 +95,7 @@ function applyDeepInterviewRuntimeSettings(template) {
         // Fix #2545: replace remaining hardcoded 20%/0.2 references that conflict with runtime threshold injection
         .replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`)
         .replace('(default: 20%)', `(default: ${percent})`)
-        .replace('(default 0.2)', `(default ${threshold})`)
+        .replace('(default 0.2)', `(default: ${threshold})`)
         .replace('Gate: ≤20% ambiguity', `Gate: ≤${percent} ambiguity`)
         .replace('(threshold: 20%).', `(threshold: ${percent}).`)
         .replace('ambiguity ≤ 20%', `ambiguity ≤ ${percent}`);
