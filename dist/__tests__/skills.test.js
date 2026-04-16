@@ -6,7 +6,8 @@ import { createBuiltinSkills, getBuiltinSkill, listBuiltinSkillNames, clearSkill
 describe('Builtin Skills', () => {
     // Enable strict mode so all skills (including strict-mode-only) are loaded
     const originalStrictMode = process.env.OMC_STRICT_MODE;
-    const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    const originalCopilotConfigDir = process.env.COPILOT_CONFIG_DIR;
+    const originalCwd = process.cwd();
     process.env.OMC_STRICT_MODE = 'true';
     const tempDirs = [];
     afterAll(() => {
@@ -16,16 +17,19 @@ describe('Builtin Skills', () => {
             process.env.OMC_STRICT_MODE = originalStrictMode;
     });
     afterEach(() => {
-        if (originalClaudeConfigDir === undefined)
-            delete process.env.CLAUDE_CONFIG_DIR;
+        process.chdir(originalCwd);
+        if (originalCopilotConfigDir === undefined)
+            delete process.env.COPILOT_CONFIG_DIR;
         else
-            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalCopilotConfigDir;
         while (tempDirs.length > 0) {
             try {
                 const { rmSync } = require('fs');
                 rmSync(tempDirs.pop(), { recursive: true, force: true });
             }
-            catch { }
+            catch {
+                // cleanup errors are non-fatal
+            }
         }
     });
     // Clear cache before each test to ensure fresh loads
@@ -256,13 +260,13 @@ describe('Builtin Skills', () => {
         it('refreshes cached deep-interview output when the configured threshold changes without requiring manual cache clearing', () => {
             const projectDir = mkdtempSync(join(tmpdir(), 'omcp-skill-cache-refresh-'));
             tempDirs.push(projectDir);
-            mkdirSync(join(projectDir, '.claude'), { recursive: true });
+            mkdirSync(join(projectDir, '.copilot'), { recursive: true });
             process.chdir(projectDir);
-            writeFileSync(join(projectDir, '.claude', 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.12 } } }));
+            writeFileSync(join(projectDir, '.copilot', 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.12 } } }));
             const first = getBuiltinSkill('deep-interview');
             expect(first?.template).toContain('ambiguityThreshold = 0.12');
             expect(first?.template).toContain('"threshold": 0.12,');
-            writeFileSync(join(projectDir, '.claude', 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.33 } } }));
+            writeFileSync(join(projectDir, '.copilot', 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.33 } } }));
             const second = getBuiltinSkill('deep-interview');
             expect(second?.template).toContain('ambiguityThreshold = 0.33');
             expect(second?.template).toContain('"threshold": 0.33,');
@@ -272,7 +276,7 @@ describe('Builtin Skills', () => {
         it('replaces all hardcoded 20%/0.2 threshold references in deep-interview template', () => {
             const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-2545-'));
             tempDirs.push(profileDir);
-            process.env.CLAUDE_CONFIG_DIR = profileDir;
+            process.env.COPILOT_CONFIG_DIR = profileDir;
             writeFileSync(join(profileDir, 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }));
             clearSkillsCache();
             const skill = getBuiltinSkill('deep-interview');
@@ -281,13 +285,13 @@ describe('Builtin Skills', () => {
             expect(t).toContain('"threshold": 0.15,');
             expect(t).toContain('drops below 15%.');
             expect(t).toContain('(default: 15%)');
-            expect(t).toContain('(default 0.15)');
+            expect(t).toContain('(default: 0.15)');
             expect(t).toContain('Gate: ≤15% ambiguity');
             expect(t).toContain('(threshold: 15%).');
             expect(t).toContain('ambiguity ≤ 15%');
             expect(t).toContain('"ambiguityThreshold": 0.15,');
             expect(t).not.toContain('(default: 20%)');
-            expect(t).not.toContain('(default 0.2)');
+            expect(t).not.toContain('(default: 0.2)');
             expect(t).not.toContain('Gate: ≤20% ambiguity');
             expect(t).not.toContain('(threshold: 20%).');
             expect(t).not.toContain('ambiguity ≤ 20%');

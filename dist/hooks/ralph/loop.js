@@ -9,11 +9,12 @@
  *
  * Ported from oh-my-opencode's ralph hook.
  */
+import { execSync } from "child_process";
 import { readFileSync } from "fs";
-import { join } from "path";
+import { basename, join } from "path";
 import { writeModeState, readModeState, clearModeStateFile, } from "../../lib/mode-state-io.js";
-import { readPrd, getPrdStatus, formatNextStoryPrompt, formatPrdStatus, } from "./prd.js";
-import { getProgressContext, appendProgress, initProgress, addPattern, } from "./progress.js";
+import { ensurePrdForStartup, readPrd, getPrdStatus, formatNextStoryPrompt, formatPrdStatus, } from "./prd.js";
+import { findProgressPath, getProgressContext, appendProgress, initProgress, addPattern, } from "./progress.js";
 import { readUltraworkState as readUltraworkStateFromModule, writeUltraworkState as writeUltraworkStateFromModule, } from "../ultrawork/index.js";
 import { resolveSessionStatePath, getOmcRoot, } from "../../lib/worktree-paths.js";
 import { readTeamPipelineState } from "../team-pipeline/state.js";
@@ -49,7 +50,9 @@ export function isUltraQAActive(directory, sessionId) {
         return false;
     }
 }
+export const RALPH_CRITIC_MODES = ['architect', 'critic', 'codex'];
 const DEFAULT_MAX_ITERATIONS = 10;
+const DEFAULT_RALPH_CRITIC_MODE = 'architect';
 /**
  * Read Ralph Loop state from disk
  */
@@ -120,6 +123,34 @@ export function stripNoPrdFlag(prompt) {
         .trim();
 }
 /**
+ * Normalize a Ralph critic mode flag value.
+ */
+export function normalizeRalphCriticMode(value) {
+    if (!value) {
+        return null;
+    }
+    const normalized = value.trim().toLowerCase();
+    return RALPH_CRITIC_MODES.includes(normalized)
+        ? normalized
+        : null;
+}
+/**
+ * Detect --critic=<mode> flag (case-insensitive).
+ */
+export function detectCriticModeFlag(prompt) {
+    const match = prompt.match(/--critic(?:=|\s+)([^\s]+)/i);
+    return normalizeRalphCriticMode(match?.[1]);
+}
+/**
+ * Strip --critic=<mode> flag from prompt text and trim whitespace.
+ */
+export function stripCriticModeFlag(prompt) {
+    return prompt
+        .replace(/--critic(?:=|\s+)([^\s]+)/gi, "")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+/**
  * Create a Ralph Loop hook instance
  */
 export function createRalphLoopHook(directory) {
@@ -131,16 +162,42 @@ export function createRalphLoopHook(directory) {
         }
         const enableUltrawork = !options?.disableUltrawork;
         const now = new Date().toISOString();
+        const normalizedPrompt = stripCriticModeFlag(stripNoPrdFlag(prompt));
+        let branchName = "ralph/task";
+        try {
+            branchName = execSync("git rev-parse --abbrev-ref HEAD", {
+                cwd: directory,
+                encoding: "utf-8",
+                timeout: 5000,
+            }).trim();
+        }
+        catch {
+            // Fallback outside git repos.
+        }
+        const startupPrd = ensurePrdForStartup(directory, basename(directory), branchName, normalizedPrompt);
+        if (!startupPrd.ok) {
+            console.error(`[RALPH PRD REQUIRED] ${startupPrd.error}`);
+            return false;
+        }
+        if (!findProgressPath(directory)) {
+            initProgress(directory);
+        }
         const state = {
             active: true,
             iteration: 1,
             max_iterations: options?.maxIterations ?? DEFAULT_MAX_ITERATIONS,
             started_at: now,
-            prompt,
+            prompt: normalizedPrompt,
             session_id: sessionId,
             project_path: directory,
             linked_ultrawork: enableUltrawork,
+            critic_mode: options?.criticMode ?? detectCriticModeFlag(prompt) ?? DEFAULT_RALPH_CRITIC_MODE,
+            prd_mode: true,
         };
+        const prdCompletion = getPrdCompletionStatus(directory);
+        if (prdCompletion.nextStory) {
+            state.current_story_id = prdCompletion.nextStory.id;
+        }
         const ralphSuccess = writeRalphState(directory, state, sessionId);
         // Auto-activate ultrawork (linked to ralph) by default
         // Include session_id and project_path for proper isolation
@@ -148,7 +205,7 @@ export function createRalphLoopHook(directory) {
             const ultraworkState = {
                 active: true,
                 reinforcement_count: 0,
-                original_prompt: prompt,
+                original_prompt: normalizedPrompt,
                 started_at: now,
                 last_checked_at: now,
                 linked_to_ralph: true,
@@ -156,18 +213,6 @@ export function createRalphLoopHook(directory) {
                 project_path: directory,
             };
             writeUltraworkStateFromModule(ultraworkState, directory, sessionId);
-        }
-        // Auto-enable PRD mode if prd.json exists
-        if (ralphSuccess && hasPrd(directory)) {
-            state.prd_mode = true;
-            const prdCompletion = getPrdCompletionStatus(directory);
-            if (prdCompletion.nextStory) {
-                state.current_story_id = prdCompletion.nextStory.id;
-            }
-            // Initialize progress.txt if it doesn't exist
-            initProgress(directory);
-            // Write updated state with PRD fields
-            writeRalphState(directory, state, sessionId);
         }
         return ralphSuccess;
     };

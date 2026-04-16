@@ -22,16 +22,16 @@ export interface Todo {
     id?: string;
 }
 /**
- * Copilot CLI Task system task
+ * Claude Code Task system task
  *
  * IMPORTANT: This interface is based on observed behavior and the TaskCreate/TaskUpdate
- * tool schema. The file structure ~/.copilot/tasks/{sessionId}/{taskId}.json is inferred
- * from Copilot CLI's implementation and may change in future versions.
+ * tool schema. The file structure ~/.claude/tasks/{sessionId}/{taskId}.json is inferred
+ * from Claude Code's implementation and may change in future versions.
  *
  * As of 2025-01, Anthropic has not published official documentation for the Task system
  * file format. This implementation should be verified empirically when issues arise.
  *
- * @see https://docs.github.com/en/docs/copilot-cli (check for updates)
+ * @see https://docs.anthropic.com/en/docs/claude-code (check for updates)
  */
 export interface Task {
     id: string;
@@ -58,20 +58,22 @@ export interface IncompleteTodosResult {
  * Context from Stop hook event
  *
  * NOTE: Field names support both camelCase and snake_case variants
- * for compatibility with different Copilot CLI versions.
+ * for compatibility with different Claude Code versions.
  *
  * IMPORTANT: The abort detection patterns below are assumed. Verify
- * actual stop_reason values from Copilot CLI before finalizing.
+ * actual stop_reason values from Claude Code before finalizing.
  */
 export interface StopContext {
-    /** Reason for stop (from Copilot CLI) - snake_case variant */
+    /** Reason for stop (from Claude Code) - snake_case variant */
     stop_reason?: string;
-    /** Reason for stop (from Copilot CLI) - camelCase variant */
+    /** Reason for stop (from Claude Code) - camelCase variant */
     stopReason?: string;
     /** End turn reason (from API) - snake_case variant */
     end_turn_reason?: string;
     /** End turn reason (from API) - camelCase variant */
     endTurnReason?: string;
+    /** Generic reason field from some stop-hook payloads */
+    reason?: string;
     /** Whether user explicitly requested stop - snake_case variant */
     user_requested?: boolean;
     /** Whether user explicitly requested stop - camelCase variant */
@@ -86,9 +88,9 @@ export interface StopContext {
     tool_input?: unknown;
     /** Tool input from hook payload (camelCase) */
     toolInput?: unknown;
-    /** Path to the session transcript file (snake_case) */
+    /** Transcript path from hook payload (snake_case) */
     transcript_path?: string;
-    /** Path to the session transcript file (camelCase) */
+    /** Transcript path from hook payload (camelCase) */
     transcriptPath?: string;
 }
 export interface TodoContinuationHook {
@@ -104,7 +106,13 @@ export interface TodoContinuationHook {
  * - user_cancel, user_interrupt: Likely user-initiated via UI
  * - ctrl_c: Terminal interrupt (Ctrl+C)
  * - manual_stop: Explicit stop button
- * - abort, cancel, interrupt: Generic abort patterns
+ * - abort, cancel: Generic abort patterns
+ *
+ * Plain `interrupt` is intentionally NOT treated as an explicit user abort.
+ * In practice it can also describe a turn interruption caused by a new user
+ * message arriving during long-running tool execution (issue #2478). Those
+ * interrupted turns should still allow Ralph/persistent-mode resume on the
+ * next stop-hook opportunity unless stronger explicit-cancel signals exist.
  *
  * NOTE: Per official Anthropic docs, the Stop hook "Does not run if
  * the stoppage occurred due to a user interrupt." This means this
@@ -112,7 +120,7 @@ export interface TodoContinuationHook {
  * It is kept as defensive code in case the behavior changes.
  *
  * If the hook fails to detect user aborts correctly, these patterns
- * should be updated based on observed Copilot CLI behavior.
+ * should be updated based on observed Claude Code behavior.
  */
 export declare function isUserAbort(context?: StopContext): boolean;
 /**
@@ -124,17 +132,21 @@ export declare function isUserAbort(context?: StopContext): boolean;
 export declare function isExplicitCancelCommand(context?: StopContext): boolean;
 /**
  * Detect if stop was triggered by context-limit related reasons.
- * When context is exhausted, Copilot CLI needs to stop so it can compact.
+ * When context is exhausted, Claude Code needs to stop so it can compact.
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
+ *
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 export declare function isContextLimitStop(context?: StopContext): boolean;
 /**
  * Detect if stop was triggered by rate limiting (HTTP 429 / quota exhausted).
- * When the API is rate-limited, Copilot CLI stops the session.
+ * When the API is rate-limited, Claude Code stops the session.
  * Blocking these stops causes an infinite retry loop: the persistent-mode hook
- * injects a continuation prompt, Copilot immediately hits the rate limit again,
+ * injects a continuation prompt, Claude immediately hits the rate limit again,
  * stops again, and the cycle repeats indefinitely.
+ *
+ * Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
  */
 export declare function isRateLimitStop(context?: StopContext): boolean;
 /**
@@ -152,9 +164,9 @@ export declare function isAuthenticationError(context?: StopContext): boolean;
 /**
  * Get the Task directory for a session
  *
- * NOTE: This path (~/.copilot/tasks/{sessionId}/) is inferred from Copilot CLI's
+ * NOTE: This path (~/.claude/tasks/{sessionId}/) is inferred from Claude Code's
  * implementation. Anthropic has not officially documented this structure.
- * The Task files are created by Copilot CLI's TaskCreate tool.
+ * The Task files are created by Claude Code's TaskCreate tool.
  */
 export declare function getTaskDirectory(sessionId: string): string;
 /**

@@ -219,9 +219,9 @@ Edit `src/hooks/permission-handler/index.ts` and add to `SAFE_PATTERNS`:
 
 Remove its entry from `permissions.allow` in `settings.local.json`. It will be re-added by `setup-maintenance` unless you also remove it from `generatePermissionAllowList()` in `src/installer/permissions.ts`.
 
-## Comparison with Anthropic's Auto Mode
+## Comparison with Copilot CLI's Auto Mode
 
-| Aspect | Anthropic Auto Mode | oh-my-copilot |
+| Aspect | Copilot CLI Auto Mode | oh-my-copilot |
 |--------|-------------------|---------------|
 | **Stage 1 filter** | Model-based (Sonnet) | Regex-based (zero latency) |
 | **Stage 2 reasoning** | Model-based chain-of-thought | Human prompt (CLI native) |

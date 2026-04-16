@@ -1594,7 +1594,7 @@ var CONTRACTS = {
   copilot: {
     agentType: "copilot",
     binary: "copilot",
-    installInstructions: "Install Copilot CLI: https://copilot.ai/download",
+    installInstructions: "Install Copilot CLI: https://github.com/github/copilot-cli",
     buildLaunchArgs(model, extraFlags = []) {
       const args = ["--dangerously-skip-permissions"];
       if (model) args.push("--model", model);
@@ -1839,11 +1839,7 @@ function sanitizePromptContent(content, maxLength = 4e3) {
       sanitized = sanitized.slice(0, -1);
     }
   }
-  sanitized = sanitized.replace(/<(\/?)(TASK_SUBJECT)[^>]*>/gi, "[$1$2]");
-  sanitized = sanitized.replace(/<(\/?)(TASK_DESCRIPTION)[^>]*>/gi, "[$1$2]");
-  sanitized = sanitized.replace(/<(\/?)(INBOX_MESSAGE)[^>]*>/gi, "[$1$2]");
-  sanitized = sanitized.replace(/<(\/?)(INSTRUCTIONS)[^>]*>/gi, "[$1$2]");
-  sanitized = sanitized.replace(/<(\/?)(SYSTEM)[^>]*>/gi, "[$1$2]");
+  sanitized = sanitized.replace(/<(\/?)(system-instructions|system-reminder|TASK_SUBJECT|TASK_DESCRIPTION|INBOX_MESSAGE)(?=[\s>/])[^>]*>/gi, "[$1$2]");
   return sanitized;
 }
 
@@ -3445,9 +3441,12 @@ function buildDefaultConfig() {
 var DEFAULT_CONFIG = buildDefaultConfig();
 function getConfigPaths() {
   const copilotConfigDir = getConfigDir();
+  const copilotProject = (0, import_path17.join)(process.cwd(), ".copilot", "omg.jsonc");
+  const claudeProject = (0, import_path17.join)(process.cwd(), ".claude", "omc.jsonc");
+  const project = (0, import_fs14.existsSync)(claudeProject) && !(0, import_fs14.existsSync)(copilotProject) ? claudeProject : copilotProject;
   return {
     user: (0, import_path17.join)(copilotConfigDir, "omg", "config.jsonc"),
-    project: (0, import_path17.join)(process.cwd(), ".copilot", "omg.jsonc")
+    project
   };
 }
 function loadJsoncFile(path4) {
@@ -5278,6 +5277,20 @@ function sanitizeTeamName(name) {
   if (!sanitized) throw new Error(`Invalid team name: "${name}" produces empty slug after sanitization`);
   return sanitized;
 }
+function shouldUseLaunchTimeCliResolution(reason) {
+  return /untrusted location|relative path/i.test(reason);
+}
+function resolvePreflightBinaryPath(agentType) {
+  try {
+    return { path: resolveValidatedBinaryPath(agentType), degraded: false };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    if (shouldUseLaunchTimeCliResolution(reason)) {
+      return { path: getContract(agentType).binary, degraded: true, reason };
+    }
+    throw err;
+  }
+}
 async function isWorkerPaneAlive(paneId) {
   if (!paneId) return false;
   try {
@@ -5570,7 +5583,7 @@ async function startTeamV2(config) {
   const missingBinaryReasons = [];
   for (const agentType of [...new Set(agentTypes)]) {
     try {
-      resolvedBinaryPaths[agentType] = resolveValidatedBinaryPath(agentType);
+      resolvedBinaryPaths[agentType] = resolvePreflightBinaryPath(agentType).path;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       missingBinaryReasons.push({ agentType, reason });
@@ -5581,7 +5594,7 @@ async function startTeamV2(config) {
     if (resolvedBinaryPaths[provider]) continue;
     if (missingBinaryReasons.some((m) => m.agentType === provider)) continue;
     try {
-      resolvedBinaryPaths[provider] = resolveValidatedBinaryPath(provider);
+      resolvedBinaryPaths[provider] = resolvePreflightBinaryPath(provider).path;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       missingBinaryReasons.push({ agentType: provider, reason });

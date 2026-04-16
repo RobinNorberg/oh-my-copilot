@@ -50,6 +50,12 @@ describe("Prompt Generation", () => {
             expect(prompt).toContain("Ralph");
             expect(prompt).toContain("Ultrawork");
         });
+        it("should require concise executor summaries", () => {
+            const prompt = getExecutionPrompt("plan.md");
+            expect(prompt).toContain("concise execution summary under 100 words");
+            expect(prompt).toContain("files touched");
+            expect(prompt).toContain("verification status");
+        });
     });
     describe("getQAPrompt", () => {
         it("should specify build/lint/test sequence", () => {
@@ -69,6 +75,12 @@ describe("Prompt Generation", () => {
             expect(prompt).toContain("Functional");
             expect(prompt).toContain("Security");
             expect(prompt).toContain("Quality");
+        });
+        it("should require concise reviewer summaries", () => {
+            const prompt = getValidationPrompt("spec.md");
+            expect(prompt).toContain("concise review summary under 100 words");
+            expect(prompt).toContain("evidence highlights");
+            expect(prompt).toContain("files checked");
         });
     });
     describe("getPhasePrompt", () => {

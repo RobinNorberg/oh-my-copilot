@@ -12,11 +12,6 @@
  */
 export declare function toForwardSlash(path: string): string;
 /**
- * Get Copilot config directory path.
- * Respects the COPILOT_CONFIG_DIR environment variable when set.
- */
-export declare function getCopilotConfigDir(): string;
-/**
  * Get a path suitable for use in shell commands
  * Converts backslashes to forward slashes for cross-platform compatibility
  */
@@ -83,8 +78,14 @@ export interface PurgeCacheResult {
     removed: number;
     /** Paths that were removed */
     removedPaths: string[];
+    /** Number of stale version directories replaced with symlinks to the active version */
+    symlinked: number;
+    /** Paths that were converted to symlinks */
+    symlinkPaths: string[];
     /** Errors encountered (non-fatal) */
     errors: string[];
 }
-export declare function purgeStalePluginCacheVersions(): PurgeCacheResult;
+export declare function purgeStalePluginCacheVersions(options?: {
+    skipGracePeriod?: boolean;
+}): PurgeCacheResult;
 //# sourceMappingURL=paths.d.ts.map

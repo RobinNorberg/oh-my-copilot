@@ -14,19 +14,22 @@ import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { join } from 'path';
 import { getHardMaxIterations } from '../../lib/security-config.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { getGlobalOmcConfigCandidates } from '../../utils/paths.js';
 import { readUltraworkState, writeUltraworkState, incrementReinforcement, deactivateUltrawork, getUltraworkPersistenceMessage } from '../ultrawork/index.js';
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
 import { readModeState, writeModeState } from '../../lib/mode-state-io.js';
-import { readRalphState, writeRalphState, incrementRalphIteration, clearRalphState, getPrdCompletionStatus, getRalphContext, readVerificationState, startVerification, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState, } from '../ralph/index.js';
+import { readRalphState, writeRalphState, incrementRalphIteration, clearRalphState, getPrdCompletionStatus, getRalphContext, getStory, markStoryIncomplete, markStoryArchitectVerified, readVerificationState, startVerification, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState, } from '../ralph/index.js';
 import { checkIncompleteTodos, getNextPendingTodo, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import { isAutopilotActive } from '../autopilot/index.js';
 import { checkAutopilot } from '../autopilot/enforcement.js';
 import { readTeamPipelineState } from '../team-pipeline/state.js';
 import { getActiveAgentSnapshot } from '../subagent-tracker/index.js';
+import { truncatePromptForEcho } from '../../lib/truncate-prompt.js';
 /** Maximum todo-continuation attempts before giving up (prevents infinite loops) */
 const MAX_TODO_CONTINUATION_ATTEMPTS = 5;
 const CANCEL_SIGNAL_TTL_MS = 30_000;
+const STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 /** Track todo-continuation attempts per session to prevent infinite loops */
 const todoContinuationAttempts = new Map();
 export function shouldWriteStateBack(statePath) {
@@ -69,6 +72,27 @@ function isSessionCancelInProgress(directory, sessionId) {
     catch {
         return false;
     }
+}
+/**
+ * Treat mode state as stale if it has not been refreshed recently.
+ * Stale files are ignored so they cannot falsely block new sessions.
+ * Uses the freshest of last_checked_at, updated_at, or started_at.
+ */
+function isStaleState(state) {
+    if (!state || typeof state !== 'object') {
+        return true;
+    }
+    const stateRecord = state;
+    const timestamps = [stateRecord.last_checked_at, stateRecord.updated_at, stateRecord.started_at]
+        .filter((value) => typeof value === 'string' && value.length > 0);
+    const mostRecent = timestamps.reduce((max, value) => {
+        const parsed = new Date(value).getTime();
+        return Number.isFinite(parsed) && parsed > max ? parsed : max;
+    }, 0);
+    if (mostRecent === 0) {
+        return true;
+    }
+    return Date.now() - mostRecent > STALE_STATE_THRESHOLD_MS;
 }
 /**
  * Read last tool error from state directory.
@@ -176,59 +200,113 @@ export function resetTodoContinuationAttempts(sessionId) {
  * Default: 60 seconds. 0 = disabled (no cooldown).
  */
 export function getIdleNotificationCooldownSeconds() {
-    const configPath = join(getCopilotConfigDir(), 'config.json');
-    try {
-        if (!existsSync(configPath))
+    for (const configPath of getGlobalOmcConfigCandidates('config.json')) {
+        try {
+            if (!existsSync(configPath))
+                continue;
+            const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+            const cooldown = config?.notificationCooldown;
+            const val = cooldown?.sessionIdleSeconds;
+            if (typeof val === 'number' && Number.isFinite(val))
+                return Math.max(0, val);
             return 60;
-        const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-        const cooldown = config?.notificationCooldown;
-        const val = cooldown?.sessionIdleSeconds;
-        if (typeof val === 'number' && Number.isFinite(val))
-            return Math.max(0, val);
-        return 60;
+        }
+        catch {
+            return 60;
+        }
     }
-    catch {
-        return 60;
-    }
+    return 60;
+}
+function getGlobalIdleNotificationCooldownPath(stateDir) {
+    return join(stateDir, 'idle-notif-cooldown.json');
 }
 function getIdleNotificationCooldownPath(stateDir, sessionId) {
     // Keep session segments filesystem-safe; fall back to legacy global path otherwise.
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
         return join(stateDir, 'sessions', sessionId, 'idle-notif-cooldown.json');
     }
-    return join(stateDir, 'idle-notif-cooldown.json');
+    return getGlobalIdleNotificationCooldownPath(stateDir);
+}
+function readIdleNotificationCooldownRecord(cooldownPath) {
+    try {
+        if (!existsSync(cooldownPath))
+            return null;
+        return JSON.parse(readFileSync(cooldownPath, 'utf-8'));
+    }
+    catch {
+        return null;
+    }
+}
+function isRepeatedZeroBacklogCooldown(record, repoState) {
+    return Boolean(repoState?.backlogZero &&
+        record?.backlogZero === true &&
+        typeof record.repoSignature === 'string' &&
+        record.repoSignature === repoState.signature);
+}
+function hasRepeatedZeroBacklogCooldown(stateDir, sessionId, repoState) {
+    const cooldownPath = getIdleNotificationCooldownPath(stateDir, sessionId);
+    const cooldownRecord = readIdleNotificationCooldownRecord(cooldownPath);
+    if (isRepeatedZeroBacklogCooldown(cooldownRecord, repoState)) {
+        return true;
+    }
+    if (cooldownPath !== getGlobalIdleNotificationCooldownPath(stateDir)) {
+        const globalRecord = readIdleNotificationCooldownRecord(getGlobalIdleNotificationCooldownPath(stateDir));
+        if (isRepeatedZeroBacklogCooldown(globalRecord, repoState)) {
+            return true;
+        }
+    }
+    return false;
+}
+/**
+ * OpenClaw stop wakes should usually bypass idle cooldowns, but unchanged
+ * zero-backlog repo state should stay suppressed so stale repo-level CI replay
+ * bursts do not re-arm after the actionable backlog is already zero.
+ */
+export function shouldWakeOpenClawOnStop(stateDir, sessionId, repoState) {
+    return !hasRepeatedZeroBacklogCooldown(stateDir, sessionId, repoState);
 }
 /**
  * Check whether the session-idle notification cooldown has elapsed.
  * Returns true if the notification should be sent.
  */
-export function shouldSendIdleNotification(stateDir, sessionId) {
+export function shouldSendIdleNotification(stateDir, sessionId, repoState) {
     const cooldownSecs = getIdleNotificationCooldownSeconds();
-    if (cooldownSecs === 0)
-        return true; // cooldown disabled
     const cooldownPath = getIdleNotificationCooldownPath(stateDir, sessionId);
-    try {
-        if (!existsSync(cooldownPath))
+    const cooldownRecord = readIdleNotificationCooldownRecord(cooldownPath);
+    if (hasRepeatedZeroBacklogCooldown(stateDir, sessionId, repoState)) {
+        return false;
+    }
+    if (repoState && typeof cooldownRecord?.repoSignature === 'string') {
+        if (cooldownRecord.repoSignature !== repoState.signature) {
             return true;
-        const data = JSON.parse(readFileSync(cooldownPath, 'utf-8'));
-        if (data?.lastSentAt && typeof data.lastSentAt === 'string') {
-            const elapsed = (Date.now() - new Date(data.lastSentAt).getTime()) / 1000;
-            if (Number.isFinite(elapsed) && elapsed < cooldownSecs)
-                return false;
         }
     }
-    catch {
-        // ignore — treat as no cooldown file
+    if (cooldownSecs === 0)
+        return true; // cooldown disabled
+    if (typeof cooldownRecord?.lastSentAt === 'string') {
+        const elapsed = (Date.now() - new Date(cooldownRecord.lastSentAt).getTime()) / 1000;
+        if (Number.isFinite(elapsed) && elapsed < cooldownSecs)
+            return false;
     }
     return true;
 }
 /**
  * Record that the session-idle notification was sent at the current timestamp.
  */
-export function recordIdleNotificationSent(stateDir, sessionId) {
+export function recordIdleNotificationSent(stateDir, sessionId, repoState) {
     const cooldownPath = getIdleNotificationCooldownPath(stateDir, sessionId);
     try {
-        atomicWriteJsonSync(cooldownPath, { lastSentAt: new Date().toISOString() });
+        const record = {
+            lastSentAt: new Date().toISOString(),
+        };
+        if (repoState) {
+            record.repoSignature = repoState.signature;
+            record.backlogZero = repoState.backlogZero;
+        }
+        atomicWriteJsonSync(cooldownPath, record);
+        if (repoState?.backlogZero && cooldownPath !== getGlobalIdleNotificationCooldownPath(stateDir)) {
+            atomicWriteJsonSync(getGlobalIdleNotificationCooldownPath(stateDir), record);
+        }
     }
     catch {
         // ignore write errors
@@ -237,6 +315,17 @@ export function recordIdleNotificationSent(stateDir, sessionId) {
 /** Max bytes to read from the tail of a transcript for architect approval detection. */
 const TRANSCRIPT_TAIL_BYTES = 32 * 1024; // 32 KB
 const CRITICAL_CONTEXT_STOP_PERCENT = 95;
+const RALPLAN_TERMINAL_PHASES = new Set([
+    'completed',
+    'complete',
+    'failed',
+    'cancelled',
+    'canceled',
+    'aborted',
+    'terminated',
+    'done',
+    'handoff',
+]);
 /**
  * Read the tail of a potentially large transcript file.
  * Architect approval/rejection markers appear near the end of the conversation,
@@ -257,6 +346,111 @@ function readTranscriptTail(transcriptPath) {
     finally {
         closeSync(fd);
     }
+}
+function readTranscriptTailLines(transcriptPath) {
+    const content = readTranscriptTail(transcriptPath);
+    const lines = content.split('\n');
+    try {
+        if (statSync(transcriptPath).size > TRANSCRIPT_TAIL_BYTES && lines.length > 0) {
+            lines.shift();
+        }
+    }
+    catch {
+        return lines;
+    }
+    return lines;
+}
+const REVIEWER_TASK_TOOL_NAMES = new Set(['Task', 'proxy_Task', 'Agent']);
+const REVIEWER_COMMAND_TOOL_NAMES = new Set(['Bash', 'proxy_Bash']);
+function normalizeReviewerPath(subagentType) {
+    if (typeof subagentType !== 'string') {
+        return null;
+    }
+    const normalized = subagentType.trim().toLowerCase();
+    if (!normalized) {
+        return null;
+    }
+    const baseName = normalized.includes(':')
+        ? normalized.slice(normalized.lastIndexOf(':') + 1)
+        : normalized;
+    if (baseName === 'architect' || baseName.startsWith('architect-')) {
+        return 'architect';
+    }
+    if (baseName === 'critic' || baseName.startsWith('critic-')) {
+        return 'critic';
+    }
+    return null;
+}
+function isCodexReviewerCommand(command) {
+    return typeof command === 'string'
+        && /\bask\s+codex\s+--agent-prompt\s+critic\b/i.test(command);
+}
+function extractTranscriptText(content) {
+    if (typeof content === 'string') {
+        return content;
+    }
+    if (Array.isArray(content)) {
+        return content.map((item) => extractTranscriptText(item)).filter(Boolean).join('\n');
+    }
+    if (!content || typeof content !== 'object') {
+        return '';
+    }
+    const record = content;
+    const directText = typeof record.text === 'string' ? record.text : '';
+    const nestedContent = 'content' in record ? extractTranscriptText(record.content) : '';
+    return [directText, nestedContent].filter(Boolean).join('\n');
+}
+function matchesVerificationReviewerPath(reviewerPath, verificationState) {
+    const expected = verificationState?.critic_mode ?? 'architect';
+    return reviewerPath === expected;
+}
+function checkReviewerAuthoredApprovalInMessages(transcriptPath, verificationState) {
+    const reviewerToolUses = new Map();
+    for (const line of readTranscriptTailLines(transcriptPath)) {
+        if (!line.trim()) {
+            continue;
+        }
+        let entry;
+        try {
+            entry = JSON.parse(line);
+        }
+        catch {
+            continue;
+        }
+        const content = entry.message?.content;
+        if (!Array.isArray(content)) {
+            continue;
+        }
+        for (const block of content) {
+            if (block?.type === 'tool_use' && block.id && block.name) {
+                if (REVIEWER_TASK_TOOL_NAMES.has(block.name)) {
+                    const reviewerPath = normalizeReviewerPath(block.input?.subagent_type);
+                    if (reviewerPath && matchesVerificationReviewerPath(reviewerPath, verificationState)) {
+                        reviewerToolUses.set(block.id, reviewerPath);
+                    }
+                    continue;
+                }
+                if (REVIEWER_COMMAND_TOOL_NAMES.has(block.name)) {
+                    const command = block.input?.command;
+                    if (isCodexReviewerCommand(command) && matchesVerificationReviewerPath('codex', verificationState)) {
+                        reviewerToolUses.set(block.id, 'codex');
+                    }
+                }
+                continue;
+            }
+            if (block?.type !== 'tool_result' || !block.tool_use_id) {
+                continue;
+            }
+            if (!reviewerToolUses.has(block.tool_use_id)) {
+                continue;
+            }
+            const reviewerOutput = extractTranscriptText(block.content);
+            if (reviewerOutput && detectArchitectApproval(reviewerOutput, verificationState)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 function estimateTranscriptContextPercent(transcriptPath) {
     if (!transcriptPath || !existsSync(transcriptPath)) {
@@ -313,24 +507,20 @@ function isAwaitingConfirmation(state) {
 /**
  * Check for architect approval in session transcript
  */
-function checkArchitectApprovalInTranscript(sessionId) {
-    const copilotDir = getCopilotConfigDir();
-    const possiblePaths = [
-        join(copilotDir, 'sessions', sessionId, 'transcript.md'),
-        join(copilotDir, 'sessions', sessionId, 'messages.json'),
-        join(copilotDir, 'transcripts', `${sessionId}.md`)
-    ];
+function checkArchitectApprovalInTranscript(sessionId, verificationState) {
+    const claudeDir = getCopilotConfigDir();
+    const possiblePaths = [join(claudeDir, 'sessions', sessionId, 'messages.json')];
     for (const transcriptPath of possiblePaths) {
-        if (existsSync(transcriptPath)) {
-            try {
-                const content = readTranscriptTail(transcriptPath);
-                if (detectArchitectApproval(content)) {
-                    return true;
-                }
+        if (!existsSync(transcriptPath)) {
+            continue;
+        }
+        try {
+            if (checkReviewerAuthoredApprovalInMessages(transcriptPath, verificationState)) {
+                return true;
             }
-            catch {
-                continue;
-            }
+        }
+        catch {
+            continue;
         }
     }
     return false;
@@ -339,11 +529,11 @@ function checkArchitectApprovalInTranscript(sessionId) {
  * Check for architect rejection in session transcript
  */
 function checkArchitectRejectionInTranscript(sessionId) {
-    const copilotDir = getCopilotConfigDir();
+    const claudeDir = getCopilotConfigDir();
     const possiblePaths = [
-        join(copilotDir, 'sessions', sessionId, 'transcript.md'),
-        join(copilotDir, 'sessions', sessionId, 'messages.json'),
-        join(copilotDir, 'transcripts', `${sessionId}.md`)
+        join(claudeDir, 'sessions', sessionId, 'transcript.md'),
+        join(claudeDir, 'sessions', sessionId, 'messages.json'),
+        join(claudeDir, 'transcripts', `${sessionId}.md`)
     ];
     for (const transcriptPath of possiblePaths) {
         if (existsSync(transcriptPath)) {
@@ -371,7 +561,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
     const ralphStatePath = sessionId
         ? resolveSessionStatePath('ralph', sessionId, workingDir)
         : resolveStatePath('ralph', workingDir);
-    if (!state || !state.active) {
+    if (!state || !state.active || isStaleState(state)) {
         return null;
     }
     // Session isolation. `readRalphState()` already enforces the lenient form
@@ -422,7 +612,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
     // Check team pipeline state coordination
     // When team mode is active alongside ralph, respect team phase transitions
     const teamState = readTeamPipelineState(workingDir, sessionId);
-    if (teamState && teamState.active !== undefined) {
+    if (teamState && teamState.active !== undefined && !isStaleState(teamState)) {
         const teamPhase = teamState.phase;
         // If team pipeline reached a terminal state, ralph should also complete
         if (teamPhase === 'complete') {
@@ -457,34 +647,51 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
         }
     }
     // Check for existing verification state (architect verification in progress)
-    const verificationState = readVerificationState(workingDir, sessionId);
+    let verificationState = readVerificationState(workingDir, sessionId);
     if (verificationState?.pending) {
         // Verification is in progress - check for architect's response
         if (sessionId) {
             // Check for architect approval
-            if (checkArchitectApprovalInTranscript(sessionId)) {
-                // Architect approved - truly complete
-                // Also deactivate ultrawork if it was active alongside ralph
-                clearVerificationState(workingDir, sessionId);
-                clearRalphState(workingDir, sessionId);
-                deactivateUltrawork(workingDir, sessionId);
-                const criticLabel = verificationState.critic_mode === 'codex'
-                    ? 'Codex critic'
-                    : verificationState.critic_mode === 'critic'
-                        ? 'Critic'
-                        : 'Architect';
-                return {
-                    shouldBlock: false,
-                    message: `[RALPH LOOP VERIFIED COMPLETE] ${criticLabel} verified task completion after ${state.iteration} iteration(s). Excellent work!`,
-                    mode: 'none'
-                };
+            if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
+                if (verificationState.verification_scope === 'story' && verificationState.story_id) {
+                    markStoryArchitectVerified(workingDir, verificationState.story_id);
+                    clearVerificationState(workingDir, sessionId);
+                    const refreshedState = readRalphState(workingDir, sessionId);
+                    if (refreshedState) {
+                        const refreshedPrd = getPrdCompletionStatus(workingDir);
+                        refreshedState.current_story_id = refreshedPrd.nextStory?.id;
+                        writeRalphState(workingDir, refreshedState, sessionId);
+                    }
+                    verificationState = readVerificationState(workingDir, sessionId);
+                }
+                else {
+                    // Architect approved - truly complete
+                    // Also deactivate ultrawork if it was active alongside ralph
+                    clearVerificationState(workingDir, sessionId);
+                    clearRalphState(workingDir, sessionId);
+                    deactivateUltrawork(workingDir, sessionId);
+                    const criticLabel = verificationState.critic_mode === 'codex'
+                        ? 'Codex critic'
+                        : verificationState.critic_mode === 'critic'
+                            ? 'Critic'
+                            : 'Architect';
+                    return {
+                        shouldBlock: false,
+                        message: `[RALPH LOOP VERIFIED COMPLETE] ${criticLabel} verified task completion after ${state.iteration} iteration(s). Excellent work!`,
+                        mode: 'none'
+                    };
+                }
             }
             // Check for architect rejection
             const rejection = checkArchitectRejectionInTranscript(sessionId);
-            if (rejection.rejected) {
+            if (verificationState && rejection.rejected) {
+                if (verificationState.verification_scope === 'story' && verificationState.story_id) {
+                    markStoryIncomplete(workingDir, verificationState.story_id, rejection.feedback);
+                }
                 // Architect rejected - continue with feedback
                 recordArchitectFeedback(workingDir, false, rejection.feedback, sessionId);
                 const updatedVerification = readVerificationState(workingDir, sessionId);
+                verificationState = updatedVerification;
                 if (updatedVerification) {
                     const continuationPrompt = getArchitectRejectionContinuationPrompt(updatedVerification);
                     return {
@@ -499,14 +706,32 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
                 }
             }
         }
-        // Verification still pending - remind to run the selected reviewer
-        // Get current story for story-aware verification
-        const prdInfo = getPrdCompletionStatus(workingDir);
-        const currentStory = prdInfo.nextStory ?? undefined;
-        const verificationPrompt = getArchitectVerificationPrompt(verificationState, currentStory);
+        if (verificationState?.pending) {
+            const storyUnderReview = verificationState.story_id
+                ? getStory(workingDir, verificationState.story_id) ?? undefined
+                : undefined;
+            // Verification still pending - remind to run the selected reviewer
+            const verificationPrompt = getArchitectVerificationPrompt(verificationState, storyUnderReview);
+            return {
+                shouldBlock: true,
+                message: verificationPrompt,
+                mode: 'ralph',
+                metadata: {
+                    iteration: state.iteration,
+                    maxIterations: state.max_iterations
+                }
+            };
+        }
+    }
+    const prdStatus = getPrdCompletionStatus(workingDir);
+    const currentStory = state.current_story_id
+        ? getStory(workingDir, state.current_story_id)
+        : prdStatus.nextStory;
+    if (currentStory?.passes && currentStory.architectVerified !== true) {
+        const startedVerification = startVerification(workingDir, `Story ${currentStory.id} is marked passes: true and requires architect approval before Ralph can progress.`, state.prompt, state.critic_mode, sessionId, currentStory);
         return {
             shouldBlock: true,
-            message: verificationPrompt,
+            message: getArchitectVerificationPrompt(startedVerification, currentStory),
             mode: 'ralph',
             metadata: {
                 iteration: state.iteration,
@@ -514,9 +739,8 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
             }
         };
     }
-    // Check for PRD-based completion (all stories have passes: true).
+    // Check for PRD-based completion (all stories have passes: true and are architect-verified).
     // Enter a verification phase instead of clearing Ralph immediately.
-    const prdStatus = getPrdCompletionStatus(workingDir);
     if (prdStatus.hasPrd && prdStatus.allComplete) {
         const startedVerification = startVerification(workingDir, `All ${prdStatus.status?.total || 0} PRD stories are marked passes: true.`, state.prompt, state.critic_mode, sessionId);
         return {
@@ -590,7 +814,7 @@ ${prdInstruction}
 4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files. If cancel fails, retry with \`/oh-my-copilot:cancel --force\`.
 5. Do NOT stop until the task is truly done
 
-${newState.prompt ? `Original task: ${newState.prompt}` : ''}
+${newState.prompt ? `Original task: ${truncatePromptForEcho(newState.prompt)}` : ''}
 
 </ralph-continuation>
 
@@ -767,15 +991,37 @@ When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 const RALPLAN_STOP_BLOCKER_MAX = 30;
 const RALPLAN_STOP_BLOCKER_TTL_MS = 45 * 60 * 1000; // 45 min
 const RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS = 5_000;
+function getNormalizedRalplanPhase(state) {
+    if (!state || typeof state !== 'object') {
+        return null;
+    }
+    const rawPhase = state.current_phase ?? state.phase ?? state.status;
+    if (typeof rawPhase !== 'string') {
+        return null;
+    }
+    const phase = rawPhase.trim().toLowerCase();
+    if (!phase) {
+        return null;
+    }
+    if (phase === 'handoff' || phase.startsWith('handoff:') || phase.startsWith('handoff-')) {
+        return 'handoff';
+    }
+    return phase;
+}
 /**
  * Check Ralplan state for standalone ralplan mode enforcement.
  * Ralplan state is written by the MCP state_write tool.
- * Only `active` and `session_id` are used for blocking decisions.
+ * `active`, `session_id`, and the normalized phase/status fields are used for blocking decisions.
  */
 async function checkRalplan(sessionId, directory, cancelInProgress) {
     const workingDir = resolveToWorktreeRoot(directory);
     const state = readModeState('ralplan', workingDir, sessionId);
-    if (!state || !state.active) {
+    const stateRecord = state;
+    const hasTimestampFields = Boolean(stateRecord &&
+        ['last_checked_at', 'updated_at', 'started_at'].some((key) => typeof stateRecord[key] === 'string' && String(stateRecord[key]).length > 0));
+    // Session-scoped ralplan state can legitimately omit timestamps in CI.
+    // Only apply stale-state suppression when a freshness timestamp exists.
+    if (!state || !state.active || (hasTimestampFields && isStaleState(state))) {
         return null;
     }
     // Session isolation
@@ -786,13 +1032,10 @@ async function checkRalplan(sessionId, directory, cancelInProgress) {
         return null;
     }
     // Terminal phase detection — allow stop when ralplan has completed
-    const currentPhase = state.current_phase;
-    if (typeof currentPhase === 'string') {
-        const terminal = ['complete', 'completed', 'failed', 'cancelled', 'done'];
-        if (terminal.includes(currentPhase.toLowerCase())) {
-            writeStopBreaker(workingDir, 'ralplan', 0, sessionId);
-            return { shouldBlock: false, message: '', mode: 'ralplan' };
-        }
+    const currentPhase = getNormalizedRalplanPhase(state);
+    if (currentPhase && RALPLAN_TERMINAL_PHASES.has(currentPhase)) {
+        writeStopBreaker(workingDir, 'ralplan', 0, sessionId);
+        return { shouldBlock: false, message: '', mode: 'ralplan' };
     }
     // Cancel-in-progress bypass
     if (cancelInProgress) {
@@ -861,7 +1104,7 @@ When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 async function checkUltrawork(sessionId, directory, _hasIncompleteTodos, cancelInProgress) {
     const workingDir = resolveToWorktreeRoot(directory);
     const state = readUltraworkState(workingDir, sessionId);
-    if (!state || !state.active) {
+    if (!state || !state.active || isStaleState(state)) {
         return null;
     }
     // Session isolation. `readUltraworkState()` already enforces the lenient
@@ -882,6 +1125,17 @@ async function checkUltrawork(sessionId, directory, _hasIncompleteTodos, cancelI
             mode: 'none'
         };
     }
+    // If all tracked work is complete, auto-deactivate ultrawork and allow exit.
+    // Issue #2419: otherwise the Stop hook can keep blocking even after task
+    // completion, leaving ultrawork active until manual /cancel or session-end.
+    if (!_hasIncompleteTodos) {
+        deactivateUltrawork(workingDir, sessionId);
+        return {
+            shouldBlock: false,
+            message: '[ULTRAWORK COMPLETE] No incomplete tasks remain. Ultrawork state cleared.',
+            mode: 'none'
+        };
+    }
     // Enforce hard max iterations for ultrawork (mirrors ralph enforcement).
     const hardMax = getHardMaxIterations();
     if (hardMax > 0 && state.reinforcement_count >= hardMax) {
@@ -893,8 +1147,8 @@ async function checkUltrawork(sessionId, directory, _hasIncompleteTodos, cancelI
             metadata: { reinforcementCount: state.reinforcement_count }
         };
     }
-    // Reinforce ultrawork mode - ALWAYS continue while active.
-    // This prevents false stops from bash errors, transient failures, etc.
+    // Reinforce ultrawork mode while incomplete work remains.
+    // This prevents false stops from bash errors or transient failures mid-task.
     const newState = incrementReinforcement(workingDir, sessionId);
     if (!newState) {
         return null;
@@ -975,7 +1229,8 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
 ) {
     const workingDir = resolveToWorktreeRoot(directory);
     // CRITICAL: Never block context-limit/critical-context stops.
-    // Blocking these causes a deadlock where Copilot CLI cannot compact or exit.
+    // Blocking these causes a deadlock where Claude Code cannot compact or exit.
+    // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
     if (isCriticalContextStop(stopContext)) {
         return {
             shouldBlock: false,
@@ -1012,9 +1267,10 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
         };
     }
     // CRITICAL: Never block rate-limit stops.
-    // When the API returns 429 / quota-exhausted, Copilot CLI stops the session.
+    // When the API returns 429 / quota-exhausted, Claude Code stops the session.
     // Blocking these stops creates an infinite retry loop: the hook injects a
-    // continuation prompt → Copilot hits the rate limit again → stops again → loops.
+    // continuation prompt → Claude hits the rate limit again → stops again → loops.
+    // Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
     if (isRateLimitStop(stopContext)) {
         return {
             shouldBlock: false,
@@ -1061,15 +1317,7 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
             };
         }
     }
-    // Priority 1.7: Team Pipeline (standalone team mode)
-    // When team runs without ralph, this provides stop-hook blocking.
-    // When team runs with ralph, checkRalphLoop() handles it (Priority 1).
-    // Return ANY non-null result (including circuit breaker shouldBlock=false with message).
-    const teamResult = await checkTeamPipeline(sessionId, workingDir, cancelInProgress);
-    if (teamResult) {
-        return teamResult;
-    }
-    // Priority 1.8: Ralplan (standalone consensus planning)
+    // Priority 1.7: Ralplan (standalone consensus planning)
     // Ralplan consensus loops (Planner/Architect/Critic) need hard-blocking.
     // When ralplan runs under ralph, checkRalphLoop() handles it (Priority 1).
     // Return ANY non-null result (including circuit breaker shouldBlock=false with message).
@@ -1077,9 +1325,17 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
     if (ralplanResult) {
         return ralplanResult;
     }
+    // Priority 1.8: Team Pipeline (standalone team mode)
+    // When team runs without ralph, this provides stop-hook blocking.
+    // When team runs with ralph, checkRalphLoop() handles it (Priority 1).
+    // Return ANY non-null result (including circuit breaker shouldBlock=false with message).
+    const teamResult = await checkTeamPipeline(sessionId, workingDir, cancelInProgress);
+    if (teamResult) {
+        return teamResult;
+    }
     // Priority 2: Ultrawork Mode (performance mode with persistence)
     const ultraworkResult = await checkUltrawork(sessionId, workingDir, hasIncompleteTodos, cancelInProgress);
-    if (ultraworkResult?.shouldBlock) {
+    if (ultraworkResult) {
         return ultraworkResult;
     }
     // Priority 3: Skill Active State (issue #1033)
@@ -1110,7 +1366,7 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
     };
 }
 /**
- * Create hook output for Copilot CLI.
+ * Create hook output for Claude Code.
  * Returns `continue: false` when `shouldBlock` is true to hard-block the stop event.
  * Returns `continue: true` for terminal states, escape hatches, and errors.
  */

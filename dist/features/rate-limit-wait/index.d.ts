@@ -11,6 +11,6 @@
  */
 export type { RateLimitStatus, TmuxPane, PaneAnalysisResult, BlockedPane, DaemonState, DaemonConfig, ResumeResult, DaemonCommand, DaemonResponse, } from './types.js';
 export { checkRateLimitStatus, formatTimeUntilReset, formatRateLimitStatus, isRateLimitStatusDegraded, shouldMonitorBlockedPanes, } from './rate-limit-monitor.js';
-export { isTmuxAvailable, isInsideTmux, listTmuxPanes, capturePaneContent, analyzePaneContent, scanForBlockedPanes, sendResumeSequence, sendToPane, formatBlockedPanesSummary, } from './tmux-detector.js';
+export { isTmuxAvailable, isInsideTmux, isPaneAlive, listTmuxPanes, capturePaneContent, analyzePaneContent, scanForBlockedPanes, sendResumeSequence, sendToPane, formatBlockedPanesSummary, } from './tmux-detector.js';
 export { readDaemonState, isDaemonRunning, startDaemon, runDaemonForeground, stopDaemon, getDaemonStatus, detectBlockedPanes, formatDaemonState, } from './daemon.js';
 //# sourceMappingURL=index.d.ts.map

@@ -132,7 +132,7 @@ describe('parseZaiResponse', () => {
     expect(result!.monthlyResetsAt).toBeInstanceOf(Date);
   });
 
-  it('does not set weeklyPercent (z.ai has no weekly quota)', () => {
+  it('omits weeklyPercent when API returns a single TOKENS_LIMIT (free/basic tier)', () => {
     const response = {
       data: {
         limits: [
@@ -144,6 +144,7 @@ describe('parseZaiResponse', () => {
     const result = parseZaiResponse(response);
     expect(result).not.toBeNull();
     expect(result!.weeklyPercent).toBeUndefined();
+    expect(result!.weeklyResetsAt).toBeUndefined();
   });
 
   it('clamps percentages to 0-100', () => {
@@ -195,6 +196,186 @@ describe('parseZaiResponse', () => {
     expect(result).not.toBeNull();
     expect(result!.monthlyPercent).toBe(50);
     expect(result!.monthlyResetsAt).toBeNull();
+  });
+
+  it('parses two TOKENS_LIMIT entries as 5-hour + weekly buckets (pro tier fixture)', () => {
+    // Real z.ai pro tier response payload shared by a user
+    const response = {
+      data: {
+        limits: [
+          { type: 'TOKENS_LIMIT', unit: 3, number: 5, percentage: 1, nextResetTime: 1776180480445 },
+          { type: 'TOKENS_LIMIT', unit: 6, number: 1, percentage: 65, nextResetTime: 1776303517998 },
+          { type: 'TIME_LIMIT', unit: 5, number: 1, percentage: 1, nextResetTime: 1778290717998 },
+        ],
+        level: 'pro',
+      },
+    };
+
+    const result = parseZaiResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.fiveHourPercent).toBe(1);
+    expect(result!.weeklyPercent).toBe(65);
+    expect(result!.monthlyPercent).toBe(1);
+    expect(result!.fiveHourResetsAt).toBeInstanceOf(Date);
+    expect(result!.fiveHourResetsAt!.getTime()).toBe(1776180480445);
+    expect(result!.weeklyResetsAt).toBeInstanceOf(Date);
+    expect(result!.weeklyResetsAt!.getTime()).toBe(1776303517998);
+    expect(result!.monthlyResetsAt).toBeInstanceOf(Date);
+    expect(result!.monthlyResetsAt!.getTime()).toBe(1778290717998);
+  });
+
+  it('omits weekly when pro-tier response only has TOKENS_LIMIT + TIME_LIMIT (no weekly bucket)', () => {
+    // Real z.ai response: pro tier user whose plan does NOT include a weekly
+    // TOKENS_LIMIT bucket. The HUD must hide the `wk:` segment in this case.
+    const response = {
+      data: {
+        limits: [
+          {
+            type: 'TIME_LIMIT',
+            unit: 5,
+            number: 1,
+            usage: 1000,
+            currentValue: 1000,
+            remaining: 0,
+            percentage: 100,
+            nextResetTime: 1777391696996,
+          },
+          {
+            type: 'TOKENS_LIMIT',
+            unit: 3,
+            number: 5,
+            percentage: 1,
+            nextResetTime: 1776190484314,
+          },
+        ],
+        level: 'pro',
+      },
+    };
+
+    const result = parseZaiResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.fiveHourPercent).toBe(1);
+    expect(result!.fiveHourResetsAt).toBeInstanceOf(Date);
+    expect(result!.fiveHourResetsAt!.getTime()).toBe(1776190484314);
+    expect(result!.monthlyPercent).toBe(100);
+    expect(result!.monthlyResetsAt).toBeInstanceOf(Date);
+    expect(result!.monthlyResetsAt!.getTime()).toBe(1777391696996);
+    // Critical: weekly fields must remain undefined so HUD hides `wk:` segment
+    expect(result!.weeklyPercent).toBeUndefined();
+    expect(result!.weeklyResetsAt).toBeUndefined();
+  });
+
+  it('classifies by unit code even when weekly.nextResetTime < 5h.nextResetTime', () => {
+    // Edge case: in the final hours before a weekly reset, the weekly
+    // bucket's nextResetTime can be sooner than the 5-hour bucket's. Under a
+    // naive nextResetTime sort this would swap slots. unit-based
+    // classification keeps them correct.
+    const now = Date.now();
+    const response = {
+      data: {
+        limits: [
+          // 5-hour window: resets in ~5 hours
+          { type: 'TOKENS_LIMIT', unit: 3, percentage: 40, nextResetTime: now + 5 * 3600_000 },
+          // Weekly window: resets in ~30 minutes (near end of week)
+          { type: 'TOKENS_LIMIT', unit: 6, percentage: 92, nextResetTime: now + 30 * 60_000 },
+        ],
+      },
+    };
+
+    const result = parseZaiResponse(response);
+    expect(result).not.toBeNull();
+    // Must map by unit, not by reset time
+    expect(result!.fiveHourPercent).toBe(40);
+    expect(result!.weeklyPercent).toBe(92);
+    expect(result!.fiveHourResetsAt!.getTime()).toBe(now + 5 * 3600_000);
+    expect(result!.weeklyResetsAt!.getTime()).toBe(now + 30 * 60_000);
+  });
+
+  it('is robust to TOKENS_LIMIT array order (weekly first, 5-hour second)', () => {
+    const response = {
+      data: {
+        limits: [
+          // Deliberately reversed from the canonical order
+          { type: 'TOKENS_LIMIT', percentage: 65, nextResetTime: 1776303517998 },
+          { type: 'TOKENS_LIMIT', percentage: 1, nextResetTime: 1776180480445 },
+        ],
+      },
+    };
+
+    const result = parseZaiResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.fiveHourPercent).toBe(1);
+    expect(result!.weeklyPercent).toBe(65);
+  });
+
+  it('pushes TOKENS_LIMIT with missing nextResetTime into the weekly slot', () => {
+    const response = {
+      data: {
+        limits: [
+          { type: 'TOKENS_LIMIT', percentage: 20, nextResetTime: 1776180480445 },
+          { type: 'TOKENS_LIMIT', percentage: 80 }, // no nextResetTime
+        ],
+      },
+    };
+
+    const result = parseZaiResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.fiveHourPercent).toBe(20);
+    expect(result!.fiveHourResetsAt).toBeInstanceOf(Date);
+    expect(result!.weeklyPercent).toBe(80);
+    expect(result!.weeklyResetsAt).toBeNull();
+  });
+
+  it('treats nextResetTime === 0 the same as missing for sort purposes', () => {
+    const response = {
+      data: {
+        limits: [
+          { type: 'TOKENS_LIMIT', percentage: 30, nextResetTime: 0 },
+          { type: 'TOKENS_LIMIT', percentage: 70, nextResetTime: 1776180480445 },
+        ],
+      },
+    };
+
+    const result = parseZaiResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.fiveHourPercent).toBe(70);
+    expect(result!.fiveHourResetsAt).toBeInstanceOf(Date);
+    expect(result!.weeklyPercent).toBe(30);
+    expect(result!.weeklyResetsAt).toBeNull();
+  });
+
+  it('uses only the first two TOKENS_LIMIT entries (by reset time) when 3+ exist', () => {
+    const response = {
+      data: {
+        limits: [
+          { type: 'TOKENS_LIMIT', percentage: 10, nextResetTime: 1776180480445 }, // earliest -> 5h
+          { type: 'TOKENS_LIMIT', percentage: 65, nextResetTime: 1776303517998 }, // middle -> weekly
+          { type: 'TOKENS_LIMIT', percentage: 90, nextResetTime: 1778290717998 }, // latest -> ignored
+        ],
+      },
+    };
+
+    const result = parseZaiResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.fiveHourPercent).toBe(10);
+    expect(result!.weeklyPercent).toBe(65);
+  });
+
+  it('tie-breaks equal nextResetTime by smaller percentage -> 5-hour slot', () => {
+    const sameReset = 1776180480445;
+    const response = {
+      data: {
+        limits: [
+          { type: 'TOKENS_LIMIT', percentage: 80, nextResetTime: sameReset },
+          { type: 'TOKENS_LIMIT', percentage: 20, nextResetTime: sameReset },
+        ],
+      },
+    };
+
+    const result = parseZaiResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.fiveHourPercent).toBe(20);
+    expect(result!.weeklyPercent).toBe(80);
   });
 });
 
@@ -862,7 +1043,7 @@ describe('parseMinimaxResponse', () => {
     expect(parseMinimaxResponse(response)).toBeNull();
   });
 
-  it('parses MiniMax-M* model usage as fiveHourPercent and weeklyPercent', () => {
+  it('parses MiniMax-M* remaining counts as used fiveHourPercent and weeklyPercent', () => {
     const endTime = Date.now() + 3600_000;
     const weeklyEndTime = Date.now() + 86400_000 * 3;
     const response = {
@@ -870,12 +1051,12 @@ describe('parseMinimaxResponse', () => {
         {
           model_name: 'MiniMax-M2.7',
           current_interval_total_count: 1500,
-          current_interval_usage_count: 1416,
+          current_interval_usage_count: 84,
           start_time: Date.now(),
           end_time: endTime,
           remains_time: 3600_000,
           current_weekly_total_count: 15000,
-          current_weekly_usage_count: 14997,
+          current_weekly_usage_count: 3,
           weekly_start_time: Date.now(),
           weekly_end_time: weeklyEndTime,
           weekly_remains_time: 86400_000 * 3,
@@ -885,14 +1066,39 @@ describe('parseMinimaxResponse', () => {
 
     const result = parseMinimaxResponse(response);
     expect(result).not.toBeNull();
-    // 1416/1500 * 100 = 94.4 (clamp does not round; rendering layer rounds)
+    // Remaining 84 of 1500 means 1416 used => 94.4%
     expect(result!.fiveHourPercent).toBeCloseTo(94.4, 1);
-    // 14997/15000 * 100 = 99.98
+    // Remaining 3 of 15000 means 14997 used => 99.98%
     expect(result!.weeklyPercent).toBeCloseTo(99.98, 1);
     expect(result!.fiveHourResetsAt).toBeInstanceOf(Date);
     expect(result!.fiveHourResetsAt!.getTime()).toBe(endTime);
     expect(result!.weeklyResetsAt).toBeInstanceOf(Date);
     expect(result!.weeklyResetsAt!.getTime()).toBe(weeklyEndTime);
+  });
+
+  it('shows low usage when most MiniMax quota remains', () => {
+    const response = {
+      model_remains: [
+        {
+          model_name: 'MiniMax-M1',
+          current_interval_total_count: 1500,
+          current_interval_usage_count: 1495,
+          start_time: Date.now(),
+          end_time: Date.now() + 3600_000,
+          remains_time: 3600_000,
+          current_weekly_total_count: 15000,
+          current_weekly_usage_count: 14530,
+          weekly_start_time: Date.now(),
+          weekly_end_time: Date.now() + 86400_000,
+          weekly_remains_time: 86400_000,
+        },
+      ],
+    };
+
+    const result = parseMinimaxResponse(response);
+    expect(result).not.toBeNull();
+    expect(result!.fiveHourPercent).toBeCloseTo((5 / 1500) * 100, 3);
+    expect(result!.weeklyPercent).toBeCloseTo((470 / 15000) * 100, 3);
   });
 
   it('handles division by zero when total_count is 0', () => {
@@ -926,10 +1132,10 @@ describe('parseMinimaxResponse', () => {
         {
           model_name: 'speech-hd',
           current_interval_total_count: 100,
-          current_interval_usage_count: 100,
+          current_interval_usage_count: 0,
           start_time: Date.now(), end_time: Date.now() + 3600_000,
           remains_time: 3600_000,
-          current_weekly_total_count: 700, current_weekly_usage_count: 700,
+          current_weekly_total_count: 700, current_weekly_usage_count: 0,
           weekly_start_time: Date.now(), weekly_end_time: Date.now() + 86400_000,
           weekly_remains_time: 86400_000,
         },
@@ -946,10 +1152,10 @@ describe('parseMinimaxResponse', () => {
         {
           model_name: 'MiniMax-M1',
           current_interval_total_count: 1000,
-          current_interval_usage_count: 200,
+          current_interval_usage_count: 800,
           start_time: Date.now(), end_time: Date.now() + 3600_000,
           remains_time: 3600_000,
-          current_weekly_total_count: 10000, current_weekly_usage_count: 2000,
+          current_weekly_total_count: 10000, current_weekly_usage_count: 8000,
           weekly_start_time: Date.now(), weekly_end_time: Date.now() + 86400_000,
           weekly_remains_time: 86400_000,
         },
@@ -958,7 +1164,7 @@ describe('parseMinimaxResponse', () => {
 
     const result = parseMinimaxResponse(response);
     expect(result).not.toBeNull();
-    // Should use MiniMax-M2.7 (first MiniMax-M* match): 750/1500 = 50%
+    // Should use MiniMax-M2.7 (first MiniMax-M* match): 750 used out of 1500 => 50%
     expect(result!.fiveHourPercent).toBe(50);
     expect(result!.weeklyPercent).toBe(50);
   });
@@ -1078,7 +1284,7 @@ describe('getUsage routing - minimax', () => {
               end_time: endTime,
               remains_time: 3600_000,
               current_weekly_total_count: 15000,
-              current_weekly_usage_count: 3000,
+              current_weekly_usage_count: 12000,
               weekly_start_time: Date.now(),
               weekly_end_time: weeklyEndTime,
               weekly_remains_time: 86400_000 * 3,
@@ -1094,8 +1300,8 @@ describe('getUsage routing - minimax', () => {
     const result = await getUsage();
 
     expect(result.rateLimits).not.toBeNull();
-    expect(result.rateLimits!.fiveHourPercent).toBe(50); // 750/1500
-    expect(result.rateLimits!.weeklyPercent).toBe(20);   // 3000/15000
+    expect(result.rateLimits!.fiveHourPercent).toBe(50); // (1500 - 750) / 1500
+    expect(result.rateLimits!.weeklyPercent).toBe(20);   // (15000 - 12000) / 15000
     expect(result.rateLimits!.fiveHourResetsAt).toBeInstanceOf(Date);
     expect(result.rateLimits!.fiveHourResetsAt!.getTime()).toBe(endTime);
     expect(result.rateLimits!.weeklyResetsAt).toBeInstanceOf(Date);

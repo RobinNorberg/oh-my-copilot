@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/anthropics/copilot-cli/main/hooks.schema.json",
+  "$schema": "https://raw.githubusercontent.com/github/copilot-cli/main/hooks.schema.json",
   "hooks": [
     {
       "name": "auto-format-on-save",

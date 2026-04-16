@@ -3538,9 +3538,12 @@ function buildDefaultConfig() {
 }
 function getConfigPaths() {
   const copilotConfigDir = getConfigDir();
+  const copilotProject = (0, import_path2.join)(process.cwd(), ".copilot", "omg.jsonc");
+  const claudeProject = (0, import_path2.join)(process.cwd(), ".claude", "omc.jsonc");
+  const project = (0, import_fs.existsSync)(claudeProject) && !(0, import_fs.existsSync)(copilotProject) ? claudeProject : copilotProject;
   return {
     user: (0, import_path2.join)(copilotConfigDir, "omg", "config.jsonc"),
-    project: (0, import_path2.join)(process.cwd(), ".copilot", "omg.jsonc")
+    project
   };
 }
 function loadJsoncFile(path22) {
@@ -16056,7 +16059,7 @@ async function performUpdate(options) {
       syncPluginCache(options?.verbose ?? false);
       if (!process.env.OMC_UPDATE_RECONCILE) {
         process.env.OMC_UPDATE_RECONCILE = "1";
-        const omcPath = (0, import_child_process12.execSync)("which omg 2>/dev/null || where omg 2>NUL", {
+        const omcPath = (0, import_child_process12.execSync)("which omcp 2>/dev/null || where omcp 2>NUL || which omg 2>/dev/null || where omg 2>NUL", {
           encoding: "utf-8",
           stdio: "pipe"
         }).trim().split("\n")[0];
@@ -21404,11 +21407,7 @@ function sanitizePromptContent(content, maxLength = 4e3) {
       sanitized = sanitized.slice(0, -1);
     }
   }
-  sanitized = sanitized.replace(/<(\/?)(TASK_SUBJECT)[^>]*>/gi, "[$1$2]");
-  sanitized = sanitized.replace(/<(\/?)(TASK_DESCRIPTION)[^>]*>/gi, "[$1$2]");
-  sanitized = sanitized.replace(/<(\/?)(INBOX_MESSAGE)[^>]*>/gi, "[$1$2]");
-  sanitized = sanitized.replace(/<(\/?)(INSTRUCTIONS)[^>]*>/gi, "[$1$2]");
-  sanitized = sanitized.replace(/<(\/?)(SYSTEM)[^>]*>/gi, "[$1$2]");
+  sanitized = sanitized.replace(/<(\/?)(system-instructions|system-reminder|TASK_SUBJECT|TASK_DESCRIPTION|INBOX_MESSAGE)(?=[\s>/])[^>]*>/gi, "[$1$2]");
   return sanitized;
 }
 var import_fs46, import_path53, import_url8, _cachedRoles, VALID_AGENT_ROLES;
@@ -29653,9 +29652,9 @@ async function notify(event, data) {
       try {
         const { capturePaneContent: capturePaneContent3 } = await Promise.resolve().then(() => (init_tmux_detector(), tmux_detector_exports));
         const tailLines = getTmuxTailLines(config2);
-        const tail = capturePaneContent3(payload.tmuxPaneId, tailLines);
-        if (tail) {
-          payload.tmuxTail = tail;
+        const rawTail = capturePaneContent3(payload.tmuxPaneId, tailLines);
+        if (rawTail) {
+          payload.tmuxTail = rawTail;
           payload.maxTailLines = tailLines;
         }
       } catch {
@@ -33092,7 +33091,7 @@ var init_model_contract = __esm({
       copilot: {
         agentType: "copilot",
         binary: "copilot",
-        installInstructions: "Install Copilot CLI: https://copilot.ai/download",
+        installInstructions: "Install Copilot CLI: https://github.com/github/copilot-cli",
         buildLaunchArgs(model, extraFlags = []) {
           const args = ["--dangerously-skip-permissions"];
           if (model) args.push("--model", model);
@@ -35262,6 +35261,20 @@ function sanitizeTeamName(name) {
   if (!sanitized) throw new Error(`Invalid team name: "${name}" produces empty slug after sanitization`);
   return sanitized;
 }
+function shouldUseLaunchTimeCliResolution(reason) {
+  return /untrusted location|relative path/i.test(reason);
+}
+function resolvePreflightBinaryPath(agentType) {
+  try {
+    return { path: resolveValidatedBinaryPath(agentType), degraded: false };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    if (shouldUseLaunchTimeCliResolution(reason)) {
+      return { path: getContract(agentType).binary, degraded: true, reason };
+    }
+    throw err;
+  }
+}
 async function isWorkerPaneAlive(paneId) {
   if (!paneId) return false;
   try {
@@ -35554,7 +35567,7 @@ async function startTeamV2(config2) {
   const missingBinaryReasons = [];
   for (const agentType of [...new Set(agentTypes)]) {
     try {
-      resolvedBinaryPaths[agentType] = resolveValidatedBinaryPath(agentType);
+      resolvedBinaryPaths[agentType] = resolvePreflightBinaryPath(agentType).path;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       missingBinaryReasons.push({ agentType, reason });
@@ -35565,7 +35578,7 @@ async function startTeamV2(config2) {
     if (resolvedBinaryPaths[provider]) continue;
     if (missingBinaryReasons.some((m) => m.agentType === provider)) continue;
     try {
-      resolvedBinaryPaths[provider] = resolveValidatedBinaryPath(provider);
+      resolvedBinaryPaths[provider] = resolvePreflightBinaryPath(provider).path;
     } catch (err) {
       const reason = err instanceof Error ? err.message : String(err);
       missingBinaryReasons.push({ agentType: provider, reason });
@@ -80353,6 +80366,29 @@ function getPromptText(input) {
   }
   return "";
 }
+function isExplicitRalplanSlashInvocation(promptText) {
+  return /^\s*\/(?:oh-my-copilot:)?ralplan(?:\s|$)/i.test(promptText);
+}
+function isExplicitAskSlashInvocation(promptText) {
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini)\b/i.test(promptText);
+}
+function activateRalplanStartupState(directory, sessionId) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  writeModeState(
+    "ralplan",
+    {
+      active: true,
+      session_id: sessionId,
+      current_phase: "ralplan",
+      started_at: now,
+      awaiting_confirmation: true,
+      awaiting_confirmation_set_at: now,
+      last_checked_at: now
+    },
+    directory,
+    sessionId
+  );
+}
 async function processKeywordDetector(input) {
   if (process.env.OMC_TEAM_WORKER) {
     return { continue: true };
@@ -80361,10 +80397,27 @@ async function processKeywordDetector(input) {
   if (!promptText) {
     return { continue: true };
   }
+  if (isExplicitAskSlashInvocation(promptText)) {
+    return { continue: true };
+  }
   const cleanedText = removeCodeBlocks2(promptText);
   const sessionId = input.sessionId;
   const directory = resolveToWorktreeRoot(input.directory);
   const messages = [];
+  const explicitRalplanSlashInvocation = isExplicitRalplanSlashInvocation(promptText);
+  if (explicitRalplanSlashInvocation) {
+    activateRalplanStartupState(directory, sessionId);
+    return {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: `[RALPLAN INIT] Explicit /ralplan invoke detected during UserPromptSubmit.
+ralplan state is armed for startup and marked awaiting confirmation, so the stop hook will not block this initialization path.
+Proceed immediately with the consensus planning workflow for:
+${promptText}`
+      }
+    };
+  }
   try {
     const hudState = readHudState(directory, input.sessionId) || {
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -85571,7 +85624,7 @@ async function launchCommand(args) {
   }
   if (!isCopilotAvailable()) {
     console.error("[omg] Error: gh CLI not found. Install Copilot CLI first:");
-    console.error("  npm install -g @anthropic-ai/copilot-cli");
+    console.error("  npm install -g @github/copilot");
     process.exit(1);
   }
   const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);

@@ -48,7 +48,7 @@ export declare function readSkillActiveState(directory: string, sessionId?: stri
  * Write skill active state.
  * Called when a skill is invoked via the Skill tool.
  */
-export declare function writeSkillActiveState(directory: string, skillName: string, sessionId?: string): SkillActiveState | null;
+export declare function writeSkillActiveState(directory: string, skillName: string, sessionId?: string, _rawSkillName?: string): SkillActiveState | null;
 /**
  * Clear skill active state.
  * Called when a skill completes or is cancelled.

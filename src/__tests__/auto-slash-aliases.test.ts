@@ -23,6 +23,7 @@ describe('auto-slash command skill aliases', () => {
 
     mkdirSync(join(tempConfigDir, 'skills', 'team'), { recursive: true });
     mkdirSync(join(tempConfigDir, 'skills', 'project-session-manager'), { recursive: true });
+    mkdirSync(join(tempConfigDir, 'skills', 'c3g'), { recursive: true });
     mkdirSync(join(tempProjectDir, '.copilot', 'commands'), { recursive: true });
 
     writeFileSync(
@@ -43,6 +44,21 @@ description: Project session management
 ---
 
 PSM body`
+    );
+
+    writeFileSync(
+      join(tempConfigDir, 'skills', 'c3g', 'SKILL.md'),
+      `---
+name: c3g
+description: Quadri-model orchestration
+---
+
+## Workflow
+
+1. Fan out to external advisors:
+   - \`omc ask codex "<codex prompt>"\`
+   - \`omc ask gemini "<gemini prompt>"\`
+2. Synthesize results`
     );
 
     process.env.COPILOT_CONFIG_DIR = tempConfigDir;
@@ -75,5 +91,78 @@ PSM body`
     expect(listedNames).toContain('team');
     expect(listedNames).toContain('project-session-manager');
     expect(listedNames).not.toContain('psm');
+  });
+
+  it('applies deep-interview threshold runtime injection in slash/materialized output', async () => {
+    mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
+    writeFileSync(
+      join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'),
+      `---
+name: deep-interview
+description: Deep interview
+---
+
+Purpose default: (default: 20%)
+Policy default: (default 0.2)
+State:
+"threshold": 0.2,
+"ambiguityThreshold": 0.2,
+4. **Initialize state** via \`state_write(mode="deep-interview")\`:
+Announcement: We'll proceed to execution once ambiguity drops below 20%.
+Diagram: Gate: ≤20% ambiguity
+Warning: (threshold: 20%).
+Advanced: ambiguity ≤ 20%
+`
+    );
+    writeFileSync(
+      join(tempConfigDir, 'settings.json'),
+      JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }),
+    );
+
+    const { executeSlashCommand } = await loadExecutor();
+    const result = executeSlashCommand({
+      command: 'deep-interview',
+      args: 'improve onboarding',
+      raw: '/deep-interview improve onboarding',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('ambiguityThreshold = 0.15');
+    expect(result.replacementText).toContain('(default: 15%)');
+    expect(result.replacementText).toContain('(default: 0.15)');
+    expect(result.replacementText).toContain('"threshold": 0.15,');
+    expect(result.replacementText).toContain('drops below 15%.');
+    expect(result.replacementText).toContain('Gate: ≤15% ambiguity');
+    expect(result.replacementText).toContain('(threshold: 15%).');
+    expect(result.replacementText).toContain('ambiguity ≤ 15%');
+    expect(result.replacementText).toContain('"ambiguityThreshold": 0.15,');
+    expect(result.replacementText).not.toContain('(default: 20%)');
+    expect(result.replacementText).not.toContain('(default 0.2)');
+    expect(result.replacementText).not.toContain('"threshold": 0.2,');
+    expect(result.replacementText).not.toContain('drops below 20%.');
+    expect(result.replacementText).not.toContain('Gate: ≤20% ambiguity');
+    expect(result.replacementText).not.toContain('(threshold: 20%).');
+    expect(result.replacementText).not.toContain('ambiguity ≤ 20%');
+    expect(result.replacementText).not.toContain('"ambiguityThreshold": 0.2,');
+  });
+
+  it('keeps /c3g advisor asks on omcp ask inside an active Claude session', async () => {
+    process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
+    process.env.PATH = '';
+    process.env.CLAUDECODE = '1';
+    process.env.CLAUDE_SESSION_ID = 'session-123';
+
+    const { executeSlashCommand } = await loadExecutor();
+    const result = executeSlashCommand({
+      command: 'c3g',
+      args: 'review this auth flow',
+      raw: '/c3g review this auth flow',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('`omcp ask codex "<codex prompt>"`');
+    expect(result.replacementText).toContain('`omcp ask gemini "<gemini prompt>"`');
+    expect(result.replacementText).not.toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex');
+    expect(result.replacementText).not.toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini');
   });
 });

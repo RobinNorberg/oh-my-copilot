@@ -8,6 +8,14 @@ export interface OmcCliRenderOptions {
   omcAvailable?: boolean;
 }
 
+function isClaudeSession(env: NodeJS.ProcessEnv): boolean {
+  return Boolean(
+    env.CLAUDECODE?.trim()
+    || env.CLAUDE_SESSION_ID?.trim()
+    || env.CLAUDECODE_SESSION_ID?.trim(),
+  );
+}
+
 function commandExists(command: string, env: NodeJS.ProcessEnv): boolean {
   const lookupCommand = process.platform === 'win32' ? 'where' : 'which';
   const result = spawnSync(lookupCommand, [command], {
@@ -32,24 +40,45 @@ export function resolveOmcCliPrefix(options: OmcCliRenderOptions = {}): string {
   return OMC_CLI_BINARY;
 }
 
+function resolveInvocationPrefix(
+  commandSuffix: string,
+  options: OmcCliRenderOptions = {},
+): string {
+  const env = options.env ?? process.env;
+  const normalizedSuffix = commandSuffix.trim();
+
+  // Ask flows are intentionally safe inside Claude Code and must not be
+  // rewritten to the bridge binary, which can re-enter the launch guard.
+  if (/^ask(?:\s|$)/.test(normalizedSuffix) && isClaudeSession(env)) {
+    return OMC_CLI_BINARY;
+  }
+
+  return resolveOmcCliPrefix(options);
+}
+
 export function formatOmcCliInvocation(
   commandSuffix: string,
   options: OmcCliRenderOptions = {},
 ): string {
   const suffix = commandSuffix.trim().replace(/^omc\s+/, '');
-  return `${resolveOmcCliPrefix(options)} ${suffix}`.trim();
+  return `${resolveInvocationPrefix(suffix, options)} ${suffix}`.trim();
 }
 
 export function rewriteOmcCliInvocations(
   text: string,
   options: OmcCliRenderOptions = {},
 ): string {
-  const prefix = resolveOmcCliPrefix(options);
-  if (prefix === OMC_CLI_BINARY || !text.includes('omc ')) {
+  if (!text.includes('omc ')) {
     return text;
   }
 
   return text
-    .replace(/`omc (?=[^`\r\n]+`)/g, `\`${prefix} `)
-    .replace(/(^|\n)([ \t>*-]*)omc (?=\S)/g, `$1$2${prefix} `);
+    .replace(/`omc ([^`\r\n]+)`/g, (_match, suffix: string) => {
+      const prefix = resolveInvocationPrefix(suffix, options);
+      return `\`${prefix} ${suffix}\``;
+    })
+    .replace(/(^|\n)([ \t>*-]*)omc ([^\n]+)/g, (_match, lineStart: string, leader: string, suffix: string) => {
+      const prefix = resolveInvocationPrefix(suffix, options);
+      return `${lineStart}${leader}${prefix} ${suffix}`;
+    });
 }

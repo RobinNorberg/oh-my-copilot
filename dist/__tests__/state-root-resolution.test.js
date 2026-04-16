@@ -220,9 +220,9 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     //    Scenario: enforcer must read team-state and write skill-active-state
     //    from the same centralized OMC_STATE_DIR location as sibling hooks.
     // ────────────────────────────────────────────────────────────────────────────
-    it('pre-tool-enforcer injects [TEAM ROUTING REQUIRED] when team-state lives in default .omc (baseline)', () => {
+    it('pre-tool-enforcer injects [TEAM ROUTING REQUIRED] when team-state lives in default .omcp (baseline)', () => {
         const sessionId = 'test-pte-team-default';
-        const stateDir = join(fakeProject, '.omc', 'state', 'sessions', sessionId);
+        const stateDir = join(fakeProject, '.omcp', 'state', 'sessions', sessionId);
         mkdirSync(stateDir, { recursive: true });
         writeFileSync(join(stateDir, 'team-state.json'), JSON.stringify({
             active: true,

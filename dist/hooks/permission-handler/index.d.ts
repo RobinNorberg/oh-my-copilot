@@ -53,6 +53,9 @@ export declare function isSafeCommand(command: string): boolean;
  * polluting settings.local.json.
  */
 export declare function isHeredocWithSafeBase(command: string): boolean;
+export declare function isSafeRepoInspectionCommand(command: string, cwd: string): boolean;
+export declare function isSafeTargetedLocalTestCommand(command: string, cwd: string): boolean;
+export declare function isSafeAutoApprovedCommand(command: string, cwd: string): boolean;
 /**
  * Check if an active mode (autopilot/ultrawork/ralph/team) is running
  */

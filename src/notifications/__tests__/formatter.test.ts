@@ -322,6 +322,30 @@ describe("parseTmuxTail noise filters", () => {
     ].join("\n");
     expect(parseTmuxTail(input)).toBe("Build complete\nTests passed: 42");
   });
+
+  it("drops permission-denied scan noise and clean diagnostic queries", () => {
+    const input = [
+      "find: ../systemd-private-123: Permission denied",
+      "find: ../snap-private-tmp: Permission denied",
+      '❯ rg -n "severity: \\"error\\"|diagnostic|lsp_diagnostics_directory" src tests',
+      "Command failed with exit code 1:",
+    ].join("\n");
+
+    expect(parseTmuxTail(input)).toBe("");
+  });
+
+  it("preserves actionable output after permission-denied scan noise is stripped", () => {
+    const input = [
+      "find: ../systemd-private-123: Permission denied",
+      '❯ rg -n "severity: \\"error\\"|diagnostic|lsp_diagnostics_directory" src tests',
+      "Runtime error: review watchdog crashed",
+      "Restart the watcher and rerun the focused checks",
+    ].join("\n");
+
+    expect(parseTmuxTail(input)).toBe(
+      "Runtime error: review watchdog crashed\nRestart the watcher and rerun the focused checks",
+    );
+  });
 });
 
 describe("tmuxTail in formatters", () => {

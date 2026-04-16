@@ -5,17 +5,13 @@
  * Create, kill, list, and manage tmux sessions for MCP worker bridge daemons.
  * Sessions are named "omcp-team-{teamName}-{workerName}".
  */
-import { exec, execFile, execSync } from 'child_process';
-import { tmuxExec } from '../cli/tmux-utils.js';
+import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync } from '../cli/tmux-utils.js';
 import { existsSync } from 'fs';
 import { join, basename, isAbsolute, win32 } from 'path';
-import { promisify } from 'util';
 import fs from 'fs/promises';
 import { validateTeamName } from './team-name.js';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const TMUX_SESSION_PREFIX = 'omcp-team';
-const promisifiedExec = promisify(exec);
-const promisifiedExecFile = promisify(execFile);
 /**
  * True when running on Windows under MSYS2/Git Bash.
  * Tmux panes run bash in this environment, not cmd.exe.
@@ -23,20 +19,6 @@ const promisifiedExecFile = promisify(execFile);
 export function isUnixLikeOnWindows() {
     return process.platform === 'win32' &&
         !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
-}
-/**
- * Execute a tmux command asynchronously. Routes through shell when arguments
- * contain tmux format strings (e.g. #{pane_id}) to prevent MSYS2 execFile
- * from stripping curly braces.
- */
-async function tmuxAsync(args) {
-    if (args.some(a => a.includes('#{'))) {
-        // MSYS2/Git Bash strips curly braces from execFile arguments.
-        // Use shell execution with proper single-quote escaping.
-        const escaped = args.map(a => "'" + a.replace(/'/g, "'\\''") + "'").join(' ');
-        return promisifiedExec(`tmux ${escaped}`);
-    }
-    return promisifiedExecFile('tmux', args);
 }
 export function detectTeamMultiplexerContext(env = process.env) {
     if (env.TMUX)
@@ -46,24 +28,21 @@ export function detectTeamMultiplexerContext(env = process.env) {
     return 'none';
 }
 export async function applyMainVerticalLayout(teamTarget) {
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const execFileAsync = promisify(execFile);
     try {
-        await execFileAsync('tmux', ['select-layout', '-t', teamTarget, 'main-vertical']);
+        await tmuxExecAsync(['select-layout', '-t', teamTarget, 'main-vertical']);
     }
     catch {
         // Layout may not apply if only 1 pane; ignore.
     }
     try {
-        const widthResult = await tmuxAsync([
+        const widthResult = await tmuxCmdAsync([
             'display-message', '-p', '-t', teamTarget, '#{window_width}',
         ]);
         const width = parseInt(widthResult.stdout.trim(), 10);
         if (Number.isFinite(width) && width >= 40) {
             const half = String(Math.floor(width / 2));
-            await execFileAsync('tmux', ['set-window-option', '-t', teamTarget, 'main-pane-width', half]);
-            await execFileAsync('tmux', ['select-layout', '-t', teamTarget, 'main-vertical']);
+            await tmuxExecAsync(['set-window-option', '-t', teamTarget, 'main-pane-width', half]);
+            await tmuxExecAsync(['select-layout', '-t', teamTarget, 'main-vertical']);
         }
     }
     catch {
@@ -293,9 +272,12 @@ export function buildWorkerStartCommand(config) {
     return `env ${envString} ${shell} -c "${sourceCmd}exec ${launchWords[0]}"`;
 }
 /** Validate tmux is available. Throws with install instructions if not. */
-export function validateTmux() {
+export function validateTmux(hasTmuxContext = false) {
+    if (hasTmuxContext) {
+        return;
+    }
     try {
-        execSync('tmux -V', { encoding: 'utf-8', timeout: 5000, stdio: 'pipe' });
+        tmuxShell('-V', { stripTmux: true, timeout: 5000, stdio: 'pipe' });
     }
     catch {
         throw new Error('tmux is not available. Install it:\n' +
@@ -367,8 +349,8 @@ export function listActiveSessions(teamName) {
         // Use shell execution for format strings containing #{} to prevent
         // MSYS2/Git Bash from stripping curly braces in execFileSync args.
         // All arguments here are hardcoded constants, not user input.
-        const output = execSync("tmux list-sessions -F '#{session_name}'", {
-            encoding: 'utf-8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe']
+        const output = tmuxShell("list-sessions -F '#{session_name}'", {
+            timeout: 5000, stdio: ['pipe', 'pipe', 'pipe']
         });
         return output.trim().split('\n')
             .filter(s => s.startsWith(prefix))
@@ -402,12 +384,12 @@ export function spawnBridgeInSession(tmuxSession, bridgeScriptPath, configFilePa
  * IMPORTANT: Uses pane IDs (%N format) not pane indices for stable targeting.
  */
 export async function createTeamSession(teamName, workerCount, cwd, options = {}) {
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const execFileAsync = promisify(execFile);
     const muxContext = detectTeamMultiplexerContext();
     const inTmux = muxContext === 'tmux';
     const useDedicatedWindow = Boolean(options.newWindow && inTmux);
+    if (!inTmux) {
+        validateTmux();
+    }
     // Prefer the invoking pane from environment to avoid focus races when users
     // switch tmux windows during startup (issue #966).
     const envPaneIdRaw = (process.env.TMUX_PANE ?? '').trim();
@@ -419,7 +401,7 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
         // Backward-compatible fallback: create an isolated detached tmux session
         // so workflows can run when launched outside an attached tmux client.
         const detachedSessionName = `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-${Date.now().toString(36)}`;
-        const detachedResult = await execFileAsync('tmux', [
+        const detachedResult = await tmuxExecAsync([
             'new-session', '-d', '-P', '-F', '#S:0 #{pane_id}',
             '-s', detachedSessionName,
             '-c', cwd,
@@ -434,7 +416,7 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     }
     if (inTmux && envPaneId) {
         try {
-            const targetedContextResult = await execFileAsync('tmux', [
+            const targetedContextResult = await tmuxExecAsync([
                 'display-message', '-p', '-t', envPaneId, '#S:#I',
             ]);
             sessionAndWindow = targetedContextResult.stdout.trim();
@@ -446,7 +428,7 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     }
     if (!sessionAndWindow || !leaderPaneId) {
         // Fallback when TMUX_PANE is unavailable/invalid.
-        const contextResult = await tmuxAsync([
+        const contextResult = await tmuxCmdAsync([
             'display-message', '-p', '#S:#I #{pane_id}',
         ]);
         const contextLine = contextResult.stdout.trim();
@@ -460,7 +442,7 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     if (useDedicatedWindow) {
         const targetSession = sessionAndWindow.split(':')[0] ?? sessionAndWindow;
         const windowName = `omc-${sanitizeName(teamName)}`.slice(0, 32);
-        const newWindowResult = await execFileAsync('tmux', [
+        const newWindowResult = await tmuxExecAsync([
             'new-window', '-d', '-P', '-F', '#S:#I #{pane_id}',
             '-t', targetSession,
             '-n', windowName,
@@ -480,12 +462,12 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     const workerPaneIds = [];
     if (workerCount <= 0) {
         try {
-            await execFileAsync('tmux', ['set-option', '-t', resolvedSessionName, 'mouse', 'on']);
+            await tmuxExecAsync(['set-option', '-t', resolvedSessionName, 'mouse', 'on']);
         }
         catch { /* ignore */ }
         if (sessionMode !== 'dedicated-window') {
             try {
-                await execFileAsync('tmux', ['select-pane', '-t', leaderPaneId]);
+                await tmuxExecAsync(['select-pane', '-t', leaderPaneId]);
             }
             catch { /* ignore */ }
         }
@@ -496,7 +478,7 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     for (let i = 0; i < workerCount; i++) {
         const splitTarget = i === 0 ? leaderPaneId : workerPaneIds[i - 1];
         const splitType = i === 0 ? '-h' : '-v';
-        const splitResult = await tmuxAsync([
+        const splitResult = await tmuxCmdAsync([
             'split-window', splitType, '-t', splitTarget,
             '-d', '-P', '-F', '#{pane_id}',
             '-c', cwd,
@@ -508,12 +490,12 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     }
     await applyMainVerticalLayout(teamTarget);
     try {
-        await execFileAsync('tmux', ['set-option', '-t', resolvedSessionName, 'mouse', 'on']);
+        await tmuxExecAsync(['set-option', '-t', resolvedSessionName, 'mouse', 'on']);
     }
     catch { /* ignore */ }
     if (sessionMode !== 'dedicated-window') {
         try {
-            await execFileAsync('tmux', ['select-pane', '-t', leaderPaneId]);
+            await tmuxExecAsync(['select-pane', '-t', leaderPaneId]);
         }
         catch { /* ignore */ }
     }
@@ -526,23 +508,20 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
  * Worker startup: env OMC_TEAM_WORKER={teamName}/workerName shell -lc "exec agentCmd"
  */
 export async function spawnWorkerInPane(sessionName, paneId, config) {
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const execFileAsync = promisify(execFile);
     validateTeamName(config.teamName);
     const startCmd = buildWorkerStartCommand(config);
     // Use -l (literal) flag to prevent tmux key-name parsing of the command string
-    await execFileAsync('tmux', [
+    await tmuxExecAsync([
         'send-keys', '-t', paneId, '-l', startCmd
     ]);
-    await execFileAsync('tmux', ['send-keys', '-t', paneId, 'Enter']);
+    await tmuxExecAsync(['send-keys', '-t', paneId, 'Enter']);
 }
 function normalizeTmuxCapture(value) {
     return value.replace(/\r/g, '').replace(/\s+/g, ' ').trim();
 }
-async function capturePaneAsync(paneId, execFileAsync) {
+async function capturePaneAsync(paneId) {
     try {
-        const result = await execFileAsync('tmux', ['capture-pane', '-t', paneId, '-p', '-S', '-80']);
+        const result = await tmuxExecAsync(['capture-pane', '-t', paneId, '-p', '-S', '-80']);
         return result.stdout;
     }
     catch {
@@ -589,7 +568,7 @@ export async function waitForPaneReady(paneId, opts = {}) {
         : 250;
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-        const captured = await capturePaneAsync(paneId, promisifiedExecFile);
+        const captured = await capturePaneAsync(paneId);
         if (paneLooksReady(captured) && !paneHasActiveTask(captured)) {
             return true;
         }
@@ -604,7 +583,7 @@ function paneTailContainsLiteralLine(captured, text) {
 }
 async function paneInCopyMode(paneId) {
     try {
-        const result = await tmuxAsync(['display-message', '-t', paneId, '-p', '#{pane_in_mode}']);
+        const result = await tmuxCmdAsync(['display-message', '-t', paneId, '-p', '#{pane_in_mode}']);
         return result.stdout.trim() === '1';
     }
     catch {
@@ -643,19 +622,15 @@ export async function sendToWorker(_sessionName, paneId, message) {
         return false;
     }
     try {
-        const { execFile } = await import('child_process');
-        const { promisify } = await import('util');
-        const execFileAsync = promisify(execFile);
-        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         const sendKey = async (key) => {
-            await execFileAsync('tmux', ['send-keys', '-t', paneId, key]);
+            await tmuxExecAsync(['send-keys', '-t', paneId, key]);
         };
         // Guard: copy-mode captures keys; skip injection entirely.
         if (await paneInCopyMode(paneId)) {
             return false;
         }
         // Check for trust prompt and auto-dismiss before sending our text
-        const initialCapture = await capturePaneAsync(paneId, execFileAsync);
+        const initialCapture = await capturePaneAsync(paneId);
         const paneBusy = paneHasActiveTask(initialCapture);
         if (paneHasTrustPrompt(initialCapture)) {
             await sendKey('C-m');
@@ -664,7 +639,7 @@ export async function sendToWorker(_sessionName, paneId, message) {
             await sleep(200);
         }
         // Send text in literal mode with -- separator
-        await execFileAsync('tmux', ['send-keys', '-t', paneId, '-l', '--', message]);
+        await tmuxExecAsync(['send-keys', '-t', paneId, '-l', '--', message]);
         // Allow input buffer to settle
         await sleep(150);
         // Submit: up to 6 rounds of C-m double-press.
@@ -684,7 +659,7 @@ export async function sendToWorker(_sessionName, paneId, message) {
             }
             await sleep(140);
             // Check if text is still visible in the pane — if not, it was submitted
-            const checkCapture = await capturePaneAsync(paneId, execFileAsync);
+            const checkCapture = await capturePaneAsync(paneId);
             if (!paneTailContainsLiteralLine(checkCapture, message))
                 return true;
             await sleep(140);
@@ -694,7 +669,7 @@ export async function sendToWorker(_sessionName, paneId, message) {
             return false;
         }
         // Adaptive fallback: for busy panes, retry once without interrupting active turns.
-        const finalCapture = await capturePaneAsync(paneId, execFileAsync);
+        const finalCapture = await capturePaneAsync(paneId);
         const paneModeBeforeAdaptiveRetry = await paneInCopyMode(paneId);
         if (shouldAttemptAdaptiveRetry({
             paneBusy,
@@ -711,14 +686,14 @@ export async function sendToWorker(_sessionName, paneId, message) {
             if (await paneInCopyMode(paneId)) {
                 return false;
             }
-            await execFileAsync('tmux', ['send-keys', '-t', paneId, '-l', '--', message]);
+            await tmuxExecAsync(['send-keys', '-t', paneId, '-l', '--', message]);
             await sleep(120);
             for (let round = 0; round < 4; round++) {
                 await sendKey('C-m');
                 await sleep(180);
                 await sendKey('C-m');
                 await sleep(140);
-                const retryCapture = await capturePaneAsync(paneId, execFileAsync);
+                const retryCapture = await capturePaneAsync(paneId);
                 if (!paneTailContainsLiteralLine(retryCapture, message))
                     return true;
             }
@@ -733,7 +708,7 @@ export async function sendToWorker(_sessionName, paneId, message) {
         await sleep(120);
         await sendKey('C-m');
         await sleep(140);
-        const finalCheckCapture = await capturePaneAsync(paneId, execFileAsync);
+        const finalCheckCapture = await capturePaneAsync(paneId);
         // Empty capture means tmux capture failed or returned indeterminate output.
         // Treat this as delivery failure to keep dispatch behavior fail-closed.
         if (!finalCheckCapture || finalCheckCapture.trim() === '') {
@@ -757,15 +732,12 @@ export async function injectToLeaderPane(sessionName, leaderPaneId, message) {
     // "esc to interrupt"), send C-c first so the message is not queued in the
     // stdin buffer behind the blocked process.
     try {
-        const { execFile } = await import('child_process');
-        const { promisify } = await import('util');
-        const execFileAsync = promisify(execFile);
         if (await paneInCopyMode(leaderPaneId)) {
             return false;
         }
-        const captured = await capturePaneAsync(leaderPaneId, execFileAsync);
+        const captured = await capturePaneAsync(leaderPaneId);
         if (paneHasActiveTask(captured)) {
-            await execFileAsync('tmux', ['send-keys', '-t', leaderPaneId, 'C-c']);
+            await tmuxExecAsync(['send-keys', '-t', leaderPaneId, 'C-c']);
             await new Promise(r => setTimeout(r, 250));
         }
     }
@@ -778,10 +750,7 @@ export async function injectToLeaderPane(sessionName, leaderPaneId, message) {
  */
 export async function isWorkerAlive(paneId) {
     try {
-        const { execFile } = await import('child_process');
-        const { promisify } = await import('util');
-        const execFileAsync = promisify(execFile);
-        const result = await tmuxAsync([
+        const result = await tmuxCmdAsync([
             'display-message', '-t', paneId, '-p', '#{pane_dead}'
         ]);
         return result.stdout.trim() === '0';
@@ -807,14 +776,11 @@ export async function killWorkerPanes(opts) {
     }
     catch { /* sentinel write failure is non-fatal */ }
     // 2. Force-kill each worker pane, guarding leader
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const execFileAsync = promisify(execFile);
     for (const paneId of paneIds) {
         if (paneId === leaderPaneId)
             continue; // GUARD — never kill leader
         try {
-            await execFileAsync('tmux', ['kill-pane', '-t', paneId]);
+            await tmuxExecAsync(['kill-pane', '-t', paneId]);
         }
         catch { /* pane already gone — OK */ }
     }
@@ -828,9 +794,6 @@ export async function killWorkerPanes(opts) {
  * - detached-session: kill the fully owned tmux session.
  */
 export async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, options = {}) {
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const execFileAsync = promisify(execFile);
     const sessionMode = options.sessionMode
         ?? (sessionName.includes(':') ? 'split-pane' : 'detached-session');
     if (sessionMode === 'split-pane') {
@@ -840,7 +803,7 @@ export async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, 
             if (id === leaderPaneId)
                 continue;
             try {
-                await execFileAsync('tmux', ['kill-pane', '-t', id]);
+                await tmuxExecAsync(['kill-pane', '-t', id]);
             }
             catch { /* already gone */ }
         }
@@ -848,7 +811,7 @@ export async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, 
     }
     if (sessionMode === 'dedicated-window') {
         try {
-            await execFileAsync('tmux', ['kill-window', '-t', sessionName]);
+            await tmuxExecAsync(['kill-window', '-t', sessionName]);
         }
         catch {
             // Window may already be gone.
@@ -858,7 +821,7 @@ export async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, 
     const sessionTarget = sessionName.split(':')[0] ?? sessionName;
     if (process.env.OMC_TEAM_ALLOW_KILL_CURRENT_SESSION !== '1' && process.env.TMUX) {
         try {
-            const current = await tmuxAsync(['display-message', '-p', '#S']);
+            const current = await tmuxCmdAsync(['display-message', '-p', '#S']);
             const currentSessionName = current.stdout.trim();
             if (currentSessionName && currentSessionName === sessionTarget) {
                 return;
@@ -869,7 +832,7 @@ export async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, 
         }
     }
     try {
-        await execFileAsync('tmux', ['kill-session', '-t', sessionTarget]);
+        await tmuxExecAsync(['kill-session', '-t', sessionTarget]);
     }
     catch {
         // Session may already be dead.
@@ -911,12 +874,9 @@ export async function resolveSplitPaneWorkerPaneIds(sessionName, configPaneIds, 
     if (!sessionName || deduped.length === 0)
         return deduped;
     try {
-        const { execFile } = await import('child_process');
-        const { promisify } = await import('util');
-        const execFileAsync = promisify(execFile);
         // Query live panes in the session/window
         const target = sessionName.includes(':') ? sessionName : sessionName.split(':')[0];
-        const result = await execFileAsync('tmux', [
+        const result = await tmuxCmdAsync([
             'list-panes', '-t', target, '-F', '#{pane_id}',
         ]);
         const livePaneIds = new Set(result.stdout.trim().split('\n').map(l => l.trim()).filter(isPaneId));

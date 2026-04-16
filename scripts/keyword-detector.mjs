@@ -137,6 +137,14 @@ function extractPrompt(input) {
   }
 }
 
+function isExplicitRalplanSlashInvocation(prompt) {
+  return /^\s*\/(?:oh-my-copilot:)?ralplan(?:\s|$)/i.test(prompt);
+}
+
+function isExplicitAskSlashInvocation(prompt) {
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini)\b/i.test(prompt);
+}
+
 // Sanitize text to prevent false positives from code blocks, XML tags, URLs, and file paths
 const ANTI_SLOP_EXPLICIT_PATTERN = /\b(ai[\s-]?slop|anti[\s-]?slop|deslop|de[\s-]?slop)\b/i;
 const ANTI_SLOP_ACTION_PATTERN = /\b(clean(?:\s*up)?|cleanup|refactor|simplify|dedupe|de-duplicate|prune)\b/i;
@@ -168,7 +176,7 @@ function isReviewSeedContext(text) {
 }
 
 function sanitizeForKeywordDetection(text) {
-  return text
+  return stripPastedCommandPayloads(text)
     // 0. Strip HTML/markdown comments before tag stripping
     .replace(/<!--[\s\S]*?-->/g, '')
     // 1. Strip XML-style tag blocks: <tag-name ...>...</tag-name> (multi-line, greedy on tag name)
@@ -188,6 +196,131 @@ function sanitizeForKeywordDetection(text) {
     .replace(/```[\s\S]*?```/g, '')
     // 6. Strip inline code (existing)
     .replace(/`[^`]+`/g, '');
+}
+
+const PASTED_MAGIC_KEYWORD_HEADER_PATTERN =
+  /^\s*\[MAGIC KEYWORDS?(?: DETECTED)?:.*$/i;
+const ROLE_BOUNDARY_PATTERN =
+  /^<\s*\/?\s*(system|human|assistant|user|tool_use|tool_result)\b[^>]*>/i;
+const SKILL_TRANSCRIPT_LINE_PATTERN =
+  /^\s*Skill:\s+oh-my-(?:copilot|claudecode|codex):/i;
+const USER_REQUEST_LINE_PATTERN = /^\s*User request:\s*$/i;
+const SHELL_TRANSCRIPT_LINE_PATTERN = /^\s*[$%❯]\s+/;
+const GIT_DIFF_START_PATTERNS = [
+  /^diff\s+--git\s+a\//,
+  /^index\s+[0-9a-f]+\.\.[0-9a-f]+(?:\s+\d+)?$/i,
+  /^(?:---|\+\+\+)\s+[ab]\//,
+  /^@@\s+-\d+/,
+];
+const GIT_DIFF_CONTINUATION_PATTERNS = [
+  /^new file mode\s+\d+$/i,
+  /^deleted file mode\s+\d+$/i,
+  /^similarity index\s+\d+%$/i,
+  /^rename (?:from|to)\s+/i,
+  /^Binary files .+ differ$/i,
+  /^(?:diff\s+--git\s+a\/|index\s+[0-9a-f]+\.\.[0-9a-f]+|(?:---|\+\+\+)\s+[ab]\/|@@\s+-\d+)/i,
+  /^[ +\-].*/,
+];
+
+function stripPastedCommandPayloads(text) {
+  const lines = text.split('\n');
+  const sanitized = [];
+  let insideRoleBlock = false;
+  let insideDiffBlock = false;
+  let insideMagicKeywordBlock = false;
+  let magicBlockSawUserRequest = false;
+  let magicBlockSawRequestPayload = false;
+  let previousLineWasUserRequest = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (insideMagicKeywordBlock) {
+      if (ROLE_BOUNDARY_PATTERN.test(trimmed)) {
+        insideRoleBlock = !/^<\s*\//.test(trimmed);
+        insideMagicKeywordBlock = false;
+        magicBlockSawUserRequest = false;
+        magicBlockSawRequestPayload = false;
+        continue;
+      }
+
+      if (USER_REQUEST_LINE_PATTERN.test(line)) {
+        magicBlockSawUserRequest = true;
+        magicBlockSawRequestPayload = false;
+        continue;
+      }
+
+      if (magicBlockSawUserRequest) {
+        if (trimmed) {
+          magicBlockSawRequestPayload = true;
+          continue;
+        }
+
+        if (magicBlockSawRequestPayload) {
+          insideMagicKeywordBlock = false;
+          magicBlockSawUserRequest = false;
+          magicBlockSawRequestPayload = false;
+          sanitized.push(line);
+          continue;
+        }
+      }
+
+      continue;
+    }
+
+    if (PASTED_MAGIC_KEYWORD_HEADER_PATTERN.test(line)) {
+      insideMagicKeywordBlock = true;
+      magicBlockSawUserRequest = false;
+      magicBlockSawRequestPayload = false;
+      continue;
+    }
+
+    if (ROLE_BOUNDARY_PATTERN.test(trimmed)) {
+      insideRoleBlock = !/^<\s*\//.test(trimmed);
+      continue;
+    }
+
+    if (insideRoleBlock) {
+      continue;
+    }
+
+    if (!trimmed) {
+      sanitized.push(line);
+      insideDiffBlock = false;
+      previousLineWasUserRequest = false;
+      continue;
+    }
+
+    if (previousLineWasUserRequest) {
+      previousLineWasUserRequest = false;
+      continue;
+    }
+
+    if (USER_REQUEST_LINE_PATTERN.test(line) || SKILL_TRANSCRIPT_LINE_PATTERN.test(line)) {
+      previousLineWasUserRequest = USER_REQUEST_LINE_PATTERN.test(line);
+      continue;
+    }
+
+    if (SHELL_TRANSCRIPT_LINE_PATTERN.test(line) && !/^\s*\$\w/.test(line)) {
+      continue;
+    }
+
+    if (insideDiffBlock) {
+      if (GIT_DIFF_CONTINUATION_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+        continue;
+      }
+      insideDiffBlock = false;
+    }
+
+    if (GIT_DIFF_START_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+      insideDiffBlock = true;
+      continue;
+    }
+
+    sanitized.push(line);
+  }
+
+  return sanitized.join('\n');
 }
 
 const INFORMATIONAL_INTENT_PATTERNS = [
@@ -346,6 +479,45 @@ function hasActionableKeyword(text, pattern) {
   return false;
 }
 
+function hasDirectInvocationPrefix(text, position) {
+  const prefix = text.slice(0, position);
+  return /^\s*(?:[$/!]\s*|force:\s*|oh-my-(?:copilot|claudecode|codex):\s*)?$/i.test(prefix);
+}
+
+function hasExplicitInvocationContext(text, position, keywordLength, keywordText) {
+  if (hasDirectInvocationPrefix(text, position)) {
+    return true;
+  }
+
+  const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
+  const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
+  const context = text.slice(start, end);
+  return hasActivationIntentNearKeyword(context, keywordText);
+}
+
+function hasActionableRalplanKeyword(text, pattern) {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  const globalPattern = new RegExp(pattern.source, flags);
+
+  for (const match of text.matchAll(globalPattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    if (isInformationalKeywordContext(text, match.index, match[0].length, match[0])) {
+      continue;
+    }
+
+    if (!hasExplicitInvocationContext(text, match.index, match[0].length, match[0])) {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
 // Create state file for a mode
 function activateState(directory, prompt, stateName, sessionId) {
   let state;
@@ -404,6 +576,36 @@ function activateState(directory, prompt, stateName, sessionId) {
     try { mkdirSync(localDir, { recursive: true }); } catch {}
   }
   try { writeFileSync(join(localDir, `${stateName}-state.json`), JSON.stringify(state, null, 2), { mode: 0o600 }); } catch {}
+}
+
+function activateRalplanStartupState(directory, prompt, sessionId) {
+  const now = new Date().toISOString();
+  const state = {
+    active: true,
+    started_at: now,
+    current_phase: 'ralplan',
+    original_prompt: prompt,
+    session_id: sessionId || undefined,
+    project_path: directory,
+    awaiting_confirmation: true,
+    awaiting_confirmation_set_at: now,
+    last_checked_at: now
+  };
+
+  if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
+    const sessionDir = join(directory, '.omcp', 'state', 'sessions', sessionId);
+    if (!existsSync(sessionDir)) {
+      try { mkdirSync(sessionDir, { recursive: true }); } catch {}
+    }
+    try { writeFileSync(join(sessionDir, 'ralplan-state.json'), JSON.stringify(state, null, 2), { mode: 0o600 }); } catch {}
+    return;
+  }
+
+  const localDir = join(directory, '.omcp', 'state');
+  if (!existsSync(localDir)) {
+    try { mkdirSync(localDir, { recursive: true }); } catch {}
+  }
+  try { writeFileSync(join(localDir, 'ralplan-state.json'), JSON.stringify(state, null, 2), { mode: 0o600 }); } catch {}
 }
 
 /**
@@ -623,6 +825,25 @@ async function main() {
       return;
     }
 
+    // `/ask <provider> ...` delegates the remainder of the prompt to an
+    // advisor process. Magic keywords inside that delegated payload must not
+    // activate modes in the current Claude Code session.
+    if (isExplicitAskSlashInvocation(prompt)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    if (isExplicitRalplanSlashInvocation(prompt)) {
+      activateRalplanStartupState(directory, prompt, sessionId);
+      console.log(JSON.stringify(createHookOutput(
+        `[RALPLAN INIT]\n` +
+        `Explicit /ralplan invoke detected during UserPromptSubmit.\n` +
+        `ralplan state has been initialized immediately and marked awaiting confirmation so the stop hook will not block this startup path.\n\n` +
+        createSkillInvocation('ralplan', prompt)
+      )));
+      return;
+    }
+
     const cleanPrompt = sanitizeForKeywordDetection(prompt).toLowerCase();
 
     // Collect all matching keywords
@@ -667,7 +888,7 @@ async function main() {
     }
 
     // Ralplan keyword
-    if (hasActionableKeyword(cleanPrompt, /\b(ralplan)\b|(랄플랜)/i)) {
+    if (hasActionableRalplanKeyword(cleanPrompt, /\b(ralplan)\b|(랄플랜)/i)) {
       matches.push({ name: 'ralplan', args: '' });
     }
 

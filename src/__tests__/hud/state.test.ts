@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readHudConfig } from '../../hud/state.js';
+import { readHudConfig, writeHudConfig } from '../../hud/state.js';
 import { DEFAULT_HUD_CONFIG } from '../../hud/types.js';
 
 // Mock fs and os modules
@@ -10,13 +10,20 @@ vi.mock('node:fs', () => ({
   mkdirSync: vi.fn(),
 }));
 
+vi.mock('../../lib/atomic-write.js', () => ({
+  atomicWriteFileSync: vi.fn(),
+  atomicWriteJsonSync: vi.fn(),
+}));
+
 vi.mock('node:os', () => ({
   homedir: () => '/Users/testuser',
 }));
 
 import { existsSync, readFileSync } from 'node:fs';
+import { atomicWriteFileSync } from '../../lib/atomic-write.js';
 const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);
+const mockAtomicWriteFileSync = vi.mocked(atomicWriteFileSync);
 
 describe('readHudConfig', () => {
   beforeEach(() => {
@@ -240,5 +247,53 @@ describe('readHudConfig', () => {
       expect(config.usageApiPollIntervalMs).toBe(180_000);
       expect(config.maxWidth).toBe(DEFAULT_HUD_CONFIG.maxWidth);
     });
+  });
+});
+
+describe('elementOrder config round-trip', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('readHudConfig preserves elementOrder from settings.json', () => {
+    mockExistsSync.mockImplementation((path) =>
+      String(path).endsWith('settings.json'),
+    );
+    mockReadFileSync.mockReturnValue(
+      JSON.stringify({
+        omcHud: {
+          elementOrder: ['contextBar', 'omcLabel', 'session'],
+        },
+      }),
+    );
+
+    const config = readHudConfig();
+
+    expect(config.elementOrder).toEqual([
+      'contextBar',
+      'omcLabel',
+      'session',
+    ]);
+  });
+
+  it('writeHudConfig persists elementOrder to settings.json', () => {
+    mockExistsSync.mockImplementation((path) =>
+      String(path).endsWith('settings.json'),
+    );
+    mockReadFileSync.mockReturnValue(JSON.stringify({}));
+
+    const ok = writeHudConfig({
+      ...DEFAULT_HUD_CONFIG,
+      elementOrder: ['contextBar', 'omcLabel', 'session'],
+    });
+
+    expect(ok).toBe(true);
+    const [, raw] = mockAtomicWriteFileSync.mock.calls[0] as [string, string];
+    const written = JSON.parse(raw);
+    expect(written.omcHud.elementOrder).toEqual([
+      'contextBar',
+      'omcLabel',
+      'session',
+    ]);
   });
 });

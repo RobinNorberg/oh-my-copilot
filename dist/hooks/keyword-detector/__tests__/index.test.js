@@ -54,6 +54,48 @@ World`);
         });
     });
     describe('sanitizeForKeywordDetection', () => {
+        it('should strip pasted magic-keyword transcript payloads and preserve surrounding prose', () => {
+            const result = sanitizeForKeywordDetection(`Investigate why this pasted transcript branched sessions:
+
+[MAGIC KEYWORD: RALPH]
+Skill: oh-my-copilot:ralph
+User request:
+ralph fix parser
+
+Summarize the failure mode only.`);
+            expect(result).toContain('Investigate why this pasted transcript branched sessions:');
+            expect(result).toContain('Summarize the failure mode only.');
+            expect(result).not.toContain('[MAGIC KEYWORD: RALPH]');
+            expect(result).not.toContain('Skill: oh-my-copilot:ralph');
+            expect(result).not.toContain('ralph fix parser');
+        });
+        it('should strip pasted git diff hunks that mention execution keywords', () => {
+            const result = sanitizeForKeywordDetection(`Please explain this diff:
+diff --git a/a b/b
+--- a/a
++++ b/b
+@@ -1,2 +1,2 @@
++ ralph fix parser
++ autopilot build me an app
+
+What actually caused the regression?`);
+            expect(result).toContain('Please explain this diff:');
+            expect(result).toContain('What actually caused the regression?');
+            expect(result).not.toContain('ralph fix parser');
+            expect(result).not.toContain('autopilot build me an app');
+        });
+        it('should strip quoted assistant transcript blocks', () => {
+            const result = sanitizeForKeywordDetection(`Please explain this transcript:
+<assistant>
+[MAGIC KEYWORD: AUTOPILOT]
+Skill: oh-my-copilot:autopilot
+</assistant>
+Why did this happen?`);
+            expect(result).toContain('Please explain this transcript:');
+            expect(result).toContain('Why did this happen?');
+            expect(result).not.toContain('AUTOPILOT');
+            expect(result).not.toContain('Skill: oh-my-copilot:autopilot');
+        });
         it('should strip XML tag blocks', () => {
             const result = sanitizeForKeywordDetection('<system-reminder>ralph</system-reminder>');
             expect(result).not.toContain('ralph');
@@ -243,6 +285,29 @@ World`);
                 const pipelineLikeMatches = keywordResult.filter((r) => r.type === 'pipeline');
                 expect(pipelineLikeMatches).toHaveLength(0);
             });
+            it('should NOT detect pasted skill transcript blocks as fresh activations', () => {
+                const result = detectKeywordsWithType(`Investigate why this pasted transcript branched sessions:
+
+[MAGIC KEYWORD: RALPH]
+Skill: oh-my-copilot:ralph
+User request:
+ralph fix parser`);
+                expect(result).toEqual([]);
+            });
+            it('should NOT detect pasted git diff hunks as fresh activations', () => {
+                const result = detectKeywordsWithType(`Please explain this diff:
+diff --git a/a b/b
+--- a/a
++++ b/b
+@@ -1,2 +1,2 @@
++ ralph fix parser
++ autopilot build me an app`);
+                expect(result).toEqual([]);
+            });
+            it('should still detect explicit $ralph invocation typed by the user', () => {
+                const result = detectKeywordsWithType('$ralph fix parser state handling');
+                expect(result.find((r) => r.type === 'ralph')).toBeDefined();
+            });
         });
         describe('tdd keyword', () => {
             it('should detect tdd keyword', () => {
@@ -422,6 +487,13 @@ World`);
             it('should NOT detect informational mode/now phrasing', () => {
                 expect(detectKeywordsWithType('What is autopilot mode now?')).toEqual([]);
                 expect(detectKeywordsWithType('what is ralph mode now?')).toEqual([]);
+            });
+            it('should NOT detect help-style use questions for autopilot', () => {
+                expect(detectKeywordsWithType('How do I use autopilot?')).toEqual([]);
+            });
+            it('should detect explicit activation even when a nearby help question exists', () => {
+                const result = detectKeywordsWithType('Use autopilot to fix bug in payments. What is the expected output?');
+                expect(result.find((r) => r.type === 'autopilot')).toBeDefined();
             });
             it('should NOT detect diagnostic mentions of keywords as activation requests', () => {
                 expect(detectKeywordsWithType('ralph keeps looping, investigate')).toEqual([]);
@@ -1149,6 +1221,36 @@ World`);
             expect(gateResult.keywords).toContain('ralplan');
             expect(gateResult.keywords).toContain('tdd');
             expect(gateResult.keywords).not.toContain('ralph');
+        });
+    });
+    describe('ralplan invocation-vs-mention detection', () => {
+        it('does not detect ralplan for informational questions or mention-only prose', () => {
+            expect(detectKeywordsWithType('does ralplan stop after planning?')).toEqual([]);
+            expect(detectKeywordsWithType('When does ralplan activate?')).toEqual([]);
+            expect(detectKeywordsWithType('Is ralplan a planning mode?')).toEqual([]);
+            expect(detectKeywordsWithType('I am asking about the ralplan keyword, not invoking it.')).toEqual([]);
+            expect(detectKeywordsWithType('What happens if someone mentions ralplan in a question?')).toEqual([]);
+            expect(detectKeywordsWithType('Please document ralplan in the README.')).toEqual([]);
+        });
+        it('still detects direct or explicit-invocation ralplan requests', () => {
+            expect(detectKeywordsWithType('ralplan fix issue #2053')).toEqual([
+                expect.objectContaining({ type: 'ralplan', keyword: 'ralplan' }),
+            ]);
+            expect(detectKeywordsWithType('please ralplan this issue')).toEqual([
+                expect.objectContaining({ type: 'ralplan', keyword: 'ralplan' }),
+            ]);
+            expect(detectKeywordsWithType("let's ralplan the auth redesign")).toEqual([
+                expect.objectContaining({ type: 'ralplan', keyword: 'ralplan' }),
+            ]);
+            expect(detectKeywordsWithType('I want a ralplan for this issue')).toEqual([
+                expect.objectContaining({ type: 'ralplan', keyword: 'ralplan' }),
+            ]);
+            expect(detectKeywordsWithType('please use ralplan to plan issue #2053')).toEqual([
+                expect.objectContaining({ type: 'ralplan', keyword: 'ralplan' }),
+            ]);
+            expect(detectKeywordsWithType('$ralplan fix issue #2053')).toEqual([
+                expect.objectContaining({ type: 'ralplan', keyword: 'ralplan' }),
+            ]);
         });
     });
     describe('non-ASCII prompt translation detection', () => {

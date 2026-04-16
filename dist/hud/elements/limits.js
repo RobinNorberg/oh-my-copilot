@@ -100,6 +100,16 @@ export function renderRateLimits(limits, stale) {
             : `${DIM}op:${RESET}${opusColor}${opus}%${RESET}${staleMarker}`;
         parts.push(opusPart);
     }
+    if (limits.extraUsagePercent != null && limits.extraUsageLimitUsd != null) {
+        const extra = Math.min(100, Math.max(0, Math.round(limits.extraUsagePercent)));
+        const extraColor = getColor(extra);
+        const extraReset = formatResetTime(limits.extraUsageResetsAt);
+        const dollarPart = `${DIM}($${(limits.extraUsageSpentUsd ?? 0).toFixed(2)}/$${limits.extraUsageLimitUsd.toFixed(2)})${RESET}`;
+        const extraPart = extraReset
+            ? `${DIM}extra:${RESET}${extraColor}${extra}%${RESET}${staleMarker}${dollarPart}${DIM}(${resetPrefix}${extraReset})${RESET}`
+            : `${DIM}extra:${RESET}${extraColor}${extra}%${RESET}${staleMarker}${dollarPart}`;
+        parts.push(extraPart);
+    }
     return parts.join(' ');
 }
 /**
@@ -132,6 +142,11 @@ export function renderRateLimitsCompact(limits, stale) {
         const opus = Math.min(100, Math.max(0, Math.round(limits.opusWeeklyPercent)));
         const opusColor = getColor(opus);
         parts.push(`${opusColor}${opus}%${RESET}`);
+    }
+    if (limits.extraUsagePercent != null && limits.extraUsageLimitUsd != null) {
+        const extra = Math.min(100, Math.max(0, Math.round(limits.extraUsagePercent)));
+        const extraColor = getColor(extra);
+        parts.push(`${extraColor}${extra}%${RESET}`);
     }
     const result = parts.join('/');
     return stale ? `${result}${DIM}*${RESET}` : result;
@@ -203,6 +218,19 @@ export function renderRateLimitsWithBar(limits, barWidth = 8, stale) {
             ? `${DIM}op:${RESET}[${opusBar}]${opusColor}${opus}%${RESET}${staleMarker}${DIM}(${resetPrefix}${opusReset})${RESET}`
             : `${DIM}op:${RESET}[${opusBar}]${opusColor}${opus}%${RESET}${staleMarker}`;
         parts.push(opusPart);
+    }
+    if (limits.extraUsagePercent != null && limits.extraUsageLimitUsd != null) {
+        const extra = Math.min(100, Math.max(0, Math.round(limits.extraUsagePercent)));
+        const extraColor = getColor(extra);
+        const extraFilled = Math.round((extra / 100) * barWidth);
+        const extraEmpty = barWidth - extraFilled;
+        const extraBar = `${extraColor}${'█'.repeat(extraFilled)}${DIM}${'░'.repeat(extraEmpty)}${RESET}`;
+        const extraReset = formatResetTime(limits.extraUsageResetsAt);
+        const dollarPart = `${DIM}($${(limits.extraUsageSpentUsd ?? 0).toFixed(2)}/$${limits.extraUsageLimitUsd.toFixed(2)})${RESET}`;
+        const extraPart = extraReset
+            ? `${DIM}extra:${RESET}[${extraBar}]${extraColor}${extra}%${RESET}${staleMarker}${dollarPart}${DIM}(${resetPrefix}${extraReset})${RESET}`
+            : `${DIM}extra:${RESET}[${extraBar}]${extraColor}${extra}%${RESET}${staleMarker}${dollarPart}`;
+        parts.push(extraPart);
     }
     return parts.join(' ');
 }

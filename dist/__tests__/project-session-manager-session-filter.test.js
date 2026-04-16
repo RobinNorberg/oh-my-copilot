@@ -14,7 +14,7 @@ function runShell(script, home) {
         },
     }).trim();
 }
-describe('project-session-manager session filtering', () => {
+describe.skipIf(process.platform === 'win32')('project-session-manager session filtering', () => {
     const tempDirs = [];
     afterEach(() => {
         while (tempDirs.length > 0) {

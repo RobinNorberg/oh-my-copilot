@@ -113,6 +113,15 @@ describe('getGitStatusCounts', () => {
     getGitStatusCounts('/tmp');
     expect(mockedExecSync).toHaveBeenCalledTimes(1);
   });
+
+  it('disables optional git locks for background HUD polling', () => {
+    mockedExecSync.mockReturnValue('## main\n' as any);
+    getGitStatusCounts('/tmp');
+    expect(mockedExecSync).toHaveBeenCalledWith(
+      'git --no-optional-locks status --porcelain -b',
+      expect.objectContaining({ cwd: '/tmp' }),
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

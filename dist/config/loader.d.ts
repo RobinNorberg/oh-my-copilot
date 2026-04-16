@@ -39,10 +39,9 @@ export declare function deepMerge<T extends object>(target: T, source: Partial<T
  * Load configuration from environment variables
  */
 export declare function loadEnvConfig(): Partial<PluginConfig>;
-/**
- * Load and merge all configuration sources
- */
+export declare function validateTeamConfig(config: PluginConfig): void;
 export declare function loadConfig(): PluginConfig;
+export declare function compactOmcStartupGuidance(content: string): string;
 /**
  * Find and load AGENTS.md or copilot-instructions.md files for context injection
  */

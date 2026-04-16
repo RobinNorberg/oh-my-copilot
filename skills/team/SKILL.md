@@ -882,25 +882,68 @@ When `OMC_TEAM_SCALING_ENABLED=1` is set, the team supports mid-session scaling:
 
 ## Configuration
 
-Optional settings via `.omc-config.json`:
+Optional settings live in `.copilot/omg.jsonc` (project) or `~/.config/copilot-omg/config.jsonc` (user). Project values override user values; `OMCP_TEAM_ROLE_OVERRIDES` (env JSON) supersedes both.
 
-```json
+```jsonc
 {
   "team": {
-    "maxAgents": 20,
-    "defaultAgentType": "executor",
-    "monitorIntervalMs": 30000,
-    "shutdownTimeoutMs": 15000
+    "ops": {
+      "maxAgents": 20,
+      "defaultAgentType": "claude",
+      "monitorIntervalMs": 30000,
+      "shutdownTimeoutMs": 15000
+    }
   }
 }
 ```
 
-- **maxAgents** - Maximum teammates (default: 20)
-- **defaultAgentType** - Agent type when not specified (default: `executor`)
-- **monitorIntervalMs** - How often to poll `TaskList` (default: 30s)
-- **shutdownTimeoutMs** - How long to wait for shutdown responses (default: 15s)
+- **ops.maxAgents** - Maximum teammates (default: 20)
+- **ops.defaultAgentType** - CLI provider when a `/team` invocation does not specify one (`claude` | `codex` | `gemini`, default: `claude`)
+- **ops.monitorIntervalMs** - How often to poll `TaskList` (default: 30s)
+- **ops.shutdownTimeoutMs** - How long to wait for shutdown responses (default: 15s)
 
 > **Note:** Team members do not have a hardcoded model default. Each teammate is a separate Copilot CLI session that inherits the user's configured model. Since teammates can spawn their own subagents, the session model acts as the orchestration layer while subagents can use any model tier.
+
+## Per-Role Provider & Model Routing
+
+> **Scope:** Applies to `/team` only. Task-based delegation uses `delegationRouting` (see separate docs). The two systems coexist by design.
+
+Declare which provider (`claude`, `codex`, `gemini`) and which model tier should back each canonical role. Routing is resolved **once** at team creation and persisted in `TeamConfig.resolved_routing` — spawn, scale-up, and restart all read from the snapshot, so a role's worker CLI and model are stable for the lifetime of the team.
+
+### Example — user target mapping
+
+```jsonc
+// .copilot/omg.jsonc
+{
+  "team": {
+    "roleRouting": {
+      "orchestrator":  { "model": "inherit" },
+      "planner":       { "provider": "claude", "model": "HIGH" },
+      "analyst":       { "provider": "claude", "model": "HIGH" },
+      "executor":      { "provider": "claude", "model": "MEDIUM" },
+      "critic":        { "provider": "codex" },
+      "code-reviewer": { "provider": "gemini" },
+      "test-engineer": { "provider": "gemini", "model": "MEDIUM" }
+    }
+  }
+}
+```
+
+| Role | Provider | Model |
+|---|---|---|
+| `orchestrator` | claude (pinned) | inherits invoking session |
+| `planner` | claude | `HIGH` (opus) |
+| `analyst` | claude | `HIGH` (opus) |
+| `executor` | claude | `MEDIUM` (sonnet) |
+| `critic` | codex | codex default |
+| `code-reviewer` | gemini | gemini default |
+| `test-engineer` | gemini | `MEDIUM` (sonnet) |
+
+### Canonical roles
+
+`orchestrator`, `planner`, `analyst`, `architect`, `executor`, `debugger`, `critic`, `code-reviewer`, `security-reviewer`, `test-engineer`, `designer`, `writer`, `code-simplifier`, `explore`, `document-specialist`.
+
+User-friendly aliases normalize via `normalizeDelegationRole()` — e.g. `reviewer` → `code-reviewer`, `quality-reviewer` → `code-reviewer`, `harsh-critic` → `critic`, `build-fixer` → `debugger`. Accepted alias keys are honored during resolved snapshot creation and later stage routing, not just validation. Unknown roles fail validation at parse time.
 
 ## State Cleanup
 

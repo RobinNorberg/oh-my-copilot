@@ -21,6 +21,7 @@ import { killSession } from "./tmux-session.js";
 import { logAuditEvent } from "./audit-log.js";
 import { getEffectivePermissions, findPermissionViolations, } from "./permissions.js";
 import { getBuiltinExternalDefaultModel } from "../config/models.js";
+import { sanitizePromptContent as sanitizeSharedPromptContent } from "../agents/prompt-helpers.js";
 import { getTeamStatus } from "./team-status.js";
 import { measureCharCounts, recordTaskUsage } from "./usage-tracker.js";
 /** Simple logger */
@@ -198,20 +199,7 @@ const MAX_INBOX_CONTEXT_SIZE = 20000;
  * @internal
  */
 export function sanitizePromptContent(content, maxLength) {
-    let sanitized = content.length > maxLength ? content.slice(0, maxLength) : content;
-    // If truncation split a surrogate pair, remove the dangling high surrogate
-    if (sanitized.length > 0) {
-        const lastCode = sanitized.charCodeAt(sanitized.length - 1);
-        if (lastCode >= 0xd800 && lastCode <= 0xdbff) {
-            sanitized = sanitized.slice(0, -1);
-        }
-    }
-    // Escape XML-like tags that match our prompt delimiters (including tags with attributes)
-    sanitized = sanitized.replace(/<(\/?)(TASK_SUBJECT)[^>]*>/gi, "[$1$2]");
-    sanitized = sanitized.replace(/<(\/?)(TASK_DESCRIPTION)[^>]*>/gi, "[$1$2]");
-    sanitized = sanitized.replace(/<(\/?)(INBOX_MESSAGE)[^>]*>/gi, "[$1$2]");
-    sanitized = sanitized.replace(/<(\/?)(INSTRUCTIONS)[^>]*>/gi, "[$1$2]");
-    return sanitized;
+    return sanitizeSharedPromptContent(content, maxLength);
 }
 /** Format the prompt template with sanitized content */
 function formatPromptTemplate(sanitizedSubject, sanitizedDescription, workingDirectory, inboxContext) {

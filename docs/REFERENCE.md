@@ -43,10 +43,10 @@ This integrates directly with Claude Code's plugin system and uses Node.js hooks
 
 ### Requirements
 
-- [Claude Code](https://docs.anthropic.com/claude-code) installed
+- [Copilot CLI](https://github.com/github/copilot-cli) installed
 - One of:
-  - **Claude Max/Pro subscription** (recommended for individuals)
-  - **Anthropic API key** (`ANTHROPIC_API_KEY` environment variable)
+  - **GitHub Copilot subscription** (recommended for individuals)
+  - **GitHub API access** configured
 
 ---
 
@@ -541,7 +541,7 @@ Each installed skill is exposed as `/oh-my-copilot:<skill-name>`. The skills tab
 | Command                                     | Description                                                                                   |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `/oh-my-copilot:ai-slop-cleaner <target>`    | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                    |
-| `/oh-my-copilot:ask <claude|codex|gemini> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact         |
+| `/oh-my-copilot:ask <claude\|codex\|gemini> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact         |
 | `/oh-my-copilot:autopilot <task>`            | Full autonomous execution                                                                  |
 | `/oh-my-copilot:configure-notifications`     | Configure notification integrations                                                       |
 | `/oh-my-copilot:deep-dive <problem>`         | Run the trace → deep-interview pipeline                                                   |
@@ -893,7 +893,7 @@ Available presets: `minimal`, `focused`, `full`, `dense`, `analytics`, `opencode
 
 ### Auto-Update
 
-Oh-my-claudecode includes a silent auto-update system that checks for updates in the background.
+Oh-my-copilot includes a silent auto-update system that checks for updates in the background.
 
 Features:
 

@@ -1,15 +1,15 @@
 /**
  * tmux Detector
  *
- * Detects Copilot CLI sessions running in tmux panes and identifies
+ * Detects Claude Code sessions running in tmux panes and identifies
  * those that are blocked due to rate limiting.
  *
  * Security considerations:
  * - Pane IDs are validated before use in shell commands
  * - Text inputs are sanitized to prevent command injection
  */
-import { spawnSync } from 'child_process';
-import { tmuxExec } from '../../cli/tmux-utils.js';
+import { tmuxExec, tmuxSpawn } from '../../cli/tmux-utils.js';
+import { getNewPaneTail } from './pane-fresh-capture.js';
 /**
  * Validate tmux pane ID format to prevent command injection
  * Valid formats: %0, %1, %123, etc.
@@ -38,17 +38,53 @@ const RATE_LIMIT_PATTERNS = [
     /hit .+ limit/i,
     /resets? .+ at/i,
     /5[- ]?hour/i,
-    /weekly/i,
+    // Require adjacent rate-limit vocabulary to avoid false-positives from git commit
+    // messages or documentation that contain the bare word "weekly" (e.g. "fix weekly
+    // report generation", "update weekly standup notes").
+    /\bweekly\s+(?:usage\s+)?(?:limit|quota|cap|allowance|allocation)\b/i,
 ];
-/** Patterns that indicate Copilot CLI is running */
-const COPILOT_CODE_PATTERNS = [
+/** Patterns that indicate Claude Code is running */
+const CLAUDE_CODE_PATTERNS = [
+    /claude/i,
     /copilot/i,
     /anthropic/i,
+    /\$ claude/,
     /\$ copilot/,
-    /copilot code/i,
+    /claude code/i,
+    /copilot cli/i,
     /conversation/i,
     /assistant/i,
 ];
+/**
+ * Tightened weekly rate-limit pattern, extracted so `analyzePaneContent` can
+ * use the same predicate for `rateLimitType` classification.
+ */
+const WEEKLY_RATE_LIMIT_PATTERN = /\bweekly\s+(?:usage\s+)?(?:limit|quota|cap|allowance|allocation)\b/i;
+/**
+ * Line-level patterns that identify `git log` / `git show` / `git diff` output.
+ * These lines are stripped before rate-limit pattern matching to prevent commit
+ * messages from producing false-positive "weekly / assistant / conversation" hits.
+ */
+const GIT_OUTPUT_LINE_PATTERNS = [
+    /^commit\s+[0-9a-f]{6,40}\b/, // git log commit hash
+    /^Author:\s+\S/, // git log author
+    /^Date:\s+\S/, // git log date
+    /^Merge:\s+[0-9a-f]{6,}/, // git log merge line
+    /^diff\s+--git\s+a\//, // git diff header
+    /^(?:---|\+\+\+)\s+[ab]\//, // git diff file paths
+    /^@@\s+-\d+/, // git diff hunk header
+];
+/**
+ * Strip lines that are clearly `git log` / `git diff` output so that commit
+ * message text (e.g. "Fix weekly report", "Update assistant config") cannot
+ * trigger rate-limit keyword patterns.
+ */
+function stripGitOutputLines(content) {
+    return content
+        .split('\n')
+        .filter(line => !GIT_OUTPUT_LINE_PATTERNS.some(p => p.test(line.trimStart())))
+        .join('\n');
+}
 /** Patterns that indicate the pane is waiting for user input */
 const WAITING_PATTERNS = [
     /\[\d+\]/, // Menu selection prompt like [1], [2], [3]
@@ -66,11 +102,7 @@ const WAITING_PATTERNS = [
  */
 export function isTmuxAvailable() {
     try {
-        const result = spawnSync('tmux', ['-V'], {
-            encoding: 'utf-8',
-            timeout: 3000,
-            stdio: 'pipe',
-        });
+        const result = tmuxSpawn(['-V'], { stripTmux: true, stdio: 'pipe', timeout: 3000 });
         return result.status === 0;
     }
     catch {
@@ -94,6 +126,7 @@ export function listTmuxPanes() {
         // Format: session_name:window_index.pane_index pane_id pane_active window_name pane_title
         const format = '#{session_name}:#{window_index}.#{pane_index} #{pane_id} #{pane_active} #{window_name} #{pane_title}';
         const result = tmuxExec(['list-panes', '-a', '-F', format], {
+            stripTmux: true,
             timeout: 5000,
         });
         const panes = [];
@@ -124,6 +157,33 @@ export function listTmuxPanes() {
     }
 }
 /**
+ * Check whether a tmux pane is alive (not in the dead/exited state).
+ *
+ * tmux sets #{pane_dead} to "1" once the child process in the pane exits.
+ * Capturing content from a dead pane returns stale scrollback and can
+ * trigger spurious keyword alerts — callers should skip capture when this
+ * returns false.
+ *
+ * Returns false for dead panes, invalid pane IDs, and when tmux is unavailable.
+ * Intentionally synchronous so it can be used in fire-and-forget hook paths.
+ */
+export function isPaneAlive(paneId) {
+    if (!isTmuxAvailable()) {
+        return false;
+    }
+    if (!isValidPaneId(paneId)) {
+        return false;
+    }
+    try {
+        const result = tmuxExec(['display-message', '-t', paneId, '-p', '#{pane_dead}'], { stripTmux: true, stdio: 'pipe', timeout: 3000 });
+        return result.trim() === '0';
+    }
+    catch {
+        // pane gone or session dead — treat as not alive
+        return false;
+    }
+}
+/**
  * Capture the content of a specific tmux pane
  *
  * @param paneId - The tmux pane ID (e.g., "%0")
@@ -143,6 +203,7 @@ export function capturePaneContent(paneId, lines = 15) {
     try {
         // Capture the last N lines from the pane
         const result = tmuxExec(['capture-pane', '-t', paneId, '-p', '-S', `-${safeLines}`], {
+            stripTmux: true,
             timeout: 5000,
         });
         return result;
@@ -153,7 +214,7 @@ export function capturePaneContent(paneId, lines = 15) {
     }
 }
 /**
- * Analyze pane content to determine if it shows a rate-limited Copilot CLI session
+ * Analyze pane content to determine if it shows a rate-limited Claude Code session
  */
 export function analyzePaneContent(content) {
     if (!content.trim()) {
@@ -164,20 +225,23 @@ export function analyzePaneContent(content) {
             confidence: 0,
         };
     }
-    // Check for Copilot CLI indicators
-    const hasCopilotCode = COPILOT_CODE_PATTERNS.some((pattern) => pattern.test(content));
+    // Strip git log / diff lines so commit message text (e.g. "Fix weekly report",
+    // "Update assistant config") cannot produce false-positive keyword matches.
+    const cleanedContent = stripGitOutputLines(content);
+    // Check for Claude Code indicators
+    const hasCopilotCode = CLAUDE_CODE_PATTERNS.some((pattern) => pattern.test(cleanedContent));
     // Check for rate limit messages
-    const rateLimitMatches = RATE_LIMIT_PATTERNS.filter((pattern) => pattern.test(content));
+    const rateLimitMatches = RATE_LIMIT_PATTERNS.filter((pattern) => pattern.test(cleanedContent));
     const hasRateLimitMessage = rateLimitMatches.length > 0;
     // Check if waiting for user input
-    const isWaiting = WAITING_PATTERNS.some((pattern) => pattern.test(content));
+    const isWaiting = WAITING_PATTERNS.some((pattern) => pattern.test(cleanedContent));
     // Determine rate limit type
     let rateLimitType;
     if (hasRateLimitMessage) {
-        if (/5[- ]?hour/i.test(content)) {
+        if (/5[- ]?hour/i.test(cleanedContent)) {
             rateLimitType = 'five_hour';
         }
-        else if (/weekly/i.test(content)) {
+        else if (WEEKLY_RATE_LIMIT_PATTERN.test(cleanedContent)) {
             rateLimitType = 'weekly';
         }
         else {
@@ -205,15 +269,30 @@ export function analyzePaneContent(content) {
     };
 }
 /**
- * Scan all tmux panes for blocked Copilot CLI sessions
+ * Scan all tmux panes for blocked Claude Code sessions.
  *
- * @param lines - Number of lines to capture from each pane
+ * @param lines    - Number of lines to capture from each pane
+ * @param stateDir - When provided, use cursor-tracked capture (getNewPaneTail) so
+ *                   repeated daemon polls only surface lines written since the last
+ *                   scan. Panes with no new output are skipped, preventing stale
+ *                   rate-limit messages from re-alerting after blockers are resolved.
+ *                   When omitted, falls back to a plain capturePaneContent call.
  */
-export function scanForBlockedPanes(lines = 15) {
+export function scanForBlockedPanes(lines = 15, stateDir) {
     const panes = listTmuxPanes();
     const blocked = [];
     for (const pane of panes) {
-        const content = capturePaneContent(pane.id, lines);
+        let content;
+        if (stateDir) {
+            // Cursor-tracked: only lines appended since the last scan are returned.
+            // An empty result means nothing new — skip to avoid stale re-alerts.
+            content = getNewPaneTail(pane.id, stateDir, lines);
+            if (!content)
+                continue;
+        }
+        else {
+            content = capturePaneContent(pane.id, lines);
+        }
         const analysis = analyzePaneContent(content);
         if (analysis.isBlocked) {
             blocked.push({
@@ -247,6 +326,7 @@ export function sendResumeSequence(paneId) {
     try {
         // Send "1" to select the first option (typically "Continue" or similar)
         tmuxExec(['send-keys', '-t', paneId, '1', 'Enter'], {
+            stripTmux: true,
             timeout: 2000,
         });
         // Wait a moment for the response
@@ -274,11 +354,13 @@ export function sendToPane(paneId, text, pressEnter = true) {
         const sanitizedText = sanitizeForTmux(text);
         // Send text with -l flag (literal) to avoid key interpretation issues in TUI apps
         tmuxExec(['send-keys', '-t', paneId, '-l', sanitizedText], {
+            stripTmux: true,
             timeout: 2000,
         });
         // Send Enter as a separate command so it is interpreted as a key press
         if (pressEnter) {
             tmuxExec(['send-keys', '-t', paneId, 'Enter'], {
+                stripTmux: true,
                 timeout: 2000,
             });
         }
@@ -297,7 +379,7 @@ export function formatBlockedPanesSummary(blockedPanes) {
         return 'No blocked Copilot CLI sessions detected.';
     }
     const lines = [
-        `Found ${blockedPanes.length} blocked Copilot CLI session(s):`,
+        `Found ${blockedPanes.length} blocked Claude Code session(s):`,
         '',
     ];
     for (const pane of blockedPanes) {
