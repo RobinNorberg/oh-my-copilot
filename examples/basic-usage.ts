@@ -8,8 +8,8 @@
 // Note: In real usage, import from 'oh-my-copilot'
 import { createOmcSession, enhancePrompt } from '../src/index.js';
 
-// For demonstration - in real usage, import from '@anthropic-ai/copilot-agent-sdk'
-// import { query } from '@anthropic-ai/copilot-agent-sdk';
+// For demonstration - in real usage, import from '@github/copilot'
+// import { query } from '@github/copilot';
 
 async function main() {
   console.log('=== Oh-My-Copilot Example ===\n');
@@ -56,7 +56,7 @@ async function main() {
   console.log('Example 4: Using with Copilot Agent SDK');
   console.log(`
 // Real usage with Copilot Agent SDK:
-import { query } from '@anthropic-ai/copilot-agent-sdk';
+import { query } from '@github/copilot';
 
 const session = createOmcSession();
 

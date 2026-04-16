@@ -337,9 +337,9 @@ Visit the platform to:
 
 | Resource | Description | Link |
 |----------|-------------|------|
-| Copilot CLI Discord | Community support and tips | [discord.gg/anthropic](https://discord.gg/anthropic) |
+| Copilot CLI Discord | Community support and tips | [GitHub Copilot Community](https://github.com/orgs/community/discussions/categories/copilot) |
 | OMC GitHub Issues | Bug reports and feature requests | [GitHub Issues](https://github.com/RobinNorberg/oh-my-copilot/issues) |
-| Anthropic Documentation | Official Copilot documentation | [docs.github.com](https://docs.github.com) |
+| GitHub Documentation | Official Copilot documentation | [docs.github.com](https://docs.github.com) |
 
 ### Model Performance Benchmarks
 
@@ -349,7 +349,7 @@ Track Copilot's performance across standard benchmarks:
 |-----------|-----------------|----------------|
 | SWE-Bench | Software engineering tasks | MarginLab.ai |
 | HumanEval | Code generation accuracy | Public leaderboards |
-| MMLU | General knowledge | Anthropic blog |
+| MMLU | General knowledge | Public leaderboards |
 
 ---
 
