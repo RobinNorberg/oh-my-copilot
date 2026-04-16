@@ -1594,7 +1594,7 @@ var CONTRACTS = {
   copilot: {
     agentType: "copilot",
     binary: "copilot",
-    installInstructions: "Install Copilot CLI: https://copilot.ai/download",
+    installInstructions: "Install Copilot CLI: https://github.com/github/copilot-cli",
     buildLaunchArgs(model, extraFlags = []) {
       const args = ["--dangerously-skip-permissions"];
       if (model) args.push("--model", model);
