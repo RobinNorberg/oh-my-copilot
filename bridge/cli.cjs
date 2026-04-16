@@ -19726,6 +19726,7 @@ function mergeWithDefaults(config2) {
     },
     missionBoard,
     usageApiPollIntervalMs: config2.usageApiPollIntervalMs ?? DEFAULT_HUD_CONFIG.usageApiPollIntervalMs,
+    ...config2.elementOrder !== void 0 ? { elementOrder: config2.elementOrder } : {},
     wrapMode: config2.wrapMode ?? DEFAULT_HUD_CONFIG.wrapMode,
     ...config2.rateLimitsProvider ? { rateLimitsProvider: config2.rateLimitsProvider } : {},
     ...config2.maxWidth != null ? { maxWidth: config2.maxWidth } : {},
@@ -47602,6 +47603,24 @@ var init_recent_tools = __esm({
 });
 
 // src/hud/render.ts
+function buildMainElementOrder(elementOrder) {
+  if (!Array.isArray(elementOrder) || elementOrder.length === 0) {
+    return DEFAULT_ELEMENT_ORDER.main;
+  }
+  const known = new Set(DEFAULT_ELEMENT_ORDER.main);
+  const seen = /* @__PURE__ */ new Set();
+  const configured = elementOrder.filter((name) => {
+    if (!known.has(name) || seen.has(name)) {
+      return false;
+    }
+    seen.add(name);
+    return true;
+  });
+  const remaining = DEFAULT_ELEMENT_ORDER.main.filter(
+    (name) => !configured.includes(name)
+  );
+  return [...configured, ...remaining];
+}
 function truncateLineToMaxWidth(line, maxWidth) {
   if (maxWidth <= 0) return "";
   if (stringWidth(line) <= maxWidth) return line;
@@ -47877,7 +47896,9 @@ async function render(context, config2) {
   const safeArray = (v, fallback) => Array.isArray(v) ? v : fallback;
   const effectiveLayout = {
     line1: safeArray(config2.layout?.line1, DEFAULT_ELEMENT_ORDER.line1),
-    main: safeArray(config2.layout?.main, DEFAULT_ELEMENT_ORDER.main),
+    // `layout.main` remains the advanced authoritative layout control.
+    // `elementOrder` is a narrow convenience alias for the main HUD line only.
+    main: safeArray(config2.layout?.main, buildMainElementOrder(config2.elementOrder)),
     detail: safeArray(config2.layout?.detail, DEFAULT_ELEMENT_ORDER.detail)
   };
   function collectInline(order) {

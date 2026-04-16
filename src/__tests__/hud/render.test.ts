@@ -470,3 +470,101 @@ describe('maxWidth wrapMode behavior', () => {
     expect(stringWidth(lines[0] ?? '')).toBeLessThanOrEqual(8);
   });
 });
+
+describe('elementOrder convenience setting', () => {
+  const createMockContext = (): HudRenderContext => ({
+    contextPercent: 30,
+    modelName: '',
+    ralph: null,
+    ultrawork: null,
+    prd: null,
+    autopilot: null,
+    activeAgents: [],
+    todos: [],
+    backgroundTasks: [],
+    cwd: '/home/user/project',
+    lastSkill: null,
+    rateLimitsResult: null,
+    customBuckets: null,
+    pendingPermission: null,
+    thinkingState: null,
+    sessionHealth: null,
+    omcVersion: '4.5.4',
+    updateAvailable: null,
+    toolCallCount: 0,
+    agentCallCount: 0,
+    skillCallCount: 0,
+    promptTime: null,
+    apiKeySource: null,
+    profileName: null,
+    sessionSummary: null,
+  });
+
+  const createElementOrderConfig = (elementOrder?: string[]): HudConfig => ({
+    preset: 'focused',
+    elements: {
+      ...DEFAULT_HUD_CONFIG.elements,
+      omcLabel: true,
+      contextBar: true,
+      rateLimits: false,
+      ralph: false,
+      autopilot: false,
+      prdStory: false,
+      activeSkills: false,
+      agents: false,
+      backgroundTasks: false,
+      todos: false,
+      promptTime: false,
+      sessionHealth: false,
+    },
+    thresholds: DEFAULT_HUD_CONFIG.thresholds,
+    staleTaskThresholdMinutes: 30,
+    contextLimitWarning: {
+      ...DEFAULT_HUD_CONFIG.contextLimitWarning,
+      threshold: 101,
+    },
+    usageApiPollIntervalMs: DEFAULT_HUD_CONFIG.usageApiPollIntervalMs,
+    elementOrder,
+  });
+
+  it('reorders main elements according to elementOrder and appends unspecified defaults', async () => {
+    const context = createMockContext();
+    const config = createElementOrderConfig(['contextBar', 'omcLabel']);
+
+    const result = await render(context, config);
+    const mainLine = result.split('\n').find(l => l.includes('[OMC') || l.includes('ctx:'));
+
+    expect(mainLine).toBeDefined();
+    if (mainLine!.includes('ctx:') && mainLine!.includes('[OMC')) {
+      expect(mainLine!.indexOf('ctx:')).toBeLessThan(mainLine!.indexOf('[OMC'));
+    }
+  });
+
+  it('ignores unknown names in elementOrder silently', async () => {
+    const context = createMockContext();
+    const config = createElementOrderConfig(['unknownElement', 'contextBar', 'omcLabel']);
+
+    const result = await render(context, config);
+    const mainLine = result.split('\n').find(l => l.includes('[OMC') || l.includes('ctx:'));
+
+    expect(mainLine).toBeDefined();
+  });
+
+  it('lets layout.main override elementOrder when both are present', async () => {
+    const context = createMockContext();
+    const config: HudConfig = {
+      ...createElementOrderConfig(['contextBar', 'omcLabel']),
+      layout: {
+        main: ['omcLabel', 'contextBar'],
+      },
+    };
+
+    const result = await render(context, config);
+    const mainLine = result.split('\n').find(l => l.includes('[OMC') || l.includes('ctx:'));
+
+    expect(mainLine).toBeDefined();
+    if (mainLine!.includes('[OMC') && mainLine!.includes('ctx:')) {
+      expect(mainLine!.indexOf('[OMC')).toBeLessThan(mainLine!.indexOf('ctx:'));
+    }
+  });
+});
