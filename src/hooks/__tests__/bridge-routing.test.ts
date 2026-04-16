@@ -533,6 +533,27 @@ $ ultrawork search the codebase`,
       }
     });
 
+    it('does not arm ralplan state for keywords inside delegated /ask codex prompts', async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-ask-codex-'));
+      try {
+        execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+        const sessionId = 'ask-codex-session';
+
+        const result = await processHook('keyword-detector', {
+          sessionId,
+          prompt: '/ask codex 지금까지 논의한걸 ralplan으로 계획서 작성해줘',
+          directory: tempDir,
+        });
+
+        expect(result.continue).toBe(true);
+        expect(result.message).toBeUndefined();
+        expect((result as unknown as Record<string, unknown>).hookSpecificOutput).toBeUndefined();
+        expect(existsSync(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json'))).toBe(false);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it('arms ralplan startup state and init context for explicit /ralplan invoke in UserPromptSubmit', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-ralplan-slash-'));
       try {
