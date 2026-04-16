@@ -23,6 +23,7 @@ describe('auto-slash command skill aliases', () => {
 
     mkdirSync(join(tempConfigDir, 'skills', 'team'), { recursive: true });
     mkdirSync(join(tempConfigDir, 'skills', 'project-session-manager'), { recursive: true });
+    mkdirSync(join(tempConfigDir, 'skills', 'c3g'), { recursive: true });
     mkdirSync(join(tempProjectDir, '.copilot', 'commands'), { recursive: true });
 
     writeFileSync(
@@ -43,6 +44,21 @@ description: Project session management
 ---
 
 PSM body`
+    );
+
+    writeFileSync(
+      join(tempConfigDir, 'skills', 'c3g', 'SKILL.md'),
+      `---
+name: c3g
+description: Quadri-model orchestration
+---
+
+## Workflow
+
+1. Fan out to external advisors:
+   - \`omc ask codex "<codex prompt>"\`
+   - \`omc ask gemini "<gemini prompt>"\`
+2. Synthesize results`
     );
 
     process.env.COPILOT_CONFIG_DIR = tempConfigDir;
@@ -144,8 +160,8 @@ Advanced: ambiguity ≤ 20%
     });
 
     expect(result.success).toBe(true);
-    expect(result.replacementText).toContain('`omc ask codex "<codex prompt>"`');
-    expect(result.replacementText).toContain('`omc ask gemini "<gemini prompt>"`');
+    expect(result.replacementText).toContain('`omcp ask codex "<codex prompt>"`');
+    expect(result.replacementText).toContain('`omcp ask gemini "<gemini prompt>"`');
     expect(result.replacementText).not.toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex');
     expect(result.replacementText).not.toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini');
   });

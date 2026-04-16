@@ -509,8 +509,8 @@ export async function performUpdate(options) {
             if (!process.env.OMC_UPDATE_RECONCILE) {
                 // Set flag to prevent infinite loop
                 process.env.OMC_UPDATE_RECONCILE = '1';
-                // Find the omg binary path
-                const omcPath = execSync('which omg 2>/dev/null || where omg 2>NUL', {
+                // Find the omcp binary path (try omcp first, fall back to omg for compat)
+                const omcPath = execSync('which omcp 2>/dev/null || where omcp 2>NUL || which omg 2>/dev/null || where omg 2>NUL', {
                     encoding: 'utf-8',
                     stdio: 'pipe',
                 }).trim().split('\n')[0];

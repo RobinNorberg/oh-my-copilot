@@ -257,6 +257,7 @@ describe("team.roleRouting (Option E)", () => {
         provider: "gemini",
       });
     } finally {
+      process.chdir(originalCwd);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -279,6 +280,7 @@ describe("team.roleRouting (Option E)", () => {
       const config = loadConfig();
       expect(config.team?.roleRouting?.critic?.provider).toBe("codex");
     } finally {
+      process.chdir(originalCwd);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -311,6 +313,7 @@ describe("team.roleRouting (Option E)", () => {
       process.chdir(tempDir);
       expect(() => loadConfig()).toThrow(/team\.roleRouting\.critic\.provider/);
     } finally {
+      process.chdir(originalCwd);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -331,6 +334,7 @@ describe("team.roleRouting (Option E)", () => {
       process.chdir(tempDir);
       expect(() => loadConfig()).toThrow(/orchestrator: key "provider" is not allowed/);
     } finally {
+      process.chdir(originalCwd);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -349,6 +353,7 @@ describe("team.roleRouting (Option E)", () => {
       process.chdir(tempDir);
       expect(() => loadConfig()).toThrow(/team\.roleRouting\.executor\.agent/);
     } finally {
+      process.chdir(originalCwd);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -373,6 +378,7 @@ describe("team.roleRouting (Option E)", () => {
       const r = config.team?.roleRouting as Record<string, unknown>;
       expect(r["reviewer"]).toEqual({ provider: "codex" });
     } finally {
+      process.chdir(originalCwd);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -391,6 +397,7 @@ describe("team.roleRouting (Option E)", () => {
       process.chdir(tempDir);
       expect(() => loadConfig()).toThrow(/team\.ops\.defaultAgentType/);
     } finally {
+      process.chdir(originalCwd);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
@@ -409,6 +416,7 @@ describe("team.roleRouting (Option E)", () => {
       process.chdir(tempDir);
       expect(() => loadConfig()).toThrow(/unknown role "totally-fake-role"/);
     } finally {
+      process.chdir(originalCwd);
       rmSync(tempDir, { recursive: true, force: true });
     }
   });

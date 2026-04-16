@@ -5,7 +5,7 @@ import { isAbsolute, join } from 'path';
  * All paths are relative to cwd.
  *
  * State layout:
- *   .omcp/state/team/{teamName}/
+ *   .omc/state/team/{teamName}/
  *     config.json
  *     shutdown.json
  *     tasks/
@@ -30,94 +30,94 @@ export function normalizeTaskFileStem(taskId: string): string {
 
 export const TeamPaths = {
   root: (teamName: string) =>
-    `.omcp/state/team/${teamName}`,
+    `.omc/state/team/${teamName}`,
 
   config: (teamName: string) =>
-    `.omcp/state/team/${teamName}/config.json`,
+    `.omc/state/team/${teamName}/config.json`,
 
   shutdown: (teamName: string) =>
-    `.omcp/state/team/${teamName}/shutdown.json`,
+    `.omc/state/team/${teamName}/shutdown.json`,
 
   tasks: (teamName: string) =>
-    `.omcp/state/team/${teamName}/tasks`,
+    `.omc/state/team/${teamName}/tasks`,
 
   taskFile: (teamName: string, taskId: string) =>
-    `.omcp/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
+    `.omc/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
 
   workers: (teamName: string) =>
-    `.omcp/state/team/${teamName}/workers`,
+    `.omc/state/team/${teamName}/workers`,
 
   workerDir: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}`,
+    `.omc/state/team/${teamName}/workers/${workerName}`,
 
   heartbeat: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/heartbeat.json`,
+    `.omc/state/team/${teamName}/workers/${workerName}/heartbeat.json`,
 
   inbox: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/inbox.md`,
+    `.omc/state/team/${teamName}/workers/${workerName}/inbox.md`,
 
   outbox: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/outbox.jsonl`,
+    `.omc/state/team/${teamName}/workers/${workerName}/outbox.jsonl`,
 
   ready: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/.ready`,
+    `.omc/state/team/${teamName}/workers/${workerName}/.ready`,
 
   overlay: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/AGENTS.md`,
+    `.omc/state/team/${teamName}/workers/${workerName}/AGENTS.md`,
 
   shutdownAck: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/shutdown-ack.json`,
+    `.omc/state/team/${teamName}/workers/${workerName}/shutdown-ack.json`,
 
   mailbox: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/mailbox/${workerName}.json`,
+    `.omc/state/team/${teamName}/mailbox/${workerName}.json`,
 
   mailboxLockDir: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/mailbox/.lock-${workerName}`,
+    `.omc/state/team/${teamName}/mailbox/.lock-${workerName}`,
 
   dispatchRequests: (teamName: string) =>
-    `.omcp/state/team/${teamName}/dispatch/requests.json`,
+    `.omc/state/team/${teamName}/dispatch/requests.json`,
 
   dispatchLockDir: (teamName: string) =>
-    `.omcp/state/team/${teamName}/dispatch/.lock`,
+    `.omc/state/team/${teamName}/dispatch/.lock`,
 
   workerStatus: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/status.json`,
+    `.omc/state/team/${teamName}/workers/${workerName}/status.json`,
 
   workerIdleNotify: (teamName: string) =>
-    `.omcp/state/team/${teamName}/worker-idle-notify.json`,
+    `.omc/state/team/${teamName}/worker-idle-notify.json`,
 
   workerPrevNotifyState: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/prev-notify-state.json`,
+    `.omc/state/team/${teamName}/workers/${workerName}/prev-notify-state.json`,
 
   events: (teamName: string) =>
-    `.omcp/state/team/${teamName}/events.jsonl`,
+    `.omc/state/team/${teamName}/events.jsonl`,
 
   approval: (teamName: string, taskId: string) =>
-    `.omcp/state/team/${teamName}/approvals/${taskId}.json`,
+    `.omc/state/team/${teamName}/approvals/${taskId}.json`,
 
   manifest: (teamName: string) =>
-    `.omcp/state/team/${teamName}/manifest.json`,
+    `.omc/state/team/${teamName}/manifest.json`,
 
   monitorSnapshot: (teamName: string) =>
-    `.omcp/state/team/${teamName}/monitor-snapshot.json`,
+    `.omc/state/team/${teamName}/monitor-snapshot.json`,
 
   summarySnapshot: (teamName: string) =>
-    `.omcp/state/team/${teamName}/summary-snapshot.json`,
+    `.omc/state/team/${teamName}/summary-snapshot.json`,
 
   phaseState: (teamName: string) =>
-    `.omcp/state/team/${teamName}/phase-state.json`,
+    `.omc/state/team/${teamName}/phase-state.json`,
 
   scalingLock: (teamName: string) =>
-    `.omcp/state/team/${teamName}/.scaling-lock`,
+    `.omc/state/team/${teamName}/.scaling-lock`,
 
   workerIdentity: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/identity.json`,
+    `.omc/state/team/${teamName}/workers/${workerName}/identity.json`,
 
   workerAgentsMd: (teamName: string) =>
-    `.omcp/state/team/${teamName}/worker-agents.md`,
+    `.omc/state/team/${teamName}/worker-agents.md`,
 
   shutdownRequest: (teamName: string, workerName: string) =>
-    `.omcp/state/team/${teamName}/workers/${workerName}/shutdown-request.json`,
+    `.omc/state/team/${teamName}/workers/${workerName}/shutdown-request.json`,
 } as const;
 
 /**
@@ -138,10 +138,10 @@ export function teamStateRoot(cwd: string, teamName: string): string {
  * Canonical task storage path builder.
  *
  * All task files live at:
- *   {cwd}/.omcp/state/team/{teamName}/tasks/task-{taskId}.json
+ *   {cwd}/.omc/state/team/{teamName}/tasks/task-{taskId}.json
  *
  * When taskId is omitted, returns the tasks directory:
- *   {cwd}/.omcp/state/team/{teamName}/tasks/
+ *   {cwd}/.omc/state/team/{teamName}/tasks/
  *
  * Use this as the single source of truth for task file locations.
  * New writes always use this canonical path.

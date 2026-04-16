@@ -562,7 +562,7 @@ function activateState(directory, prompt, stateName, sessionId) {
 
   // Write to session-scoped path if sessionId available
   if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-    const sessionDir = join(directory, '.omcp', 'state', 'sessions', sessionId);
+    const sessionDir = join(directory, '.omc', 'state', 'sessions', sessionId);
     if (!existsSync(sessionDir)) {
       try { mkdirSync(sessionDir, { recursive: true }); } catch {}
     }
@@ -571,7 +571,7 @@ function activateState(directory, prompt, stateName, sessionId) {
   }
 
   // Fallback: write to legacy local .omcp/state directory
-  const localDir = join(directory, '.omcp', 'state');
+  const localDir = join(directory, '.omc', 'state');
   if (!existsSync(localDir)) {
     try { mkdirSync(localDir, { recursive: true }); } catch {}
   }
@@ -613,13 +613,13 @@ function activateRalplanStartupState(directory, prompt, sessionId) {
  */
 function clearStateFiles(directory, modeNames, sessionId) {
   for (const name of modeNames) {
-    const localPath = join(directory, '.omcp', 'state', `${name}-state.json`);
-    const globalPath = join(homedir(), '.omcp', 'state', `${name}-state.json`);
+    const localPath = join(directory, '.omc', 'state', `${name}-state.json`);
+    const globalPath = join(homedir(), '.omc', 'state', `${name}-state.json`);
     try { if (existsSync(localPath)) unlinkSync(localPath); } catch {}
     try { if (existsSync(globalPath)) unlinkSync(globalPath); } catch {}
     // Clear session-scoped file too
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      const sessionPath = join(directory, '.omcp', 'state', 'sessions', sessionId, `${name}-state.json`);
+      const sessionPath = join(directory, '.omc', 'state', 'sessions', sessionId, `${name}-state.json`);
       try { if (existsSync(sessionPath)) unlinkSync(sessionPath); } catch {}
     }
   }
@@ -632,9 +632,9 @@ function clearStateFiles(directory, modeNames, sessionId) {
 function linkRalphTeam(directory, sessionId) {
   const getStatePath = (modeName) => {
     if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
-      return join(directory, '.omcp', 'state', 'sessions', sessionId, `${modeName}-state.json`);
+      return join(directory, '.omc', 'state', 'sessions', sessionId, `${modeName}-state.json`);
     }
-    return join(directory, '.omcp', 'state', `${modeName}-state.json`);
+    return join(directory, '.omc', 'state', `${modeName}-state.json`);
   };
 
   // Update ralph state with linked_team
@@ -979,8 +979,8 @@ async function main() {
     if (followupPlanner && planningArtifacts) {
       // Detect if ralplan state exists (was recently active) — serves as "prior skill = ralplan" signal
       const ralplanStatePath = sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)
-        ? join(directory, '.omcp', 'state', 'sessions', sessionId, 'ralplan-state.json')
-        : join(directory, '.omcp', 'state', 'ralplan-state.json');
+        ? join(directory, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json')
+        : join(directory, '.omc', 'state', 'ralplan-state.json');
       const ralplanWasActive = existsSync(ralplanStatePath);
 
       if (ralplanWasActive) {

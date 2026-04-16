@@ -155,9 +155,15 @@ export function getConfigPaths() {
     // User config lives under the Copilot config directory (respects COPILOT_CONFIG_DIR).
     // On most systems this is ~/.copilot/omg/config.jsonc.
     const copilotConfigDir = getCopilotConfigDir();
+    // Project config: prefer .copilot/omg.jsonc; also check .claude/omc.jsonc for compatibility
+    const copilotProject = join(process.cwd(), '.copilot', 'omg.jsonc');
+    const claudeProject = join(process.cwd(), '.claude', 'omc.jsonc');
+    const project = existsSync(claudeProject) && !existsSync(copilotProject)
+        ? claudeProject
+        : copilotProject;
     return {
         user: join(copilotConfigDir, 'omg', 'config.jsonc'),
-        project: join(process.cwd(), '.copilot', 'omg.jsonc')
+        project,
     };
 }
 /**

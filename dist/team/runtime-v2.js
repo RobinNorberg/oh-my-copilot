@@ -477,7 +477,7 @@ export async function startTeamV2(config) {
     // Create state directories
     await mkdir(absPath(leaderCwd, TeamPaths.tasks(sanitized)), { recursive: true });
     await mkdir(absPath(leaderCwd, TeamPaths.workers(sanitized)), { recursive: true });
-    await mkdir(join(leaderCwd, '.omcp', 'state', 'team', sanitized, 'mailbox'), { recursive: true });
+    await mkdir(join(leaderCwd, '.omc', 'state', 'team', sanitized, 'mailbox'), { recursive: true });
     // AC-8: emit a loud team-event warning naming every missing/untrusted CLI
     // binary so the leader surfaces the fallback decision instead of silently
     // swapping providers.
@@ -1319,7 +1319,7 @@ export async function resumeTeamV2(teamName, cwd) {
 // findActiveTeams — discover running teams
 // ---------------------------------------------------------------------------
 export async function findActiveTeamsV2(cwd) {
-    const root = join(cwd, '.omcp', 'state', 'team');
+    const root = join(cwd, '.omc', 'state', 'team');
     if (!existsSync(root))
         return [];
     const entries = await readdir(root, { withFileTypes: true });

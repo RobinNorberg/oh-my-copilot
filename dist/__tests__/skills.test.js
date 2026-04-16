@@ -25,7 +25,9 @@ describe('Builtin Skills', () => {
                 const { rmSync } = require('fs');
                 rmSync(tempDirs.pop(), { recursive: true, force: true });
             }
-            catch { }
+            catch {
+                // cleanup errors are non-fatal
+            }
         }
     });
     // Clear cache before each test to ensure fresh loads
