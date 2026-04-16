@@ -17,8 +17,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # Pin config dir so omcp installer and verification step agree on the path.
-      COPILOT_CONFIG_DIR: ${{ github.workspace }}/../.copilot
+      # The globally-installed omcp (from npm) may still read CLAUDE_CONFIG_DIR,
+      # while the local build reads COPILOT_CONFIG_DIR. Pin both to the same
+      # path so omcp update and verification agree on where hooks live.
+      COPILOT_CONFIG_DIR: /home/runner/.copilot
+      CLAUDE_CONFIG_DIR: /home/runner/.copilot
 
     steps:
       # ── 1. Environment ──────────────────────────────────────────────────────
