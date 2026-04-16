@@ -4,16 +4,12 @@
  * Provides common logic for:
  * - CLI argument parsing
  * - Fixture/ground-truth loading
- * - Copilot CLI SDK calls with retry
+ * - Copilot SDK calls via @github/copilot-sdk
  * - Console formatting
  * - Report generation and file output
  */
 
-import {
-  query,
-  type SDKAssistantMessage,
-  type SDKResultMessage,
-} from '@anthropic-ai/claude-agent-sdk';
+import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import {
   readFileSync,
   writeFileSync,
@@ -59,7 +55,7 @@ export function parseCliArgs(
     agents: defaultAgents,
     fixture: null,
     outputDir: defaultOutputDir,
-    model: 'claude-opus-4-6',
+    model: 'gpt-4.1',
     dryRun: false,
   };
 
@@ -210,7 +206,7 @@ export function loadAgentPrompt(
 }
 
 // ============================================================
-// Copilot API call
+// Copilot SDK client
 // ============================================================
 
 async function sleep(ms: number): Promise<void> {
@@ -223,12 +219,36 @@ export interface ApiCallResult {
   outputTokens: number;
 }
 
+let sharedClient: CopilotClient | null = null;
+
 /**
- * Call the Copilot CLI SDK with retry logic.
+ * Get or create a shared CopilotClient for the benchmark run.
+ * The client is reused across all calls to avoid repeated CLI startup.
+ */
+async function getClient(): Promise<CopilotClient> {
+  if (!sharedClient) {
+    sharedClient = new CopilotClient();
+    await sharedClient.start();
+  }
+  return sharedClient;
+}
+
+/**
+ * Shut down the shared CopilotClient. Call at the end of a benchmark run.
+ */
+export async function shutdownClient(): Promise<void> {
+  if (sharedClient) {
+    await sharedClient.stop();
+    sharedClient = null;
+  }
+}
+
+/**
+ * Call the Copilot CLI via @github/copilot-sdk with retry logic.
  *
- * Uses `query()` from `@anthropic-ai/claude-agent-sdk` with `tools: []`
- * to run a single system+user prompt without tool use. Authentication is
- * handled by the SDK (ANTHROPIC_API_KEY env var).
+ * Creates a session with the given system prompt and model, sends the
+ * user message, and returns the response text. Token usage is not
+ * directly exposed by the Copilot SDK, so counters report 0.
  */
 export async function callCopilot(
   systemPrompt: string,
@@ -238,42 +258,30 @@ export async function callCopilot(
 ): Promise<ApiCallResult> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      let text = '';
-      let inputTokens = 0;
-      let outputTokens = 0;
-
-      for await (const message of query({
-        prompt: userMessage,
-        options: {
-          model,
-          systemPrompt,
-          tools: [],
-          maxTurns: 1,
+      const client = await getClient();
+      const session = await client.createSession({
+        model,
+        onPermissionRequest: approveAll,
+        systemMessage: {
+          mode: 'replace' as const,
+          content: systemPrompt,
         },
-      })) {
-        if (message.type === 'assistant') {
-          const { message: msg } = message as SDKAssistantMessage;
-          for (const block of msg.content) {
-            if (block.type === 'text') {
-              text += block.text;
-            }
-          }
-          inputTokens += msg.usage?.input_tokens ?? 0;
-          outputTokens += msg.usage?.output_tokens ?? 0;
-        } else if (message.type === 'result') {
-          const resultMsg = message as SDKResultMessage;
-          if ('usage' in resultMsg) {
-            inputTokens = resultMsg.usage.input_tokens;
-            outputTokens = resultMsg.usage.output_tokens;
-          }
+      });
+
+      try {
+        const response = await session.sendAndWait({
+          prompt: userMessage,
+        });
+
+        const text = response?.data?.content ?? '';
+        if (!text) {
+          throw new Error('No text content in Copilot response');
         }
-      }
 
-      if (!text) {
-        throw new Error('No text content in Copilot response');
+        return { text, inputTokens: 0, outputTokens: 0 };
+      } finally {
+        await session.disconnect();
       }
-
-      return { text, inputTokens, outputTokens };
     } catch (err: unknown) {
       const isRetryable =
         err instanceof Error &&
@@ -482,5 +490,6 @@ export async function runBenchmark(opts: {
     }
   }
 
+  await shutdownClient();
   return allResults;
 }

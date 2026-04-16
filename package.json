@@ -76,8 +76,8 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.110",
     "@eslint/js": "^9.39.4",
+    "@github/copilot-sdk": "^0.2.2",
     "@types/node": "^22.19.17",
     "@vitest/ui": "^4.1.4",
     "esbuild": "^0.28.0",
