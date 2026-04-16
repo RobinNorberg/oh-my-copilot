@@ -35,7 +35,7 @@ function runKeywordDetector(prompt: string, cwd = process.cwd(), sessionId = 'se
 }
 
 function getRalplanStatePath(cwd: string, sessionId: string) {
-  return join(cwd, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
+  return join(cwd, '.omcp', 'state', 'sessions', sessionId, 'ralplan-state.json');
 }
 
 describe('keyword-detector.mjs mode-message dispatch', () => {
@@ -87,7 +87,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
       expect(output.continue).toBe(true);
       expect(output.suppressOutput).toBe(true);
       expect(output.hookSpecificOutput).toBeUndefined();
-      expect(existsSync(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json'))).toBe(false);
+      expect(existsSync(join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralplan-state.json'))).toBe(false);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -106,7 +106,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
       expect(context).toContain('[RALPLAN INIT]');
       expect(context).toContain('[MAGIC KEYWORD: RALPLAN]');
 
-      const statePath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
+      const statePath = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralplan-state.json');
       expect(existsSync(statePath)).toBe(true);
 
       const state = JSON.parse(readFileSync(statePath, 'utf-8')) as {

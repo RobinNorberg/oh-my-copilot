@@ -129,7 +129,7 @@ Advanced: ambiguity ≤ 20%
     expect(result.success).toBe(true);
     expect(result.replacementText).toContain('ambiguityThreshold = 0.15');
     expect(result.replacementText).toContain('(default: 15%)');
-    expect(result.replacementText).toContain('(default 0.15)');
+    expect(result.replacementText).toContain('(default: 0.15)');
     expect(result.replacementText).toContain('"threshold": 0.15,');
     expect(result.replacementText).toContain('drops below 15%.');
     expect(result.replacementText).toContain('Gate: ≤15% ambiguity');

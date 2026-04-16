@@ -29,7 +29,7 @@ describe.skipIf(!SHOULD_RUN)('critic CLI worker integration (AC-7)', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'omcp-critic-integration-'));
         try {
             const teamName = 'critic-int';
-            const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+            const teamRoot = join(cwd, '.omcp', 'state', 'team', teamName);
             mkdirSync(join(teamRoot, 'tasks'), { recursive: true });
             mkdirSync(join(teamRoot, 'workers', 'worker-critic'), { recursive: true });
             const outputFile = join(teamRoot, 'workers', 'worker-critic', 'verdict.json');
