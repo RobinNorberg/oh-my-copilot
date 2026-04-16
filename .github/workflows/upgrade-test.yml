@@ -114,6 +114,22 @@ jobs:
 
           echo "PASS: omcp update succeeded"
 
+      - name: Debug - list config dir contents
+        if: always()
+        run: |
+          echo "COPILOT_CONFIG_DIR=$COPILOT_CONFIG_DIR"
+          echo "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"
+          echo "--- ~/.copilot ---"
+          find "$HOME/.copilot" -type f 2>/dev/null || echo "(empty or missing)"
+          echo "--- ~/.claude ---"
+          find "$HOME/.claude" -type f 2>/dev/null || echo "(empty or missing)"
+          echo "--- COPILOT_CONFIG_DIR contents ---"
+          find "$COPILOT_CONFIG_DIR" -type f 2>/dev/null || echo "(empty or missing)"
+          echo "--- omcp update stdout ---"
+          cat "$RUNNER_TEMP/omcp-update.stdout.log" 2>/dev/null || echo "(no stdout log)"
+          echo "--- omcp update stderr ---"
+          cat "$RUNNER_TEMP/omcp-update.stderr.log" 2>/dev/null || echo "(no stderr log)"
+
       # ── 5. Verify new omcp version installed ──────────────────────────────────
 
       - name: Verify omcp version after update
