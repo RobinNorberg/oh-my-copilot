@@ -4,12 +4,16 @@
  * Provides common logic for:
  * - CLI argument parsing
  * - Fixture/ground-truth loading
- * - Anthropic API calls with retry
+ * - Copilot CLI SDK calls with retry
  * - Console formatting
  * - Report generation and file output
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import {
+  query,
+  type SDKAssistantMessage,
+  type SDKResultMessage,
+} from '@anthropic-ai/claude-agent-sdk';
 import {
   readFileSync,
   writeFileSync,
@@ -219,8 +223,14 @@ export interface ApiCallResult {
   outputTokens: number;
 }
 
+/**
+ * Call the Copilot CLI SDK with retry logic.
+ *
+ * Uses `query()` from `@anthropic-ai/claude-agent-sdk` with `tools: []`
+ * to run a single system+user prompt without tool use. Authentication is
+ * handled by the SDK (ANTHROPIC_API_KEY env var).
+ */
 export async function callCopilot(
-  client: Anthropic,
   systemPrompt: string,
   userMessage: string,
   model: string,
@@ -228,27 +238,42 @@ export async function callCopilot(
 ): Promise<ApiCallResult> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await client.messages.create({
-        model,
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: userMessage,
-          },
-        ],
-      });
+      let text = '';
+      let inputTokens = 0;
+      let outputTokens = 0;
 
-      const textBlock = response.content.find((b) => b.type === 'text');
-      if (!textBlock || textBlock.type !== 'text') {
+      for await (const message of query({
+        prompt: userMessage,
+        options: {
+          model,
+          systemPrompt,
+          tools: [],
+          maxTurns: 1,
+        },
+      })) {
+        if (message.type === 'assistant') {
+          const { message: msg } = message as SDKAssistantMessage;
+          for (const block of msg.content) {
+            if (block.type === 'text') {
+              text += block.text;
+            }
+          }
+          inputTokens += msg.usage?.input_tokens ?? 0;
+          outputTokens += msg.usage?.output_tokens ?? 0;
+        } else if (message.type === 'result') {
+          const resultMsg = message as SDKResultMessage;
+          if ('usage' in resultMsg) {
+            inputTokens = resultMsg.usage.input_tokens;
+            outputTokens = resultMsg.usage.output_tokens;
+          }
+        }
+      }
+
+      if (!text) {
         throw new Error('No text content in Copilot response');
       }
-      return {
-        text: textBlock.text,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
-      };
+
+      return { text, inputTokens, outputTokens };
     } catch (err: unknown) {
       const isRetryable =
         err instanceof Error &&
@@ -266,29 +291,6 @@ export async function callCopilot(
     }
   }
   throw new Error('Exhausted retries');
-}
-
-/**
- * Create an Anthropic client, respecting environment variables.
- */
-export function createClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
-  const baseURL = process.env.ANTHROPIC_BASE_URL;
-
-  if (!apiKey) {
-    console.error(
-      'Error: ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN environment variable is not set.\n' +
-      'Set it before running the benchmark.',
-    );
-    process.exit(1);
-  }
-
-  const opts: Record<string, unknown> = { apiKey };
-  if (baseURL) {
-    opts.baseURL = baseURL;
-  }
-
-  return new Anthropic(opts as ConstructorParameters<typeof Anthropic>[0]);
 }
 
 // ============================================================
@@ -414,7 +416,6 @@ export async function runBenchmark(opts: {
     return [];
   }
 
-  const client = createClient();
   const allResults: FixtureResult[] = [];
   const totalRuns = fixtures.length * agents.length;
 
@@ -432,7 +433,6 @@ export async function runBenchmark(opts: {
       let apiResult: ApiCallResult;
       try {
         apiResult = await callCopilot(
-          client,
           agent.systemPrompt,
           agent.userMessageTemplate(fixture.content),
           cliArgs.model,
