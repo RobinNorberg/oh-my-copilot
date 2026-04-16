@@ -171,12 +171,10 @@ export function sanitizePromptContent(content, maxLength = 4000) {
             sanitized = sanitized.slice(0, -1);
         }
     }
-    // Escape XML-like tags that match our prompt delimiters (including tags with attributes)
-    sanitized = sanitized.replace(/<(\/?)(TASK_SUBJECT)[^>]*>/gi, '[$1$2]');
-    sanitized = sanitized.replace(/<(\/?)(TASK_DESCRIPTION)[^>]*>/gi, '[$1$2]');
-    sanitized = sanitized.replace(/<(\/?)(INBOX_MESSAGE)[^>]*>/gi, '[$1$2]');
-    sanitized = sanitized.replace(/<(\/?)(INSTRUCTIONS)[^>]*>/gi, '[$1$2]');
-    sanitized = sanitized.replace(/<(\/?)(SYSTEM)[^>]*>/gi, '[$1$2]');
+    // Escape only the exact XML-like tags that are structural delimiters in runtime prompts.
+    // Keep the tag name boundary strict so legitimate code/placeholder content such as
+    // <role>, <context>, <Context.Provider>, or <system-status> stays intact.
+    sanitized = sanitized.replace(/<(\/?)(system-instructions|system-reminder|TASK_SUBJECT|TASK_DESCRIPTION|INBOX_MESSAGE)(?=[\s>/])[^>]*>/gi, '[$1$2]');
     return sanitized;
 }
 export function buildPromptWithSystemContext(userPrompt, fileContext, systemPrompt) {
