@@ -324,6 +324,29 @@ describe("notify() -> session-registry integration", () => {
         // messageId is undefined due to JSON parse failure, so no registration
         expect(mockRegisterMessage).not.toHaveBeenCalled();
     });
+    it("stores raw tmux tail before formatter sanitization", async () => {
+        mockShouldIncludeTmuxTail.mockReturnValue(true);
+        mockGetTmuxTailLines.mockReturnValue(12);
+        mockCapturePaneContent.mockReturnValue([
+            "Error: Cannot find module vitest",
+            "failed to load config from /tmp/x/vitest.config.ts",
+        ].join("\n"));
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({ id: "discord-msg-raw-tail" }),
+        });
+        vi.stubGlobal("fetch", fetchMock);
+        const result = await notify("session-idle", {
+            sessionId: "sess-raw-tail",
+            projectPath: "/test/project",
+        });
+        expect(result).not.toBeNull();
+        const [, requestInit] = fetchMock.mock.calls[0];
+        const body = JSON.parse(requestInit.body ?? "{}");
+        expect(body.content).toContain("Error: Cannot find module vitest");
+        expect(body.content).toContain("failed to load config from /tmp/x/vitest.config.ts");
+    });
 });
 describe("dispatchNotifications messageId propagation", () => {
     afterEach(() => {

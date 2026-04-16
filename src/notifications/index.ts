@@ -190,9 +190,9 @@ export async function notify(
           "../features/rate-limit-wait/tmux-detector.js"
         );
         const tailLines = getTmuxTailLines(config);
-        const tail = capturePaneContent(payload.tmuxPaneId, tailLines);
-        if (tail) {
-          payload.tmuxTail = tail;
+        const rawTail = capturePaneContent(payload.tmuxPaneId, tailLines);
+        if (rawTail) {
+          payload.tmuxTail = rawTail;
           payload.maxTailLines = tailLines;
         }
       } catch {

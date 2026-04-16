@@ -29653,9 +29653,9 @@ async function notify(event, data) {
       try {
         const { capturePaneContent: capturePaneContent3 } = await Promise.resolve().then(() => (init_tmux_detector(), tmux_detector_exports));
         const tailLines = getTmuxTailLines(config2);
-        const tail = capturePaneContent3(payload.tmuxPaneId, tailLines);
-        if (tail) {
-          payload.tmuxTail = tail;
+        const rawTail = capturePaneContent3(payload.tmuxPaneId, tailLines);
+        if (rawTail) {
+          payload.tmuxTail = rawTail;
           payload.maxTailLines = tailLines;
         }
       } catch {
