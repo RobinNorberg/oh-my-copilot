@@ -114,21 +114,16 @@ jobs:
 
           echo "PASS: omcp update succeeded"
 
-      - name: Debug - list config dir contents
-        if: always()
+      # ── 4b. Run omcp install to ensure hooks are created ────────────────────
+      # Workaround: published omcp@4.11.x has a binary name mismatch (looks for
+      # 'omg' instead of 'omcp') causing reconciliation to silently skip during
+      # `omcp update`. Explicitly running `omcp install --force` ensures hooks +
+      # settings are created. This step can be removed once the fix ships.
+      - name: Run omcp install (workaround for reconcile bug)
         run: |
-          echo "COPILOT_CONFIG_DIR=$COPILOT_CONFIG_DIR"
-          echo "CLAUDE_CONFIG_DIR=$CLAUDE_CONFIG_DIR"
-          echo "--- ~/.copilot ---"
-          find "$HOME/.copilot" -type f 2>/dev/null || echo "(empty or missing)"
-          echo "--- ~/.claude ---"
-          find "$HOME/.claude" -type f 2>/dev/null || echo "(empty or missing)"
-          echo "--- COPILOT_CONFIG_DIR contents ---"
-          find "$COPILOT_CONFIG_DIR" -type f 2>/dev/null || echo "(empty or missing)"
-          echo "--- omcp update stdout ---"
-          cat "$RUNNER_TEMP/omcp-update.stdout.log" 2>/dev/null || echo "(no stdout log)"
-          echo "--- omcp update stderr ---"
-          cat "$RUNNER_TEMP/omcp-update.stderr.log" 2>/dev/null || echo "(no stderr log)"
+          omcp install --force 2>&1
+          echo "--- Config dir after install ---"
+          find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}" -type f 2>/dev/null || echo "(empty)"
 
       # ── 5. Verify new omcp version installed ──────────────────────────────────
 
