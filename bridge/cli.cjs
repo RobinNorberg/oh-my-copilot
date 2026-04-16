@@ -80353,6 +80353,26 @@ function getPromptText(input) {
   }
   return "";
 }
+function isExplicitRalplanSlashInvocation(promptText) {
+  return /^\s*\/(?:oh-my-copilot:)?ralplan(?:\s|$)/i.test(promptText);
+}
+function activateRalplanStartupState(directory, sessionId) {
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  writeModeState(
+    "ralplan",
+    {
+      active: true,
+      session_id: sessionId,
+      current_phase: "ralplan",
+      started_at: now,
+      awaiting_confirmation: true,
+      awaiting_confirmation_set_at: now,
+      last_checked_at: now
+    },
+    directory,
+    sessionId
+  );
+}
 async function processKeywordDetector(input) {
   if (process.env.OMC_TEAM_WORKER) {
     return { continue: true };
@@ -80365,6 +80385,20 @@ async function processKeywordDetector(input) {
   const sessionId = input.sessionId;
   const directory = resolveToWorktreeRoot(input.directory);
   const messages = [];
+  const explicitRalplanSlashInvocation = isExplicitRalplanSlashInvocation(promptText);
+  if (explicitRalplanSlashInvocation) {
+    activateRalplanStartupState(directory, sessionId);
+    return {
+      continue: true,
+      hookSpecificOutput: {
+        hookEventName: "UserPromptSubmit",
+        additionalContext: `[RALPLAN INIT] Explicit /ralplan invoke detected during UserPromptSubmit.
+ralplan state is armed for startup and marked awaiting confirmation, so the stop hook will not block this initialization path.
+Proceed immediately with the consensus planning workflow for:
+${promptText}`
+      }
+    };
+  }
   try {
     const hudState = readHudState(directory, input.sessionId) || {
       timestamp: (/* @__PURE__ */ new Date()).toISOString(),
@@ -85571,7 +85605,7 @@ async function launchCommand(args) {
   }
   if (!isCopilotAvailable()) {
     console.error("[omg] Error: gh CLI not found. Install Copilot CLI first:");
-    console.error("  npm install -g @anthropic-ai/copilot-cli");
+    console.error("  npm install -g @github/copilot");
     process.exit(1);
   }
   const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);

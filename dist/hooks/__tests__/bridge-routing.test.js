@@ -401,6 +401,43 @@ $ ultrawork search the codebase`,
                 rmSync(tempDir, { recursive: true, force: true });
             }
         });
+        it('arms ralplan startup state and init context for explicit /ralplan invoke in UserPromptSubmit', async () => {
+            const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-ralplan-slash-'));
+            try {
+                execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+                const sessionId = 'ralplan-slash-session';
+                const result = await processHook('keyword-detector', {
+                    sessionId,
+                    prompt: '/oh-my-copilot:ralplan issue #2622',
+                    directory: tempDir,
+                });
+                expect(result.continue).toBe(true);
+                const hookSpecificOutput = result
+                    .hookSpecificOutput;
+                expect(result.message).toBeUndefined();
+                expect(hookSpecificOutput.hookEventName).toBe('UserPromptSubmit');
+                expect(hookSpecificOutput.additionalContext).toContain('[RALPLAN INIT]');
+                expect(hookSpecificOutput.additionalContext).toContain('/oh-my-copilot:ralplan issue #2622');
+                const ralplanPath = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralplan-state.json');
+                expect(existsSync(ralplanPath)).toBe(true);
+                const ralplanState = JSON.parse(readFileSync(ralplanPath, 'utf-8'));
+                expect(ralplanState.active).toBe(true);
+                expect(ralplanState.session_id).toBe(sessionId);
+                expect(ralplanState.current_phase).toBe('ralplan');
+                expect(ralplanState.awaiting_confirmation).toBe(true);
+                expect(typeof ralplanState.awaiting_confirmation_set_at).toBe('string');
+                const stopResult = await processHook('persistent-mode', {
+                    sessionId,
+                    directory: tempDir,
+                    stop_reason: 'end_turn',
+                });
+                expect(stopResult.continue).toBe(true);
+                expect(stopResult.message).toBeUndefined();
+            }
+            finally {
+                rmSync(tempDir, { recursive: true, force: true });
+            }
+        });
         it('restores ralplan session context on session-start', async () => {
             const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-session-start-ralplan-'));
             try {

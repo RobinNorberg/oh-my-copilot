@@ -531,7 +531,7 @@ export async function launchCommand(args) {
     // Pre-flight: check copilot CLI availability
     if (!isCopilotAvailable()) {
         console.error('[omg] Error: gh CLI not found. Install Copilot CLI first:');
-        console.error('  npm install -g @anthropic-ai/copilot-cli');
+        console.error('  npm install -g @github/copilot');
         process.exit(1);
     }
     const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);
