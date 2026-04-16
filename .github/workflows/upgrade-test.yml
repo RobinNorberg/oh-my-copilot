@@ -72,7 +72,7 @@ jobs:
       #   - Produce zero stderr
       # Any npm warnings, git warnings, or sync messages to stderr are failures.
       # Note: syncMarketplaceClone() is best-effort and skips gracefully when
-      # the marketplace clone (~/.claude/plugins/marketplaces/omcp/) doesn't exist,
+      # the marketplace clone (~/.copilot/plugins/marketplaces/omcp/) doesn't exist,
       # so CI runners with a fresh home directory are handled correctly.
 
       - name: Run omcp update
@@ -136,14 +136,14 @@ jobs:
       #   - the hook script runs successfully on representative SessionStart JSON
       #
       # This keeps upgrade coverage inside OMCP-owned artifacts and avoids relying
-      # on external Claude CLI print-mode behavior in headless CI.
+      # on external Copilot CLI print-mode behavior in headless CI.
       - name: Verify SessionStart hook wiring and script
         run: |
           set -o pipefail
 
-          CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-          SESSION_HOOK="$CLAUDE_CONFIG_DIR/hooks/session-start.mjs"
-          SETTINGS_PATH="$CLAUDE_CONFIG_DIR/settings.json"
+          COPILOT_CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}"
+          SESSION_HOOK="$COPILOT_CONFIG_DIR/hooks/session-start.mjs"
+          SETTINGS_PATH="$COPILOT_CONFIG_DIR/settings.json"
 
           if [ ! -f "$SESSION_HOOK" ]; then
             echo "FAIL: missing SessionStart hook script at $SESSION_HOOK"
@@ -151,7 +151,7 @@ jobs:
           fi
 
           if [ ! -f "$SETTINGS_PATH" ]; then
-            echo "FAIL: missing Claude settings at $SETTINGS_PATH"
+            echo "FAIL: missing Copilot CLI settings at $SETTINGS_PATH"
             exit 1
           fi
 
