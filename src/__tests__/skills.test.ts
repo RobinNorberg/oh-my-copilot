@@ -23,7 +23,9 @@ describe('Builtin Skills', () => {
       try {
         const { rmSync } = require('fs');
         rmSync(tempDirs.pop()!, { recursive: true, force: true });
-      } catch {}
+      } catch {
+        // cleanup errors are non-fatal
+      }
     }
   });
 
