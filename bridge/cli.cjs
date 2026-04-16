@@ -13680,6 +13680,7 @@ TELL THE USER WHAT AGENTS YOU WILL LEVERAGE NOW TO SATISFY USER'S REQUEST.
 - **TODO**: Track EVERY step. Mark complete IMMEDIATELY after each.
 - **PARALLEL**: Fire independent agent calls simultaneously via Task(run_in_background=true) - NEVER wait sequentially.
 - **BACKGROUND FIRST**: Use Task tool for exploration/document-specialist agents (10+ concurrent if needed).
+- **CONCISE OUTPUTS**: Every Task/Agent result must return ONLY a short execution summary (target: under 100 words) covering what changed, files touched, verification status, and blockers. Do not paste long logs into the main session; put bulky details in files/artifacts and reference them briefly.
 - **VERIFY**: Re-read request after completion. Check ALL requirements met before reporting done.
 - **DELEGATE**: Don't do everything yourself - orchestrate specialized agents for their strengths.
 
@@ -18016,6 +18017,7 @@ ${getVerificationAgentStep(state.critic_mode)}
    - Are there any obvious bugs or issues?
    - Does the code compile/run without errors?
    - Are tests passing (if applicable)?
+   - Return ONLY a concise review summary under 100 words with verdict, evidence highlights, files checked, and blockers. Do not paste long logs inline.
 
 3. **Based on ${criticLabel}'s response:**
    - If APPROVED: Output the exact correlated approval tag \`${approvalTag}\`, then run \`/oh-my-copilot:cancel\` to cleanly exit
@@ -22040,6 +22042,7 @@ Ralph and Ultrawork are now active. Execute tasks in parallel where possible.
 - Spawn multiple executor agents for parallel work
 - Track progress in the TODO list
 - Use appropriate agent tiers based on task complexity
+- Every spawned agent must return ONLY a concise execution summary under 100 words covering: what changed, files touched, verification status, and blockers. Do not paste long logs inline; write bulky output to files/artifacts and reference them briefly.
 
 ### Agent Spawning Pattern
 
@@ -22133,6 +22136,8 @@ Spawn parallel validation architects for comprehensive review.
 ### Parallel Validation Spawns
 
 Spawn all three architects in parallel:
+
+Each reviewer must return ONLY a concise review summary under 100 words with verdict, evidence highlights, files checked, and blockers. Do not paste long transcripts or logs into the main session.
 
 \`\`\`
 // Functional Completeness Review
@@ -23922,6 +23927,10 @@ Use the Team orchestrator to execute tasks in parallel:
 4. **Monitor progress** as teammates complete tasks
 5. **Coordinate** dependencies between tasks
 
+### Output Contract
+
+Every teammate response must stay concise: return ONLY a short execution summary under 100 words covering what changed, files touched, verification status, and blockers. Store bulky logs/details in files or artifacts and reference them briefly.
+
 ### Agent Selection
 
 Match agent types to task complexity:
@@ -23962,6 +23971,10 @@ Execute tasks sequentially (or with limited parallelism via background agents):
 2. Execute tasks in dependency order
 3. Use executor agents for independent tasks that can run in parallel
 4. Track progress in the TODO list
+
+### Output Contract
+
+Every spawned executor response must return ONLY a short execution summary under 100 words covering what changed, files touched, verification status, and blockers. Store bulky logs/details in files or artifacts and reference them briefly.
 
 ### Agent Spawning
 
@@ -24019,6 +24032,8 @@ Verify the implementation against the specification using the Ralph verification
 ### Verification Process
 
 Spawn parallel verification reviewers:
+
+Each reviewer must return ONLY a concise review summary under 100 words covering verdict, evidence highlights, files checked, and blockers. Avoid dumping long logs or transcripts into the main session.
 
 \`\`\`
 // Functional Completeness Review
