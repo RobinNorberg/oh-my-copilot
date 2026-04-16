@@ -16,6 +16,9 @@ jobs:
     name: omcp update + session-start hook
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # Pin config dir so omcp installer and verification step agree on the path.
+      COPILOT_CONFIG_DIR: ${{ github.workspace }}/../.copilot
 
     steps:
       # ── 1. Environment ──────────────────────────────────────────────────────
@@ -141,9 +144,9 @@ jobs:
         run: |
           set -o pipefail
 
-          COPILOT_CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}"
-          SESSION_HOOK="$COPILOT_CONFIG_DIR/hooks/session-start.mjs"
-          SETTINGS_PATH="$COPILOT_CONFIG_DIR/settings.json"
+          COPILOT_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}"
+          SESSION_HOOK="$COPILOT_DIR/hooks/session-start.mjs"
+          SETTINGS_PATH="$COPILOT_DIR/settings.json"
 
           if [ ! -f "$SESSION_HOOK" ]; then
             echo "FAIL: missing SessionStart hook script at $SESSION_HOOK"
