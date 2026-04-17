@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { mkdtempSync } from 'fs';
 import { join, dirname } from 'path';
@@ -8,13 +8,24 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import { parseAskArgs, resolveAskAdvisorScriptPath } from '../ask.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..', '..');
-const CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
+const BUNDLED_CLI_ENTRY = join(REPO_ROOT, 'bridge', 'cli.cjs');
+const DIST_CLI_ENTRY = join(REPO_ROOT, 'dist', 'cli', 'index.js');
+const SRC_CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
 const TSX_LOADER_PATH = join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs');
 // On Windows, --import requires file:// URLs for absolute paths
 const TSX_LOADER = pathToFileURL(TSX_LOADER_PATH).href;
 const ADVISOR_SCRIPT = join(REPO_ROOT, 'scripts', 'run-provider-advisor.js');
 const ASK_CODEX_WRAPPER = join(REPO_ROOT, 'scripts', 'ask-codex.sh');
 const ASK_GEMINI_WRAPPER = join(REPO_ROOT, 'scripts', 'ask-gemini.sh');
+// Prefer the bundled single-file CLI (~1s cold) over dist (~2.8s) over tsx
+// (~10-15s) to keep per-spawn cost reasonable on Windows.
+let cliMode = 'tsx';
+beforeAll(() => {
+    if (existsSync(BUNDLED_CLI_ENTRY))
+        cliMode = 'bundle';
+    else if (existsSync(DIST_CLI_ENTRY))
+        cliMode = 'dist';
+});
 function buildChildEnv(envOverrides = {}, options = {}) {
     if (options.preserveClaudeSessionEnv) {
         return { ...process.env, OMC_SKIP_WIN32_WARNING: '1', ...envOverrides };
@@ -23,7 +34,12 @@ function buildChildEnv(envOverrides = {}, options = {}) {
     return { ...cleanEnv, OMC_SKIP_WIN32_WARNING: '1', ...envOverrides };
 }
 function runCli(args, cwd, envOverrides = {}, options = {}) {
-    const result = spawnSync(process.execPath, ['--import', TSX_LOADER, CLI_ENTRY, ...args], {
+    const spawnArgs = cliMode === 'bundle'
+        ? [BUNDLED_CLI_ENTRY, ...args]
+        : cliMode === 'dist'
+            ? [DIST_CLI_ENTRY, ...args]
+            : ['--import', TSX_LOADER, SRC_CLI_ENTRY, ...args];
+    const result = spawnSync(process.execPath, spawnArgs, {
         cwd,
         encoding: 'utf-8',
         env: buildChildEnv(envOverrides, options),
