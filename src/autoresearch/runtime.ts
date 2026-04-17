@@ -1496,6 +1496,7 @@ export async function processAutoresearchCandidate(
     latest_evaluator_pass: evaluation.pass,
     latest_evaluator_score: evaluation.score,
     latest_evaluator_ran_at: evaluation.ran_at,
+    decision_log_file: artifactLayout.decisionLogFile,
   }, projectRoot);
   return decision.decision;
 }

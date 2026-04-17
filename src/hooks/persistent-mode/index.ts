@@ -1407,6 +1407,130 @@ interface RalplanState {
   status?: string;
 }
 
+interface AutoresearchStopState {
+  active: boolean;
+  session_id?: string;
+  current_phase?: string;
+  updated_at?: string;
+  started_at?: string;
+  completed_at?: string;
+  max_runtime_ms?: number;
+  deadline_at?: string;
+  mission_slug?: string;
+  iteration?: number;
+}
+
+function getAutoresearchDeadlineMs(state: AutoresearchStopState): number | null {
+  if (typeof state.deadline_at === 'string' && state.deadline_at.trim().length > 0) {
+    const parsed = new Date(state.deadline_at).getTime();
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  if (typeof state.max_runtime_ms === 'number' && Number.isFinite(state.max_runtime_ms)
+    && typeof state.started_at === 'string' && state.started_at.trim().length > 0) {
+    const startedAt = new Date(state.started_at).getTime();
+    if (Number.isFinite(startedAt)) {
+      return startedAt + state.max_runtime_ms;
+    }
+  }
+
+  return null;
+}
+
+async function checkAutoresearch(
+  sessionId?: string,
+  directory?: string,
+  cancelInProgress?: boolean
+): Promise<PersistentModeResult | null> {
+  const workingDir = resolveToWorktreeRoot(directory);
+  const state = readModeState<AutoresearchStopState>('autoresearch', workingDir, sessionId);
+  const stateRecord = state as Record<string, unknown> | null;
+  const hasTimestampFields = Boolean(
+    stateRecord
+    && ['updated_at', 'started_at'].some((key) =>
+      typeof stateRecord[key] === 'string' && String(stateRecord[key]).length > 0,
+    ),
+  );
+
+  if (!state || !state.active || (hasTimestampFields && isStaleState(state))) {
+    return null;
+  }
+
+  if (sessionId && state.session_id && state.session_id !== sessionId) {
+    return null;
+  }
+
+  if (cancelInProgress) {
+    return {
+      shouldBlock: false,
+      message: '',
+      mode: 'autoresearch',
+    };
+  }
+
+  const phase = typeof state.current_phase === 'string'
+    ? state.current_phase.trim().toLowerCase()
+    : '';
+  if (phase === 'completed' || phase === 'failed' || phase === 'stopped' || phase === 'cancelled') {
+    return {
+      shouldBlock: false,
+      message: '',
+      mode: 'autoresearch',
+    };
+  }
+
+  const deadlineMs = getAutoresearchDeadlineMs(state);
+  if (deadlineMs != null && Date.now() >= deadlineMs) {
+    writeModeState('autoresearch', {
+      ...(state as unknown as Record<string, unknown>),
+      active: false,
+      current_phase: 'stopped',
+      completed_at: new Date().toISOString(),
+      stop_reason: 'max-runtime ceiling reached',
+    }, workingDir, sessionId);
+
+    return {
+      shouldBlock: false,
+      message: '[AUTORESEARCH COMPLETE] Max-runtime ceiling reached. Stop hook released the stateful autoresearch run.',
+      mode: 'autoresearch',
+      metadata: {
+        iteration: typeof state.iteration === 'number' ? state.iteration : undefined,
+      },
+    };
+  }
+
+  const remaining = deadlineMs == null
+    ? 'unknown'
+    : `${Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000))}s`;
+  const missionSlug = typeof state.mission_slug === 'string' && state.mission_slug
+    ? state.mission_slug
+    : 'unknown-mission';
+
+  return {
+    shouldBlock: true,
+    message: `<autoresearch-continuation>
+
+[AUTORESEARCH - STATEFUL MISSION ACTIVE]
+Mission: ${missionSlug}
+The autoresearch loop is still active and should continue iterating.
+Do not stop just because the latest evaluation did not pass.
+Strict stop boundary: explicit max-runtime ceiling.
+Remaining runtime: ${remaining}
+
+</autoresearch-continuation>
+
+---
+`,
+    mode: 'autoresearch',
+    metadata: {
+      iteration: typeof state.iteration === 'number' ? state.iteration : undefined,
+      phase: state.current_phase,
+    },
+  };
+}
+
 function getNormalizedRalplanPhase(state: Record<string, unknown> | null | undefined): string | null {
   if (!state || typeof state !== 'object') {
     return null;
