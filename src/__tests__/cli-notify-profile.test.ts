@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync } from 'fs';
+import { describe, it, expect, beforeAll } from 'vitest';
+import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { tmpdir } from 'os';
 import { spawnSync } from 'child_process';
@@ -7,7 +7,17 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
-const CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
+const BUNDLED_CLI_ENTRY = join(REPO_ROOT, 'bridge', 'cli.cjs');
+const DIST_CLI_ENTRY = join(REPO_ROOT, 'dist', 'cli', 'index.js');
+const SRC_CLI_ENTRY = join(REPO_ROOT, 'src', 'cli', 'index.ts');
+
+// Prefer the bundled single-file CLI (~1s cold) over dist (~2.8s) over tsx
+// (~10-15s) to keep per-spawn cost reasonable on Windows.
+let cliMode: 'bundle' | 'dist' | 'tsx' = 'tsx';
+beforeAll(() => {
+  if (existsSync(BUNDLED_CLI_ENTRY)) cliMode = 'bundle';
+  else if (existsSync(DIST_CLI_ENTRY)) cliMode = 'dist';
+});
 
 interface CliRunResult {
   status: number | null;
@@ -16,7 +26,14 @@ interface CliRunResult {
 }
 
 function runCli(args: string[], homeDir: string): CliRunResult {
-  const result = spawnSync(process.execPath, ['--import', 'tsx', CLI_ENTRY, ...args], {
+  const spawnArgs =
+    cliMode === 'bundle'
+      ? [BUNDLED_CLI_ENTRY, ...args]
+      : cliMode === 'dist'
+        ? [DIST_CLI_ENTRY, ...args]
+        : ['--import', 'tsx', SRC_CLI_ENTRY, ...args];
+
+  const result = spawnSync(process.execPath, spawnArgs, {
     cwd: REPO_ROOT,
     env: {
       ...process.env,
