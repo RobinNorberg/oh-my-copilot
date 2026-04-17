@@ -33,6 +33,34 @@ const TIER_ALIASES = new Set(['sonnet', 'opus', 'haiku']);
 function isTierAlias(modelId) {
   return TIER_ALIASES.has((modelId || '').toLowerCase());
 }
+// Resolution chain for tier alias → subagent-safe model ID.
+// Order mirrors src/config/models.ts:TIER_ENV_KEYS with OMC_SUBAGENT_MODEL as top-priority override.
+// OMC_SUBAGENT_MODEL at position 0 wins for ALL tiers — tier-specific vars are only
+// reached when it is unset or fails isSubagentSafeModelId validation.
+// OMC_MODEL_* is intentionally excluded: those are OMC-internal vars that the OMC bridge
+// reads for its own routing, but CC itself does not read them when resolving tier aliases
+// (sonnet/haiku/opus). Allowing OMC_MODEL_* as proof would let the hook pass while CC
+// still fails to route the alias, reintroducing the downstream deadlock this gate prevents.
+const TIER_TO_DEFAULT_ENV_KEYS = {
+  haiku:  ['OMC_SUBAGENT_MODEL', 'CLAUDE_CODE_BEDROCK_HAIKU_MODEL',  'ANTHROPIC_DEFAULT_HAIKU_MODEL'],
+  sonnet: ['OMC_SUBAGENT_MODEL', 'CLAUDE_CODE_BEDROCK_SONNET_MODEL', 'ANTHROPIC_DEFAULT_SONNET_MODEL'],
+  opus:   ['OMC_SUBAGENT_MODEL', 'CLAUDE_CODE_BEDROCK_OPUS_MODEL',   'ANTHROPIC_DEFAULT_OPUS_MODEL'],
+};
+function resolveTierAliasToSafeModel(tierAlias) {
+  const keys = TIER_TO_DEFAULT_ENV_KEYS[(tierAlias || '').toLowerCase()];
+  if (!keys) return '';
+  for (const key of keys) {
+    const value = (process.env[key] || '').trim();
+    // CC-native vars (ANTHROPIC_DEFAULT_* and CLAUDE_CODE_BEDROCK_*) are read by CC's own
+    // model resolution, which handles [1m] suffixes correctly for explicit model= calls.
+    // OMC-internal vars (OMC_SUBAGENT_MODEL, OMC_MODEL_*) are not read by CC, so a [1m]
+    // value there is not a valid routing proof — keep the stricter isSubagentSafeModelId check.
+    const isNativeCcVar = key.startsWith('ANTHROPIC_DEFAULT_') || key.startsWith('CLAUDE_CODE_BEDROCK_');
+    const validator = isNativeCcVar ? isProviderSpecificModelId : isSubagentSafeModelId;
+    if (value && validator(value)) return value;
+  }
+  return '';
+}
 /** Map a bare Anthropic model ID to its CC tier alias (sonnet/opus/haiku), or null if unrecognised. */
 function normalizeToCcAlias(model) {
   if (!model) return null;
@@ -715,18 +743,17 @@ async function main() {
             : claudeModel || anthropicModel;
 
         if (toolModel) {
-          // Allow tier aliases (sonnet/opus/haiku) when OMC_SUBAGENT_MODEL is a valid
-          // provider-specific ID. The Agent tool schema only accepts these short aliases —
-          // full Bedrock/Vertex IDs are rejected by the tool schema, so tier aliases + routing
-          // via OMC_SUBAGENT_MODEL is the only viable explicit-model escape hatch.
-          const subagentModelForAlias = process.env.OMC_SUBAGENT_MODEL || '';
-          if (isTierAlias(toolModel) && isSubagentSafeModelId(subagentModelForAlias)) {
-            // fall through to continue — tier alias is safe when OMC_SUBAGENT_MODEL is a valid provider-specific ID
+          // Allow tier aliases (sonnet/opus/haiku) when a subagent-safe model can be
+          // resolved for that tier. Resolution chain: OMC_SUBAGENT_MODEL (global override)
+          // → CLAUDE_CODE_BEDROCK_*_MODEL → ANTHROPIC_DEFAULT_*_MODEL.
+          if (isTierAlias(toolModel) && resolveTierAliasToSafeModel(toolModel)) {
+            // fall through to continue — tier alias resolves to a safe provider-specific ID
           } else if (!isSubagentSafeModelId(toolModel)) {
-            const subagentModel = process.env.OMC_SUBAGENT_MODEL || '';
-            const guidance = subagentModel
-              ? `Pass model="${subagentModel}" (your configured OMC_SUBAGENT_MODEL value).`
-              : `Remove the \`model\` parameter, or set OMC_SUBAGENT_MODEL=<valid-bedrock-id> and pass that value explicitly.`;
+            const tierUpper = isTierAlias(toolModel) ? toolModel.toUpperCase() : '';
+            const derivedTier = tierUpper || (normalizeToCcAlias(toolModel) || '').toUpperCase();
+            const guidance = derivedTier
+              ? `Set ANTHROPIC_DEFAULT_${derivedTier}_MODEL=<valid-bedrock-id> in settings.json env, or set OMC_SUBAGENT_MODEL as a global override.`
+              : `Remove the \`model\` parameter, or set ANTHROPIC_DEFAULT_SONNET_MODEL=<valid-bedrock-id> in settings.json env.`;
             console.log(JSON.stringify({
               continue: true,
               hookSpecificOutput: {
@@ -744,10 +771,11 @@ async function main() {
           // Anthropic model ID (e.g. claude-sonnet-4-6) which is invalid on Bedrock.
           // Fix: pass a tier alias (sonnet/haiku/opus). The Agent tool schema only accepts
           // tier aliases for the model param — full Bedrock IDs are rejected by the schema.
-          // OMC_SUBAGENT_MODEL is used only for guidance; derive the tier alias from it.
-          const subagentModel = process.env.OMC_SUBAGENT_MODEL || '';
-          const tierAlias = normalizeToCcAlias(subagentModel) || normalizeToCcAlias(sessionModel) || 'sonnet';
-          const suggestion = `Pass model="${tierAlias}" explicitly on this ${toolName} call — tier aliases resolve cleanly on Bedrock.`;
+          const tierAlias = normalizeToCcAlias(sessionModel) || 'sonnet';
+          const resolvedSafe = resolveTierAliasToSafeModel(tierAlias);
+          const suggestion = resolvedSafe
+            ? `Pass model="${tierAlias}" explicitly on this ${toolName} call — tier aliases resolve cleanly on Bedrock.`
+            : `Pass model="${tierAlias}" explicitly on this ${toolName} call, and set ANTHROPIC_DEFAULT_${tierAlias.toUpperCase()}_MODEL=<valid-bedrock-id> in settings.json env.`;
           console.log(JSON.stringify({
             continue: true,
             hookSpecificOutput: {
@@ -765,20 +793,15 @@ async function main() {
         // with 400. Detect it here and deny with guidance to retry with an explicit tier alias.
         if (!toolModel && toolInput.subagent_type) {
           const agentDefModel = readAgentDefinitionModel(toolInput.subagent_type);
-          const subagentModel = process.env.OMC_SUBAGENT_MODEL || '';
-          // Only deny when OMC_SUBAGENT_MODEL is configured as a valid provider-specific ID.
+          // Only deny when a safe routing target exists for the derived tier alias.
           // Without a routing target the tier-alias escape hatch doesn't exist, so blocking
           // would strand Claude in a retry loop with no viable path forward.
+          const defTierAlias = agentDefModel ? normalizeToCcAlias(agentDefModel) : null;
+          const resolvedModel = defTierAlias ? resolveTierAliasToSafeModel(defTierAlias) : '';
+          const hasSafeRouting = !!resolvedModel;
           if (agentDefModel && !isSubagentSafeModelId(agentDefModel) && !isTierAlias(agentDefModel)
-              && isSubagentSafeModelId(subagentModel)) {
-            const tierAlias = normalizeToCcAlias(agentDefModel);
-            const guidance = tierAlias
-              ? (subagentModel
-                  ? `Add model="${tierAlias}" to this ${toolName} call — OMC will route it through OMC_SUBAGENT_MODEL (${subagentModel}).`
-                  : `Add model="${tierAlias}" to this ${toolName} call and set OMC_SUBAGENT_MODEL=<valid-bedrock-id>.`)
-              : (subagentModel
-                  ? `Add model="${subagentModel}" (your configured OMC_SUBAGENT_MODEL) explicitly to this ${toolName} call.`
-                  : `Set OMC_SUBAGENT_MODEL=<valid-bedrock-id> and add it as the model parameter on this ${toolName} call.`);
+              && hasSafeRouting) {
+            const guidance = `Add model="${defTierAlias}" to this ${toolName} call — tier aliases resolve to configured provider models (${resolvedModel}).`;
             const agentType = (toolInput.subagent_type).replace(/^oh-my-copilot:/, '');
             console.log(JSON.stringify({
               continue: true,

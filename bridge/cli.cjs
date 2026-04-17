@@ -3352,7 +3352,7 @@ var init_models = __esm({
     COPILOT_FAMILY_DEFAULTS = {
       HAIKU: "claude-haiku-4-5",
       SONNET: "claude-sonnet-4-6",
-      OPUS: "claude-opus-4-6"
+      OPUS: "claude-opus-4-7"
     };
     BUILTIN_TIER_MODEL_DEFAULTS = {
       LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
@@ -14170,6 +14170,7 @@ function normalizeRegistryEntry(value) {
   const raw = value;
   const command = typeof raw.command === "string" && raw.command.trim().length > 0 ? raw.command.trim() : void 0;
   const url2 = typeof raw.url === "string" && raw.url.trim().length > 0 ? raw.url.trim() : void 0;
+  const type = typeof raw.type === "string" && raw.type.trim().length > 0 ? raw.type.trim() : void 0;
   if (!command && !url2) {
     return null;
   }
@@ -14182,6 +14183,7 @@ function normalizeRegistryEntry(value) {
     ...args.length > 0 ? { args } : {},
     ...env2 && Object.keys(env2).length > 0 ? { env: env2 } : {},
     ...url2 ? { url: url2 } : {},
+    ...type ? { type } : {},
     ...effectiveTimeout ? { timeout: effectiveTimeout } : {}
   };
 }
@@ -14319,6 +14321,9 @@ function renderCodexServerBlock(name, entry) {
   }
   if (entry.url) {
     lines.push(`url = ${renderTomlString(entry.url)}`);
+  }
+  if (entry.type) {
+    lines.push(`type = ${renderTomlString(entry.type)}`);
   }
   if (entry.env && Object.keys(entry.env).length > 0) {
     lines.push(`env = ${renderTomlEnvTable(entry.env)}`);
@@ -14998,6 +15003,138 @@ function getInstalledOmcPluginRoots() {
   }
   return Array.from(pluginRoots);
 }
+function countPluginSyncPayloadEntries(root) {
+  let score = 0;
+  for (const entry of PLUGIN_SYNC_PAYLOAD) {
+    if ((0, import_fs29.existsSync)((0, import_path38.join)(root, entry))) {
+      score += 1;
+    }
+  }
+  return score;
+}
+function getKnownMarketplaceInstallRoots() {
+  const knownMarketplacesPath = (0, import_path38.join)(COPILOT_CONFIG_DIR, "plugins", "known_marketplaces.json");
+  if (!(0, import_fs29.existsSync)(knownMarketplacesPath)) {
+    return [];
+  }
+  try {
+    const raw = JSON.parse((0, import_fs29.readFileSync)(knownMarketplacesPath, "utf-8"));
+    const roots = /* @__PURE__ */ new Set();
+    for (const [marketplaceId, entry] of Object.entries(raw)) {
+      const lower = marketplaceId.toLowerCase();
+      const isOmcMarketplace = lower.includes("omc") || lower.includes("oh-my-copilot");
+      if (!isOmcMarketplace) {
+        continue;
+      }
+      if (typeof entry?.installLocation === "string" && entry.installLocation.trim().length > 0) {
+        roots.add(entry.installLocation.trim());
+      }
+      if (typeof entry?.source?.path === "string" && entry.source.path.trim().length > 0) {
+        roots.add(entry.source.path.trim());
+      }
+    }
+    return Array.from(roots);
+  } catch {
+    return [];
+  }
+}
+function getGlobalInstalledPackageRoot() {
+  try {
+    const npmRoot = String((0, import_child_process11.execSync)("npm root -g", {
+      encoding: "utf-8",
+      stdio: "pipe",
+      timeout: 1e4,
+      ...process.platform === "win32" ? { windowsHide: true } : {}
+    }) ?? "").trim();
+    if (!npmRoot) {
+      return null;
+    }
+    const globalPackageRoot = (0, import_path38.join)(npmRoot, "oh-my-copilot");
+    return (0, import_fs29.existsSync)(globalPackageRoot) ? globalPackageRoot : null;
+  } catch {
+    return null;
+  }
+}
+function isCacheInstalledPluginRoot(root) {
+  const normalizedRoot = normalizePath2(root);
+  const cacheBase = normalizePath2((0, import_path38.join)(COPILOT_CONFIG_DIR, "plugins", "cache"));
+  return normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`);
+}
+function resolveBestPluginSyncSource(targetRoots) {
+  const excludedRoots = new Set(targetRoots.map(normalizePath2));
+  const seen = /* @__PURE__ */ new Set();
+  const globalPackageRoot = getGlobalInstalledPackageRoot();
+  const candidates = [
+    ...getKnownMarketplaceInstallRoots(),
+    ...globalPackageRoot ? [globalPackageRoot] : [],
+    getRuntimePackageRoot()
+  ];
+  let bestRoot = null;
+  let bestScore = -1;
+  let bestOrder = Number.POSITIVE_INFINITY;
+  for (const [order, candidate] of candidates.entries()) {
+    const normalizedCandidate = normalizePath2(candidate);
+    if (seen.has(normalizedCandidate) || excludedRoots.has(normalizedCandidate) || !(0, import_fs29.existsSync)(candidate)) {
+      continue;
+    }
+    seen.add(normalizedCandidate);
+    const score = countPluginSyncPayloadEntries(candidate);
+    if (score === 0) {
+      continue;
+    }
+    if (score > bestScore || score === bestScore && order < bestOrder) {
+      bestRoot = candidate;
+      bestScore = score;
+      bestOrder = order;
+    }
+  }
+  return bestRoot;
+}
+function copyPluginSyncPayload(sourceRoot, targetRoots) {
+  if (targetRoots.length === 0) {
+    return { synced: false, errors: [] };
+  }
+  let synced = false;
+  const errors = [];
+  for (const targetRoot of targetRoots) {
+    let copiedToTarget = false;
+    for (const entry of PLUGIN_SYNC_PAYLOAD) {
+      const sourcePath = (0, import_path38.join)(sourceRoot, entry);
+      if (!(0, import_fs29.existsSync)(sourcePath)) {
+        continue;
+      }
+      try {
+        (0, import_fs29.cpSync)(sourcePath, (0, import_path38.join)(targetRoot, entry), {
+          recursive: true,
+          force: true
+        });
+        copiedToTarget = true;
+      } catch (error48) {
+        const message = error48 instanceof Error ? error48.message : String(error48);
+        errors.push(`Failed to sync ${entry} to ${targetRoot}: ${message}`);
+      }
+    }
+    synced = synced || copiedToTarget;
+  }
+  return { synced, errors };
+}
+function syncInstalledPluginPayload() {
+  const targetRoots = getInstalledOmcPluginRoots().filter((root) => (0, import_fs29.existsSync)(root) && isCacheInstalledPluginRoot(root));
+  if (targetRoots.length === 0) {
+    return { synced: false, errors: [], sourceRoot: null, targetRoots: [] };
+  }
+  const sourceRoot = resolveBestPluginSyncSource(targetRoots);
+  if (!sourceRoot) {
+    return {
+      synced: false,
+      errors: ["Unable to find a complete OMC package source to repair installed plugin roots"],
+      sourceRoot: null,
+      targetRoots
+    };
+  }
+  const result = copyPluginSyncPayload(sourceRoot, targetRoots);
+  return { ...result, sourceRoot, targetRoots };
+}
 function hasPluginProvidedAgentFiles() {
   return getInstalledOmcPluginRoots().some(
     (pluginRoot) => directoryHasMarkdownFiles((0, import_path38.join)(pluginRoot, "agents"))
@@ -15301,6 +15438,17 @@ function install(options = {}) {
   log3(`Platform: ${process.platform} (Node.js hooks)`);
   const runningAsPlugin = isRunningAsPlugin();
   const projectScoped = isProjectScopedPlugin();
+  const pluginPayloadSync = syncInstalledPluginPayload();
+  if (pluginPayloadSync.errors.length > 0) {
+    for (const error48 of pluginPayloadSync.errors) {
+      log3(`Plugin cache sync warning: ${error48}`);
+    }
+  }
+  if (pluginPayloadSync.synced) {
+    const targetSummary = pluginPayloadSync.targetRoots.length > 0 ? pluginPayloadSync.targetRoots.join(", ") : "installed plugin roots";
+    const sourceSummary = pluginPayloadSync.sourceRoot ?? "unknown source";
+    log3(`Repaired installed OMC plugin payload from ${sourceSummary} -> ${targetSummary}`);
+  }
   const pluginProvidesAgentFiles = hasPluginProvidedAgentFiles();
   const pluginProvidesSkillFiles = hasPluginProvidedSkillFiles();
   const pluginProvidesHookFiles = hasPluginProvidedHookFiles();
@@ -15473,6 +15621,16 @@ function install(options = {}) {
         (0, import_fs29.chmodSync)(hudScriptPath, 493);
       }
       log3("  Installed omcp-hud.mjs");
+      for (const legacyName of ["omc-hud.mjs", "omc-hud.js"]) {
+        const legacyPath = (0, import_path38.join)(HUD_DIR, legacyName);
+        if ((0, import_fs29.existsSync)(legacyPath)) {
+          try {
+            (0, import_fs29.unlinkSync)(legacyPath);
+            log3(`  Removed legacy HUD wrapper: ${legacyName}`);
+          } catch {
+          }
+        }
+      }
     } catch (_e) {
       log3("  Warning: Could not install HUD statusline script (non-fatal)");
       hudScriptPath = null;
@@ -15585,7 +15743,7 @@ function getInstallInfo() {
     return null;
   }
 }
-var import_fs29, import_path38, import_url7, import_os10, import_child_process11, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, OMC_HOOK_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES;
+var import_fs29, import_path38, import_url7, import_os10, import_child_process11, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, OMC_HOOK_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, PLUGIN_SYNC_PAYLOAD;
 var init_installer = __esm({
   "src/installer/index.ts"() {
     "use strict";
@@ -15652,6 +15810,21 @@ var init_installer = __esm({
       "persistent-mode.mjs",
       "code-simplifier.mjs"
     ];
+    PLUGIN_SYNC_PAYLOAD = [
+      "dist",
+      "bridge",
+      "hooks",
+      "scripts",
+      "skills",
+      "agents",
+      "templates",
+      "docs",
+      ".claude-plugin",
+      ".mcp.json",
+      "README.md",
+      "LICENSE",
+      "package.json"
+    ];
   }
 });
 
@@ -15716,40 +15889,8 @@ function syncMarketplaceClone(verbose = false) {
   }
   return { ok: true, message: "Marketplace clone updated" };
 }
-function copyPluginSyncPayload(sourceRoot, targetRoots) {
-  if (targetRoots.length === 0) {
-    return { synced: false, errors: [] };
-  }
-  let synced = false;
-  const errors = [];
-  for (const targetRoot of targetRoots) {
-    let copiedToTarget = false;
-    for (const entry of PLUGIN_SYNC_PAYLOAD) {
-      const sourcePath = (0, import_path39.join)(sourceRoot, entry);
-      if (!(0, import_fs30.existsSync)(sourcePath)) {
-        continue;
-      }
-      try {
-        (0, import_fs30.cpSync)(sourcePath, (0, import_path39.join)(targetRoot, entry), {
-          recursive: true,
-          force: true
-        });
-        copiedToTarget = true;
-      } catch (error48) {
-        const message = error48 instanceof Error ? error48.message : String(error48);
-        errors.push(`Failed to sync ${entry} to ${targetRoot}: ${message}`);
-      }
-    }
-    synced = synced || copiedToTarget;
-  }
-  return { synced, errors };
-}
 function syncActivePluginCache() {
-  const activeRoots = getInstalledOmcPluginRoots().filter((root) => (0, import_fs30.existsSync)(root));
-  if (activeRoots.length === 0) {
-    return { synced: false, errors: [] };
-  }
-  const result = copyPluginSyncPayload(getRuntimePackageRoot(), activeRoots);
+  const result = syncInstalledPluginPayload();
   if (result.synced) {
     console.log("[omc update] Synced plugin cache");
   }
@@ -16331,7 +16472,7 @@ function initSilentAutoUpdate(config2 = {}) {
   silentAutoUpdate(config2).catch(() => {
   });
 }
-var import_fs30, import_path39, import_child_process12, REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, PLUGIN_SYNC_PAYLOAD, COPILOT_CONFIG_DIR2, VERSION_FILE2, CONFIG_FILE, SILENT_UPDATE_STATE_FILE;
+var import_fs30, import_path39, import_child_process12, REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, COPILOT_CONFIG_DIR2, VERSION_FILE2, CONFIG_FILE, SILENT_UPDATE_STATE_FILE;
 var init_auto_update = __esm({
   "src/features/auto-update.ts"() {
     "use strict";
@@ -16346,21 +16487,6 @@ var init_auto_update = __esm({
     REPO_NAME = "oh-my-copilot";
     GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
     GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
-    PLUGIN_SYNC_PAYLOAD = [
-      "dist",
-      "bridge",
-      "hooks",
-      "scripts",
-      "skills",
-      "agents",
-      "templates",
-      "docs",
-      ".claude-plugin",
-      ".mcp.json",
-      "README.md",
-      "LICENSE",
-      "package.json"
-    ];
     COPILOT_CONFIG_DIR2 = getConfigDir();
     VERSION_FILE2 = (0, import_path39.join)(COPILOT_CONFIG_DIR2, ".omc-version.json");
     CONFIG_FILE = (0, import_path39.join)(COPILOT_CONFIG_DIR2, ".omc-config.json");
@@ -17800,12 +17926,21 @@ function isClaudeSession(env2) {
   );
 }
 function commandExists2(command, env2) {
+  const pathValue = env2.PATH ?? env2.Path ?? "";
+  const pathExt = env2.PATHEXT ?? "";
+  const cacheKey = `${command}\0${pathValue}\0${pathExt}`;
+  const cached2 = commandExistsCache.get(cacheKey);
+  if (cached2 !== void 0) {
+    return cached2;
+  }
   const lookupCommand = process.platform === "win32" ? "where" : "which";
   const result = (0, import_child_process14.spawnSync)(lookupCommand, [command], {
     stdio: "ignore",
     env: env2
   });
-  return result.status === 0;
+  const found = result.status === 0;
+  commandExistsCache.set(cacheKey, found);
+  return found;
 }
 function resolveOmcCliPrefix(options = {}) {
   const env2 = options.env ?? process.env;
@@ -17843,13 +17978,14 @@ function rewriteOmcCliInvocations(text, options = {}) {
     return `${lineStart}${leader}${prefix} ${suffix}`;
   });
 }
-var import_child_process14, OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX;
+var import_child_process14, OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX, commandExistsCache;
 var init_omc_cli_rendering = __esm({
   "src/utils/omc-cli-rendering.ts"() {
     "use strict";
     import_child_process14 = require("child_process");
     OMC_CLI_BINARY = "omcp";
     OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
+    commandExistsCache = /* @__PURE__ */ new Map();
   }
 });
 

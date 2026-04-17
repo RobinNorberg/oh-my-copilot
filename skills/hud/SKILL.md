@@ -115,9 +115,9 @@ Then set `config.json`:
 
 Use the Edit tool to add/update these fields while preserving other settings.
 
-**Step 6:** Clean up old HUD scripts (if any):
+**Step 6:** Clean up legacy HUD wrapper filenames left over from earlier OMC names (`omc-hud.mjs` / `omc-hud.js`). Do NOT delete the current `omcp-hud.mjs` — it is the wrapper we just installed:
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'hud','omcp-hud.mjs');try{if(f.existsSync(t)){f.unlinkSync(t);console.log('Removed legacy script')}else{console.log('No legacy script found')}}catch{}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');let removed=0;for(const n of ['omc-hud.mjs','omc-hud.js']){const t=p.join(d,'hud',n);try{if(f.existsSync(t)){f.unlinkSync(t);console.log('Removed legacy',n);removed++}}catch{}}if(!removed)console.log('No legacy scripts found')"
 ```
 
 **Step 7:** Tell the user to restart Copilot CLI for changes to take effect.

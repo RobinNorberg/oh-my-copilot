@@ -166,6 +166,16 @@ export declare function cleanupStaleSkills(log: (msg: string) => void): string[]
  */
 export declare function prunePluginDuplicateSkills(log: (msg: string) => void): string[];
 export declare function getInstalledOmcPluginRoots(): string[];
+export declare function copyPluginSyncPayload(sourceRoot: string, targetRoots: string[]): {
+    synced: boolean;
+    errors: string[];
+};
+export declare function syncInstalledPluginPayload(): {
+    synced: boolean;
+    errors: string[];
+    sourceRoot: string | null;
+    targetRoots: string[];
+};
 /**
  * Detect whether an installed Claude Code plugin already provides OMC agent
  * markdown files, so the legacy ~/.claude/agents copy can be skipped.

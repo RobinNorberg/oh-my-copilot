@@ -23,7 +23,7 @@ const TIER_ENV_KEYS = {
 export const COPILOT_FAMILY_DEFAULTS = {
     HAIKU: 'claude-haiku-4-5',
     SONNET: 'claude-sonnet-4-6',
-    OPUS: 'claude-opus-4-6',
+    OPUS: 'claude-opus-4-7',
 };
 /** Canonical tier->model mapping used as built-in defaults */
 export const BUILTIN_TIER_MODEL_DEFAULTS = {
