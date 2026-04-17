@@ -1109,7 +1109,7 @@ function findPermissionViolations(changedPaths, permissions, cwd) {
 var COPILOT_FAMILY_DEFAULTS = {
   HAIKU: "claude-haiku-4-5",
   SONNET: "claude-sonnet-4-6",
-  OPUS: "claude-opus-4-6"
+  OPUS: "claude-opus-4-7"
 };
 var BUILTIN_TIER_MODEL_DEFAULTS = {
   LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,

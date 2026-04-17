@@ -10,7 +10,7 @@
  * - Configurable update notifications
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { execSync, execFileSync } from 'child_process';
 import { TaskTool } from '../hooks/beads-context/types.js';
@@ -19,8 +19,8 @@ import {
   HOOKS_DIR,
   isProjectScopedPlugin,
   isRunningAsPlugin,
-  getInstalledOmcPluginRoots,
-  getRuntimePackageRoot,
+  copyPluginSyncPayload,
+  syncInstalledPluginPayload,
 } from '../installer/index.js';
 import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
@@ -76,64 +76,8 @@ function syncMarketplaceClone(verbose: boolean = false): { ok: boolean; message:
   return { ok: true, message: 'Marketplace clone updated' };
 }
 
-const PLUGIN_SYNC_PAYLOAD = [
-  'dist',
-  'bridge',
-  'hooks',
-  'scripts',
-  'skills',
-  'agents',
-  'templates',
-  'docs',
-  '.claude-plugin',
-  '.mcp.json',
-  'README.md',
-  'LICENSE',
-  'package.json',
-] as const;
-
-function copyPluginSyncPayload(sourceRoot: string, targetRoots: string[]): { synced: boolean; errors: string[] } {
-  if (targetRoots.length === 0) {
-    return { synced: false, errors: [] };
-  }
-
-  let synced = false;
-  const errors: string[] = [];
-
-  for (const targetRoot of targetRoots) {
-    let copiedToTarget = false;
-
-    for (const entry of PLUGIN_SYNC_PAYLOAD) {
-      const sourcePath = join(sourceRoot, entry);
-      if (!existsSync(sourcePath)) {
-        continue;
-      }
-
-      try {
-        cpSync(sourcePath, join(targetRoot, entry), {
-          recursive: true,
-          force: true,
-        });
-        copiedToTarget = true;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        errors.push(`Failed to sync ${entry} to ${targetRoot}: ${message}`);
-      }
-    }
-
-    synced = synced || copiedToTarget;
-  }
-
-  return { synced, errors };
-}
-
 function syncActivePluginCache(): { synced: boolean; errors: string[] } {
-  const activeRoots = getInstalledOmcPluginRoots().filter(root => existsSync(root));
-  if (activeRoots.length === 0) {
-    return { synced: false, errors: [] };
-  }
-
-  const result = copyPluginSyncPayload(getRuntimePackageRoot(), activeRoots);
+  const result = syncInstalledPluginPayload();
 
   if (result.synced) {
     console.log('[omc update] Synced plugin cache');

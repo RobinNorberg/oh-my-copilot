@@ -15,6 +15,7 @@ export interface UnifiedMcpRegistryEntry {
   args?: string[];
   env?: Record<string, string>;
   url?: string;
+  type?: string;
   timeout?: number;
 }
 
@@ -131,6 +132,9 @@ function normalizeRegistryEntry(value: unknown): UnifiedMcpRegistryEntry | null 
   const url = typeof raw.url === 'string' && raw.url.trim().length > 0
     ? raw.url.trim()
     : undefined;
+  const type = typeof raw.type === 'string' && raw.type.trim().length > 0
+    ? raw.type.trim()
+    : undefined;
 
   if (!command && !url) {
     return null;
@@ -151,6 +155,7 @@ function normalizeRegistryEntry(value: unknown): UnifiedMcpRegistryEntry | null 
     ...(args.length > 0 ? { args } : {}),
     ...(env && Object.keys(env).length > 0 ? { env } : {}),
     ...(url ? { url } : {}),
+    ...(type ? { type } : {}),
     ...(effectiveTimeout ? { timeout: effectiveTimeout } : {}),
   };
 }
@@ -406,6 +411,9 @@ function renderCodexServerBlock(name: string, entry: UnifiedMcpRegistryEntry): s
   if (entry.url) {
     lines.push(`url = ${renderTomlString(entry.url)}`);
   }
+  if (entry.type) {
+    lines.push(`type = ${renderTomlString(entry.type)}`);
+  }
   if (entry.env && Object.keys(entry.env).length > 0) {
     lines.push(`env = ${renderTomlEnvTable(entry.env)}`);
   }
@@ -499,6 +507,9 @@ function parseCodexMcpRegistryEntries(content: string): UnifiedMcpRegistry {
     } else if (key === 'url') {
       const parsed = parseTomlQuotedString(value);
       if (parsed) currentEntry.url = parsed;
+    } else if (key === 'type') {
+      const parsed = parseTomlQuotedString(value);
+      if (parsed) currentEntry.type = parsed;
     } else if (key === 'env') {
       const parsed = parseTomlEnvTable(value);
       if (parsed) currentEntry.env = parsed;
