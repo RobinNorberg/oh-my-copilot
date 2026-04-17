@@ -1668,12 +1668,21 @@ function isClaudeSession(env) {
   );
 }
 function commandExists(command, env) {
+  const pathValue = env.PATH ?? env.Path ?? "";
+  const pathExt = env.PATHEXT ?? "";
+  const cacheKey = `${command}\0${pathValue}\0${pathExt}`;
+  const cached = commandExistsCache.get(cacheKey);
+  if (cached !== void 0) {
+    return cached;
+  }
   const lookupCommand = process.platform === "win32" ? "where" : "which";
   const result = spawnSync2(lookupCommand, [command], {
     stdio: "ignore",
     env
   });
-  return result.status === 0;
+  const found = result.status === 0;
+  commandExistsCache.set(cacheKey, found);
+  return found;
 }
 function resolveOmcCliPrefix(options = {}) {
   const env = options.env ?? process.env;
@@ -1699,12 +1708,13 @@ function formatOmcCliInvocation(commandSuffix, options = {}) {
   const suffix = commandSuffix.trim().replace(/^omc\s+/, "");
   return `${resolveInvocationPrefix(suffix, options)} ${suffix}`.trim();
 }
-var OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX;
+var OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX, commandExistsCache;
 var init_omc_cli_rendering = __esm({
   "src/utils/omc-cli-rendering.ts"() {
     "use strict";
     OMC_CLI_BINARY = "omcp";
     OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
+    commandExistsCache = /* @__PURE__ */ new Map();
   }
 });
 

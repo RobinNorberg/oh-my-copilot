@@ -17916,12 +17916,21 @@ function isClaudeSession(env2) {
   );
 }
 function commandExists2(command, env2) {
+  const pathValue = env2.PATH ?? env2.Path ?? "";
+  const pathExt = env2.PATHEXT ?? "";
+  const cacheKey = `${command}\0${pathValue}\0${pathExt}`;
+  const cached2 = commandExistsCache.get(cacheKey);
+  if (cached2 !== void 0) {
+    return cached2;
+  }
   const lookupCommand = process.platform === "win32" ? "where" : "which";
   const result = (0, import_child_process14.spawnSync)(lookupCommand, [command], {
     stdio: "ignore",
     env: env2
   });
-  return result.status === 0;
+  const found = result.status === 0;
+  commandExistsCache.set(cacheKey, found);
+  return found;
 }
 function resolveOmcCliPrefix(options = {}) {
   const env2 = options.env ?? process.env;
@@ -17959,13 +17968,14 @@ function rewriteOmcCliInvocations(text, options = {}) {
     return `${lineStart}${leader}${prefix} ${suffix}`;
   });
 }
-var import_child_process14, OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX;
+var import_child_process14, OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX, commandExistsCache;
 var init_omc_cli_rendering = __esm({
   "src/utils/omc-cli-rendering.ts"() {
     "use strict";
     import_child_process14 = require("child_process");
     OMC_CLI_BINARY = "omcp";
     OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
+    commandExistsCache = /* @__PURE__ */ new Map();
   }
 });
 

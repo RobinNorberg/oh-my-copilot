@@ -1852,13 +1852,23 @@ function isClaudeSession(env) {
     env.CLAUDECODE?.trim() || env.CLAUDE_SESSION_ID?.trim() || env.CLAUDECODE_SESSION_ID?.trim()
   );
 }
+var commandExistsCache = /* @__PURE__ */ new Map();
 function commandExists(command, env) {
+  const pathValue = env.PATH ?? env.Path ?? "";
+  const pathExt = env.PATHEXT ?? "";
+  const cacheKey = `${command}\0${pathValue}\0${pathExt}`;
+  const cached = commandExistsCache.get(cacheKey);
+  if (cached !== void 0) {
+    return cached;
+  }
   const lookupCommand = process.platform === "win32" ? "where" : "which";
   const result = (0, import_child_process3.spawnSync)(lookupCommand, [command], {
     stdio: "ignore",
     env
   });
-  return result.status === 0;
+  const found = result.status === 0;
+  commandExistsCache.set(cacheKey, found);
+  return found;
 }
 function resolveOmcCliPrefix(options = {}) {
   const env = options.env ?? process.env;
