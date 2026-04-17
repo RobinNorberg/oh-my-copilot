@@ -72,6 +72,9 @@ export interface PluginConfig {
         documentSpecialist?: {
             model?: string;
         };
+        devilsAdvocate?: {
+            model?: string;
+        };
     };
     features?: {
         parallelExecution?: boolean;
