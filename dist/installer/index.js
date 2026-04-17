@@ -800,6 +800,157 @@ export function getInstalledOmcPluginRoots() {
     }
     return Array.from(pluginRoots);
 }
+const PLUGIN_SYNC_PAYLOAD = [
+    'dist',
+    'bridge',
+    'hooks',
+    'scripts',
+    'skills',
+    'agents',
+    'templates',
+    'docs',
+    '.claude-plugin',
+    '.mcp.json',
+    'README.md',
+    'LICENSE',
+    'package.json',
+];
+function countPluginSyncPayloadEntries(root) {
+    let score = 0;
+    for (const entry of PLUGIN_SYNC_PAYLOAD) {
+        if (existsSync(join(root, entry))) {
+            score += 1;
+        }
+    }
+    return score;
+}
+function getKnownMarketplaceInstallRoots() {
+    const knownMarketplacesPath = join(COPILOT_CONFIG_DIR, 'plugins', 'known_marketplaces.json');
+    if (!existsSync(knownMarketplacesPath)) {
+        return [];
+    }
+    try {
+        const raw = JSON.parse(readFileSync(knownMarketplacesPath, 'utf-8'));
+        const roots = new Set();
+        for (const [marketplaceId, entry] of Object.entries(raw)) {
+            const lower = marketplaceId.toLowerCase();
+            const isOmcMarketplace = lower.includes('omc') || lower.includes('oh-my-copilot');
+            if (!isOmcMarketplace) {
+                continue;
+            }
+            if (typeof entry?.installLocation === 'string' && entry.installLocation.trim().length > 0) {
+                roots.add(entry.installLocation.trim());
+            }
+            if (typeof entry?.source?.path === 'string' && entry.source.path.trim().length > 0) {
+                roots.add(entry.source.path.trim());
+            }
+        }
+        return Array.from(roots);
+    }
+    catch {
+        return [];
+    }
+}
+function getGlobalInstalledPackageRoot() {
+    try {
+        const npmRoot = String(execSync('npm root -g', {
+            encoding: 'utf-8',
+            stdio: 'pipe',
+            timeout: 10000,
+            ...(process.platform === 'win32' ? { windowsHide: true } : {}),
+        }) ?? '').trim();
+        if (!npmRoot) {
+            return null;
+        }
+        const globalPackageRoot = join(npmRoot, 'oh-my-copilot');
+        return existsSync(globalPackageRoot) ? globalPackageRoot : null;
+    }
+    catch {
+        return null;
+    }
+}
+function isCacheInstalledPluginRoot(root) {
+    const normalizedRoot = normalizePath(root);
+    const cacheBase = normalizePath(join(COPILOT_CONFIG_DIR, 'plugins', 'cache'));
+    return normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`);
+}
+function resolveBestPluginSyncSource(targetRoots) {
+    const excludedRoots = new Set(targetRoots.map(normalizePath));
+    const seen = new Set();
+    const globalPackageRoot = getGlobalInstalledPackageRoot();
+    const candidates = [
+        ...getKnownMarketplaceInstallRoots(),
+        ...(globalPackageRoot ? [globalPackageRoot] : []),
+        getRuntimePackageRoot(),
+    ];
+    let bestRoot = null;
+    let bestScore = -1;
+    let bestOrder = Number.POSITIVE_INFINITY;
+    for (const [order, candidate] of candidates.entries()) {
+        const normalizedCandidate = normalizePath(candidate);
+        if (seen.has(normalizedCandidate) || excludedRoots.has(normalizedCandidate) || !existsSync(candidate)) {
+            continue;
+        }
+        seen.add(normalizedCandidate);
+        const score = countPluginSyncPayloadEntries(candidate);
+        if (score === 0) {
+            continue;
+        }
+        if (score > bestScore || (score === bestScore && order < bestOrder)) {
+            bestRoot = candidate;
+            bestScore = score;
+            bestOrder = order;
+        }
+    }
+    return bestRoot;
+}
+export function copyPluginSyncPayload(sourceRoot, targetRoots) {
+    if (targetRoots.length === 0) {
+        return { synced: false, errors: [] };
+    }
+    let synced = false;
+    const errors = [];
+    for (const targetRoot of targetRoots) {
+        let copiedToTarget = false;
+        for (const entry of PLUGIN_SYNC_PAYLOAD) {
+            const sourcePath = join(sourceRoot, entry);
+            if (!existsSync(sourcePath)) {
+                continue;
+            }
+            try {
+                cpSync(sourcePath, join(targetRoot, entry), {
+                    recursive: true,
+                    force: true,
+                });
+                copiedToTarget = true;
+            }
+            catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                errors.push(`Failed to sync ${entry} to ${targetRoot}: ${message}`);
+            }
+        }
+        synced = synced || copiedToTarget;
+    }
+    return { synced, errors };
+}
+export function syncInstalledPluginPayload() {
+    const targetRoots = getInstalledOmcPluginRoots()
+        .filter(root => existsSync(root) && isCacheInstalledPluginRoot(root));
+    if (targetRoots.length === 0) {
+        return { synced: false, errors: [], sourceRoot: null, targetRoots: [] };
+    }
+    const sourceRoot = resolveBestPluginSyncSource(targetRoots);
+    if (!sourceRoot) {
+        return {
+            synced: false,
+            errors: ['Unable to find a complete OMC package source to repair installed plugin roots'],
+            sourceRoot: null,
+            targetRoots,
+        };
+    }
+    const result = copyPluginSyncPayload(sourceRoot, targetRoots);
+    return { ...result, sourceRoot, targetRoots };
+}
 /**
  * Detect whether an installed Claude Code plugin already provides OMC agent
  * markdown files, so the legacy ~/.claude/agents copy can be skipped.
@@ -1147,6 +1298,19 @@ export function install(options = {}) {
     // Check if running as a plugin
     const runningAsPlugin = isRunningAsPlugin();
     const projectScoped = isProjectScopedPlugin();
+    const pluginPayloadSync = syncInstalledPluginPayload();
+    if (pluginPayloadSync.errors.length > 0) {
+        for (const error of pluginPayloadSync.errors) {
+            log(`Plugin cache sync warning: ${error}`);
+        }
+    }
+    if (pluginPayloadSync.synced) {
+        const targetSummary = pluginPayloadSync.targetRoots.length > 0
+            ? pluginPayloadSync.targetRoots.join(', ')
+            : 'installed plugin roots';
+        const sourceSummary = pluginPayloadSync.sourceRoot ?? 'unknown source';
+        log(`Repaired installed OMC plugin payload from ${sourceSummary} -> ${targetSummary}`);
+    }
     const pluginProvidesAgentFiles = hasPluginProvidedAgentFiles();
     const pluginProvidesSkillFiles = hasPluginProvidedSkillFiles();
     const pluginProvidesHookFiles = hasPluginProvidedHookFiles();
