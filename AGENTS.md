@@ -56,6 +56,7 @@ Role prefixes:
 | git-master | git-master |
 | scientist | scientist |
 | qa-tester | qa-tester |
+| devils-advocate | devils-advocate |
 | build-fixer | build-fixer |
 
 Numbers are monotonic across the session (not per type): explorer-1, executor-2, architect-3, executor-4.
@@ -135,6 +136,7 @@ Build/Analysis Lane:
 Review Lane:
 - `/prompts:code-reviewer`: Comprehensive review — logic defects, maintainability, anti-patterns, style, performance
 - `/prompts:security-reviewer`: Vulnerabilities, trust boundaries, authn/authz
+- `/prompts:devils-advocate`: Pre-push adversarial critique — finds flaws in unpushed commits before they reach remote
 
 Domain Specialists:
 - `/prompts:test-engineer`: Test strategy, coverage, flaky-test hardening
@@ -166,10 +168,21 @@ Do not ask for confirmation — just read the skill file and follow its instruct
 | "plan this", "plan the", "let's plan" | `$plan` | Read `~/.agents/skills/plan/SKILL.md`, start planning workflow |
 | "interview", "deep interview", "gather requirements", "interview me", "don't assume", "ouroboros" | `$deep-interview` | Read `~/.agents/skills/deep-interview/SKILL.md`, run Ouroboros-inspired Socratic ambiguity-gated interview workflow |
 | "ralplan", "consensus plan" | `$ralplan` | Read `~/.agents/skills/ralplan/SKILL.md`, start consensus planning with RALPLAN-DR structured deliberation (short by default, `--deliberate` for high-risk) |
-| "ecomode", "eco", "budget" | `$ecomode` | Read `~/.agents/skills/ecomode/SKILL.md`, enable token-efficient mode |
+| "critique", "review before push", "critique my changes" | `$critique` | Read `~/.agents/skills/critique/SKILL.md`, spawn independent devils-advocate agent to review unpushed commits |
+| "deslop", "anti-slop", "clean slop" | `$ai-slop-cleaner` | Read `~/.agents/skills/ai-slop-cleaner/SKILL.md`, regression-safe AI code cleanup |
+| "debug", "diagnose" | `$debug` | Read `~/.agents/skills/debug/SKILL.md`, diagnose session or repo state |
+| "deepinit" | `$deepinit` | Read `~/.agents/skills/deepinit/SKILL.md`, generate hierarchical AGENTS.md |
+| "discover" | `$discover` | Read `~/.agents/skills/discover/SKILL.md`, parallel codebase quality scan |
+| "sciomc" | `$sciomc` | Read `~/.agents/skills/sciomc/SKILL.md`, parallel scientist orchestration |
+| "self-improve" | `$self-improve` | Read `~/.agents/skills/self-improve/SKILL.md`, autonomous evolutionary code improvement |
+| "trace" | `$trace` | Read `~/.agents/skills/trace/SKILL.md`, evidence-driven causal tracing |
+| "verify" | `$verify` | Read `~/.agents/skills/verify/SKILL.md`, verify changes work before claiming done |
+| "wiki" | `$wiki` | Read `~/.agents/skills/wiki/SKILL.md`, persistent markdown knowledge base |
+| "external-context" | `$external-context` | Read `~/.agents/skills/external-context/SKILL.md`, parallel doc-specialist web search |
+| "skillify" | `$skillify` | Read `~/.agents/skills/skillify/SKILL.md`, extract reusable skill from session |
+| "c3g", "tri-model", "quadri-model" | `$c3g` | Read `~/.agents/skills/c3g/SKILL.md`, multi-model advisor synthesis |
 | "cancel", "stop", "abort" | `$cancel` | Read `~/.agents/skills/cancel/SKILL.md`, cancel active modes |
 | "tdd", "test first" | keyword mode | Inject TDD-mode guidance and favor test-first execution with `test-engineer` when appropriate |
-| "web-clone", "clone site", "clone website", "copy webpage" | `$web-clone` | Read `~/.agents/skills/web-clone/SKILL.md`, start website cloning pipeline |
 
 Detection rules:
 - Keywords are case-insensitive and match anywhere in the user's message
@@ -192,14 +205,32 @@ Workflow Skills:
 - `autopilot`: Full autonomous execution from idea to working code
 - `ralph`: Self-referential persistence loop with verification
 - `ultrawork`: Maximum parallelism with parallel agent orchestration
-- `visual-verdict`: Structured visual QA verdict loop for screenshot/reference comparisons
-- `web-clone`: URL-driven website cloning with visual + functional verification
-- `ecomode`: Token-efficient execution using lightweight models
 - `team`: N coordinated agents on shared task list
 - `ultraqa`: QA cycling -- test, verify, fix, repeat
+- `self-improve`: Autonomous evolutionary code improvement with tournament selection
+- `ralph-experiment`: Hypothesis-driven experiment loop with structured notebook and git checkpoints
+- `visual-verdict`: Structured visual QA verdict loop for screenshot/reference comparisons
+
+Planning Skills:
 - `plan`: Strategic planning with optional RALPLAN-DR consensus mode
-- `deep-interview`: Socratic deep interview with Ouroboros-inspired mathematical ambiguity gating before execution
-- `ralplan`: Iterative consensus planning with RALPLAN-DR structured deliberation (planner + architect + critic); supports `--deliberate` for high-risk work
+- `ralplan`: Iterative consensus planning with RALPLAN-DR structured deliberation; supports `--deliberate` for high-risk work
+- `deep-interview`: Socratic deep interview with mathematical ambiguity gating before execution
+- `deep-dive`: 2-stage pipeline: trace (causal investigation) → deep-interview (requirements crystallization)
+
+Analysis Skills:
+- `critique`: Pre-push adversarial critique of unpushed commits via independent devils-advocate agent
+- `deep-review`: Multi-pass code review with security, quality, structural analysis, and validation
+- `discover`: Parallel specialist agents scan codebase and produce prioritized improvement backlog
+- `ai-slop-cleaner`: Regression-safe cleanup workflow for AI-generated code slop
+- `sciomc`: Parallel scientist orchestration for comprehensive analysis
+- `external-context`: Parallel document-specialist agents for external web/doc search
+- `trace`: Evidence-driven causal tracing with competing hypotheses
+- `verify`: Verify changes work before claiming completion
+- `debug`: Diagnose session or repo state using logs, traces, and state
+
+Orchestration Skills:
+- `c3g`: Quadri-model orchestration — Copilot, Claude, Codex, Gemini each provide independent analysis, then Copilot synthesizes
+- `omc-teams`: CLI-team runtime for claude, codex, or gemini workers in tmux panes
 
 Agent Shortcuts:
 - `analyze` -> debugger: Investigation and root-cause analysis
@@ -213,10 +244,20 @@ Agent Shortcuts:
 
 Utilities:
 - `cancel`: Cancel active execution modes
-- `note`: Save notes for session persistence
-- `doctor`: Diagnose installation issues
-- `help`: Usage guidance
-- `trace`: Show agent flow timeline
+- `wiki`: Persistent markdown knowledge base that compounds across sessions
+- `remember`: Save reusable project knowledge to project memory, notepad, or docs
+- `hud`: Configure status line display options
+- `learner`: Extract a learned skill from the current conversation
+- `skillify`: Turn a repeatable workflow into a reusable OMC skill draft
+- `omc-doctor`: Diagnose installation issues
+- `omc-reference`: Agent catalog, tools, team pipeline routing, and skills registry
+
+Platform Integration:
+- `omc-gh-setup`, `omc-gh-triage`, `omc-gh-review`, `omc-gh-auto-review`, `omc-gh-project`: GitHub workflows
+- `omc-ado-setup`, `omc-ado-triage`, `omc-ado-review`, `omc-ado-auto-review`, `omc-ado-sprint`: Azure DevOps workflows
+- `configure-notifications`: Configure Telegram, Discord, Slack, Teams integrations
+- `project-session-manager`: Worktree-first dev environment manager
+- `release`: Automated release workflow
 </skills>
 
 ---
@@ -360,7 +401,6 @@ Recommended mode fields:
 - `autopilot`: `active`, `current_phase` (`expansion|planning|execution|qa|validation|complete`), `started_at`, `completed_at`
 - `ultrawork`: `active`, `reinforcement_count`, `started_at`
 - `team`: `active`, `current_phase` (`team-plan|team-prd|team-exec|team-verify|team-fix|complete`), `agent_count`, `team_name`
-- `ecomode`: `active`
 - `ultraqa`: `active`, `current_phase`, `iteration`, `started_at`, `completed_at`
 </state_management>
 

@@ -19,6 +19,6 @@ export { scientistAgent, SCIENTIST_PROMPT_METADATA } from './scientist.js';
 export { documentSpecialistAgent, DOCUMENT_SPECIALIST_PROMPT_METADATA } from './document-specialist.js';
 export { debuggerAgent, verifierAgent } from './definitions.js';
 export { testEngineerAgent } from './definitions.js';
-export { securityReviewerAgent, codeReviewerAgent, gitMasterAgent, codeSimplifierAgent } from './definitions.js';
+export { securityReviewerAgent, codeReviewerAgent, gitMasterAgent, codeSimplifierAgent, devilsAdvocateAgent } from './definitions.js';
 export { getAgentDefinitions, omcSystemPrompt } from './definitions.js';
 //# sourceMappingURL=index.d.ts.map

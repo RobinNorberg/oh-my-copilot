@@ -38,6 +38,7 @@ export interface PluginConfig {
     codeSimplifier?: { model?: string };
     critic?: { model?: string };
     documentSpecialist?: { model?: string };
+    devilsAdvocate?: { model?: string };
   };
 
   // Feature toggles

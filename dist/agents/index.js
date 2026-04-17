@@ -24,8 +24,8 @@ export { documentSpecialistAgent, DOCUMENT_SPECIALIST_PROMPT_METADATA } from './
 export { debuggerAgent, verifierAgent } from './definitions.js';
 // Reformed agents (Domain Specialists)
 export { testEngineerAgent } from './definitions.js';
-// Specialized agents (Security, Code Review, Git, Code Simplifier)
-export { securityReviewerAgent, codeReviewerAgent, gitMasterAgent, codeSimplifierAgent } from './definitions.js';
+// Specialized agents (Security, Code Review, Git, Code Simplifier, Devil's Advocate)
+export { securityReviewerAgent, codeReviewerAgent, gitMasterAgent, codeSimplifierAgent, devilsAdvocateAgent } from './definitions.js';
 // Core exports (getAgentDefinitions and omcSystemPrompt)
 export { getAgentDefinitions, omcSystemPrompt } from './definitions.js';
 //# sourceMappingURL=index.js.map
