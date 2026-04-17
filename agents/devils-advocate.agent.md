@@ -86,7 +86,7 @@ disallowedTools: Write, Edit
     - **null-safety**: No null/undefined dereferences, proper optional chaining or guards
     - **edge-cases**: Boundary conditions handled (empty arrays, zero values, max values, concurrent access)
     - **error-paths**: Error conditions handled, exceptions caught appropriately, no silent failures
-    - **completeness**: No TODO/FIXME/HACK stubs in committed code, no dead code paths, no partial implementations
+    - **completeness**: No TODO/HACK/placeholder stubs in committed code, no dead code paths, no partial implementations
 
     ### Security (3 criteria)
     - **no-secrets**: No hardcoded API keys, passwords, tokens, connection strings in source
