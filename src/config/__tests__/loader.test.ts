@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  compactOmcStartupGuidance,
   generateConfigSchema,
   loadConfig,
   loadContextFromFiles,

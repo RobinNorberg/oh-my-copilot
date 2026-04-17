@@ -2,7 +2,7 @@
 
 This is a tiny runnable reference server for the company-context contract documented in:
 
-- [`docs/company-context-interface.md`](../../docs/company-context-interface.md)
+- [`docs/company-context-interface.md`](/mnt/offloading/Workspace/oh-my-claudecode.omx-worktrees/issue-2692-company-context-mcp-interface/docs/company-context-interface.md)
 
 It exposes exactly one tool:
 
@@ -16,10 +16,10 @@ From the repo root:
 node examples/vendor-mcp-server/server.mjs
 ```
 
-## Register with Copilot CLI
+## Register with Claude Code
 
 ```bash
-copilot mcp add company-context -- node examples/vendor-mcp-server/server.mjs
+claude mcp add company-context -- node examples/vendor-mcp-server/server.mjs
 ```
 
 Then configure OMC:
@@ -35,8 +35,8 @@ Then configure OMC:
 
 Use one of:
 
-- `.copilot/omg.jsonc`
-- `~/.config/copilot-omg/config.jsonc`
+- `.claude/omc.jsonc`
+- `~/.config/claude-omc/config.jsonc`
 
 ## Contract Notes
 
