@@ -15621,6 +15621,16 @@ function install(options = {}) {
         (0, import_fs29.chmodSync)(hudScriptPath, 493);
       }
       log3("  Installed omcp-hud.mjs");
+      for (const legacyName of ["omc-hud.mjs", "omc-hud.js"]) {
+        const legacyPath = (0, import_path38.join)(HUD_DIR, legacyName);
+        if ((0, import_fs29.existsSync)(legacyPath)) {
+          try {
+            (0, import_fs29.unlinkSync)(legacyPath);
+            log3(`  Removed legacy HUD wrapper: ${legacyName}`);
+          } catch {
+          }
+        }
+      }
     } catch (_e) {
       log3("  Warning: Could not install HUD statusline script (non-fatal)");
       hudScriptPath = null;

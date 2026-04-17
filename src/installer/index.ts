@@ -1820,6 +1820,23 @@ export function install(options: InstallOptions = {}): InstallResult {
         chmodSync(hudScriptPath, 0o755);
       }
       log('  Installed omcp-hud.mjs');
+
+      // Remove legacy HUD wrapper filenames left over from earlier OMC names.
+      // settings.json now points at `omcp-hud.mjs`; an orphan `omc-hud.mjs` or
+      // `omc-hud.js` in the same dir confuses the `/hud` skill's detection
+      // (issue observed on v4.11.8 where the skill misread the install state
+      // as "statusLine typo" and rewrote settings back to the legacy name).
+      for (const legacyName of ['omc-hud.mjs', 'omc-hud.js']) {
+        const legacyPath = join(HUD_DIR, legacyName);
+        if (existsSync(legacyPath)) {
+          try {
+            unlinkSync(legacyPath);
+            log(`  Removed legacy HUD wrapper: ${legacyName}`);
+          } catch {
+            // Non-fatal: if deletion fails the new wrapper is still in place.
+          }
+        }
+      }
     } catch (_e) {
       log('  Warning: Could not install HUD statusline script (non-fatal)');
       hudScriptPath = null;
