@@ -36,15 +36,15 @@
 # or
 npm i -g oh-my-copilot@latest
 
-
 # Step 2: Setup
 /omc-setup
-
 
 # Step 3: Build something
 /autopilot: build a todo-app
 # or
 autopilot: build a todo-app
+
+# If you enjoy the output, give the repo att ⭐ and tell a friend 
 ```
 
 ### Not Sure Where to Start?
@@ -86,32 +86,46 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `c3g` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `c3g review this PR` |
 | `omcp team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omcp team 2:codex "security review"` |
 | `code review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Code review mode | `code review the auth module` |
+| `critique` | ![analysis](https://img.shields.io/badge/analysis-purple) | Pre-push adversarial critique | `critique my changes` |
+| `debug`, `diagnose` | ![analysis](https://img.shields.io/badge/analysis-purple) | Session/repo diagnostics | `debug why hooks aren't firing` |
 | `deep-analyze` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep analysis mode | `deep-analyze why tests are failing` |
 | `deep-dive` | ![analysis](https://img.shields.io/badge/analysis-purple) | Trace → interview pipeline | `deep-dive why auth is slow` |
+| `deepinit` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep codebase init with AGENTS.md | `deepinit` |
 | `deep-interview` | ![analysis](https://img.shields.io/badge/analysis-purple) | Socratic requirements clarification | `deep-interview "vague idea"` |
 | `deep-review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Multi-pass code review (4 passes) | `deep-review this PR` |
 | `deepsearch` | ![analysis](https://img.shields.io/badge/analysis-purple) | Codebase-focused search routing | `deepsearch for auth middleware` |
+| `deslop`, `anti-slop` | ![analysis](https://img.shields.io/badge/analysis-purple) | AI code slop cleanup | `deslop the auth module` |
 | `discover` | ![analysis](https://img.shields.io/badge/analysis-purple) | Parallel codebase quality scan | `discover src/hooks/` |
+| `external-context` | ![analysis](https://img.shields.io/badge/analysis-purple) | Parallel external doc/web search | `external-context React Server Components` |
+| `sciomc` | ![analysis](https://img.shields.io/badge/analysis-purple) | Parallel scientist orchestration | `sciomc analyze test failures` |
 | `security review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Security review mode | `security review the API endpoints` |
 | `tdd`, `test first` | ![analysis](https://img.shields.io/badge/analysis-purple) | TDD workflow enforcement | `tdd: implement password validation` |
+| `trace` | ![analysis](https://img.shields.io/badge/analysis-purple) | Evidence-driven causal tracing | `trace why auth is broken` |
+| `verify` | ![analysis](https://img.shields.io/badge/analysis-purple) | Verify changes work before claiming done | `verify the fix` |
 | `ultrathink` | ![analysis](https://img.shields.io/badge/analysis-purple) | Deep reasoning mode | `ultrathink about this architecture` |
 | `ralplan` | ![planning](https://img.shields.io/badge/planning-orange) | Iterative planning consensus | `ralplan this feature` |
 | `autopilot` | ![execution](https://img.shields.io/badge/execution-green) | Full autonomous execution | `autopilot: build a todo app` |
+| `cancelomc`, `stopomc` | ![execution](https://img.shields.io/badge/execution-green) | Stop active OMC modes | `stopomc` |
 | `experiment` | ![execution](https://img.shields.io/badge/execution-green) | Hypothesis-driven experiment loop | `experiment: optimize API latency` |
 | `ralph` | ![execution](https://img.shields.io/badge/execution-green) | Persistence mode | `ralph: refactor auth` |
 | `ralphthon` | ![execution](https://img.shields.io/badge/execution-green) | Autonomous hackathon mode | `ralphthon: build MVP in 2 hours` |
+| `self-improve` | ![execution](https://img.shields.io/badge/execution-green) | Autonomous evolutionary code improvement | `self-improve the parser module` |
+| `skillify` | ![execution](https://img.shields.io/badge/execution-green) | Extract reusable skill from session | `skillify this workflow` |
 | `ulw` | ![execution](https://img.shields.io/badge/execution-green) | Maximum parallelism | `ulw fix all errors` |
 | `gh setup` | ![github](https://img.shields.io/badge/github-blue) | Configure GitHub integration | `gh setup` |
 | `gh triage` | ![github](https://img.shields.io/badge/github-blue) | GitHub issue/PR/CI triage | `gh triage` |
 | `gh review` | ![github](https://img.shields.io/badge/github-blue) | Interactive GitHub PR review | `gh review` |
 | `gh auto-review` | ![github](https://img.shields.io/badge/github-blue) | Automated code review via code-reviewer agent | `gh auto-review` |
 | `gh project` | ![github](https://img.shields.io/badge/github-blue) | Manage GitHub Projects (v2) boards | `gh project` |
+| `ado sprint` | ![devops](https://img.shields.io/badge/devops-gray) | Sprint planning and iteration management | `ado sprint` |
 | `ado setup` | ![devops](https://img.shields.io/badge/devops-gray) | Configure Azure DevOps integration | `ado setup` |
 | `ado triage` | ![devops](https://img.shields.io/badge/devops-gray) | Azure DevOps work item triage | `ado triage` |
 | `ado review` | ![devops](https://img.shields.io/badge/devops-gray) | Interactive Azure DevOps PR review | `ado review` |
 | `ado auto-review` | ![devops](https://img.shields.io/badge/devops-gray) | Automated code review via code-reviewer agent | `ado auto-review` |
-| `ado sprint` | ![devops](https://img.shields.io/badge/devops-gray) | Sprint planning and iteration management | `ado sprint` |
-| `cancelomc`, `stopomc` | ![control](https://img.shields.io/badge/control-gray) | Stop active OMC modes | `stopomc` |
+| `hud` | ![utility](https://img.shields.io/badge/utility-lightgray) | Configure status line display | `hud preset minimal` |
+| `learner` | ![utility](https://img.shields.io/badge/utility-lightgray) | Learn a skill from the current conversation | `learner` |
+| `remember` | ![utility](https://img.shields.io/badge/utility-lightgray) | Save reusable project knowledge | `remember this pattern` |
+| `wiki` | ![utility](https://img.shields.io/badge/utility-lightgray) | Persistent markdown knowledge base | `wiki add auth architecture notes` |
 
 **Notes:**
 

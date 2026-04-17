@@ -37,8 +37,12 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 
 | File | Skill | Purpose |
 |-----------|-------|---------|
+| `critique/SKILL.md` | critique | Pre-push adversarial critique of unpushed commits via independent devils-advocate agent |
 | `deep-review/SKILL.md` | deep-review | Multi-pass code review with security, quality, structural analysis, and validation |
 | `discover/SKILL.md` | discover | Spawn parallel specialist agents to scan the codebase and produce a prioritized improvement backlog |
+| `trace/SKILL.md` | trace | Evidence-driven causal tracing with competing hypotheses |
+| `verify/SKILL.md` | verify | Verify changes work before claiming completion |
+| `debug/SKILL.md` | debug | Diagnose session or repo state using logs, traces, state, and focused reproduction |
 
 ### Exploration Skills
 
@@ -47,6 +51,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `deepinit/SKILL.md` | deepinit | Generate hierarchical AGENTS.md |
 | `sciomc/SKILL.md` | sciomc | Parallel scientist orchestration |
 | `external-context/SKILL.md` | external-context | Parallel document-specialist agents for external web searches and documentation lookup |
+| `self-improve/SKILL.md` | self-improve | Autonomous evolutionary code improvement engine with tournament selection |
 
 ### Visual Skills
 
@@ -96,11 +101,15 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `learner/SKILL.md` | learner | Extract reusable skill from session |
 | `ask/SKILL.md` | ask | Ask Copilot, Codex, or Gemini via `omcp ask` and capture an artifact |
 | `cancel/SKILL.md` | cancel | Cancel any active OMC mode |
+| `hud/SKILL.md` | hud | Configure HUD display options (layout, presets, display elements) |
 | `omc-doctor/SKILL.md` | omc-doctor | Diagnose installation issues |
+| `remember/SKILL.md` | remember | Review reusable project knowledge and decide what belongs in project memory, notepad, or docs |
 | `setup/SKILL.md` | setup | Unified setup entrypoint for install, diagnostics, and MCP configuration |
 | `omc-setup/SKILL.md` | omc-setup | One-time setup wizard |
 | `mcp-setup/SKILL.md` | mcp-setup | Configure MCP servers |
 | `skill/SKILL.md` | skill | Manage local skills |
+| `skillify/SKILL.md` | skillify | Turn a repeatable workflow into a reusable OMC skill draft |
+| `wiki/SKILL.md` | wiki | Persistent markdown knowledge base that compounds across sessions |
 
 ### Domain Skills
 
@@ -223,17 +232,17 @@ None - pure markdown files.
 
 | Category | Skills | Trigger Keywords |
 |----------|--------|------------------|
-| Execution | autopilot, ultrawork, ralph, team, ultraqa, ralph-experiment | "autopilot", "ulw", "ralph" |
+| Execution | autopilot, ultrawork, ralph, team, ultraqa, ralph-experiment, self-improve | "autopilot", "ulw", "ralph", "self-improve" |
 | Planning | omc-plan, ralplan, deep-interview, deep-dive | "ralplan", "deep-interview", "ouroboros" |
-| Analysis | deep-review, discover | "code review", "security review" |
-| Exploration | deepinit, sciomc, external-context | "deepsearch", "deep-analyze" |
+| Analysis | critique, deep-review, discover, debug, trace, verify | "critique", "code review", "security review", "trace", "verify", "debug" |
+| Exploration | deepinit, sciomc, external-context | "deepinit", "sciomc", "external-context" |
 | Orchestration | c3g, omc-teams, omc-reference | "c3g", "ask codex", "ask gemini", "ask claude" |
 | Visual | visual-verdict | screenshot QA |
 | Cleanup | ai-slop-cleaner | "deslop", "anti-slop" |
 | Azure DevOps | omc-ado-setup, omc-ado-review, omc-ado-auto-review, omc-ado-sprint, omc-ado-triage | "ado setup", "ado triage" |
 | GitHub | omc-gh-setup, omc-gh-triage, omc-gh-review, omc-gh-auto-review, omc-gh-project | "gh setup", "gh triage", "gh review" |
 | Notifications | configure-notifications | "configure discord", "setup telegram" |
-| Utility | learner, ask, cancel, setup, omc-doctor, omc-setup, mcp-setup, skill | "cancelomc", "stopomc" |
+| Utility | learner, ask, cancel, setup, omc-doctor, omc-setup, mcp-setup, skill, skillify, wiki, hud, remember | "cancelomc", "stopomc", "wiki", "skillify" |
 | Domain | project-session-manager, writer-memory, release | psm context |
 
 ## Auto-Activation
@@ -246,6 +255,13 @@ Some skills activate automatically based on context:
 | ultrawork | "ulw", "ultrawork" |
 | ralph | "ralph", "don't stop until" |
 | deep-interview | "deep interview", "interview me", "ouroboros", "don't assume" |
+| critique | "critique", "review before push", "critique my changes" |
+| self-improve | "self-improve" |
+| ai-slop-cleaner | "deslop", "anti-slop", "clean slop" |
+| discover | "discover" |
+| trace | "trace" |
+| verify | "verify" |
+| wiki | "wiki" |
 | cancel | "stop", "cancel", "abort" |
 
 <!-- MANUAL:
