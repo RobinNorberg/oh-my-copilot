@@ -7,7 +7,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, rmSync, mkdirSync, writeFileSync, symlinkSync, lstatSync, readlinkSync, unlinkSync, renameSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, basename } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getClaudeConfigDir } from './lib/config-dir.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
@@ -567,8 +567,9 @@ ${cleanContent}
     // plugin update whose CLAUDE_PLUGIN_ROOT still points to the old version.
     try {
       const cacheBase = join(configDir, 'plugins', 'cache', 'omg', 'oh-my-copilot');
+      let versions = [];
       if (existsSync(cacheBase)) {
-        const versions = readdirSync(cacheBase)
+        versions = readdirSync(cacheBase)
           .filter(v => /^\d+\.\d+\.\d+/.test(v))
           .sort(semverCompare)
           .reverse();
@@ -623,6 +624,43 @@ ${cleanContent}
               // lstatSync / rmSync / unlinkSync failure — leave old directory as-is.
             }
           }
+        }
+      }
+
+      // Guard against CLAUDE_PLUGIN_ROOT pointing to a stale/deleted version.
+      // When an old version directory is removed during upgrade but a running
+      // session still has the old CLAUDE_PLUGIN_ROOT in its environment, the
+      // directory won't exist. Create a symlink so subsequent hook invocations
+      // via run.cjs resolve correctly.
+      const pluginRootEnv = process.env.CLAUDE_PLUGIN_ROOT?.replace(/[\/\\]+$/, ''); // strip trailing separators
+      if (pluginRootEnv && !existsSync(pluginRootEnv)) {
+        const pluginRootVersion = basename(pluginRootEnv);
+        if (/^\d+\.\d+\.\d+/.test(pluginRootVersion) && versions.length > 0) {
+          const latest = versions[0];
+          const stalePath = pluginRootEnv;
+          const isWin = process.platform === 'win32';
+          // Always use absolute path to avoid symlink target resolution issues
+          // when stalePath is not under cacheBase (e.g., after config-dir move)
+          const symlinkTarget = join(cacheBase, latest);
+          try {
+            // Atomic: create temp symlink then rename over stale path
+            const tmpLink = stalePath + '.tmp.' + process.pid;
+            // Ensure parent dir exists (stalePath may reference a deleted config tree)
+            const parentDir = dirname(stalePath);
+            if (!existsSync(parentDir)) {
+              try { mkdirSync(parentDir, { recursive: true }); } catch {}
+            }
+            symlinkSync(symlinkTarget, tmpLink, isWin ? 'junction' : undefined);
+            try {
+              renameSync(tmpLink, stalePath);
+            } catch {
+              try { unlinkSync(tmpLink); } catch {}
+              // Remove any pre-existing dangling symlink/junction at stalePath
+              // before recreating, otherwise symlinkSync throws EEXIST
+              try { unlinkSync(stalePath); } catch {}
+              symlinkSync(symlinkTarget, stalePath, isWin ? 'junction' : undefined);
+            }
+          } catch {}
         }
       }
     } catch {}

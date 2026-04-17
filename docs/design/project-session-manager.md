@@ -58,7 +58,7 @@ PSM provides a unified interface to:
 /psm review omc#123
 
 # Review PR from any GitHub URL
-/psm review https://github.com/anthropics/copilot-cli/pull/456
+/psm review https://github.com/github/copilot-cli/pull/456
 
 # Review with specific focus
 /psm review omc#123 --focus "security implications"
@@ -81,7 +81,7 @@ PSM provides a unified interface to:
 /psm fix omc#42 --branch fix/auth-timeout
 
 # Fix from issue URL
-/psm fix https://github.com/anthropics/copilot-cli/issues/789
+/psm fix https://github.com/github/copilot-cli/issues/789
 ```
 
 **What happens:**
@@ -207,10 +207,10 @@ PSM supports multiple reference formats:
 omc#123
 
 # Full GitHub reference
-anthropics/copilot-cli#123
+github/copilot-cli#123
 
 # GitHub URL
-https://github.com/anthropics/copilot-cli/pull/123
+https://github.com/github/copilot-cli/pull/123
 
 # Local path
 /path/to/repo#123
@@ -226,12 +226,12 @@ https://github.com/anthropics/copilot-cli/pull/123
 {
   "aliases": {
     "omc": {
-      "repo": "anthropics/oh-my-copilot",
+      "repo": "RobinNorberg/oh-my-copilot",
       "local": "~/Workspace/oh-my-copilot",
       "default_base": "main"
     },
     "cc": {
-      "repo": "anthropics/copilot-cli",
+      "repo": "github/copilot-cli",
       "local": "~/Workspace/copilot-cli",
       "default_base": "main"
     },
@@ -400,7 +400,7 @@ User Command
     "pr_number": 123,
     "pr_title": "Add webhook support",
     "pr_author": "contributor",
-    "pr_url": "https://github.com/anthropics/oh-my-copilot/pull/123"
+    "pr_url": "https://github.com/RobinNorberg/oh-my-copilot/pull/123"
   },
   "state": "active",
   "notes": []

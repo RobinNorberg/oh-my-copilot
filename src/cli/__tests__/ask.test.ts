@@ -329,7 +329,9 @@ describe('omcp ask command', () => {
 
       expect(result.error).toBeUndefined();
       expect(result.status).toBe(0);
-      expect(result.stderr).toBe('');
+      // Filter Node.js DEP0190 deprecation warning about shell:true with args (Windows)
+      const stderrFiltered = result.stderr.replace(/\(node:\d+\) \[DEP0190\][\s\S]*?\n(\(Use .*?\n)?/g, '').trim();
+      expect(stderrFiltered).toBe('');
 
       const payload = JSON.parse(result.stdout);
       expect(payload).toEqual({

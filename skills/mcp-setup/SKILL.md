@@ -11,20 +11,55 @@ Configure Model Context Protocol (MCP) servers to extend Copilot CLI's capabilit
 
 MCP servers provide additional tools that Copilot CLI agents can use. This skill helps you configure popular MCP servers using the `copilot mcp add` command-line interface.
 
-## Step 1: Show Available MCP Servers
+## Step 1: Choose a Setup Path
 
-Present the user with available MCP server options using AskUserQuestion:
+Use **AskUserQuestion** with **one question at a time** and **no more than 3 options per question**. Recent Copilot CLI builds reject larger option payloads as invalid tool parameters, so keep the MCP selection flow staged.
 
-**Question:** "Which MCP server would you like to configure?"
+### Step 1.1: First menu
+
+**Question:** "What kind of MCP setup would you like?"
 
 **Options:**
-1. **Context7** - Documentation and code context from popular libraries
-2. **Exa Web Search** - Enhanced web search (replaces built-in websearch)
-3. **lean-ctx** - Token-saving compression layer for Read/Grep/Bash tools
-4. **GitHub** - GitHub API integration for issues, PRs, and repository management
-5. **Azure DevOps** - Work items, repos, pipelines, wiki, and test plans
-6. **All of the above** - Configure all recommended MCP servers
-7. **Custom** - Add a custom MCP server
+1. **Recommended starter setup** - Fast path for the most common OMCP MCP additions
+2. **Individual popular server** - Pick one built-in server from a short follow-up menu
+3. **Custom server** - Add your own stdio or HTTP MCP server
+
+### Step 1.2: If the user chooses "Recommended starter setup"
+
+Ask a follow-up **AskUserQuestion**:
+
+**Question:** "Which recommended MCP bundle should I configure?"
+
+**Options:**
+1. **Context7 only (Recommended)** - Zero-config docs/context server
+2. **Context7 + lean-ctx** - Docs/context plus token-saving compression layer
+3. **Full recommended bundle** - Context7, lean-ctx, Exa, and GitHub
+
+Map that choice to the server list you will configure.
+
+### Step 1.3: If the user chooses "Individual popular server"
+
+Ask a follow-up **AskUserQuestion**:
+
+**Question:** "Which server should I configure first?"
+
+**Options:**
+1. **Context7 (Recommended)** - Documentation and code context from popular libraries
+2. **lean-ctx** - Token-saving compression layer for Read/Grep/Bash tools
+3. **More server choices** - Exa, GitHub, Azure DevOps, or the full recommended bundle
+
+If the user chooses **More server choices**, ask one more **AskUserQuestion**:
+
+**Question:** "Which additional MCP option do you want?"
+
+**Options:**
+1. **Exa Web Search** - Enhanced web search (replaces built-in websearch)
+2. **GitHub / Azure DevOps** - Repository and project management integration
+3. **Full recommended bundle** - Configure Context7, lean-ctx, Exa, and GitHub together
+
+### Step 1.4: If the user chooses "Custom server"
+
+Skip directly to the **Custom MCP Server** section below.
 
 ## Step 2: Gather Required Information
 

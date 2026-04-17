@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
-import { getCopilotConfigDir } from '../utils/config-dir.js';
+import { getClaudeConfigDir } from '../utils/config-dir.js';
 import { getGlobalOmcConfigPath, getGlobalOmcConfigCandidates, getGlobalOmcStatePath, getGlobalOmcStateCandidates, } from '../utils/paths.js';
 const MANAGED_START = '# BEGIN OMC MANAGED MCP REGISTRY';
 const MANAGED_END = '# END OMC MANAGED MCP REGISTRY';
+const DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC = 15;
 export function getUnifiedMcpRegistryPath() {
     return process.env.OMC_MCP_REGISTRY_PATH?.trim() || getGlobalOmcConfigPath('mcp-registry.json');
 }
@@ -20,11 +21,11 @@ function getUnifiedMcpRegistryPathCandidates() {
 function getUnifiedMcpRegistryStatePathCandidates() {
     return getGlobalOmcStateCandidates('mcp-registry-state.json');
 }
-export function getCopilotMcpConfigPath() {
-    if (process.env.COPILOT_MCP_CONFIG_PATH?.trim()) {
-        return process.env.COPILOT_MCP_CONFIG_PATH.trim();
+export function getClaudeMcpConfigPath() {
+    if (process.env.CLAUDE_MCP_CONFIG_PATH?.trim()) {
+        return process.env.CLAUDE_MCP_CONFIG_PATH.trim();
     }
-    return join(dirname(getCopilotConfigDir()), '.copilot.json');
+    return join(dirname(getClaudeConfigDir()), '.claude.json');
 }
 export function getCodexConfigPath() {
     const codexHome = process.env.CODEX_HOME?.trim() || join(homedir(), '.codex');
@@ -36,8 +37,32 @@ function isStringRecord(value) {
         && !Array.isArray(value)
         && Object.values(value).every(item => typeof item === 'string');
 }
+const RETIRED_TEAM_MCP_PATH_PATTERN = /(^|[\\/])bridge[\\/]+team-mcp\.cjs$/i;
+function isRetiredTeamMcpEntry(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return false;
+    }
+    const raw = value;
+    const args = Array.isArray(raw.args) && raw.args.every(item => typeof item === 'string')
+        ? raw.args
+        : [];
+    return args.some(arg => RETIRED_TEAM_MCP_PATH_PATTERN.test(arg));
+}
+function launcherCommandBasename(command) {
+    return command.replace(/\\/g, '/').trim().split('/').pop()?.toLowerCase() ?? '';
+}
+function isLauncherBackedMcpCommand(command, args) {
+    const base = launcherCommandBasename(command);
+    if (base === 'npx' || base === 'uvx') {
+        return true;
+    }
+    return base === 'npm' && args[0]?.toLowerCase() === 'exec';
+}
 function normalizeRegistryEntry(value) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        return null;
+    }
+    if (isRetiredTeamMcpEntry(value)) {
         return null;
     }
     const raw = value;
@@ -52,17 +77,18 @@ function normalizeRegistryEntry(value) {
     }
     const args = Array.isArray(raw.args) && raw.args.every(item => typeof item === 'string')
         ? [...raw.args]
-        : undefined;
+        : [];
     const env = isStringRecord(raw.env) ? { ...raw.env } : undefined;
     const timeout = typeof raw.timeout === 'number' && Number.isFinite(raw.timeout) && raw.timeout > 0
         ? raw.timeout
         : undefined;
+    const effectiveTimeout = timeout ?? (command && isLauncherBackedMcpCommand(command, args) ? DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC : undefined);
     return {
         ...(command ? { command } : {}),
-        ...(args && args.length > 0 ? { args } : {}),
+        ...(args.length > 0 ? { args } : {}),
         ...(env && Object.keys(env).length > 0 ? { env } : {}),
         ...(url ? { url } : {}),
-        ...(timeout ? { timeout } : {}),
+        ...(effectiveTimeout ? { timeout: effectiveTimeout } : {}),
     };
 }
 function normalizeRegistry(value) {
@@ -81,8 +107,34 @@ function normalizeRegistry(value) {
     }
     return Object.fromEntries(Object.entries(entries).sort(([left], [right]) => left.localeCompare(right)));
 }
-export function extractCopilotMcpRegistry(settings) {
+export function extractClaudeMcpRegistry(settings) {
     return normalizeRegistry(settings.mcpServers);
+}
+export function stripRetiredTeamMcpServers(settings) {
+    const mcpServers = settings.mcpServers;
+    if (!mcpServers || typeof mcpServers !== 'object' || Array.isArray(mcpServers)) {
+        return { settings, changed: false };
+    }
+    let changed = false;
+    const nextServers = {};
+    for (const [name, entry] of Object.entries(mcpServers)) {
+        if (isRetiredTeamMcpEntry(entry)) {
+            changed = true;
+            continue;
+        }
+        nextServers[name] = entry;
+    }
+    if (!changed) {
+        return { settings, changed: false };
+    }
+    const nextSettings = { ...settings };
+    if (Object.keys(nextServers).length === 0) {
+        delete nextSettings.mcpServers;
+    }
+    else {
+        nextSettings.mcpServers = nextServers;
+    }
+    return { settings: nextSettings, changed: true };
 }
 function loadRegistryFromDisk(path) {
     try {
@@ -120,8 +172,8 @@ function writeManagedServerNames(serverNames) {
     ensureParentDir(statePath);
     writeFileSync(statePath, JSON.stringify({ managedServers: [...serverNames].sort((a, b) => a.localeCompare(b)) }, null, 2));
 }
-function bootstrapRegistryFromCopilot(settings, registryPath) {
-    const registry = extractCopilotMcpRegistry(settings);
+function bootstrapRegistryFromClaude(settings, registryPath) {
+    const registry = extractClaudeMcpRegistry(settings);
     if (Object.keys(registry).length === 0) {
         return {};
     }
@@ -135,22 +187,22 @@ function loadOrBootstrapRegistry(settings) {
             return {
                 registry: loadRegistryFromDisk(registryPath),
                 registryExists: true,
-                bootstrappedFromCopilot: false,
+                bootstrappedFromClaude: false,
             };
         }
     }
     const registryPath = getUnifiedMcpRegistryPath();
-    const registry = bootstrapRegistryFromCopilot(settings, registryPath);
+    const registry = bootstrapRegistryFromClaude(settings, registryPath);
     return {
         registry,
         registryExists: Object.keys(registry).length > 0,
-        bootstrappedFromCopilot: Object.keys(registry).length > 0,
+        bootstrappedFromClaude: Object.keys(registry).length > 0,
     };
 }
 function entriesEqual(left, right) {
     return JSON.stringify(left) === JSON.stringify(right);
 }
-export function applyRegistryToCopilotSettings(settings) {
+export function applyRegistryToClaudeSettings(settings) {
     const nextSettings = { ...settings };
     const changed = Object.prototype.hasOwnProperty.call(nextSettings, 'mcpServers');
     delete nextSettings.mcpServers;
@@ -159,8 +211,8 @@ export function applyRegistryToCopilotSettings(settings) {
         changed,
     };
 }
-function syncCopilotMcpConfig(existingCopilotConfig, registry, managedServerNames = [], legacySettingsServers = {}) {
-    const existingServers = extractCopilotMcpRegistry(existingCopilotConfig);
+function syncClaudeMcpConfig(existingClaudeConfig, registry, managedServerNames = [], legacySettingsServers = {}) {
+    const existingServers = extractClaudeMcpRegistry(existingClaudeConfig);
     const nextServers = { ...legacySettingsServers, ...existingServers };
     for (const managedName of managedServerNames) {
         delete nextServers[managedName];
@@ -168,16 +220,16 @@ function syncCopilotMcpConfig(existingCopilotConfig, registry, managedServerName
     for (const [name, entry] of Object.entries(registry)) {
         nextServers[name] = entry;
     }
-    const nextCopilotConfig = { ...existingCopilotConfig };
+    const nextClaudeConfig = { ...existingClaudeConfig };
     if (Object.keys(nextServers).length === 0) {
-        delete nextCopilotConfig.mcpServers;
+        delete nextClaudeConfig.mcpServers;
     }
     else {
-        nextCopilotConfig.mcpServers = nextServers;
+        nextClaudeConfig.mcpServers = nextServers;
     }
     return {
-        copilotConfig: nextCopilotConfig,
-        changed: !entriesEqual(existingCopilotConfig, nextCopilotConfig),
+        claudeConfig: nextClaudeConfig,
+        changed: !entriesEqual(existingClaudeConfig, nextClaudeConfig),
     };
 }
 function escapeTomlString(value) {
@@ -340,22 +392,22 @@ function parseCodexMcpRegistryEntries(content) {
 }
 export function syncUnifiedMcpRegistryTargets(settings) {
     const registryPath = getUnifiedMcpRegistryPath();
-    const copilotConfigPath = getCopilotMcpConfigPath();
+    const claudeConfigPath = getClaudeMcpConfigPath();
     const codexConfigPath = getCodexConfigPath();
     const managedServerNames = readManagedServerNames();
-    const legacyCopilotRegistry = extractCopilotMcpRegistry(settings);
-    const currentCopilotConfig = readJsonObject(copilotConfigPath);
-    const copilotConfigForBootstrap = Object.keys(extractCopilotMcpRegistry(currentCopilotConfig)).length > 0
-        ? currentCopilotConfig
+    const legacyClaudeRegistry = extractClaudeMcpRegistry(settings);
+    const currentClaudeConfig = readJsonObject(claudeConfigPath);
+    const claudeConfigForBootstrap = Object.keys(extractClaudeMcpRegistry(currentClaudeConfig)).length > 0
+        ? currentClaudeConfig
         : settings;
-    const registryState = loadOrBootstrapRegistry(copilotConfigForBootstrap);
+    const registryState = loadOrBootstrapRegistry(claudeConfigForBootstrap);
     const registry = registryState.registry;
     const serverNames = Object.keys(registry);
-    const cleanedSettings = applyRegistryToCopilotSettings(settings);
-    const copilotSync = syncCopilotMcpConfig(currentCopilotConfig, registry, managedServerNames, legacyCopilotRegistry);
-    if (copilotSync.changed) {
-        ensureParentDir(copilotConfigPath);
-        writeFileSync(copilotConfigPath, JSON.stringify(copilotSync.copilotConfig, null, 2));
+    const cleanedSettings = applyRegistryToClaudeSettings(settings);
+    const claude = syncClaudeMcpConfig(currentClaudeConfig, registry, managedServerNames, legacyClaudeRegistry);
+    if (claude.changed) {
+        ensureParentDir(claudeConfigPath);
+        writeFileSync(claudeConfigPath, JSON.stringify(claude.claudeConfig, null, 2));
     }
     let codexChanged = false;
     const currentCodexConfig = existsSync(codexConfigPath) ? readFileSync(codexConfigPath, 'utf-8') : '';
@@ -365,19 +417,19 @@ export function syncUnifiedMcpRegistryTargets(settings) {
         writeFileSync(codexConfigPath, nextCodexConfig.content);
         codexChanged = true;
     }
-    if (registryState.registryExists || Object.keys(legacyCopilotRegistry).length > 0 || managedServerNames.length > 0) {
+    if (registryState.registryExists || Object.keys(legacyClaudeRegistry).length > 0 || managedServerNames.length > 0) {
         writeManagedServerNames(serverNames);
     }
     return {
         settings: cleanedSettings.settings,
         result: {
             registryPath,
-            copilotConfigPath,
+            claudeConfigPath,
             codexConfigPath,
             registryExists: registryState.registryExists,
-            bootstrappedFromCopilot: registryState.bootstrappedFromCopilot,
+            bootstrappedFromClaude: registryState.bootstrappedFromClaude,
             serverNames,
-            copilotChanged: cleanedSettings.changed || copilotSync.changed,
+            claudeChanged: cleanedSettings.changed || claude.changed,
             codexChanged,
         },
     };
@@ -398,38 +450,38 @@ function readJsonObject(path) {
 }
 export function inspectUnifiedMcpRegistrySync() {
     const registryPath = getUnifiedMcpRegistryPath();
-    const copilotConfigPath = getCopilotMcpConfigPath();
+    const claudeConfigPath = getClaudeMcpConfigPath();
     const codexConfigPath = getCodexConfigPath();
     if (!existsSync(registryPath)) {
         return {
             registryPath,
-            copilotConfigPath,
+            claudeConfigPath,
             codexConfigPath,
             registryExists: false,
             serverNames: [],
-            copilotMissing: [],
-            copilotMismatched: [],
+            claudeMissing: [],
+            claudeMismatched: [],
             codexMissing: [],
             codexMismatched: [],
         };
     }
     const registry = loadRegistryFromDisk(registryPath);
     const serverNames = Object.keys(registry);
-    const copilotSettings = readJsonObject(copilotConfigPath);
-    const copilotEntries = extractCopilotMcpRegistry(copilotSettings);
+    const claudeSettings = readJsonObject(claudeConfigPath);
+    const claudeEntries = extractClaudeMcpRegistry(claudeSettings);
     const codexEntries = existsSync(codexConfigPath)
         ? parseCodexMcpRegistryEntries(readFileSync(codexConfigPath, 'utf-8'))
         : {};
-    const copilotMissing = [];
-    const copilotMismatched = [];
+    const claudeMissing = [];
+    const claudeMismatched = [];
     const codexMissing = [];
     const codexMismatched = [];
     for (const [name, entry] of Object.entries(registry)) {
-        if (!copilotEntries[name]) {
-            copilotMissing.push(name);
+        if (!claudeEntries[name]) {
+            claudeMissing.push(name);
         }
-        else if (!entriesEqual(copilotEntries[name], entry)) {
-            copilotMismatched.push(name);
+        else if (!entriesEqual(claudeEntries[name], entry)) {
+            claudeMismatched.push(name);
         }
         if (!codexEntries[name]) {
             codexMissing.push(name);
@@ -440,12 +492,12 @@ export function inspectUnifiedMcpRegistrySync() {
     }
     return {
         registryPath,
-        copilotConfigPath,
+        claudeConfigPath,
         codexConfigPath,
         registryExists: true,
         serverNames,
-        copilotMissing,
-        copilotMismatched,
+        claudeMissing,
+        claudeMismatched,
         codexMissing,
         codexMismatched,
     };

@@ -4,12 +4,12 @@
  * Provides common logic for:
  * - CLI argument parsing
  * - Fixture/ground-truth loading
- * - Anthropic API calls with retry
+ * - Copilot SDK calls via @github/copilot-sdk
  * - Console formatting
  * - Report generation and file output
  */
 
-import Anthropic from '@anthropic-ai/sdk';
+import { CopilotClient, approveAll } from '@github/copilot-sdk';
 import {
   readFileSync,
   writeFileSync,
@@ -206,7 +206,7 @@ export function loadAgentPrompt(
 }
 
 // ============================================================
-// Copilot API call
+// Copilot SDK client
 // ============================================================
 
 async function sleep(ms: number): Promise<void> {
@@ -219,8 +219,38 @@ export interface ApiCallResult {
   outputTokens: number;
 }
 
+let sharedClient: CopilotClient | null = null;
+
+/**
+ * Get or create a shared CopilotClient for the benchmark run.
+ * The client is reused across all calls to avoid repeated CLI startup.
+ */
+async function getClient(): Promise<CopilotClient> {
+  if (!sharedClient) {
+    sharedClient = new CopilotClient();
+    await sharedClient.start();
+  }
+  return sharedClient;
+}
+
+/**
+ * Shut down the shared CopilotClient. Call at the end of a benchmark run.
+ */
+export async function shutdownClient(): Promise<void> {
+  if (sharedClient) {
+    await sharedClient.stop();
+    sharedClient = null;
+  }
+}
+
+/**
+ * Call the Copilot CLI via @github/copilot-sdk with retry logic.
+ *
+ * Creates a session with the given system prompt and model, sends the
+ * user message, and returns the response text. Token usage is not
+ * directly exposed by the Copilot SDK, so counters report 0.
+ */
 export async function callCopilot(
-  client: Anthropic,
   systemPrompt: string,
   userMessage: string,
   model: string,
@@ -228,27 +258,30 @@ export async function callCopilot(
 ): Promise<ApiCallResult> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const response = await client.messages.create({
+      const client = await getClient();
+      const session = await client.createSession({
         model,
-        max_tokens: 8192,
-        system: systemPrompt,
-        messages: [
-          {
-            role: 'user',
-            content: userMessage,
-          },
-        ],
+        onPermissionRequest: approveAll,
+        systemMessage: {
+          mode: 'replace' as const,
+          content: systemPrompt,
+        },
       });
 
-      const textBlock = response.content.find((b) => b.type === 'text');
-      if (!textBlock || textBlock.type !== 'text') {
-        throw new Error('No text content in Copilot response');
+      try {
+        const response = await session.sendAndWait({
+          prompt: userMessage,
+        });
+
+        const text = response?.data?.content ?? '';
+        if (!text) {
+          throw new Error('No text content in Copilot response');
+        }
+
+        return { text, inputTokens: 0, outputTokens: 0 };
+      } finally {
+        await session.disconnect();
       }
-      return {
-        text: textBlock.text,
-        inputTokens: response.usage?.input_tokens ?? 0,
-        outputTokens: response.usage?.output_tokens ?? 0,
-      };
     } catch (err: unknown) {
       const isRetryable =
         err instanceof Error &&
@@ -266,29 +299,6 @@ export async function callCopilot(
     }
   }
   throw new Error('Exhausted retries');
-}
-
-/**
- * Create an Anthropic client, respecting environment variables.
- */
-export function createClient(): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN;
-  const baseURL = process.env.ANTHROPIC_BASE_URL;
-
-  if (!apiKey) {
-    console.error(
-      'Error: ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN environment variable is not set.\n' +
-      'Set it before running the benchmark.',
-    );
-    process.exit(1);
-  }
-
-  const opts: Record<string, unknown> = { apiKey };
-  if (baseURL) {
-    opts.baseURL = baseURL;
-  }
-
-  return new Anthropic(opts as ConstructorParameters<typeof Anthropic>[0]);
 }
 
 // ============================================================
@@ -414,7 +424,6 @@ export async function runBenchmark(opts: {
     return [];
   }
 
-  const client = createClient();
   const allResults: FixtureResult[] = [];
   const totalRuns = fixtures.length * agents.length;
 
@@ -432,7 +441,6 @@ export async function runBenchmark(opts: {
       let apiResult: ApiCallResult;
       try {
         apiResult = await callCopilot(
-          client,
           agent.systemPrompt,
           agent.userMessageTemplate(fixture.content),
           cliArgs.model,
@@ -482,5 +490,6 @@ export async function runBenchmark(opts: {
     }
   }
 
+  await shutdownClient();
   return allResults;
 }

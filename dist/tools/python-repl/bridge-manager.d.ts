@@ -29,6 +29,7 @@ export interface StaleBridgeCleanupResult {
     lockRemoved: number;
     errors: string[];
 }
+export declare function trackOwnedBridgeSession(sessionId: string): void;
 /**
  * Verify that a bridge process is still running and is the same process
  * that was originally spawned (guards against PID reuse).
@@ -83,6 +84,7 @@ export declare function killBridgeWithEscalation(sessionId: string, options?: {
  * Used by session-end to terminate bridges created during the ending session.
  */
 export declare function cleanupBridgeSessions(sessionIds: Iterable<string>): Promise<BridgeSessionCleanupResult>;
+export declare function cleanupOwnedBridgeSessions(): Promise<BridgeSessionCleanupResult>;
 /**
  * Clean up stale bridge artifacts across all runtime sessions.
  * "Stale" means metadata is invalid OR process is no longer alive.

@@ -21,7 +21,7 @@ export declare function formatSessionStop(payload: NotificationPayload): string;
 export declare function formatSessionEnd(payload: NotificationPayload): string;
 /**
  * Format session-idle notification message.
- * Sent when Copilot stops and no persistent mode is blocking (truly idle).
+ * Sent when Claude stops and no persistent mode is blocking (truly idle).
  */
 export declare function formatSessionIdle(payload: NotificationPayload): string;
 /**
@@ -43,6 +43,11 @@ export declare function formatAgentCall(payload: NotificationPayload): string;
  */
 export declare function formatAskUserQuestion(payload: NotificationPayload): string;
 /**
+ * Format notification message based on event type.
+ * Returns a markdown-formatted string suitable for Discord/Telegram.
+ */
+export declare function formatNotification(payload: NotificationPayload): string;
+/**
  * Format notification as a Microsoft Teams Adaptive Card.
  * Returns the JSON body to POST to a Teams webhook (Power Automate Workflows or O365 Connectors).
  * Supports @mentions via tagList entries in "DisplayName:AAD-Object-ID" format.
@@ -54,5 +59,4 @@ export declare function formatTeamsAdaptiveCard(payload: NotificationPayload, ta
  * Format notification message based on event type.
  * Returns a markdown-formatted string suitable for Discord/Telegram.
  */
-export declare function formatNotification(payload: NotificationPayload): string;
 //# sourceMappingURL=formatter.d.ts.map

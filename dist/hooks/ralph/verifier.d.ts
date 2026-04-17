@@ -12,6 +12,7 @@
  * 5. If architect finds flaws -> continue ralph with architect feedback
  */
 import type { UserStory } from './prd.js';
+import type { RalphCriticMode } from './loop.js';
 export interface VerificationState {
     /** Whether verification is pending */
     pending: boolean;
@@ -29,8 +30,14 @@ export interface VerificationState {
     requested_at: string;
     /** Original ralph task */
     original_task: string;
-    /** Which critic mode to use (architect, critic, codex) */
-    critic_mode?: string;
+    /** Whether this verification is gating a single story or full completion */
+    verification_scope?: 'story' | 'completion';
+    /** Story under review when verification_scope === 'story' */
+    story_id?: string;
+    /** Reviewer mode to use for verification */
+    critic_mode?: RalphCriticMode;
+    /** Unique request id used to correlate approvals to the current verification attempt */
+    request_id?: string;
 }
 /**
  * Read verification state
@@ -49,7 +56,7 @@ export declare function clearVerificationState(directory: string, sessionId?: st
 /**
  * Start verification process
  */
-export declare function startVerification(directory: string, completionClaim: string, originalTask: string, criticMode?: string, sessionId?: string): VerificationState;
+export declare function startVerification(directory: string, completionClaim: string, originalTask: string, criticMode?: RalphCriticMode, sessionId?: string, currentStory?: UserStory): VerificationState;
 /**
  * Record architect feedback
  */
@@ -63,10 +70,7 @@ export declare function getArchitectVerificationPrompt(state: VerificationState,
  * Generate continuation prompt after architect rejection
  */
 export declare function getArchitectRejectionContinuationPrompt(state: VerificationState): string;
-/**
- * Check if text contains architect approval
- */
-export declare function detectArchitectApproval(text: string): boolean;
+export declare function detectArchitectApproval(text: string, expected?: Pick<VerificationState, 'request_id' | 'story_id'>): boolean;
 /**
  * Check if text contains architect rejection indicators
  */

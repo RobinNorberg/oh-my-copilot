@@ -1,12 +1,10 @@
 /**
- * tmux utility functions for omcp native shell launch
- * Adapted from oh-my-codex patterns for omcp
+ * tmux utility functions for omc native shell launch
+ * Adapted from oh-my-codex patterns for omc
  */
 import { exec, execFile, execFileSync, execSync, spawnSync, } from 'child_process';
-import { basename } from 'path';
+import { basename, isAbsolute, win32 as win32Path } from 'path';
 import { promisify } from 'util';
-const promisifiedExec = promisify(exec);
-const promisifiedExecFile = promisify(execFile);
 export function tmuxEnv() {
     const { TMUX: _, ...env } = process.env;
     return env;
@@ -14,13 +12,37 @@ export function tmuxEnv() {
 function resolveEnv(opts) {
     return opts?.stripTmux ? tmuxEnv() : process.env;
 }
+function quoteForCmd(arg) {
+    if (arg.length === 0)
+        return '""';
+    if (!/[\s"%^&|<>()]/.test(arg))
+        return arg;
+    return `"${arg.replace(/(["%])/g, '$1$1')}"`;
+}
+function resolveTmuxInvocation(args) {
+    const resolvedBinary = resolveTmuxBinaryPath();
+    if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
+        const comspec = process.env.COMSPEC || 'cmd.exe';
+        const commandLine = [quoteForCmd(resolvedBinary), ...args.map(quoteForCmd)].join(' ');
+        return {
+            command: comspec,
+            args: ['/d', '/s', '/c', commandLine],
+        };
+    }
+    return {
+        command: resolvedBinary,
+        args,
+    };
+}
 export function tmuxExec(args, opts) {
     const { stripTmux: _, ...execOpts } = opts ?? {};
-    return execFileSync('tmux', args, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) });
+    const invocation = resolveTmuxInvocation(args);
+    return execFileSync(invocation.command, invocation.args, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) });
 }
 export async function tmuxExecAsync(args, opts) {
     const { stripTmux: _, timeout, ...rest } = opts ?? {};
-    return promisifiedExecFile('tmux', args, {
+    const invocation = resolveTmuxInvocation(args);
+    return promisify(execFile)(invocation.command, invocation.args, {
         encoding: 'utf-8', env: resolveEnv(opts),
         ...(timeout !== undefined ? { timeout } : {}), ...rest,
     });
@@ -31,14 +53,15 @@ export function tmuxShell(command, opts) {
 }
 export async function tmuxShellAsync(command, opts) {
     const { stripTmux: _, timeout, ...rest } = opts ?? {};
-    return promisifiedExec(`tmux ${command}`, {
+    return promisify(exec)(`tmux ${command}`, {
         encoding: 'utf-8', env: resolveEnv(opts),
         ...(timeout !== undefined ? { timeout } : {}), ...rest,
     });
 }
 export function tmuxSpawn(args, opts) {
     const { stripTmux: _, ...spawnOpts } = opts ?? {};
-    return spawnSync('tmux', args, { encoding: 'utf-8', ...spawnOpts, env: resolveEnv(opts) });
+    const invocation = resolveTmuxInvocation(args);
+    return spawnSync(invocation.command, invocation.args, { encoding: 'utf-8', ...spawnOpts, env: resolveEnv(opts) });
 }
 export async function tmuxCmdAsync(args, opts) {
     if (args.some(a => a.includes('#{'))) {
@@ -47,11 +70,46 @@ export async function tmuxCmdAsync(args, opts) {
     }
     return tmuxExecAsync(args, opts);
 }
+function resolveTmuxBinaryPath() {
+    if (process.platform !== 'win32') {
+        return 'tmux';
+    }
+    try {
+        const result = spawnSync('where', ['tmux'], {
+            timeout: 5000,
+            encoding: 'utf8',
+        });
+        if (result.status !== 0)
+            return 'tmux';
+        const candidates = result.stdout
+            ?.split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean) ?? [];
+        const first = candidates[0];
+        if (first && (isAbsolute(first) || win32Path.isAbsolute(first))) {
+            return first;
+        }
+    }
+    catch {
+        // Fall back to plain tmux lookup below.
+    }
+    return 'tmux';
+}
 /**
  * Check if tmux is available on the system
  */
 export function isTmuxAvailable() {
     try {
+        const resolvedBinary = resolveTmuxBinaryPath();
+        if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
+            const comspec = process.env.COMSPEC || 'cmd.exe';
+            const result = spawnSync(comspec, ['/d', '/s', '/c', `"${resolvedBinary}" -V`], { timeout: 5000 });
+            return result.status === 0;
+        }
+        if (process.platform === 'win32') {
+            const result = spawnSync(resolvedBinary, ['-V'], { timeout: 5000, shell: true });
+            return result.status === 0;
+        }
         tmuxExec(['-V'], { stripTmux: true, stdio: 'ignore' });
         return true;
     }
@@ -60,11 +118,11 @@ export function isTmuxAvailable() {
     }
 }
 /**
- * Check if copilot CLI is available on the system
+ * Check if claude CLI is available on the system
  */
 export function isCopilotAvailable() {
     try {
-        execFileSync('copilot', ['--version'], { stdio: 'ignore' });
+        execFileSync('claude', ['--version'], { stdio: 'ignore' });
         return true;
     }
     catch {
@@ -72,16 +130,14 @@ export function isCopilotAvailable() {
     }
 }
 /**
- * Resolve launch policy based on environment
+ * Resolve launch policy based on environment and args
  * - inside-tmux: Already in tmux session, split pane for HUD
  * - outside-tmux: Not in tmux, create new session
  * - direct: tmux not available, run directly
+ * - direct: print mode requested so stdout can flow to parent process
  */
 export function resolveLaunchPolicy(env = process.env, args = []) {
     if (args.some((arg) => arg === '--print' || arg === '-p')) {
-        return 'direct';
-    }
-    if (!isTmuxAvailable()) {
         return 'direct';
     }
     if (env.TMUX)
@@ -90,9 +146,12 @@ export function resolveLaunchPolicy(env = process.env, args = []) {
     // Ghostty-based terminal) set CMUX_SURFACE_ID but not TMUX.  tmux
     // attach-session fails in these environments because the host PTY is
     // not directly compatible, leaving orphaned detached sessions.
-    // Fall back to direct mode so Copilot CLI launches without tmux wrapping.
+    // Fall back to direct mode so Claude launches without tmux wrapping.
     if (env.CMUX_SURFACE_ID)
         return 'direct';
+    if (!isTmuxAvailable()) {
+        return 'direct';
+    }
     return 'outside-tmux';
 }
 /**
@@ -239,7 +298,7 @@ export function killTmuxPane(paneId) {
     if (!paneId.startsWith('%'))
         return;
     try {
-        tmuxExec(['kill-pane', '-t', paneId], { stripTmux: true, stdio: 'ignore' });
+        tmuxExec(['kill-pane', '-t', paneId], { stdio: 'ignore' });
     }
     catch {
         // Pane may already be gone; ignore

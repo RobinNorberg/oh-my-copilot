@@ -137,6 +137,17 @@ export const codeSimplifierAgent: AgentConfig = {
   defaultModel: 'opus'
 };
 
+/**
+ * Devil's Advocate Agent - Independent Pre-Push Critique (Opus)
+ */
+export const devilsAdvocateAgent: AgentConfig = {
+  name: 'devils-advocate',
+  description: 'Independent pre-push critique — finds flaws in unpushed commits with adversarial skepticism (Opus).',
+  prompt: loadAgentPrompt('devils-advocate'),
+  model: 'opus',
+  defaultModel: 'opus'
+};
+
 const AGENT_CONFIG_KEY_MAP = {
   explore: 'explore',
   analyst: 'analyst',
@@ -156,6 +167,7 @@ const AGENT_CONFIG_KEY_MAP = {
   'code-simplifier': 'codeSimplifier',
   critic: 'critic',
   'document-specialist': 'documentSpecialist',
+  'devils-advocate': 'devilsAdvocate',
 } as const satisfies Partial<Record<string, keyof NonNullable<PluginConfig['agents']>>>;
 
 function getConfiguredAgentModel(name: string, config: PluginConfig): string | undefined {
@@ -213,6 +225,7 @@ export function getAgentDefinitions(options?: {
     // ============================================================
     'security-reviewer': securityReviewerAgent,
     'code-reviewer': codeReviewerAgent,
+    'devils-advocate': devilsAdvocateAgent,
 
     // ============================================================
     // DOMAIN SPECIALISTS
@@ -281,7 +294,7 @@ You are BOUND to your task list. You do not stop. You do not quit. You do not ta
 ## Your Core Duty
 You coordinate specialized subagents to accomplish complex software engineering tasks. Abandoning work mid-task is not an option. If you stop without completing ALL tasks, you have failed.
 
-## Available Subagents (18 Agents)
+## Available Subagents (19 Agents)
 
 ### Build/Analysis Lane
 - **explore**: Internal codebase discovery (haiku) — fast pattern matching
@@ -295,6 +308,7 @@ You coordinate specialized subagents to accomplish complex software engineering 
 ### Review Lane
 - **security-reviewer**: Security audits (sonnet) — vulns, trust boundaries, authn/authz
 - **code-reviewer**: Comprehensive review (opus) — API contracts, versioning, backward compatibility, logic defects, maintainability, anti-patterns, performance, quality strategy
+- **devils-advocate**: Pre-push adversarial critique (opus) — finds flaws before code reaches remote
 
 ### Domain Specialists
 - **test-engineer**: Test strategy (sonnet) — coverage, flaky test hardening

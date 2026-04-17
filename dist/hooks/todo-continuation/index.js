@@ -8,8 +8,8 @@
  */
 /**
  * TERMINOLOGY:
- * - "Task" (capitalized): New Copilot CLI Task system (~/.copilot/tasks/)
- * - "todo" (lowercase): Legacy todo system (~/.copilot/todos/)
+ * - "Task" (capitalized): New Claude Code Task system (~/.claude/tasks/)
+ * - "todo" (lowercase): Legacy todo system (~/.claude/todos/)
  * - "item": Generic term for either Task or todo
  */
 /**
@@ -25,7 +25,7 @@ function debugLog(message, ...args) {
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
-import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { getClaudeConfigDir } from '../../utils/config-dir.js';
 /**
  * Validates that a session ID is safe to use in file paths.
  * Session IDs should be alphanumeric with optional hyphens and underscores.
@@ -44,6 +44,19 @@ export function isValidSessionId(sessionId) {
     const SAFE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
     return SAFE_SESSION_ID_PATTERN.test(sessionId);
 }
+function getStopReasonFields(context) {
+    if (!context)
+        return [];
+    return [
+        context.stop_reason,
+        context.stopReason,
+        context.end_turn_reason,
+        context.endTurnReason,
+        context.reason,
+    ]
+        .filter((value) => typeof value === 'string' && value.trim().length > 0)
+        .map((value) => value.toLowerCase().replace(/[\s-]+/g, '_'));
+}
 /**
  * Detect if stop was due to user abort (not natural completion)
  *
@@ -54,7 +67,13 @@ export function isValidSessionId(sessionId) {
  * - user_cancel, user_interrupt: Likely user-initiated via UI
  * - ctrl_c: Terminal interrupt (Ctrl+C)
  * - manual_stop: Explicit stop button
- * - abort, cancel, interrupt: Generic abort patterns
+ * - abort, cancel: Generic abort patterns
+ *
+ * Plain `interrupt` is intentionally NOT treated as an explicit user abort.
+ * In practice it can also describe a turn interruption caused by a new user
+ * message arriving during long-running tool execution (issue #2478). Those
+ * interrupted turns should still allow Ralph/persistent-mode resume on the
+ * next stop-hook opportunity unless stronger explicit-cancel signals exist.
  *
  * NOTE: Per official Anthropic docs, the Stop hook "Does not run if
  * the stoppage occurred due to a user interrupt." This means this
@@ -62,7 +81,7 @@ export function isValidSessionId(sessionId) {
  * It is kept as defensive code in case the behavior changes.
  *
  * If the hook fails to detect user aborts correctly, these patterns
- * should be updated based on observed Copilot CLI behavior.
+ * should be updated based on observed Claude Code behavior.
  */
 export function isUserAbort(context) {
     if (!context)
@@ -72,7 +91,7 @@ export function isUserAbort(context) {
         return true;
     // Check stop_reason patterns indicating user abort
     // Exact-match patterns: short generic words that cause false positives with .includes()
-    const exactPatterns = ['aborted', 'abort', 'cancel', 'interrupt'];
+    const exactPatterns = ['aborted', 'abort', 'cancel'];
     // Substring patterns: compound words safe for .includes() matching
     const substringPatterns = ['user_cancel', 'user_interrupt', 'ctrl_c', 'manual_stop'];
     // Support both snake_case and camelCase field names
@@ -124,27 +143,27 @@ export function isExplicitCancelCommand(context) {
 }
 /**
  * Detect if stop was triggered by context-limit related reasons.
- * When context is exhausted, Copilot CLI needs to stop so it can compact.
+ * When context is exhausted, Claude Code needs to stop so it can compact.
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
+ *
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 export function isContextLimitStop(context) {
-    if (!context)
-        return false;
-    const reason = (context.stop_reason ?? context.stopReason ?? '').toLowerCase();
-    const endTurnReason = (context.end_turn_reason ?? context.endTurnReason ?? '').toLowerCase();
     const contextPatterns = [
         'context_limit', 'context_window', 'context_exceeded', 'context_full',
         'max_context', 'token_limit', 'max_tokens', 'conversation_too_long', 'input_too_long'
     ];
-    return contextPatterns.some(p => reason.includes(p) || endTurnReason.includes(p));
+    return getStopReasonFields(context).some((value) => contextPatterns.some((pattern) => value.includes(pattern)));
 }
 /**
  * Detect if stop was triggered by rate limiting (HTTP 429 / quota exhausted).
- * When the API is rate-limited, Copilot CLI stops the session.
+ * When the API is rate-limited, Claude Code stops the session.
  * Blocking these stops causes an infinite retry loop: the persistent-mode hook
- * injects a continuation prompt, Copilot immediately hits the rate limit again,
+ * injects a continuation prompt, Claude immediately hits the rate limit again,
  * stops again, and the cycle repeats indefinitely.
+ *
+ * Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
  */
 export function isRateLimitStop(context) {
     if (!context)
@@ -201,17 +220,17 @@ export function isAuthenticationError(context) {
  * Get possible todo file locations
  */
 function getTodoFilePaths(sessionId, directory) {
-    const copilotDir = getCopilotConfigDir();
+    const claudeDir = getClaudeConfigDir();
     const paths = [];
     // Session-specific todos
     if (sessionId) {
-        paths.push(join(copilotDir, 'sessions', sessionId, 'todos.json'));
-        paths.push(join(copilotDir, 'todos', `${sessionId}.json`));
+        paths.push(join(claudeDir, 'sessions', sessionId, 'todos.json'));
+        paths.push(join(claudeDir, 'todos', `${sessionId}.json`));
     }
     // Project-specific todos
     if (directory) {
         paths.push(join(getOmcRoot(directory), 'todos.json'));
-        paths.push(join(directory, '.copilot', 'todos.json'));
+        paths.push(join(directory, '.claude', 'todos.json'));
     }
     // NOTE: Global todos directory scan removed to prevent false positives.
     // Only session-specific and project-local todos are now checked.
@@ -255,16 +274,16 @@ function isIncomplete(todo) {
 /**
  * Get the Task directory for a session
  *
- * NOTE: This path (~/.copilot/tasks/{sessionId}/) is inferred from Copilot CLI's
+ * NOTE: This path (~/.claude/tasks/{sessionId}/) is inferred from Claude Code's
  * implementation. Anthropic has not officially documented this structure.
- * The Task files are created by Copilot CLI's TaskCreate tool.
+ * The Task files are created by Claude Code's TaskCreate tool.
  */
 export function getTaskDirectory(sessionId) {
     // Security: validate sessionId before constructing path
     if (!isValidSessionId(sessionId)) {
         return ''; // Return empty string for invalid sessions
     }
-    return join(getCopilotConfigDir(), 'tasks', sessionId);
+    return join(getClaudeConfigDir(), 'tasks', sessionId);
 }
 /**
  * Validates that a parsed JSON object is a valid Task.
@@ -293,7 +312,7 @@ export function readTaskFiles(sessionId) {
     const tasks = [];
     try {
         for (const file of readdirSync(taskDir)) {
-            // Skip non-JSON files and .lock file (used by Copilot CLI for atomic writes)
+            // Skip non-JSON files and .lock file (used by Claude Code for atomic writes)
             // The .lock file prevents concurrent modifications to task files
             if (!file.endsWith('.json') || file === '.lock')
                 continue;

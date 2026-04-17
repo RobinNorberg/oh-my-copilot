@@ -15,6 +15,7 @@ import { parseFrontmatter, parseFrontmatterAliases } from '../../utils/frontmatt
 import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
 import { isStrictMode } from '../../utils/strict-mode.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { rewriteOmcCliInvocations } from '../../utils/omc-cli-rendering.js';
 // Get the project root directory (go up from src/features/builtin-skills/)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -90,7 +91,20 @@ function applyDeepInterviewRuntimeSettings(template) {
         '4. **Initialize state** via `state_write(mode="deep-interview")`:',
     ].join('\n'))
         .replace('"threshold": 0.2,', `"threshold": ${threshold},`)
-        .replace('We\'ll proceed to execution once ambiguity drops below 20%.', `We'll proceed to execution once ambiguity drops below ${percent}.`);
+        .replace('We\'ll proceed to execution once ambiguity drops below 20%.', `We'll proceed to execution once ambiguity drops below ${percent}.`)
+        // Fix #2545: replace remaining hardcoded 20%/0.2 references that conflict with runtime threshold injection
+        .replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`)
+        .replace('(default: 20%)', `(default: ${percent})`)
+        .replace('(default 0.2)', `(default: ${threshold})`)
+        .replace('Gate: ≤20% ambiguity', `Gate: ≤${percent} ambiguity`)
+        .replace('(threshold: 20%).', `(threshold: ${percent}).`)
+        .replace('ambiguity ≤ 20%', `ambiguity ≤ ${percent}`);
+}
+export function renderBundledSkillBody(skillName, body) {
+    const rewrittenBody = rewriteOmcCliInvocations(body.trim());
+    return skillName === 'deep-interview'
+        ? applyDeepInterviewRuntimeSettings(rewrittenBody)
+        : rewrittenBody;
 }
 function toSafeSkillName(name) {
     const normalized = name.trim();
@@ -119,7 +133,7 @@ function loadSkillFromFile(skillPath, skillName) {
                 continue;
             seen.add(key);
             const resourcesGuidance = renderSkillResourcesGuidance(skillPath);
-            const templateParts = [body.trim()];
+            const templateParts = [renderBundledSkillBody(safePrimaryName, body)];
             if (resourcesGuidance) {
                 templateParts.push('\n\n---\n' + resourcesGuidance);
             }
@@ -183,6 +197,12 @@ function loadSkillsFromDirectory() {
 }
 // Cache loaded skills to avoid repeated file reads
 let cachedSkills = null;
+let cachedSkillsKey = null;
+function getBuiltinSkillsCacheKey() {
+    return JSON.stringify({
+        deepInterviewAmbiguityThreshold: getDeepInterviewAmbiguityThreshold(),
+    });
+}
 /**
  * Get all builtin skills
  *
@@ -190,8 +210,10 @@ let cachedSkills = null;
  * Results are cached after first load.
  */
 export function createBuiltinSkills() {
-    if (cachedSkills === null) {
+    const cacheKey = getBuiltinSkillsCacheKey();
+    if (cachedSkills === null || cachedSkillsKey !== cacheKey) {
         cachedSkills = loadSkillsFromDirectory();
+        cachedSkillsKey = cacheKey;
     }
     return cachedSkills;
 }
@@ -218,6 +240,7 @@ export function listBuiltinSkillNames(options) {
  */
 export function clearSkillsCache() {
     cachedSkills = null;
+    cachedSkillsKey = null;
 }
 /**
  * Get the skills directory path (useful for debugging)

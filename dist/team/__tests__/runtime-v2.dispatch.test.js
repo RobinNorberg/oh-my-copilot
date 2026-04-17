@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     applyMainVerticalLayout: vi.fn(),
     execFile: vi.fn(),
     spawnSync: vi.fn(() => ({ status: 0 })),
+    tmuxExecAsync: vi.fn(),
 }));
 const modelContractMocks = vi.hoisted(() => ({
     buildWorkerArgv: vi.fn(() => ['/usr/bin/copilot']),
@@ -20,10 +21,21 @@ const modelContractMocks = vi.hoisted(() => ({
     isPromptModeAgent: vi.fn(() => false),
     getPromptModeArgs: vi.fn((_agentType, instruction) => [instruction]),
 }));
-vi.mock('child_process', () => ({
-    execFile: mocks.execFile,
-    spawnSync: mocks.spawnSync,
-}));
+vi.mock('child_process', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        execFile: mocks.execFile,
+        spawnSync: mocks.spawnSync,
+    };
+});
+vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        tmuxExecAsync: mocks.tmuxExecAsync,
+    };
+});
 vi.mock('../model-contract.js', () => ({
     buildWorkerArgv: modelContractMocks.buildWorkerArgv,
     resolveValidatedBinaryPath: modelContractMocks.resolveValidatedBinaryPath,
@@ -41,6 +53,7 @@ vi.mock('../tmux-session.js', () => ({
 }));
 describe('runtime v2 startup inbox dispatch', () => {
     let cwd;
+    const originalCwd = process.cwd();
     beforeEach(() => {
         vi.resetModules();
         mocks.createTeamSession.mockReset();
@@ -88,6 +101,12 @@ describe('runtime v2 startup inbox dispatch', () => {
             }
             return { stdout: '', stderr: '' };
         };
+        mocks.tmuxExecAsync.mockImplementation(async (args) => {
+            if (args[0] === 'split-window') {
+                return { stdout: '%2\n', stderr: '' };
+            }
+            return { stdout: '', stderr: '' };
+        });
     });
     afterEach(async () => {
         if (cwd)

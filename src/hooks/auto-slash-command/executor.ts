@@ -19,6 +19,7 @@ import type {
 import { resolveLiveData } from './live-data.js';
 import { parseFrontmatter, parseFrontmatterAliases, stripOptionalQuotes } from '../../utils/frontmatter.js';
 import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
+import { renderBundledSkillBody } from '../../features/builtin-skills/skills.js';
 
 /** Copilot config directory */
 const COPILOT_CONFIG_DIR = getCopilotConfigDir();
@@ -251,7 +252,10 @@ function formatCommandTemplate(cmd: CommandInfo, args: string): string {
 
   // Resolve arguments in content, then execute any live-data commands
   const resolvedContent = resolveArguments(cmd.content || '', args);
-  const injectedContent = resolveLiveData(resolvedContent);
+  const baseContent = resolveLiveData(resolvedContent);
+  const injectedContent = cmd.scope === 'skill'
+    ? renderBundledSkillBody(cmd.metadata.name, baseContent)
+    : baseContent;
   sections.push(injectedContent.trim());
 
   // Add skill resources guidance (bundled files in skill directory)

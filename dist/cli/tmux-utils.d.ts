@@ -1,6 +1,6 @@
 /**
- * tmux utility functions for omcp native shell launch
- * Adapted from oh-my-codex patterns for omcp
+ * tmux utility functions for omc native shell launch
+ * Adapted from oh-my-codex patterns for omc
  */
 import { type ExecFileSyncOptionsWithStringEncoding, type ExecSyncOptionsWithStringEncoding, type SpawnSyncOptionsWithStringEncoding, type SpawnSyncReturns } from 'child_process';
 export interface TmuxExecOptions {
@@ -48,14 +48,15 @@ export interface TmuxPaneSnapshot {
  */
 export declare function isTmuxAvailable(): boolean;
 /**
- * Check if copilot CLI is available on the system
+ * Check if claude CLI is available on the system
  */
 export declare function isCopilotAvailable(): boolean;
 /**
- * Resolve launch policy based on environment
+ * Resolve launch policy based on environment and args
  * - inside-tmux: Already in tmux session, split pane for HUD
  * - outside-tmux: Not in tmux, create new session
  * - direct: tmux not available, run directly
+ * - direct: print mode requested so stdout can flow to parent process
  */
 export declare function resolveLaunchPolicy(env?: NodeJS.ProcessEnv, args?: string[]): ClaudeLaunchPolicy;
 /**

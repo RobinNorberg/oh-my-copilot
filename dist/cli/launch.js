@@ -6,6 +6,7 @@ import { execFileSync } from 'child_process';
 import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
 import { homedir } from 'os';
 import { basename, join } from 'path';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, tmuxExec, } from './tmux-utils.js';
 // Flag mapping
 const MADMAX_FLAG = '--madmax';
@@ -53,7 +54,7 @@ function ensureMirroredPath(sourcePath, targetPath) {
         copyFileSync(sourcePath, targetPath);
     }
 }
-export function prepareOmcLaunchConfigDir(baseConfigDir = process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot')) {
+export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
     const companionPath = join(baseConfigDir, 'copilot-instructions-omc.md');
     if (!hasOmcMarkers(companionPath)) {
         return baseConfigDir;
@@ -82,6 +83,9 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = process.env.COPILOT_CO
     }
     writeFileSync(join(runtimeConfigDir, '.omc-launch-profile.json'), JSON.stringify({ sourceConfigDir: baseConfigDir, sourceClaudeMd: companionPath }, null, 2));
     return runtimeConfigDir;
+}
+function isDefaultCopilotConfigDirPath(configDir) {
+    return configDir === join(homedir(), '.copilot');
 }
 /**
  * Extract the OMC-specific --openclaw flag from launch args.
@@ -527,7 +531,7 @@ export async function launchCommand(args) {
     // Pre-flight: check copilot CLI availability
     if (!isCopilotAvailable()) {
         console.error('[omg] Error: gh CLI not found. Install Copilot CLI first:');
-        console.error('  npm install -g @anthropic-ai/copilot-cli');
+        console.error('  npm install -g @github/copilot');
         process.exit(1);
     }
     const normalizedArgs = normalizeCopilotLaunchArgs(argsAfterTeams);

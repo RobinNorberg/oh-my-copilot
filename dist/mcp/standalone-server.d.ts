@@ -3,7 +3,7 @@
  * Standalone MCP Server for OMC Tools
  *
  * This server exposes LSP, AST, and Python REPL tools via stdio transport
- * for discovery by Copilot CLI's MCP management system.
+ * for discovery by Claude Code's MCP management system.
  *
  * Usage: node dist/mcp/standalone-server.js
  */

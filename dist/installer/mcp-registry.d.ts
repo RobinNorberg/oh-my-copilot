@@ -8,30 +8,34 @@ export interface UnifiedMcpRegistryEntry {
 export type UnifiedMcpRegistry = Record<string, UnifiedMcpRegistryEntry>;
 export interface UnifiedMcpRegistrySyncResult {
     registryPath: string;
-    copilotConfigPath: string;
+    claudeConfigPath: string;
     codexConfigPath: string;
     registryExists: boolean;
-    bootstrappedFromCopilot: boolean;
+    bootstrappedFromClaude: boolean;
     serverNames: string[];
-    copilotChanged: boolean;
+    claudeChanged: boolean;
     codexChanged: boolean;
 }
 export interface UnifiedMcpRegistryStatus {
     registryPath: string;
-    copilotConfigPath: string;
+    claudeConfigPath: string;
     codexConfigPath: string;
     registryExists: boolean;
     serverNames: string[];
-    copilotMissing: string[];
-    copilotMismatched: string[];
+    claudeMissing: string[];
+    claudeMismatched: string[];
     codexMissing: string[];
     codexMismatched: string[];
 }
 export declare function getUnifiedMcpRegistryPath(): string;
-export declare function getCopilotMcpConfigPath(): string;
+export declare function getClaudeMcpConfigPath(): string;
 export declare function getCodexConfigPath(): string;
-export declare function extractCopilotMcpRegistry(settings: Record<string, unknown>): UnifiedMcpRegistry;
-export declare function applyRegistryToCopilotSettings(settings: Record<string, unknown>): {
+export declare function extractClaudeMcpRegistry(settings: Record<string, unknown>): UnifiedMcpRegistry;
+export declare function stripRetiredTeamMcpServers<T extends Record<string, unknown>>(settings: T): {
+    settings: T;
+    changed: boolean;
+};
+export declare function applyRegistryToClaudeSettings(settings: Record<string, unknown>): {
     settings: Record<string, unknown>;
     changed: boolean;
 };

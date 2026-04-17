@@ -35,7 +35,7 @@ Spawn N CLI worker processes in tmux panes to execute tasks in parallel. Support
 ## Requirements
 
 - **tmux** must be running (`$TMUX` set in the current shell)
-- **copilot** CLI: `npm install -g @anthropic-ai/copilot-cli`
+- **copilot** CLI: `npm install -g @github/copilot`
 - **codex** CLI: `npm install -g @openai/codex`
 - **gemini** CLI: `npm install -g @google/gemini-cli`
 

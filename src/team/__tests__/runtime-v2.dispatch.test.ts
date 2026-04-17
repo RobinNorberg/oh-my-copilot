@@ -61,6 +61,7 @@ vi.mock('../tmux-session.js', () => ({
 
 describe('runtime v2 startup inbox dispatch', () => {
   let cwd: string;
+  const originalCwd = process.cwd();
 
   beforeEach(() => {
     vi.resetModules();

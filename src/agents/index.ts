@@ -47,12 +47,13 @@ export {
   testEngineerAgent
 } from './definitions.js';
 
-// Specialized agents (Security, Code Review, Git, Code Simplifier)
+// Specialized agents (Security, Code Review, Git, Code Simplifier, Devil's Advocate)
 export {
   securityReviewerAgent,
   codeReviewerAgent,
   gitMasterAgent,
-  codeSimplifierAgent
+  codeSimplifierAgent,
+  devilsAdvocateAgent
 } from './definitions.js';
 
 // Core exports (getAgentDefinitions and omcSystemPrompt)

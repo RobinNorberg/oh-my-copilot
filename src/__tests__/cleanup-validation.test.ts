@@ -45,9 +45,9 @@ describe('Cleanup Validation', () => {
     expect(agentKeys).not.toContain('buildFixer');
   });
 
-  it('agent registry has 18 agents', async () => {
+  it('agent registry has 19 agents', async () => {
     const { getAgentDefinitions } = await import('../agents/definitions.js');
     const defs = getAgentDefinitions();
-    expect(Object.keys(defs)).toHaveLength(18);
+    expect(Object.keys(defs)).toHaveLength(19);
   });
 });

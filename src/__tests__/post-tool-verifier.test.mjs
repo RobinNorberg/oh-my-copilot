@@ -12,6 +12,26 @@ import process from 'process';
 import { detectBashFailure, detectWriteFailure, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'post-tool-verifier.mjs');
+const PYTEST_RED_RUN_OUTPUT = [
+  'Error: Exit code 1',
+  '============================= test session starts ==============================',
+  'platform linux -- Python 3.12.0, pytest-8.4.0',
+  'collected 1 item',
+  '',
+  'tests/test_example.py F                                                   [100%]',
+  '',
+  '=================================== FAILURES ===================================',
+  '___________________________________ test_red ___________________________________',
+  '',
+  '    def test_red():',
+  '>       assert 1 == 2',
+  'E       assert 1 == 2',
+  '',
+  'tests/test_example.py:3: AssertionError',
+  '=========================== short test summary info ============================',
+  'FAILED tests/test_example.py::test_red - assert 1 == 2',
+  '============================== 1 failed in 0.12s ==============================',
+].join('\n');
 
 function runPostToolVerifier(input, env = {}) {
   return runHookScript(SCRIPT_PATH, input, env);
@@ -109,6 +129,10 @@ describe('detectBashFailure', () => {
         '80 passed in 0.24s',
       ].join('\n');
       expect(detectBashFailure(output)).toBe(false);
+    });
+
+    it('should not flag pytest red-phase output as a bash tool failure', () => {
+      expect(detectBashFailure(PYTEST_RED_RUN_OUTPUT)).toBe(false);
     });
 
     it('should not flag successful grep output containing "Command failed" text', () => {
@@ -351,6 +375,11 @@ describe('detectWriteFailure', () => {
       expect(detectWriteFailure(testContent)).toBe(false);
     });
 
+    it('should not flag inline error-like assertion strings inside edited tests', () => {
+      expect(detectWriteFailure('expect(output).toContain("error: boom")')).toBe(false);
+      expect(detectWriteFailure('await expect(run()).rejects.toThrow("Error: missing fixture")')).toBe(false);
+    });
+
     it('should still detect real tool-level errors alongside code content', () => {
       expect(detectWriteFailure('error: EACCES writing to /etc/hosts')).toBe(true);
       expect(detectWriteFailure('failed to write file: permission denied')).toBe(true);
@@ -393,6 +422,31 @@ describe('agent output summarization / truncation (issue #1373)', () => {
     expect(out.continue).toBe(true);
     expect(out.hookSpecificOutput?.additionalContext).toContain('TaskOutput summary:');
     expect(out.hookSpecificOutput?.additionalContext).toContain('TaskOutput clipped');
+  });
+});
+
+describe('post-tool hook regression coverage (issue #2615)', () => {
+  it('does not treat inline error-like strings in Edit output as an edit failure', () => {
+    const out = runPostToolVerifier({
+      tool_name: 'Edit',
+      tool_response: 'expect(output).toContain("error: boom")',
+      session_id: 'issue-2615-edit',
+      cwd: process.cwd(),
+    });
+
+    expect(out.hookSpecificOutput?.additionalContext).toContain('Code modified.');
+    expect(out.hookSpecificOutput?.additionalContext).not.toContain('Edit operation failed');
+  });
+
+  it('does not treat pytest red runs as bash tool failures during TDD workflows', () => {
+    const out = runPostToolVerifier({
+      tool_name: 'Bash',
+      tool_response: PYTEST_RED_RUN_OUTPUT,
+      session_id: 'issue-2615-bash',
+      cwd: process.cwd(),
+    });
+
+    expect(out).toEqual({ continue: true, suppressOutput: true });
   });
 });
 

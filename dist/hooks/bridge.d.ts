@@ -9,7 +9,7 @@
  * ```bash
  * #!/bin/bash
  * INPUT=$(cat)
- * echo "$INPUT" | node ~/.copilot/omg/hook-bridge.mjs --hook=keyword-detector
+ * echo "$INPUT" | node ~/.claude/omc/hook-bridge.mjs --hook=keyword-detector
  * ```
  */
 /**
@@ -18,7 +18,7 @@
  */
 export declare function requiredKeysForHook(hookType: string): string[];
 /**
- * Input format from Copilot CLI hooks (via stdin)
+ * Input format from Claude Code hooks (via stdin)
  */
 export interface HookInput {
     /** Session identifier */
@@ -44,7 +44,7 @@ export interface HookInput {
     directory?: string;
 }
 /**
- * Output format for Copilot CLI hooks (to stdout)
+ * Output format for Claude Code hooks (to stdout)
  */
 export interface HookOutput {
     /** Whether to continue with the operation */
@@ -62,7 +62,7 @@ type SerializableHookOutput = HookOutput & {
     hookSpecificOutput?: Record<string, unknown>;
 };
 /**
- * Strip empty hook text fields before serializing to Copilot CLI.
+ * Strip empty hook text fields before serializing to Claude Code.
  *
  * Some hook handlers use empty strings as internal sentinels. Passing those
  * through to the shell hook protocol can create empty system-message/context
@@ -83,6 +83,17 @@ export declare function dispatchAskUserQuestionNotification(sessionId: string, d
 /** @internal Object wrapper so tests can spy on the dispatch call. */
 export declare const _notify: {
     askUserQuestion: typeof dispatchAskUserQuestionNotification;
+};
+/**
+ * @internal Object wrapper for OpenClaw gateway dispatch.
+ * Mirrors the _notify pattern for testability (tests spy on _openclaw.wake
+ * instead of mocking dynamic imports).
+ *
+ * Fire-and-forget: the lazy import + double .catch() ensures OpenClaw
+ * never blocks hooks or surfaces errors.
+ */
+export declare const _openclaw: {
+    wake: (event: import("../openclaw/types.js").OpenClawHookEvent, context: import("../openclaw/types.js").OpenClawContext) => void;
 };
 /**
  * Reset the skip hooks cache (for testing only)

@@ -8,9 +8,11 @@
  */
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
+import { CANONICAL_TEAM_ROLES, KNOWN_AGENT_NAMES, } from '../shared/types.js';
 import { getConfigDir as getCopilotConfigDir } from '../utils/config-dir.js';
 import { parseJsonc } from '../utils/jsonc.js';
 import { getDefaultTierModels, BUILTIN_EXTERNAL_MODEL_DEFAULTS, isNonCopilotProvider, } from './models.js';
+import { normalizeDelegationRole } from '../features/delegation-routing/types.js';
 /**
  * Default configuration.
  *
@@ -112,6 +114,12 @@ export function buildDefaultConfig() {
             defaultProvider: 'copilot',
             roles: {},
         },
+        // /team role routing (Option E — /team-scoped per-role provider & model)
+        // Empty defaults: zero behavior change until user opts in.
+        team: {
+            ops: {},
+            roleRouting: {},
+        },
         startupCodebaseMap: {
             enabled: true,
             maxFiles: 200,
@@ -147,9 +155,15 @@ export function getConfigPaths() {
     // User config lives under the Copilot config directory (respects COPILOT_CONFIG_DIR).
     // On most systems this is ~/.copilot/omg/config.jsonc.
     const copilotConfigDir = getCopilotConfigDir();
+    // Project config: prefer .copilot/omg.jsonc; also check .claude/omc.jsonc for compatibility
+    const copilotProject = join(process.cwd(), '.copilot', 'omg.jsonc');
+    const claudeProject = join(process.cwd(), '.claude', 'omc.jsonc');
+    const project = existsSync(claudeProject) && !existsSync(copilotProject)
+        ? claudeProject
+        : copilotProject;
     return {
         user: join(copilotConfigDir, 'omg', 'config.jsonc'),
-        project: join(process.cwd(), '.copilot', 'omg.jsonc')
+        project,
     };
 }
 /**
@@ -325,11 +339,129 @@ export function loadEnvConfig() {
             };
         }
     }
+    // /team role routing env override (OMCP_TEAM_ROLE_OVERRIDES — single JSON var).
+    // Best-effort: invalid JSON logs and is ignored (no throw on env path).
+    const teamRoleOverrides = parseTeamRoleOverridesFromEnv();
+    if (teamRoleOverrides) {
+        config.team = {
+            ...config.team,
+            roleRouting: {
+                ...config.team?.roleRouting,
+                ...teamRoleOverrides,
+            },
+        };
+    }
     return config;
 }
 /**
  * Load and merge all configuration sources
  */
+function warnOnDeprecatedDelegationRouting(config) {
+    const deprecatedProviders = new Set();
+    const defaultProvider = config.delegationRouting?.defaultProvider;
+    if (defaultProvider === "codex" || defaultProvider === "gemini") {
+        deprecatedProviders.add(defaultProvider);
+    }
+    const roles = config.delegationRouting?.roles ?? {};
+    for (const route of Object.values(roles)) {
+        const provider = route?.provider;
+        if (provider === "codex" || provider === "gemini") {
+            deprecatedProviders.add(provider);
+        }
+    }
+    if (deprecatedProviders.size === 0) {
+        return;
+    }
+    console.warn("[OMC] delegationRouting to Codex/Gemini is deprecated and falls back to Claude Task. Use /team for Codex/Gemini CLI workers instead.");
+}
+/**
+ * Validate `team.roleRouting` parsed from the merged config.
+ *
+ * Walks the raw parsed object (not TS types) so deepMerge escapes are caught.
+ * Throws a descriptive error naming offending key + allowed values.
+ */
+const CANONICAL_TEAM_ROLE_SET = new Set(CANONICAL_TEAM_ROLES);
+const KNOWN_AGENT_NAME_SET = new Set(KNOWN_AGENT_NAMES);
+const TEAM_ROLE_PROVIDERS = new Set(["claude", "codex", "gemini"]);
+const TEAM_ROLE_TIERS = new Set(["HIGH", "MEDIUM", "LOW"]);
+export function validateTeamConfig(config) {
+    const team = config.team;
+    if (!team || typeof team !== "object")
+        return;
+    const ops = team.ops;
+    if (ops && typeof ops === "object") {
+        if (ops.defaultAgentType !== undefined) {
+            if (typeof ops.defaultAgentType !== "string" ||
+                !TEAM_ROLE_PROVIDERS.has(ops.defaultAgentType)) {
+                throw new Error(`[OMCP] team.ops.defaultAgentType: invalid value "${String(ops.defaultAgentType)}". Allowed: ${[...TEAM_ROLE_PROVIDERS].join(", ")}`);
+            }
+        }
+    }
+    const roleRouting = team.roleRouting;
+    if (!roleRouting || typeof roleRouting !== "object")
+        return;
+    for (const [rawRoleKey, rawSpec] of Object.entries(roleRouting)) {
+        const normalized = normalizeDelegationRole(rawRoleKey);
+        if (!CANONICAL_TEAM_ROLE_SET.has(normalized)) {
+            throw new Error(`[OMCP] team.roleRouting: unknown role "${rawRoleKey}". Allowed roles: ${[...CANONICAL_TEAM_ROLE_SET].join(", ")}`);
+        }
+        if (!rawSpec || typeof rawSpec !== "object" || Array.isArray(rawSpec)) {
+            throw new Error(`[OMCP] team.roleRouting.${rawRoleKey}: must be an object, got ${Array.isArray(rawSpec) ? "array" : typeof rawSpec}`);
+        }
+        const spec = rawSpec;
+        // Orchestrator entry: only `model` is allowed.
+        if (normalized === "orchestrator") {
+            for (const key of Object.keys(spec)) {
+                if (key !== "model") {
+                    throw new Error(`[OMCP] team.roleRouting.orchestrator: key "${key}" is not allowed (orchestrator is pinned to claude; only "model" is configurable)`);
+                }
+            }
+            if (spec.model !== undefined && !isValidModelValue(spec.model)) {
+                throw new Error(`[OMCP] team.roleRouting.orchestrator.model: must be a tier name (HIGH|MEDIUM|LOW) or model ID string, got ${typeof spec.model}`);
+            }
+            continue;
+        }
+        if (spec.provider !== undefined) {
+            if (typeof spec.provider !== "string" || !TEAM_ROLE_PROVIDERS.has(spec.provider)) {
+                throw new Error(`[OMCP] team.roleRouting.${rawRoleKey}.provider: invalid value "${String(spec.provider)}". Allowed: ${[...TEAM_ROLE_PROVIDERS].join(", ")}`);
+            }
+        }
+        if (spec.model !== undefined && !isValidModelValue(spec.model)) {
+            throw new Error(`[OMCP] team.roleRouting.${rawRoleKey}.model: must be a tier name (HIGH|MEDIUM|LOW) or a non-empty model ID string`);
+        }
+        if (spec.agent !== undefined) {
+            if (typeof spec.agent !== "string" || !KNOWN_AGENT_NAME_SET.has(spec.agent)) {
+                throw new Error(`[OMCP] team.roleRouting.${rawRoleKey}.agent: unknown agent "${String(spec.agent)}". Allowed: ${[...KNOWN_AGENT_NAME_SET].join(", ")}`);
+            }
+        }
+    }
+}
+function isValidModelValue(value) {
+    if (typeof value !== "string")
+        return false;
+    if (value.length === 0)
+        return false;
+    // Accept tier names OR explicit model IDs (any non-empty string).
+    // Tier names are canonicalized during resolution; explicit IDs pass through.
+    return TEAM_ROLE_TIERS.has(value) || value.length > 0;
+}
+function parseTeamRoleOverridesFromEnv() {
+    const raw = process.env.OMCP_TEAM_ROLE_OVERRIDES;
+    if (!raw)
+        return undefined;
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            console.warn("[OMCP] OMCP_TEAM_ROLE_OVERRIDES: expected a JSON object; ignoring.");
+            return undefined;
+        }
+        return parsed;
+    }
+    catch (err) {
+        console.warn(`[OMCP] OMCP_TEAM_ROLE_OVERRIDES: invalid JSON, ignoring (${err.message})`);
+        return undefined;
+    }
+}
 export function loadConfig() {
     const paths = getConfigPaths();
     // Start with fresh defaults so env-based model overrides are resolved at call time
@@ -361,7 +493,41 @@ export function loadConfig() {
             forceInherit: true,
         };
     }
+    warnOnDeprecatedDelegationRouting(config);
+    // Validate /team role routing post-merge. Throws on invalid shape,
+    // walking the parsed object so deepMerge bypasses surface here.
+    validateTeamConfig(config);
     return config;
+}
+const OMC_STARTUP_COMPACTABLE_SECTIONS = [
+    "agent_catalog",
+    "skills",
+    "team_compositions",
+];
+function looksLikeOmcGuidance(content) {
+    return (content.includes("<guidance_schema_contract>") &&
+        /oh-my-(claudecode|codex|copilot)/i.test(content) &&
+        OMC_STARTUP_COMPACTABLE_SECTIONS.some((section) => content.includes(`<${section}>`) && content.includes(`</${section}>`)));
+}
+export function compactOmcStartupGuidance(content) {
+    if (!looksLikeOmcGuidance(content)) {
+        return content;
+    }
+    let compacted = content;
+    let removedAny = false;
+    for (const section of OMC_STARTUP_COMPACTABLE_SECTIONS) {
+        const pattern = new RegExp(`\n*<${section}>[\\s\\S]*?<\\/${section}>\n*`, "g");
+        const next = compacted.replace(pattern, "\n\n");
+        removedAny = removedAny || next !== compacted;
+        compacted = next;
+    }
+    if (!removedAny) {
+        return content;
+    }
+    return compacted
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/\n\n---\n\n---\n\n/g, "\n\n---\n\n")
+        .trim();
 }
 /**
  * Find and load AGENTS.md or copilot-instructions.md files for context injection
@@ -676,7 +842,39 @@ export function generateConfigSchema() {
                         }
                     }
                 }
-            }
+            },
+            team: {
+                type: "object",
+                description: "/team runtime configuration",
+                properties: {
+                    ops: {
+                        type: "object",
+                        properties: {
+                            maxAgents: { type: "integer", minimum: 1 },
+                            defaultAgentType: {
+                                type: "string",
+                                enum: ["claude", "codex", "gemini"],
+                                default: "claude",
+                            },
+                            monitorIntervalMs: { type: "integer", minimum: 1 },
+                            shutdownTimeoutMs: { type: "integer", minimum: 1 },
+                            costMode: { type: "string", enum: ["normal", "downgrade"] },
+                        },
+                    },
+                    roleRouting: {
+                        type: "object",
+                        description: "Provider/model overrides for canonical /team roles",
+                        additionalProperties: {
+                            type: "object",
+                            properties: {
+                                provider: { type: "string", enum: ["claude", "codex", "gemini"] },
+                                model: { type: "string" },
+                                agent: { type: "string" },
+                            },
+                        },
+                    },
+                },
+            },
         }
     };
 }

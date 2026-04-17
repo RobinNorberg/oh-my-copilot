@@ -8,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 const COPILOT_CONFIG_DIR = '/tmp/test-copilot';
-const CACHE_PATH = `${COPILOT_CONFIG_DIR}/plugins/oh-my-copilot/.usage-cache.json`;
+const CACHE_PATH = `${COPILOT_CONFIG_DIR}/plugins/oh-my-copilot/.usage-cache-zai.json`;
 const CACHE_DIR = `${COPILOT_CONFIG_DIR}/plugins/oh-my-copilot`;
 function normalizePath(p) {
     return String(p).replace(/\\/g, '/');

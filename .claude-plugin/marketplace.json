@@ -10,7 +10,7 @@
     {
       "name": "oh-my-copilot",
       "description": "Copilot CLI native multi-agent orchestration with intelligent model routing, 18 agent variants, and 32 powerful skills. Zero learning curve. Maximum power.",
-      "version": "4.11.7",
+      "version": "4.11.8",
       "author": {
         "name": "Robin Norberg",
         "email": "github@platypus.se"
@@ -27,5 +27,5 @@
       ]
     }
   ],
-  "version": "4.11.7"
+  "version": "4.11.8"
 }

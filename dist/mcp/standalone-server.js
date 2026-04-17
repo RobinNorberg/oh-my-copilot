@@ -3,114 +3,17 @@
  * Standalone MCP Server for OMC Tools
  *
  * This server exposes LSP, AST, and Python REPL tools via stdio transport
- * for discovery by Copilot CLI's MCP management system.
+ * for discovery by Claude Code's MCP management system.
  *
  * Usage: node dist/mcp/standalone-server.js
  */
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, } from '@modelcontextprotocol/sdk/types.js';
-import { lspTools } from '../tools/lsp-tools.js';
-import { astTools } from '../tools/ast-tools.js';
-// IMPORTANT: Import from tool.js, NOT index.js!
-// tool.js exports pythonReplTool with wrapped handler returning { content: [...] }
-// index.js exports pythonReplTool with raw handler returning string
-import { pythonReplTool } from '../tools/python-repl/tool.js';
-import { stateTools } from '../tools/state-tools.js';
-import { notepadTools } from '../tools/notepad-tools.js';
-import { memoryTools } from '../tools/memory-tools.js';
-import { traceTools } from '../tools/trace-tools.js';
-import { z } from 'zod';
-// Aggregate all tools - AST tools gracefully degrade if @ast-grep/napi is unavailable
-const allTools = [
-    ...lspTools,
-    ...astTools,
-    pythonReplTool,
-    ...stateTools,
-    ...notepadTools,
-    ...memoryTools,
-    ...traceTools,
-];
-// Convert Zod schema to JSON Schema for MCP
-function zodToJsonSchema(schema) {
-    // Handle both ZodObject and raw shape
-    const rawShape = schema instanceof z.ZodObject ? schema.shape : schema;
-    const properties = {};
-    const required = [];
-    for (const [key, value] of Object.entries(rawShape)) {
-        const zodType = value;
-        properties[key] = zodTypeToJsonSchema(zodType);
-        // Check if required (not optional) - with safety check
-        const isOptional = zodType && typeof zodType.isOptional === 'function' && zodType.isOptional();
-        if (!isOptional) {
-            required.push(key);
-        }
-    }
-    return {
-        type: 'object',
-        properties,
-        required
-    };
-}
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function zodTypeToJsonSchema(zodType) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const zt = zodType;
-    const result = {};
-    // Safety check for undefined zodType
-    if (!zt || !zt._def) {
-        return { type: 'string' };
-    }
-    // Handle optional wrapper
-    if (zodType instanceof z.ZodOptional) {
-        return zodTypeToJsonSchema(zt._def.innerType);
-    }
-    // Handle default wrapper
-    if (zodType instanceof z.ZodDefault) {
-        const inner = zodTypeToJsonSchema(zt._def.innerType);
-        inner.default = zt._def.defaultValue;
-        return inner;
-    }
-    // Get description if available
-    const description = zt.description;
-    if (description) {
-        result.description = description;
-    }
-    // Handle basic types
-    if (zodType instanceof z.ZodString) {
-        result.type = 'string';
-    }
-    else if (zodType instanceof z.ZodNumber) {
-        result.type = zt._def?.checks?.some((c) => c.isInt)
-            ? 'integer'
-            : 'number';
-    }
-    else if (zodType instanceof z.ZodBoolean) {
-        result.type = 'boolean';
-    }
-    else if (zodType instanceof z.ZodArray) {
-        result.type = 'array';
-        result.items = zt._def?.element ? zodTypeToJsonSchema(zt._def.element) : { type: 'string' };
-    }
-    else if (zodType instanceof z.ZodEnum) {
-        result.type = 'string';
-        result.enum = zt._def?.entries ? Object.keys(zt._def.entries) : [];
-    }
-    else if (zodType instanceof z.ZodObject) {
-        return zodToJsonSchema(zt.shape);
-    }
-    else if (zodType instanceof z.ZodRecord) {
-        // Handle z.record() - maps to JSON object with additionalProperties
-        result.type = 'object';
-        if (zt._def?.valueType) {
-            result.additionalProperties = zodTypeToJsonSchema(zt._def.valueType);
-        }
-    }
-    else {
-        result.type = 'string';
-    }
-    return result;
-}
+import { registerStandaloneShutdownHandlers } from './standalone-shutdown.js';
+import { cleanupOwnedBridgeSessions } from '../tools/python-repl/bridge-manager.js';
+import { allTools, buildListToolsResponse } from './tool-registry.js';
+import { disconnectAll as disconnectAllLsp } from '../tools/lsp/index.js';
 // Create the MCP server
 const server = new Server({
     name: 't',
@@ -120,17 +23,8 @@ const server = new Server({
         tools: {},
     },
 });
-// List available tools
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-        tools: allTools.map(tool => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: zodToJsonSchema(tool.schema),
-            ...(tool.annotations ? { annotations: tool.annotations } : {}),
-        })),
-    };
-});
+// List available tools — delegates to tool-registry so tests exercise the same path.
+server.setRequestHandler(ListToolsRequestSchema, async () => buildListToolsResponse());
 // Handle tool calls
 const setStandaloneCallToolRequestHandler = server.setRequestHandler.bind(server);
 setStandaloneCallToolRequestHandler(CallToolRequestSchema, async (request) => {
@@ -160,14 +54,17 @@ setStandaloneCallToolRequestHandler(CallToolRequestSchema, async (request) => {
 // Graceful shutdown: disconnect LSP servers on process termination (#768).
 // Without this, LSP child processes (e.g. jdtls) survive the MCP server exit
 // and become orphaned, consuming memory indefinitely.
-// The MCP server process owns the LSP child processes (spawned via
-// child_process.spawn in LspClient.connect), so cleanup must happen here.
-import { disconnectAll as disconnectAllLsp } from '../tools/lsp/index.js';
 async function gracefulShutdown(signal) {
     // Hard deadline: exit even if cleanup hangs (e.g. unresponsive LSP server)
     const forceExitTimer = setTimeout(() => process.exit(1), 5_000);
     forceExitTimer.unref();
     console.error(`OMC MCP Server: received ${signal}, disconnecting LSP servers...`);
+    try {
+        await cleanupOwnedBridgeSessions();
+    }
+    catch {
+        // Best-effort — do not block exit
+    }
     try {
         await disconnectAllLsp();
     }
@@ -182,8 +79,9 @@ async function gracefulShutdown(signal) {
     }
     process.exit(0);
 }
-process.on('SIGTERM', () => { gracefulShutdown('SIGTERM'); });
-process.on('SIGINT', () => { gracefulShutdown('SIGINT'); });
+registerStandaloneShutdownHandlers({
+    onShutdown: gracefulShutdown,
+});
 // Start the server
 async function main() {
     const transport = new StdioServerTransport();

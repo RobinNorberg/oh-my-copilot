@@ -54,7 +54,7 @@ export declare function expandCommand(name: string, args?: string): ExpandedComm
  * @example
  * ```typescript
  * import { expandCommandPrompt } from 'oh-my-copilot';
- * import { query } from '@anthropic-ai/claude-agent-sdk';
+ * import { query } from '@github/copilot';
  *
  * const prompt = expandCommandPrompt('ultrawork', 'Refactor the auth module');
  *

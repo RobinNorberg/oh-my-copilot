@@ -17,7 +17,7 @@ detectNoPrdFlag, stripNoPrdFlag,
 // Team coordination
 getTeamPhaseDirective, 
 // PRD integration
-hasPrd, getPrdCompletionStatus, getRalphContext, setCurrentStory, enablePrdMode, recordStoryProgress, recordPattern, shouldCompleteByPrd } from './loop.js';
+hasPrd, getPrdCompletionStatus, getRalphContext, setCurrentStory, enablePrdMode, recordStoryProgress, recordPattern, shouldCompleteByPrd, detectCriticModeFlag, stripCriticModeFlag, } from './loop.js';
 // ============================================================================
 // Ralph PRD (Product Requirements Document)
 // ============================================================================
@@ -25,9 +25,9 @@ export {
 // File operations
 readPrd, writePrd, findPrdPath, getPrdPath, getOmcPrdPath, 
 // PRD status & operations
-getPrdStatus, markStoryComplete, markStoryIncomplete, getStory, getNextStory, 
+getPrdStatus, markStoryComplete, markStoryIncomplete, markStoryArchitectVerified, getStory, getNextStory, 
 // PRD creation
-createPrd, createSimplePrd, initPrd, 
+createPrd, createSimplePrd, initPrd, ensurePrdForStartup, 
 // Formatting
 formatPrdStatus, formatStory, formatPrd, formatNextStoryPrompt, 
 // Constants

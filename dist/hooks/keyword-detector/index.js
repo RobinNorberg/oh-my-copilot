@@ -12,7 +12,7 @@ import { classifyTaskSize, isHeavyMode, } from '../task-size-detector/index.js';
  */
 const KEYWORD_PATTERNS = {
     cancel: /\b(cancelomc|stopomc)\b/i,
-    ralph: /\b(ralph)\b(?!-)|(랄프)(?!로렌)/i,
+    ralph: /\b(ralph)\b(?!-)/i,
     autopilot: /\b(autopilot|auto[\s-]?pilot|fullsend|full\s+auto)\b/i,
     ultrawork: /\b(ultrawork|ulw)\b/i,
     // Team keyword detection disabled — team mode is now explicit-only via /team skill.
@@ -50,6 +50,109 @@ export function removeCodeBlocks(text) {
     // Remove inline code (single backticks)
     result = result.replace(/`[^`]+`/g, '');
     return result;
+}
+const PASTED_MAGIC_KEYWORD_HEADER_PATTERN = /^\s*\[MAGIC KEYWORDS?(?: DETECTED)?:.*$/i;
+const ROLE_BOUNDARY_PATTERN = /^<\s*\/?\s*(system|human|assistant|user|tool_use|tool_result)\b[^>]*>/i;
+const SKILL_TRANSCRIPT_LINE_PATTERN = /^\s*Skill:\s+oh-my-(?:copilot|claudecode|codex):/i;
+const USER_REQUEST_LINE_PATTERN = /^\s*User request:\s*$/i;
+const SHELL_TRANSCRIPT_LINE_PATTERN = /^\s*[$%❯]\s+/;
+const GIT_DIFF_START_PATTERNS = [
+    /^diff\s+--git\s+a\//,
+    /^index\s+[0-9a-f]+\.\.[0-9a-f]+(?:\s+\d+)?$/i,
+    /^(?:---|\+\+\+)\s+[ab]\//,
+    /^@@\s+-\d+/,
+];
+const GIT_DIFF_CONTINUATION_PATTERNS = [
+    /^new file mode\s+\d+$/i,
+    /^deleted file mode\s+\d+$/i,
+    /^similarity index\s+\d+%$/i,
+    /^rename (?:from|to)\s+/i,
+    /^Binary files .+ differ$/i,
+    /^(?:diff\s+--git\s+a\/|index\s+[0-9a-f]+\.\.[0-9a-f]+|(?:---|\+\+\+)\s+[ab]\/|@@\s+-\d+)/i,
+    /^[ +\-].*/,
+];
+function stripPastedCommandPayloads(text) {
+    const lines = text.split('\n');
+    const sanitized = [];
+    let insideRoleBlock = false;
+    let insideDiffBlock = false;
+    let insideMagicKeywordBlock = false;
+    let magicBlockSawUserRequest = false;
+    let magicBlockSawRequestPayload = false;
+    let previousLineWasUserRequest = false;
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (insideMagicKeywordBlock) {
+            if (ROLE_BOUNDARY_PATTERN.test(trimmed)) {
+                insideRoleBlock = !/^<\s*\//.test(trimmed);
+                insideMagicKeywordBlock = false;
+                magicBlockSawUserRequest = false;
+                magicBlockSawRequestPayload = false;
+                continue;
+            }
+            if (USER_REQUEST_LINE_PATTERN.test(line)) {
+                magicBlockSawUserRequest = true;
+                magicBlockSawRequestPayload = false;
+                continue;
+            }
+            if (magicBlockSawUserRequest) {
+                if (trimmed) {
+                    magicBlockSawRequestPayload = true;
+                    continue;
+                }
+                if (magicBlockSawRequestPayload) {
+                    insideMagicKeywordBlock = false;
+                    magicBlockSawUserRequest = false;
+                    magicBlockSawRequestPayload = false;
+                    sanitized.push(line);
+                    continue;
+                }
+            }
+            continue;
+        }
+        if (PASTED_MAGIC_KEYWORD_HEADER_PATTERN.test(line)) {
+            insideMagicKeywordBlock = true;
+            magicBlockSawUserRequest = false;
+            magicBlockSawRequestPayload = false;
+            continue;
+        }
+        if (ROLE_BOUNDARY_PATTERN.test(trimmed)) {
+            insideRoleBlock = !/^<\s*\//.test(trimmed);
+            continue;
+        }
+        if (insideRoleBlock) {
+            continue;
+        }
+        if (!trimmed) {
+            sanitized.push(line);
+            insideDiffBlock = false;
+            previousLineWasUserRequest = false;
+            continue;
+        }
+        if (previousLineWasUserRequest) {
+            previousLineWasUserRequest = false;
+            continue;
+        }
+        if (USER_REQUEST_LINE_PATTERN.test(line) || SKILL_TRANSCRIPT_LINE_PATTERN.test(line)) {
+            previousLineWasUserRequest = USER_REQUEST_LINE_PATTERN.test(line);
+            continue;
+        }
+        if (SHELL_TRANSCRIPT_LINE_PATTERN.test(line) && !/^\s*\$\w/.test(line)) {
+            continue;
+        }
+        if (insideDiffBlock) {
+            if (GIT_DIFF_CONTINUATION_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+                continue;
+            }
+            insideDiffBlock = false;
+        }
+        if (GIT_DIFF_START_PATTERNS.some((pattern) => pattern.test(trimmed))) {
+            insideDiffBlock = true;
+            continue;
+        }
+        sanitized.push(line);
+    }
+    return sanitized.join('\n');
 }
 /**
  * Regex matching non-Latin script characters for prompt translation detection.
@@ -97,6 +200,53 @@ function hasActivationIntentNearKeyword(context, keyword) {
     ];
     return patterns.some((pattern) => pattern.test(context));
 }
+function hasDirectInvocationPrefix(text, position) {
+    const prefix = text.slice(0, position);
+    return /^\s*(?:[$/!]\s*|force:\s*|oh-my-(?:copilot|claudecode|codex):\s*)?$/i.test(prefix);
+}
+function hasExplicitInvocationContext(text, position, keywordLength, keywordText) {
+    if (hasDirectInvocationPrefix(text, position)) {
+        return true;
+    }
+    const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
+    const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
+    const context = text.slice(start, end);
+    if (hasActivationIntentNearKeyword(context, keywordText)) {
+        return true;
+    }
+    const escaped = escapeRegExp(keywordText.trim());
+    if (!escaped) {
+        return false;
+    }
+    const conversationalInvocationPatterns = [
+        new RegExp(`\\bplease\\s+${escaped}\\b`, 'i'),
+        new RegExp(`\\blet['']?s\\s+${escaped}\\b`, 'i'),
+        new RegExp(`\\bi\\s+(?:want|need|would\\s+like)\\s+(?:a|an)\\s+${escaped}\\b`, 'i'),
+        new RegExp(`\\b(?:can|could|would|will)\\s+you\\s+${escaped}\\b`, 'i'),
+    ];
+    return conversationalInvocationPatterns.some((pattern) => pattern.test(context));
+}
+function findActionableRalplanMatch(text, pattern) {
+    const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+    const globalPattern = new RegExp(pattern.source, flags);
+    for (const match of text.matchAll(globalPattern)) {
+        if (match.index === undefined) {
+            continue;
+        }
+        const keyword = match[0];
+        if (isInformationalKeywordContext(text, match.index, keyword.length, keyword)) {
+            continue;
+        }
+        if (!hasExplicitInvocationContext(text, match.index, keyword.length, keyword)) {
+            continue;
+        }
+        return {
+            keyword,
+            position: match.index,
+        };
+    }
+    return null;
+}
 function hasDiagnosticIntentNearKeyword(context, keyword) {
     const escaped = escapeRegExp(keyword.trim());
     if (!escaped)
@@ -140,8 +290,9 @@ function isInformationalKeywordContext(text, position, keywordLength, keywordTex
  * Strips XML tags, URLs, file paths, and code blocks.
  */
 export function sanitizeForKeywordDetection(text) {
+    let result = stripPastedCommandPayloads(text);
     // Remove HTML/markdown comments first so keywords inside comments cannot trigger modes
-    let result = text.replace(/<!--[\s\S]*?-->/g, '');
+    result = result.replace(/<!--[\s\S]*?-->/g, '');
     // Remove XML tag blocks (opening + content + closing; tag names must match)
     result = result.replace(/<(\w[\w-]*)[\s>][\s\S]*?<\/\1>/g, '');
     // Remove self-closing XML tags
@@ -176,6 +327,13 @@ export function detectKeywordsWithType(text, _agentName) {
             continue;
         }
         const pattern = KEYWORD_PATTERNS[type];
+        if (type === 'ralplan') {
+            const ralplanMatch = findActionableRalplanMatch(cleanedText, pattern);
+            if (ralplanMatch) {
+                detected.push({ type, ...ralplanMatch });
+            }
+            continue;
+        }
         const match = cleanedText.match(pattern);
         if (match && match.index !== undefined) {
             // Skip if the surrounding context is purely informational

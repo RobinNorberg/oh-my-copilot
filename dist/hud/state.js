@@ -6,7 +6,7 @@
  */
 import { existsSync, readFileSync, mkdirSync } from 'fs';
 import { join } from 'path';
-import { getCopilotConfigDir } from '../utils/paths.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { validateWorkingDirectory, getOmcRoot } from '../lib/worktree-paths.js';
 import { atomicWriteFileSync, atomicWriteJsonSync, } from '../lib/atomic-write.js';
 import { DEFAULT_HUD_CONFIG, PRESET_CONFIGS } from './types.js';
@@ -99,7 +99,7 @@ function mergeElementsForWrite(legacyElements, nextElements) {
 /**
  * Read HUD state from disk (checks new local and legacy local only)
  */
-export function readHudState(directory) {
+export function readHudState(directory, _sessionId) {
     // Check new local state first (.omcp/state/hud-state.json)
     const localStateFile = getLocalStateFilePath(directory);
     if (existsSync(localStateFile)) {
@@ -130,7 +130,7 @@ export function readHudState(directory) {
 /**
  * Write HUD state to disk (local only)
  */
-export function writeHudState(state, directory) {
+export function writeHudState(state, directory, _sessionId) {
     try {
         // Write to local .omcp/state only
         ensureStateDir(directory);
@@ -238,6 +238,9 @@ function mergeWithDefaults(config) {
         },
         missionBoard,
         usageApiPollIntervalMs: config.usageApiPollIntervalMs ?? DEFAULT_HUD_CONFIG.usageApiPollIntervalMs,
+        ...(config.elementOrder !== undefined
+            ? { elementOrder: config.elementOrder }
+            : {}),
         wrapMode: config.wrapMode ?? DEFAULT_HUD_CONFIG.wrapMode,
         ...(config.rateLimitsProvider ? { rateLimitsProvider: config.rateLimitsProvider } : {}),
         ...(config.maxWidth != null ? { maxWidth: config.maxWidth } : {}),
@@ -294,7 +297,7 @@ export function applyPreset(preset) {
  * Initialize HUD state with cleanup of stale/orphaned tasks.
  * Should be called on HUD startup.
  */
-export async function initializeHUDState(directory) {
+export async function initializeHUDState(directory, _sessionId) {
     // Clean up stale background tasks from previous sessions
     const removedStale = await cleanupStaleBackgroundTasks(undefined, directory);
     const markedOrphaned = await markOrphanedTasksAsStale(directory);

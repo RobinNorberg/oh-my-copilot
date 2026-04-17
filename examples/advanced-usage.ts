@@ -151,7 +151,7 @@ Always:
   console.log(`
 // Pattern for adding custom tools:
 
-import { createSdkMcpServer, tool } from '@anthropic-ai/copilot-agent-sdk';
+import { createSdkMcpServer, tool } from '@github/copilot';
 import { z } from 'zod';
 import { createOmcSession } from 'oh-my-copilot';
 

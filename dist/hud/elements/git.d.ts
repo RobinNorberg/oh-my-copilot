@@ -62,7 +62,7 @@ export declare function renderGitRepo(cwd?: string): string | null;
 export declare function renderGitBranch(cwd?: string): string | null;
 /**
  * Get git working tree status counts.
- * Parses `git status --porcelain -b` for staged, modified, untracked,
+ * Parses `git --no-optional-locks status --porcelain -b` for staged, modified, untracked,
  * ahead, and behind counts.
  *
  * @param cwd - Working directory

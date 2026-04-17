@@ -15,11 +15,13 @@ import {
   type TeamApiOperation,
 } from '../../team/api-interop.js';
 import type { CliAgentType } from '../../team/model-contract.js';
+import { loadConfig } from '../../config/loader.js';
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const MIN_WORKER_COUNT = 1;
 const MAX_WORKER_COUNT = 20;
 const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemini']);
+const DEFAULT_TEAM_CLI_AGENT_TYPE: CliAgentType = 'claude';
 
 const TEAM_HELP = `
 Usage: omcp team [N:agent-type[:role]] [--new-window] "<task description>"
@@ -287,13 +289,16 @@ function normalizeWorkerSpecSegment(match: RegExpMatchArray): NormalizedWorkerSp
 const SINGLE_SPEC_RE = /^(\d+)(?::([a-z][a-z0-9-]*)(?::([a-z][a-z0-9-]*))?)?$/i;
 
 /** @internal Exported for testing */
-export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
+export function parseTeamArgs(tokens: string[], defaultAgentType: string = 'copilot'): ParsedTeamArgs {
   const args = [...tokens];
   let workerCount = 3;
   let agentTypes: string[] = [];
   let workerSpecs: ParsedWorkerSpec[] = [];
   let json = false;
   let newWindow = false;
+  const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType as CliAgentType)
+    ? defaultAgentType
+    : DEFAULT_TEAM_CLI_AGENT_TYPE;
 
   // Extract supported flags before parsing positional args
   const filteredArgs: string[] = [];
@@ -361,10 +366,10 @@ export function parseTeamArgs(tokens: string[]): ParsedTeamArgs {
     }
   }
 
-  // Default: 3 copilot workers if no spec matched
+  // Default: 3 workers with configured default agent type (falls back to copilot)
   if (agentTypes.length === 0) {
-    agentTypes = Array.from({ length: workerCount }, () => 'copilot');
-    workerSpecs = Array.from({ length: workerCount }, () => ({ agentType: 'copilot' }));
+    agentTypes = Array.from({ length: workerCount }, () => normalizedDefaultAgentType);
+    workerSpecs = Array.from({ length: workerCount }, () => ({ agentType: normalizedDefaultAgentType }));
   }
 
   const task = filteredArgs.join(' ').trim();
@@ -813,7 +818,10 @@ export async function teamCommand(args: string[]): Promise<void> {
 
   // Default: omcp team [N:agent-type] "task" -> Start team
   try {
-    const parsed = parseTeamArgs(args);
+    // Honor team.ops.defaultAgentType when user hasn't supplied N:agent-type.
+    const cfg = loadConfig();
+    const defaultAgentType = cfg.team?.ops?.defaultAgentType ?? DEFAULT_TEAM_CLI_AGENT_TYPE;
+    const parsed = parseTeamArgs(args, defaultAgentType);
     await handleTeamStart(parsed, cwd);
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
