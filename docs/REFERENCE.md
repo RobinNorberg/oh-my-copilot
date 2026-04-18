@@ -158,6 +158,30 @@ This gives OMC a coherent remote connection surface for MCP-backed tools. It doe
 
 If you need richer cross-machine behavior in the future, that would require a separate authenticated remote execution/filesystem design rather than stretching the current local-workspace architecture.
 
+### Company Context via MCP
+
+OMC also supports a narrow company-context contract on top of the existing MCP surface.
+
+Configure it in the standard OMC config files:
+
+- Project: `.copilot/omg.jsonc`
+- User: `~/.config/copilot-omg/config.jsonc`
+
+```jsonc
+{
+  "companyContext": {
+    "tool": "mcp__vendor__get_company_context",
+    "onError": "warn"
+  }
+}
+```
+
+- `tool` is the full MCP tool name to call.
+- `onError` controls prompt-level fallback: `warn`, `silent`, or `fail`.
+- The MCP server itself is still registered through the normal Copilot CLI / OMC MCP setup path.
+
+This remains a prompt-level workflow contract, not runtime enforcement. For the full interface, trigger stages, and trust boundary, see [company-context-interface.md](./company-context-interface.md).
+
 ### Agent Customization
 
 Edit agent files in `~/.claude/agents/` to customize behavior:

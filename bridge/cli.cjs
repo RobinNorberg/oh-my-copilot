@@ -3435,6 +3435,9 @@ function buildDefaultConfig() {
       exa: { enabled: true },
       context7: { enabled: true }
     },
+    companyContext: {
+      onError: "warn"
+    },
     permissions: {
       allowBash: true,
       allowEdit: true,
