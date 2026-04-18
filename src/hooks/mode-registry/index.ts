@@ -78,6 +78,16 @@ const MODE_CONFIGS: Record<ExecutionMode, ModeConfig> = {
     stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAQA],
     activeProperty: "active",
   },
+  [MODE_NAMES.DEEP_INTERVIEW]: {
+    name: "Deep Interview",
+    stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.DEEP_INTERVIEW],
+    activeProperty: "active",
+  },
+  [MODE_NAMES.SELF_IMPROVE]: {
+    name: "Self Improve",
+    stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.SELF_IMPROVE],
+    activeProperty: "active",
+  },
 };
 
 // Export for use in other modules
@@ -141,7 +151,66 @@ export function getGlobalStateFilePath(_mode: ExecutionMode): string | null {
 }
 
 /**
- * Check if a JSON-based mode is active by reading its state file
+ * Workflow-slot tombstone TTL. Matches `WORKFLOW_TOMBSTONE_TTL_MS` in
+ * `src/hooks/skill-state/index.ts` — kept local here to preserve the
+ * "mode-registry uses ONLY file-based detection" invariant (no imports from
+ * hook modules that themselves depend on the registry).
+ */
+const WORKFLOW_SLOT_TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Consult the session-local workflow ledger for a tombstoned slot.
+ *
+ * Returns `true` when the workflow ledger records the mode as tombstoned
+ * (soft-completed) AND the tombstone has not yet TTL-expired. Used to veto
+ * stale mode files from crashed sessions that never tore their own state down.
+ *
+ * Returns `false` for any shape we can't parse, any missing file, any live
+ * slot, and any slot whose tombstone already expired — so the legacy
+ * mode-file fallback remains authoritative whenever the ledger is silent.
+ */
+function isWorkflowSlotTombstonedForMode(
+  cwd: string,
+  mode: ExecutionMode,
+  sessionId?: string,
+  now: number = Date.now(),
+): boolean {
+  try {
+    const ledgerPath = sessionId
+      ? resolveSessionStatePath("skill-active", sessionId, cwd)
+      : join(getStateDir(cwd), "skill-active-state.json");
+    if (!existsSync(ledgerPath)) return false;
+
+    const raw = JSON.parse(readFileSync(ledgerPath, "utf-8")) as Record<
+      string,
+      unknown
+    >;
+    const slots = raw.active_skills;
+    if (!slots || typeof slots !== "object") return false;
+
+    const slot = (slots as Record<string, unknown>)[mode];
+    if (!slot || typeof slot !== "object") return false;
+
+    const completedAt = (slot as Record<string, unknown>).completed_at;
+    if (typeof completedAt !== "string" || completedAt.length === 0)
+      return false;
+
+    const tombstonedAt = new Date(completedAt).getTime();
+    if (!Number.isFinite(tombstonedAt)) return false;
+    return now - tombstonedAt < WORKFLOW_SLOT_TOMBSTONE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a JSON-based mode is active by reading its state file.
+ *
+ * Workflow-slot override: when the session workflow ledger records this mode
+ * as tombstoned (soft-completed), the stale per-mode state file is ignored so
+ * a fresh invocation can proceed without clearing artifacts manually. Live
+ * slots and absent slots both defer to the per-mode state file (legacy
+ * fallback preserved during the transition window).
  */
 function isJsonModeActive(
   cwd: string,
@@ -154,6 +223,9 @@ function isJsonModeActive(
   // This prevents cross-session state leakage where one session's legacy file
   // could cause another session to see mode as active.
   if (sessionId) {
+    if (isWorkflowSlotTombstonedForMode(cwd, mode, sessionId)) {
+      return false;
+    }
     const sessionStateFile = resolveSessionStatePath(mode, sessionId, cwd);
     try {
       const content = readFileSync(sessionStateFile, "utf-8");

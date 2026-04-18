@@ -1301,54 +1301,131 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
             mode: 'none'
         };
     }
+    // Hard bypass invariants: never enforce stop continuation under any of these
+    // environment-level kill switches. bridge.ts also guards DISABLE_OMC and
+    // OMC_SKIP_HOOKS at hook-entry, but we re-check here so direct callers and
+    // nested helpers (team workers, tests) observe the same contract.
+    if (process.env.DISABLE_OMC === '1' ||
+        process.env.DISABLE_OMC === 'true' ||
+        process.env.OMC_TEAM_WORKER) {
+        return { shouldBlock: false, message: '', mode: 'none' };
+    }
+    const skipHooks = (process.env.OMC_SKIP_HOOKS ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    if (skipHooks.includes('persistent-mode') || skipHooks.includes('stop-continuation')) {
+        return { shouldBlock: false, message: '', mode: 'none' };
+    }
+    // Best-effort: prune expired tombstones so stale completion markers do not
+    // linger past their TTL and mask a fresh invocation.
+    try {
+        const { readSkillActiveStateNormalized, pruneExpiredWorkflowSkillTombstones, writeSkillActiveStateCopies } = await import('../skill-state/index.js');
+        const current = readSkillActiveStateNormalized(workingDir, sessionId);
+        const pruned = pruneExpiredWorkflowSkillTombstones(current);
+        if (pruned !== current) {
+            writeSkillActiveStateCopies(workingDir, pruned, sessionId);
+        }
+    }
+    catch {
+        // Skill-state module unavailable or ledger unreadable — continue with
+        // legacy priority enforcement.
+    }
     // First, check for incomplete todos (we need this info for ultrawork)
     // Note: stopContext already checked above, but pass it for consistency
     const todoResult = await checkIncompleteTodos(sessionId, workingDir, stopContext);
     const hasIncompleteTodos = todoResult.count > 0;
-    // Priority 1: Ralph (explicit loop mode)
-    const ralphResult = await checkRalphLoop(sessionId, workingDir, cancelInProgress);
-    if (ralphResult) {
-        return ralphResult;
-    }
-    // Priority 1.5: Autopilot (full orchestration mode - higher than ultrawork, lower than ralph)
-    if (isAutopilotActive(workingDir, sessionId)) {
-        const autopilotResult = await checkAutopilot(sessionId, workingDir);
-        if (autopilotResult?.shouldBlock) {
-            return {
-                shouldBlock: true,
-                message: autopilotResult.message,
-                mode: 'autopilot',
-                metadata: {
-                    iteration: autopilotResult.metadata?.iteration,
-                    maxIterations: autopilotResult.metadata?.maxIterations,
-                    phase: autopilotResult.phase,
-                    tasksCompleted: autopilotResult.metadata?.tasksCompleted,
-                    tasksTotal: autopilotResult.metadata?.tasksTotal,
-                    toolError: autopilotResult.metadata?.toolError
-                }
-            };
+    // Consult the workflow ledger ONCE before direct mode-priority shortcuts.
+    // `resolveAuthoritativeWorkflowSkill()` returns the root of the live chain
+    // (autopilot in `autopilot → ralph`), so stop enforcement bubbles up to the
+    // live parent rather than the child currently executing beneath it.
+    const tombstonedWorkflowModes = new Set();
+    let workflowAuthority = null;
+    try {
+        const { readSkillActiveStateNormalized, resolveAuthoritativeWorkflowSkill } = await import('../skill-state/index.js');
+        const ledger = readSkillActiveStateNormalized(workingDir, sessionId);
+        const authority = resolveAuthoritativeWorkflowSkill(ledger);
+        workflowAuthority = authority?.skill_name ?? null;
+        for (const [name, slot] of Object.entries(ledger.active_skills)) {
+            if (slot.completed_at)
+                tombstonedWorkflowModes.add(name);
         }
     }
+    catch {
+        // Ledger unavailable — fall back to legacy mode-file detection.
+    }
+    // Authority-first ordering for nested workflow runs.
+    // In `autopilot → ralph`, autopilot is the authoritative parent while ralph
+    // runs beneath it — stop enforcement must resolve to the live parent so its
+    // iteration accounting keeps advancing.
+    const autopilotPriorityFirst = workflowAuthority === 'autopilot';
+    const runAutopilotPriority = async () => {
+        if (tombstonedWorkflowModes.has('autopilot') ||
+            !isAutopilotActive(workingDir, sessionId)) {
+            return null;
+        }
+        const autopilotResult = await checkAutopilot(sessionId, workingDir);
+        if (!autopilotResult?.shouldBlock)
+            return null;
+        return {
+            shouldBlock: true,
+            message: autopilotResult.message,
+            mode: 'autopilot',
+            metadata: {
+                iteration: autopilotResult.metadata?.iteration,
+                maxIterations: autopilotResult.metadata?.maxIterations,
+                phase: autopilotResult.phase,
+                tasksCompleted: autopilotResult.metadata?.tasksCompleted,
+                tasksTotal: autopilotResult.metadata?.tasksTotal,
+                toolError: autopilotResult.metadata?.toolError,
+            },
+        };
+    };
+    const runRalphPriority = async () => {
+        // Skip when the ralph workflow slot is tombstoned — a stale `ralph-state.json`
+        // from a crashed session must not block a fresh invocation.
+        if (tombstonedWorkflowModes.has('ralph'))
+            return null;
+        return checkRalphLoop(sessionId, workingDir, cancelInProgress);
+    };
+    if (autopilotPriorityFirst) {
+        const autopilotResult = await runAutopilotPriority();
+        if (autopilotResult)
+            return autopilotResult;
+        const ralphResult = await runRalphPriority();
+        if (ralphResult)
+            return ralphResult;
+    }
+    else {
+        const ralphResult = await runRalphPriority();
+        if (ralphResult)
+            return ralphResult;
+        const autopilotResult = await runAutopilotPriority();
+        if (autopilotResult)
+            return autopilotResult;
+    }
     // Priority 1.7: Ralplan (standalone consensus planning)
-    // Ralplan consensus loops (Planner/Architect/Critic) need hard-blocking.
-    // When ralplan runs under ralph, checkRalphLoop() handles it (Priority 1).
-    // Return ANY non-null result (including circuit breaker shouldBlock=false with message).
-    const ralplanResult = await checkRalplan(sessionId, workingDir, cancelInProgress);
-    if (ralplanResult) {
-        return ralplanResult;
+    // Suppressed when the ralplan slot is tombstoned so noisy re-handoff stops
+    // on completion until the tombstone TTL expires or a fresh slot reopens.
+    if (!tombstonedWorkflowModes.has('ralplan')) {
+        const ralplanResult = await checkRalplan(sessionId, workingDir, cancelInProgress);
+        if (ralplanResult) {
+            return ralplanResult;
+        }
     }
     // Priority 1.8: Team Pipeline (standalone team mode)
-    // When team runs without ralph, this provides stop-hook blocking.
-    // When team runs with ralph, checkRalphLoop() handles it (Priority 1).
-    // Return ANY non-null result (including circuit breaker shouldBlock=false with message).
-    const teamResult = await checkTeamPipeline(sessionId, workingDir, cancelInProgress);
-    if (teamResult) {
-        return teamResult;
+    if (!tombstonedWorkflowModes.has('team')) {
+        const teamResult = await checkTeamPipeline(sessionId, workingDir, cancelInProgress);
+        if (teamResult) {
+            return teamResult;
+        }
     }
     // Priority 2: Ultrawork Mode (performance mode with persistence)
-    const ultraworkResult = await checkUltrawork(sessionId, workingDir, hasIncompleteTodos, cancelInProgress);
-    if (ultraworkResult) {
-        return ultraworkResult;
+    if (!tombstonedWorkflowModes.has('ultrawork')) {
+        const ultraworkResult = await checkUltrawork(sessionId, workingDir, hasIncompleteTodos, cancelInProgress);
+        if (ultraworkResult) {
+            return ultraworkResult;
+        }
     }
     // Priority 3: Skill Active State (issue #1033)
     // Skills like code-review, plan, tdd, etc. write skill-active-state.json

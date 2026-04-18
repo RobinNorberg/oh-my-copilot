@@ -415,6 +415,85 @@ export function extractPromptText(
 }
 
 /**
+ * Canonical workflow skills detected via explicit slash invocation.
+ * Mirrors `CANONICAL_WORKFLOW_SKILLS` in `skill-state/index.ts`. Listed here
+ * (rather than imported) to keep the keyword-detector free of cross-module
+ * dependencies on skill-state.
+ */
+const CANONICAL_WORKFLOW_SLASH_SKILLS = [
+  'autopilot',
+  'ralph',
+  'team',
+  'ultrawork',
+  'ultraqa',
+  'deep-interview',
+  'ralplan',
+  'self-improve',
+] as const;
+
+export type CanonicalWorkflowSlashSkill =
+  (typeof CANONICAL_WORKFLOW_SLASH_SKILLS)[number];
+
+/**
+ * Map workflow slash skills to keyword types so explicit slash invocations
+ * surface alongside ordinary keyword detection. Skills with no dedicated
+ * KeywordType (`ultraqa`, `self-improve`) are intentionally absent — the
+ * bridge handles their seeding via the parser result instead of through the
+ * keyword-priority loop.
+ */
+const SLASH_SKILL_TO_KEYWORD_TYPE: Partial<
+  Record<CanonicalWorkflowSlashSkill, KeywordType>
+> = {
+  autopilot: 'autopilot',
+  ralph: 'ralph',
+  team: 'team',
+  ultrawork: 'ultrawork',
+  'deep-interview': 'deep-interview',
+  ralplan: 'ralplan',
+};
+
+const WORKFLOW_SLASH_PATTERN = new RegExp(
+  '^\\s*/(?:oh-my-copilot:|omc:)?(' +
+    CANONICAL_WORKFLOW_SLASH_SKILLS
+      .map((skill) => skill.replace(/-/g, '\\-'))
+      .join('|') +
+    ')(?=\\s|$|[?!.,;:])',
+  'i',
+);
+
+export interface ExplicitWorkflowSlashInvocation {
+  /** Canonical workflow skill name (lowercase, no `oh-my-copilot:` prefix). */
+  skill: CanonicalWorkflowSlashSkill;
+  /** Trailing arguments after the slash command. */
+  args: string;
+  /** Raw matched prefix (including any namespace prefix and the skill name). */
+  raw: string;
+}
+
+/**
+ * Parse an explicit workflow slash invocation at the start of a prompt.
+ *
+ * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-copilot:<skill>` for
+ * the canonical workflow skill list. Code fences and inline backticks are
+ * stripped first so quoted commands do not match. The trailing lookahead
+ * (whitespace, end-of-text, or punctuation) prevents file paths like
+ * `/ralph-logs/foo.txt` from matching `/ralph`.
+ *
+ * Returns `null` when no explicit invocation is present.
+ */
+export function parseExplicitWorkflowSlashInvocation(
+  promptText: string,
+): ExplicitWorkflowSlashInvocation | null {
+  if (typeof promptText !== 'string' || promptText.length === 0) return null;
+  const stripped = removeCodeBlocks(promptText);
+  const match = WORKFLOW_SLASH_PATTERN.exec(stripped);
+  if (!match) return null;
+  const skill = match[1].toLowerCase() as CanonicalWorkflowSlashSkill;
+  const args = stripped.slice(match[0].length).trim();
+  return { skill, args, raw: match[0] };
+}
+
+/**
  * Detect keywords in text and return matches with type info
  */
 export function detectKeywordsWithType(
@@ -424,10 +503,35 @@ export function detectKeywordsWithType(
   const detected: DetectedKeyword[] = [];
   const cleanedText = sanitizeForKeywordDetection(text);
 
+  // Check for an explicit canonical workflow slash invocation BEFORE sanitization.
+  // The general sanitizer strips bare `/word` tokens as file paths, so bare
+  // commands like `/ralph fix auth` would otherwise never match. This must be
+  // robust to surrounding whitespace, namespace prefixes (`/omc:`,
+  // `/oh-my-copilot:`), and code-fence/backtick wrapping (handled inside
+  // the parser via removeCodeBlocks).
+  const explicitSlash = parseExplicitWorkflowSlashInvocation(text);
+  const explicitSlashType = explicitSlash
+    ? SLASH_SKILL_TO_KEYWORD_TYPE[explicitSlash.skill]
+    : undefined;
+  if (explicitSlash && explicitSlashType) {
+    const position = Math.max(0, text.indexOf(explicitSlash.raw.trim()));
+    detected.push({
+      type: explicitSlashType,
+      keyword: explicitSlash.raw.trim(),
+      position,
+    });
+  }
+
   // Check each keyword type
   for (const type of KEYWORD_PRIORITY) {
     // Team keyword detection disabled — team mode is now explicit-only via /team skill
     if (type === 'team') {
+      continue;
+    }
+
+    // Skip the type that the explicit-slash detector already surfaced so we
+    // do not emit duplicate entries for the same intent.
+    if (explicitSlashType && type === explicitSlashType) {
       continue;
     }
 
