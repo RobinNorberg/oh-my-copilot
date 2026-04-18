@@ -5,7 +5,7 @@
  * Statusline command that visualizes oh-my-copilot state.
  * Receives stdin JSON from Copilot CLI and outputs formatted statusline.
  */
-import { readStdin, writeStdinCache, readStdinCache, getContextPercent, getModelName, stabilizeContextPercent, } from "./stdin.js";
+import { readStdin, writeStdinCache, readStdinCache, getContextPercent, getModelName, getRateLimitsFromStdin, stabilizeContextPercent, } from "./stdin.js";
 import { parseTranscript } from "./transcript.js";
 import { readHudState, readHudConfig, getRunningTasks, writeHudState, initializeHUDState, } from "./state.js";
 import { readRalphStateForHud, readUltraworkStateForHud, readPrdStateForHud, readAutopilotStateForHud, } from "./omc-state.js";
@@ -205,8 +205,13 @@ async function main(watchMode = false, skipInit = false) {
             stateToWrite.timestamp = new Date().toISOString();
             writeHudState(stateToWrite, cwd, currentSessionId ?? undefined);
         }
-        // Fetch rate limits from OAuth API (if available)
-        const rateLimitsResult = config.elements.rateLimits !== false ? await getUsage() : null;
+        // Prefer Claude Code stdin rate limits when available to avoid cold-start API fetches.
+        const stdinRateLimits = getRateLimitsFromStdin(stdin);
+        const rateLimitsResult = config.elements.rateLimits === false
+            ? null
+            : stdinRateLimits
+                ? { rateLimits: stdinRateLimits }
+                : await getUsage();
         // Fetch custom rate limit buckets (if configured)
         const customBuckets = config.rateLimitsProvider?.type === 'custom'
             ? await executeCustomProvider(config.rateLimitsProvider)

@@ -7180,7 +7180,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve17.call(this, root, ref);
+      let _sch = resolve18.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a2 = root.localRefs) === null || _a2 === void 0 ? void 0 : _a2[ref];
         const { schemaId } = this.opts;
@@ -7207,7 +7207,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve17(root, ref) {
+    function resolve18(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -7782,7 +7782,7 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve17(baseURI, relativeURI, options) {
+    function resolve18(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse7(baseURI, schemelessOptions), parse7(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
@@ -8009,7 +8009,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize11,
-      resolve: resolve17,
+      resolve: resolve18,
       resolveComponent,
       equal,
       serialize,
@@ -12443,7 +12443,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep2(ms) {
-  return new Promise((resolve17) => setTimeout(resolve17, ms));
+  return new Promise((resolve18) => setTimeout(resolve18, ms));
 }
 var import_child_process8, fs4, fsPromises2, path5, import_url4, import_child_process9, import_util8, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -13201,7 +13201,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve17) => setTimeout(resolve17, ms));
+  return new Promise((resolve18) => setTimeout(resolve18, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -14532,6 +14532,13 @@ function escapeRegex2(value) {
 function normalizePath2(value) {
   return value.replace(/\\/g, "/").replace(/\/+$/, "");
 }
+function canonicalizeExistingPath(value) {
+  try {
+    return normalizePath2(import_fs29.realpathSync.native(value));
+  } catch {
+    return normalizePath2((0, import_path38.resolve)(value));
+  }
+}
 function isDefaultClaudeConfigDirPath(configDir) {
   return normalizePath2(configDir) === normalizePath2((0, import_path38.join)((0, import_os10.homedir)(), ".claude"));
 }
@@ -15058,7 +15065,12 @@ function getGlobalInstalledPackageRoot() {
 function isCacheInstalledPluginRoot(root) {
   const normalizedRoot = normalizePath2(root);
   const cacheBase = normalizePath2((0, import_path38.join)(COPILOT_CONFIG_DIR, "plugins", "cache"));
-  return normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`);
+  if (!(normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`))) {
+    return false;
+  }
+  const canonicalRoot = canonicalizeExistingPath(root);
+  const canonicalCacheBase = canonicalizeExistingPath(cacheBase);
+  return canonicalRoot === canonicalCacheBase || canonicalRoot.startsWith(`${canonicalCacheBase}/`);
 }
 function resolveBestPluginSyncSource(targetRoots) {
   const excludedRoots = new Set(targetRoots.map(normalizePath2));
@@ -18360,6 +18372,7 @@ __export(todo_continuation_exports, {
   isContextLimitStop: () => isContextLimitStop,
   isExplicitCancelCommand: () => isExplicitCancelCommand,
   isRateLimitStop: () => isRateLimitStop,
+  isScheduledWakeupStop: () => isScheduledWakeupStop,
   isTaskIncomplete: () => isTaskIncomplete,
   isUserAbort: () => isUserAbort,
   isValidSessionId: () => isValidSessionId,
@@ -18422,7 +18435,7 @@ function isExplicitCancelCommand(context) {
   if (explicitReasonPatterns.some((pattern) => pattern.test(reason) || pattern.test(endTurnReason))) {
     return true;
   }
-  const toolName = String(context.tool_name ?? context.toolName ?? "").toLowerCase();
+  const toolName = String(context.tool_name ?? context.toolName ?? "").toLowerCase().replace(/[\s-]+/g, "_");
   const toolInput = context.tool_input ?? context.toolInput;
   if (toolName.includes("skill") && toolInput && typeof toolInput.skill === "string") {
     const skill = toolInput.skill.toLowerCase();
@@ -18469,6 +18482,25 @@ function isRateLimitStop(context) {
     "capacity"
   ];
   return rateLimitPatterns.some((p) => reason.includes(p) || endTurnReason.includes(p));
+}
+function isScheduledWakeupStop(context) {
+  if (!context) return false;
+  const stopPatterns = [
+    "schedulewakeup",
+    "schedule_wakeup",
+    "scheduled_wakeup",
+    "scheduled_task",
+    "scheduled_resume",
+    "loop_resume",
+    "loop_wakeup"
+  ];
+  const toolName = String(context.tool_name ?? context.toolName ?? "").toLowerCase();
+  if (stopPatterns.some((pattern) => toolName.includes(pattern))) {
+    return true;
+  }
+  return getStopReasonFields(context).some(
+    (value) => stopPatterns.some((pattern) => value.includes(pattern))
+  );
 }
 function isAuthenticationError(context) {
   if (!context) return false;
@@ -23804,6 +23836,13 @@ async function checkPersistentModes(sessionId, directory, stopContext) {
       mode: "none"
     };
   }
+  if (isScheduledWakeupStop(stopContext)) {
+    return {
+      shouldBlock: false,
+      message: "",
+      mode: "none"
+    };
+  }
   const todoResult = await checkIncompleteTodos(sessionId, workingDir, stopContext);
   const hasIncompleteTodos = todoResult.count > 0;
   const ralphResult = await checkRalphLoop(sessionId, workingDir, cancelInProgress);
@@ -27593,7 +27632,7 @@ async function sendTelegram(config2, payload) {
       text: payload.message,
       parse_mode: config2.parseMode || "Markdown"
     });
-    const result = await new Promise((resolve17) => {
+    const result = await new Promise((resolve18) => {
       const req = (0, import_https.request)(
         {
           hostname: "api.telegram.org",
@@ -27620,9 +27659,9 @@ async function sendTelegram(config2, payload) {
                 }
               } catch {
               }
-              resolve17({ platform: "telegram", success: true, messageId });
+              resolve18({ platform: "telegram", success: true, messageId });
             } else {
-              resolve17({
+              resolve18({
                 platform: "telegram",
                 success: false,
                 error: `HTTP ${res.statusCode}`
@@ -27632,11 +27671,11 @@ async function sendTelegram(config2, payload) {
         }
       );
       req.on("error", (e) => {
-        resolve17({ platform: "telegram", success: false, error: e.message });
+        resolve18({ platform: "telegram", success: false, error: e.message });
       });
       req.on("timeout", () => {
         req.destroy();
-        resolve17({
+        resolve18({
           platform: "telegram",
           success: false,
           error: "Request timeout"
@@ -27926,9 +27965,9 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
           }
         )
       ),
-      new Promise((resolve17) => {
+      new Promise((resolve18) => {
         timer = setTimeout(
-          () => resolve17([
+          () => resolve18([
             {
               platform: "unknown",
               success: false,
@@ -30443,7 +30482,7 @@ async function pollTelegram(config2, state, rateLimiter) {
   try {
     const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
     const path22 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
-    const updates = await new Promise((resolve17, reject) => {
+    const updates = await new Promise((resolve18, reject) => {
       const req = (0, import_https2.request)(
         {
           hostname: "api.telegram.org",
@@ -30460,7 +30499,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             try {
               const body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve17(body.result || []);
+                resolve18(body.result || []);
               } else {
                 reject(new Error(`HTTP ${res.statusCode}`));
               }
@@ -30524,7 +30563,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             text: "Injected into Copilot CLI session.",
             reply_to_message_id: msg.message_id
           });
-          await new Promise((resolve17) => {
+          await new Promise((resolve18) => {
             const replyReq = (0, import_https2.request)(
               {
                 hostname: "api.telegram.org",
@@ -30539,13 +30578,13 @@ async function pollTelegram(config2, state, rateLimiter) {
               },
               (res) => {
                 res.resume();
-                resolve17();
+                resolve18();
               }
             );
-            replyReq.on("error", () => resolve17());
+            replyReq.on("error", () => resolve18());
             replyReq.on("timeout", () => {
               replyReq.destroy();
-              resolve17();
+              resolve18();
             });
             replyReq.write(replyBody);
             replyReq.end();
@@ -30682,13 +30721,13 @@ async function pollLoop() {
         }
       }
       writeDaemonState(state);
-      await new Promise((resolve17) => setTimeout(resolve17, config2.pollIntervalMs));
+      await new Promise((resolve18) => setTimeout(resolve18, config2.pollIntervalMs));
     } catch (error48) {
       state.errors++;
       state.lastError = redactTokens(error48 instanceof Error ? error48.message : String(error48));
       log(`Poll error: ${state.lastError}`);
       writeDaemonState(state);
-      await new Promise((resolve17) => setTimeout(resolve17, config2.pollIntervalMs * 2));
+      await new Promise((resolve18) => setTimeout(resolve18, config2.pollIntervalMs * 2));
     }
   }
   log("Poll loop ended");
@@ -31896,7 +31935,7 @@ async function triggerStopCallbacks(metrics, _input, options = {}) {
   try {
     await Promise.race([
       Promise.allSettled(promises),
-      new Promise((resolve17) => setTimeout(resolve17, 5e3))
+      new Promise((resolve18) => setTimeout(resolve18, 5e3))
     ]);
   } catch (error48) {
     console.error("[stop-callback] Callback execution error:", error48);
@@ -32292,7 +32331,7 @@ async function withMailboxLock(teamName, workerName2, cwd, fn) {
   while (Date.now() < deadline) {
     const result = await withLock(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve17) => setTimeout(resolve17, delayMs));
+    await new Promise((resolve18) => setTimeout(resolve18, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName2} after ${timeoutMs}ms`);
@@ -32396,7 +32435,7 @@ async function teamCreateTask(teamName, task, cwd) {
       return created;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve17) => setTimeout(resolve17, delayMs));
+    await new Promise((resolve18) => setTimeout(resolve18, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -32434,7 +32473,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd) {
       return merged;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve17) => setTimeout(resolve17, delayMs));
+    await new Promise((resolve18) => setTimeout(resolve18, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -34382,7 +34421,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve17) => setTimeout(resolve17, Math.floor(pollMs * jitter)));
+      await new Promise((resolve18) => setTimeout(resolve18, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -35524,7 +35563,7 @@ async function waitForWorkerStartupEvidence(teamName, workerName2, taskId, cwd, 
       return true;
     }
     if (attempt < attempts) {
-      await new Promise((resolve17) => setTimeout(resolve17, delayMs));
+      await new Promise((resolve18) => setTimeout(resolve18, delayMs));
     }
   }
   return false;
@@ -36691,7 +36730,7 @@ async function readJsonSafe5(filePath) {
         return null;
       }
     }
-    await new Promise((resolve17) => setTimeout(resolve17, 25));
+    await new Promise((resolve18) => setTimeout(resolve18, 25));
   }
   return null;
 }
@@ -36809,7 +36848,7 @@ async function nextPendingTaskIndex(runtime) {
     let task = await readTask(root, taskId);
     if (!task) {
       for (let attempt = 1; attempt < transientReadRetryAttempts; attempt++) {
-        await new Promise((resolve17) => setTimeout(resolve17, transientReadRetryDelayMs));
+        await new Promise((resolve18) => setTimeout(resolve18, transientReadRetryDelayMs));
         task = await readTask(root, taskId);
         if (task) break;
       }
@@ -44860,7 +44899,7 @@ function validateCredentials(creds) {
   return !isCredentialExpired(creds);
 }
 function refreshAccessToken(refreshToken) {
-  return new Promise((resolve17) => {
+  return new Promise((resolve18) => {
     const clientId = process.env.CLAUDE_CODE_OAUTH_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID;
     const body = new URLSearchParams({
       grant_type: "refresh_token",
@@ -44888,7 +44927,7 @@ function refreshAccessToken(refreshToken) {
             try {
               const parsed = JSON.parse(data);
               if (parsed.access_token) {
-                resolve17({
+                resolve18({
                   accessToken: parsed.access_token,
                   refreshToken: parsed.refresh_token || refreshToken,
                   expiresAt: parsed.expires_in ? Date.now() + parsed.expires_in * 1e3 : parsed.expires_at
@@ -44901,20 +44940,20 @@ function refreshAccessToken(refreshToken) {
           if (process.env.OMC_DEBUG) {
             console.error(`[usage-api] Token refresh failed: HTTP ${res.statusCode}`);
           }
-          resolve17(null);
+          resolve18(null);
         });
       }
     );
-    req.on("error", () => resolve17(null));
+    req.on("error", () => resolve18(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve17(null);
+      resolve18(null);
     });
     req.end(body);
   });
 }
 function fetchUsageFromApi(accessToken) {
-  return new Promise((resolve17) => {
+  return new Promise((resolve18) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -44935,41 +44974,41 @@ function fetchUsageFromApi(accessToken) {
         res.on("end", () => {
           if (res.statusCode === 200) {
             try {
-              resolve17({ data: JSON.parse(data) });
+              resolve18({ data: JSON.parse(data) });
             } catch {
-              resolve17({ data: null });
+              resolve18({ data: null });
             }
           } else if (res.statusCode === 429) {
             if (process.env.OMC_DEBUG) {
               console.error(`[usage-api] Anthropic API returned 429 (rate limited)`);
             }
-            resolve17({ data: null, rateLimited: true });
+            resolve18({ data: null, rateLimited: true });
           } else {
-            resolve17({ data: null });
+            resolve18({ data: null });
           }
         });
       }
     );
-    req.on("error", () => resolve17({ data: null }));
+    req.on("error", () => resolve18({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve17({ data: null });
+      resolve18({ data: null });
     });
     req.end();
   });
 }
 function fetchUsageFromZai() {
-  return new Promise((resolve17) => {
+  return new Promise((resolve18) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
     if (!baseUrl || !authToken) {
-      resolve17({ data: null });
+      resolve18({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve17({ data: null });
+      resolve18({ data: null });
       return;
     }
     try {
@@ -44997,29 +45036,29 @@ function fetchUsageFromZai() {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve17({ data: JSON.parse(data) });
+                resolve18({ data: JSON.parse(data) });
               } catch {
-                resolve17({ data: null });
+                resolve18({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] z.ai API returned 429 (rate limited)`);
               }
-              resolve17({ data: null, rateLimited: true });
+              resolve18({ data: null, rateLimited: true });
             } else {
-              resolve17({ data: null });
+              resolve18({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve17({ data: null }));
+      req.on("error", () => resolve18({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve17({ data: null });
+        resolve18({ data: null });
       });
       req.end();
     } catch {
-      resolve17({ data: null });
+      resolve18({ data: null });
     }
   });
 }
@@ -45160,16 +45199,16 @@ function parseZaiResponse(response) {
   return result;
 }
 function fetchUsageFromMinimax(apiKey) {
-  return new Promise((resolve17) => {
+  return new Promise((resolve18) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve17({ data: null });
+      resolve18({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve17({ data: null });
+      resolve18({ data: null });
       return;
     }
     try {
@@ -45196,29 +45235,29 @@ function fetchUsageFromMinimax(apiKey) {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve17({ data: JSON.parse(data) });
+                resolve18({ data: JSON.parse(data) });
               } catch {
-                resolve17({ data: null });
+                resolve18({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] MiniMax API returned 429 (rate limited)`);
               }
-              resolve17({ data: null, rateLimited: true });
+              resolve18({ data: null, rateLimited: true });
             } else {
-              resolve17({ data: null });
+              resolve18({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve17({ data: null }));
+      req.on("error", () => resolve18({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve17({ data: null });
+        resolve18({ data: null });
       });
       req.end();
     } catch {
-      resolve17({ data: null });
+      resolve18({ data: null });
     }
   });
 }
@@ -45456,9 +45495,31 @@ async function readStdin() {
 function getCurrentUsage(stdin) {
   return stdin.context_window?.current_usage;
 }
+function clampPercent(value) {
+  if (value == null || !isFinite(value)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, value));
+}
+function parseResetDate(value) {
+  if (value == null) {
+    return null;
+  }
+  const numericValue = typeof value === "number" ? value : typeof value === "string" && value.trim() !== "" ? Number(value) : Number.NaN;
+  if (Number.isFinite(numericValue)) {
+    const millis = Math.abs(numericValue) < 1e12 ? numericValue * 1e3 : numericValue;
+    const date5 = new Date(millis);
+    return Number.isNaN(date5.getTime()) ? null : date5;
+  }
+  if (typeof value === "string") {
+    const date5 = new Date(value);
+    return Number.isNaN(date5.getTime()) ? null : date5;
+  }
+  return null;
+}
 function getTotalTokens(stdin) {
   const usage = getCurrentUsage(stdin);
-  return (usage?.input_tokens ?? 0) + (usage?.cache_creation_input_tokens ?? 0) + (usage?.cache_read_input_tokens ?? 0);
+  return (usage?.input_tokens ?? 0) + (usage?.cache_creation_input_tokens ?? 0);
 }
 function getRoundedNativeContextPercent(stdin) {
   const nativePercent = stdin?.context_window?.used_percentage;
@@ -45507,6 +45568,19 @@ function getContextPercent(stdin) {
     return nativePercent;
   }
   return getManualContextPercent(stdin) ?? 0;
+}
+function getRateLimitsFromStdin(stdin) {
+  const fiveHour = stdin.rate_limits?.five_hour?.used_percentage;
+  const sevenDay = stdin.rate_limits?.seven_day?.used_percentage;
+  if (fiveHour == null && sevenDay == null) {
+    return null;
+  }
+  return {
+    fiveHourPercent: clampPercent(fiveHour),
+    weeklyPercent: sevenDay == null ? void 0 : clampPercent(sevenDay),
+    fiveHourResetsAt: parseResetDate(stdin.rate_limits?.five_hour?.resets_at),
+    weeklyResetsAt: parseResetDate(stdin.rate_limits?.seven_day?.resets_at)
+  };
 }
 function getModelName(stdin) {
   return stdin.model?.display_name ?? stdin.model?.id ?? "Unknown";
@@ -46163,7 +46237,7 @@ function isCacheValid2(cache) {
   return Date.now() - cache.timestamp < CACHE_TTL_MS2;
 }
 function spawnWithTimeout(cmd, timeoutMs) {
-  return new Promise((resolve17, reject) => {
+  return new Promise((resolve18, reject) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
     const child = (0, import_child_process36.spawn)(executable, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
@@ -46186,7 +46260,7 @@ function spawnWithTimeout(cmd, timeoutMs) {
       clearTimeout(timer);
       if (!timedOut) {
         if (code === 0) {
-          resolve17(stdout);
+          resolve18(stdout);
         } else {
           reject(new Error(`Command exited with code ${code}`));
         }
@@ -48288,7 +48362,8 @@ async function main2(watchMode = false, skipInit = false) {
       stateToWrite.timestamp = (/* @__PURE__ */ new Date()).toISOString();
       writeHudState(stateToWrite, cwd, currentSessionId ?? void 0);
     }
-    const rateLimitsResult = config2.elements.rateLimits !== false ? await getUsage() : null;
+    const stdinRateLimits = getRateLimitsFromStdin(stdin);
+    const rateLimitsResult = config2.elements.rateLimits === false ? null : stdinRateLimits ? { rateLimits: stdinRateLimits } : await getUsage();
     const customBuckets = config2.rateLimitsProvider?.type === "custom" ? await executeCustomProvider(config2.rateLimitsProvider) : null;
     let omcVersion = null;
     let updateAvailable = null;
@@ -69411,7 +69486,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve17) => setTimeout(resolve17, pollInterval));
+        await new Promise((resolve18) => setTimeout(resolve18, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error48) {
@@ -69428,7 +69503,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve17, reject) => {
+    return new Promise((resolve18, reject) => {
       const earlyReject = (error48) => {
         reject(error48);
       };
@@ -69506,7 +69581,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve17(parseResult.data);
+            resolve18(parseResult.data);
           }
         } catch (error48) {
           reject(error48);
@@ -69767,12 +69842,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve17, reject) => {
+    return new Promise((resolve18, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve17, interval);
+      const timeoutId = setTimeout(resolve18, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -71037,7 +71112,7 @@ var LspClient = class {
 Install with: ${this.serverConfig.installHint}`
       );
     }
-    return new Promise((resolve17, reject) => {
+    return new Promise((resolve18, reject) => {
       const command = this.devContainerContext ? "docker" : this.serverConfig.command;
       const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
       this.process = (0, import_child_process3.spawn)(command, args, {
@@ -71066,7 +71141,7 @@ Install with: ${this.serverConfig.installHint}`
       });
       this.initialize().then(() => {
         this.initialized = true;
-        resolve17();
+        resolve18();
       }).catch(reject);
     });
   }
@@ -71201,13 +71276,13 @@ Install with: ${this.serverConfig.installHint}`
     const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-    return new Promise((resolve17, reject) => {
+    return new Promise((resolve18, reject) => {
       const timeoutHandle = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
       this.pendingRequests.set(id, {
-        resolve: resolve17,
+        resolve: resolve18,
         reject,
         timeout: timeoutHandle
       });
@@ -71283,7 +71358,7 @@ ${content}`;
       }
     });
     this.openDocuments.add(hostUri);
-    await new Promise((resolve17) => setTimeout(resolve17, 100));
+    await new Promise((resolve18) => setTimeout(resolve18, 100));
   }
   /**
    * Close a document
@@ -71444,13 +71519,13 @@ ${content}`;
     if (this.diagnostics.has(uri)) {
       return Promise.resolve();
     }
-    return new Promise((resolve17) => {
+    return new Promise((resolve18) => {
       let resolved = false;
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           this.diagnosticWaiters.delete(uri);
-          resolve17();
+          resolve18();
         }
       }, timeoutMs);
       const existing = this.diagnosticWaiters.get(uri) || [];
@@ -71458,7 +71533,7 @@ ${content}`;
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);
-          resolve17();
+          resolve18();
         }
       });
       this.diagnosticWaiters.set(uri, existing);
@@ -73304,7 +73379,7 @@ var SessionLock = class {
   }
 };
 function sleep(ms) {
-  return new Promise((resolve17) => setTimeout(resolve17, ms));
+  return new Promise((resolve18) => setTimeout(resolve18, ms));
 }
 
 // src/tools/python-repl/socket-client.ts
@@ -73339,7 +73414,7 @@ var JsonRpcError = class extends Error {
   data;
 };
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve17, reject) => {
+  return new Promise((resolve18, reject) => {
     const id = (0, import_crypto2.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -73413,7 +73488,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
             ));
             return;
           }
-          resolve17(response.result);
+          resolve18(response.result);
         } catch (e) {
           reject(new Error(
             `Failed to parse JSON-RPC response: ${e.message}`
@@ -75584,7 +75659,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve17) {
+function mergeByKey(base, incoming, keyFn, resolve18) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -75593,7 +75668,7 @@ function mergeByKey(base, incoming, keyFn, resolve17) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve17(existing, item));
+      seen.set(key, resolve18(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -82796,7 +82871,7 @@ async function pollLoop2(config2) {
       log2(`Poll error: ${state.lastError}`, config2);
       writeDaemonState2(state, config2);
     }
-    await new Promise((resolve17) => setTimeout(resolve17, config2.pollIntervalMs));
+    await new Promise((resolve18) => setTimeout(resolve18, config2.pollIntervalMs));
   }
 }
 function startDaemon(config2) {
@@ -86854,7 +86929,7 @@ async function ralphthonCommand(args) {
   console.log(source_default.gray("Orchestrator running. Press Ctrl+C to stop."));
 }
 function sleep5(ms) {
-  return new Promise((resolve17) => setTimeout(resolve17, ms));
+  return new Promise((resolve18) => setTimeout(resolve18, ms));
 }
 
 // src/cli/autoresearch.ts
@@ -88896,15 +88971,15 @@ async function runHudWatchLoop(options) {
     if (shouldStop) {
       break;
     }
-    await new Promise((resolve17) => {
+    await new Promise((resolve18) => {
       const timer = setTimeout(() => {
         wakeSleep = null;
-        resolve17();
+        resolve18();
       }, options.intervalMs);
       wakeSleep = () => {
         clearTimeout(timer);
         wakeSleep = null;
-        resolve17();
+        resolve18();
       };
       timer.unref?.();
     });

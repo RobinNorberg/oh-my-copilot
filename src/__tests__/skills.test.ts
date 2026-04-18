@@ -180,6 +180,16 @@ describe('Builtin Skills', () => {
       expect(skill).toBeUndefined();
     });
 
+    it('should preserve the multi-repo omc-teams cwd and plan-path contract', () => {
+      const skill = getBuiltinSkill('omc-teams');
+      expect(skill).toBeDefined();
+      expect(skill?.template).toContain('shared workspace root');
+      expect(skill?.template).toContain('absolute plan path');
+      expect(skill?.template).toContain('--cwd <workspace-root>');
+      expect(skill?.template).toContain('Do not anchor the launch cwd to only the repo containing `.omc/plans/...`');
+      expect(skill?.template).toContain('single-cwd constraint');
+    });
+
     it('stages mcp-setup AskUserQuestion menus so each prompt stays within the current option limit', () => {
       const skill = getBuiltinSkill('mcp-setup');
       expect(skill).toBeDefined();

@@ -19,7 +19,7 @@ import { readUltraworkState, writeUltraworkState, incrementReinforcement, deacti
 import { resolveToWorktreeRoot, resolveSessionStatePath, resolveStatePath, getOmcRoot } from '../../lib/worktree-paths.js';
 import { readModeState, writeModeState } from '../../lib/mode-state-io.js';
 import { readRalphState, writeRalphState, incrementRalphIteration, clearRalphState, getPrdCompletionStatus, getRalphContext, getStory, markStoryIncomplete, markStoryArchitectVerified, readVerificationState, startVerification, recordArchitectFeedback, getArchitectVerificationPrompt, getArchitectRejectionContinuationPrompt, detectArchitectApproval, detectArchitectRejection, clearVerificationState, } from '../ralph/index.js';
-import { checkIncompleteTodos, getNextPendingTodo, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError } from '../todo-continuation/index.js';
+import { checkIncompleteTodos, getNextPendingTodo, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import { isAutopilotActive } from '../autopilot/index.js';
 import { checkAutopilot } from '../autopilot/enforcement.js';
@@ -1286,6 +1286,18 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
         return {
             shouldBlock: false,
             message: '[PERSISTENT MODE PAUSED - AUTHENTICATION ERROR] Authentication failure detected (for example 401/403 or expired OAuth token). Re-authenticate, then resume manually.',
+            mode: 'none'
+        };
+    }
+    // CRITICAL: Never block scheduled wake-up resumptions.
+    // Native ScheduleWakeup-triggered `/loop` turns are resumptions, not signals
+    // to continue or clean up a prior persistent mode. Re-enforcing here can
+    // inject `/cancel` guidance from stale state and cause the scheduled turn to
+    // cancel itself before the real work runs.
+    if (isScheduledWakeupStop(stopContext)) {
+        return {
+            shouldBlock: false,
+            message: '',
             mode: 'none'
         };
     }

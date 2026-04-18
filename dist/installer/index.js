@@ -7,8 +7,8 @@
  * Cross-platform support via Node.js-based hook scripts (.mjs).
  * Bash hook scripts were removed in v3.9.0.
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync, unlinkSync, rmSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync, unlinkSync, rmSync, realpathSync } from 'fs';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
@@ -151,6 +151,14 @@ function escapeRegex(value) {
 }
 function normalizePath(value) {
     return value.replace(/\\/g, '/').replace(/\/+$/, '');
+}
+function canonicalizeExistingPath(value) {
+    try {
+        return normalizePath(realpathSync.native(value));
+    }
+    catch {
+        return normalizePath(resolve(value));
+    }
 }
 function isDefaultClaudeConfigDirPath(configDir) {
     return normalizePath(configDir) === normalizePath(join(homedir(), '.claude'));
@@ -872,7 +880,12 @@ function getGlobalInstalledPackageRoot() {
 function isCacheInstalledPluginRoot(root) {
     const normalizedRoot = normalizePath(root);
     const cacheBase = normalizePath(join(COPILOT_CONFIG_DIR, 'plugins', 'cache'));
-    return normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`);
+    if (!(normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`))) {
+        return false;
+    }
+    const canonicalRoot = canonicalizeExistingPath(root);
+    const canonicalCacheBase = canonicalizeExistingPath(cacheBase);
+    return canonicalRoot === canonicalCacheBase || canonicalRoot.startsWith(`${canonicalCacheBase}/`);
 }
 function resolveBestPluginSyncSource(targetRoots) {
     const excludedRoots = new Set(targetRoots.map(normalizePath));
