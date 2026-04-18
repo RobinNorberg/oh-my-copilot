@@ -9,7 +9,7 @@ import { parseSandboxContract, slugifyMissionName } from '../autoresearch/contra
 import { AUTORESEARCH_SETUP_CONFIDENCE_THRESHOLD, } from '../autoresearch/setup-contract.js';
 import { buildMissionContent, buildSandboxContent, isLaunchReadyEvaluatorCommand, writeAutoresearchDeepInterviewArtifacts, } from './autoresearch-intake.js';
 import { runAutoresearchSetupSession, } from './autoresearch-setup-session.js';
-import { buildTmuxShellCommand, isTmuxAvailable, quoteShellArg, tmuxExec, wrapWithLoginShell } from './tmux-utils.js';
+import { buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isTmuxAvailable, quoteShellArg, tmuxExec, wrapWithLoginShell } from './tmux-utils.js';
 const CLAUDE_BYPASS_FLAG = '--dangerously-skip-permissions';
 const AUTORESEARCH_SETUP_SLASH_COMMAND = '/deep-interview --autoresearch';
 function createQuestionIO() {
@@ -296,7 +296,7 @@ export function spawnAutoresearchSetupTmux(repoRoot) {
     const sessionName = `omc-autoresearch-setup-${Date.now().toString(36)}`;
     const codexHome = prepareAutoresearchSetupCodexHome(repoRoot, sessionName);
     const hostBinary = getHostCliBinary();
-    const cliCommand = buildTmuxShellCommand('env', [`CODEX_HOME=${codexHome}`, hostBinary, CLAUDE_BYPASS_FLAG]);
+    const cliCommand = buildTmuxShellCommandWithEnv(hostBinary, [CLAUDE_BYPASS_FLAG], { CODEX_HOME: codexHome });
     const wrappedCliCommand = wrapWithLoginShell(cliCommand);
     const paneId = tmuxExec(['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedCliCommand], { stripTmux: true }).trim();
     assertTmuxSessionAvailable(sessionName);

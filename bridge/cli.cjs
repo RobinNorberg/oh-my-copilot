@@ -16571,15 +16571,19 @@ function canClearStateForSession(state, sessionId) {
   const ownerSessionId = getStateSessionOwner(state);
   return !ownerSessionId || ownerSessionId === sessionId;
 }
-function resolveFile(mode, directory, sessionId) {
+function resolveStateRoot(directory) {
   const baseDir = directory || process.cwd();
+  return getWorktreeRoot(baseDir) || baseDir;
+}
+function resolveFile(mode, directory, sessionId) {
+  const baseDir = resolveStateRoot(directory);
   if (sessionId) {
     return resolveSessionStatePath(mode, sessionId, baseDir);
   }
   return resolveStatePath(mode, baseDir);
 }
 function getLegacyStateCandidates(mode, directory) {
-  const baseDir = directory || process.cwd();
+  const baseDir = resolveStateRoot(directory);
   const normalizedName = mode.endsWith("-state") ? mode : `${mode}-state`;
   return [
     resolveStatePath(mode, baseDir),
@@ -16588,7 +16592,7 @@ function getLegacyStateCandidates(mode, directory) {
 }
 function writeModeState(mode, state, directory, sessionId) {
   try {
-    const baseDir = directory || process.cwd();
+    const baseDir = resolveStateRoot(directory);
     if (sessionId) {
       ensureSessionStateDir(sessionId, baseDir);
     } else {
@@ -16624,6 +16628,7 @@ function readModeState(mode, directory, sessionId) {
 }
 function clearModeStateFile(mode, directory, sessionId) {
   let success2 = true;
+  const baseDir = resolveStateRoot(directory);
   const unlinkIfPresent = (filePath) => {
     if (!(0, import_fs32.existsSync)(filePath)) {
       return;
@@ -16637,15 +16642,15 @@ function clearModeStateFile(mode, directory, sessionId) {
   if (sessionId) {
     unlinkIfPresent(resolveFile(mode, directory, sessionId));
   } else {
-    for (const legacyPath of getLegacyStateCandidates(mode, directory)) {
+    for (const legacyPath of getLegacyStateCandidates(mode, baseDir)) {
       unlinkIfPresent(legacyPath);
     }
-    for (const sid of listSessionIds(directory)) {
-      unlinkIfPresent(resolveSessionStatePath(mode, sid, directory));
+    for (const sid of listSessionIds(baseDir)) {
+      unlinkIfPresent(resolveSessionStatePath(mode, sid, baseDir));
     }
   }
   if (sessionId) {
-    for (const legacyPath of getLegacyStateCandidates(mode, directory)) {
+    for (const legacyPath of getLegacyStateCandidates(mode, baseDir)) {
       if (!(0, import_fs32.existsSync)(legacyPath)) {
         continue;
       }
@@ -28462,10 +28467,19 @@ function tmuxEnv() {
 function resolveEnv(opts) {
   return opts?.stripTmux ? tmuxEnv() : process.env;
 }
+function isUnixLikeOnWindows() {
+  return process.platform === "win32" && !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
+}
+function isNativeWindowsShell() {
+  return process.platform === "win32" && !isUnixLikeOnWindows();
+}
 function quoteForCmd(arg) {
   if (arg.length === 0) return '""';
   if (!/[\s"%^&|<>()]/.test(arg)) return arg;
   return `"${arg.replace(/(["%])/g, "$1$1")}"`;
+}
+function escapeForCmdSet(value) {
+  return value.replace(/"/g, '""');
 }
 function resolveTmuxInvocation(args) {
   const resolvedBinary = resolveTmuxBinaryPath();
@@ -28603,9 +28617,30 @@ function sanitizeTmuxToken(value) {
   return cleaned || "unknown";
 }
 function buildTmuxShellCommand(command, args) {
+  if (isNativeWindowsShell()) {
+    return [command, ...args].map(quoteForCmd).join(" ");
+  }
   return [quoteShellArg2(command), ...args.map(quoteShellArg2)].join(" ");
 }
+function buildTmuxShellCommandWithEnv(command, args, envVars) {
+  const envEntries = Object.entries(envVars);
+  if (envEntries.length === 0) {
+    return buildTmuxShellCommand(command, args);
+  }
+  if (isNativeWindowsShell()) {
+    const envPrefix = envEntries.map(([key, value]) => `set "${key}=${escapeForCmdSet(value)}"`).join(" && ");
+    return `${envPrefix} && ${buildTmuxShellCommand(command, args)}`;
+  }
+  return buildTmuxShellCommand(
+    "env",
+    [...envEntries.map(([key, value]) => `${key}=${value}`), command, ...args]
+  );
+}
 function wrapWithLoginShell(command) {
+  if (isNativeWindowsShell()) {
+    const comspec = process.env.COMSPEC || "cmd.exe";
+    return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
+  }
   const shell = process.env.SHELL || "/bin/bash";
   const shellName = (0, import_path61.basename)(shell).replace(/\.(exe|cmd|bat)$/i, "");
   const rcFile = process.env.HOME ? `${process.env.HOME}/.${shellName}rc` : "";
@@ -33714,7 +33749,7 @@ __export(tmux_session_exports, {
   injectToLeaderPane: () => injectToLeaderPane,
   isPaneId: () => isPaneId,
   isSessionAlive: () => isSessionAlive,
-  isUnixLikeOnWindows: () => isUnixLikeOnWindows,
+  isUnixLikeOnWindows: () => isUnixLikeOnWindows2,
   isWorkerAlive: () => isWorkerAlive,
   killSession: () => killSession,
   killTeamSession: () => killTeamSession,
@@ -33734,7 +33769,7 @@ __export(tmux_session_exports, {
   validateTmux: () => validateTmux,
   waitForPaneReady: () => waitForPaneReady
 });
-function isUnixLikeOnWindows() {
+function isUnixLikeOnWindows2() {
   return process.platform === "win32" && !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
 }
 function detectTeamMultiplexerContext(env2 = process.env) {
@@ -33765,7 +33800,7 @@ async function applyMainVerticalLayout(teamTarget) {
   }
 }
 function getDefaultShell() {
-  if (process.platform === "win32" && !isUnixLikeOnWindows()) {
+  if (process.platform === "win32" && !isUnixLikeOnWindows2()) {
     return process.env.COMSPEC || "cmd.exe";
   }
   const shell = process.env.SHELL || "/bin/bash";
@@ -33813,7 +33848,7 @@ function resolveSupportedShellAffinity(shellPath) {
   return { shell: shellPath, rcFile };
 }
 function buildWorkerLaunchSpec(shellPath) {
-  if (isUnixLikeOnWindows()) {
+  if (isUnixLikeOnWindows2()) {
     return { shell: "/bin/sh", rcFile: null };
   }
   const preferred = resolveSupportedShellAffinity(shellPath);
@@ -33827,7 +33862,7 @@ function buildWorkerLaunchSpec(shellPath) {
   if (bash) return { shell: bash.shell, rcFile: bashRc };
   return { shell: "/bin/sh", rcFile: null };
 }
-function escapeForCmdSet(value) {
+function escapeForCmdSet2(value) {
   return value.replace(/"/g, '""');
 }
 function shellNameFromPath(shellPath) {
@@ -33876,12 +33911,12 @@ function buildWorkerStartCommand(config2) {
   const launchSpec = buildWorkerLaunchSpec(process.env.SHELL);
   const launchWords = getLaunchWords(config2);
   const shouldSourceRc = process.env.OMC_TEAM_NO_RC !== "1";
-  if (process.platform === "win32" && !isUnixLikeOnWindows()) {
+  if (process.platform === "win32" && !isUnixLikeOnWindows2()) {
     const envPrefix = Object.entries(config2.envVars).map(([k, v]) => {
       assertSafeEnvKey(k);
-      return `set "${k}=${escapeForCmdSet(v)}"`;
+      return `set "${k}=${escapeForCmdSet2(v)}"`;
     }).join(" && ");
-    const launch = config2.launchBinary ? launchWords.map((part) => `"${escapeForCmdSet(part)}"`).join(" ") : launchWords[0];
+    const launch = config2.launchBinary ? launchWords.map((part) => `"${escapeForCmdSet2(part)}"`).join(" ") : launchWords[0];
     const cmdBody = envPrefix ? `${envPrefix} && ${launch}` : launch;
     return `${shell} /d /s /c "${cmdBody}"`;
   }
@@ -82481,13 +82516,15 @@ function formatThresholdPercent(threshold) {
 function applyDeepInterviewRuntimeSettings(template) {
   const threshold = getDeepInterviewAmbiguityThreshold();
   const percent = formatThresholdPercent(threshold);
-  return template.replace(
+  const withResolvedPlaceholders = template.replaceAll("<resolvedThreshold>", `${threshold}`).replaceAll("<resolvedThresholdPercent>", percent);
+  const withRuntimeSettings = withResolvedPlaceholders.includes("3.5. **Load runtime settings**:") ? withResolvedPlaceholders : withResolvedPlaceholders.replace(
     '4. **Initialize state** via `state_write(mode="deep-interview")`:',
     [
       `3.5. **Load runtime settings** from \`~/.copilot/settings.json\` and \`./.copilot/settings.json\` before state init (project overrides profile). For this run, use \`ambiguityThreshold = ${threshold}\`.`,
       '4. **Initialize state** via `state_write(mode="deep-interview")`:'
     ].join("\n")
-  ).replace('"threshold": 0.2,', `"threshold": ${threshold},`).replace(
+  );
+  return withRuntimeSettings.replace('"threshold": 0.2,', `"threshold": ${threshold},`).replace(
     "We'll proceed to execution once ambiguity drops below 20%.",
     `We'll proceed to execution once ambiguity drops below ${percent}.`
   ).replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`).replace("(default: 20%)", `(default: ${percent})`).replace("(default 0.2)", `(default: ${threshold})`).replace("Gate: \u226420% ambiguity", `Gate: \u2264${percent} ambiguity`).replace("(threshold: 20%).", `(threshold: ${percent}).`).replace("ambiguity \u2264 20%", `ambiguity \u2264 ${percent}`);
@@ -86272,9 +86309,13 @@ function buildEnvExportPrefix(vars) {
   return parts.length > 0 ? parts.join("; ") + "; " : "";
 }
 function runCopilotOutsideTmux(cwd, args, _sessionId) {
-  const rawCopilotCmd = buildTmuxShellCommand("copilot", args);
-  const envPrefix = buildEnvExportPrefix(TMUX_ENV_FORWARD);
-  const copilotCmd = wrapWithLoginShell(`${envPrefix}sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; ${rawCopilotCmd}`);
+  const forwardedEnv = Object.fromEntries(
+    TMUX_ENV_FORWARD.map((name) => [name, process.env[name]]).filter(([, value]) => value !== void 0)
+  );
+  const rawCopilotCmd = isNativeWindowsShell() ? buildTmuxShellCommandWithEnv("copilot", args, forwardedEnv) : buildTmuxShellCommand("copilot", args);
+  const envPrefix = !isNativeWindowsShell() && Object.keys(forwardedEnv).length > 0 ? buildEnvExportPrefix(TMUX_ENV_FORWARD) : "";
+  const preflight = isNativeWindowsShell() ? envPrefix : `${envPrefix}sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; `;
+  const copilotCmd = wrapWithLoginShell(`${preflight}${rawCopilotCmd}`);
   const sessionName2 = buildTmuxSessionName(cwd);
   const tmuxArgs = [
     "new-session",
@@ -89069,7 +89110,7 @@ function spawnAutoresearchSetupTmux(repoRoot) {
   const sessionName2 = `omc-autoresearch-setup-${Date.now().toString(36)}`;
   const codexHome = prepareAutoresearchSetupCodexHome(repoRoot, sessionName2);
   const hostBinary = getHostCliBinary();
-  const cliCommand = buildTmuxShellCommand("env", [`CODEX_HOME=${codexHome}`, hostBinary, CLAUDE_BYPASS_FLAG]);
+  const cliCommand = buildTmuxShellCommandWithEnv(hostBinary, [CLAUDE_BYPASS_FLAG], { CODEX_HOME: codexHome });
   const wrappedCliCommand = wrapWithLoginShell(cliCommand);
   const paneId = tmuxExec(
     ["new-session", "-d", "-P", "-F", "#{pane_id}", "-s", sessionName2, "-c", repoRoot, wrappedCliCommand],

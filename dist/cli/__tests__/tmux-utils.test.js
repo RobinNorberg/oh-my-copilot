@@ -15,15 +15,62 @@ vi.mock('child_process', async (importOriginal) => {
         execFileSync: vi.fn(),
     };
 });
-import { wrapWithLoginShell, quoteShellArg, sanitizeTmuxToken, } from '../tmux-utils.js';
+import { buildTmuxShellCommand, buildTmuxShellCommandWithEnv, wrapWithLoginShell, quoteShellArg, sanitizeTmuxToken, } from '../tmux-utils.js';
+const baselinePlatform = process.platform;
 afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
+    Object.defineProperty(process, 'platform', { value: baselinePlatform, configurable: true });
 });
 // ---------------------------------------------------------------------------
 // wrapWithLoginShell
 // ---------------------------------------------------------------------------
 describe('wrapWithLoginShell', () => {
+    it('uses COMSPEC wrapping instead of Unix exec syntax on native Windows shells', () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        vi.stubEnv('SHELL', '');
+        vi.stubEnv('HOME', 'C:\\Users\\test');
+        vi.stubEnv('MSYSTEM', '');
+        vi.stubEnv('MINGW_PREFIX', '');
+        const result = wrapWithLoginShell('copilot --print');
+        expect(result).toBe('C:\\Windows\\System32\\cmd.exe /d /s /c "copilot --print"');
+        expect(result).not.toContain('exec ');
+        expect(result).not.toContain('-lc');
+        expect(result).not.toContain('.bashrc');
+        expect(result).not.toContain('.zshrc');
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    });
+    it('uses cmd-style argument quoting for Windows tmux shell commands', () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        vi.stubEnv('MSYSTEM', '');
+        vi.stubEnv('MINGW_PREFIX', '');
+        expect(buildTmuxShellCommand('copilot', ['--print', 'hello world'])).toBe('copilot --print "hello world"');
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    });
+    it('uses cmd-style env injection for Windows tmux shell commands', () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        vi.stubEnv('MSYSTEM', '');
+        vi.stubEnv('MINGW_PREFIX', '');
+        expect(buildTmuxShellCommandWithEnv('copilot', ['--print'], { CODEX_HOME: 'C:\\Users\\me\\codex home' }))
+            .toBe('set "CODEX_HOME=C:\\Users\\me\\codex home" && copilot --print');
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    });
+    it('keeps Unix login-shell wrapping on MSYS2 Windows', () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        vi.stubEnv('MSYSTEM', 'MINGW64');
+        vi.stubEnv('SHELL', '/usr/bin/bash');
+        vi.stubEnv('HOME', '/home/testuser');
+        const result = wrapWithLoginShell('copilot');
+        expect(result).toContain('exec ');
+        expect(result).toContain('-lc');
+        expect(result).toContain('/home/testuser/.bashrc');
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    });
     it('wraps command with login shell using $SHELL', () => {
         vi.stubEnv('SHELL', '/bin/zsh');
         const result = wrapWithLoginShell('copilot --print');

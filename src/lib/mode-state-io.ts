@@ -15,6 +15,7 @@ import {
   ensureSessionStateDir,
   ensureOmcDir,
   listSessionIds,
+  getWorktreeRoot,
 } from './worktree-paths.js';
 import { atomicWriteJsonSync } from './atomic-write.js';
 
@@ -49,13 +50,18 @@ export function canClearStateForSession(
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+function resolveStateRoot(directory?: string): string {
+  const baseDir = directory || process.cwd();
+  return getWorktreeRoot(baseDir) || baseDir;
+}
+
 /**
  * Resolve the state file path for a given mode.
  * When sessionId is provided, returns the session-scoped path.
  * Otherwise returns the legacy (global) path.
  */
 function resolveFile(mode: string, directory?: string, sessionId?: string): string {
-  const baseDir = directory || process.cwd();
+  const baseDir = resolveStateRoot(directory);
   if (sessionId) {
     return resolveSessionStatePath(mode, sessionId, baseDir);
   }
@@ -63,7 +69,7 @@ function resolveFile(mode: string, directory?: string, sessionId?: string): stri
 }
 
 function getLegacyStateCandidates(mode: string, directory?: string): string[] {
-  const baseDir = directory || process.cwd();
+  const baseDir = resolveStateRoot(directory);
   const normalizedName = mode.endsWith('-state') ? mode : `${mode}-state`;
 
   return [
@@ -87,13 +93,14 @@ export function findSessionOwnedStateFiles(
   directory?: string,
 ): string[] {
   const matches = new Set<string>();
-  const expectedPath = resolveSessionStatePath(mode, sessionId, directory);
+  const baseDir = resolveStateRoot(directory);
+  const expectedPath = resolveSessionStatePath(mode, sessionId, baseDir);
   if (existsSync(expectedPath)) {
     matches.add(expectedPath);
   }
 
-  for (const sid of listSessionIds(directory)) {
-    const candidatePath = resolveSessionStatePath(mode, sid, directory);
+  for (const sid of listSessionIds(baseDir)) {
+    const candidatePath = resolveSessionStatePath(mode, sid, baseDir);
     if (!existsSync(candidatePath)) {
       continue;
     }
@@ -131,7 +138,7 @@ export function writeModeState(
   sessionId?: string,
 ): boolean {
   try {
-    const baseDir = directory || process.cwd();
+    const baseDir = resolveStateRoot(directory);
     if (sessionId) {
       ensureSessionStateDir(sessionId, baseDir);
     } else {
@@ -199,6 +206,7 @@ export function clearModeStateFile(
   sessionId?: string,
 ): boolean {
   let success = true;
+  const baseDir = resolveStateRoot(directory);
   const unlinkIfPresent = (filePath: string): void => {
     if (!existsSync(filePath)) {
       return;
@@ -214,18 +222,18 @@ export function clearModeStateFile(
   if (sessionId) {
     unlinkIfPresent(resolveFile(mode, directory, sessionId));
   } else {
-    for (const legacyPath of getLegacyStateCandidates(mode, directory)) {
+    for (const legacyPath of getLegacyStateCandidates(mode, baseDir)) {
       unlinkIfPresent(legacyPath);
     }
 
-    for (const sid of listSessionIds(directory)) {
-      unlinkIfPresent(resolveSessionStatePath(mode, sid, directory));
+    for (const sid of listSessionIds(baseDir)) {
+      unlinkIfPresent(resolveSessionStatePath(mode, sid, baseDir));
     }
   }
 
   // Ghost-legacy cleanup: if sessionId provided, also check legacy path
   if (sessionId) {
-    for (const legacyPath of getLegacyStateCandidates(mode, directory)) {
+    for (const legacyPath of getLegacyStateCandidates(mode, baseDir)) {
       if (!existsSync(legacyPath)) {
         continue;
       }

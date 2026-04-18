@@ -10,6 +10,7 @@ export interface TmuxExecOptions {
     stripTmux?: boolean;
 }
 export declare function tmuxEnv(): NodeJS.ProcessEnv;
+export declare function isNativeWindowsShell(): boolean;
 export declare function tmuxExec(args: string[], opts?: TmuxExecOptions & Omit<ExecFileSyncOptionsWithStringEncoding, 'env' | 'encoding'> & {
     encoding?: BufferEncoding;
 }): string;
@@ -74,6 +75,7 @@ export declare function sanitizeTmuxToken(value: string): string;
  * Build shell command string for tmux with proper quoting
  */
 export declare function buildTmuxShellCommand(command: string, args: string[]): string;
+export declare function buildTmuxShellCommandWithEnv(command: string, args: string[], envVars: Record<string, string>): string;
 /**
  * Wrap a command string in the user's login shell with RC file sourcing.
  * Ensures PATH and other environment setup from .bashrc/.zshrc is available
