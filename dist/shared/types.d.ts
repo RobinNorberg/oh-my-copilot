@@ -92,6 +92,10 @@ export interface PluginConfig {
             enabled?: boolean;
         };
     };
+    companyContext?: {
+        tool?: string;
+        onError?: "warn" | "silent" | "fail";
+    };
     permissions?: {
         allowBash?: boolean;
         allowEdit?: boolean;

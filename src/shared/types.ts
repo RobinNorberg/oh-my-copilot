@@ -56,6 +56,12 @@ export interface PluginConfig {
     context7?: { enabled?: boolean };
   };
 
+  // Prompt-level company context MCP contract
+  companyContext?: {
+    tool?: string;
+    onError?: "warn" | "silent" | "fail";
+  };
+
   // Permission settings
   permissions?: {
     allowBash?: boolean;
