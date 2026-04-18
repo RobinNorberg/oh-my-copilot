@@ -46,7 +46,7 @@ import {
   clearVerificationState,
   type VerificationState,
 } from '../ralph/index.js';
-import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError } from '../todo-continuation/index.js';
+import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import {
   isAutopilotActive
@@ -1626,6 +1626,19 @@ export async function checkPersistentModes(
     return {
       shouldBlock: false,
       message: '[PERSISTENT MODE PAUSED - AUTHENTICATION ERROR] Authentication failure detected (for example 401/403 or expired OAuth token). Re-authenticate, then resume manually.',
+      mode: 'none'
+    };
+  }
+
+  // CRITICAL: Never block scheduled wake-up resumptions.
+  // Native ScheduleWakeup-triggered `/loop` turns are resumptions, not signals
+  // to continue or clean up a prior persistent mode. Re-enforcing here can
+  // inject `/cancel` guidance from stale state and cause the scheduled turn to
+  // cancel itself before the real work runs.
+  if (isScheduledWakeupStop(stopContext)) {
+    return {
+      shouldBlock: false,
+      message: '',
       mode: 'none'
     };
   }

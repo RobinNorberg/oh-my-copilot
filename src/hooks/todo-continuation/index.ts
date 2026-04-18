@@ -231,7 +231,7 @@ export function isExplicitCancelCommand(context?: StopContext): boolean {
     return true;
   }
 
-  const toolName = String(context.tool_name ?? context.toolName ?? '').toLowerCase();
+  const toolName = String(context.tool_name ?? context.toolName ?? '').toLowerCase().replace(/[\s-]+/g, '_');
   const toolInput = (context.tool_input ?? context.toolInput) as Record<string, unknown> | undefined;
   if (toolName.includes('skill') && toolInput && typeof toolInput.skill === 'string') {
     const skill = toolInput.skill.toLowerCase();
@@ -288,6 +288,35 @@ export function isRateLimitStop(context?: StopContext): boolean {
   ];
 
   return rateLimitPatterns.some(p => reason.includes(p) || endTurnReason.includes(p));
+}
+
+/**
+ * Scheduled wake-up stops should not trigger persistent-mode re-enforcement.
+ * Claude Code can resume `/loop` work through the native ScheduleWakeup path,
+ * and stale prior-mode state must not inject continuation/cancel prompts into
+ * that scheduled resume turn.
+ */
+export function isScheduledWakeupStop(context?: StopContext): boolean {
+  if (!context) return false;
+
+  const stopPatterns = [
+    'schedulewakeup',
+    'schedule_wakeup',
+    'scheduled_wakeup',
+    'scheduled_task',
+    'scheduled_resume',
+    'loop_resume',
+    'loop_wakeup',
+  ];
+
+  const toolName = String(context.tool_name ?? context.toolName ?? '').toLowerCase();
+  if (stopPatterns.some((pattern) => toolName.includes(pattern))) {
+    return true;
+  }
+
+  return getStopReasonFields(context).some((value) =>
+    stopPatterns.some((pattern) => value.includes(pattern))
+  );
 }
 
 /**
