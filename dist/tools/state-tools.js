@@ -10,20 +10,20 @@ import { resolveStatePath, ensureOmcDir, validateWorkingDirectory, resolveSessio
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { validatePayload } from '../lib/payload-limits.js';
 import { isModeActive, getActiveModes, getAllModeStatuses, clearModeState, getStateFilePath, MODE_CONFIGS, getActiveSessionsForMode } from '../hooks/mode-registry/index.js';
-// ExecutionMode from mode-registry (5 modes)
+// Canonical execution modes from mode-registry (deep-interview and self-improve
+// are first-class modes with dedicated MODE_CONFIGS entries; ralplan remains an
+// extra state-only mode handled via the registry-fallback path).
 const EXECUTION_MODES = [
-    'autopilot', 'team', 'ralph', 'ultrawork', 'ultraqa'
+    'autopilot', 'team', 'ralph', 'ultrawork', 'ultraqa', 'deep-interview', 'self-improve'
 ];
 // Extended type for state tools - includes state-bearing modes outside mode-registry
 const STATE_TOOL_MODES = [
     ...EXECUTION_MODES,
     'ralplan',
     'omc-teams',
-    'deep-interview',
-    'self-improve',
     'skill-active'
 ];
-const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omc-teams', 'deep-interview', 'self-improve', 'skill-active'];
+const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omc-teams', 'skill-active'];
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 /**
  * Get the state file path for any mode (including swarm and ralplan).

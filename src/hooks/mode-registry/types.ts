@@ -9,7 +9,9 @@ export type ExecutionMode =
   | 'team'
   | 'ralph'
   | 'ultrawork'
-  | 'ultraqa';
+  | 'ultraqa'
+  | 'deep-interview'
+  | 'self-improve';
 
 export interface ModeConfig {
   /** Display name for the mode */

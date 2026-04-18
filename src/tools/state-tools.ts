@@ -30,9 +30,11 @@ import {
 } from '../hooks/mode-registry/index.js';
 import { ToolDefinition, AnyToolDefinition } from './types.js';
 
-// ExecutionMode from mode-registry (5 modes)
+// Canonical execution modes from mode-registry (deep-interview and self-improve
+// are first-class modes with dedicated MODE_CONFIGS entries; ralplan remains an
+// extra state-only mode handled via the registry-fallback path).
 const EXECUTION_MODES: [string, ...string[]] = [
-  'autopilot', 'team', 'ralph', 'ultrawork', 'ultraqa'
+  'autopilot', 'team', 'ralph', 'ultrawork', 'ultraqa', 'deep-interview', 'self-improve'
 ];
 
 // Extended type for state tools - includes state-bearing modes outside mode-registry
@@ -40,11 +42,9 @@ const STATE_TOOL_MODES: [string, ...string[]] = [
   ...EXECUTION_MODES,
   'ralplan',
   'omc-teams',
-  'deep-interview',
-  'self-improve',
   'skill-active'
 ];
-const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omc-teams', 'deep-interview', 'self-improve', 'skill-active'] as const;
+const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omc-teams', 'skill-active'] as const;
 type StateToolMode = typeof STATE_TOOL_MODES[number];
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 

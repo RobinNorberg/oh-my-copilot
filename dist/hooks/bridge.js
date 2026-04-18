@@ -30,7 +30,8 @@ import { compactOmcStartupGuidance, loadConfig } from "../config/loader.js";
 import { activatePromptPrerequisiteState, buildPromptPrerequisiteDenyReason, buildPromptPrerequisiteReminder, clearPromptPrerequisiteState, getPromptPrerequisiteConfig, isPromptPrerequisiteBlockingTool, parsePromptPrerequisiteSections, readPromptPrerequisiteState, recordPromptPrerequisiteProgress, shouldEnforcePromptPrerequisites, } from "./prompt-prerequisites/index.js";
 import { resolveAutopilotPlanPath, resolveOpenQuestionsPlanPath, } from "../config/plan-output.js";
 import { formatAutopilotRuntimeInsight } from "./autopilot/runtime-insight.js";
-import { writeSkillActiveState } from "./skill-state/index.js";
+import { writeSkillActiveState, isCanonicalWorkflowSkill, upsertWorkflowSkillSlot, markWorkflowSkillCompleted, pruneExpiredWorkflowSkillTombstones, readSkillActiveStateNormalized, writeSkillActiveStateCopies, } from "./skill-state/index.js";
+import { parseExplicitWorkflowSlashInvocation } from "./keyword-detector/index.js";
 import { ULTRAWORK_MESSAGE, ULTRATHINK_MESSAGE, SEARCH_MESSAGE, ANALYZE_MESSAGE, TDD_MESSAGE, CODE_REVIEW_MESSAGE, SECURITY_REVIEW_MESSAGE, RALPH_MESSAGE, PROMPT_TRANSLATION_MESSAGE, } from "../installer/hooks.js";
 // Agent dashboard is used in pre/post-tool-use hot path
 import { getAgentDashboard } from "./subagent-tracker/index.js";
@@ -571,9 +572,6 @@ function getPromptText(input) {
     }
     return "";
 }
-function isExplicitRalplanSlashInvocation(promptText) {
-    return /^\s*\/(?:oh-my-copilot:)?ralplan(?:\s|$)/i.test(promptText);
-}
 function isExplicitAskSlashInvocation(promptText) {
     return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini)\b/i.test(promptText);
 }
@@ -588,6 +586,122 @@ function activateRalplanStartupState(directory, sessionId) {
         awaiting_confirmation_set_at: now,
         last_checked_at: now,
     }, directory, sessionId);
+}
+function resolveStatePathSafe(stateName, directory) {
+    try {
+        return join(getOmcRoot(directory), "state", `${stateName}-state.json`);
+    }
+    catch {
+        return "";
+    }
+}
+function resolveSessionStatePathSafe(stateName, sessionId, directory) {
+    try {
+        return join(getOmcRoot(directory), "state", "sessions", sessionId, `${stateName}-state.json`);
+    }
+    catch {
+        return "";
+    }
+}
+/**
+ * Resolve the on-disk path of the mode-specific state file for a workflow skill.
+ */
+function resolveWorkflowSlotModeStatePath(directory, skillName, sessionId) {
+    const paths = getModeStatePaths(directory, skillName, sessionId);
+    return paths[0] ?? "";
+}
+/**
+ * Seed (or refresh) a canonical workflow-slot entry in the dual-copy ledger
+ * via the only sanctioned helper, `writeSkillActiveStateCopies()`. Returns
+ * `true` when at least one copy was written, `false` on best-effort failure.
+ */
+function seedWorkflowSlotForSkill(directory, skillName, sessionId, source, parentSkill) {
+    if (!isCanonicalWorkflowSkill(skillName))
+        return false;
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
+    try {
+        const current = readSkillActiveStateNormalized(directory, sessionId);
+        const pruned = pruneExpiredWorkflowSkillTombstones(current);
+        const rootStatePath = resolveStatePathSafe("skill-active", directory);
+        const sessionStatePath = sessionId
+            ? resolveSessionStatePathSafe("skill-active", sessionId, directory)
+            : "";
+        const modeStatePath = resolveWorkflowSlotModeStatePath(directory, normalized, sessionId);
+        const slotData = {
+            session_id: sessionId ?? "",
+            mode_state_path: modeStatePath,
+            initialized_mode: normalized,
+            initialized_state_path: rootStatePath,
+            initialized_session_state_path: sessionStatePath,
+            source,
+        };
+        if (parentSkill !== undefined) {
+            slotData.parent_skill = parentSkill;
+        }
+        const next = upsertWorkflowSkillSlot(pruned, normalized, slotData);
+        return writeSkillActiveStateCopies(directory, next, sessionId);
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Idempotently confirm a workflow slot — refreshes `last_confirmed_at` when
+ * the slot is live. No-op when the slot is missing or already tombstoned.
+ */
+function confirmWorkflowSlot(directory, skillName, sessionId) {
+    if (!isCanonicalWorkflowSkill(skillName))
+        return false;
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
+    try {
+        const current = readSkillActiveStateNormalized(directory, sessionId);
+        const slot = current.active_skills[normalized];
+        if (!slot || slot.completed_at)
+            return false;
+        const next = upsertWorkflowSkillSlot(current, normalized, {
+            last_confirmed_at: new Date().toISOString(),
+        });
+        return writeSkillActiveStateCopies(directory, next, sessionId);
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Soft-tombstone a workflow slot on completion.
+ */
+function tombstoneWorkflowSlot(directory, skillName, sessionId) {
+    if (!isCanonicalWorkflowSkill(skillName))
+        return false;
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
+    try {
+        const current = readSkillActiveStateNormalized(directory, sessionId);
+        if (!current.active_skills[normalized])
+            return false;
+        const next = markWorkflowSkillCompleted(current, normalized);
+        return writeSkillActiveStateCopies(directory, next, sessionId);
+    }
+    catch {
+        return false;
+    }
+}
+/**
+ * Mode-specific seeding entrypoints invoked alongside the workflow slot when
+ * the user issues an explicit slash command.
+ */
+async function seedModeStateForExplicitWorkflowSlash(skill, directory, promptText, sessionId) {
+    switch (skill) {
+        case "ralplan":
+            activateRalplanStartupState(directory, sessionId);
+            return;
+        case "autopilot":
+            await seedAutopilotStartupState(directory, promptText, sessionId);
+            return;
+        default:
+            // ralph / ultrawork / team / ultraqa / deep-interview / self-improve
+            // own their state activation inside their own Skill PostToolUse handlers.
+            return;
+    }
 }
 /**
  * Process keyword detection hook
@@ -615,18 +729,32 @@ async function processKeywordDetector(input) {
     const sessionId = input.sessionId;
     const directory = resolveToWorktreeRoot(input.directory);
     const messages = [];
-    const explicitRalplanSlashInvocation = isExplicitRalplanSlashInvocation(promptText);
-    if (explicitRalplanSlashInvocation) {
-        activateRalplanStartupState(directory, sessionId);
-        return {
-            continue: true,
-            hookSpecificOutput: {
-                hookEventName: "UserPromptSubmit",
-                additionalContext: `[RALPLAN INIT] Explicit /ralplan invoke detected during UserPromptSubmit.\n` +
-                    `ralplan state is armed for startup and marked awaiting confirmation, so the stop hook will not block this initialization path.\n` +
-                    `Proceed immediately with the consensus planning workflow for:\n${promptText}`,
-            },
-        };
+    // Unified explicit slash invocation handler — covers all 8 canonical
+    // workflow skills (autopilot, ralph, team, ultrawork, ultraqa,
+    // deep-interview, ralplan, self-improve). Seeds the workflow slot via the
+    // sanctioned dual-copy helper BEFORE the Skill tool fires, and seeds the
+    // mode-specific state file when the mode requires pre-Skill state. The
+    // ralplan path additionally returns the legacy [RALPLAN INIT] context
+    // injection so existing routing tests remain green.
+    const explicitSlash = parseExplicitWorkflowSlashInvocation(promptText);
+    if (explicitSlash) {
+        seedWorkflowSlotForSkill(directory, explicitSlash.skill, sessionId, "prompt-submit:explicit-slash");
+        await seedModeStateForExplicitWorkflowSlash(explicitSlash.skill, directory, promptText, sessionId);
+        if (explicitSlash.skill === "ralplan") {
+            return {
+                continue: true,
+                hookSpecificOutput: {
+                    hookEventName: "UserPromptSubmit",
+                    additionalContext: `[RALPLAN INIT] Explicit /ralplan invoke detected during UserPromptSubmit.\n` +
+                        `ralplan state is armed for startup and marked awaiting confirmation, so the stop hook will not block this initialization path.\n` +
+                        `Proceed immediately with the consensus planning workflow for:\n${promptText}`,
+                },
+            };
+        }
+        // For non-ralplan workflow slash invocations, fall through so the regular
+        // keyword pipeline still emits the mode message constants and routes
+        // through the normal activation path. The workflow slot is already armed
+        // so the stop-hook will treat the upcoming Skill invocation as authorized.
     }
     // Record prompt submission time in HUD state
     try {
@@ -1388,6 +1516,16 @@ function processPreToolUse(input) {
                 if (isConsensusPlanningSkillInvocation(skillName, input.toolInput)) {
                     activateRalplanState(directory, input.sessionId);
                 }
+                // Workflow-slot ledger: when the Skill tool is invoked for one of the
+                // 8 canonical workflow skills, ensure the slot is present and freshly
+                // confirmed. Seed first (idempotent — preserves existing fields when
+                // the slot was already armed during UserPromptSubmit), then refresh
+                // `last_confirmed_at` so stop-hook reconciliation can distinguish a
+                // truly idle workflow from an in-flight one.
+                if (isCanonicalWorkflowSkill(skillName)) {
+                    seedWorkflowSlotForSkill(directory, skillName, input.sessionId, "pre-tool:skill");
+                    confirmWorkflowSlot(directory, skillName, input.sessionId);
+                }
             }
             catch {
                 // Skill-state/state-sync writes are best-effort; don't fail the hook on error.
@@ -1567,6 +1705,13 @@ async function processPostToolUse(input) {
         }
         if (isConsensusPlanningSkillInvocation(skillName, input.toolInput)) {
             deactivateRalplanState(directory, input.sessionId);
+        }
+        // Workflow-slot ledger: tombstone the canonical workflow slot when its
+        // Skill invocation completes. Soft-tombstoning (rather than hard delete)
+        // preserves the slot until the TTL pruner removes it — late-arriving
+        // stop hooks see consistent state instead of a missing slot.
+        if (skillName && isCanonicalWorkflowSkill(skillName)) {
+            tombstoneWorkflowSlot(directory, skillName, input.sessionId);
         }
     }
     // Run orchestrator post-tool processing (remember tags, verification reminders, etc.)
