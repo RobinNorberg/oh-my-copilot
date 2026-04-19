@@ -93,7 +93,7 @@ describe('Builtin Skills', () => {
         'ask',
         'autopilot',
         'cancel',
-        'c3g',
+        'cccg',
         'configure-notifications',
         'critique',
         'debug',
@@ -229,7 +229,7 @@ describe('Builtin Skills', () => {
       expect(names).toContain('ask');
       expect(names).toContain('autopilot');
       expect(names).toContain('cancel');
-      expect(names).toContain('c3g');
+      expect(names).toContain('cccg');
       expect(names).toContain('configure-notifications');
       expect(names).toContain('ralph');
       expect(names).toContain('ultrawork');
