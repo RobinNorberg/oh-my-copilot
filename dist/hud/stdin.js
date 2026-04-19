@@ -79,14 +79,37 @@ export async function readStdin() {
 function getCurrentUsage(stdin) {
     return stdin.context_window?.current_usage;
 }
+function clampPercent(value) {
+    if (value == null || !isFinite(value)) {
+        return 0;
+    }
+    return Math.max(0, Math.min(100, value));
+}
+function parseResetDate(value) {
+    if (value == null) {
+        return null;
+    }
+    const numericValue = typeof value === 'number'
+        ? value
+        : (typeof value === 'string' && value.trim() !== '' ? Number(value) : Number.NaN);
+    if (Number.isFinite(numericValue)) {
+        const millis = Math.abs(numericValue) < 1e12 ? numericValue * 1000 : numericValue;
+        const date = new Date(millis);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+    if (typeof value === 'string') {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? null : date;
+    }
+    return null;
+}
 /**
  * Get total tokens from stdin context_window.current_usage
  */
 function getTotalTokens(stdin) {
     const usage = getCurrentUsage(stdin);
     return ((usage?.input_tokens ?? 0) +
-        (usage?.cache_creation_input_tokens ?? 0) +
-        (usage?.cache_read_input_tokens ?? 0));
+        (usage?.cache_creation_input_tokens ?? 0));
 }
 function getRoundedNativeContextPercent(stdin) {
     const nativePercent = stdin?.context_window?.used_percentage;
@@ -147,6 +170,22 @@ export function getContextPercent(stdin) {
         return nativePercent;
     }
     return getManualContextPercent(stdin) ?? 0;
+}
+/**
+ * Convert Claude Code stdin rate_limits into the existing HUD RateLimits shape.
+ */
+export function getRateLimitsFromStdin(stdin) {
+    const fiveHour = stdin.rate_limits?.five_hour?.used_percentage;
+    const sevenDay = stdin.rate_limits?.seven_day?.used_percentage;
+    if (fiveHour == null && sevenDay == null) {
+        return null;
+    }
+    return {
+        fiveHourPercent: clampPercent(fiveHour),
+        weeklyPercent: sevenDay == null ? undefined : clampPercent(sevenDay),
+        fiveHourResetsAt: parseResetDate(stdin.rate_limits?.five_hour?.resets_at),
+        weeklyResetsAt: parseResetDate(stdin.rate_limits?.seven_day?.resets_at),
+    };
 }
 /**
  * Get model display name from stdin.

@@ -150,6 +150,13 @@ export declare function isContextLimitStop(context?: StopContext): boolean;
  */
 export declare function isRateLimitStop(context?: StopContext): boolean;
 /**
+ * Scheduled wake-up stops should not trigger persistent-mode re-enforcement.
+ * Claude Code can resume `/loop` work through the native ScheduleWakeup path,
+ * and stale prior-mode state must not inject continuation/cancel prompts into
+ * that scheduled resume turn.
+ */
+export declare function isScheduledWakeupStop(context?: StopContext): boolean;
+/**
  * Auth-related stop reasons that should bypass continuation re-enforcement.
  * Keep exactly 16 entries in sync with script/template variants.
  */

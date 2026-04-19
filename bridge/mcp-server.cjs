@@ -32428,42 +32428,57 @@ var import_path13 = require("path");
 // src/lib/mode-names.ts
 var MODE_NAMES = {
   AUTOPILOT: "autopilot",
+  AUTORESEARCH: "autoresearch",
   TEAM: "team",
   RALPH: "ralph",
   ULTRAWORK: "ultrawork",
   ULTRAQA: "ultraqa",
-  RALPLAN: "ralplan"
+  RALPLAN: "ralplan",
+  DEEP_INTERVIEW: "deep-interview",
+  SELF_IMPROVE: "self-improve"
 };
 var ALL_MODE_NAMES = [
   MODE_NAMES.AUTOPILOT,
+  MODE_NAMES.AUTORESEARCH,
   MODE_NAMES.TEAM,
   MODE_NAMES.RALPH,
   MODE_NAMES.ULTRAWORK,
   MODE_NAMES.ULTRAQA,
-  MODE_NAMES.RALPLAN
+  MODE_NAMES.RALPLAN,
+  MODE_NAMES.DEEP_INTERVIEW,
+  MODE_NAMES.SELF_IMPROVE
 ];
 var MODE_STATE_FILE_MAP = {
   [MODE_NAMES.AUTOPILOT]: "autopilot-state.json",
+  [MODE_NAMES.AUTORESEARCH]: "autoresearch-state.json",
   [MODE_NAMES.TEAM]: "team-state.json",
   [MODE_NAMES.RALPH]: "ralph-state.json",
   [MODE_NAMES.ULTRAWORK]: "ultrawork-state.json",
   [MODE_NAMES.ULTRAQA]: "ultraqa-state.json",
-  [MODE_NAMES.RALPLAN]: "ralplan-state.json"
+  [MODE_NAMES.RALPLAN]: "ralplan-state.json",
+  [MODE_NAMES.DEEP_INTERVIEW]: "deep-interview-state.json",
+  [MODE_NAMES.SELF_IMPROVE]: "self-improve-state.json"
 };
 var SESSION_END_MODE_STATE_FILES = [
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.AUTOPILOT], mode: MODE_NAMES.AUTOPILOT },
+  { file: MODE_STATE_FILE_MAP[MODE_NAMES.AUTORESEARCH], mode: MODE_NAMES.AUTORESEARCH },
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.TEAM], mode: MODE_NAMES.TEAM },
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPH], mode: MODE_NAMES.RALPH },
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAWORK], mode: MODE_NAMES.ULTRAWORK },
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAQA], mode: MODE_NAMES.ULTRAQA },
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPLAN], mode: MODE_NAMES.RALPLAN },
+  { file: MODE_STATE_FILE_MAP[MODE_NAMES.DEEP_INTERVIEW], mode: MODE_NAMES.DEEP_INTERVIEW },
+  { file: MODE_STATE_FILE_MAP[MODE_NAMES.SELF_IMPROVE], mode: MODE_NAMES.SELF_IMPROVE },
   { file: "skill-active-state.json", mode: "skill-active" }
 ];
 var SESSION_METRICS_MODE_FILES = [
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.AUTOPILOT], mode: MODE_NAMES.AUTOPILOT },
+  { file: MODE_STATE_FILE_MAP[MODE_NAMES.AUTORESEARCH], mode: MODE_NAMES.AUTORESEARCH },
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPH], mode: MODE_NAMES.RALPH },
   { file: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAWORK], mode: MODE_NAMES.ULTRAWORK },
-  { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPLAN], mode: MODE_NAMES.RALPLAN }
+  { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPLAN], mode: MODE_NAMES.RALPLAN },
+  { file: MODE_STATE_FILE_MAP[MODE_NAMES.DEEP_INTERVIEW], mode: MODE_NAMES.DEEP_INTERVIEW },
+  { file: MODE_STATE_FILE_MAP[MODE_NAMES.SELF_IMPROVE], mode: MODE_NAMES.SELF_IMPROVE }
 ];
 
 // src/hooks/mode-registry/index.ts
@@ -32472,6 +32487,12 @@ var MODE_CONFIGS = {
     name: "Autopilot",
     stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.AUTOPILOT],
     activeProperty: "active"
+  },
+  [MODE_NAMES.AUTORESEARCH]: {
+    name: "Autoresearch",
+    stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.AUTORESEARCH],
+    activeProperty: "active",
+    hasGlobalState: false
   },
   [MODE_NAMES.TEAM]: {
     name: "Team",
@@ -32496,9 +32517,19 @@ var MODE_CONFIGS = {
     name: "UltraQA",
     stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAQA],
     activeProperty: "active"
+  },
+  [MODE_NAMES.DEEP_INTERVIEW]: {
+    name: "Deep Interview",
+    stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.DEEP_INTERVIEW],
+    activeProperty: "active"
+  },
+  [MODE_NAMES.SELF_IMPROVE]: {
+    name: "Self Improve",
+    stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.SELF_IMPROVE],
+    activeProperty: "active"
   }
 };
-var EXCLUSIVE_MODES = [MODE_NAMES.AUTOPILOT];
+var EXCLUSIVE_MODES = [MODE_NAMES.AUTOPILOT, MODE_NAMES.AUTORESEARCH];
 function getStateDir(cwd) {
   return (0, import_path13.join)(getOmcRoot(cwd), "state");
 }
@@ -32514,9 +32545,32 @@ function getMarkerFilePath(cwd, mode) {
   if (!config2.markerFile) return null;
   return (0, import_path13.join)(getStateDir(cwd), config2.markerFile);
 }
+var WORKFLOW_SLOT_TOMBSTONE_TTL_MS = 24 * 60 * 60 * 1e3;
+function isWorkflowSlotTombstonedForMode(cwd, mode, sessionId, now = Date.now()) {
+  try {
+    const ledgerPath = sessionId ? resolveSessionStatePath("skill-active", sessionId, cwd) : (0, import_path13.join)(getStateDir(cwd), "skill-active-state.json");
+    if (!(0, import_fs11.existsSync)(ledgerPath)) return false;
+    const raw = JSON.parse((0, import_fs11.readFileSync)(ledgerPath, "utf-8"));
+    const slots = raw.active_skills;
+    if (!slots || typeof slots !== "object") return false;
+    const slot = slots[mode];
+    if (!slot || typeof slot !== "object") return false;
+    const completedAt = slot.completed_at;
+    if (typeof completedAt !== "string" || completedAt.length === 0)
+      return false;
+    const tombstonedAt = new Date(completedAt).getTime();
+    if (!Number.isFinite(tombstonedAt)) return false;
+    return now - tombstonedAt < WORKFLOW_SLOT_TOMBSTONE_TTL_MS;
+  } catch {
+    return false;
+  }
+}
 function isJsonModeActive(cwd, mode, sessionId) {
   const config2 = MODE_CONFIGS[mode];
   if (sessionId) {
+    if (isWorkflowSlotTombstonedForMode(cwd, mode, sessionId)) {
+      return false;
+    }
     const sessionStateFile = resolveSessionStatePath(mode, sessionId, cwd);
     try {
       const content = (0, import_fs11.readFileSync)(sessionStateFile, "utf-8");
@@ -32675,20 +32729,21 @@ function getActiveSessionsForMode(mode, cwd) {
 // src/tools/state-tools.ts
 var EXECUTION_MODES = [
   "autopilot",
+  "autoresearch",
   "team",
   "ralph",
   "ultrawork",
-  "ultraqa"
+  "ultraqa",
+  "deep-interview",
+  "self-improve"
 ];
 var STATE_TOOL_MODES = [
   ...EXECUTION_MODES,
   "ralplan",
   "omc-teams",
-  "deep-interview",
-  "self-improve",
   "skill-active"
 ];
-var EXTRA_STATE_ONLY_MODES = ["ralplan", "omc-teams", "deep-interview", "self-improve", "skill-active"];
+var EXTRA_STATE_ONLY_MODES = ["ralplan", "omc-teams", "skill-active"];
 var CANCEL_SIGNAL_TTL_MS = 3e4;
 function getStatePath(mode, root) {
   if (MODE_CONFIGS[mode]) {

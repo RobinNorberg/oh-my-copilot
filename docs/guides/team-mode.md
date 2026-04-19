@@ -37,10 +37,10 @@ omcp team status auth-review
 omcp team shutdown auth-review
 ```
 
-For multi-model work in one command, use the **`/c3g`** skill (routes via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesizes):
+For multi-model work in one command, use the **`/cccg`** skill (routes via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesizes):
 
 ```bash
-/c3g Review this PR — architecture (Claude) security (Codex) and UI components (Gemini)
+/cccg Review this PR — architecture (Claude) security (Codex) and UI components (Gemini)
 ```
 
 ## Worker Surface Comparison
@@ -51,7 +51,7 @@ For multi-model work in one command, use the **`/c3g`** skill (routes via `ask-c
 | `omcp team N:codex "..."`   | N Codex CLI panes       | Code review, security analysis                |
 | `omcp team N:gemini "..."`  | N Gemini CLI panes      | UI/UX design, docs, large-context tasks       |
 | `omcp team N:copilot "..."` | N Copilot CLI panes     | General tasks via Copilot CLI in tmux         |
-| `/c3g`                     | ask-claude + ask-codex + ask-gemini | Quad-model advisor synthesis          |
+| `/cccg`                     | ask-claude + ask-codex + ask-gemini | Quad-model advisor synthesis          |
 
 Workers spawn on-demand and die when their task completes — no idle resource usage. Requires the respective CLI tool installed and an active tmux session.
 

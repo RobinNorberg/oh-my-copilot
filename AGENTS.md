@@ -180,7 +180,7 @@ Do not ask for confirmation — just read the skill file and follow its instruct
 | "wiki" | `$wiki` | Read `~/.agents/skills/wiki/SKILL.md`, persistent markdown knowledge base |
 | "external-context" | `$external-context` | Read `~/.agents/skills/external-context/SKILL.md`, parallel doc-specialist web search |
 | "skillify" | `$skillify` | Read `~/.agents/skills/skillify/SKILL.md`, extract reusable skill from session |
-| "c3g", "tri-model", "quadri-model" | `$c3g` | Read `~/.agents/skills/c3g/SKILL.md`, multi-model advisor synthesis |
+| "cccg", "tri-model", "quadri-model" | `$cccg` | Read `~/.agents/skills/cccg/SKILL.md`, multi-model advisor synthesis |
 | "cancel", "stop", "abort" | `$cancel` | Read `~/.agents/skills/cancel/SKILL.md`, cancel active modes |
 | "tdd", "test first" | keyword mode | Inject TDD-mode guidance and favor test-first execution with `test-engineer` when appropriate |
 
@@ -229,7 +229,7 @@ Analysis Skills:
 - `debug`: Diagnose session or repo state using logs, traces, and state
 
 Orchestration Skills:
-- `c3g`: Quadri-model orchestration — Copilot, Claude, Codex, Gemini each provide independent analysis, then Copilot synthesizes
+- `cccg`: Quadri-model orchestration — Copilot, Claude, Codex, Gemini each provide independent analysis, then Copilot synthesizes
 - `omc-teams`: CLI-team runtime for claude, codex, or gemini workers in tmux panes
 
 Agent Shortcuts:

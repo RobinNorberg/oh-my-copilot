@@ -12,12 +12,22 @@ export function tmuxEnv() {
 function resolveEnv(opts) {
     return opts?.stripTmux ? tmuxEnv() : process.env;
 }
+function isUnixLikeOnWindows() {
+    return process.platform === 'win32' &&
+        !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
+}
+export function isNativeWindowsShell() {
+    return process.platform === 'win32' && !isUnixLikeOnWindows();
+}
 function quoteForCmd(arg) {
     if (arg.length === 0)
         return '""';
     if (!/[\s"%^&|<>()]/.test(arg))
         return arg;
     return `"${arg.replace(/(["%])/g, '$1$1')}"`;
+}
+function escapeForCmdSet(value) {
+    return value.replace(/"/g, '""');
 }
 function resolveTmuxInvocation(args) {
     const resolvedBinary = resolveTmuxBinaryPath();
@@ -201,7 +211,23 @@ export function sanitizeTmuxToken(value) {
  * Build shell command string for tmux with proper quoting
  */
 export function buildTmuxShellCommand(command, args) {
+    if (isNativeWindowsShell()) {
+        return [command, ...args].map(quoteForCmd).join(' ');
+    }
     return [quoteShellArg(command), ...args.map(quoteShellArg)].join(' ');
+}
+export function buildTmuxShellCommandWithEnv(command, args, envVars) {
+    const envEntries = Object.entries(envVars);
+    if (envEntries.length === 0) {
+        return buildTmuxShellCommand(command, args);
+    }
+    if (isNativeWindowsShell()) {
+        const envPrefix = envEntries
+            .map(([key, value]) => `set "${key}=${escapeForCmdSet(value)}"`)
+            .join(' && ');
+        return `${envPrefix} && ${buildTmuxShellCommand(command, args)}`;
+    }
+    return buildTmuxShellCommand('env', [...envEntries.map(([key, value]) => `${key}=${value}`), command, ...args]);
 }
 /**
  * Wrap a command string in the user's login shell with RC file sourcing.
@@ -213,6 +239,10 @@ export function buildTmuxShellCommand(command, args) {
  * This wrapper starts a login shell (`-lc`) and explicitly sources the RC file.
  */
 export function wrapWithLoginShell(command) {
+    if (isNativeWindowsShell()) {
+        const comspec = process.env.COMSPEC || 'cmd.exe';
+        return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
+    }
     const shell = process.env.SHELL || '/bin/bash';
     const shellName = basename(shell).replace(/\.(exe|cmd|bat)$/i, '');
     const rcFile = process.env.HOME ? `${process.env.HOME}/.${shellName}rc` : '';

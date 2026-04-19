@@ -1334,7 +1334,7 @@ program
 
 program
   .command('autoresearch')
-  .description('Launch thin-supervisor autoresearch with keep/discard/reset parity')
+  .description('Hard-deprecated shim that redirects users to deep-interview + autoresearch skill')
   .helpOption(false)
   .allowUnknownOption(true)
   .allowExcessArguments(true)

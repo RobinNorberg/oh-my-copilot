@@ -7,8 +7,8 @@
  * Cross-platform support via Node.js-based hook scripts (.mjs).
  * Bash hook scripts were removed in v3.9.0.
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync, unlinkSync, rmSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync, unlinkSync, rmSync, realpathSync } from 'fs';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
@@ -152,6 +152,14 @@ function escapeRegex(value) {
 function normalizePath(value) {
     return value.replace(/\\/g, '/').replace(/\/+$/, '');
 }
+function canonicalizeExistingPath(value) {
+    try {
+        return normalizePath(realpathSync.native(value));
+    }
+    catch {
+        return normalizePath(resolve(value));
+    }
+}
 function isDefaultClaudeConfigDirPath(configDir) {
     return normalizePath(configDir) === normalizePath(join(homedir(), '.claude'));
 }
@@ -289,12 +297,12 @@ export function checkNodeVersion() {
     };
 }
 /**
- * Check if Claude Code is installed
+ * Check if Copilot CLI is installed
  * Uses 'where' on Windows, 'which' on Unix
  */
 export function isCopilotInstalled() {
     try {
-        const command = isWindows() ? 'where claude' : 'which claude';
+        const command = isWindows() ? 'where copilot' : 'which copilot';
         execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
         return true;
     }
@@ -486,14 +494,20 @@ function ensureStandaloneHookScripts(log) {
             chmodSync(targetPath, 0o755);
         }
     }
-    for (const filename of readdirSync(templatesLibDir)) {
-        if (filename === 'config-dir.mjs')
-            continue; // sourced from scripts/lib/ below
-        const sourcePath = join(templatesLibDir, filename);
-        const targetPath = join(hooksLibDir, filename);
-        copyFileSync(sourcePath, targetPath);
-        if (!isWindows()) {
-            chmodSync(targetPath, 0o755);
+    if (existsSync(templatesLibDir)) {
+        if (!existsSync(hooksLibDir)) {
+            mkdirSync(hooksLibDir, { recursive: true });
+        }
+        for (const filename of readdirSync(templatesLibDir)) {
+            if (!filename.endsWith('.mjs') || filename === 'config-dir.mjs') {
+                continue;
+            }
+            const sourcePath = join(templatesLibDir, filename);
+            const targetPath = join(hooksLibDir, filename);
+            copyFileSync(sourcePath, targetPath);
+            if (!isWindows()) {
+                chmodSync(targetPath, 0o755);
+            }
         }
     }
     // config-dir.mjs: canonical source is scripts/lib/, not templates (avoids duplication)
@@ -872,7 +886,12 @@ function getGlobalInstalledPackageRoot() {
 function isCacheInstalledPluginRoot(root) {
     const normalizedRoot = normalizePath(root);
     const cacheBase = normalizePath(join(COPILOT_CONFIG_DIR, 'plugins', 'cache'));
-    return normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`);
+    if (!(normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`))) {
+        return false;
+    }
+    const canonicalRoot = canonicalizeExistingPath(root);
+    const canonicalCacheBase = canonicalizeExistingPath(cacheBase);
+    return canonicalRoot === canonicalCacheBase || canonicalRoot.startsWith(`${canonicalCacheBase}/`);
 }
 function resolveBestPluginSyncSource(targetRoots) {
     const excludedRoots = new Set(targetRoots.map(normalizePath));
@@ -1344,15 +1363,11 @@ export function install(options = {}) {
     else if (pluginProvidesAgentFiles) {
         log('Detected installed OMC plugin agent definitions - skipping legacy ~/.claude/agents sync');
     }
-    // Check Claude installation (optional)
+    // Check Copilot CLI installation (optional)
     if (!options.skipCopilotCheck && !isCopilotInstalled()) {
-        log('Warning: Claude Code not found. Install it first:');
-        if (isWindows()) {
-            log('  Visit https://docs.anthropic.com/claude-code for Windows installation');
-        }
-        else {
-            log('  curl -fsSL https://claude.ai/install.sh | bash');
-        }
+        log('Warning: Copilot CLI not found. Install it first:');
+        log('  npm install -g @anthropic-ai/copilot-cli');
+        log('  Or visit: https://docs.github.com/en/copilot/github-copilot-in-the-cli');
         // Continue anyway - user might be installing ahead of time
     }
     try {

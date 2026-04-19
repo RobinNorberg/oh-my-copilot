@@ -53,6 +53,27 @@ Extract:
 
 Break work into N independent subtasks (file- or concern-scoped) to avoid write conflicts.
 
+### Phase 2.5: Resolve workspace root for multi-repo plans
+
+`omcp team` launches all workers with one shared working directory. For single-repo
+tasks, the current repo is usually correct. For multi-repo tasks, especially when a
+plan lives in one repo but the implementation touches sibling repos, resolve the
+working directory before launch:
+
+- If the task references a plan artifact under one repo (for example
+  `tool/.omc/plans/task-1200-gwd-gifs.md`) and target paths in sibling repos
+  (for example `api/` and `admin/`), choose the shared workspace root that contains
+  all participating repos (for example the parent `inter/` directory).
+- Use an **absolute plan path** in the task text so the workers can still find the
+  plan after `--cwd` changes the launch directory.
+- Include the explicit repo paths or repo names in the task text and subtasks.
+- Do not anchor the launch cwd to only the repo containing `.omc/plans/...` when
+  target repos are siblings; that strands `codex`, `copilot`, and `gemini` workers in
+  the plan repo instead of the implementation workspace.
+- If no safe shared workspace root can be identified, do not launch `/omc-teams`.
+  Report the single-cwd constraint and ask for, or derive from evidence, the intended
+  workspace root.
+
 ### Phase 3: Start CLI team runtime
 
 Activate mode state (recommended):
@@ -65,6 +86,13 @@ Start workers via CLI:
 
 ```bash
 omcp team <N>:<copilot|codex|gemini> "<task>"
+```
+
+For the multi-repo case resolved in Phase 2.5, launch from the shared workspace root
+with the existing `--cwd` contract and keep the plan reference absolute:
+
+```bash
+omcp team <N>:<copilot|codex|gemini> "<task with absolute plan path and explicit repo paths>" --cwd <workspace-root>
 ```
 
 Team name defaults to a slug from the task text (example: `review-auth-flow`).

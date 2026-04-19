@@ -213,6 +213,29 @@ copilot mcp add --transport http <server-name> <url>
 copilot mcp add --transport http --header "Authorization: Bearer <token>" <server-name> <url>
 ```
 
+### Company-context convention
+
+If the custom server is meant to provide organization-specific reference material to OMC workflows, prefer a single tool named `get_company_context` that returns markdown via `{ context: string }`.
+
+Example local registration:
+
+```bash
+copilot mcp add company-context -- node examples/vendor-mcp-server/server.mjs
+```
+
+Then point OMC at the full tool name in `.copilot/omg.jsonc` or `~/.config/copilot-omg/config.jsonc`:
+
+```jsonc
+{
+  "companyContext": {
+    "tool": "mcp__company-context__get_company_context",
+    "onError": "warn"
+  }
+}
+```
+
+This remains advisory prompt context, not runtime enforcement.
+
 ## Common Issues
 
 ### MCP Server Not Loading

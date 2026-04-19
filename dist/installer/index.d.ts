@@ -95,7 +95,7 @@ export declare function checkNodeVersion(): {
     required: number;
 };
 /**
- * Check if Claude Code is installed
+ * Check if Copilot CLI is installed
  * Uses 'where' on Windows, 'which' on Unix
  */
 export declare function isCopilotInstalled(): boolean;

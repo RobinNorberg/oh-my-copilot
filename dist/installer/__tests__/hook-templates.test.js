@@ -10,7 +10,7 @@ const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, '..', '..', '..');
 const STALE_PIPELINE_SNIPPETS = [
     "matches.push({ name: 'pipeline', args: '' });",
-    "'pipeline','c3g','ralplan'",
+    "'pipeline','cccg','ralplan'",
     "'pipeline']);",
     "'swarm', 'pipeline'], sessionId);",
 ];

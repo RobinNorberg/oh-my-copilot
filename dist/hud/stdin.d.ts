@@ -4,7 +4,7 @@
  * Parse stdin JSON from Copilot CLI statusline interface.
  * Based on copilot-hud reference implementation.
  */
-import type { StatuslineStdin } from './types.js';
+import type { RateLimits, StatuslineStdin } from './types.js';
 /**
  * Persist the last successful stdin read to disk.
  * Used by --watch mode to recover data when stdin is a TTY.
@@ -31,6 +31,10 @@ export declare function stabilizeContextPercent(stdin: StatuslineStdin, previous
  * Prefers native percentage from Claude Code statusline stdin, falls back to manual calculation.
  */
 export declare function getContextPercent(stdin: StatuslineStdin): number;
+/**
+ * Convert Claude Code stdin rate_limits into the existing HUD RateLimits shape.
+ */
+export declare function getRateLimitsFromStdin(stdin: StatuslineStdin): RateLimits | null;
 /**
  * Get model display name from stdin.
  * Prefer the official display name field, then fall back to the raw model id.

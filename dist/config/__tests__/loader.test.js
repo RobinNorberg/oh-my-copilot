@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { loadConfig, loadContextFromFiles, } from '../loader.js';
+import { generateConfigSchema, loadConfig, loadContextFromFiles, } from '../loader.js';
 import { saveAndClear, restore } from './test-helpers.js';
 const ALL_KEYS = [
     'CLAUDE_CODE_USE_BEDROCK',
@@ -170,6 +170,53 @@ describe("plan output configuration", () => {
             process.chdir(originalCwd);
             rmSync(tempDir, { recursive: true, force: true });
         }
+    });
+});
+describe("company context configuration", () => {
+    let saved;
+    let originalCwd;
+    beforeEach(() => {
+        saved = saveAndClear(ALL_KEYS);
+        originalCwd = process.cwd();
+    });
+    afterEach(() => {
+        process.chdir(originalCwd);
+        restore(saved);
+    });
+    it("includes the default prompt-level fallback", () => {
+        const config = loadConfig();
+        expect(config.companyContext).toEqual({
+            onError: "warn",
+        });
+    });
+    it("loads company context overrides from project config", () => {
+        const tempDir = mkdtempSync(join(tmpdir(), "omc-company-context-"));
+        try {
+            const copilotDir = join(tempDir, ".copilot");
+            require("node:fs").mkdirSync(copilotDir, { recursive: true });
+            writeFileSync(join(copilotDir, "omg.jsonc"), JSON.stringify({
+                companyContext: {
+                    tool: "mcp__vendor__get_company_context",
+                    onError: "fail",
+                },
+            }));
+            process.chdir(tempDir);
+            const config = loadConfig();
+            expect(config.companyContext).toEqual({
+                tool: "mcp__vendor__get_company_context",
+                onError: "fail",
+            });
+        }
+        finally {
+            process.chdir(originalCwd);
+            rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
+    it("exposes companyContext in the generated config schema", () => {
+        const schema = generateConfigSchema();
+        expect(schema.properties?.companyContext).toBeDefined();
+        expect(schema.properties?.companyContext?.properties?.tool).toBeDefined();
+        expect(schema.properties?.companyContext?.properties?.onError).toBeDefined();
     });
 });
 describe("team.roleRouting (Option E)", () => {

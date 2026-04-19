@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, afterEach } from 'vitest';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createBuiltinSkills, getBuiltinSkill, listBuiltinSkillNames, clearSkillsCache } from '../features/builtin-skills/skills.js';
@@ -37,9 +37,9 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (52 canonical skills)', () => {
+    it('should return correct number of skills (53 canonical skills)', () => {
       const skills = createBuiltinSkills();
-      expect(skills).toHaveLength(52);
+      expect(skills).toHaveLength(53);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -91,9 +91,10 @@ describe('Builtin Skills', () => {
       const expectedSkills = [
         'ai-slop-cleaner',
         'ask',
+        'autoresearch',
         'autopilot',
         'cancel',
-        'c3g',
+        'cccg',
         'configure-notifications',
         'critique',
         'debug',
@@ -180,6 +181,16 @@ describe('Builtin Skills', () => {
       expect(skill).toBeUndefined();
     });
 
+    it('should preserve the multi-repo omc-teams cwd and plan-path contract', () => {
+      const skill = getBuiltinSkill('omc-teams');
+      expect(skill).toBeDefined();
+      expect(skill?.template).toContain('shared workspace root');
+      expect(skill?.template).toContain('absolute plan path');
+      expect(skill?.template).toContain('--cwd <workspace-root>');
+      expect(skill?.template).toContain('Do not anchor the launch cwd to only the repo containing `.omc/plans/...`');
+      expect(skill?.template).toContain('single-cwd constraint');
+    });
+
     it('stages mcp-setup AskUserQuestion menus so each prompt stays within the current option limit', () => {
       const skill = getBuiltinSkill('mcp-setup');
       expect(skill).toBeDefined();
@@ -214,12 +225,12 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toHaveLength(51);
+      expect(names).toHaveLength(52);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('ask');
       expect(names).toContain('autopilot');
       expect(names).toContain('cancel');
-      expect(names).toContain('c3g');
+      expect(names).toContain('cccg');
       expect(names).toContain('configure-notifications');
       expect(names).toContain('ralph');
       expect(names).toContain('ultrawork');
@@ -244,7 +255,7 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131, psm alias restored in v4.11.6
-      expect(names).toHaveLength(52);
+      expect(names).toHaveLength(53);
       expect(names).not.toContain('swarm');
       expect(names).toContain('psm');
     });
@@ -302,7 +313,7 @@ describe('Builtin Skills', () => {
       );
 
       const first = getBuiltinSkill('deep-interview');
-      expect(first?.template).toContain('ambiguityThreshold = 0.12');
+      expect(first?.template).toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.12`');
       expect(first?.template).toContain('"threshold": 0.12,');
 
       writeFileSync(
@@ -311,9 +322,9 @@ describe('Builtin Skills', () => {
       );
 
       const second = getBuiltinSkill('deep-interview');
-      expect(second?.template).toContain('ambiguityThreshold = 0.33');
+      expect(second?.template).toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.33`');
       expect(second?.template).toContain('"threshold": 0.33,');
-      expect(second?.template).not.toContain('ambiguityThreshold = 0.12');
+      expect(second?.template).not.toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.12`');
       expect(second?.template).not.toContain('"threshold": 0.12,');
     });
 
@@ -335,12 +346,12 @@ describe('Builtin Skills', () => {
 
       expect(t).toContain('"threshold": 0.15,');
       expect(t).toContain('drops below 15%.');
-      expect(t).toContain('(default: 15%)');
-      expect(t).toContain('(default: 0.15)');
-      expect(t).toContain('Gate: ≤15% ambiguity');
-      expect(t).toContain('(threshold: 15%).');
-      expect(t).toContain('ambiguity ≤ 15%');
-      expect(t).toContain('"ambiguityThreshold": 0.15,');
+
+      expect(t).toContain('resolved threshold for this run'); // Purpose/Execution_Policy
+      expect(t).toContain('Gate: ≤15% ambiguity');    // ASCII pipeline diagram
+      expect(t).toContain('(threshold: 15%)');        // Early-exit example message
+      expect(t).toContain('ambiguity ≤ 15%');         // Advanced pipeline description
+      expect(t).toContain('"ambiguityThreshold": 0.15,'); // Advanced config snippet
 
       expect(t).not.toContain('(default: 20%)');
       expect(t).not.toContain('(default: 0.2)');
@@ -348,6 +359,26 @@ describe('Builtin Skills', () => {
       expect(t).not.toContain('(threshold: 20%).');
       expect(t).not.toContain('ambiguity ≤ 20%');
       expect(t).not.toContain('"ambiguityThreshold": 0.2,');
+    });
+
+    it('ships a config-aware deep-interview SKILL.md for native skill-loader paths (issue #2723)', () => {
+      const raw = readFileSync(join(originalCwd, 'skills', 'deep-interview', 'SKILL.md'), 'utf-8');
+      expect(raw).toContain('Load runtime settings');
+      expect(raw).toContain('Read `[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json` and `./.copilot/settings.json`');
+      expect(raw).toContain('"threshold": <resolvedThreshold>,');
+      expect(raw).toContain('ambiguity drops below <resolvedThresholdPercent>');
+      expect(raw).toContain('Gate: ≤<resolvedThresholdPercent> ambiguity');
+      expect(raw).toContain('"ambiguityThreshold": <resolvedThreshold>,');
+      expect(raw).toContain('At or below the resolved threshold');
+
+      expect(raw).not.toContain('(default: 20%)');
+      expect(raw).not.toContain('(default 0.2)');
+      expect(raw).not.toContain('"threshold": 0.2,');
+      expect(raw).not.toContain('ambiguity drops below 20%');
+      expect(raw).not.toContain('Gate: ≤20% ambiguity');
+      expect(raw).not.toContain('(threshold: 20%).');
+      expect(raw).not.toContain('"ambiguityThreshold": 0.2,');
+      expect(raw).not.toContain('ambiguity ≤ 20%');
     });
   });
 });

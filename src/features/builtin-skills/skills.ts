@@ -99,14 +99,21 @@ function applyDeepInterviewRuntimeSettings(template: string): string {
   const threshold = getDeepInterviewAmbiguityThreshold();
   const percent = formatThresholdPercent(threshold);
 
-  return template
-    .replace(
+  const withResolvedPlaceholders = template
+    .replaceAll('<resolvedThreshold>', `${threshold}`)
+    .replaceAll('<resolvedThresholdPercent>', percent);
+
+  const withRuntimeSettings = withResolvedPlaceholders.includes('3.5. **Load runtime settings**:')
+    ? withResolvedPlaceholders
+    : withResolvedPlaceholders.replace(
       '4. **Initialize state** via `state_write(mode="deep-interview")`:',
       [
         `3.5. **Load runtime settings** from \`~/.copilot/settings.json\` and \`./.copilot/settings.json\` before state init (project overrides profile). For this run, use \`ambiguityThreshold = ${threshold}\`.`,
         '4. **Initialize state** via `state_write(mode="deep-interview")`:',
       ].join('\n'),
-    )
+    );
+
+  return withRuntimeSettings
     .replace('"threshold": 0.2,', `"threshold": ${threshold},`)
     .replace(
       'We\'ll proceed to execution once ambiguity drops below 20%.',

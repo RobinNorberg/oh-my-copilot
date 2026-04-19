@@ -44,7 +44,7 @@ Prefix: `oh-my-copilot:`. See `agents/*.md` for full prompts.
 - `/team N:executor "task"`
 - `omcp team N:codex|gemini "..."`
 - `omcp ask <claude|codex|gemini>`
-- `/c3g`
+- `/cccg`
 
 ### OMC state
 - `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
@@ -73,7 +73,7 @@ Invoke built-in workflows via `/oh-my-copilot:<name>`.
 - `ultrawork` — high-throughput parallel execution
 - `visual-verdict` — structured visual QA verdicts
 - `team` — coordinated team orchestration
-- `c3g` — Copilot + Claude + Codex + Gemini quad-model orchestration
+- `cccg` — Copilot + Claude + Codex + Gemini quad-model orchestration
 - `ultraqa` — QA cycle: test, verify, fix, repeat
 - `omc-plan` — planning workflow and `/plan`-safe alias
 - `ralplan` — consensus planning workflow
@@ -90,7 +90,7 @@ Invoke built-in workflows via `/oh-my-copilot:<name>`.
 - `"autopilot"→autopilot`
 - `"ralph"→ralph`
 - `"ulw"→ultrawork`
-- `"c3g"→c3g`
+- `"cccg"→cccg`
 - `"ralplan"→ralplan`
 - `"deep interview"→deep-interview`
 - `"deslop" / "anti-slop"→ai-slop-cleaner`

@@ -7,7 +7,7 @@ import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, r
 import { homedir } from 'os';
 import { basename, join } from 'path';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
-import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, tmuxExec, } from './tmux-utils.js';
+import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isNativeWindowsShell, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, tmuxExec, } from './tmux-utils.js';
 // Flag mapping
 const MADMAX_FLAG = '--madmax';
 const YOLO_FLAG = '--yolo';
@@ -410,15 +410,25 @@ export function buildEnvExportPrefix(vars) {
  * Creates tmux session with Copilot
  */
 function runCopilotOutsideTmux(cwd, args, _sessionId) {
-    const rawCopilotCmd = buildTmuxShellCommand('copilot', args);
-    const envPrefix = buildEnvExportPrefix(TMUX_ENV_FORWARD);
+    const forwardedEnv = Object.fromEntries(TMUX_ENV_FORWARD
+        .map((name) => [name, process.env[name]])
+        .filter(([, value]) => value !== undefined));
+    const rawCopilotCmd = isNativeWindowsShell()
+        ? buildTmuxShellCommandWithEnv('copilot', args, forwardedEnv)
+        : buildTmuxShellCommand('copilot', args);
+    const envPrefix = !isNativeWindowsShell() && Object.keys(forwardedEnv).length > 0
+        ? buildEnvExportPrefix(TMUX_ENV_FORWARD)
+        : '';
     // Drain any pending terminal Device Attributes (DA1) response from stdin.
     // When tmux attach-session sends a DA1 query, the terminal replies with
     // \e[?6c which lands in the pty buffer before Copilot reads input.
     // A short sleep lets the response arrive, then tcflush discards it.
     // Wrap in login shell so .bashrc/.zshrc are sourced (PATH, nvm, etc.)
     // Env exports are injected after RC sourcing so they override stale tmux server env.
-    const copilotCmd = wrapWithLoginShell(`${envPrefix}sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; ${rawCopilotCmd}`);
+    const preflight = isNativeWindowsShell()
+        ? envPrefix
+        : `${envPrefix}sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; `;
+    const copilotCmd = wrapWithLoginShell(`${preflight}${rawCopilotCmd}`);
     const sessionName = buildTmuxSessionName(cwd);
     const tmuxArgs = [
         'new-session', '-d', '-s', sessionName, '-c', cwd,

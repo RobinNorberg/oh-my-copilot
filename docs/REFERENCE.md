@@ -12,7 +12,7 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [CLI Commands: ask/team/session](#cli-commands-askteamsession)
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated)
 - [Agents (29 Total)](#agents-29-total)
-- [Skills (32 Total)](#skills-32-total)
+- [Skills (35 Total)](#skills-35-total)
 - [Slash Commands](#slash-commands)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -157,6 +157,30 @@ If a remote host already exposes an MCP endpoint, add it to your MCP registry (o
 This gives OMC a coherent remote connection surface for MCP-backed tools. It does **not** make all remote files magically appear as a local workspace, and it does **not** replace SSH for arbitrary shell access.
 
 If you need richer cross-machine behavior in the future, that would require a separate authenticated remote execution/filesystem design rather than stretching the current local-workspace architecture.
+
+### Company Context via MCP
+
+OMC also supports a narrow company-context contract on top of the existing MCP surface.
+
+Configure it in the standard OMC config files:
+
+- Project: `.copilot/omg.jsonc`
+- User: `~/.config/copilot-omg/config.jsonc`
+
+```jsonc
+{
+  "companyContext": {
+    "tool": "mcp__vendor__get_company_context",
+    "onError": "warn"
+  }
+}
+```
+
+- `tool` is the full MCP tool name to call.
+- `onError` controls prompt-level fallback: `warn`, `silent`, or `fail`.
+- The MCP server itself is still registered through the normal Copilot CLI / OMC MCP setup path.
+
+This remains a prompt-level workflow contract, not runtime enforcement. For the full interface, trigger stages, and trust boundary, see [company-context-interface.md](./company-context-interface.md).
 
 ### Agent Customization
 
@@ -492,9 +516,9 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 
 ---
 
-## Skills (32 Total)
+## Skills (35 Total)
 
-Includes **31 canonical skills + 1 deprecated alias** (`psm`). Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
+Includes **34 canonical skills + 1 deprecated alias** (`psm`). Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |

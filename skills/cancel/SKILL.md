@@ -118,7 +118,7 @@ Active modes are still cancelled in dependency order:
 8. Team (Copilot CLI native)
 9. OMC Teams (tmux CLI workers)
 10. Plan Consensus (standalone)
-11. Self-Improve (standalone — clear state, clean orphaned worktrees, preserve iteration_state for resume, set status: "user_stopped" in .omcp/self-improve/state/agent-settings.json)
+11. Self-Improve (standalone — clear state, clean orphaned worktrees, preserve iteration_state for resume, set status: "user_stopped" in the resolved `<self-improve-root>/state/agent-settings.json`; new runs use `.omc/self-improve/topics/<topic-slug>/`, with flat `.omc/self-improve/` retained only for legacy single-track resumes)
 
 ## Force Clear All
 

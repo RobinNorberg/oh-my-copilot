@@ -619,6 +619,35 @@ function isAuthenticationError(data) {
   );
 }
 
+function isScheduledWakeupStop(data) {
+  const stopPatterns = [
+    "schedulewakeup",
+    "schedule_wakeup",
+    "scheduled_wakeup",
+    "scheduled_task",
+    "scheduled_resume",
+    "loop_resume",
+    "loop_wakeup",
+  ];
+
+  const toolName = String(data.tool_name || data.toolName || "").toLowerCase().replace(/[\s-]+/g, "_");
+  if (stopPatterns.some((pattern) => toolName.includes(pattern))) {
+    return true;
+  }
+
+  const reasons = [
+    data.stop_reason,
+    data.stopReason,
+    data.end_turn_reason,
+    data.endTurnReason,
+    data.reason,
+  ]
+    .filter((value) => typeof value === "string" && value.trim().length > 0)
+    .map((value) => value.toLowerCase().replace(/[\s-]+/g, "_"));
+
+  return reasons.some((reason) => stopPatterns.some((pattern) => reason.includes(pattern)));
+}
+
 async function main() {
   try {
     const input = await readStdin();
@@ -657,6 +686,11 @@ async function main() {
 
     // Never block auth failures (401/403/expired OAuth): allow re-auth flow.
     if (isAuthenticationError(data)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    if (isScheduledWakeupStop(data)) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
     }

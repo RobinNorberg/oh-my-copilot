@@ -63,7 +63,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 
 | File | Skill | Purpose |
 |-----------|-------|---------|
-| `c3g/SKILL.md` | c3g | Quadri-model orchestration — Claude, Codex, Gemini provide independent analysis, Copilot synthesizes |
+| `cccg/SKILL.md` | cccg | Quadri-model orchestration — Claude, Codex, Gemini provide independent analysis, Copilot synthesizes |
 | `omc-teams/SKILL.md` | omc-teams | CLI-team runtime for claude, codex, or gemini workers in tmux panes |
 | `omc-reference/SKILL.md` | omc-reference | OMC agent catalog, tools, team pipeline routing, commit protocol, and skills registry |
 
@@ -236,7 +236,7 @@ None - pure markdown files.
 | Planning | omc-plan, ralplan, deep-interview, deep-dive | "ralplan", "deep-interview", "ouroboros" |
 | Analysis | critique, deep-review, discover, debug, trace, verify | "critique", "code review", "security review", "trace", "verify", "debug" |
 | Exploration | deepinit, sciomc, external-context | "deepinit", "sciomc", "external-context" |
-| Orchestration | c3g, omc-teams, omc-reference | "c3g", "ask codex", "ask gemini", "ask claude" |
+| Orchestration | cccg, omc-teams, omc-reference | "cccg", "ask codex", "ask gemini", "ask claude" |
 | Visual | visual-verdict | screenshot QA |
 | Cleanup | ai-slop-cleaner | "deslop", "anti-slop" |
 | Azure DevOps | omc-ado-setup, omc-ado-review, omc-ado-auto-review, omc-ado-sprint, omc-ado-triage | "ado setup", "ado triage" |

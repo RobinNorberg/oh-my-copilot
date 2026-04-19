@@ -77,6 +77,9 @@ export function buildDefaultConfig(): PluginConfig {
       exa: { enabled: true },
       context7: { enabled: true }
     },
+    companyContext: {
+      onError: 'warn'
+    },
     permissions: {
       allowBash: true,
       allowEdit: true,
@@ -815,6 +818,22 @@ export function generateConfigSchema(): object {
           context7: {
             type: 'object',
             properties: { enabled: { type: 'boolean' } }
+          }
+        }
+      },
+      companyContext: {
+        type: 'object',
+        description: 'Prompt-level company-context MCP contract for workflow skills',
+        properties: {
+          tool: {
+            type: 'string',
+            description: 'Full MCP tool name to call, for example mcp__vendor__get_company_context'
+          },
+          onError: {
+            type: 'string',
+            enum: ['warn', 'silent', 'fail'],
+            default: 'warn',
+            description: 'How prompt workflows should react when the configured company-context tool call fails'
           }
         }
       },

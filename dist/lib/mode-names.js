@@ -8,11 +8,14 @@
 /** All supported execution mode identifiers. */
 export const MODE_NAMES = {
     AUTOPILOT: 'autopilot',
+    AUTORESEARCH: 'autoresearch',
     TEAM: 'team',
     RALPH: 'ralph',
     ULTRAWORK: 'ultrawork',
     ULTRAQA: 'ultraqa',
     RALPLAN: 'ralplan',
+    DEEP_INTERVIEW: 'deep-interview',
+    SELF_IMPROVE: 'self-improve',
 };
 /**
  * All mode names as an array (useful for iteration).
@@ -20,11 +23,14 @@ export const MODE_NAMES = {
  */
 export const ALL_MODE_NAMES = [
     MODE_NAMES.AUTOPILOT,
+    MODE_NAMES.AUTORESEARCH,
     MODE_NAMES.TEAM,
     MODE_NAMES.RALPH,
     MODE_NAMES.ULTRAWORK,
     MODE_NAMES.ULTRAQA,
     MODE_NAMES.RALPLAN,
+    MODE_NAMES.DEEP_INTERVIEW,
+    MODE_NAMES.SELF_IMPROVE,
 ];
 /**
  * Mode state file mapping — the canonical filename for each mode's state file
@@ -32,11 +38,14 @@ export const ALL_MODE_NAMES = [
  */
 export const MODE_STATE_FILE_MAP = {
     [MODE_NAMES.AUTOPILOT]: 'autopilot-state.json',
+    [MODE_NAMES.AUTORESEARCH]: 'autoresearch-state.json',
     [MODE_NAMES.TEAM]: 'team-state.json',
     [MODE_NAMES.RALPH]: 'ralph-state.json',
     [MODE_NAMES.ULTRAWORK]: 'ultrawork-state.json',
     [MODE_NAMES.ULTRAQA]: 'ultraqa-state.json',
     [MODE_NAMES.RALPLAN]: 'ralplan-state.json',
+    [MODE_NAMES.DEEP_INTERVIEW]: 'deep-interview-state.json',
+    [MODE_NAMES.SELF_IMPROVE]: 'self-improve-state.json',
 };
 /**
  * Mode state files used by session-end cleanup.
@@ -44,11 +53,14 @@ export const MODE_STATE_FILE_MAP = {
  */
 export const SESSION_END_MODE_STATE_FILES = [
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.AUTOPILOT], mode: MODE_NAMES.AUTOPILOT },
+    { file: MODE_STATE_FILE_MAP[MODE_NAMES.AUTORESEARCH], mode: MODE_NAMES.AUTORESEARCH },
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.TEAM], mode: MODE_NAMES.TEAM },
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPH], mode: MODE_NAMES.RALPH },
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAWORK], mode: MODE_NAMES.ULTRAWORK },
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAQA], mode: MODE_NAMES.ULTRAQA },
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPLAN], mode: MODE_NAMES.RALPLAN },
+    { file: MODE_STATE_FILE_MAP[MODE_NAMES.DEEP_INTERVIEW], mode: MODE_NAMES.DEEP_INTERVIEW },
+    { file: MODE_STATE_FILE_MAP[MODE_NAMES.SELF_IMPROVE], mode: MODE_NAMES.SELF_IMPROVE },
     { file: 'skill-active-state.json', mode: 'skill-active' },
 ];
 /**
@@ -56,8 +68,11 @@ export const SESSION_END_MODE_STATE_FILES = [
  */
 export const SESSION_METRICS_MODE_FILES = [
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.AUTOPILOT], mode: MODE_NAMES.AUTOPILOT },
+    { file: MODE_STATE_FILE_MAP[MODE_NAMES.AUTORESEARCH], mode: MODE_NAMES.AUTORESEARCH },
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPH], mode: MODE_NAMES.RALPH },
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.ULTRAWORK], mode: MODE_NAMES.ULTRAWORK },
     { file: MODE_STATE_FILE_MAP[MODE_NAMES.RALPLAN], mode: MODE_NAMES.RALPLAN },
+    { file: MODE_STATE_FILE_MAP[MODE_NAMES.DEEP_INTERVIEW], mode: MODE_NAMES.DEEP_INTERVIEW },
+    { file: MODE_STATE_FILE_MAP[MODE_NAMES.SELF_IMPROVE], mode: MODE_NAMES.SELF_IMPROVE },
 ];
 //# sourceMappingURL=mode-names.js.map

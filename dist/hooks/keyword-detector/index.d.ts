@@ -7,7 +7,7 @@
  * Ported from oh-my-opencode's keyword-detector hook.
  */
 import { type TaskSizeResult } from '../task-size-detector/index.js';
-export type KeywordType = 'cancel' | 'ralph' | 'autopilot' | 'team' | 'ultrawork' | 'ralplan' | 'tdd' | 'code-review' | 'security-review' | 'ultrathink' | 'deepsearch' | 'deep-interview' | 'analyze' | 'claude' | 'codex' | 'gemini' | 'c3g';
+export type KeywordType = 'cancel' | 'ralph' | 'autopilot' | 'team' | 'ultrawork' | 'ralplan' | 'tdd' | 'code-review' | 'security-review' | 'ultrathink' | 'deepsearch' | 'deep-interview' | 'analyze' | 'claude' | 'codex' | 'gemini' | 'cccg';
 export interface DetectedKeyword {
     type: KeywordType;
     keyword: string;
@@ -37,6 +37,34 @@ export declare function extractPromptText(parts: Array<{
     text?: string;
     [key: string]: unknown;
 }>): string;
+/**
+ * Canonical workflow skills detected via explicit slash invocation.
+ * Mirrors `CANONICAL_WORKFLOW_SKILLS` in `skill-state/index.ts`. Listed here
+ * (rather than imported) to keep the keyword-detector free of cross-module
+ * dependencies on skill-state.
+ */
+declare const CANONICAL_WORKFLOW_SLASH_SKILLS: readonly ["autopilot", "ralph", "team", "ultrawork", "ultraqa", "deep-interview", "ralplan", "self-improve"];
+export type CanonicalWorkflowSlashSkill = (typeof CANONICAL_WORKFLOW_SLASH_SKILLS)[number];
+export interface ExplicitWorkflowSlashInvocation {
+    /** Canonical workflow skill name (lowercase, no `oh-my-copilot:` prefix). */
+    skill: CanonicalWorkflowSlashSkill;
+    /** Trailing arguments after the slash command. */
+    args: string;
+    /** Raw matched prefix (including any namespace prefix and the skill name). */
+    raw: string;
+}
+/**
+ * Parse an explicit workflow slash invocation at the start of a prompt.
+ *
+ * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-copilot:<skill>` for
+ * the canonical workflow skill list. Code fences and inline backticks are
+ * stripped first so quoted commands do not match. The trailing lookahead
+ * (whitespace, end-of-text, or punctuation) prevents file paths like
+ * `/ralph-logs/foo.txt` from matching `/ralph`.
+ *
+ * Returns `null` when no explicit invocation is present.
+ */
+export declare function parseExplicitWorkflowSlashInvocation(promptText: string): ExplicitWorkflowSlashInvocation | null;
 /**
  * Detect keywords in text and return matches with type info
  */
@@ -105,4 +133,5 @@ export declare function applyRalplanGate(keywords: KeywordType[], text: string):
     gateApplied: boolean;
     gatedKeywords: KeywordType[];
 };
+export {};
 //# sourceMappingURL=index.d.ts.map
