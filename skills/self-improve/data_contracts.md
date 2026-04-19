@@ -126,7 +126,7 @@ Canonical JSON schemas for all messages exchanged between agents in the self-imp
 
 ## 5. Visualization Data
 
-**File:** `.omcp/self-improve/tracking/raw_data.json` — top-level JSON array, append-only.
+**File:** `<self-improve-root>/tracking/raw_data.json` — top-level JSON array, append-only.
 
 ```json
 [
@@ -169,7 +169,7 @@ Custom families from harness.md are also valid.
 
 ## 8. Iteration State
 
-**File:** `.omcp/self-improve/state/iteration_state.json` — tracks within-iteration progress.
+**File:** `<self-improve-root>/state/iteration_state.json` — tracks within-iteration progress.
 
 ```json
 {
@@ -235,13 +235,13 @@ Custom families from harness.md are also valid.
 
 ## 10. Plan Archive
 
-**Location:** `.omcp/self-improve/state/plan_archive/round_{n}/`
+**Location:** `<self-improve-root>/state/plan_archive/round_{n}/`
 
 Exact copies of all plan JSON files, including critic and architect reviews. Permanent retention.
 
 ## 11. Event Log
 
-**File:** `.omcp/self-improve/tracking/events.json` — append-only array.
+**File:** `<self-improve-root>/tracking/events.json` — append-only array.
 
 ```json
 [

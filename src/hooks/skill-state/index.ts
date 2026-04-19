@@ -105,6 +105,7 @@ const PROTECTION_CONFIGS: Record<SkillProtectionLevel, SkillStateConfig> = {
 const SKILL_PROTECTION: Record<string, SkillProtectionLevel> = {
   // === Canonical workflow skills — bypass support-skill protection; flow through the workflow-slot path ===
   autopilot: 'none',
+  autoresearch: 'none',
   ralph: 'none',
   ultrawork: 'none',
   team: 'none',

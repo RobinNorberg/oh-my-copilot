@@ -1,17 +1,21 @@
 #!/usr/bin/env bash
 # validate.sh — Sealed file enforcement + plan schema validation for self-improvement loop.
 # Usage:
-#   ./validate.sh --worktree /path plan.json    # worktree mode + plan validation
-#   ./validate.sh plan.json                     # plan schema validation only
-#   ./validate.sh                               # sealed file check only
+#   ./validate.sh --worktree /path --settings /path/to/settings.json plan.json
+#   ./validate.sh --project-root /path/to/omc/project --topic "Improve tests" plan.json
+#   ./validate.sh plan.json
+#   ./validate.sh
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SKILL_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# Settings path must be provided or discovered from .omc/self-improve/config/
+# Settings path may be provided directly or resolved from the scoped self-improve root.
 SETTINGS=""
+PROJECT_ROOT=""
+TOPIC_NAME=""
+TOPIC_SLUG=""
 
 # Parse arguments
 WORKTREE_PATH=""
@@ -26,6 +30,18 @@ while [[ $# -gt 0 ]]; do
             SETTINGS="$2"
             shift 2
             ;;
+        --project-root)
+            PROJECT_ROOT="$2"
+            shift 2
+            ;;
+        --topic)
+            TOPIC_NAME="$2"
+            shift 2
+            ;;
+        --slug)
+            TOPIC_SLUG="$2"
+            shift 2
+            ;;
         *)
             POSITIONAL_ARGS+=("$1")
             shift
@@ -33,19 +49,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 set -- "${POSITIONAL_ARGS[@]+"${POSITIONAL_ARGS[@]}"}"
-
-# Auto-discover settings if not provided
-if [[ -z "${SETTINGS}" ]]; then
-    # Walk up from worktree or CWD to find .omc/self-improve/config/settings.json
-    SEARCH_DIR="${WORKTREE_PATH:-$(pwd)}"
-    while [[ "${SEARCH_DIR}" != "/" ]]; do
-        if [[ -f "${SEARCH_DIR}/.omc/self-improve/config/settings.json" ]]; then
-            SETTINGS="${SEARCH_DIR}/.omc/self-improve/config/settings.json"
-            break
-        fi
-        SEARCH_DIR="$(dirname "${SEARCH_DIR}")"
-    done
-fi
 
 GIT_DIR="${WORKTREE_PATH:-$(pwd)}"
 
@@ -59,8 +62,90 @@ require_jq() {
     fi
 }
 
-check_sealed_files() {
+resolve_settings_from_project_root() {
+    local project_root="$1"
+    local resolver="${SCRIPT_DIR}/resolve-paths.mjs"
+    local args=( "${resolver}" --project-root "${project_root}" )
+
+    if [[ -n "${TOPIC_SLUG}" ]]; then
+        args+=( --slug "${TOPIC_SLUG}" )
+    elif [[ -n "${TOPIC_NAME}" ]]; then
+        args+=( --topic "${TOPIC_NAME}" )
+    fi
+
+    local resolved
+    resolved=$(node "${args[@]}" 2>/dev/null || true)
+    if [[ -z "${resolved}" ]]; then
+        return 1
+    fi
+
+    local candidate
+    candidate=$(printf '%s' "${resolved}" | jq -r '.settings_path // ""' 2>/dev/null || true)
+    if [[ -n "${candidate}" ]]; then
+        SETTINGS="${candidate}"
+        return 0
+    fi
+
+    return 1
+}
+
+discover_settings_from_search_root() {
+    local search_dir="$1"
+    while [[ "${search_dir}" != "/" ]]; do
+        if [[ -f "${search_dir}/.omc/self-improve/config/settings.json" ]]; then
+            SETTINGS="${search_dir}/.omc/self-improve/config/settings.json"
+            return 0
+        fi
+
+        shopt -s nullglob
+        local scoped_candidates=( "${search_dir}"/.omc/self-improve/topics/*/config/settings.json )
+        shopt -u nullglob
+        if [[ "${#scoped_candidates[@]}" -eq 1 ]]; then
+            SETTINGS="${scoped_candidates[0]}"
+            return 0
+        fi
+        if [[ "${#scoped_candidates[@]}" -gt 1 ]]; then
+            err "Multiple self-improve topics exist under ${search_dir}/.omc/self-improve/topics/. Pass --settings, --project-root with --topic/--slug, or set SELF_IMPROVE_SETTINGS_PATH."
+            exit 1
+        fi
+
+        search_dir="$(dirname "${search_dir}")"
+    done
+    return 1
+}
+
+resolve_settings_path() {
+    [[ -n "${SETTINGS}" ]] && return 0
+
+    if [[ -n "${SELF_IMPROVE_SETTINGS_PATH:-}" ]]; then
+        SETTINGS="${SELF_IMPROVE_SETTINGS_PATH}"
+        return 0
+    fi
+
     require_jq
+
+    if [[ -n "${PROJECT_ROOT}" ]]; then
+        if [[ -n "${TOPIC_SLUG}" || -n "${TOPIC_NAME}" ]]; then
+            if resolve_settings_from_project_root "${PROJECT_ROOT}"; then
+                return 0
+            fi
+        fi
+
+        if discover_settings_from_search_root "${PROJECT_ROOT}"; then
+            return 0
+        fi
+    fi
+
+    local search_dir="${WORKTREE_PATH:-$(pwd)}"
+    if discover_settings_from_search_root "${search_dir}"; then
+        return 0
+    fi
+
+    return 1
+}
+
+check_sealed_files() {
+    resolve_settings_path || true
 
     if [[ -z "${SETTINGS}" || ! -f "${SETTINGS}" ]]; then
         ok "No settings file found — skipping sealed file check."
@@ -298,7 +383,11 @@ check_result_schema() {
 }
 
 main() {
+    resolve_settings_path || true
     echo "=== self-improve validate.sh ==="
+    if [[ -n "${SETTINGS}" ]]; then
+        echo "Settings: ${SETTINGS}"
+    fi
     check_sealed_files
 
     if [[ ${#POSITIONAL_ARGS[@]} -ge 1 ]]; then

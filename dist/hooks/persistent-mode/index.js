@@ -991,6 +991,107 @@ When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 const RALPLAN_STOP_BLOCKER_MAX = 30;
 const RALPLAN_STOP_BLOCKER_TTL_MS = 45 * 60 * 1000; // 45 min
 const RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS = 5_000;
+function getAutoresearchDeadlineMs(state) {
+    if (typeof state.deadline_at === 'string' && state.deadline_at.trim().length > 0) {
+        const parsed = new Date(state.deadline_at).getTime();
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
+    }
+    if (typeof state.max_runtime_ms === 'number' && Number.isFinite(state.max_runtime_ms)
+        && typeof state.started_at === 'string' && state.started_at.trim().length > 0) {
+        const startedAt = new Date(state.started_at).getTime();
+        if (Number.isFinite(startedAt)) {
+            return startedAt + state.max_runtime_ms;
+        }
+    }
+    return null;
+}
+async function checkAutoresearch(sessionId, directory, cancelInProgress) {
+    const workingDir = resolveToWorktreeRoot(directory);
+    let stateSourceSessionId = sessionId;
+    let state = readModeState('autoresearch', workingDir, sessionId);
+    // Autoresearch predates session-scoped state files. Preserve strict sessioned reads
+    // first, then allow a narrow legacy/shared bridge only for matching or unbound state.
+    if (!state && sessionId) {
+        const legacyState = readModeState('autoresearch', workingDir);
+        if (!legacyState?.session_id || legacyState.session_id === sessionId) {
+            state = legacyState;
+            stateSourceSessionId = undefined;
+        }
+    }
+    const stateRecord = state;
+    const hasTimestampFields = Boolean(stateRecord
+        && ['updated_at', 'started_at'].some((key) => typeof stateRecord[key] === 'string' && String(stateRecord[key]).length > 0));
+    if (!state || !state.active || (hasTimestampFields && isStaleState(state))) {
+        return null;
+    }
+    if (sessionId && state.session_id && state.session_id !== sessionId) {
+        return null;
+    }
+    if (cancelInProgress) {
+        return {
+            shouldBlock: false,
+            message: '',
+            mode: 'autoresearch',
+        };
+    }
+    const phase = typeof state.current_phase === 'string'
+        ? state.current_phase.trim().toLowerCase()
+        : '';
+    if (phase === 'completed' || phase === 'failed' || phase === 'stopped' || phase === 'cancelled') {
+        return {
+            shouldBlock: false,
+            message: '',
+            mode: 'autoresearch',
+        };
+    }
+    const deadlineMs = getAutoresearchDeadlineMs(state);
+    if (deadlineMs != null && Date.now() >= deadlineMs) {
+        writeModeState('autoresearch', {
+            ...state,
+            active: false,
+            current_phase: 'stopped',
+            completed_at: new Date().toISOString(),
+            stop_reason: 'max-runtime ceiling reached',
+        }, workingDir, stateSourceSessionId);
+        return {
+            shouldBlock: false,
+            message: '[AUTORESEARCH COMPLETE] Max-runtime ceiling reached. Stop hook released the stateful autoresearch run.',
+            mode: 'autoresearch',
+            metadata: {
+                iteration: typeof state.iteration === 'number' ? state.iteration : undefined,
+            },
+        };
+    }
+    const remaining = deadlineMs == null
+        ? 'unknown'
+        : `${Math.max(0, Math.ceil((deadlineMs - Date.now()) / 1000))}s`;
+    const missionSlug = typeof state.mission_slug === 'string' && state.mission_slug
+        ? state.mission_slug
+        : 'unknown-mission';
+    return {
+        shouldBlock: true,
+        message: `<autoresearch-continuation>
+
+[AUTORESEARCH - STATEFUL MISSION ACTIVE]
+Mission: ${missionSlug}
+The autoresearch loop is still active and should continue iterating.
+Do not stop just because the latest evaluation did not pass.
+Strict stop boundary: explicit max-runtime ceiling.
+Remaining runtime: ${remaining}
+
+</autoresearch-continuation>
+
+---
+`,
+        mode: 'autoresearch',
+        metadata: {
+            iteration: typeof state.iteration === 'number' ? state.iteration : undefined,
+            phase: state.current_phase,
+        },
+    };
+}
 function getNormalizedRalplanPhase(state) {
     if (!state || typeof state !== 'object') {
         return null;
@@ -1403,6 +1504,11 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
         const autopilotResult = await runAutopilotPriority();
         if (autopilotResult)
             return autopilotResult;
+    }
+    // Priority 1.6: Autoresearch (stateful single-mission runtime)
+    const autoresearchResult = await checkAutoresearch(sessionId, workingDir, cancelInProgress);
+    if (autoresearchResult) {
+        return autoresearchResult;
     }
     // Priority 1.7: Ralplan (standalone consensus planning)
     // Suppressed when the ralplan slot is tombstoned so noisy re-handoff stops

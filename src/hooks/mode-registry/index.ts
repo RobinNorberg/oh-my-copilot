@@ -54,6 +54,12 @@ const MODE_CONFIGS: Record<ExecutionMode, ModeConfig> = {
     stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.AUTOPILOT],
     activeProperty: "active",
   },
+  [MODE_NAMES.AUTORESEARCH]: {
+    name: "Autoresearch",
+    stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.AUTORESEARCH],
+    activeProperty: "active",
+    hasGlobalState: false,
+  },
   [MODE_NAMES.TEAM]: {
     name: "Team",
     stateFile: MODE_STATE_FILE_MAP[MODE_NAMES.TEAM],
@@ -96,7 +102,7 @@ export { MODE_CONFIGS };
 /**
  * Modes that are mutually exclusive (cannot run concurrently)
  */
-const EXCLUSIVE_MODES: ExecutionMode[] = [MODE_NAMES.AUTOPILOT];
+const EXCLUSIVE_MODES: ExecutionMode[] = [MODE_NAMES.AUTOPILOT, MODE_NAMES.AUTORESEARCH];
 
 /**
  * Get the state directory path

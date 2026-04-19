@@ -5,6 +5,7 @@
   "current_repo_url": "",
   "fork_url": "",
   "upstream_url": "",
+  "topic_slug": "default",
   "target_branch": "main",
   "benchmark_command": "",
   "benchmark_format": "json",
