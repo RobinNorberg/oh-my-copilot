@@ -37,7 +37,7 @@
 npm i -g oh-my-copilot@latest
 
 # Step 2: Setup
-/omc-setup
+/setup
 
 # Step 3: Build something
 /autopilot: build a todo-app
