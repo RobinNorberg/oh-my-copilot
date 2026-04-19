@@ -23,7 +23,7 @@ describe('auto-slash command skill aliases', () => {
 
     mkdirSync(join(tempConfigDir, 'skills', 'team'), { recursive: true });
     mkdirSync(join(tempConfigDir, 'skills', 'project-session-manager'), { recursive: true });
-    mkdirSync(join(tempConfigDir, 'skills', 'c3g'), { recursive: true });
+    mkdirSync(join(tempConfigDir, 'skills', 'cccg'), { recursive: true });
     mkdirSync(join(tempProjectDir, '.copilot', 'commands'), { recursive: true });
 
     writeFileSync(
@@ -47,9 +47,9 @@ PSM body`
     );
 
     writeFileSync(
-      join(tempConfigDir, 'skills', 'c3g', 'SKILL.md'),
+      join(tempConfigDir, 'skills', 'cccg', 'SKILL.md'),
       `---
-name: c3g
+name: cccg
 description: Quadri-model orchestration
 ---
 
@@ -146,7 +146,7 @@ Advanced: ambiguity ≤ 20%
     expect(result.replacementText).not.toContain('"ambiguityThreshold": 0.2,');
   });
 
-  it('keeps /c3g advisor asks on omcp ask inside an active Claude session', async () => {
+  it('keeps /cccg advisor asks on omcp ask inside an active Claude session', async () => {
     process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
     process.env.PATH = '';
     process.env.CLAUDECODE = '1';
@@ -154,9 +154,9 @@ Advanced: ambiguity ≤ 20%
 
     const { executeSlashCommand } = await loadExecutor();
     const result = executeSlashCommand({
-      command: 'c3g',
+      command: 'cccg',
       args: 'review this auth flow',
-      raw: '/c3g review this auth flow',
+      raw: '/cccg review this auth flow',
     });
 
     expect(result.success).toBe(true);

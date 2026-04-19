@@ -21445,7 +21445,7 @@ var init_skill_state = __esm({
       "project-session-manager": "medium",
       "writer-memory": "medium",
       "ralph-init": "medium",
-      c3g: "medium",
+      cccg: "medium",
       setup: "medium",
       psm: "medium",
       // === Heavy protection (long-running, 10 reinforcements) ===
@@ -78956,7 +78956,7 @@ var HEAVY_MODE_KEYWORDS = /* @__PURE__ */ new Set([
   "team",
   "ultrawork",
   "ralplan",
-  "c3g"
+  "cccg"
 ]);
 function isHeavyMode(keywordType) {
   return HEAVY_MODE_KEYWORDS.has(keywordType);
@@ -78980,7 +78980,7 @@ var KEYWORD_PATTERNS = {
   deepsearch: /\b(deepsearch)\b|\bsearch\s+the\s+codebase\b|\bfind\s+in\s+(the\s+)?codebase\b/i,
   analyze: /\b(deep[\s-]?analyze|deepanalyze)\b/i,
   "deep-interview": /\b(deep[\s-]interview|ouroboros)\b/i,
-  c3g: /\b(c3g|copilot-claude-codex-gemini)\b/i,
+  cccg: /\b(cccg|copilot-claude-codex-gemini)\b/i,
   claude: /\b(ask|use|delegate\s+to)\s+claude\b/i,
   codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
   gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i
@@ -78991,7 +78991,7 @@ var KEYWORD_PRIORITY = [
   "autopilot",
   "team",
   "ultrawork",
-  "c3g",
+  "cccg",
   "ralplan",
   "tdd",
   "code-review",

@@ -1,11 +1,11 @@
 ---
-name: c3g
+name: cccg
 description: Quadri-model orchestration — Copilot, Claude, Codex, and Gemini each provide independent analysis, then Copilot synthesizes
 ---
 
-# C3G - Copilot-Claude-Codex-Gemini Orchestration
+# CCCG - Copilot-Claude-Codex-Gemini Orchestration
 
-C3G (3 C's + G) runs four independent analyses in parallel, then synthesizes all perspectives into one unified answer.
+CCCG (3 C's + G) runs four independent analyses in parallel, then synthesizes all perspectives into one unified answer.
 
 Four models participate as independent reviewers:
 1. **Copilot** — independent analysis via a delegated agent (runs in parallel with external models)
@@ -83,7 +83,7 @@ omcp ask gemini "<gemini prompt>"
 > **Important — Windows command-line limit (~8KB):** Do NOT embed large content (diffs, file contents) directly in the prompt string. Instead:
 > - Keep prompts concise — describe the task and tell the model to examine specific files/paths
 > - External CLIs (Claude, Codex, Gemini) run in the repo working directory and can read files themselves
-> - If context is needed, write it to a temp file and reference the path in the prompt: `"Review the diff in /tmp/c3g-diff.txt for security issues"`
+> - If context is needed, write it to a temp file and reference the path in the prompt: `"Review the diff in /tmp/cccg-diff.txt for security issues"`
 
 ### 3. Collect results
 
@@ -119,16 +119,16 @@ If one or two are unavailable:
 If all three external providers are unavailable:
 
 - Copilot's own review still runs — synthesize from that single perspective
-- State that C3G external advisors were unavailable
+- State that CCCG external advisors were unavailable
 
 ## Invocation
 
 ```bash
-/oh-my-copilot:c3g <task description>
+/oh-my-copilot:cccg <task description>
 ```
 
 Example:
 
 ```bash
-/oh-my-copilot:c3g Review this PR for security, architecture, and UX concerns
+/oh-my-copilot:cccg Review this PR for security, architecture, and UX concerns
 ```

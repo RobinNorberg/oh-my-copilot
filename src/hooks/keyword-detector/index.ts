@@ -31,7 +31,7 @@ export type KeywordType =
   | 'claude'      // Priority 14
   | 'codex'       // Priority 15
   | 'gemini'      // Priority 16
-  | 'c3g';        // Priority 8.5 (Copilot-Claude-Codex-Gemini orchestration)
+  | 'cccg';        // Priority 8.5 (Copilot-Claude-Codex-Gemini orchestration)
 
 export interface DetectedKeyword {
   type: KeywordType;
@@ -59,7 +59,7 @@ const KEYWORD_PATTERNS: Record<KeywordType, RegExp> = {
   deepsearch: /\b(deepsearch)\b|\bsearch\s+the\s+codebase\b|\bfind\s+in\s+(the\s+)?codebase\b/i,
   analyze: /\b(deep[\s-]?analyze|deepanalyze)\b/i,
   'deep-interview': /\b(deep[\s-]interview|ouroboros)\b/i,
-  c3g: /\b(c3g|copilot-claude-codex-gemini)\b/i,
+  cccg: /\b(cccg|copilot-claude-codex-gemini)\b/i,
   claude: /\b(ask|use|delegate\s+to)\s+claude\b/i,
   codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
   gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i
@@ -70,7 +70,7 @@ const KEYWORD_PATTERNS: Record<KeywordType, RegExp> = {
  */
 const KEYWORD_PRIORITY: KeywordType[] = [
   'cancel', 'ralph', 'autopilot', 'team', 'ultrawork',
-  'c3g', 'ralplan', 'tdd', 'code-review', 'security-review',
+  'cccg', 'ralplan', 'tdd', 'code-review', 'security-review',
   'ultrathink', 'deepsearch', 'analyze', 'deep-interview', 'claude', 'codex', 'gemini'
 ];
 

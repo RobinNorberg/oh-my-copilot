@@ -113,7 +113,7 @@ const SKILL_PROTECTION = {
     'project-session-manager': 'medium',
     'writer-memory': 'medium',
     'ralph-init': 'medium',
-    c3g: 'medium',
+    cccg: 'medium',
     setup: 'medium',
     psm: 'medium',
     // === Heavy protection (long-running, 10 reinforcements) ===

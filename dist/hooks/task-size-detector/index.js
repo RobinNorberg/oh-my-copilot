@@ -183,7 +183,7 @@ export const HEAVY_MODE_KEYWORDS = new Set([
     'team',
     'ultrawork',
     'ralplan',
-    'c3g',
+    'cccg',
 ]);
 /**
  * Check if a keyword type is a heavy orchestration mode.

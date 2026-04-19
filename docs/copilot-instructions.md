@@ -31,7 +31,7 @@ explore (haiku), analyst (opus), planner (opus), architect (opus), debugger (son
 </agent_catalog>
 
 <tools>
-External AI: `/team N:executor "task"`, `omcp team N:codex|gemini "..."`, `omcp ask <copilot|claude|codex|gemini>`, `/c3g`
+External AI: `/team N:executor "task"`, `omcp team N:codex|gemini "..."`, `omcp ask <copilot|claude|codex|gemini>`, `/cccg`
 OMC State: `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
 Teams: `TeamCreate`, `TeamDelete`, `SendMessage`, `TaskCreate`, `TaskList`, `TaskGet`, `TaskUpdate`
 Notepad: `notepad_read`, `notepad_write_priority`, `notepad_write_working`, `notepad_write_manual`
@@ -42,8 +42,8 @@ Code Intel: LSP (`lsp_hover`, `lsp_goto_definition`, `lsp_find_references`, `lsp
 <skills>
 Invoke via `/oh-my-copilot:<name>`. Trigger patterns auto-detect keywords.
 
-Workflow: `autopilot`, `ralph`, `ralph-experiment`, `ultrawork`, `team`, `c3g`, `ultraqa`, `omc-plan`, `ralplan`, `sciomc`, `external-context`, `deepinit`, `deep-interview`
-Keyword triggers: "autopilot"→autopilot, "ralph"→ralph, "experiment"→ralph-experiment, "ulw"→ultrawork, "c3g"→c3g, "ralplan"→ralplan, "deep interview"→deep-interview, "deep-analyze"→analysis mode, "tdd"→TDD mode, "deepsearch"→codebase search, "ultrathink"→deep reasoning, "cancelomc"→cancel. Team orchestration is explicit via `/team`.
+Workflow: `autopilot`, `ralph`, `ralph-experiment`, `ultrawork`, `team`, `cccg`, `ultraqa`, `omc-plan`, `ralplan`, `sciomc`, `external-context`, `deepinit`, `deep-interview`
+Keyword triggers: "autopilot"→autopilot, "ralph"→ralph, "experiment"→ralph-experiment, "ulw"→ultrawork, "cccg"→cccg, "ralplan"→ralplan, "deep interview"→deep-interview, "deep-analyze"→analysis mode, "tdd"→TDD mode, "deepsearch"→codebase search, "ultrathink"→deep reasoning, "cancelomc"→cancel. Team orchestration is explicit via `/team`.
 Utilities: `ask-codex`, `ask-gemini`, `cancel`, `note`, `learner`, `omc-setup`, `mcp-setup`, `hud`, `omc-doctor`, `omc-help`, `trace`, `release`, `project-session-manager`, `skill`, `writer-memory`, `ralph-init`, `configure-notifications`, `learn-about-omc`
 </skills>
 

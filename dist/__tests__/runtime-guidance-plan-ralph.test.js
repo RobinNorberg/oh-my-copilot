@@ -50,7 +50,7 @@ describe('runtime-guidance: ralplan/plan/ralph Codex availability', () => {
             availability.codex = true;
             expect(renderSkillRuntimeGuidance('autopilot')).toBe('');
             expect(renderSkillRuntimeGuidance('ultrawork')).toBe('');
-            expect(renderSkillRuntimeGuidance('c3g')).toBe('');
+            expect(renderSkillRuntimeGuidance('cccg')).toBe('');
         });
     });
     describe('detectSkillRuntimeAvailability safety', () => {
