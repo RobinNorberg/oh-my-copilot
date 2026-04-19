@@ -14683,7 +14683,7 @@ function checkNodeVersion() {
 }
 function isCopilotInstalled() {
   try {
-    const command = isWindows() ? "where claude" : "which claude";
+    const command = isWindows() ? "where copilot" : "which copilot";
     (0, import_child_process11.execSync)(command, { encoding: "utf-8", stdio: "pipe" });
     return true;
   } catch {
@@ -15551,12 +15551,9 @@ function install(options = {}) {
     log3("Detected installed OMC plugin agent definitions - skipping legacy ~/.claude/agents sync");
   }
   if (!options.skipCopilotCheck && !isCopilotInstalled()) {
-    log3("Warning: Claude Code not found. Install it first:");
-    if (isWindows()) {
-      log3("  Visit https://docs.anthropic.com/claude-code for Windows installation");
-    } else {
-      log3("  curl -fsSL https://claude.ai/install.sh | bash");
-    }
+    log3("Warning: Copilot CLI not found. Install it first:");
+    log3("  npm install -g @anthropic-ai/copilot-cli");
+    log3("  Or visit: https://docs.github.com/en/copilot/github-copilot-in-the-cli");
   }
   try {
     if ((!projectScoped || shouldInstallBundledSkills) && !(0, import_fs29.existsSync)(COPILOT_CONFIG_DIR)) {

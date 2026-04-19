@@ -370,12 +370,12 @@ export function checkNodeVersion(): { valid: boolean; current: number; required:
 }
 
 /**
- * Check if Claude Code is installed
+ * Check if Copilot CLI is installed
  * Uses 'where' on Windows, 'which' on Unix
  */
 export function isCopilotInstalled(): boolean {
   try {
-    const command = isWindows() ? 'where claude' : 'which claude';
+    const command = isWindows() ? 'where copilot' : 'which copilot';
     execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
     return true;
   } catch {
@@ -1633,14 +1633,11 @@ export function install(options: InstallOptions = {}): InstallResult {
     log('Detected installed OMC plugin agent definitions - skipping legacy ~/.claude/agents sync');
   }
 
-  // Check Claude installation (optional)
+  // Check Copilot CLI installation (optional)
   if (!options.skipCopilotCheck && !isCopilotInstalled()) {
-    log('Warning: Claude Code not found. Install it first:');
-    if (isWindows()) {
-      log('  Visit https://docs.anthropic.com/claude-code for Windows installation');
-    } else {
-      log('  curl -fsSL https://claude.ai/install.sh | bash');
-    }
+    log('Warning: Copilot CLI not found. Install it first:');
+    log('  npm install -g @anthropic-ai/copilot-cli');
+    log('  Or visit: https://docs.github.com/en/copilot/github-copilot-in-the-cli');
     // Continue anyway - user might be installing ahead of time
   }
 
