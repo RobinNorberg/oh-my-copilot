@@ -6,6 +6,8 @@ import {
   readModeState,
   writeModeState,
 } from '../lib/mode-state-io.js';
+import { isModeActiveInAnySession } from '../hooks/mode-registry/index.js';
+import type { ExecutionMode } from '../hooks/mode-registry/types.js';
 import {
   parseEvaluatorResult,
   type AutoresearchKeepPolicy,
@@ -112,6 +114,16 @@ interface AutoresearchActiveRunState {
   completed_at?: string;
 }
 
+export interface AutoresearchMissionArtifactLayout {
+  missionRoot: string;
+  missionSpecFile: string;
+  evaluatorReferenceFile: string;
+  runsDir: string;
+  runDir: string;
+  evaluationsDir: string;
+  decisionLogFile: string;
+}
+
 interface AutoresearchDecision {
   decision: AutoresearchDecisionStatus;
   decisionReason: string;
@@ -135,10 +147,28 @@ const AUTORESEARCH_RESULTS_HEADER = 'iteration\tcommit\tpass\tscore\tstatus\tdes
 const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omcp/'];
 
 // Exclusive modes that cannot run concurrently with autoresearch
-const EXCLUSIVE_MODES = ['ralph', 'ultrawork', 'autopilot', 'autoresearch'];
+const EXCLUSIVE_MODES: ExecutionMode[] = ['ralph', 'ultrawork', 'autopilot', 'autoresearch'];
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+export function getAutoresearchMissionArtifactLayout(
+  projectRoot: string,
+  missionSlug: string,
+  runId: string,
+): AutoresearchMissionArtifactLayout {
+  const missionRoot = join(projectRoot, '.omc', 'autoresearch', missionSlug);
+  const runDir = join(missionRoot, 'runs', runId);
+  return {
+    missionRoot,
+    missionSpecFile: join(missionRoot, 'mission.md'),
+    evaluatorReferenceFile: join(missionRoot, 'evaluator.json'),
+    runsDir: join(missionRoot, 'runs'),
+    runDir,
+    evaluationsDir: join(runDir, 'evaluations'),
+    decisionLogFile: join(runDir, 'decision-log.md'),
+  };
 }
 
 export function buildAutoresearchRunTag(date = new Date()): string {
@@ -206,6 +236,47 @@ async function ensureRuntimeExcludes(worktreePath: string): Promise<void> {
   for (const file of AUTORESEARCH_WORKTREE_EXCLUDES) {
     await writeGitInfoExclude(worktreePath, file);
   }
+}
+
+async function appendDecisionLog(
+  decisionLogFile: string,
+  entry: {
+    iteration: number;
+    decision: AutoresearchDecisionStatus | 'baseline';
+    description: string;
+    reason: string;
+    evaluator?: AutoresearchEvaluationRecord | null;
+    notes?: string[];
+  },
+): Promise<void> {
+  const lines = [
+    `## Iteration ${entry.iteration} — ${entry.decision}`,
+    '',
+    `- Description: ${entry.description}`,
+    `- Reason: ${entry.reason}`,
+  ];
+
+  if (entry.evaluator) {
+    lines.push(
+      `- Evaluator status: ${entry.evaluator.status}`,
+      `- Pass: ${String(entry.evaluator.pass ?? '')}`,
+      `- Score: ${typeof entry.evaluator.score === 'number' ? String(entry.evaluator.score) : ''}`,
+    );
+  }
+
+  if (entry.notes && entry.notes.length > 0) {
+    lines.push('- Notes:');
+    for (const note of entry.notes) {
+      lines.push(`  - ${note}`);
+    }
+  }
+
+  lines.push('', '');
+  const existing = existsSync(decisionLogFile)
+    ? await readFile(decisionLogFile, 'utf-8')
+    : '# Autoresearch Decision Log\n\n';
+  await ensureParentDir(decisionLogFile);
+  await writeFile(decisionLogFile, `${existing}${lines.join('\n')}`, 'utf-8');
 }
 
 async function ensureAutoresearchWorktreeDependencies(repoRoot: string, worktreePath: string): Promise<void> {
@@ -330,11 +401,10 @@ async function assertAutoresearchLockAvailable(projectRoot: string): Promise<voi
  * Assert no exclusive mode is already active (ralph, ultrawork, autopilot).
  * Mirrors OMX assertModeStartAllowed semantics using OMC mode-state-io.
  */
-export async function assertModeStartAllowed(mode: string, projectRoot: string): Promise<void> {
+export async function assertModeStartAllowed(mode: ExecutionMode, projectRoot: string): Promise<void> {
   for (const other of EXCLUSIVE_MODES) {
     if (other === mode) continue;
-    const state = readModeState<Record<string, unknown>>(other, projectRoot);
-    if (state && state.active) {
+    if (isModeActiveInAnySession(other, projectRoot)) {
       throw new Error(`Cannot start ${mode}: ${other} is already active`);
     }
   }
@@ -376,10 +446,10 @@ function startAutoresearchMode(taskDescription: string, projectRoot: string): vo
     active: true,
     mode: 'autoresearch',
     iteration: 0,
-    max_iterations: 1,
     current_phase: 'starting',
     task_description: taskDescription,
     started_at: nowIso(),
+    updated_at: nowIso(),
   }, projectRoot);
 }
 
@@ -389,7 +459,7 @@ function startAutoresearchMode(taskDescription: string, projectRoot: string): vo
 function updateAutoresearchMode(updates: Record<string, unknown>, projectRoot: string): void {
   const current = readModeState<Record<string, unknown>>('autoresearch', projectRoot);
   if (!current) return;
-  writeModeState('autoresearch', { ...current, ...updates }, projectRoot);
+  writeModeState('autoresearch', { ...current, ...updates, updated_at: nowIso() }, projectRoot);
 }
 
 /**
@@ -403,6 +473,7 @@ function cancelAutoresearchMode(projectRoot: string): void {
       active: false,
       current_phase: 'cancelled',
       completed_at: nowIso(),
+      updated_at: nowIso(),
     }, projectRoot);
   }
 }
@@ -818,6 +889,8 @@ async function seedBaseline(
 ): Promise<AutoresearchEvaluationRecord> {
   const evaluation = await runAutoresearchEvaluator(contract, manifest.worktree_path);
   await writeJsonFile(manifest.latest_evaluator_file, evaluation);
+  const artifactLayout = getAutoresearchMissionArtifactLayout(manifest.repo_root, manifest.mission_slug, manifest.run_id);
+  await writeJsonFile(join(artifactLayout.evaluationsDir, 'iteration-0000.json'), evaluation);
   await appendAutoresearchResultsRow(manifest.results_file, {
     iteration: 0,
     commit: readGitShortHead(manifest.worktree_path),
@@ -841,6 +914,14 @@ async function seedBaseline(
     notes: ['baseline row is always recorded'],
     description: 'initial baseline evaluation',
   });
+  await appendDecisionLog(artifactLayout.decisionLogFile, {
+    iteration: 0,
+    decision: 'baseline',
+    description: 'initial baseline evaluation',
+    reason: 'baseline established',
+    evaluator: evaluation,
+    notes: ['baseline established'],
+  });
   manifest.last_kept_score = evaluation.pass && typeof evaluation.score === 'number' ? evaluation.score : null;
   await writeRunManifest(manifest);
   await writeInstructionsFile(contract, manifest);
@@ -851,7 +932,7 @@ export async function prepareAutoresearchRuntime(
   contract: AutoresearchMissionContract,
   projectRoot: string,
   worktreePath: string,
-  options: { runTag?: string } = {},
+  options: { runTag?: string; maxRuntimeMs?: number } = {},
 ): Promise<PreparedAutoresearchRuntime> {
   await assertAutoresearchLockAvailable(projectRoot);
   await ensureRuntimeExcludes(worktreePath);
@@ -872,9 +953,22 @@ export async function prepareAutoresearchRuntime(
   const resultsFile = join(worktreePath, 'results.tsv');
   const taskDescription = `autoresearch ${contract.missionRelativeDir} (${runId})`;
   const keepPolicy = contract.sandbox.evaluator.keep_policy ?? 'score_improvement';
+  const artifactLayout = getAutoresearchMissionArtifactLayout(projectRoot, contract.missionSlug, runId);
+  const deadlineAt = typeof options.maxRuntimeMs === 'number'
+    ? new Date(Date.now() + options.maxRuntimeMs).toISOString()
+    : undefined;
 
   await mkdir(runDir, { recursive: true });
+  await mkdir(artifactLayout.evaluationsDir, { recursive: true });
   await initializeAutoresearchResultsFile(resultsFile);
+  await ensureParentDir(artifactLayout.missionSpecFile);
+  await writeFile(artifactLayout.missionSpecFile, contract.missionContent, 'utf-8');
+  await ensureParentDir(artifactLayout.evaluatorReferenceFile);
+  await writeJsonFile(artifactLayout.evaluatorReferenceFile, {
+    command: contract.sandbox.evaluator.command,
+    format: contract.sandbox.evaluator.format,
+    ...(contract.sandbox.evaluator.keep_policy ? { keep_policy: contract.sandbox.evaluator.keep_policy } : {}),
+  });
   await writeJsonFile(candidateFile, {
     status: 'noop',
     candidate_commit: null,
@@ -956,6 +1050,12 @@ export async function prepareAutoresearchRuntime(
     candidate_path: candidateFile,
     keep_policy: keepPolicy,
     state_file: stateFile,
+    mission_artifact_root: artifactLayout.missionRoot,
+    mission_spec_file: artifactLayout.missionSpecFile,
+    evaluator_reference_file: artifactLayout.evaluatorReferenceFile,
+    decision_log_file: artifactLayout.decisionLogFile,
+    max_runtime_ms: options.maxRuntimeMs,
+    deadline_at: deadlineAt,
   }, projectRoot);
 
   const evaluation = await seedBaseline(contract, manifest);
@@ -1167,6 +1267,7 @@ async function failAutoresearchIteration(
   reason: string,
   candidate?: AutoresearchCandidateArtifact,
 ): Promise<'error'> {
+  const artifactLayout = getAutoresearchMissionArtifactLayout(projectRoot, manifest.mission_slug, manifest.run_id);
   const headCommit = (() => {
     try {
       return readGitShortHead(manifest.worktree_path);
@@ -1196,6 +1297,13 @@ async function failAutoresearchIteration(
     notes: [...(candidate?.notes ?? []), `validation_error:${reason}`],
     description: candidate?.description || 'candidate validation failed',
   });
+  await appendDecisionLog(artifactLayout.decisionLogFile, {
+    iteration: manifest.iteration,
+    decision: 'error',
+    description: candidate?.description || 'candidate validation failed',
+    reason,
+    notes: [...(candidate?.notes ?? []), `validation_error:${reason}`],
+  });
   await finalizeRun(manifest, projectRoot, { status: 'failed', stopReason: reason });
   return 'error';
 }
@@ -1206,6 +1314,7 @@ export async function processAutoresearchCandidate(
   projectRoot: string,
 ): Promise<AutoresearchDecisionStatus> {
   manifest.iteration += 1;
+  const artifactLayout = getAutoresearchMissionArtifactLayout(projectRoot, manifest.mission_slug, manifest.run_id);
   let candidate: AutoresearchCandidateArtifact;
   try {
     candidate = await readCandidateArtifact(manifest.candidate_file);
@@ -1246,6 +1355,13 @@ export async function processAutoresearchCandidate(
       notes: candidate.notes,
       description: candidate.description,
     });
+    await appendDecisionLog(artifactLayout.decisionLogFile, {
+      iteration: manifest.iteration,
+      decision: 'abort',
+      description: candidate.description,
+      reason: 'candidate requested abort',
+      notes: candidate.notes,
+    });
     await finalizeRun(manifest, projectRoot, { status: 'stopped', stopReason: 'candidate abort' });
     return 'abort';
   }
@@ -1278,6 +1394,13 @@ export async function processAutoresearchCandidate(
       notes: candidate.notes,
       description: candidate.description,
     });
+    await appendDecisionLog(artifactLayout.decisionLogFile, {
+      iteration: manifest.iteration,
+      decision: 'interrupted',
+      description: candidate.description,
+      reason: 'candidate session interrupted cleanly',
+      notes: candidate.notes,
+    });
     await writeRunManifest(manifest);
     await writeInstructionsFile(contract, manifest);
     return 'interrupted';
@@ -1305,6 +1428,13 @@ export async function processAutoresearchCandidate(
       notes: candidate.notes,
       description: candidate.description,
     });
+    await appendDecisionLog(artifactLayout.decisionLogFile, {
+      iteration: manifest.iteration,
+      decision: 'noop',
+      description: candidate.description,
+      reason: 'candidate reported noop',
+      notes: candidate.notes,
+    });
     await writeRunManifest(manifest);
     await writeInstructionsFile(contract, manifest);
     return 'noop';
@@ -1312,6 +1442,10 @@ export async function processAutoresearchCandidate(
 
   const evaluation = await runAutoresearchEvaluator(contract, manifest.worktree_path);
   await writeJsonFile(manifest.latest_evaluator_file, evaluation);
+  await writeJsonFile(
+    join(artifactLayout.evaluationsDir, `iteration-${String(manifest.iteration).padStart(4, '0')}.json`),
+    evaluation,
+  );
   const decision = decideAutoresearchOutcome(manifest, candidate, evaluation);
   if (decision.keep) {
     manifest.last_kept_commit = readGitFullHead(manifest.worktree_path);
@@ -1342,6 +1476,14 @@ export async function processAutoresearchCandidate(
     created_at: nowIso(),
     notes: [...candidate.notes, ...decision.notes],
     description: candidate.description,
+  });
+  await appendDecisionLog(artifactLayout.decisionLogFile, {
+    iteration: manifest.iteration,
+    decision: decision.decision,
+    description: candidate.description,
+    reason: decision.decisionReason,
+    evaluator: evaluation,
+    notes: [...candidate.notes, ...decision.notes],
   });
   await writeRunManifest(manifest);
   await writeInstructionsFile(contract, manifest);

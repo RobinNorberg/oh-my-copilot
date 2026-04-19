@@ -603,13 +603,22 @@ function ensureStandaloneHookScripts(log: (msg: string) => void): void {
     }
   }
 
-  for (const filename of readdirSync(templatesLibDir)) {
-    if (filename === 'config-dir.mjs') continue; // sourced from scripts/lib/ below
-    const sourcePath = join(templatesLibDir, filename);
-    const targetPath = join(hooksLibDir, filename);
-    copyFileSync(sourcePath, targetPath);
-    if (!isWindows()) {
-      chmodSync(targetPath, 0o755);
+  if (existsSync(templatesLibDir)) {
+    if (!existsSync(hooksLibDir)) {
+      mkdirSync(hooksLibDir, { recursive: true });
+    }
+
+    for (const filename of readdirSync(templatesLibDir)) {
+      if (!filename.endsWith('.mjs') || filename === 'config-dir.mjs') {
+        continue;
+      }
+
+      const sourcePath = join(templatesLibDir, filename);
+      const targetPath = join(hooksLibDir, filename);
+      copyFileSync(sourcePath, targetPath);
+      if (!isWindows()) {
+        chmodSync(targetPath, 0o755);
+      }
     }
   }
 

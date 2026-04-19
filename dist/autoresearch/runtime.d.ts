@@ -1,3 +1,4 @@
+import type { ExecutionMode } from '../hooks/mode-registry/types.js';
 import { type AutoresearchKeepPolicy, type AutoresearchMissionContract } from './contracts.js';
 export type AutoresearchCandidateStatus = 'candidate' | 'noop' | 'abort' | 'interrupted';
 export type AutoresearchDecisionStatus = 'baseline' | 'keep' | 'discard' | 'ambiguous' | 'noop' | 'abort' | 'interrupted' | 'error';
@@ -81,6 +82,15 @@ export interface AutoresearchRunManifest {
     updated_at: string;
     completed_at: string | null;
 }
+export interface AutoresearchMissionArtifactLayout {
+    missionRoot: string;
+    missionSpecFile: string;
+    evaluatorReferenceFile: string;
+    runsDir: string;
+    runDir: string;
+    evaluationsDir: string;
+    decisionLogFile: string;
+}
 interface AutoresearchDecision {
     decision: AutoresearchDecisionStatus;
     decisionReason: string;
@@ -98,13 +108,14 @@ interface AutoresearchInstructionLedgerSummary {
     evaluator_score: number | null;
     description: string;
 }
+export declare function getAutoresearchMissionArtifactLayout(projectRoot: string, missionSlug: string, runId: string): AutoresearchMissionArtifactLayout;
 export declare function buildAutoresearchRunTag(date?: Date): string;
 export declare function assertResetSafeWorktree(worktreePath: string, allowedDirtyPaths?: readonly string[]): void;
 /**
  * Assert no exclusive mode is already active (ralph, ultrawork, autopilot).
  * Mirrors OMX assertModeStartAllowed semantics using OMC mode-state-io.
  */
-export declare function assertModeStartAllowed(mode: string, projectRoot: string): Promise<void>;
+export declare function assertModeStartAllowed(mode: ExecutionMode, projectRoot: string): Promise<void>;
 export declare function countTrailingAutoresearchNoops(ledgerFile: string): Promise<number>;
 export declare function runAutoresearchEvaluator(contract: AutoresearchMissionContract, worktreePath: string, ledgerFile?: string, latestEvaluatorFile?: string): Promise<AutoresearchEvaluationRecord>;
 export declare function decideAutoresearchOutcome(manifest: Pick<AutoresearchRunManifest, 'keep_policy' | 'last_kept_score'>, candidate: AutoresearchCandidateArtifact, evaluation: AutoresearchEvaluationRecord | null): AutoresearchDecision;
@@ -124,6 +135,7 @@ export declare function materializeAutoresearchMissionToWorktree(contract: Autor
 export declare function loadAutoresearchRunManifest(projectRoot: string, runId: string): Promise<AutoresearchRunManifest>;
 export declare function prepareAutoresearchRuntime(contract: AutoresearchMissionContract, projectRoot: string, worktreePath: string, options?: {
     runTag?: string;
+    maxRuntimeMs?: number;
 }): Promise<PreparedAutoresearchRuntime>;
 export declare function resumeAutoresearchRuntime(projectRoot: string, runId: string): Promise<PreparedAutoresearchRuntime>;
 export declare function parseAutoresearchCandidateArtifact(raw: string): AutoresearchCandidateArtifact;

@@ -14,7 +14,7 @@ import { isModeActive, getActiveModes, getAllModeStatuses, clearModeState, getSt
 // are first-class modes with dedicated MODE_CONFIGS entries; ralplan remains an
 // extra state-only mode handled via the registry-fallback path).
 const EXECUTION_MODES = [
-    'autopilot', 'team', 'ralph', 'ultrawork', 'ultraqa', 'deep-interview', 'self-improve'
+    'autopilot', 'autoresearch', 'team', 'ralph', 'ultrawork', 'ultraqa', 'deep-interview', 'self-improve'
 ];
 // Extended type for state tools - includes state-bearing modes outside mode-registry
 const STATE_TOOL_MODES = [

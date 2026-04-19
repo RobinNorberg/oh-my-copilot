@@ -5,7 +5,7 @@ Reads raw_data.json and generates progress.png.
 
 Usage:
     python3 plot_progress.py --data /path/to/raw_data.json --output /path/to/progress.png
-    python3 plot_progress.py --tracking-dir /path/to/.omc/self-improve/tracking/
+    python3 plot_progress.py --tracking-dir /path/to/<self-improve-root>/tracking/
 """
 
 import argparse
