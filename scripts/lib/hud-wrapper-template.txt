@@ -46,11 +46,15 @@ function getGlobalNodeModuleRoots() {
   }
 
   try {
-    const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+    const isWin = process.platform === "win32";
+    const npmCommand = isWin ? "npm.cmd" : "npm";
     const npmRoot = String(execFileSync(npmCommand, ["root", "-g"], {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 1500,
+      // Node 20.12+ rejects direct .cmd/.bat spawns without a shell on Windows.
+      // Keep non-Windows behavior unchanged by only enabling shell there.
+      shell: isWin,
     })).trim();
     if (npmRoot) roots.unshift(npmRoot);
   } catch { /* continue */ }

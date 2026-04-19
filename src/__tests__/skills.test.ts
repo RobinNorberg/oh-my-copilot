@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterAll, afterEach } from 'vitest';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createBuiltinSkills, getBuiltinSkill, listBuiltinSkillNames, clearSkillsCache } from '../features/builtin-skills/skills.js';
@@ -312,7 +312,7 @@ describe('Builtin Skills', () => {
       );
 
       const first = getBuiltinSkill('deep-interview');
-      expect(first?.template).toContain('ambiguityThreshold = 0.12');
+      expect(first?.template).toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.12`');
       expect(first?.template).toContain('"threshold": 0.12,');
 
       writeFileSync(
@@ -321,9 +321,9 @@ describe('Builtin Skills', () => {
       );
 
       const second = getBuiltinSkill('deep-interview');
-      expect(second?.template).toContain('ambiguityThreshold = 0.33');
+      expect(second?.template).toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.33`');
       expect(second?.template).toContain('"threshold": 0.33,');
-      expect(second?.template).not.toContain('ambiguityThreshold = 0.12');
+      expect(second?.template).not.toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.12`');
       expect(second?.template).not.toContain('"threshold": 0.12,');
     });
 
@@ -345,12 +345,12 @@ describe('Builtin Skills', () => {
 
       expect(t).toContain('"threshold": 0.15,');
       expect(t).toContain('drops below 15%.');
-      expect(t).toContain('(default: 15%)');
-      expect(t).toContain('(default: 0.15)');
-      expect(t).toContain('Gate: ≤15% ambiguity');
-      expect(t).toContain('(threshold: 15%).');
-      expect(t).toContain('ambiguity ≤ 15%');
-      expect(t).toContain('"ambiguityThreshold": 0.15,');
+
+      expect(t).toContain('resolved threshold for this run'); // Purpose/Execution_Policy
+      expect(t).toContain('Gate: ≤15% ambiguity');    // ASCII pipeline diagram
+      expect(t).toContain('(threshold: 15%)');        // Early-exit example message
+      expect(t).toContain('ambiguity ≤ 15%');         // Advanced pipeline description
+      expect(t).toContain('"ambiguityThreshold": 0.15,'); // Advanced config snippet
 
       expect(t).not.toContain('(default: 20%)');
       expect(t).not.toContain('(default: 0.2)');
@@ -358,6 +358,26 @@ describe('Builtin Skills', () => {
       expect(t).not.toContain('(threshold: 20%).');
       expect(t).not.toContain('ambiguity ≤ 20%');
       expect(t).not.toContain('"ambiguityThreshold": 0.2,');
+    });
+
+    it('ships a config-aware deep-interview SKILL.md for native skill-loader paths (issue #2723)', () => {
+      const raw = readFileSync(join(originalCwd, 'skills', 'deep-interview', 'SKILL.md'), 'utf-8');
+      expect(raw).toContain('Load runtime settings');
+      expect(raw).toContain('Read `[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json` and `./.copilot/settings.json`');
+      expect(raw).toContain('"threshold": <resolvedThreshold>,');
+      expect(raw).toContain('ambiguity drops below <resolvedThresholdPercent>');
+      expect(raw).toContain('Gate: ≤<resolvedThresholdPercent> ambiguity');
+      expect(raw).toContain('"ambiguityThreshold": <resolvedThreshold>,');
+      expect(raw).toContain('At or below the resolved threshold');
+
+      expect(raw).not.toContain('(default: 20%)');
+      expect(raw).not.toContain('(default 0.2)');
+      expect(raw).not.toContain('"threshold": 0.2,');
+      expect(raw).not.toContain('ambiguity drops below 20%');
+      expect(raw).not.toContain('Gate: ≤20% ambiguity');
+      expect(raw).not.toContain('(threshold: 20%).');
+      expect(raw).not.toContain('"ambiguityThreshold": 0.2,');
+      expect(raw).not.toContain('ambiguity ≤ 20%');
     });
   });
 });

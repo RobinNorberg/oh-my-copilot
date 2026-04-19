@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'fs';
+import { dirname, join } from 'path';
 import { tmpdir } from 'os';
+import { fileURLToPath } from 'url';
 import {
   validateCommitMessage,
   runPreCommitChecks,
@@ -259,5 +260,41 @@ describe('runLint', () => {
     const result = runLint(testDir);
     expect(result.success).toBe(true);
     expect(result.message).toContain('Lint passed');
+  });
+});
+
+describe('win32 spawn hardening (#2721)', () => {
+  // Node 20.12+ / 18.20+ / 21.7+ rejects direct .cmd/.bat spawns via
+  // spawnSync/execFileSync on Windows (CVE-2024-27980). The three callers
+  // below spawn npm / npx, which resolve to npm.cmd / npx.cmd on Windows, so
+  // each one needs shell:true gated on win32. CI is Ubuntu-only, so static
+  // source assertions are the only regression guard.
+  //
+  // Each regex is scoped to a single options object via [^}]*? — if the shell
+  // flag is dropped from this specific call site, the match cannot silently
+  // succeed by finding the same flag in a sibling call below. Keep the
+  // option objects flat (no nested braces) so this scoping holds.
+  const testDirPath = dirname(fileURLToPath(import.meta.url));
+  const sourcePath = join(testDirPath, '..', '..', 'hooks', 'plugin-patterns', 'index.ts');
+
+  it('runTypeCheck spawnSync("npx", …) must pass shell:true on win32', () => {
+    const src = readFileSync(sourcePath, 'utf-8');
+    expect(src).toMatch(
+      /spawnSync\('npx', \['tsc', '--noEmit'\], \{[^}]*?shell:\s*process\.platform === 'win32'[^}]*?\}\s*\);/
+    );
+  });
+
+  it('runTests execFileSync("npm test", …) must pass shell:true on win32', () => {
+    const src = readFileSync(sourcePath, 'utf-8');
+    expect(src).toMatch(
+      /execFileSync\('npm', \['test'\], \{[^}]*?shell:\s*process\.platform === 'win32'[^}]*?\}\s*\);/
+    );
+  });
+
+  it('runLint execFileSync("npm run lint", …) must pass shell:true on win32', () => {
+    const src = readFileSync(sourcePath, 'utf-8');
+    expect(src).toMatch(
+      /execFileSync\('npm', \['run', 'lint'\], \{[^}]*?shell:\s*process\.platform === 'win32'[^}]*?\}\s*\);/
+    );
   });
 });

@@ -23,6 +23,8 @@ import {
   resolveLaunchPolicy,
   buildTmuxSessionName,
   buildTmuxShellCommand,
+  buildTmuxShellCommandWithEnv,
+  isNativeWindowsShell,
   wrapWithLoginShell,
   isCopilotAvailable,
   quoteShellArg,
@@ -451,15 +453,27 @@ export function buildEnvExportPrefix(vars: string[]): string {
  * Creates tmux session with Copilot
  */
 function runCopilotOutsideTmux(cwd: string, args: string[], _sessionId: string): void {
-  const rawCopilotCmd = buildTmuxShellCommand('copilot', args);
-  const envPrefix = buildEnvExportPrefix(TMUX_ENV_FORWARD);
+  const forwardedEnv = Object.fromEntries(
+    TMUX_ENV_FORWARD
+      .map((name) => [name, process.env[name]] as const)
+      .filter(([, value]) => value !== undefined),
+  ) as Record<string, string>;
+  const rawCopilotCmd = isNativeWindowsShell()
+    ? buildTmuxShellCommandWithEnv('copilot', args, forwardedEnv)
+    : buildTmuxShellCommand('copilot', args);
+  const envPrefix = !isNativeWindowsShell() && Object.keys(forwardedEnv).length > 0
+    ? buildEnvExportPrefix(TMUX_ENV_FORWARD)
+    : '';
   // Drain any pending terminal Device Attributes (DA1) response from stdin.
   // When tmux attach-session sends a DA1 query, the terminal replies with
   // \e[?6c which lands in the pty buffer before Copilot reads input.
   // A short sleep lets the response arrive, then tcflush discards it.
   // Wrap in login shell so .bashrc/.zshrc are sourced (PATH, nvm, etc.)
   // Env exports are injected after RC sourcing so they override stale tmux server env.
-  const copilotCmd = wrapWithLoginShell(`${envPrefix}sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; ${rawCopilotCmd}`);
+  const preflight = isNativeWindowsShell()
+    ? envPrefix
+    : `${envPrefix}sleep 0.3; perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null; `;
+  const copilotCmd = wrapWithLoginShell(`${preflight}${rawCopilotCmd}`);
   const sessionName = buildTmuxSessionName(cwd);
 
   const tmuxArgs = [

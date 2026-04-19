@@ -7,7 +7,7 @@
  */
 import { existsSync, readFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
-import { getOmcRoot, resolveStatePath, resolveSessionStatePath, ensureSessionStateDir, ensureOmcDir, listSessionIds, } from './worktree-paths.js';
+import { getOmcRoot, resolveStatePath, resolveSessionStatePath, ensureSessionStateDir, ensureOmcDir, listSessionIds, getWorktreeRoot, } from './worktree-paths.js';
 import { atomicWriteJsonSync } from './atomic-write.js';
 export function getStateSessionOwner(state) {
     if (!state || typeof state !== 'object') {
@@ -32,20 +32,24 @@ export function canClearStateForSession(state, sessionId) {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+function resolveStateRoot(directory) {
+    const baseDir = directory || process.cwd();
+    return getWorktreeRoot(baseDir) || baseDir;
+}
 /**
  * Resolve the state file path for a given mode.
  * When sessionId is provided, returns the session-scoped path.
  * Otherwise returns the legacy (global) path.
  */
 function resolveFile(mode, directory, sessionId) {
-    const baseDir = directory || process.cwd();
+    const baseDir = resolveStateRoot(directory);
     if (sessionId) {
         return resolveSessionStatePath(mode, sessionId, baseDir);
     }
     return resolveStatePath(mode, baseDir);
 }
 function getLegacyStateCandidates(mode, directory) {
-    const baseDir = directory || process.cwd();
+    const baseDir = resolveStateRoot(directory);
     const normalizedName = mode.endsWith('-state') ? mode : `${mode}-state`;
     return [
         resolveStatePath(mode, baseDir),
@@ -63,12 +67,13 @@ function getLegacyStateCandidates(mode, directory) {
  */
 export function findSessionOwnedStateFiles(mode, sessionId, directory) {
     const matches = new Set();
-    const expectedPath = resolveSessionStatePath(mode, sessionId, directory);
+    const baseDir = resolveStateRoot(directory);
+    const expectedPath = resolveSessionStatePath(mode, sessionId, baseDir);
     if (existsSync(expectedPath)) {
         matches.add(expectedPath);
     }
-    for (const sid of listSessionIds(directory)) {
-        const candidatePath = resolveSessionStatePath(mode, sid, directory);
+    for (const sid of listSessionIds(baseDir)) {
+        const candidatePath = resolveSessionStatePath(mode, sid, baseDir);
         if (!existsSync(candidatePath)) {
             continue;
         }
@@ -98,7 +103,7 @@ export function findSessionOwnedStateFiles(mode, sessionId, directory) {
  */
 export function writeModeState(mode, state, directory, sessionId) {
     try {
-        const baseDir = directory || process.cwd();
+        const baseDir = resolveStateRoot(directory);
         if (sessionId) {
             ensureSessionStateDir(sessionId, baseDir);
         }
@@ -159,6 +164,7 @@ export function readModeState(mode, directory, sessionId) {
  */
 export function clearModeStateFile(mode, directory, sessionId) {
     let success = true;
+    const baseDir = resolveStateRoot(directory);
     const unlinkIfPresent = (filePath) => {
         if (!existsSync(filePath)) {
             return;
@@ -174,16 +180,16 @@ export function clearModeStateFile(mode, directory, sessionId) {
         unlinkIfPresent(resolveFile(mode, directory, sessionId));
     }
     else {
-        for (const legacyPath of getLegacyStateCandidates(mode, directory)) {
+        for (const legacyPath of getLegacyStateCandidates(mode, baseDir)) {
             unlinkIfPresent(legacyPath);
         }
-        for (const sid of listSessionIds(directory)) {
-            unlinkIfPresent(resolveSessionStatePath(mode, sid, directory));
+        for (const sid of listSessionIds(baseDir)) {
+            unlinkIfPresent(resolveSessionStatePath(mode, sid, baseDir));
         }
     }
     // Ghost-legacy cleanup: if sessionId provided, also check legacy path
     if (sessionId) {
-        for (const legacyPath of getLegacyStateCandidates(mode, directory)) {
+        for (const legacyPath of getLegacyStateCandidates(mode, baseDir)) {
             if (!existsSync(legacyPath)) {
                 continue;
             }
