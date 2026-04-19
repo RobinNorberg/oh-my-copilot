@@ -704,9 +704,9 @@ diff --git a/a b/b
     describe('cccg keyword', () => {
       it('should detect "cccg" keyword', () => {
         const result = detectKeywordsWithType('cccg this feature');
-        const c3gMatch = result.find((r) => r.type === 'cccg');
-        expect(c3gMatch).toBeDefined();
-        expect(c3gMatch?.keyword).toMatch(/cccg/i);
+        const cccgMatch = result.find((r) => r.type === 'cccg');
+        expect(cccgMatch).toBeDefined();
+        expect(cccgMatch?.keyword).toMatch(/cccg/i);
       });
 
       it('should detect "copilot-claude-codex-gemini" keyword', () => {
@@ -722,7 +722,7 @@ diff --git a/a b/b
       });
 
       it('should NOT detect cccg inside code block', () => {
-        const result = detectKeywordsWithType('```\nc3g mode\n```');
+        const result = detectKeywordsWithType('```\ncccg mode\n```');
         const match = result.find((r) => r.type === 'cccg');
         expect(match).toBeUndefined();
       });
@@ -994,20 +994,20 @@ diff --git a/a b/b
 
     it('should return cccg with higher priority than codex/gemini', () => {
       const result = getAllKeywords('cccg ask codex to review');
-      const c3gIdx = result.indexOf('cccg');
+      const cccgIdx = result.indexOf('cccg');
       const codexIdx = result.indexOf('codex');
-      expect(c3gIdx).toBeGreaterThanOrEqual(0);
+      expect(cccgIdx).toBeGreaterThanOrEqual(0);
       expect(codexIdx).toBeGreaterThanOrEqual(0);
-      expect(c3gIdx).toBeLessThan(codexIdx);
+      expect(cccgIdx).toBeLessThan(codexIdx);
     });
 
     it('should return ralph before cccg in priority order', () => {
       const result = getAllKeywords('ralph cccg build the app');
       const ralphIdx = result.indexOf('ralph');
-      const c3gIdx = result.indexOf('cccg');
+      const cccgIdx = result.indexOf('cccg');
       expect(ralphIdx).toBeGreaterThanOrEqual(0);
-      expect(c3gIdx).toBeGreaterThanOrEqual(0);
-      expect(ralphIdx).toBeLessThan(c3gIdx);
+      expect(cccgIdx).toBeGreaterThanOrEqual(0);
+      expect(ralphIdx).toBeLessThan(cccgIdx);
     });
 
     it('should not return cccg when cancel is present', () => {

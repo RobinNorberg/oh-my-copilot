@@ -83,7 +83,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ask claude` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Claude Code CLI | `ask claude "review auth architecture"` |
 | `ask codex` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Codex CLI | `ask codex "security analysis"` |
 | `ask gemini` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Gemini CLI | `ask gemini "suggest UX improvements"` |
-| `c3g` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `c3g review this PR` |
+| `cccg` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `cccg review this PR` |
 | `omcp team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omcp team 2:codex "security review"` |
 | `code review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Code review mode | `code review the auth module` |
 | `critique` | ![analysis](https://img.shields.io/badge/analysis-purple) | Pre-push adversarial critique | `critique my changes` |
@@ -145,11 +145,11 @@ Optional shortcuts for power users. Natural language works fine without them.
 /team 3:executor "fix all TypeScript errors"
 ```
 
-### C3G
+### CCCG
 **C3g** uses multi-model advisor synthesis — fans out via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesizes the results:
 
 ```bash
-/c3g "review this branch — architecture, security, and UI components"
+/cccg "review this branch — architecture, security, and UI components"
 ```
 
 ### OMC Team Mode
