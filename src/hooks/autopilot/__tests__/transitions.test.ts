@@ -9,7 +9,7 @@
  * - Transactional transition helpers (execute + rollback on failure)
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -31,15 +31,23 @@ import {
 } from '../state.js';
 import { AutopilotPhase } from '../types.js';
 
+// One tmp dir per file, reused across tests. Between tests we only clear the
+// autopilot state subtree — on Windows (Defender real-time scans) the per-test
+// mkdtemp+rmSync cycle was ~1.3s, dominating the file's wallclock.
 describe('Autopilot State Machine Transitions', () => {
   let testDir: string;
 
-  beforeEach(() => {
+  beforeAll(() => {
     testDir = mkdtempSync(join(tmpdir(), 'autopilot-transition-test-'));
   });
 
-  afterEach(() => {
+  afterAll(() => {
     rmSync(testDir, { recursive: true, force: true });
+  });
+
+  beforeEach(() => {
+    rmSync(join(testDir, '.omc'), { recursive: true, force: true });
+    rmSync(join(testDir, '.omcp'), { recursive: true, force: true });
   });
 
   // --------------------------------------------------------------------------
