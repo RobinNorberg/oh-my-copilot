@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const availability = vi.hoisted(() => ({
     claude: true,
+    copilot: false,
     codex: false,
     gemini: false,
+    cursor: false,
 }));
 vi.mock('../team/model-contract.js', () => ({
     isCliAvailable: (agentType) => availability[agentType],
@@ -11,8 +13,10 @@ import { detectSkillRuntimeAvailability, renderSkillRuntimeGuidance, } from '../
 describe('runtime-guidance: ralplan/plan/ralph Codex availability', () => {
     beforeEach(() => {
         availability.claude = true;
+        availability.copilot = false;
         availability.codex = false;
         availability.gemini = false;
+        availability.cursor = false;
     });
     describe('renderSkillRuntimeGuidance for plan-family skills', () => {
         const planSkills = ['ralplan', 'omc-plan', 'plan'];
