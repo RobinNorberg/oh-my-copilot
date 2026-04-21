@@ -11,7 +11,7 @@
  *
  * Reference: https://github.com/EvanOman/cc-wait
  */
-import type { DaemonState, DaemonConfig, DaemonResponse } from './types.js';
+import type { DaemonState, DaemonConfig, DaemonResponse, RateLimitStatus } from './types.js';
 /**
  * Read daemon state from disk
  */
@@ -20,6 +20,12 @@ export declare function readDaemonState(config?: DaemonConfig): DaemonState | nu
  * Check if daemon is currently running
  */
 export declare function isDaemonRunning(config?: DaemonConfig): boolean;
+/**
+ * Only a confirmed transition out of quota exhaustion should trigger pane resume.
+ * Degraded/stale usage-api 429 responses are visible to users but must not act
+ * like a real all-clear signal for blocked panes.
+ */
+export declare function shouldResumeBlockedPanesOnStatusChange(previousStatus: RateLimitStatus | null, nextStatus: RateLimitStatus | null): boolean;
 /**
  * Main daemon polling loop
  */

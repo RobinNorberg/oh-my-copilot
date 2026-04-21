@@ -1,16 +1,25 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { mkdtempSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { recordValidationVerdict, getValidationStatus, startValidationRound, shouldRetryValidation, getIssuesToFix, getValidationSpawnPrompt, formatValidationResults } from '../validation.js';
 import { initAutopilot, transitionPhase } from '../state.js';
+// One tmp dir per file, reused across tests. Between tests we only clear the
+// autopilot state subtree instead of running mkdtemp+rmSync per test — on
+// Windows (Defender real-time scans) that cycle was ~1.5s per test, dominating
+// the file's wallclock. Isolation is preserved because each test initializes
+// its own state before operating.
 describe('AutopilotValidation', () => {
     let testDir;
-    beforeEach(() => {
+    beforeAll(() => {
         testDir = mkdtempSync(join(tmpdir(), 'autopilot-validation-test-'));
     });
-    afterEach(() => {
+    afterAll(() => {
         rmSync(testDir, { recursive: true, force: true });
+    });
+    beforeEach(() => {
+        rmSync(join(testDir, '.omc'), { recursive: true, force: true });
+        rmSync(join(testDir, '.omcp'), { recursive: true, force: true });
     });
     describe('recordValidationVerdict', () => {
         it('should return false when state does not exist', () => {

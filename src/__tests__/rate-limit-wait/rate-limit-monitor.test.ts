@@ -7,6 +7,8 @@ import {
   checkRateLimitStatus,
   formatTimeUntilReset,
   formatRateLimitStatus,
+  isRateLimitStatusDegraded,
+  shouldMonitorBlockedPanes,
 } from '../../features/rate-limit-wait/rate-limit-monitor.js';
 import type { RateLimitStatus } from '../../features/rate-limit-wait/types.js';
 
@@ -271,6 +273,51 @@ describe('rate-limit-monitor', () => {
       const result = formatRateLimitStatus(status);
       expect(result).toContain('5-hour limit reached');
       expect(result).toContain('Weekly limit reached');
+    });
+  });
+
+  describe('classification helpers', () => {
+    it('treats stale-cache 429 as degraded but not pane-blocking', () => {
+      const status: RateLimitStatus = {
+        fiveHourLimited: false,
+        weeklyLimited: false,
+        monthlyLimited: false,
+        isLimited: false,
+        fiveHourResetsAt: null,
+        weeklyResetsAt: null,
+        monthlyResetsAt: null,
+        nextResetAt: null,
+        timeUntilResetMs: null,
+        fiveHourPercent: 83,
+        weeklyPercent: 57,
+        apiErrorReason: 'rate_limited',
+        usingStaleData: true,
+        lastCheckedAt: new Date(),
+      };
+
+      expect(isRateLimitStatusDegraded(status)).toBe(true);
+      expect(shouldMonitorBlockedPanes(status)).toBe(false);
+    });
+
+    it('treats confirmed quota exhaustion as pane-blocking even if the usage API was rate limited', () => {
+      const status: RateLimitStatus = {
+        fiveHourLimited: true,
+        weeklyLimited: false,
+        monthlyLimited: false,
+        isLimited: true,
+        fiveHourResetsAt: new Date(),
+        weeklyResetsAt: null,
+        monthlyResetsAt: null,
+        nextResetAt: new Date(),
+        timeUntilResetMs: 60_000,
+        fiveHourPercent: 100,
+        apiErrorReason: 'rate_limited',
+        usingStaleData: true,
+        lastCheckedAt: new Date(),
+      };
+
+      expect(isRateLimitStatusDegraded(status)).toBe(true);
+      expect(shouldMonitorBlockedPanes(status)).toBe(true);
     });
   });
 });
