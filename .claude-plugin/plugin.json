@@ -1,6 +1,6 @@
 {
   "name": "oh-my-copilot",
-  "version": "4.12.0",
+  "version": "4.13.0",
   "description": "Multi-agent orchestration system for Copilot CLI",
   "author": {
     "name": "Robin Norberg and oh-my-copilot contributors"
