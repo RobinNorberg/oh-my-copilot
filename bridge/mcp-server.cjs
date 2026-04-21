@@ -32751,6 +32751,36 @@ function getStatePath(mode, root) {
   }
   return resolveStatePath(mode, root);
 }
+function writeSessionCancelSignal(root, sessionId, mode) {
+  const now = Date.now();
+  const cancelSignalPath = resolveSessionStatePath("cancel-signal", sessionId, root);
+  atomicWriteJsonSync(cancelSignalPath, {
+    active: true,
+    requested_at: new Date(now).toISOString(),
+    expires_at: new Date(now + CANCEL_SIGNAL_TTL_MS).toISOString(),
+    mode,
+    source: "state_clear"
+  });
+}
+function isSessionModeActive(mode, root, sessionId) {
+  if (MODE_CONFIGS[mode]) {
+    return isModeActive(mode, root, sessionId);
+  }
+  const statePath = resolveSessionStatePath(mode, sessionId, root);
+  if (!(0, import_fs12.existsSync)(statePath)) {
+    return false;
+  }
+  try {
+    const state = JSON.parse((0, import_fs12.readFileSync)(statePath, "utf-8"));
+    return state.active === true;
+  } catch {
+    return false;
+  }
+}
+function findSingleOwningSessionForMode(mode, root, requesterSessionId) {
+  const owningSessions = listSessionIds(root).filter((sid) => sid !== requesterSessionId && isSessionModeActive(mode, root, sid));
+  return owningSessions.length === 1 ? owningSessions[0] : void 0;
+}
 var stateReadTool = {
   name: "state_read",
   description: "Read the current state for a specific mode (ralph, ultrawork, autopilot, etc.). Returns the JSON state data or indicates if no state exists.",
@@ -33008,16 +33038,10 @@ var stateClearTool = {
       const sessionId = session_id;
       if (sessionId) {
         validateSessionId(sessionId);
-        const now = Date.now();
-        const cancelSignalPath = resolveSessionStatePath("cancel-signal", sessionId, root);
-        atomicWriteJsonSync(cancelSignalPath, {
-          active: true,
-          requested_at: new Date(now).toISOString(),
-          expires_at: new Date(now + CANCEL_SIGNAL_TTL_MS).toISOString(),
-          mode,
-          source: "state_clear"
-        });
+        writeSessionCancelSignal(root, sessionId, mode);
         if (MODE_CONFIGS[mode]) {
+          const requesterStatePath = getStateFilePath(root, mode, sessionId);
+          const hadRequesterState2 = (0, import_fs12.existsSync)(requesterStatePath);
           const success2 = clearModeState(mode, root, sessionId);
           let ghostCleaned2 = false;
           try {
@@ -33032,25 +33056,35 @@ var stateClearTool = {
             }
           } catch {
           }
+          let ownerSessionId2;
+          if (!hadRequesterState2 && !ghostCleaned2) {
+            ownerSessionId2 = findSingleOwningSessionForMode(mode, root, sessionId);
+            if (ownerSessionId2) {
+              writeSessionCancelSignal(root, ownerSessionId2, mode);
+              clearModeState(mode, root, ownerSessionId2);
+            }
+          }
           const ghostNote2 = ghostCleaned2 ? " (ghost legacy file also removed)" : "";
-          if (success2) {
+          const ownerNote2 = ownerSessionId2 ? ` (cleared owning session: ${ownerSessionId2})` : "";
+          if (success2 || ownerSessionId2) {
             return {
               content: [{
                 type: "text",
-                text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote2}`
+                text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote2}${ownerNote2}`
               }]
             };
           } else {
             return {
               content: [{
                 type: "text",
-                text: `Warning: Some files could not be removed for mode: ${mode} in session: ${sessionId}${ghostNote2}`
+                text: `Warning: Some files could not be removed for mode: ${mode} in session: ${sessionId}${ghostNote2}${ownerNote2}`
               }]
             };
           }
         }
         const statePath = resolveSessionStatePath(mode, sessionId, root);
-        if ((0, import_fs12.existsSync)(statePath)) {
+        const hadRequesterState = (0, import_fs12.existsSync)(statePath);
+        if (hadRequesterState) {
           (0, import_fs12.unlinkSync)(statePath);
         }
         let ghostCleaned = false;
@@ -33066,11 +33100,26 @@ var stateClearTool = {
           }
         } catch {
         }
+        let ownerSessionId;
+        if (!hadRequesterState && !ghostCleaned) {
+          ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
+          if (ownerSessionId) {
+            writeSessionCancelSignal(root, ownerSessionId, mode);
+            const ownerStatePath = resolveSessionStatePath(mode, ownerSessionId, root);
+            if ((0, import_fs12.existsSync)(ownerStatePath)) {
+              try {
+                (0, import_fs12.unlinkSync)(ownerStatePath);
+              } catch {
+              }
+            }
+          }
+        }
         const ghostNote = ghostCleaned ? " (ghost legacy file also removed)" : "";
+        const ownerNote = ownerSessionId ? ` (cleared owning session: ${ownerSessionId})` : "";
         return {
           content: [{
             type: "text",
-            text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}`
+            text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}${ownerNote}`
           }]
         };
       }

@@ -313,6 +313,23 @@ function stripManagedCodexBlock(content) {
     const managedBlockPattern = new RegExp(`${MANAGED_START.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\s\\S]*?${MANAGED_END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`, 'g');
     return content.replace(managedBlockPattern, '').trimEnd();
 }
+function parseCodexMcpServerNames(content) {
+    const names = new Set();
+    for (const rawLine of content.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#')) {
+            continue;
+        }
+        const sectionMatch = line.match(/^\[mcp_servers\.([^\]]+)\]$/);
+        if (sectionMatch) {
+            const name = sectionMatch[1].trim();
+            if (name) {
+                names.add(name);
+            }
+        }
+    }
+    return names;
+}
 export function renderManagedCodexMcpBlock(registry) {
     const names = Object.keys(registry);
     if (names.length === 0) {
@@ -323,7 +340,9 @@ export function renderManagedCodexMcpBlock(registry) {
 }
 export function syncCodexConfigToml(existingContent, registry) {
     const base = stripManagedCodexBlock(existingContent);
-    const managedBlock = renderManagedCodexMcpBlock(registry);
+    const existingServerNames = parseCodexMcpServerNames(base);
+    const managedRegistry = Object.fromEntries(Object.entries(registry).filter(([name]) => !existingServerNames.has(name)));
+    const managedBlock = renderManagedCodexMcpBlock(managedRegistry);
     const nextContent = managedBlock
         ? `${base ? `${base}\n\n` : ''}${managedBlock}\n`
         : (base ? `${base}\n` : '');

@@ -372,19 +372,30 @@ describe('state-tools', () => {
             // Legacy file should remain (belongs to different session)
             expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'ralph-state.json'))).toBe(true);
         });
-        it('should clear recovered session-owned state stranded under another session directory', async () => {
-            const sessionId = 'continued-session';
-            const strandedDir = join(TEST_DIR, '.omcp', 'state', 'sessions', 'stale-session-dir');
-            mkdirSync(strandedDir, { recursive: true });
-            writeFileSync(join(strandedDir, 'ralph-state.json'), JSON.stringify({ active: true, session_id: sessionId, source: 'recovered-session-state' }));
+        it('should clear the owning session when the current session resumed ralph from a different conversation', async () => {
+            // Resumed Ralph sessions can leave the only active state under a foreign
+            // session directory. When the requester's session has no local state and
+            // exactly one other session owns active state, state_clear reaches the
+            // unambiguous owner so stop-hook enforcement clears for both sessions.
+            const currentSessionId = 'resume-session-b';
+            const ownerSessionId = 'resume-session-a';
+            const ownerDir = join(TEST_DIR, '.omcp', 'state', 'sessions', ownerSessionId);
+            mkdirSync(ownerDir, { recursive: true });
+            writeFileSync(join(ownerDir, 'ralph-state.json'), JSON.stringify({
+                active: true,
+                session_id: ownerSessionId,
+                iteration: 4,
+                linked_ultrawork: true,
+            }));
             const result = await stateClearTool.handler({
                 mode: 'ralph',
-                session_id: sessionId,
+                session_id: currentSessionId,
                 workingDirectory: TEST_DIR,
             });
-            expect(result.content[0].text).toContain('cleared state for mode: ralph in session: continued-session');
-            // The stranded file under a different session dir is not cleared by session-scoped clear
-            expect(existsSync(join(strandedDir, 'ralph-state.json'))).toBe(true);
+            expect(result.content[0].text).toContain(`cleared owning session: ${ownerSessionId}`);
+            expect(existsSync(join(ownerDir, 'ralph-state.json'))).toBe(false);
+            expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'sessions', currentSessionId, 'cancel-signal-state.json'))).toBe(true);
+            expect(existsSync(join(ownerDir, 'cancel-signal-state.json'))).toBe(true);
         });
     });
     describe('session-scoped behavior', () => {

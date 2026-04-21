@@ -69,5 +69,35 @@ describe('persistent-mode cancel race guard (issue #921)', () => {
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
+    it('should not re-enforce when a resumed session clears the owning session and writes a foreign cancel signal', async () => {
+        const ownerSessionId = 'session-2743-owner';
+        const resumedSessionId = 'session-2743-resumed';
+        const tempDir = mkdtempSync(join(tmpdir(), 'persistent-cross-session-cancel-'));
+        try {
+            execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+            const ownerDir = makeRalphSession(tempDir, ownerSessionId);
+            const resumedDir = join(tempDir, '.omcp', 'state', 'sessions', resumedSessionId);
+            mkdirSync(resumedDir, { recursive: true });
+            writeFileSync(join(ownerDir, 'cancel-signal-state.json'), JSON.stringify({
+                active: true,
+                requested_at: new Date().toISOString(),
+                expires_at: new Date(Date.now() + 30_000).toISOString(),
+                mode: 'ralph',
+                source: 'state_clear'
+            }, null, 2));
+            const result = await checkPersistentModes(resumedSessionId, tempDir, {
+                stop_reason: 'end_turn'
+            });
+            expect(result.shouldBlock).toBe(false);
+            expect(result.mode).toBe('none');
+            expect(existsSync(join(ownerDir, 'ultrawork-state.json'))).toBe(false);
+            const ralphState = JSON.parse(readFileSync(join(ownerDir, 'ralph-state.json'), 'utf-8'));
+            expect(ralphState.iteration).toBe(10);
+            expect(ralphState.max_iterations).toBe(10);
+        }
+        finally {
+            rmSync(tempDir, { recursive: true, force: true });
+        }
+    });
 });
 //# sourceMappingURL=cancel-race.test.js.map

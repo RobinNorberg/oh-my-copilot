@@ -433,6 +433,27 @@ function stripManagedCodexBlock(content: string): string {
   return content.replace(managedBlockPattern, '').trimEnd();
 }
 
+function parseCodexMcpServerNames(content: string): Set<string> {
+  const names = new Set<string>();
+
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const sectionMatch = line.match(/^\[mcp_servers\.([^\]]+)\]$/);
+    if (sectionMatch) {
+      const name = sectionMatch[1].trim();
+      if (name) {
+        names.add(name);
+      }
+    }
+  }
+
+  return names;
+}
+
 export function renderManagedCodexMcpBlock(registry: UnifiedMcpRegistry): string {
   const names = Object.keys(registry);
   if (names.length === 0) {
@@ -445,7 +466,11 @@ export function renderManagedCodexMcpBlock(registry: UnifiedMcpRegistry): string
 
 export function syncCodexConfigToml(existingContent: string, registry: UnifiedMcpRegistry): { content: string; changed: boolean } {
   const base = stripManagedCodexBlock(existingContent);
-  const managedBlock = renderManagedCodexMcpBlock(registry);
+  const existingServerNames = parseCodexMcpServerNames(base);
+  const managedRegistry = Object.fromEntries(
+    Object.entries(registry).filter(([name]) => !existingServerNames.has(name))
+  );
+  const managedBlock = renderManagedCodexMcpBlock(managedRegistry);
   const nextContent = managedBlock
     ? `${base ? `${base}\n\n` : ''}${managedBlock}\n`
     : (base ? `${base}\n` : '');
