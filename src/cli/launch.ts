@@ -407,7 +407,11 @@ function runCopilotInsideTmux(cwd: string, args: string[]): void {
 
   // Launch Copilot in current pane
   try {
-    execFileSync('copilot', args, { cwd, stdio: 'inherit' });
+    execFileSync('copilot', args, {
+      cwd,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
   } catch (error) {
     const err = error as NodeJS.ErrnoException & { status?: number | null };
     if (err.code === 'ENOENT') {
@@ -499,7 +503,11 @@ function runCopilotOutsideTmux(cwd: string, args: string[], _sessionId: string):
  */
 function runCopilotDirect(cwd: string, args: string[]): void {
   try {
-    execFileSync('copilot', args, { cwd, stdio: 'inherit' });
+    execFileSync('copilot', args, {
+      cwd,
+      stdio: 'inherit',
+      shell: process.platform === 'win32',
+    });
   } catch (error) {
     const err = error as NodeJS.ErrnoException & { status?: number | null };
     if (err.code === 'ENOENT') {

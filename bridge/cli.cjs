@@ -28711,7 +28711,10 @@ function isTmuxAvailable() {
 }
 function isCopilotAvailable() {
   try {
-    (0, import_child_process18.execFileSync)("claude", ["--version"], { stdio: "ignore" });
+    (0, import_child_process18.execFileSync)("claude", ["--version"], {
+      stdio: "ignore",
+      shell: process.platform === "win32"
+    });
     return true;
   } catch {
     return false;
@@ -86505,7 +86508,11 @@ function runCopilotInsideTmux(cwd, args) {
   } catch {
   }
   try {
-    (0, import_child_process29.execFileSync)("copilot", args, { cwd, stdio: "inherit" });
+    (0, import_child_process29.execFileSync)("copilot", args, {
+      cwd,
+      stdio: "inherit",
+      shell: process.platform === "win32"
+    });
   } catch (error48) {
     const err = error48;
     if (err.code === "ENOENT") {
@@ -86567,7 +86574,11 @@ function runCopilotOutsideTmux(cwd, args, _sessionId) {
 }
 function runCopilotDirect(cwd, args) {
   try {
-    (0, import_child_process29.execFileSync)("copilot", args, { cwd, stdio: "inherit" });
+    (0, import_child_process29.execFileSync)("copilot", args, {
+      cwd,
+      stdio: "inherit",
+      shell: process.platform === "win32"
+    });
   } catch (error48) {
     const err = error48;
     if (err.code === "ENOENT") {
