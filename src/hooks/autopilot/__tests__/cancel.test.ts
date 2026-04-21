@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import { mkdtempSync, rmSync, utimesSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -34,18 +34,26 @@ vi.mock('../../ultraqa/index.js', () => ({
 import * as ralphLoop from '../../ralph/index.js';
 import * as ultraqaLoop from '../../ultraqa/index.js';
 
+// One tmp dir per file, reused across tests. Between tests we only clear the
+// autopilot state subtree — on Windows (Defender real-time scans) the per-test
+// mkdtemp+rmSync cycle was ~0.9s, dominating the file's wallclock.
 describe('AutopilotCancel', () => {
   let testDir: string;
 
-  beforeEach(() => {
+  beforeAll(() => {
     testDir = mkdtempSync(join(tmpdir(), 'autopilot-cancel-test-'));
+  });
+
+  afterAll(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  beforeEach(() => {
+    rmSync(join(testDir, '.omc'), { recursive: true, force: true });
+    rmSync(join(testDir, '.omcp'), { recursive: true, force: true });
     const fs = require('fs');
     fs.mkdirSync(join(testDir, '.omcp', 'state'), { recursive: true });
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    rmSync(testDir, { recursive: true, force: true });
   });
 
   describe('cancelAutopilot', () => {

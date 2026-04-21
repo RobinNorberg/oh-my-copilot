@@ -83,6 +83,7 @@ export function getTeamMembers(
       else if (worker.agentType === 'tmux-copilot') backend = 'tmux-copilot';
       else if (worker.agentType === 'tmux-codex') backend = 'tmux-codex';
       else if (worker.agentType === 'tmux-gemini') backend = 'tmux-gemini';
+      else if (worker.agentType === 'tmux-cursor') backend = 'tmux-cursor';
       else backend = 'mcp-codex';
       const capabilities = getDefaultCapabilities(backend);
 

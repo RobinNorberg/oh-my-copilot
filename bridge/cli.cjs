@@ -14397,6 +14397,23 @@ function stripManagedCodexBlock(content) {
   );
   return content.replace(managedBlockPattern, "").trimEnd();
 }
+function parseCodexMcpServerNames(content) {
+  const names = /* @__PURE__ */ new Set();
+  for (const rawLine of content.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const sectionMatch = line.match(/^\[mcp_servers\.([^\]]+)\]$/);
+    if (sectionMatch) {
+      const name = sectionMatch[1].trim();
+      if (name) {
+        names.add(name);
+      }
+    }
+  }
+  return names;
+}
 function renderManagedCodexMcpBlock(registry2) {
   const names = Object.keys(registry2);
   if (names.length === 0) {
@@ -14407,7 +14424,11 @@ function renderManagedCodexMcpBlock(registry2) {
 }
 function syncCodexConfigToml(existingContent, registry2) {
   const base = stripManagedCodexBlock(existingContent);
-  const managedBlock = renderManagedCodexMcpBlock(registry2);
+  const existingServerNames = parseCodexMcpServerNames(base);
+  const managedRegistry = Object.fromEntries(
+    Object.entries(registry2).filter(([name]) => !existingServerNames.has(name))
+  );
+  const managedBlock = renderManagedCodexMcpBlock(managedRegistry);
   const nextContent = managedBlock ? `${base ? `${base}
 
 ` : ""}${managedBlock}
@@ -33825,6 +33846,22 @@ var init_model_contract = __esm({
         parseOutput(rawOutput) {
           return rawOutput.trim();
         }
+      },
+      cursor: {
+        agentType: "cursor",
+        binary: "cursor-agent",
+        installInstructions: "Install Cursor Agent CLI: see https://docs.cursor.com/cli",
+        // cursor-agent runs as an interactive REPL — no exit-on-complete prompt mode.
+        // Keep supportsPromptMode false so the verdict-file contract path
+        // (CONTRACT_ROLES + shouldInjectContract) skips this provider; cursor
+        // workers participate as executors only.
+        supportsPromptMode: false,
+        buildLaunchArgs(_model, extraFlags = []) {
+          return [...extraFlags];
+        },
+        parseOutput(rawOutput) {
+          return rawOutput.trim();
+        }
       }
     };
     WORKER_MODEL_ENV_ALLOWLIST = [
@@ -34642,6 +34679,13 @@ function agentTypeGuidance(agentType) {
         "- Execute task work in small, verifiable increments and report each milestone to leader-fixed.",
         "- Keep commit-sized changes scoped to assigned files only; no broad refactors.",
         `- CRITICAL: You MUST run \`${claimTaskCommand}\` before starting work and \`${transitionTaskStatusCommand}\` when done. Do not exit without transitioning the task status.`
+      ].join("\n");
+    case "cursor":
+      return [
+        "### Agent-Type Guidance (cursor)",
+        "- You are an interactive REPL (cursor-agent), not a one-shot CLI. Stay in the session; the leader will continue to send prompts via mailbox.",
+        `- You MUST run \`${claimTaskCommand}\` before starting work and \`${transitionTaskStatusCommand}\` when done. Then keep waiting for the next mailbox message; do NOT type \`/exit\` unless the leader sends an explicit shutdown.`,
+        "- Reviewer/critic/security-review roles are NOT supported for cursor workers \u2014 those require a verdict-file write-and-exit which the REPL does not perform. Take only executor-style tasks."
       ].join("\n");
     case "claude":
     default:
@@ -35766,7 +35810,7 @@ var init_role_router = __esm({
 // src/team/cli-worker-contract.ts
 function shouldInjectContract(role, provider) {
   if (!role || !provider) return false;
-  if (provider === "claude") return false;
+  if (provider === "claude" || provider === "cursor") return false;
   return CONTRACT_ROLES.has(role);
 }
 function renderCliWorkerOutputContract(role, output_file) {
@@ -74716,6 +74760,36 @@ function getStatePath(mode, root) {
   }
   return resolveStatePath(mode, root);
 }
+function writeSessionCancelSignal(root, sessionId, mode) {
+  const now = Date.now();
+  const cancelSignalPath = resolveSessionStatePath("cancel-signal", sessionId, root);
+  atomicWriteJsonSync(cancelSignalPath, {
+    active: true,
+    requested_at: new Date(now).toISOString(),
+    expires_at: new Date(now + CANCEL_SIGNAL_TTL_MS).toISOString(),
+    mode,
+    source: "state_clear"
+  });
+}
+function isSessionModeActive(mode, root, sessionId) {
+  if (MODE_CONFIGS[mode]) {
+    return isModeActive(mode, root, sessionId);
+  }
+  const statePath = resolveSessionStatePath(mode, sessionId, root);
+  if (!(0, import_fs17.existsSync)(statePath)) {
+    return false;
+  }
+  try {
+    const state = JSON.parse((0, import_fs17.readFileSync)(statePath, "utf-8"));
+    return state.active === true;
+  } catch {
+    return false;
+  }
+}
+function findSingleOwningSessionForMode(mode, root, requesterSessionId) {
+  const owningSessions = listSessionIds(root).filter((sid) => sid !== requesterSessionId && isSessionModeActive(mode, root, sid));
+  return owningSessions.length === 1 ? owningSessions[0] : void 0;
+}
 var stateReadTool = {
   name: "state_read",
   description: "Read the current state for a specific mode (ralph, ultrawork, autopilot, etc.). Returns the JSON state data or indicates if no state exists.",
@@ -74973,16 +75047,10 @@ var stateClearTool = {
       const sessionId = session_id;
       if (sessionId) {
         validateSessionId(sessionId);
-        const now = Date.now();
-        const cancelSignalPath = resolveSessionStatePath("cancel-signal", sessionId, root);
-        atomicWriteJsonSync(cancelSignalPath, {
-          active: true,
-          requested_at: new Date(now).toISOString(),
-          expires_at: new Date(now + CANCEL_SIGNAL_TTL_MS).toISOString(),
-          mode,
-          source: "state_clear"
-        });
+        writeSessionCancelSignal(root, sessionId, mode);
         if (MODE_CONFIGS[mode]) {
+          const requesterStatePath = getStateFilePath(root, mode, sessionId);
+          const hadRequesterState2 = (0, import_fs17.existsSync)(requesterStatePath);
           const success2 = clearModeState(mode, root, sessionId);
           let ghostCleaned2 = false;
           try {
@@ -74997,25 +75065,35 @@ var stateClearTool = {
             }
           } catch {
           }
+          let ownerSessionId2;
+          if (!hadRequesterState2 && !ghostCleaned2) {
+            ownerSessionId2 = findSingleOwningSessionForMode(mode, root, sessionId);
+            if (ownerSessionId2) {
+              writeSessionCancelSignal(root, ownerSessionId2, mode);
+              clearModeState(mode, root, ownerSessionId2);
+            }
+          }
           const ghostNote2 = ghostCleaned2 ? " (ghost legacy file also removed)" : "";
-          if (success2) {
+          const ownerNote2 = ownerSessionId2 ? ` (cleared owning session: ${ownerSessionId2})` : "";
+          if (success2 || ownerSessionId2) {
             return {
               content: [{
                 type: "text",
-                text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote2}`
+                text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote2}${ownerNote2}`
               }]
             };
           } else {
             return {
               content: [{
                 type: "text",
-                text: `Warning: Some files could not be removed for mode: ${mode} in session: ${sessionId}${ghostNote2}`
+                text: `Warning: Some files could not be removed for mode: ${mode} in session: ${sessionId}${ghostNote2}${ownerNote2}`
               }]
             };
           }
         }
         const statePath = resolveSessionStatePath(mode, sessionId, root);
-        if ((0, import_fs17.existsSync)(statePath)) {
+        const hadRequesterState = (0, import_fs17.existsSync)(statePath);
+        if (hadRequesterState) {
           (0, import_fs17.unlinkSync)(statePath);
         }
         let ghostCleaned = false;
@@ -75031,11 +75109,26 @@ var stateClearTool = {
           }
         } catch {
         }
+        let ownerSessionId;
+        if (!hadRequesterState && !ghostCleaned) {
+          ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
+          if (ownerSessionId) {
+            writeSessionCancelSignal(root, ownerSessionId, mode);
+            const ownerStatePath = resolveSessionStatePath(mode, ownerSessionId, root);
+            if ((0, import_fs17.existsSync)(ownerStatePath)) {
+              try {
+                (0, import_fs17.unlinkSync)(ownerStatePath);
+              } catch {
+              }
+            }
+          }
+        }
         const ghostNote = ghostCleaned ? " (ghost legacy file also removed)" : "";
+        const ownerNote = ownerSessionId ? ` (cleared owning session: ${ownerSessionId})` : "";
         return {
           content: [{
             type: "text",
-            text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}`
+            text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}${ownerNote}`
           }]
         };
       }
@@ -83233,7 +83326,7 @@ function isRateLimitStatusDegraded(status) {
   return status?.apiErrorReason === "rate_limited";
 }
 function shouldMonitorBlockedPanes(status) {
-  return !!status && (status.isLimited || isRateLimitStatusDegraded(status));
+  return !!status?.isLimited;
 }
 
 // src/features/rate-limit-wait/index.ts
@@ -83439,6 +83532,11 @@ function createInitialState() {
     errorCount: 0
   };
 }
+function shouldResumeBlockedPanesOnStatusChange(previousStatus, nextStatus) {
+  const wasLimited = shouldMonitorBlockedPanes(previousStatus);
+  const isNowLimited = shouldMonitorBlockedPanes(nextStatus);
+  return wasLimited && !isNowLimited && !isRateLimitStatusDegraded(nextStatus);
+}
 function registerDaemonCleanup(config2) {
   const cleanup = () => {
     try {
@@ -83480,8 +83578,11 @@ async function pollLoop2(config2) {
           (_, reject) => setTimeout(() => reject(new Error("checkRateLimitStatus timed out after 30s")), 3e4)
         )
       ]);
-      const wasLimited = shouldMonitorBlockedPanes(state.rateLimitStatus);
       const isNowLimited = shouldMonitorBlockedPanes(rateLimitStatus);
+      const shouldResumeBlockedPanes = shouldResumeBlockedPanesOnStatusChange(
+        state.rateLimitStatus,
+        rateLimitStatus
+      );
       state.rateLimitStatus = rateLimitStatus;
       if (rateLimitStatus) {
         log2(`Rate limit status: ${formatRateLimitStatus(rateLimitStatus)}`, config2);
@@ -83489,8 +83590,7 @@ async function pollLoop2(config2) {
         log2("Rate limit status unavailable (no OAuth credentials?)", config2);
       }
       if (isNowLimited && isTmuxAvailable2()) {
-        const scanReason = rateLimitStatus?.isLimited ? "Rate limited - scanning for blocked panes" : "Usage API degraded (429/stale cache) - scanning for blocked panes";
-        log2(scanReason, config2);
+        log2("Rate limited - scanning for blocked panes", config2);
         const blockedPanes = scanForBlockedPanes(config2.paneLinesToCapture, (0, import_path105.dirname)(config2.stateFilePath));
         for (const pane of blockedPanes) {
           const existing = state.blockedPanes.find((p) => p.id === pane.id);
@@ -83503,7 +83603,7 @@ async function pollLoop2(config2) {
           (tracked) => blockedPanes.some((current) => current.id === tracked.id)
         );
       }
-      if (wasLimited && !isNowLimited && state.blockedPanes.length > 0) {
+      if (shouldResumeBlockedPanes && state.blockedPanes.length > 0) {
         log2("Rate limit cleared! Attempting to resume blocked panes", config2);
         for (const pane of state.blockedPanes) {
           if (state.resumedPaneIds.includes(pane.id)) {

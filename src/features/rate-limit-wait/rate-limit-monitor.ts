@@ -163,9 +163,11 @@ export function isRateLimitStatusDegraded(status: RateLimitStatus | null): boole
 }
 
 /**
- * Whether the daemon should keep monitoring blocked panes.
- * This includes both confirmed limit hits and degraded 429/stale-cache states.
+ * Whether the daemon should actively scan for blocked panes.
+ * Only confirmed quota exhaustion should enter the pane wait/resume path.
+ * Degraded usage-api 429/stale-cache states remain visible to the user, but
+ * they are intentionally excluded from daemon pane blocking behavior.
  */
 export function shouldMonitorBlockedPanes(status: RateLimitStatus | null): boolean {
-  return !!status && (status.isLimited || isRateLimitStatusDegraded(status));
+  return !!status?.isLimited;
 }

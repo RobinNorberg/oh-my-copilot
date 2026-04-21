@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { CliAgentType } from '../team/model-contract.js';
 
 const availability = vi.hoisted(() => ({
   claude: true,
+  copilot: false,
   codex: false,
   gemini: false,
+  cursor: false,
 }));
 
 vi.mock('../team/model-contract.js', () => ({
-  isCliAvailable: (agentType: 'claude' | 'codex' | 'gemini') => availability[agentType],
+  isCliAvailable: (agentType: CliAgentType) => availability[agentType],
 }));
 
 import {
@@ -18,8 +21,10 @@ import {
 describe('runtime-guidance: ralplan/plan/ralph Codex availability', () => {
   beforeEach(() => {
     availability.claude = true;
+    availability.copilot = false;
     availability.codex = false;
     availability.gemini = false;
+    availability.cursor = false;
   });
 
   describe('renderSkillRuntimeGuidance for plan-family skills', () => {

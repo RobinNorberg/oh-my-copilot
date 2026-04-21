@@ -23,7 +23,7 @@ vi.mock('child_process', async (importOriginal) => {
 });
 import { getUsage } from '../../hud/usage-api.js';
 import { execSync, spawnSync } from 'child_process';
-import { checkRateLimitStatus, analyzePaneContent, scanForBlockedPanes, formatDaemonState, } from '../../features/rate-limit-wait/index.js';
+import { checkRateLimitStatus, analyzePaneContent, scanForBlockedPanes, formatDaemonState, shouldMonitorBlockedPanes, } from '../../features/rate-limit-wait/index.js';
 describe('Rate Limit Wait Integration Tests', () => {
     const testDir = join(tmpdir(), 'omc-integration-test-' + Date.now());
     beforeEach(() => {
@@ -103,6 +103,44 @@ describe('Rate Limit Wait Integration Tests', () => {
             });
             const clearedStatus = await checkRateLimitStatus();
             expect(clearedStatus.isLimited).toBe(false);
+        });
+        it('should not classify transient usage-api 429 with stale cached usage as pane-blocking', async () => {
+            vi.mocked(getUsage).mockResolvedValue({
+                rateLimits: {
+                    fiveHourPercent: 83,
+                    weeklyPercent: 57,
+                    fiveHourResetsAt: new Date(Date.now() + 3_600_000),
+                    weeklyResetsAt: new Date(Date.now() + 86_400_000),
+                    monthlyPercent: 0,
+                    monthlyResetsAt: null,
+                },
+                error: 'rate_limited',
+            });
+            const status = await checkRateLimitStatus();
+            expect(status).not.toBeNull();
+            expect(status.isLimited).toBe(false);
+            expect(status.apiErrorReason).toBe('rate_limited');
+            expect(status.usingStaleData).toBe(true);
+            expect(shouldMonitorBlockedPanes(status)).toBe(false);
+        });
+        it('should keep true quota exhaustion pane-blocking even when reported from stale cached usage', async () => {
+            vi.mocked(getUsage).mockResolvedValue({
+                rateLimits: {
+                    fiveHourPercent: 100,
+                    weeklyPercent: 57,
+                    fiveHourResetsAt: new Date(Date.now() + 3_600_000),
+                    weeklyResetsAt: new Date(Date.now() + 86_400_000),
+                    monthlyPercent: 0,
+                    monthlyResetsAt: null,
+                },
+                error: 'rate_limited',
+            });
+            const status = await checkRateLimitStatus();
+            expect(status).not.toBeNull();
+            expect(status.isLimited).toBe(true);
+            expect(status.apiErrorReason).toBe('rate_limited');
+            expect(status.usingStaleData).toBe(true);
+            expect(shouldMonitorBlockedPanes(status)).toBe(true);
         });
     });
     describe('Scenario: tmux pane analysis accuracy', () => {

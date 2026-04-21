@@ -64,6 +64,65 @@ function getStatePath(mode: StateToolMode, root: string): string {
   return resolveStatePath(mode, root);
 }
 
+function writeSessionCancelSignal(
+  root: string,
+  sessionId: string,
+  mode: StateToolMode,
+): void {
+  const now = Date.now();
+  const cancelSignalPath = resolveSessionStatePath('cancel-signal', sessionId, root);
+  atomicWriteJsonSync(cancelSignalPath, {
+    active: true,
+    requested_at: new Date(now).toISOString(),
+    expires_at: new Date(now + CANCEL_SIGNAL_TTL_MS).toISOString(),
+    mode,
+    source: 'state_clear'
+  });
+}
+
+function isSessionModeActive(
+  mode: StateToolMode,
+  root: string,
+  sessionId: string,
+): boolean {
+  if (MODE_CONFIGS[mode as ExecutionMode]) {
+    return isModeActive(mode as ExecutionMode, root, sessionId);
+  }
+
+  const statePath = resolveSessionStatePath(mode, sessionId, root);
+  if (!existsSync(statePath)) {
+    return false;
+  }
+
+  try {
+    const state = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
+    return state.active === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find a single other session that owns active state for the given mode.
+ *
+ * Resumed Ralph sessions can leave the only active state under a foreign
+ * session directory. When the requester's session has no matching state,
+ * this fallback lets `state_clear` reach the unambiguous single owner so
+ * the stop-hook enforcement path clears cleanly. Returns undefined if there
+ * are zero or multiple candidates — we never broad-clear across sessions.
+ */
+function findSingleOwningSessionForMode(
+  mode: StateToolMode,
+  root: string,
+  requesterSessionId: string,
+): string | undefined {
+  const owningSessions = listSessionIds(root).filter((sid) => (
+    sid !== requesterSessionId && isSessionModeActive(mode, root, sid)
+  ));
+
+  return owningSessions.length === 1 ? owningSessions[0] : undefined;
+}
+
 // ============================================================================
 // state_read - Read state for a mode
 // ============================================================================
@@ -335,17 +394,11 @@ export const stateClearTool: AnyToolDefinition = {
       // If session_id provided, clear only session-specific state
       if (sessionId) {
         validateSessionId(sessionId);
-        const now = Date.now();
-        const cancelSignalPath = resolveSessionStatePath('cancel-signal', sessionId, root);
-        atomicWriteJsonSync(cancelSignalPath, {
-          active: true,
-          requested_at: new Date(now).toISOString(),
-          expires_at: new Date(now + CANCEL_SIGNAL_TTL_MS).toISOString(),
-          mode,
-          source: 'state_clear'
-        });
+        writeSessionCancelSignal(root, sessionId, mode);
 
         if (MODE_CONFIGS[mode as ExecutionMode]) {
+          const requesterStatePath = getStateFilePath(root, mode as ExecutionMode, sessionId);
+          const hadRequesterState = existsSync(requesterStatePath);
           const success = clearModeState(mode as ExecutionMode, root, sessionId);
 
           // Ghost-legacy cleanup: after clearing session file, also remove
@@ -366,19 +419,34 @@ export const stateClearTool: AnyToolDefinition = {
             // Best-effort ghost cleanup — ignore errors
           }
 
+          // Cross-session fallback: if the requester had no local state and
+          // no ghost legacy file, but exactly one other session owns active
+          // state for this mode (e.g. a resumed Ralph whose state lives
+          // under the original session), clear that owner too. Keep bounded
+          // to the unambiguous single-owner case to avoid broad-clearing.
+          let ownerSessionId: string | undefined;
+          if (!hadRequesterState && !ghostCleaned) {
+            ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
+            if (ownerSessionId) {
+              writeSessionCancelSignal(root, ownerSessionId, mode);
+              clearModeState(mode as ExecutionMode, root, ownerSessionId);
+            }
+          }
+
           const ghostNote = ghostCleaned ? ' (ghost legacy file also removed)' : '';
-          if (success) {
+          const ownerNote = ownerSessionId ? ` (cleared owning session: ${ownerSessionId})` : '';
+          if (success || ownerSessionId) {
             return {
               content: [{
                 type: 'text' as const,
-                text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}`
+                text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}${ownerNote}`
               }]
             };
           } else {
             return {
               content: [{
                 type: 'text' as const,
-                text: `Warning: Some files could not be removed for mode: ${mode} in session: ${sessionId}${ghostNote}`
+                text: `Warning: Some files could not be removed for mode: ${mode} in session: ${sessionId}${ghostNote}${ownerNote}`
               }]
             };
           }
@@ -386,7 +454,8 @@ export const stateClearTool: AnyToolDefinition = {
 
         // Fallback for modes not in registry (e.g., ralplan)
         const statePath = resolveSessionStatePath(mode, sessionId, root);
-        if (existsSync(statePath)) {
+        const hadRequesterState = existsSync(statePath);
+        if (hadRequesterState) {
           unlinkSync(statePath);
         }
 
@@ -406,11 +475,25 @@ export const stateClearTool: AnyToolDefinition = {
           // Best-effort ghost cleanup
         }
 
+        // Same cross-session fallback as the registry branch above.
+        let ownerSessionId: string | undefined;
+        if (!hadRequesterState && !ghostCleaned) {
+          ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
+          if (ownerSessionId) {
+            writeSessionCancelSignal(root, ownerSessionId, mode);
+            const ownerStatePath = resolveSessionStatePath(mode, ownerSessionId, root);
+            if (existsSync(ownerStatePath)) {
+              try { unlinkSync(ownerStatePath); } catch { /* best-effort */ }
+            }
+          }
+        }
+
         const ghostNote = ghostCleaned ? ' (ghost legacy file also removed)' : '';
+        const ownerNote = ownerSessionId ? ` (cleared owning session: ${ownerSessionId})` : '';
         return {
           content: [{
             type: 'text' as const,
-            text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}`
+            text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}${ownerNote}`
           }]
         };
       }

@@ -176,6 +176,24 @@ const CONTRACTS = {
             return rawOutput.trim();
         },
     },
+    cursor: {
+        agentType: 'cursor',
+        binary: 'cursor-agent',
+        installInstructions: 'Install Cursor Agent CLI: see https://docs.cursor.com/cli',
+        // cursor-agent runs as an interactive REPL — no exit-on-complete prompt mode.
+        // Keep supportsPromptMode false so the verdict-file contract path
+        // (CONTRACT_ROLES + shouldInjectContract) skips this provider; cursor
+        // workers participate as executors only.
+        supportsPromptMode: false,
+        buildLaunchArgs(_model, extraFlags = []) {
+            // Minimal flags — cursor-agent owns its own session/auth state.
+            // The model is selected interactively inside cursor-agent itself.
+            return [...extraFlags];
+        },
+        parseOutput(rawOutput) {
+            return rawOutput.trim();
+        },
+    },
 };
 export function getContract(agentType) {
     const contract = CONTRACTS[agentType];

@@ -4,7 +4,7 @@ import { isProviderSpecificModelId } from '../config/models.js';
 import { validateTeamName } from './team-name.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 
-export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini';
+export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor';
 
 export interface CliAgentContract {
   agentType: CliAgentType;
@@ -226,6 +226,24 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
       const args = ['--approval-mode', 'yolo'];
       if (model) args.push('--model', model);
       return [...args, ...extraFlags];
+    },
+    parseOutput(rawOutput: string): string {
+      return rawOutput.trim();
+    },
+  },
+  cursor: {
+    agentType: 'cursor',
+    binary: 'cursor-agent',
+    installInstructions: 'Install Cursor Agent CLI: see https://docs.cursor.com/cli',
+    // cursor-agent runs as an interactive REPL — no exit-on-complete prompt mode.
+    // Keep supportsPromptMode false so the verdict-file contract path
+    // (CONTRACT_ROLES + shouldInjectContract) skips this provider; cursor
+    // workers participate as executors only.
+    supportsPromptMode: false,
+    buildLaunchArgs(_model?: string, extraFlags: string[] = []): string[] {
+      // Minimal flags — cursor-agent owns its own session/auth state.
+      // The model is selected interactively inside cursor-agent itself.
+      return [...extraFlags];
     },
     parseOutput(rawOutput: string): string {
       return rawOutput.trim();

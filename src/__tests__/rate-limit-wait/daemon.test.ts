@@ -11,8 +11,9 @@ import {
   isDaemonRunning,
   getDaemonStatus,
   formatDaemonState,
+  shouldResumeBlockedPanesOnStatusChange,
 } from '../../features/rate-limit-wait/daemon.js';
-import type { DaemonState, DaemonConfig } from '../../features/rate-limit-wait/types.js';
+import type { DaemonState, DaemonConfig, RateLimitStatus } from '../../features/rate-limit-wait/types.js';
 
 describe('daemon', () => {
   const testDir = join(tmpdir(), 'omc-daemon-test-' + Date.now());
@@ -309,6 +310,59 @@ describe('daemon', () => {
       const output = formatDaemonState(state);
 
       expect(output).toContain('Daemon not running');
+    });
+  });
+
+  describe('resume guard', () => {
+    function createRateLimitStatus(overrides: Partial<RateLimitStatus> = {}): RateLimitStatus {
+      return {
+        fiveHourLimited: false,
+        weeklyLimited: false,
+        monthlyLimited: false,
+        isLimited: false,
+        fiveHourResetsAt: null,
+        weeklyResetsAt: null,
+        monthlyResetsAt: null,
+        nextResetAt: null,
+        timeUntilResetMs: null,
+        lastCheckedAt: new Date('2026-04-20T00:00:00.000Z'),
+        ...overrides,
+      };
+    }
+
+    it('does not resume blocked panes when a limited state becomes degraded stale-cache 429', () => {
+      const previousStatus = createRateLimitStatus({
+        fiveHourLimited: true,
+        isLimited: true,
+        fiveHourPercent: 100,
+        fiveHourResetsAt: new Date('2026-04-20T01:00:00.000Z'),
+        nextResetAt: new Date('2026-04-20T01:00:00.000Z'),
+        timeUntilResetMs: 3_600_000,
+      });
+      const degradedStatus = createRateLimitStatus({
+        fiveHourPercent: 83,
+        weeklyPercent: 57,
+        apiErrorReason: 'rate_limited',
+        usingStaleData: true,
+      });
+
+      expect(shouldResumeBlockedPanesOnStatusChange(previousStatus, degradedStatus)).toBe(false);
+    });
+
+    it('resumes blocked panes when a limited state becomes a clean non-limited status', () => {
+      const previousStatus = createRateLimitStatus({
+        weeklyLimited: true,
+        isLimited: true,
+        weeklyPercent: 100,
+        weeklyResetsAt: new Date('2026-04-21T00:00:00.000Z'),
+        nextResetAt: new Date('2026-04-21T00:00:00.000Z'),
+        timeUntilResetMs: 86_400_000,
+      });
+      const clearedStatus = createRateLimitStatus({
+        weeklyPercent: 42,
+      });
+
+      expect(shouldResumeBlockedPanesOnStatusChange(previousStatus, clearedStatus)).toBe(true);
     });
   });
 
