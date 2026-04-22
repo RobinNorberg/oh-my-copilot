@@ -1662,11 +1662,6 @@ var init_prompt_helpers = __esm({
 
 // src/utils/omc-cli-rendering.ts
 import { spawnSync as spawnSync2 } from "child_process";
-function isClaudeSession(env) {
-  return Boolean(
-    env.CLAUDECODE?.trim() || env.CLAUDE_SESSION_ID?.trim() || env.CLAUDECODE_SESSION_ID?.trim()
-  );
-}
 function commandExists(command, env) {
   const pathValue = env.PATH ?? env.Path ?? "";
   const pathExt = env.PATHEXT ?? "";
@@ -1697,11 +1692,7 @@ function resolveOmcCliPrefix(options = {}) {
   return OMC_CLI_BINARY;
 }
 function resolveInvocationPrefix(commandSuffix, options = {}) {
-  const env = options.env ?? process.env;
-  const normalizedSuffix = commandSuffix.trim();
-  if (/^ask(?:\s|$)/.test(normalizedSuffix) && isClaudeSession(env)) {
-    return OMC_CLI_BINARY;
-  }
+  void commandSuffix;
   return resolveOmcCliPrefix(options);
 }
 function formatOmcCliInvocation(commandSuffix, options = {}) {

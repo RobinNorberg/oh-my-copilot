@@ -1,8 +1,36 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { resolveRoleAssignment, buildResolvedRoutingSnapshot } from '../stage-router.js';
 import { CANONICAL_TEAM_ROLES } from '../../shared/types.js';
 import { COPILOT_FAMILY_DEFAULTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS } from '../../config/models.js';
 const EMPTY = {};
+const ENV_KEYS = [
+    'OMC_MODEL_HIGH',
+    'OMC_MODEL_MEDIUM',
+    'OMC_MODEL_LOW',
+    'CLAUDE_CODE_BEDROCK_OPUS_MODEL',
+    'CLAUDE_CODE_BEDROCK_SONNET_MODEL',
+    'CLAUDE_CODE_BEDROCK_HAIKU_MODEL',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+];
+const savedEnv = {};
+beforeAll(() => {
+    for (const key of ENV_KEYS) {
+        savedEnv[key] = process.env[key];
+        delete process.env[key];
+    }
+});
+afterAll(() => {
+    for (const key of ENV_KEYS) {
+        if (savedEnv[key] !== undefined) {
+            process.env[key] = savedEnv[key];
+        }
+        else {
+            delete process.env[key];
+        }
+    }
+});
 const EXPECTED_DEFAULTS = {
     orchestrator: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'omcp' },
     planner: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'planner' },

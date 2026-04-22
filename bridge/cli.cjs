@@ -18019,11 +18019,6 @@ var init_loop = __esm({
 });
 
 // src/utils/omc-cli-rendering.ts
-function isClaudeSession(env2) {
-  return Boolean(
-    env2.CLAUDECODE?.trim() || env2.CLAUDE_SESSION_ID?.trim() || env2.CLAUDECODE_SESSION_ID?.trim()
-  );
-}
 function commandExists2(command, env2) {
   const pathValue = env2.PATH ?? env2.Path ?? "";
   const pathExt = env2.PATHEXT ?? "";
@@ -18054,11 +18049,7 @@ function resolveOmcCliPrefix(options = {}) {
   return OMC_CLI_BINARY;
 }
 function resolveInvocationPrefix(commandSuffix, options = {}) {
-  const env2 = options.env ?? process.env;
-  const normalizedSuffix = commandSuffix.trim();
-  if (/^ask(?:\s|$)/.test(normalizedSuffix) && isClaudeSession(env2)) {
-    return OMC_CLI_BINARY;
-  }
+  void commandSuffix;
   return resolveOmcCliPrefix(options);
 }
 function formatOmcCliInvocation(commandSuffix, options = {}) {

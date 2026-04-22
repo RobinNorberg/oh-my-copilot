@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { resolveRoleAssignment, buildResolvedRoutingSnapshot } from '../stage-router.js';
 import { CANONICAL_TEAM_ROLES } from '../../shared/types.js';
 import type { CanonicalTeamRole, PluginConfig } from '../../shared/types.js';
@@ -7,6 +7,37 @@ import { COPILOT_FAMILY_DEFAULTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS } from '../../
 type TeamRoleRoutingConfig = NonNullable<NonNullable<PluginConfig['team']>['roleRouting']>;
 
 const EMPTY: PluginConfig = {};
+
+const ENV_KEYS = [
+  'OMC_MODEL_HIGH',
+  'OMC_MODEL_MEDIUM',
+  'OMC_MODEL_LOW',
+  'CLAUDE_CODE_BEDROCK_OPUS_MODEL',
+  'CLAUDE_CODE_BEDROCK_SONNET_MODEL',
+  'CLAUDE_CODE_BEDROCK_HAIKU_MODEL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+];
+
+const savedEnv: Record<string, string | undefined> = {};
+
+beforeAll(() => {
+  for (const key of ENV_KEYS) {
+    savedEnv[key] = process.env[key];
+    delete process.env[key];
+  }
+});
+
+afterAll(() => {
+  for (const key of ENV_KEYS) {
+    if (savedEnv[key] !== undefined) {
+      process.env[key] = savedEnv[key];
+    } else {
+      delete process.env[key];
+    }
+  }
+});
 
 const EXPECTED_DEFAULTS: Record<CanonicalTeamRole, { model: string; agent: string }> = {
   orchestrator: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'omcp' },

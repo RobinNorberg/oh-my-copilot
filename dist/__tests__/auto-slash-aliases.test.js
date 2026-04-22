@@ -114,7 +114,7 @@ Advanced: ambiguity ≤ 20%
         expect(result.replacementText).not.toContain('ambiguity ≤ 20%');
         expect(result.replacementText).not.toContain('"ambiguityThreshold": 0.2,');
     });
-    it('keeps /cccg advisor asks on omcp ask inside an active Claude session', async () => {
+    it('routes /cccg advisor asks through the plugin bridge inside an active Claude session when CLAUDE_PLUGIN_ROOT is set', async () => {
         process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
         process.env.PATH = '';
         process.env.CLAUDECODE = '1';
@@ -126,10 +126,10 @@ Advanced: ambiguity ≤ 20%
             raw: '/cccg review this auth flow',
         });
         expect(result.success).toBe(true);
-        expect(result.replacementText).toContain('`omcp ask codex "<codex prompt>"`');
-        expect(result.replacementText).toContain('`omcp ask gemini "<gemini prompt>"`');
-        expect(result.replacementText).not.toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex');
-        expect(result.replacementText).not.toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini');
+        expect(result.replacementText).toContain('`node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex "<codex prompt>"`');
+        expect(result.replacementText).toContain('`node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini "<gemini prompt>"`');
+        expect(result.replacementText).not.toContain('`omcp ask codex "<codex prompt>"`');
+        expect(result.replacementText).not.toContain('`omcp ask gemini "<gemini prompt>"`');
     });
 });
 //# sourceMappingURL=auto-slash-aliases.test.js.map
