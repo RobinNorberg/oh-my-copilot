@@ -1863,11 +1863,6 @@ function sanitizePromptContent(content, maxLength = 4e3) {
 var import_child_process3 = require("child_process");
 var OMC_CLI_BINARY = "omcp";
 var OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
-function isClaudeSession(env) {
-  return Boolean(
-    env.CLAUDECODE?.trim() || env.CLAUDE_SESSION_ID?.trim() || env.CLAUDECODE_SESSION_ID?.trim()
-  );
-}
 var commandExistsCache = /* @__PURE__ */ new Map();
 function commandExists(command, env) {
   const pathValue = env.PATH ?? env.Path ?? "";
@@ -1899,11 +1894,7 @@ function resolveOmcCliPrefix(options = {}) {
   return OMC_CLI_BINARY;
 }
 function resolveInvocationPrefix(commandSuffix, options = {}) {
-  const env = options.env ?? process.env;
-  const normalizedSuffix = commandSuffix.trim();
-  if (/^ask(?:\s|$)/.test(normalizedSuffix) && isClaudeSession(env)) {
-    return OMC_CLI_BINARY;
-  }
+  void commandSuffix;
   return resolveOmcCliPrefix(options);
 }
 function formatOmcCliInvocation(commandSuffix, options = {}) {

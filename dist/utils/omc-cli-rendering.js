@@ -1,11 +1,6 @@
 import { spawnSync } from 'child_process';
 const OMC_CLI_BINARY = 'omcp';
 const OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
-function isClaudeSession(env) {
-    return Boolean(env.CLAUDECODE?.trim()
-        || env.CLAUDE_SESSION_ID?.trim()
-        || env.CLAUDECODE_SESSION_ID?.trim());
-}
 // Per-process cache: `where`/`which` spawnSync on Windows costs ~150ms/call,
 // and rewriteOmcCliInvocations is called for every OMC CLI reference in every
 // bundled skill body (~400+ calls per skill catalog load). Cache by PATH+PATHEXT
@@ -41,13 +36,7 @@ export function resolveOmcCliPrefix(options = {}) {
     return OMC_CLI_BINARY;
 }
 function resolveInvocationPrefix(commandSuffix, options = {}) {
-    const env = options.env ?? process.env;
-    const normalizedSuffix = commandSuffix.trim();
-    // Ask flows are intentionally safe inside Claude Code and must not be
-    // rewritten to the bridge binary, which can re-enter the launch guard.
-    if (/^ask(?:\s|$)/.test(normalizedSuffix) && isClaudeSession(env)) {
-        return OMC_CLI_BINARY;
-    }
+    void commandSuffix;
     return resolveOmcCliPrefix(options);
 }
 export function formatOmcCliInvocation(commandSuffix, options = {}) {
