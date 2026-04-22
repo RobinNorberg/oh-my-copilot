@@ -366,7 +366,11 @@ function runCopilotInsideTmux(cwd, args) {
     catch { /* non-fatal — user's tmux may not support these options */ }
     // Launch Copilot in current pane
     try {
-        execFileSync('copilot', args, { cwd, stdio: 'inherit' });
+        execFileSync('copilot', args, {
+            cwd,
+            stdio: 'inherit',
+            shell: process.platform === 'win32',
+        });
     }
     catch (error) {
         const err = error;
@@ -451,7 +455,11 @@ function runCopilotOutsideTmux(cwd, args, _sessionId) {
  */
 function runCopilotDirect(cwd, args) {
     try {
-        execFileSync('copilot', args, { cwd, stdio: 'inherit' });
+        execFileSync('copilot', args, {
+            cwd,
+            stdio: 'inherit',
+            shell: process.platform === 'win32',
+        });
     }
     catch (error) {
         const err = error;

@@ -28702,7 +28702,10 @@ function isTmuxAvailable() {
 }
 function isCopilotAvailable() {
   try {
-    (0, import_child_process18.execFileSync)("claude", ["--version"], { stdio: "ignore" });
+    (0, import_child_process18.execFileSync)("claude", ["--version"], {
+      stdio: "ignore",
+      shell: process.platform === "win32"
+    });
     return true;
   } catch {
     return false;
@@ -48787,6 +48790,18 @@ __export(hud_exports, {
   _resetSummarySpawnTimestamp: () => _resetSummarySpawnTimestamp,
   main: () => main2
 });
+function mergeStdinRateLimits(stdinRateLimits, usageResult) {
+  if (!stdinRateLimits) {
+    return usageResult;
+  }
+  return {
+    ...usageResult ?? {},
+    rateLimits: {
+      ...usageResult?.rateLimits ?? {},
+      ...stdinRateLimits
+    }
+  };
+}
 function readSessionSummary(stateDir, sessionId) {
   const statePath = (0, import_path116.join)(stateDir, `session-summary-${sessionId}.json`);
   if (!(0, import_fs101.existsSync)(statePath)) return null;
@@ -48901,7 +48916,8 @@ async function main2(watchMode = false, skipInit = false) {
       writeHudState(stateToWrite, cwd, currentSessionId ?? void 0);
     }
     const stdinRateLimits = getRateLimitsFromStdin(stdin);
-    const rateLimitsResult = config2.elements.rateLimits === false ? null : stdinRateLimits ? { rateLimits: stdinRateLimits } : await getUsage();
+    const usageResult = config2.elements.rateLimits === false ? null : await getUsage();
+    const rateLimitsResult = config2.elements.rateLimits === false ? null : mergeStdinRateLimits(stdinRateLimits, usageResult);
     const customBuckets = config2.rateLimitsProvider?.type === "custom" ? await executeCustomProvider(config2.rateLimitsProvider) : null;
     let omcVersion = null;
     let updateAvailable = null;
@@ -86483,7 +86499,11 @@ function runCopilotInsideTmux(cwd, args) {
   } catch {
   }
   try {
-    (0, import_child_process29.execFileSync)("copilot", args, { cwd, stdio: "inherit" });
+    (0, import_child_process29.execFileSync)("copilot", args, {
+      cwd,
+      stdio: "inherit",
+      shell: process.platform === "win32"
+    });
   } catch (error48) {
     const err = error48;
     if (err.code === "ENOENT") {
@@ -86545,7 +86565,11 @@ function runCopilotOutsideTmux(cwd, args, _sessionId) {
 }
 function runCopilotDirect(cwd, args) {
   try {
-    (0, import_child_process29.execFileSync)("copilot", args, { cwd, stdio: "inherit" });
+    (0, import_child_process29.execFileSync)("copilot", args, {
+      cwd,
+      stdio: "inherit",
+      shell: process.platform === "win32"
+    });
   } catch (error48) {
     const err = error48;
     if (err.code === "ENOENT") {
