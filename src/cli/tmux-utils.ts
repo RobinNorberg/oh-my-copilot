@@ -200,7 +200,10 @@ export function isTmuxAvailable(): boolean {
  */
 export function isCopilotAvailable(): boolean {
   try {
-    execFileSync('claude', ['--version'], { stdio: 'ignore' });
+    execFileSync('claude', ['--version'], {
+      stdio: 'ignore',
+      shell: process.platform === 'win32',
+    });
     return true;
   } catch {
     return false;

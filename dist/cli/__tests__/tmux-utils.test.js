@@ -8,6 +8,7 @@
  * - createHudWatchPane login shell wrapping
  */
 import { describe, expect, it, vi, afterEach } from 'vitest';
+import { execFileSync } from 'child_process';
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     return {
@@ -15,7 +16,8 @@ vi.mock('child_process', async (importOriginal) => {
         execFileSync: vi.fn(),
     };
 });
-import { buildTmuxShellCommand, buildTmuxShellCommandWithEnv, wrapWithLoginShell, quoteShellArg, sanitizeTmuxToken, } from '../tmux-utils.js';
+import { buildTmuxShellCommand, buildTmuxShellCommandWithEnv, wrapWithLoginShell, quoteShellArg, sanitizeTmuxToken, isCopilotAvailable, } from '../tmux-utils.js';
+const mockedExecFileSync = vi.mocked(execFileSync);
 const baselinePlatform = process.platform;
 afterEach(() => {
     vi.unstubAllEnvs();
@@ -187,6 +189,19 @@ describe('createHudWatchPane login shell wrapping', () => {
         const path = require('path');
         const source = fs.readFileSync(path.join(__dirname, '..', 'tmux-utils.ts'), 'utf-8');
         expect(source).toContain('wrapWithLoginShell(hudCmd)');
+    });
+});
+describe('isCopilotAvailable', () => {
+    it('uses shell:true on win32 so npm .cmd wrappers resolve', () => {
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+        mockedExecFileSync.mockReturnValue(Buffer.from('2.1.116'));
+        expect(isCopilotAvailable()).toBe(true);
+        expect(mockedExecFileSync).toHaveBeenCalledWith('claude', ['--version'], {
+            stdio: 'ignore',
+            shell: true,
+        });
+        Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     });
 });
 //# sourceMappingURL=tmux-utils.test.js.map

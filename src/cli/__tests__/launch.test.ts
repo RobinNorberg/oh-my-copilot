@@ -182,6 +182,22 @@ describe('runCopilot — exit code propagation', () => {
 
       expect(processExitSpy).not.toHaveBeenCalled();
     });
+
+    it('uses shell:true on win32 so copilot.cmd can launch', () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      (execFileSync as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from(''));
+
+      runCopilot('/tmp', ['--resume'], 'sid');
+
+      expect(vi.mocked(execFileSync)).toHaveBeenCalledWith('copilot', ['--resume'], {
+        cwd: '/tmp',
+        stdio: 'inherit',
+        shell: true,
+      });
+
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+    });
   });
 
   describe('inside-tmux policy', () => {
@@ -227,6 +243,22 @@ describe('runCopilot — exit code propagation', () => {
       runCopilot('/tmp', [], 'sid');
 
       expect(processExitSpy).not.toHaveBeenCalled();
+    });
+
+    it('uses shell:true on win32 so copilot.cmd can launch inside tmux', () => {
+      const originalPlatform = process.platform;
+      Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      (execFileSync as ReturnType<typeof vi.fn>).mockReturnValue(Buffer.from(''));
+
+      runCopilot('/tmp', ['--continue'], 'sid');
+
+      expect(vi.mocked(execFileSync)).toHaveBeenCalledWith('copilot', ['--continue'], {
+        cwd: '/tmp',
+        stdio: 'inherit',
+        shell: true,
+      });
+
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     });
   });
 });
