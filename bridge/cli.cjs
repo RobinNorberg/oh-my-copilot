@@ -14407,7 +14407,7 @@ function parseCodexMcpServerNames(content) {
     const sectionMatch = line.match(/^\[mcp_servers\.([^\]]+)\]$/);
     if (sectionMatch) {
       const name = sectionMatch[1].trim();
-      if (name) {
+      if (name && CODEX_MCP_SERVER_NAME_PATTERN.test(name)) {
         names.add(name);
       }
     }
@@ -14426,7 +14426,7 @@ function syncCodexConfigToml(existingContent, registry2) {
   const base = stripManagedCodexBlock(existingContent);
   const existingServerNames = parseCodexMcpServerNames(base);
   const managedRegistry = Object.fromEntries(
-    Object.entries(registry2).filter(([name]) => !existingServerNames.has(name))
+    Object.entries(registry2).filter(([name]) => CODEX_MCP_SERVER_NAME_PATTERN.test(name) && !existingServerNames.has(name))
   );
   const managedBlock = renderManagedCodexMcpBlock(managedRegistry);
   const nextContent = managedBlock ? `${base ? `${base}
@@ -14492,7 +14492,7 @@ function readJsonObject(path22) {
     return {};
   }
 }
-var import_fs28, import_os9, import_path37, MANAGED_START, MANAGED_END, DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC, RETIRED_TEAM_MCP_PATH_PATTERN;
+var import_fs28, import_os9, import_path37, MANAGED_START, MANAGED_END, CODEX_MCP_SERVER_NAME_PATTERN, DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC, RETIRED_TEAM_MCP_PATH_PATTERN;
 var init_mcp_registry = __esm({
   "src/installer/mcp-registry.ts"() {
     "use strict";
@@ -14503,6 +14503,7 @@ var init_mcp_registry = __esm({
     init_paths();
     MANAGED_START = "# BEGIN OMC MANAGED MCP REGISTRY";
     MANAGED_END = "# END OMC MANAGED MCP REGISTRY";
+    CODEX_MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
     DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC = 15;
     RETIRED_TEAM_MCP_PATH_PATTERN = /(^|[\\/])bridge[\\/]+team-mcp\.cjs$/i;
   }

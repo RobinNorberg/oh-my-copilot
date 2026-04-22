@@ -46,6 +46,7 @@ export interface UnifiedMcpRegistryStatus {
 
 const MANAGED_START = '# BEGIN OMC MANAGED MCP REGISTRY';
 const MANAGED_END = '# END OMC MANAGED MCP REGISTRY';
+const CODEX_MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 const DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC = 15;
 
 export function getUnifiedMcpRegistryPath(): string {
@@ -445,7 +446,7 @@ function parseCodexMcpServerNames(content: string): Set<string> {
     const sectionMatch = line.match(/^\[mcp_servers\.([^\]]+)\]$/);
     if (sectionMatch) {
       const name = sectionMatch[1].trim();
-      if (name) {
+      if (name && CODEX_MCP_SERVER_NAME_PATTERN.test(name)) {
         names.add(name);
       }
     }
@@ -468,7 +469,9 @@ export function syncCodexConfigToml(existingContent: string, registry: UnifiedMc
   const base = stripManagedCodexBlock(existingContent);
   const existingServerNames = parseCodexMcpServerNames(base);
   const managedRegistry = Object.fromEntries(
-    Object.entries(registry).filter(([name]) => !existingServerNames.has(name))
+    Object.entries(registry).filter(([name]) => (
+      CODEX_MCP_SERVER_NAME_PATTERN.test(name) && !existingServerNames.has(name)
+    ))
   );
   const managedBlock = renderManagedCodexMcpBlock(managedRegistry);
   const nextContent = managedBlock
