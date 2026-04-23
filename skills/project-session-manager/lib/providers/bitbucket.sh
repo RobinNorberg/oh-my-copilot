@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Bitbucket Provider
 
 provider_bitbucket_available() {

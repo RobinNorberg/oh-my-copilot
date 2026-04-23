@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Configuration Management
 
 PSM_ROOT="${HOME}/.psm"

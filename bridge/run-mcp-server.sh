@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # MCP Server wrapper that ensures global npm modules are resolvable
 # This enables @ast-grep/napi and other globally-installed native modules
 

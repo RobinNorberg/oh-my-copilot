@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Azure DevOps Provider
 
 provider_azure_available() {

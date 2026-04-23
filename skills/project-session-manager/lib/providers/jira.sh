@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Jira Provider
 # Uses `jira` CLI (https://github.com/ankitpokhrel/jira-cli)
 

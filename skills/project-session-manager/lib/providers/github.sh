@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM GitHub Provider
 
 provider_github_available() {

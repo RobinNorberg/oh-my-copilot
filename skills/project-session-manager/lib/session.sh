@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Session Registry Management
 
 # Lock file for atomic registry operations

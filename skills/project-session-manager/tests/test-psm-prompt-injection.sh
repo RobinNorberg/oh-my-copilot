@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Regression tests for PSM prompt injection (issue #2506)
 # Root cause: psm_launch_claude only sent "claude Enter" with no task context injected.
 # Fix: psm_render_template + psm_inject_prompt + context file written to worktree.
