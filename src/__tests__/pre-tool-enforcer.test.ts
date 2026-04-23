@@ -649,8 +649,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('blocks tier alias when NO safe model env is configured at all', () => {
@@ -668,8 +667,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('agent-definition deny works via ANTHROPIC_DEFAULT_*_MODEL without OMC_SUBAGENT_MODEL', () => {
@@ -700,11 +698,9 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(output.continue).toBe(true);
-    expect(hookOutput.permissionDecision).toBe('deny');
-    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
-    expect(hookOutput.permissionDecisionReason as string).toContain('claude-opus-4-6');
+    expect(output.permissionDecision).toBe('deny');
+    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(output.permissionDecisionReason as string).toContain('claude-opus-4-6');
   });
 
   it('blocks tier alias when OMC_SUBAGENT_MODEL is itself a bare Anthropic model ID', () => {
@@ -721,8 +717,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('blocks tier alias when OMC_SUBAGENT_MODEL has a [1m] extended-context suffix', () => {
@@ -739,8 +734,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('still blocks bare Anthropic model ID even when OMC_SUBAGENT_MODEL is set', () => {
@@ -757,8 +751,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   // === Agent definition model routing (issue: subagent_type bare-model-id on Bedrock) ===
@@ -790,11 +783,9 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(output.continue).toBe(true);
-    expect(hookOutput.permissionDecision).toBe('deny');
-    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
-    expect(hookOutput.permissionDecisionReason as string).toContain('claude-opus-4-6');
+    expect(output.permissionDecision).toBe('deny');
+    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(output.permissionDecisionReason as string).toContain('claude-opus-4-6');
   });
 
   it('denies Task call when a discovered plugin agent definition has a bare Anthropic model ID', () => {
@@ -824,10 +815,8 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(output.continue).toBe(true);
-    expect(hookOutput.permissionDecision).toBe('deny');
-    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(output.permissionDecision).toBe('deny');
+    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
   });
 
   it('deny message includes the bare model from a plugin definition and suggests the tier alias', () => {
@@ -857,7 +846,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const reason = (output.hookSpecificOutput as Record<string, unknown>).permissionDecisionReason as string;
+    const reason = output.permissionDecisionReason as string;
     expect(reason).toContain('claude-opus-4-6');
     expect(reason).toContain('opus'); // tier alias suggestion
     expect(reason).toContain('global.anthropic.claude-sonnet-4-6'); // resolved safe model in guidance
@@ -905,9 +894,8 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(hookOutput.permissionDecision as string).toBe('deny');
-    expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
+    expect(output.permissionDecision as string).toBe('deny');
+    expect(output.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('does NOT deny subagent_type call when forceInherit is disabled', () => {
@@ -1146,11 +1134,9 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     );
 
     // Quoted model "claude-opus-4-6" must be stripped of quotes before the safety check
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(output.continue).toBe(true);
-    expect(hookOutput.permissionDecision).toBe('deny');
-    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
-    expect(hookOutput.permissionDecisionReason as string).toContain('claude-opus-4-6');
+    expect(output.permissionDecision).toBe('deny');
+    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(output.permissionDecisionReason as string).toContain('claude-opus-4-6');
   });
 
   it('allows a valid provider-specific model ID written with YAML quotes', () => {
@@ -1215,11 +1201,9 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
 
     // BOM must be stripped so the frontmatter regex matches and the bare
     // Anthropic model ID triggers a deny — not silently bypassed.
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
-    expect(output.continue).toBe(true);
-    expect(hookOutput.permissionDecision).toBe('deny');
-    expect(hookOutput.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
-    expect(hookOutput.permissionDecisionReason as string).toContain('bom-agent');
+    expect(output.permissionDecision).toBe('deny');
+    expect(output.permissionDecisionReason as string).toContain('[MODEL ROUTING]');
+    expect(output.permissionDecisionReason as string).toContain('bom-agent');
   });
 
   it('does NOT deny Agent call without subagent_type in forceInherit mode (normal inheritance unchanged)', () => {
