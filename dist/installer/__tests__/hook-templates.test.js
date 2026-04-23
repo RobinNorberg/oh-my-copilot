@@ -64,6 +64,29 @@ describe('keyword-detector packaged artifacts', () => {
         const pluginSlopResult = JSON.stringify(runKeywordHook(pluginPath, 'deslop this module with duplicate dead code'));
         expect(pluginSlopResult).toContain('[MAGIC KEYWORD: AI-SLOP-CLEANER]');
     });
+    it('emits compact skill invocation guidance instead of full SKILL.md bodies', () => {
+        const templatePath = join(packageRoot, 'templates', 'hooks', 'keyword-detector.mjs');
+        const pluginPath = join(packageRoot, 'scripts', 'keyword-detector.mjs');
+        for (const scriptPath of [templatePath, pluginPath]) {
+            const result = runKeywordHook(scriptPath, 'ralph execute and code review this change');
+            const context = JSON.stringify(result);
+            expect(context).toContain('[MAGIC KEYWORD: RALPH]');
+            expect(context).toContain('Preferred invocation: /oh-my-copilot:ralph');
+            expect(context).toContain('Read fallback:');
+            expect(context).not.toContain('name: ralph');
+            expect(context).not.toContain('[RALPH + ULTRAWORK');
+            expect(context.length).toBeLessThan(2000);
+        }
+    });
+    it('keeps multi-skill keyword payloads under a compact budget', () => {
+        const pluginPath = join(packageRoot, 'scripts', 'keyword-detector.mjs');
+        const result = runKeywordHook(pluginPath, 'ralph with ultrawork and ralplan this migration');
+        const context = JSON.stringify(result);
+        expect(context).toContain('[MAGIC KEYWORDS DETECTED: RALPH, ULTRAWORK]');
+        expect(context).toContain('Do not inline full SKILL.md files');
+        expect(context).not.toContain('[RALPH + ULTRAWORK');
+        expect(context.length).toBeLessThan(4000);
+    });
     it('only triggers ai-slop-cleaner for anti-slop cleanup/refactor prompts (plugin script)', () => {
         const pluginPath = join(packageRoot, 'scripts', 'keyword-detector.mjs');
         const positivePrompt = 'cleanup this ai slop: remove dead code and duplicate wrappers';
