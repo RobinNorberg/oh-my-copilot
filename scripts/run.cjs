@@ -10,9 +10,9 @@
  * /usr/bin/sh is a PE32+ binary the OS refuses to execute natively.
  * Fixes issues #909, #899, #892, #869.
  *
- * Usage (from hooks.json, after setup patches the absolute node path in):
- *   /abs/path/to/node "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs" \
- *       "${CLAUDE_PLUGIN_ROOT}/scripts/<hook>.mjs" [args...]
+ * Usage (from hooks.json):
+ *   /abs/path/to/node "${PLUGIN_ROOT}/scripts/run.cjs" \
+ *       "${PLUGIN_ROOT}/scripts/<hook>.mjs" [args...]
  *
  * During post-install setup, the leading `node` token is replaced with
  * process.execPath so nvm/fnm users and Windows users all get the right binary.
@@ -24,16 +24,16 @@ const { join, basename, dirname } = require('path');
 
 const target = process.argv[2];
 if (!target) {
-  // Nothing to run — exit cleanly so Claude Code hooks are never blocked.
+  // Nothing to run — exit cleanly so hooks are never blocked.
   process.exit(0);
 }
 
 /**
- * Resolve the hook script target path, handling stale CLAUDE_PLUGIN_ROOT.
+ * Resolve the hook script target path, handling stale PLUGIN_ROOT.
  *
  * When a plugin update replaces an old version directory with a symlink (or
  * deletes it entirely), sessions that still reference the old version via
- * CLAUDE_PLUGIN_ROOT will fail with MODULE_NOT_FOUND.
+ * PLUGIN_ROOT will fail with MODULE_NOT_FOUND.
  *
  * Resolution strategy:
  *   1. Use the target as-is if it exists.
@@ -57,10 +57,10 @@ function resolveTarget(targetPath) {
   }
 
   // Fallback: scan plugin cache for the same script in the latest version.
-  // CLAUDE_PLUGIN_ROOT is e.g. ~/.claude/plugins/cache/omc/oh-my-copilot/4.2.14
+  // PLUGIN_ROOT is e.g. ~/.copilot/plugins/cache/omc/oh-my-copilot/4.2.14
   // We look one level up for sibling version directories.
   try {
-    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+    const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
     if (!pluginRoot) return null;
 
     const cacheBase = dirname(pluginRoot);          // .../oh-my-copilot/
@@ -134,7 +134,7 @@ function resolveHookTimeoutMs(targetPath, extraArgs) {
 const resolved = resolveTarget(target);
 if (!resolved) {
   // Target not found anywhere — exit cleanly so hooks are never blocked.
-  // This is the graceful fallback for stale CLAUDE_PLUGIN_ROOT paths.
+  // This is the graceful fallback for stale PLUGIN_ROOT paths.
   process.exit(0);
 }
 

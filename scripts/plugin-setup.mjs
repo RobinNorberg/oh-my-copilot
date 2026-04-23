@@ -271,9 +271,10 @@ try {
 // substitutes the real process.execPath so Copilot CLI always invokes the same
 // Node binary that ran this setup script.
 //
-// Two patterns are handled:
-//  1. New format  – node "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs" ... (all platforms)
-//  2. Old format  – sh  "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" ... (Windows
+// Three patterns are handled:
+//  1. Current  – node "${PLUGIN_ROOT}/scripts/run.cjs" ... (all platforms)
+//  2. Legacy   – node "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs" ... (migration)
+//  3. Old format  – sh  "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" ... (Windows
 //     backward-compat: migrates old installs to the new run.cjs chain)
 //
 // Fixes issues #909, #899, #892, #869.
@@ -283,11 +284,11 @@ try {
     const data = JSON.parse(readFileSync(hooksJsonPath, 'utf-8'));
     let patched = false;
 
-    // Pattern 1 (new): node "${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs" <rest>
+    // Pattern 1+2 (current/legacy): node "${PLUGIN_ROOT}/scripts/run.cjs" <rest>
     const runCjsPattern =
-      /^node ("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/run\.cjs".*)$/;
+      /^node ("\$\{(?:PLUGIN_ROOT|CLAUDE_PLUGIN_ROOT)\}\/scripts\/run\.cjs".*)$/;
 
-    // Pattern 2 (old, Windows backward-compat): sh find-node.sh <target> [args]
+    // Pattern 3 (old, Windows backward-compat): sh find-node.sh <target> [args]
     const findNodePattern =
       /^sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/find-node\.sh" "(\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"]+)"(.*)$/;
 
@@ -308,7 +309,7 @@ try {
           if (process.platform === 'win32') {
             const m2 = hook.command.match(findNodePattern);
             if (m2) {
-              hook.command = `"${nodeBin}" "\${CLAUDE_PLUGIN_ROOT}/scripts/run.cjs" "${m2[1]}"${m2[2]}`;
+              hook.command = `"${nodeBin}" "\${PLUGIN_ROOT}/scripts/run.cjs" "${m2[1]}"${m2[2]}`;
               patched = true;
             }
           }

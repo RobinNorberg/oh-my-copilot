@@ -5,7 +5,7 @@
  * hook scripts, respecting the OMC_STATE_DIR environment variable.
  *
  * Delegates to getOmcRoot() from dist/lib/worktree-paths.js (the canonical
- * implementation) when CLAUDE_PLUGIN_ROOT is available. Falls back to inline
+ * implementation) when PLUGIN_ROOT is available. Falls back to inline
  * logic when dist is not built — this should never happen in production, but
  * provides a safe fallback during development or first-run scenarios.
  *
@@ -13,7 +13,7 @@
  *   - Uses directory path as hash source (not git remote URL). Matches
  *     canonical behavior for local-only repos; may differ for remote-backed
  *     repos when dist is missing — acceptable since dist is always present
- *     in production (CLAUDE_PLUGIN_ROOT is always set).
+ *     in production (PLUGIN_ROOT is always set).
  */
 
 import { join, basename } from 'path';
@@ -27,7 +27,7 @@ import { pathToFileURL } from 'url';
  * @returns {Promise<string>} Absolute path to the .omcp root
  */
 export async function resolveOmcStateRoot(directory) {
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
   if (pluginRoot) {
     try {
       const { getOmcRoot } = await import(
