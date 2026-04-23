@@ -31,8 +31,8 @@ import { fileURLToPath } from 'url';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { readStdin } from './lib/stdin.mjs';
 
-// Resolve OMC package root: CLAUDE_PLUGIN_ROOT (plugin system) or derive from this script's location
-const _omcRoot = process.env.CLAUDE_PLUGIN_ROOT ||
+// Resolve OMC package root: PLUGIN_ROOT (plugin system) or derive from this script's location
+const _omcRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT ||
   join(dirname(fileURLToPath(import.meta.url)), '..');
 
 /**

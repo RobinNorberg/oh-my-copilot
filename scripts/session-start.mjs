@@ -49,7 +49,7 @@ function readJsonFile(path) {
 }
 
 function getRuntimeBaseDir() {
-  return process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
+  return process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
 }
 
 async function loadProjectMemoryModules() {
@@ -204,10 +204,10 @@ function extractOmcVersion(content) {
   return match ? match[1] : null;
 }
 
-// Get plugin version from CLAUDE_PLUGIN_ROOT
+// Get plugin version from PLUGIN_ROOT
 function getPluginVersion() {
   try {
-    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+    const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
     if (!pluginRoot) return null;
     const pkg = readJsonFile(join(pluginRoot, 'package.json'));
     return pkg?.version || null;
@@ -456,7 +456,7 @@ async function main() {
     } catch {}
 
     // Warn if silentAutoUpdate is enabled but running in plugin mode (#1773)
-    if (process.env.CLAUDE_PLUGIN_ROOT) {
+    if (process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
       try {
         const omcConfigPath = join(configDir, '.omc-config.json');
         const omcConfig = readJsonFile(omcConfigPath);
@@ -682,12 +682,13 @@ ${cleanContent}
         }
       }
 
-      // Guard against CLAUDE_PLUGIN_ROOT pointing to a stale/deleted version.
+      // Guard against PLUGIN_ROOT pointing to a stale/deleted version.
       // When an old version directory is removed during upgrade but a running
-      // session still has the old CLAUDE_PLUGIN_ROOT in its environment, the
+      // session still has the old PLUGIN_ROOT in its environment, the
       // directory won't exist. Create a symlink so subsequent hook invocations
       // via run.cjs resolve correctly.
-      const pluginRootEnv = process.env.CLAUDE_PLUGIN_ROOT?.replace(/[\/\\]+$/, ''); // strip trailing separators
+      const pluginRootEnv = (process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || '')
+        .replace(/[\/\\]+$/, ''); // strip trailing separators
       if (pluginRootEnv && !existsSync(pluginRootEnv)) {
         const pluginRootVersion = basename(pluginRootEnv);
         if (/^\d+\.\d+\.\d+/.test(pluginRootVersion) && versions.length > 0) {
@@ -722,7 +723,7 @@ ${cleanContent}
 
     // Send session-start notification (non-blocking, fire-and-forget)
     try {
-      const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+      const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
       if (pluginRoot) {
         const { notify } = await import(pathToFileURL(join(pluginRoot, 'dist', 'notifications', 'index.js')).href);
         // Fire and forget - don't await, don't block session start

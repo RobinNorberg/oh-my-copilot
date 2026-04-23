@@ -12,7 +12,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 function getRuntimeBaseDir() {
-  return process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
+  return process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
 }
 
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)

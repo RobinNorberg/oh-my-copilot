@@ -244,7 +244,7 @@ async function sendStopNotification(modeName, stateData, sessionId, directory) {
   if (stateData._stopNotified) return;
 
   try {
-    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+    const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
     if (!pluginRoot) return;
 
     const { pathToFileURL } = require('url');
@@ -1327,7 +1327,7 @@ async function main() {
     const idleRepoState = getIdleNotificationRepoState(directory);
     if (sessionId && shouldSendIdleNotification(stateDir, idleRepoState)) {
       try {
-        const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+        const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
         if (pluginRoot) {
           const { pathToFileURL } = require('url');
           import(pathToFileURL(join(pluginRoot, 'dist', 'notifications', 'index.js')).href)

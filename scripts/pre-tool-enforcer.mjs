@@ -82,10 +82,10 @@ function readAgentDefinitionModel(subagentType) {
   // Reject path traversal: agent names are simple identifiers; no path separators allowed.
   if (!/^[a-zA-Z0-9_-]+$/.test(agentType)) return null;
   // Build a prioritised list of agents/ directories to search.
-  // CLAUDE_PLUGIN_ROOT is tried first when set; the script-relative path is always the
+  // PLUGIN_ROOT is tried first when set; the script-relative path is always the
   // final fallback. Checking per-file (not just per-directory) means a partially-populated
   // plugin install doesn't hide agents that exist in the script-relative tree.
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
   const scriptAgentsDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'agents');
   const candidateDirs = [
     ...(pluginRoot ? [join(pluginRoot, 'agents')] : []),
@@ -755,12 +755,8 @@ async function main() {
               ? `Set ANTHROPIC_DEFAULT_${derivedTier}_MODEL=<valid-bedrock-id> in settings.json env, or set OMC_SUBAGENT_MODEL as a global override.`
               : `Remove the \`model\` parameter, or set ANTHROPIC_DEFAULT_SONNET_MODEL=<valid-bedrock-id> in settings.json env.`;
             console.log(JSON.stringify({
-              continue: true,
-              hookSpecificOutput: {
-                hookEventName: 'PreToolUse',
-                permissionDecision: 'deny',
-                permissionDecisionReason: `[MODEL ROUTING] This environment uses a non-standard provider (Bedrock/Vertex/proxy). ${guidance} The model "${toolModel}" is not valid for this provider.`
-              }
+              permissionDecision: 'deny',
+              permissionDecisionReason: `[MODEL ROUTING] This environment uses a non-standard provider (Bedrock/Vertex/proxy). ${guidance} The model "${toolModel}" is not valid for this provider.`
             }));
             return;
           }
@@ -777,12 +773,8 @@ async function main() {
             ? `Pass model="${tierAlias}" explicitly on this ${toolName} call — tier aliases resolve cleanly on Bedrock.`
             : `Pass model="${tierAlias}" explicitly on this ${toolName} call, and set ANTHROPIC_DEFAULT_${tierAlias.toUpperCase()}_MODEL=<valid-bedrock-id> in settings.json env.`;
           console.log(JSON.stringify({
-            continue: true,
-            hookSpecificOutput: {
-              hookEventName: 'PreToolUse',
-              permissionDecision: 'deny',
-              permissionDecisionReason: `[MODEL ROUTING] Your session model "${sessionModel}" has a context-window suffix ([1m]) that sub-agents cannot inherit — the runtime strips it to a bare Anthropic model ID which is invalid on Bedrock. ${suggestion}`
-            }
+            permissionDecision: 'deny',
+            permissionDecisionReason: `[MODEL ROUTING] Your session model "${sessionModel}" has a context-window suffix ([1m]) that sub-agents cannot inherit — the runtime strips it to a bare Anthropic model ID which is invalid on Bedrock. ${suggestion}`
           }));
           return;
         }
@@ -804,12 +796,8 @@ async function main() {
             const guidance = `Add model="${defTierAlias}" to this ${toolName} call — tier aliases resolve to configured provider models (${resolvedModel}).`;
             const agentType = (toolInput.subagent_type).replace(/^oh-my-copilot:/, '');
             console.log(JSON.stringify({
-              continue: true,
-              hookSpecificOutput: {
-                hookEventName: 'PreToolUse',
-                permissionDecision: 'deny',
-                permissionDecisionReason: `[MODEL ROUTING] Agent type "${agentType}" has model "${agentDefModel}" in its definition, which is not valid for this Bedrock/Vertex/proxy environment. ${guidance}`
-              }
+              permissionDecision: 'deny',
+              permissionDecisionReason: `[MODEL ROUTING] Agent type "${agentType}" has model "${agentDefModel}" in its definition, which is not valid for this Bedrock/Vertex/proxy environment. ${guidance}`
             }));
             return;
           }
@@ -823,7 +811,7 @@ async function main() {
     // Fires in PreToolUse so users get notified BEFORE the tool blocks for input (#597)
     if (toolName === 'AskUserQuestion') {
       try {
-        const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+        const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
         if (pluginRoot) {
           const { notify } = await import(pathToFileURL(join(pluginRoot, 'dist', 'notifications', 'index.js')).href);
 
