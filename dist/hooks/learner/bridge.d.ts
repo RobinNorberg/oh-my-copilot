@@ -45,6 +45,8 @@ export interface MatchedSkill {
     path: string;
     name: string;
     content: string;
+    description?: string;
+    summary?: string;
     score: number;
     scope: "user" | "project";
     triggers: string[];
