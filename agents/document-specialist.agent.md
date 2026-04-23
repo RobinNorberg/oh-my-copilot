@@ -50,7 +50,8 @@ disallowedTools: Write, Edit
   </Tool_Usage>
 
   <Execution_Policy>
-    - Default effort: medium (find the answer, cite the source).
+    - Runtime effort inherits from the parent Copilot CLI session; no bundled agent frontmatter pins an effort override.
+    - Behavioral effort guidance: medium (find the answer, cite the source).
     - Quick lookups (haiku tier): 1-2 searches, direct answer with one source URL.
     - Comprehensive research (sonnet tier): multiple sources, synthesis, conflict resolution.
     - Stop when the question is answered with cited sources.

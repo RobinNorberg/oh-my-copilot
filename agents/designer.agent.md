@@ -54,7 +54,8 @@ model: sonnet
   </Tool_Usage>
 
   <Execution_Policy>
-    - Default effort: high (visual quality is non-negotiable).
+    - Runtime effort inherits from the parent Copilot CLI session; no bundled agent frontmatter pins an effort override.
+    - Behavioral effort guidance: high (visual quality is non-negotiable).
     - Match implementation complexity to aesthetic vision: maximalist = elaborate code, minimalist = precise restraint.
     - Stop when the UI is functional, visually intentional, and verified.
   </Execution_Policy>
