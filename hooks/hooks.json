@@ -56,6 +56,12 @@
       },
       {
         "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/safe-command-approver.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/safe-command-approver.mjs\"",
+        "timeoutSec": 3
+      },
+      {
+        "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/pre-tool-enforcer.mjs\"",
         "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/pre-tool-enforcer.mjs\"",
         "timeoutSec": 3
