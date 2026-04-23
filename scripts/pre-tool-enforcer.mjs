@@ -755,12 +755,8 @@ async function main() {
               ? `Set ANTHROPIC_DEFAULT_${derivedTier}_MODEL=<valid-bedrock-id> in settings.json env, or set OMC_SUBAGENT_MODEL as a global override.`
               : `Remove the \`model\` parameter, or set ANTHROPIC_DEFAULT_SONNET_MODEL=<valid-bedrock-id> in settings.json env.`;
             console.log(JSON.stringify({
-              continue: true,
-              hookSpecificOutput: {
-                hookEventName: 'PreToolUse',
-                permissionDecision: 'deny',
-                permissionDecisionReason: `[MODEL ROUTING] This environment uses a non-standard provider (Bedrock/Vertex/proxy). ${guidance} The model "${toolModel}" is not valid for this provider.`
-              }
+              permissionDecision: 'deny',
+              permissionDecisionReason: `[MODEL ROUTING] This environment uses a non-standard provider (Bedrock/Vertex/proxy). ${guidance} The model "${toolModel}" is not valid for this provider.`
             }));
             return;
           }
@@ -777,12 +773,8 @@ async function main() {
             ? `Pass model="${tierAlias}" explicitly on this ${toolName} call — tier aliases resolve cleanly on Bedrock.`
             : `Pass model="${tierAlias}" explicitly on this ${toolName} call, and set ANTHROPIC_DEFAULT_${tierAlias.toUpperCase()}_MODEL=<valid-bedrock-id> in settings.json env.`;
           console.log(JSON.stringify({
-            continue: true,
-            hookSpecificOutput: {
-              hookEventName: 'PreToolUse',
-              permissionDecision: 'deny',
-              permissionDecisionReason: `[MODEL ROUTING] Your session model "${sessionModel}" has a context-window suffix ([1m]) that sub-agents cannot inherit — the runtime strips it to a bare Anthropic model ID which is invalid on Bedrock. ${suggestion}`
-            }
+            permissionDecision: 'deny',
+            permissionDecisionReason: `[MODEL ROUTING] Your session model "${sessionModel}" has a context-window suffix ([1m]) that sub-agents cannot inherit — the runtime strips it to a bare Anthropic model ID which is invalid on Bedrock. ${suggestion}`
           }));
           return;
         }
@@ -804,12 +796,8 @@ async function main() {
             const guidance = `Add model="${defTierAlias}" to this ${toolName} call — tier aliases resolve to configured provider models (${resolvedModel}).`;
             const agentType = (toolInput.subagent_type).replace(/^oh-my-copilot:/, '');
             console.log(JSON.stringify({
-              continue: true,
-              hookSpecificOutput: {
-                hookEventName: 'PreToolUse',
-                permissionDecision: 'deny',
-                permissionDecisionReason: `[MODEL ROUTING] Agent type "${agentType}" has model "${agentDefModel}" in its definition, which is not valid for this Bedrock/Vertex/proxy environment. ${guidance}`
-              }
+              permissionDecision: 'deny',
+              permissionDecisionReason: `[MODEL ROUTING] Agent type "${agentType}" has model "${agentDefModel}" in its definition, which is not valid for this Bedrock/Vertex/proxy environment. ${guidance}`
             }));
             return;
           }
