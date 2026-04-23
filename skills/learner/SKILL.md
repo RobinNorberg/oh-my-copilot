@@ -63,7 +63,7 @@ The system REJECTS skills that are:
 **Step 3: Save Location**
 
 - **User-level**: ${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/ - Rare. Only for truly portable insights.
-- **Project-level**: .omcp/skills/ - Default. Version-controlled with repo.
+- **Project-level**: .omcp/skills/ - Default. Intended to be committed with the repo when you want the team to keep the skill. In linked worktrees, uncommitted skills are still worktree-local and disappear if that worktree is deleted.
 
 ### What Makes a USEFUL Skill
 
