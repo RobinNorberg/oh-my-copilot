@@ -29021,7 +29021,7 @@ function wrapWithLoginShell(command) {
     const comspec = process.env.COMSPEC || "cmd.exe";
     return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
   }
-  const shell = process.env.SHELL || "/bin/bash";
+  const shell = process.env.SHELL || "/bin/sh";
   const shellName = (0, import_path61.basename)(shell).replace(/\.(exe|cmd|bat)$/i, "");
   const rcFile = process.env.HOME ? `${process.env.HOME}/.${shellName}rc` : "";
   const sourcePrefix = rcFile ? `[ -f ${quoteShellArg2(rcFile)} ] && . ${quoteShellArg2(rcFile)}; ` : "";
@@ -34052,10 +34052,11 @@ var init_model_contract = __esm({
         binary: "codex",
         installInstructions: "Install Codex CLI: npm install -g @openai/codex",
         supportsPromptMode: true,
-        // Codex accepts prompt as a positional argument (no flag needed):
-        //   codex [OPTIONS] [PROMPT]
+        // Codex uses the `exec` subcommand for non-interactive runs that exit
+        // on completion. The prompt still remains positional after options:
+        //   codex exec [OPTIONS] [PROMPT]
         buildLaunchArgs(model, extraFlags = []) {
-          const args = ["--dangerously-bypass-approvals-and-sandbox"];
+          const args = ["exec", "--dangerously-bypass-approvals-and-sandbox"];
           if (model) args.push("--model", model);
           return [...args, ...extraFlags];
         },
@@ -34081,7 +34082,7 @@ var init_model_contract = __esm({
         binary: "gemini",
         installInstructions: "Install Gemini CLI: npm install -g @google/gemini-cli",
         supportsPromptMode: true,
-        promptModeFlag: "-i",
+        promptModeFlag: "-p",
         buildLaunchArgs(model, extraFlags = []) {
           const args = ["--approval-mode", "yolo"];
           if (model) args.push("--model", model);
@@ -34199,7 +34200,7 @@ function getDefaultShell() {
   if (process.platform === "win32" && !isUnixLikeOnWindows2()) {
     return process.env.COMSPEC || "cmd.exe";
   }
-  const shell = process.env.SHELL || "/bin/bash";
+  const shell = process.env.SHELL || "/bin/sh";
   const name = (0, import_path76.basename)(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";

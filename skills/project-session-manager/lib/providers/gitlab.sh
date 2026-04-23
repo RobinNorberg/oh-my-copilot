@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM GitLab Provider
 
 provider_gitlab_available() {

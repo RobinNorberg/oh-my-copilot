@@ -126,15 +126,15 @@ describe('spawnWorkerForTask – prompt mode (Gemini & Codex)', () => {
         cwd = mkdtempSync(join(tmpdir(), 'runtime-gemini-prompt-'));
         setupTaskDir(cwd);
     });
-    it('gemini worker launch args include -i flag with inbox path', async () => {
+    it('gemini worker launch args include -p flag with inbox path', async () => {
         const runtime = makeRuntime(cwd, 'gemini');
         await spawnWorkerForTask(runtime, 'worker-1', 0);
         // Find the send-keys call that launches the worker (contains -l flag)
         const launchCall = tmuxCalls.args.find(args => args[0] === 'send-keys' && args.includes('-l'));
         expect(launchCall).toBeDefined();
         const launchCmd = launchCall[launchCall.length - 1];
-        // Should contain -i flag for interactive mode
-        expect(launchCmd).toContain("'-i'");
+        // Should contain -p flag for headless prompt mode
+        expect(launchCmd).toContain("'-p'");
         // Should contain the inbox path reference
         expect(launchCmd).toContain('.omcp/state/team/test-team/workers/worker-1/inbox.md');
         rmSync(cwd, { recursive: true, force: true });
@@ -161,15 +161,17 @@ describe('spawnWorkerForTask – prompt mode (Gemini & Codex)', () => {
         expect(content).toContain('Do something');
         rmSync(cwd, { recursive: true, force: true });
     });
-    it('codex worker launch args include positional prompt (no -p flag)', async () => {
+    it('codex worker launch args include exec subcommand with positional prompt (no extra prompt flag)', async () => {
         const runtime = makeRuntime(cwd, 'codex');
         await spawnWorkerForTask(runtime, 'worker-1', 0);
         // Find the send-keys call that launches the worker (contains -l flag)
         const launchCall = tmuxCalls.args.find(args => args[0] === 'send-keys' && args.includes('-l'));
         expect(launchCall).toBeDefined();
         const launchCmd = launchCall[launchCall.length - 1];
-        // Should NOT contain -i flag (codex uses positional argument, not a flag)
+        // Should invoke codex exec; codex keeps the prompt positional after that
+        expect(launchCmd).toContain("'exec'");
         expect(launchCmd).not.toContain("'-i'");
+        expect(launchCmd).not.toContain("'-p'");
         // Should contain the inbox path as a positional argument
         expect(launchCmd).toContain('.omcp/state/team/test-team/workers/worker-1/inbox.md');
         rmSync(cwd, { recursive: true, force: true });

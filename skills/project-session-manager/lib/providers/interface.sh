@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Provider Interface
 # Each provider implements: _available, _detect_ref, _fetch_issue, _issue_closed,
 #                          _fetch_pr (optional), _pr_merged (optional), _clone_url

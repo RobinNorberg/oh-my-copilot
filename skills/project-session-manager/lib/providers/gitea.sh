@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Gitea Provider
 
 provider_gitea_available() {

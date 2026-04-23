@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # PR #25 Test Suite: qa-tester agent with tmux support
 #

@@ -153,6 +153,7 @@ describe('model-contract', () => {
         });
         it('codex includes --dangerously-bypass-approvals-and-sandbox', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp' });
+            expect(args[0]).toBe('exec');
             expect(args).not.toContain('--full-auto');
             expect(args).toContain('--dangerously-bypass-approvals-and-sandbox');
         });
@@ -160,7 +161,7 @@ describe('model-contract', () => {
             const args = buildLaunchArgs('gemini', { teamName: 't', workerName: 'w', cwd: '/tmp' });
             expect(args).toContain('--approval-mode');
             expect(args).toContain('yolo');
-            expect(args).not.toContain('-i');
+            expect(args).not.toContain('-p');
         });
         it('passes model flag when specified', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'gpt-4' });
@@ -221,6 +222,7 @@ describe('model-contract', () => {
             mockSpawnSync.mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null });
             expect(buildWorkerArgv('codex', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' })).toEqual([
                 'codex',
+                'exec',
                 '--dangerously-bypass-approvals-and-sandbox',
             ]);
             const finder = process.platform === 'win32' ? 'where' : 'which';
@@ -294,7 +296,7 @@ describe('model-contract', () => {
             expect(isPromptModeAgent('gemini')).toBe(true);
             const c = getContract('gemini');
             expect(c.supportsPromptMode).toBe(true);
-            expect(c.promptModeFlag).toBe('-i');
+            expect(c.promptModeFlag).toBe('-p');
         });
         it('copilot does not support prompt mode', () => {
             expect(isPromptModeAgent('claude')).toBe(false);
@@ -307,7 +309,7 @@ describe('model-contract', () => {
         });
         it('getPromptModeArgs returns flag + instruction for gemini', () => {
             const args = getPromptModeArgs('gemini', 'Read inbox');
-            expect(args).toEqual(['-i', 'Read inbox']);
+            expect(args).toEqual(['-p', 'Read inbox']);
         });
         it('getPromptModeArgs returns instruction only (positional) for codex', () => {
             const args = getPromptModeArgs('codex', 'Read inbox');

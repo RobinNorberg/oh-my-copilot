@@ -860,7 +860,7 @@ function getDefaultShell() {
   if (process.platform === "win32" && !isUnixLikeOnWindows()) {
     return process.env.COMSPEC || "cmd.exe";
   }
-  const shell = process.env.SHELL || "/bin/bash";
+  const shell = process.env.SHELL || "/bin/sh";
   const name = basename3(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
@@ -2266,10 +2266,11 @@ var init_model_contract = __esm({
         binary: "codex",
         installInstructions: "Install Codex CLI: npm install -g @openai/codex",
         supportsPromptMode: true,
-        // Codex accepts prompt as a positional argument (no flag needed):
-        //   codex [OPTIONS] [PROMPT]
+        // Codex uses the `exec` subcommand for non-interactive runs that exit
+        // on completion. The prompt still remains positional after options:
+        //   codex exec [OPTIONS] [PROMPT]
         buildLaunchArgs(model, extraFlags = []) {
-          const args = ["--dangerously-bypass-approvals-and-sandbox"];
+          const args = ["exec", "--dangerously-bypass-approvals-and-sandbox"];
           if (model) args.push("--model", model);
           return [...args, ...extraFlags];
         },
@@ -2295,7 +2296,7 @@ var init_model_contract = __esm({
         binary: "gemini",
         installInstructions: "Install Gemini CLI: npm install -g @google/gemini-cli",
         supportsPromptMode: true,
-        promptModeFlag: "-i",
+        promptModeFlag: "-p",
         buildLaunchArgs(model, extraFlags = []) {
           const args = ["--approval-mode", "yolo"];
           if (model) args.push("--model", model);

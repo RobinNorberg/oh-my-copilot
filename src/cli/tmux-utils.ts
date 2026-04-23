@@ -333,7 +333,7 @@ export function wrapWithLoginShell(command: string): string {
     return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
   }
 
-  const shell = process.env.SHELL || '/bin/bash';
+  const shell = process.env.SHELL || '/bin/sh';
   const shellName = basename(shell).replace(/\.(exe|cmd|bat)$/i, '');
   const rcFile = process.env.HOME ? `${process.env.HOME}/.${shellName}rc` : '';
   const sourcePrefix = rcFile
