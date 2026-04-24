@@ -1,16 +1,17 @@
 {
   "version": 1,
-  "description": "OMC orchestration hooks with async capabilities",
   "hooks": {
     "userPromptSubmitted": [
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/keyword-detector.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/keyword-detector.mjs\"",
         "timeoutSec": 5
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/skill-injector.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/skill-injector.mjs\"",
         "timeoutSec": 3
       }
     ],
@@ -18,26 +19,31 @@
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/session-start.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/session-start.mjs\"",
         "timeoutSec": 5
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-session.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-session.mjs\"",
         "timeoutSec": 5
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-session-start.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-session-start.mjs\"",
         "timeoutSec": 5
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/setup-init.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/setup-init.mjs\"",
         "timeoutSec": 30
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/setup-maintenance.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/setup-maintenance.mjs\"",
         "timeoutSec": 60
       }
     ],
@@ -45,16 +51,25 @@
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/subagent-tracker.mjs\" start",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/subagent-tracker.mjs\" start",
+        "timeoutSec": 3
+      },
+      {
+        "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/safe-command-approver.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/safe-command-approver.mjs\"",
         "timeoutSec": 3
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/pre-tool-enforcer.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/pre-tool-enforcer.mjs\"",
         "timeoutSec": 3
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/context-safety.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/context-safety.mjs\"",
         "timeoutSec": 3
       }
     ],
@@ -62,11 +77,13 @@
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/post-tool-verifier.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/post-tool-verifier.mjs\"",
         "timeoutSec": 3
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-posttool.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-posttool.mjs\"",
         "timeoutSec": 3
       }
     ],
@@ -74,6 +91,7 @@
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/post-tool-use-failure.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/post-tool-use-failure.mjs\"",
         "timeoutSec": 3
       }
     ],
@@ -81,11 +99,13 @@
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/subagent-tracker.mjs\" stop",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/subagent-tracker.mjs\" stop",
         "timeoutSec": 5
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/verify-deliverables.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/verify-deliverables.mjs\"",
         "timeoutSec": 5
       }
     ],
@@ -93,51 +113,52 @@
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/pre-compact.mjs\"",
-        "timeoutSec": 10
-      },
-      {
-        "type": "command",
-        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-precompact.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/pre-compact.mjs\"",
         "timeoutSec": 5
       },
       {
         "type": "command",
+        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-precompact.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/project-memory-precompact.mjs\"",
+        "timeoutSec": 3
+      },
+      {
+        "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-pre-compact.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-pre-compact.mjs\"",
         "timeoutSec": 3
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/context-guard-stop.mjs\"",
-        "timeoutSec": 5
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/context-guard-stop.mjs\"",
+        "timeoutSec": 3
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/persistent-mode.cjs\"",
-        "timeoutSec": 10
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/persistent-mode.cjs\"",
+        "timeoutSec": 5
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/code-simplifier.mjs\"",
-        "timeoutSec": 5
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/code-simplifier.mjs\"",
+        "timeoutSec": 3
       }
     ],
     "sessionEnd": [
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/session-end.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/session-end.mjs\"",
         "timeoutSec": 10
       },
       {
         "type": "command",
         "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-session-end.mjs\"",
+        "powershell": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/wiki-session-end.mjs\"",
         "timeoutSec": 30
-      }
-    ],
-    "permissionRequest": [
-      {
-        "type": "command",
-        "bash": "node \"${PLUGIN_ROOT}/scripts/run.cjs\" \"${PLUGIN_ROOT}/scripts/permission-handler.mjs\"",
-        "timeoutSec": 3
       }
     ]
   }

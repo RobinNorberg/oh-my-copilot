@@ -101,7 +101,7 @@ describe('scaleUp launch config', () => {
         }
     });
     it.each([
-        ['codex', ['/usr/bin/codex', '--dangerously-bypass-approvals-and-sandbox']],
+        ['codex', ['/usr/bin/codex', 'exec', '--dangerously-bypass-approvals-and-sandbox']],
         ['gemini', ['/usr/bin/gemini', '--approval-mode', 'yolo']],
     ])('uses model-contract launch argv for %s scale-up workers', async (agentType, workerArgv) => {
         modelContractMocks.buildWorkerArgv.mockReturnValue(workerArgv);

@@ -44,7 +44,7 @@ function withMutex<T>(projectRoot: string, fn: () => Promise<T>): Promise<T> {
 export async function learnFromToolOutput(
   toolName: string,
   toolInput: any,
-  toolOutput: string,
+  toolOutput: unknown,
   projectRoot: string,
   userMessage?: string
 ): Promise<void> {
@@ -167,7 +167,11 @@ function isTestCommand(command: string): boolean {
  * Extract environment hints from tool output
  * Returns custom notes to add to project memory
  */
-function extractEnvironmentHints(output: string): CustomNote[] {
+function extractEnvironmentHints(output: unknown): CustomNote[] {
+  if (typeof output !== 'string') {
+    return [];
+  }
+
   const hints: CustomNote[] = [];
   const timestamp = Date.now();
 

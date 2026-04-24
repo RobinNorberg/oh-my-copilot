@@ -34,6 +34,11 @@ declare const HookInputSchema: z.ZodObject<{
         type: z.ZodString;
         text: z.ZodOptional<z.ZodString>;
     }, z.core.$strip>>>;
+    model: z.ZodOptional<z.ZodString>;
+    model_id: z.ZodOptional<z.ZodString>;
+    modelId: z.ZodOptional<z.ZodString>;
+    agent_name: z.ZodOptional<z.ZodString>;
+    agentName: z.ZodOptional<z.ZodString>;
     stop_reason: z.ZodOptional<z.ZodString>;
     stopReason: z.ZodOptional<z.ZodString>;
     user_requested: z.ZodOptional<z.ZodBoolean>;

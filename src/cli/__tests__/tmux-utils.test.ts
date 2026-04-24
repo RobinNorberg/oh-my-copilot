@@ -25,7 +25,10 @@ import {
   wrapWithLoginShell,
   quoteShellArg,
   sanitizeTmuxToken,
+  isCopilotAvailable,
 } from '../tmux-utils.js';
+
+const mockedExecFileSync = vi.mocked(execFileSync);
 
 const baselinePlatform = process.platform;
 
@@ -107,10 +110,10 @@ describe('wrapWithLoginShell', () => {
     expect(result).toMatch(/^exec /);
   });
 
-  it('defaults to /bin/bash when $SHELL is not set', () => {
+  it('defaults to /bin/sh when $SHELL is not set', () => {
     vi.stubEnv('SHELL', '');
     const result = wrapWithLoginShell('codex');
-    expect(result).toContain('/bin/bash');
+    expect(result).toContain('/bin/sh');
     expect(result).toContain('-lc');
   });
 
@@ -233,5 +236,21 @@ describe('createHudWatchPane login shell wrapping', () => {
       'utf-8'
     );
     expect(source).toContain('wrapWithLoginShell(hudCmd)');
+  });
+});
+
+describe('isCopilotAvailable', () => {
+  it('uses shell:true on win32 so npm .cmd wrappers resolve', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    mockedExecFileSync.mockReturnValue(Buffer.from('2.1.116'));
+
+    expect(isCopilotAvailable()).toBe(true);
+    expect(mockedExecFileSync).toHaveBeenCalledWith('claude', ['--version'], {
+      stdio: 'ignore',
+      shell: true,
+    });
+
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
   });
 });

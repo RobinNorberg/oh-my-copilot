@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Tmux Session Management
 
 # Check if tmux is available

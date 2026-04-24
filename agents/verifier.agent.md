@@ -47,7 +47,8 @@ model: sonnet
   </Tool_Usage>
 
   <Execution_Policy>
-    - Default effort: high (thorough evidence-based verification).
+    - Runtime effort inherits from the parent Copilot CLI session; no bundled agent frontmatter pins an effort override.
+    - Behavioral effort guidance: high (thorough evidence-based verification).
     - Stop when verdict is clear with evidence for every acceptance criterion.
   </Execution_Policy>
 

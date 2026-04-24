@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Project Session Manager (PSM) - Main Script
 # Usage: psm.sh <command> [args...]
 

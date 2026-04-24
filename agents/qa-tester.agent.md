@@ -47,7 +47,8 @@ model: sonnet
   </Tool_Usage>
 
   <Execution_Policy>
-    - Default effort: medium (happy path + key error paths).
+    - Runtime effort inherits from the parent Copilot CLI session; no bundled agent frontmatter pins an effort override.
+    - Behavioral effort guidance: medium (happy path + key error paths).
     - Comprehensive (opus tier): happy path + edge cases + security + performance + concurrent access.
     - Stop when all test cases are executed and results are documented.
   </Execution_Policy>

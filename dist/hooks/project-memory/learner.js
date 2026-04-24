@@ -138,6 +138,9 @@ function isTestCommand(command) {
  * Returns custom notes to add to project memory
  */
 function extractEnvironmentHints(output) {
+    if (typeof output !== 'string') {
+        return [];
+    }
     const hints = [];
     const timestamp = Date.now();
     // Detect Node.js version

@@ -1,7 +1,10 @@
 node_modules/
 *.log
 .DS_Store
-.omcp/
+!.omcp/
+.omcp/*
+!.omcp/skills/
+!.omcp/skills/**
 .omg/
 .omc/
 .idea/

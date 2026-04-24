@@ -132,10 +132,11 @@ const CONTRACTS = {
         binary: 'codex',
         installInstructions: 'Install Codex CLI: npm install -g @openai/codex',
         supportsPromptMode: true,
-        // Codex accepts prompt as a positional argument (no flag needed):
-        //   codex [OPTIONS] [PROMPT]
+        // Codex uses the `exec` subcommand for non-interactive runs that exit
+        // on completion. The prompt still remains positional after options:
+        //   codex exec [OPTIONS] [PROMPT]
         buildLaunchArgs(model, extraFlags = []) {
-            const args = ['--dangerously-bypass-approvals-and-sandbox'];
+            const args = ['exec', '--dangerously-bypass-approvals-and-sandbox'];
             if (model)
                 args.push('--model', model);
             return [...args, ...extraFlags];
@@ -165,7 +166,7 @@ const CONTRACTS = {
         binary: 'gemini',
         installInstructions: 'Install Gemini CLI: npm install -g @google/gemini-cli',
         supportsPromptMode: true,
-        promptModeFlag: '-i',
+        promptModeFlag: '-p',
         buildLaunchArgs(model, extraFlags = []) {
             const args = ['--approval-mode', 'yolo'];
             if (model)
@@ -337,8 +338,8 @@ export function getPromptModeArgs(agentType, instruction) {
     if (!contract.supportsPromptMode) {
         return [];
     }
-    // If a flag is defined (e.g. gemini's '-i'), prepend it; otherwise the
-    // instruction is passed as a positional argument (e.g. codex [PROMPT]).
+    // If a flag is defined (e.g. gemini's '-p'), prepend it; otherwise the
+    // instruction is passed as a positional argument (e.g. codex exec [PROMPT]).
     if (contract.promptModeFlag) {
         return [contract.promptModeFlag, instruction];
     }

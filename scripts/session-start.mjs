@@ -49,7 +49,7 @@ function readJsonFile(path) {
 }
 
 function getRuntimeBaseDir() {
-  return process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
+  return process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || join(__dirname, '..');
 }
 
 async function loadProjectMemoryModules() {
@@ -143,16 +143,71 @@ function semverCompare(a, b) {
   return 0;
 }
 
+const SESSION_START_CONTEXT_BUDGET = 6000;
+const SESSION_START_OMISSION_NOTICE = '[Additional SessionStart context omitted to preserve the 6000-character aggregate budget.]';
+
+function compactBudgetedText(text, maxChars) {
+  const notice = '\n...[truncated to preserve SessionStart context budget]';
+  if (!text || text.length <= maxChars) return text || '';
+  if (maxChars <= notice.length) return notice.slice(0, Math.max(0, maxChars));
+  return `${text.slice(0, maxChars - notice.length).trimEnd()}${notice}`;
+}
+
+function buildSessionStartAdditionalContext(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return '';
+
+  const sections = messages.map((message, index) => ({ index, message }));
+  const priorityOrder = [
+    /\[MODEL ROUTING OVERRIDE/,
+    /\[AUTOPILOT MODE RESTORED\]/,
+    /\[ULTRAWORK MODE RESTORED\]/,
+    /\[RALPH LOOP RESTORED\]/,
+    /\[PROJECT MEMORY\]/,
+    /\[NOTEPAD - Priority Context\]/,
+    /\[PENDING TASKS DETECTED\]/,
+  ];
+  const prioritized = [];
+  const remaining = [];
+  for (const section of sections) {
+    const score = priorityOrder.findIndex((pattern) => pattern.test(section.message));
+    if (score !== -1) prioritized.push({ ...section, score });
+    else remaining.push({ ...section, score: priorityOrder.length + section.index });
+  }
+  const ordered = [...prioritized.sort((a, b) => a.score - b.score || a.index - b.index), ...remaining]
+    .map((entry) => entry.message);
+
+  let used = 0;
+  const selected = [];
+  for (const message of ordered) {
+    const separator = selected.length > 0 ? 1 : 0;
+    if (used + separator + message.length > SESSION_START_CONTEXT_BUDGET) {
+      const remainingBudget = SESSION_START_CONTEXT_BUDGET - used - separator;
+      if (remainingBudget > 0) {
+        selected.push(
+          remainingBudget > 120
+            ? compactBudgetedText(message, remainingBudget)
+            : compactBudgetedText(SESSION_START_OMISSION_NOTICE, remainingBudget),
+        );
+      }
+      break;
+    }
+    selected.push(message);
+    used += separator + message.length;
+  }
+
+  return selected.join('\n');
+}
+
 // Extract OMC version from CLAUDE.md content
 function extractOmcVersion(content) {
   const match = content.match(/<!-- OMC:VERSION:(\d+\.\d+\.\d+[^\s]*?) -->/);
   return match ? match[1] : null;
 }
 
-// Get plugin version from CLAUDE_PLUGIN_ROOT
+// Get plugin version from PLUGIN_ROOT
 function getPluginVersion() {
   try {
-    const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+    const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
     if (!pluginRoot) return null;
     const pkg = readJsonFile(join(pluginRoot, 'package.json'));
     return pkg?.version || null;
@@ -401,7 +456,7 @@ async function main() {
     } catch {}
 
     // Warn if silentAutoUpdate is enabled but running in plugin mode (#1773)
-    if (process.env.CLAUDE_PLUGIN_ROOT) {
+    if (process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT) {
       try {
         const omcConfigPath = join(configDir, '.omc-config.json');
         const omcConfig = readJsonFile(omcConfigPath);
@@ -627,12 +682,13 @@ ${cleanContent}
         }
       }
 
-      // Guard against CLAUDE_PLUGIN_ROOT pointing to a stale/deleted version.
+      // Guard against PLUGIN_ROOT pointing to a stale/deleted version.
       // When an old version directory is removed during upgrade but a running
-      // session still has the old CLAUDE_PLUGIN_ROOT in its environment, the
+      // session still has the old PLUGIN_ROOT in its environment, the
       // directory won't exist. Create a symlink so subsequent hook invocations
       // via run.cjs resolve correctly.
-      const pluginRootEnv = process.env.CLAUDE_PLUGIN_ROOT?.replace(/[\/\\]+$/, ''); // strip trailing separators
+      const pluginRootEnv = (process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT || '')
+        .replace(/[\/\\]+$/, ''); // strip trailing separators
       if (pluginRootEnv && !existsSync(pluginRootEnv)) {
         const pluginRootVersion = basename(pluginRootEnv);
         if (/^\d+\.\d+\.\d+/.test(pluginRootVersion) && versions.length > 0) {
@@ -667,7 +723,7 @@ ${cleanContent}
 
     // Send session-start notification (non-blocking, fire-and-forget)
     try {
-      const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+      const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
       if (pluginRoot) {
         const { notify } = await import(pathToFileURL(join(pluginRoot, 'dist', 'notifications', 'index.js')).href);
         // Fire and forget - don't await, don't block session start
@@ -697,7 +753,7 @@ ${cleanContent}
         continue: true,
         hookSpecificOutput: {
           hookEventName: 'SessionStart',
-          additionalContext: messages.join('\n')
+          additionalContext: buildSessionStartAdditionalContext(messages)
         }
       }));
     } else {

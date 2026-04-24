@@ -37,8 +37,10 @@ import { refreshMissionBoardState } from "./mission-board.js";
 import { sanitizeOutput } from "./sanitize.js";
 import type {
   HudRenderContext,
+  RateLimits,
   SessionHealth,
   SessionSummaryState,
+  UsageResult,
 } from "./types.js";
 import { getRuntimePackageVersion } from "../lib/version.js";
 import { compareVersions } from "../features/auto-update.js";
@@ -49,6 +51,23 @@ import { join, dirname, basename } from "path";
 import { homedir } from "os";
 import { getOmcRoot } from "../lib/worktree-paths.js";
 import { getCopilotConfigDir } from "../utils/config-dir.js";
+
+function mergeStdinRateLimits(
+  stdinRateLimits: RateLimits | null,
+  usageResult: UsageResult | null,
+): UsageResult | null {
+  if (!stdinRateLimits) {
+    return usageResult;
+  }
+
+  return {
+    ...(usageResult ?? {}),
+    rateLimits: {
+      ...(usageResult?.rateLimits ?? {}),
+      ...stdinRateLimits,
+    },
+  };
+}
 
 /**
  * Read cached session summary from state directory.
@@ -253,14 +272,15 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       writeHudState(stateToWrite, cwd, currentSessionId ?? undefined);
     }
 
-    // Prefer Claude Code stdin rate limits when available to avoid cold-start API fetches.
+    // Merge Copilot CLI stdin generic buckets with API/cache-specific fields.
+    // Stdin owns fresher five-hour/seven-day values, while getUsage() may provide
+    // Sonnet/Opus weekly, monthly, extra, stale, and error metadata.
     const stdinRateLimits = getRateLimitsFromStdin(stdin);
+    const usageResult = config.elements.rateLimits === false ? null : await getUsage();
     const rateLimitsResult =
       config.elements.rateLimits === false
         ? null
-        : stdinRateLimits
-          ? { rateLimits: stdinRateLimits }
-          : await getUsage();
+        : mergeStdinRateLimits(stdinRateLimits, usageResult);
 
     // Fetch custom rate limit buckets (if configured)
     const customBuckets =

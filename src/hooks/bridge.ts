@@ -81,7 +81,6 @@ import {
 } from "./skill-state/index.js";
 import { parseExplicitWorkflowSlashInvocation } from "./keyword-detector/index.js";
 import {
-  ULTRAWORK_MESSAGE,
   ULTRATHINK_MESSAGE,
   SEARCH_MESSAGE,
   ANALYZE_MESSAGE,
@@ -91,6 +90,7 @@ import {
   RALPH_MESSAGE,
   PROMPT_TRANSLATION_MESSAGE,
 } from "../installer/hooks.js";
+import { getUltraworkMessage } from "./keyword-detector/ultrawork/index.js";
 // Agent dashboard is used in pre/post-tool-use hot path
 import { getAgentDashboard } from "./subagent-tracker/index.js";
 // Session replay recordFileTouch is used in pre-tool-use hot path
@@ -160,6 +160,58 @@ const MODE_CONFIRMATION_SKILL_MAP: Record<string, string[]> = {
   ralplan: ["ralplan"],
 };
 
+const SESSION_START_CONTEXT_BUDGET = 6000;
+const SESSION_START_OMISSION_NOTICE = '[Additional SessionStart context omitted to preserve the 6000-character aggregate budget.]';
+
+function compactBudgetedText(text: string, maxChars: number): string {
+  const notice = "\n...[truncated to preserve SessionStart context budget]";
+  if (!text || text.length <= maxChars) return text || "";
+  if (maxChars <= notice.length) return notice.slice(0, Math.max(0, maxChars));
+  return `${text.slice(0, maxChars - notice.length).trimEnd()}${notice}`;
+}
+
+function buildSessionStartAdditionalContext(messages: string[]): string {
+  if (messages.length === 0) return "";
+
+  const priorityOrder = [
+    /\[MODEL ROUTING OVERRIDE/,
+    /\[AUTOPILOT MODE RESTORED\]/,
+    /\[ULTRAWORK MODE RESTORED\]/,
+    /\[RALPLAN MODE RESTORED\]/,
+    /\[TEAM MODE RESTORED\]/,
+    /\[ROOT AGENTS\.md LOADED\]/,
+    /\[PENDING TASKS DETECTED\]/,
+  ];
+  const ordered = messages
+    .map((message, index) => {
+      const priority = priorityOrder.findIndex((pattern) => pattern.test(message));
+      return { message, index, priority: priority === -1 ? priorityOrder.length + index : priority };
+    })
+    .sort((a, b) => a.priority - b.priority || a.index - b.index)
+    .map((entry) => entry.message);
+
+  let used = 0;
+  const selected: string[] = [];
+  for (const message of ordered) {
+    const separatorLength = selected.length > 0 ? 1 : 0;
+    if (used + separatorLength + message.length > SESSION_START_CONTEXT_BUDGET) {
+      const remainingBudget = SESSION_START_CONTEXT_BUDGET - used - separatorLength;
+      if (remainingBudget > 0) {
+        selected.push(
+          remainingBudget > 120
+            ? compactBudgetedText(message, remainingBudget)
+            : compactBudgetedText(SESSION_START_OMISSION_NOTICE, remainingBudget),
+        );
+      }
+      break;
+    }
+    selected.push(message);
+    used += separatorLength + message.length;
+  }
+
+  return selected.join("\n");
+}
+
 
 function getExtraField(input: HookInput, key: string): unknown {
   return (input as Record<string, unknown>)[key];
@@ -168,6 +220,16 @@ function getExtraField(input: HookInput, key: string): unknown {
 function getHookToolUseId(input: HookInput): string | undefined {
   const value = getExtraField(input, "tool_use_id");
   return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+}
+
+function getHookContextString(input: HookInput, ...keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = getExtraField(input, key);
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
 }
 
 function extractAsyncAgentId(toolOutput: unknown): string | undefined {
@@ -738,6 +800,10 @@ function validateHookInput<T>(
 export interface HookInput {
   /** Session identifier */
   sessionId?: string;
+  /** Optional agent name context for routing prompt variants */
+  agentName?: string;
+  /** Optional model identifier context for routing prompt variants */
+  model?: string;
   /** User prompt text */
   prompt?: string;
   /** Message content (alternative to prompt) */
@@ -1266,7 +1332,12 @@ async function processKeywordDetector(input: HookInput): Promise<HookOutput> {
         if (activated) {
           markModeAwaitingConfirmation(directory, sessionId, 'ultrawork');
         }
-        messages.push(ULTRAWORK_MESSAGE);
+        messages.push(
+          getUltraworkMessage(
+            getHookContextString(input, "agentName", "agent_name"),
+            getHookContextString(input, "model", "modelId", "model_id"),
+          ),
+        );
         break;
       }
 
@@ -1786,7 +1857,7 @@ The CLAUDE.md instruction "Pass model on Task calls: haiku, sonnet, opus" does N
   if (messages.length > 0) {
     return {
       continue: true,
-      message: messages.join("\n"),
+      message: buildSessionStartAdditionalContext(messages),
     };
   }
 

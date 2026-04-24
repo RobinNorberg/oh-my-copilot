@@ -50,7 +50,8 @@ model: haiku
   </Tool_Usage>
 
   <Execution_Policy>
-    - Default effort: low (concise, accurate documentation).
+    - Runtime effort inherits from the parent Copilot CLI session; no bundled agent frontmatter pins an effort override.
+    - Behavioral effort guidance: low (concise, accurate documentation).
     - Stop when documentation is complete, accurate, and verified.
   </Execution_Policy>
 

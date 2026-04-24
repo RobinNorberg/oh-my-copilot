@@ -132,7 +132,10 @@ export function isTmuxAvailable() {
  */
 export function isCopilotAvailable() {
     try {
-        execFileSync('claude', ['--version'], { stdio: 'ignore' });
+        execFileSync('claude', ['--version'], {
+            stdio: 'ignore',
+            shell: process.platform === 'win32',
+        });
         return true;
     }
     catch {
@@ -243,7 +246,7 @@ export function wrapWithLoginShell(command) {
         const comspec = process.env.COMSPEC || 'cmd.exe';
         return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
     }
-    const shell = process.env.SHELL || '/bin/bash';
+    const shell = process.env.SHELL || '/bin/sh';
     const shellName = basename(shell).replace(/\.(exe|cmd|bat)$/i, '');
     const rcFile = process.env.HOME ? `${process.env.HOME}/.${shellName}rc` : '';
     const sourcePrefix = rcFile

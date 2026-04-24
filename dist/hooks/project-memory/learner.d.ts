@@ -11,7 +11,7 @@
  * @param projectRoot - Project root directory
  * @param userMessage - Optional user message for directive detection
  */
-export declare function learnFromToolOutput(toolName: string, toolInput: any, toolOutput: string, projectRoot: string, userMessage?: string): Promise<void>;
+export declare function learnFromToolOutput(toolName: string, toolInput: any, toolOutput: unknown, projectRoot: string, userMessage?: string): Promise<void>;
 /**
  * Manually add a custom note to project memory
  *

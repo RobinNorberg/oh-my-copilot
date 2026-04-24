@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach } from "vitest";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -155,13 +155,20 @@ describe("Stop Hook Blocking Contract", () => {
   describe("checkPersistentModes -> createHookOutput integration", () => {
     let tempDir: string;
 
-    beforeEach(() => {
+    beforeAll(() => {
       tempDir = mkdtempSync(join(tmpdir(), "stop-hook-blocking-test-"));
       execSync("git init", { cwd: tempDir });
     });
 
-    afterEach(() => {
+    afterAll(() => {
       rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    beforeEach(() => {
+      // Clean state dirs between tests; keep git repo
+      rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".omc"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
     });
 
 
@@ -565,13 +572,19 @@ describe("Stop Hook Blocking Contract", () => {
       }
     }
 
-    beforeEach(() => {
+    beforeAll(() => {
       tempDir = mkdtempSync(join(tmpdir(), "stop-hook-mjs-test-"));
       execSync("git init", { cwd: tempDir });
     });
 
-    afterEach(() => {
+    afterAll(() => {
       rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    beforeEach(() => {
+      rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".omc"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
     });
 
 
@@ -971,15 +984,24 @@ describe("Stop Hook Blocking Contract", () => {
       }
     }
 
-    beforeEach(() => {
+    beforeAll(() => {
       tempDir = mkdtempSync(join(tmpdir(), "stop-hook-cjs-test-"));
       execSync("git init", { cwd: tempDir });
+    });
+
+    afterAll(() => {
+      rmSync(tempDir, { recursive: true, force: true });
+    });
+
+    beforeEach(() => {
+      rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".omc"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
       delete process.env.OMC_STATE_DIR;
     });
 
     afterEach(() => {
       delete process.env.OMC_STATE_DIR;
-      rmSync(tempDir, { recursive: true, force: true });
     });
 
     it("reads centralized session state when OMC_STATE_DIR is set", () => {

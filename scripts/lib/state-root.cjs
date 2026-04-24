@@ -19,7 +19,7 @@ const { createHash } = require('crypto');
  * @returns {Promise<string>} Absolute path to the .omcp root
  */
 async function resolveOmcStateRoot(directory) {
-  const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
+  const pluginRoot = process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT;
   if (pluginRoot) {
     try {
       const { pathToFileURL } = require('url');

@@ -70,7 +70,8 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     const context = output.hookSpecificOutput?.additionalContext ?? '';
 
     expect(context).toContain('[MAGIC KEYWORD: RALPLAN]');
-    expect(context).toContain('name: ralplan');
+    expect(context).toContain('Preferred invocation: /oh-my-copilot:ralplan');
+    expect(context).not.toContain('name: ralplan');
   });
 
   it('does not activate ralplan from a delegated /ask codex payload', () => {

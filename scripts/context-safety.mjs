@@ -10,9 +10,9 @@
  *
  * Configurable via OMC_CONTEXT_SAFETY_THRESHOLD env var (default: 55%).
  *
- * Hook output:
- *   - Block (exit 2 + stderr message) when context too high for the tool
- *   - Allow ({ continue: true, suppressOutput: true }) otherwise
+ * Hook output (preToolUse — Copilot CLI compliant):
+ *   - Deny ({ permissionDecision: "deny", permissionDecisionReason: "..." }) when context too high
+ *   - Allow ({ permissionDecision: "allow" }) otherwise
  */
 
 import { existsSync, statSync, openSync, readSync, closeSync } from 'node:fs';
@@ -139,7 +139,7 @@ async function main() {
     const toolName = data.tool_name || data.toolName || '';
 
     if (!BLOCKED_TOOLS.has(toolName)) {
-      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      console.log(JSON.stringify({ permissionDecision: 'allow' }));
       return;
     }
 
@@ -148,17 +148,16 @@ async function main() {
     const pct = estimateContextPercent(transcriptPath);
 
     if (pct >= THRESHOLD) {
-      process.stderr.write(
-        `[OMC] Context at ${pct}% (threshold: ${THRESHOLD}%). ` +
-        `Too high for ${toolName}. Run /compact or start a fresh session to free context.\n`
-      );
-      process.exit(2);
+      const reason = `[OMC] Context at ${pct}% (threshold: ${THRESHOLD}%). ` +
+        `Too high for ${toolName}. Run /compact or start a fresh session to free context.`;
+      console.log(JSON.stringify({ permissionDecision: 'deny', permissionDecisionReason: reason }));
+      return;
     }
 
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    console.log(JSON.stringify({ permissionDecision: 'allow' }));
   } catch {
     // On any error, allow the tool to proceed (never block on hook failure)
-    console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+    console.log(JSON.stringify({ permissionDecision: 'allow' }));
   }
 }
 

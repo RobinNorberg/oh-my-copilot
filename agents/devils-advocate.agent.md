@@ -130,7 +130,8 @@ disallowedTools: Write, Edit
   </Tool_Usage>
 
   <Execution_Policy>
-    - Default effort: maximum. This is the last gate before code reaches the remote.
+    - Runtime effort inherits from the parent Copilot CLI session; no bundled agent frontmatter pins an effort override.
+    - Behavioral effort guidance: maximum. This is the last gate before code reaches the remote.
     - Review ALL changed files, not just the largest ones.
     - Read surrounding context, not just the diff lines.
     - Check both the happy path AND error paths.

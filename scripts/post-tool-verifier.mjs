@@ -703,6 +703,21 @@ export function detectWriteFailure(output) {
   return errorPatterns.some(pattern => pattern.test(cleaned));
 }
 
+// Detect Copilot CLI's deterministic write/edit success markers so docs or
+// serialized tool output containing diagnostic prose do not override success.
+export function isCopilotCliWriteSuccess(output) {
+  if (!output) return false;
+
+  const cleaned = stripClaudeTempCwdErrors(output);
+  const successPatterns = [
+    /(^|\n)The file .+ has been updated successfully\.?(\n|$)/i,
+    /(^|\n)File (?:created|written|updated) successfully(?:\s+at:\s*.+)?\.?(\n|$)/i,
+    /(^|\n).*file state is current in your context\b.*(\n|$)/i,
+  ];
+
+  return successPatterns.some(pattern => pattern.test(cleaned));
+}
+
 // Get agent completion summary from tracking state
 function getAgentCompletionSummary(directory, quietLevel = QUIET_LEVEL) {
   const trackingFile = join(directory, '.omcp', 'state', 'subagent-tracking.json');
@@ -782,7 +797,7 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
     }
 
     case 'Edit':
-      if (detectWriteFailure(toolOutput)) {
+      if (!isCopilotCliWriteSuccess(toolOutput) && detectWriteFailure(toolOutput)) {
         message = 'Edit operation failed. Verify file exists and content matches exactly.';
       } else if (QUIET_LEVEL === 0) {
         message = 'Code modified. Verify changes work as expected before marking complete.';
@@ -790,7 +805,7 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
       break;
 
     case 'Write':
-      if (detectWriteFailure(toolOutput)) {
+      if (!isCopilotCliWriteSuccess(toolOutput) && detectWriteFailure(toolOutput)) {
         message = 'Write operation failed. Check file permissions and directory existence.';
       } else if (QUIET_LEVEL === 0) {
         message = 'File written. Test the changes to ensure they work correctly.';

@@ -127,7 +127,21 @@ function teamConfigExists(name) {
 }
 
 /**
- * Kill a process: SIGTERM first, SIGKILL after 5s if still alive.
+ * Kill a process.
+ *
+ * On Windows: `taskkill /F` terminates synchronously.
+ *
+ * On Unix: issue SIGTERM for graceful exit. A best-effort SIGKILL escalation
+ * is scheduled 5s later, but the timer is `.unref()`ed so it does not block
+ * the Node event loop — main() exits promptly after SIGTERM and does not
+ * hang waiting for the escalation window to elapse. In practice, OMC agent
+ * processes (claude/codex/gemini/omc) respect SIGTERM and exit within
+ * milliseconds; the SIGKILL path is a safety net that only fires if the
+ * caller's event loop stays alive long enough (e.g., another timer or I/O
+ * keeps the process running past 5s). Callers that need guaranteed
+ * escalation should poll `process.kill(pid, 0)` themselves or re-run this
+ * script. See commit message for the rationale behind removing the implicit
+ * 5s hang this function previously caused.
  */
 function killProcess(pid) {
   // Validate PID is a positive integer (prevent command injection)
@@ -140,7 +154,10 @@ function killProcess(pid) {
       // Send SIGTERM
       process.kill(pid, 'SIGTERM');
 
-      // Wait 5s, then SIGKILL if still alive
+      // Schedule a best-effort SIGKILL escalation after 5s.
+      // .unref() ensures this pending timer does not keep the Node event
+      // loop alive — without it, main() would appear to "hang" for 5s per
+      // orphan after printing the JSON result.
       setTimeout(() => {
         try {
           process.kill(pid, 0); // Check if still running
@@ -148,7 +165,7 @@ function killProcess(pid) {
         } catch {
           // Process already exited
         }
-      }, 5000);
+      }, 5000).unref();
     }
     return true;
   } catch {
@@ -201,6 +218,10 @@ function main() {
       ? `Found ${orphans.length} orphan(s). Re-run without --dry-run to clean up.`
       : `Cleaned up ${results.filter(r => r.action === 'killed').length}/${orphans.length} orphan(s).`,
   }));
+
+  // Explicit exit: any pending .unref()ed SIGKILL timers should not pin the
+  // event loop, but exit(0) here makes the completion intent unambiguous.
+  process.exit(0);
 }
 
 main();

@@ -39,6 +39,11 @@ const HookInputSchema = z.object({
   prompt: z.string().optional(),
   message: z.object({ content: z.string().optional() }).optional(),
   parts: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional(),
+  model: z.string().optional(),
+  model_id: z.string().optional(),
+  modelId: z.string().optional(),
+  agent_name: z.string().optional(),
+  agentName: z.string().optional(),
 
   // Stop hook fields
   stop_reason: z.string().optional(),
@@ -72,6 +77,11 @@ interface RawHookInput {
   prompt?: string;
   message?: { content?: string };
   parts?: Array<{ type: string; text?: string }>;
+  model?: string;
+  model_id?: string;
+  modelId?: string;
+  agent_name?: string;
+  agentName?: string;
 
   // Allow other fields to pass through
   [key: string]: unknown;
@@ -98,6 +108,7 @@ const KNOWN_FIELDS = new Set([
   'permission_mode', 'tool_use_id', 'transcript_path',
   // Subagent fields
   'agent_id', 'agent_name', 'agent_type', 'parent_session_id',
+  'agentName', 'model', 'model_id', 'modelId',
   // Common extra fields from Copilot CLI
   'input', 'output', 'result', 'error', 'status',
 ]);

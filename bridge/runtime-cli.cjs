@@ -207,7 +207,7 @@ function getDefaultShell() {
   if (process.platform === "win32" && !isUnixLikeOnWindows()) {
     return process.env.COMSPEC || "cmd.exe";
   }
-  const shell = process.env.SHELL || "/bin/bash";
+  const shell = process.env.SHELL || "/bin/sh";
   const name = (0, import_path6.basename)(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
@@ -1609,10 +1609,11 @@ var CONTRACTS = {
     binary: "codex",
     installInstructions: "Install Codex CLI: npm install -g @openai/codex",
     supportsPromptMode: true,
-    // Codex accepts prompt as a positional argument (no flag needed):
-    //   codex [OPTIONS] [PROMPT]
+    // Codex uses the `exec` subcommand for non-interactive runs that exit
+    // on completion. The prompt still remains positional after options:
+    //   codex exec [OPTIONS] [PROMPT]
     buildLaunchArgs(model, extraFlags = []) {
-      const args = ["--dangerously-bypass-approvals-and-sandbox"];
+      const args = ["exec", "--dangerously-bypass-approvals-and-sandbox"];
       if (model) args.push("--model", model);
       return [...args, ...extraFlags];
     },
@@ -1638,7 +1639,7 @@ var CONTRACTS = {
     binary: "gemini",
     installInstructions: "Install Gemini CLI: npm install -g @google/gemini-cli",
     supportsPromptMode: true,
-    promptModeFlag: "-i",
+    promptModeFlag: "-p",
     buildLaunchArgs(model, extraFlags = []) {
       const args = ["--approval-mode", "yolo"];
       if (model) args.push("--model", model);
@@ -1863,11 +1864,6 @@ function sanitizePromptContent(content, maxLength = 4e3) {
 var import_child_process3 = require("child_process");
 var OMC_CLI_BINARY = "omcp";
 var OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
-function isClaudeSession(env) {
-  return Boolean(
-    env.CLAUDECODE?.trim() || env.CLAUDE_SESSION_ID?.trim() || env.CLAUDECODE_SESSION_ID?.trim()
-  );
-}
 var commandExistsCache = /* @__PURE__ */ new Map();
 function commandExists(command, env) {
   const pathValue = env.PATH ?? env.Path ?? "";
@@ -1899,11 +1895,7 @@ function resolveOmcCliPrefix(options = {}) {
   return OMC_CLI_BINARY;
 }
 function resolveInvocationPrefix(commandSuffix, options = {}) {
-  const env = options.env ?? process.env;
-  const normalizedSuffix = commandSuffix.trim();
-  if (/^ask(?:\s|$)/.test(normalizedSuffix) && isClaudeSession(env)) {
-    return OMC_CLI_BINARY;
-  }
+  void commandSuffix;
   return resolveOmcCliPrefix(options);
 }
 function formatOmcCliInvocation(commandSuffix, options = {}) {

@@ -127,6 +127,8 @@ function getSkillMetadataCache(projectRoot) {
         triggersLower: triggers.map((t) => t.toLowerCase()),
         matching: parsed.metadata.matching,
         content: parsed.content,
+        description: parsed.metadata.description,
+        summary: summarizeSkillContent(parsed.content),
         scope: candidate.scope
       });
     } catch {
@@ -144,6 +146,10 @@ function clearSkillMetadataCache() {
 }
 function clearLevenshteinCache() {
   levenshteinCache.clear();
+}
+function summarizeSkillContent(content) {
+  const firstUsefulLine = content.split(/\r?\n/).map((line) => line.replace(/^#+\s*/, "").trim()).find((line) => line && !line.startsWith("---"));
+  return (firstUsefulLine || content.replace(/\s+/g, " ").trim()).slice(0, 240);
 }
 var STATE_FILE = `${OmgPaths.STATE}/skill-sessions.json`;
 function getStateFilePath(projectRoot) {
@@ -447,6 +453,8 @@ function matchSkillsForInjection(prompt, projectRoot, sessionId, options = {}) {
         path: skill.path,
         name: skill.name,
         content: skill.content,
+        description: skill.description,
+        summary: skill.summary,
         score: totalScore,
         scope: skill.scope,
         triggers: skill.triggers,

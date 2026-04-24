@@ -3840,6 +3840,13 @@ function loadConfig() {
   validateTeamConfig(config2);
   return config2;
 }
+function compactBudgetedText(text, maxChars) {
+  if (!text || maxChars <= 0) return "";
+  const notice = "\n...[truncated to preserve startup context budget]";
+  if (text.length <= maxChars) return text;
+  if (maxChars <= notice.length) return notice.slice(0, maxChars);
+  return `${text.slice(0, maxChars - notice.length).trimEnd()}${notice}`;
+}
 function looksLikeOmcGuidance(content) {
   return content.includes("<guidance_schema_contract>") && /oh-my-(claudecode|codex|copilot)/i.test(content) && OMC_STARTUP_COMPACTABLE_SECTIONS.some(
     (section) => content.includes(`<${section}>`) && content.includes(`</${section}>`)
@@ -3854,7 +3861,7 @@ function compactOmcStartupGuidance(content) {
   for (const section of OMC_STARTUP_COMPACTABLE_SECTIONS) {
     const pattern = new RegExp(
       `
-*<${section}>[\\s\\S]*?<\\/${section}>
+*<${section}>[\\s\\S]*?</${section}>
 *`,
       "g"
     );
@@ -3862,10 +3869,12 @@ function compactOmcStartupGuidance(content) {
     removedAny = removedAny || next !== compacted;
     compacted = next;
   }
-  if (!removedAny) {
-    return content;
+  const normalized = compacted.replace(/\n{3,}/g, "\n\n").replace(/\n\n---\n\n---\n\n/g, "\n\n---\n\n").trim();
+  if (normalized.length <= OMC_STARTUP_GUIDANCE_MAX_CHARS) {
+    return removedAny ? normalized : content;
   }
-  return compacted.replace(/\n{3,}/g, "\n\n").replace(/\n\n---\n\n---\n\n/g, "\n\n---\n\n").trim();
+  const notice = "\n\n[OMC startup guidance truncated to preserve an 8000-character budget. Read the source file directly for the full document.]";
+  return `${normalized.slice(0, OMC_STARTUP_GUIDANCE_MAX_CHARS - notice.length).trimEnd()}${notice}`;
 }
 function findContextFiles(startDir) {
   const files = [];
@@ -3894,19 +3903,30 @@ function findContextFiles(startDir) {
 }
 function loadContextFromFiles(files) {
   const contexts = [];
+  let used = 0;
+  const separator = "\n\n---\n\n";
   for (const file2 of files) {
     try {
-      const content = (0, import_fs.readFileSync)(file2, "utf-8");
-      contexts.push(`## Context from ${file2}
+      const content = compactOmcStartupGuidance((0, import_fs.readFileSync)(file2, "utf-8"));
+      const contextBlock = `## Context from ${file2}
 
-${content}`);
+${content}`;
+      const separatorLength = contexts.length > 0 ? separator.length : 0;
+      const remainingBudget = OMC_CONTEXT_FILES_MAX_CHARS - used - separatorLength;
+      if (remainingBudget <= 0) break;
+      if (contextBlock.length > remainingBudget) {
+        contexts.push(compactBudgetedText(contextBlock, remainingBudget));
+        break;
+      }
+      contexts.push(contextBlock);
+      used += separatorLength + contextBlock.length;
     } catch (error48) {
       console.warn(`Warning: Could not read context file ${file2}:`, error48);
     }
   }
-  return contexts.join("\n\n---\n\n");
+  return contexts.join(separator);
 }
-var import_fs, import_path2, DEFAULT_CONFIG, CANONICAL_TEAM_ROLE_SET, KNOWN_AGENT_NAME_SET, TEAM_ROLE_PROVIDERS, TEAM_ROLE_TIERS, OMC_STARTUP_COMPACTABLE_SECTIONS;
+var import_fs, import_path2, DEFAULT_CONFIG, CANONICAL_TEAM_ROLE_SET, KNOWN_AGENT_NAME_SET, TEAM_ROLE_PROVIDERS, TEAM_ROLE_TIERS, OMC_STARTUP_COMPACTABLE_SECTIONS, OMC_STARTUP_GUIDANCE_MAX_CHARS, OMC_CONTEXT_FILES_MAX_CHARS;
 var init_loader = __esm({
   "src/config/loader.ts"() {
     "use strict";
@@ -3927,6 +3947,8 @@ var init_loader = __esm({
       "skills",
       "team_compositions"
     ];
+    OMC_STARTUP_GUIDANCE_MAX_CHARS = 8e3;
+    OMC_CONTEXT_FILES_MAX_CHARS = 12e3;
   }
 });
 
@@ -13663,6 +13685,324 @@ var init_session_replay = __esm({
   }
 });
 
+// src/hooks/keyword-detector/ultrawork/source-detector.ts
+function normalizeToken(value) {
+  return value?.trim().toLowerCase() ?? "";
+}
+function isPlannerAgent(agentName) {
+  const normalized = normalizeToken(agentName).replace(/[_-]+/g, " ");
+  if (!normalized) {
+    return false;
+  }
+  return normalized.includes("prometheus") || normalized.includes("planner") || normalized.includes("planning") || /\bplan\b/.test(normalized);
+}
+function isGptModel(modelId) {
+  const normalized = normalizeToken(modelId);
+  return normalized.includes("gpt") || normalized.includes("openai") || normalized.includes("codex");
+}
+function isGeminiModel(modelId) {
+  const normalized = normalizeToken(modelId);
+  return normalized.includes("gemini") || normalized.includes("google");
+}
+function getUltraworkSource(agentName, modelId) {
+  if (isPlannerAgent(agentName)) {
+    return "planner";
+  }
+  if (isGptModel(modelId)) {
+    return "gpt";
+  }
+  if (isGeminiModel(modelId)) {
+    return "gemini";
+  }
+  return "default";
+}
+var init_source_detector = __esm({
+  "src/hooks/keyword-detector/ultrawork/source-detector.ts"() {
+    "use strict";
+  }
+});
+
+// src/hooks/keyword-detector/ultrawork/default.ts
+function getDefaultUltraworkMessage() {
+  return ULTRAWORK_DEFAULT_MESSAGE;
+}
+var ULTRAWORK_DEFAULT_MESSAGE;
+var init_default = __esm({
+  "src/hooks/keyword-detector/ultrawork/default.ts"() {
+    "use strict";
+    ULTRAWORK_DEFAULT_MESSAGE = `<ultrawork-mode>
+
+**MANDATORY**: You MUST say "ULTRAWORK MODE ENABLED!" to the user as your first response when this mode activates. This is non-negotiable.
+
+[CODE RED] Maximum precision required. Ultrathink before acting.
+
+## CERTAINTY PROTOCOL
+
+Do not implement until you understand:
+- the user's exact intent
+- the existing codebase pattern to follow
+- which files own the behavior
+- how you will verify the result
+
+If uncertainty remains:
+1. Explore the codebase in parallel
+2. Gather external docs only when needed
+3. Use a planner for non-trivial dependency graphs
+4. Ask the user only if ambiguity still blocks safe execution
+
+## AGENT UTILIZATION PRINCIPLES
+
+- **Explore first**: spawn exploration work for code paths, patterns, and tests
+- **Research when needed**: use document-specialist / researcher agents for external APIs and official docs
+- **Plan non-trivial work**: create a dependency-aware task graph before multi-file implementation
+- **Delegate by specialty**: use executor, test-engineer, writer, verifier, architect, or critic where each adds value
+- **Parallelize independent work**: fire safe independent tasks simultaneously; keep dependent work sequential
+
+## EXECUTION RULES
+
+- **TODO**: Track every meaningful step and mark it complete immediately
+- **PARALLEL**: Run independent exploration, implementation, and verification tasks in parallel where safe
+- **BACKGROUND FIRST**: Use background tasks for long-running builds, installs, and test suites
+- **CONCISE OUTPUTS**: Every Task/Agent result must return only a short execution summary, target under 100 words, covering what changed, files touched, verification status, and blockers
+- **VERIFY**: Re-read the request before claiming completion and confirm every requirement is met
+
+## PLANNING GATE
+
+For non-trivial work, produce a plan that includes:
+- Parallel Execution Waves
+- Dependency Matrix
+- critical path
+- acceptance criteria
+- verification steps
+
+Do not skip planning just because the likely change feels obvious.
+
+## VERIFICATION GUARANTEE
+
+Nothing is done without proof.
+
+Before reporting completion, collect evidence for:
+- build/typecheck success
+- relevant tests passing
+- manual QA or direct feature exercise when applicable
+- no new diagnostics on changed files
+
+WITHOUT evidence = NOT verified = NOT done.
+
+</ultrawork-mode>
+
+---
+`;
+  }
+});
+
+// src/hooks/keyword-detector/ultrawork/gpt.ts
+function getGptUltraworkMessage() {
+  return ULTRAWORK_GPT_MESSAGE;
+}
+var ULTRAWORK_GPT_MESSAGE;
+var init_gpt = __esm({
+  "src/hooks/keyword-detector/ultrawork/gpt.ts"() {
+    "use strict";
+    ULTRAWORK_GPT_MESSAGE = `<ultrawork-mode>
+
+**MANDATORY**: You MUST say "ULTRAWORK MODE ENABLED!" to the user as your first response when this mode activates. This is non-negotiable.
+
+[CODE RED] Maximum precision required. Think deeply before acting.
+
+<output_verbosity_spec>
+- Default: 1-2 short paragraphs. Do not default to bullets.
+- Simple yes/no questions: \u22642 sentences.
+- Complex multi-file tasks: 1 overview paragraph + up to 4 high-level sections grouped by outcome.
+- Use lists only when the content is inherently list-shaped.
+</output_verbosity_spec>
+
+<scope_constraints>
+- Implement exactly what the user requested
+- No extra features, no decorative scope expansion
+- If ambiguous, prefer the simplest valid interpretation after exploration
+</scope_constraints>
+
+## DECISION FRAMEWORK: Self vs Delegate
+
+| Complexity | Criteria | Decision |
+|------------|----------|----------|
+| Trivial | single file, obvious pattern, tiny diff | do it yourself |
+| Moderate | clear pattern, modest scope, low uncertainty | usually do it yourself |
+| Complex | multi-file, unfamiliar area, >100 lines, specialized expertise | delegate |
+| Research | broad repo context or external docs needed | delegate in parallel |
+
+## TWO-TRACK CONTEXT GATHERING
+
+Always gather context with both:
+- **Direct tools**: grep, file reads, diagnostics, symbol lookup
+- **Background agents**: repo exploration and external documentation
+
+Use a planner only for genuinely complex work with dependency ordering.
+
+## QUALITY AND EVIDENCE
+
+- Restate what changed and where after each write
+- Run diagnostics on changed files
+- Run tests/builds when applicable
+- MANUAL QA IS MANDATORY for implemented behavior
+- Completion requires observed evidence, not confidence language
+
+</ultrawork-mode>
+
+---
+`;
+  }
+});
+
+// src/hooks/keyword-detector/ultrawork/gemini.ts
+function getGeminiUltraworkMessage() {
+  return ULTRAWORK_GEMINI_MESSAGE;
+}
+var ULTRAWORK_GEMINI_MESSAGE;
+var init_gemini = __esm({
+  "src/hooks/keyword-detector/ultrawork/gemini.ts"() {
+    "use strict";
+    ULTRAWORK_GEMINI_MESSAGE = `<ultrawork-mode>
+
+**MANDATORY**: You MUST say "ULTRAWORK MODE ENABLED!" to the user as your first response when this mode activates. This is non-negotiable.
+
+[CODE RED] Maximum precision required. Ultrathink before acting.
+
+## STEP 0: CLASSIFY INTENT - THIS IS NOT OPTIONAL
+
+Before any tool call or implementation, output:
+
+\`\`\`
+I detect [TYPE] intent - [REASON].
+My approach: [ROUTING DECISION].
+\`\`\`
+
+Where TYPE is one of: research | implementation | investigation | evaluation | fix | open-ended
+
+SELF-CHECK:
+1. Did the user explicitly ask me to build or change code?
+2. Did the user ask to investigate or explain instead?
+3. Am I about to code before proving that implementation is actually requested?
+4. Have I explored enough to avoid guessing?
+
+If any answer blocks implementation, investigate first.
+
+## ANTI-SKIP RULES
+
+- Never answer about code without reading the files first
+- Never claim done without diagnostics and verification
+- Never rely on internal certainty when tools can verify
+- Never silently expand scope
+
+## EXECUTION AND VERIFICATION
+
+- Explore and delegate in parallel when useful
+- Use a planner for non-trivial dependency graphs
+- Run diagnostics, tests, and manual QA before completion
+- Re-read the original request before declaring success
+
+</ultrawork-mode>
+
+---
+`;
+  }
+});
+
+// src/hooks/keyword-detector/ultrawork/planner.ts
+function getPlannerUltraworkMessage() {
+  return `<ultrawork-mode>
+
+**MANDATORY**: You MUST say "ULTRAWORK MODE ENABLED!" to the user as your first response when this mode activates. This is non-negotiable.
+
+${ULTRAWORK_PLANNER_SECTION}
+
+</ultrawork-mode>
+
+---
+`;
+}
+var ULTRAWORK_PLANNER_SECTION;
+var init_planner = __esm({
+  "src/hooks/keyword-detector/ultrawork/planner.ts"() {
+    "use strict";
+    ULTRAWORK_PLANNER_SECTION = `## CRITICAL: YOU ARE A PLANNER, NOT AN IMPLEMENTER
+
+**IDENTITY CONSTRAINT (NON-NEGOTIABLE):**
+You are the planner. You do not implement. You produce execution-ready plans and handoffs.
+
+**WRITE SCOPE:**
+- Planning artifacts only: \`.omcp/plans/**\`, \`.omcp/drafts/**\`
+- Do not edit source files as part of ultrawork planning
+
+**WHEN USER ASKS YOU TO IMPLEMENT:**
+Refuse implementation and say you create plans, not code changes.
+
+## CONTEXT GATHERING (MANDATORY BEFORE PLANNING)
+
+Before drafting any plan:
+1. gather codebase patterns
+2. gather test and verification conventions
+3. gather official docs only where the chosen technology requires it
+4. wait for enough context to plan safely
+
+Never plan blind.
+
+## MANDATORY OUTPUT: PARALLEL TASK GRAPH + TODO LIST
+
+Your plan must include:
+
+### Parallel Execution Waves
+Group independent work into explicit waves, with dependencies and critical path.
+
+### Dependency Matrix
+Provide a matrix showing each task's dependencies, blockers, and parallel opportunities.
+
+### TODO List Structure
+For every task include:
+- what to do
+- dependencies
+- blockers
+- recommended agent profile
+- acceptance criteria
+- verification method
+
+### Agent Dispatch Summary
+Describe how execution should be split across implementation, testing, docs, and verification lanes.
+`;
+  }
+});
+
+// src/hooks/keyword-detector/ultrawork/index.ts
+function getUltraworkMessage(agentName, modelId) {
+  switch (getUltraworkSource(agentName, modelId)) {
+    case "planner":
+      return getPlannerUltraworkMessage();
+    case "gpt":
+      return getGptUltraworkMessage();
+    case "gemini":
+      return getGeminiUltraworkMessage();
+    case "default":
+    default:
+      return getDefaultUltraworkMessage();
+  }
+}
+var init_ultrawork = __esm({
+  "src/hooks/keyword-detector/ultrawork/index.ts"() {
+    "use strict";
+    init_source_detector();
+    init_default();
+    init_gpt();
+    init_gemini();
+    init_planner();
+    init_default();
+    init_gemini();
+    init_gpt();
+    init_planner();
+    init_source_detector();
+  }
+});
+
 // src/installer/hooks.ts
 function getPackageDir2() {
   if (typeof __dirname !== "undefined") {
@@ -13719,100 +14059,9 @@ var init_hooks = __esm({
     import_url5 = require("url");
     import_os7 = require("os");
     init_config_dir();
+    init_ultrawork();
     MIN_NODE_VERSION = 20;
-    ULTRAWORK_MESSAGE = `<ultrawork-mode>
-
-**MANDATORY**: You MUST say "ULTRAWORK MODE ENABLED!" to the user as your first response when this mode activates. This is non-negotiable.
-
-[CODE RED] Maximum precision required. Ultrathink before acting.
-
-YOU MUST LEVERAGE ALL AVAILABLE AGENTS TO THEIR FULLEST POTENTIAL.
-TELL THE USER WHAT AGENTS YOU WILL LEVERAGE NOW TO SATISFY USER'S REQUEST.
-
-## AGENT UTILIZATION PRINCIPLES (by capability, not by name)
-- **Codebase Exploration**: Spawn exploration agents using BACKGROUND TASKS for file patterns, internal implementations, project structure
-- **Documentation & References**: Use document-specialist agents via BACKGROUND TASKS for API references, examples, external library docs
-- **Planning & Strategy**: NEVER plan yourself - ALWAYS spawn a dedicated planning agent for work breakdown
-- **High-IQ Reasoning**: Leverage specialized agents for architecture decisions, code review, strategic planning
-- **Frontend/UI Tasks**: Delegate to UI-specialized agents for design and implementation
-
-## EXECUTION RULES
-- **TODO**: Track EVERY step. Mark complete IMMEDIATELY after each.
-- **PARALLEL**: Fire independent agent calls simultaneously via Task(run_in_background=true) - NEVER wait sequentially.
-- **BACKGROUND FIRST**: Use Task tool for exploration/document-specialist agents (10+ concurrent if needed).
-- **CONCISE OUTPUTS**: Every Task/Agent result must return ONLY a short execution summary (target: under 100 words) covering what changed, files touched, verification status, and blockers. Do not paste long logs into the main session; put bulky details in files/artifacts and reference them briefly.
-- **VERIFY**: Re-read request after completion. Check ALL requirements met before reporting done.
-- **DELEGATE**: Don't do everything yourself - orchestrate specialized agents for their strengths.
-
-## WORKFLOW
-1. Analyze the request and identify required capabilities
-2. Spawn exploration/document-specialist agents via Task(run_in_background=true) in PARALLEL (10+ if needed)
-3. Always Use Plan agent with gathered context to create detailed work breakdown
-4. Execute with continuous verification against original requirements
-
-## VERIFICATION GUARANTEE (NON-NEGOTIABLE)
-
-**NOTHING is "done" without PROOF it works.**
-
-### Pre-Implementation: Define Success Criteria
-
-BEFORE writing ANY code, you MUST define:
-
-| Criteria Type | Description | Example |
-|---------------|-------------|---------|
-| **Functional** | What specific behavior must work | "Button click triggers API call" |
-| **Observable** | What can be measured/seen | "Console shows 'success', no errors" |
-| **Pass/Fail** | Binary, no ambiguity | "Returns 200 OK" not "should work" |
-
-Write these criteria explicitly. Share with user if scope is non-trivial.
-
-### Execution & Evidence Requirements
-
-| Phase | Action | Required Evidence |
-|-------|--------|-------------------|
-| **Build** | Run build command | Exit code 0, no errors |
-| **Test** | Execute test suite | All tests pass (screenshot/output) |
-| **Manual Verify** | Test the actual feature | Demonstrate it works (describe what you observed) |
-| **Regression** | Ensure nothing broke | Existing tests still pass |
-
-**WITHOUT evidence = NOT verified = NOT done.**
-
-### TDD Workflow (when test infrastructure exists)
-
-1. **SPEC**: Define what "working" means (success criteria above)
-2. **RED**: Write failing test -> Run it -> Confirm it FAILS
-3. **GREEN**: Write minimal code -> Run test -> Confirm it PASSES
-4. **REFACTOR**: Clean up -> Tests MUST stay green
-5. **VERIFY**: Run full test suite, confirm no regressions
-6. **EVIDENCE**: Report what you ran and what output you saw
-
-### Verification Anti-Patterns (BLOCKING)
-
-| Violation | Why It Fails |
-|-----------|--------------|
-| "It should work now" | No evidence. Run it. |
-| "I added the tests" | Did they pass? Show output. |
-| "Fixed the bug" | How do you know? What did you test? |
-| "Implementation complete" | Did you verify against success criteria? |
-| Skipping test execution | Tests exist to be RUN, not just written |
-
-**CLAIM NOTHING WITHOUT PROOF. EXECUTE. VERIFY. SHOW EVIDENCE.**
-
-## ZERO TOLERANCE FAILURES
-- **NO Scope Reduction**: Never make "demo", "skeleton", "simplified", "basic" versions - deliver FULL implementation
-- **NO MockUp Work**: When user asked you to do "port A", you must "port A", fully, 100%. No Extra feature, No reduced feature, no mock data, fully working 100% port.
-- **NO Partial Completion**: Never stop at 60-80% saying "you can extend this..." - finish 100%
-- **NO Assumed Shortcuts**: Never skip requirements you deem "optional" or "can be added later"
-- **NO Premature Stopping**: Never declare done until ALL TODOs are completed and verified
-- **NO TEST DELETION**: Never delete or skip failing tests to make the build pass. Fix the code, not the tests.
-
-THE USER ASKED FOR X. DELIVER EXACTLY X. NOT A SUBSET. NOT A DEMO. NOT A STARTING POINT.
-
-</ultrawork-mode>
-
----
-
-`;
+    ULTRAWORK_MESSAGE = getDefaultUltraworkMessage();
     ULTRATHINK_MESSAGE = `<think-mode>
 
 **ULTRATHINK MODE ENABLED** - Extended reasoning activated.
@@ -14407,7 +14656,7 @@ function parseCodexMcpServerNames(content) {
     const sectionMatch = line.match(/^\[mcp_servers\.([^\]]+)\]$/);
     if (sectionMatch) {
       const name = sectionMatch[1].trim();
-      if (name) {
+      if (name && CODEX_MCP_SERVER_NAME_PATTERN.test(name)) {
         names.add(name);
       }
     }
@@ -14426,7 +14675,7 @@ function syncCodexConfigToml(existingContent, registry2) {
   const base = stripManagedCodexBlock(existingContent);
   const existingServerNames = parseCodexMcpServerNames(base);
   const managedRegistry = Object.fromEntries(
-    Object.entries(registry2).filter(([name]) => !existingServerNames.has(name))
+    Object.entries(registry2).filter(([name]) => CODEX_MCP_SERVER_NAME_PATTERN.test(name) && !existingServerNames.has(name))
   );
   const managedBlock = renderManagedCodexMcpBlock(managedRegistry);
   const nextContent = managedBlock ? `${base ? `${base}
@@ -14492,7 +14741,7 @@ function readJsonObject(path22) {
     return {};
   }
 }
-var import_fs28, import_os9, import_path37, MANAGED_START, MANAGED_END, DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC, RETIRED_TEAM_MCP_PATH_PATTERN;
+var import_fs28, import_os9, import_path37, MANAGED_START, MANAGED_END, CODEX_MCP_SERVER_NAME_PATTERN, DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC, RETIRED_TEAM_MCP_PATH_PATTERN;
 var init_mcp_registry = __esm({
   "src/installer/mcp-registry.ts"() {
     "use strict";
@@ -14503,6 +14752,7 @@ var init_mcp_registry = __esm({
     init_paths();
     MANAGED_START = "# BEGIN OMC MANAGED MCP REGISTRY";
     MANAGED_END = "# END OMC MANAGED MCP REGISTRY";
+    CODEX_MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
     DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC = 15;
     RETIRED_TEAM_MCP_PATH_PATTERN = /(^|[\\/])bridge[\\/]+team-mcp\.cjs$/i;
   }
@@ -17536,7 +17786,7 @@ function createUltraworkStateHook(directory) {
   };
 }
 var import_fs35;
-var init_ultrawork = __esm({
+var init_ultrawork2 = __esm({
   "src/hooks/ultrawork/index.ts"() {
     "use strict";
     import_fs35 = require("fs");
@@ -18009,7 +18259,7 @@ var init_loop = __esm({
     init_mode_state_io();
     init_prd();
     init_progress();
-    init_ultrawork();
+    init_ultrawork2();
     init_worktree_paths();
     init_state();
     RALPH_CRITIC_MODES = ["architect", "critic", "codex"];
@@ -18019,11 +18269,6 @@ var init_loop = __esm({
 });
 
 // src/utils/omc-cli-rendering.ts
-function isClaudeSession(env2) {
-  return Boolean(
-    env2.CLAUDECODE?.trim() || env2.CLAUDE_SESSION_ID?.trim() || env2.CLAUDECODE_SESSION_ID?.trim()
-  );
-}
 function commandExists2(command, env2) {
   const pathValue = env2.PATH ?? env2.Path ?? "";
   const pathExt = env2.PATHEXT ?? "";
@@ -18054,11 +18299,7 @@ function resolveOmcCliPrefix(options = {}) {
   return OMC_CLI_BINARY;
 }
 function resolveInvocationPrefix(commandSuffix, options = {}) {
-  const env2 = options.env ?? process.env;
-  const normalizedSuffix = commandSuffix.trim();
-  if (/^ask(?:\s|$)/.test(normalizedSuffix) && isClaudeSession(env2)) {
-    return OMC_CLI_BINARY;
-  }
+  void commandSuffix;
   return resolveOmcCliPrefix(options);
 }
 function formatOmcCliInvocation(commandSuffix, options = {}) {
@@ -24414,7 +24655,7 @@ var init_persistent_mode = __esm({
     init_security_config();
     init_config_dir();
     init_paths();
-    init_ultrawork();
+    init_ultrawork2();
     init_worktree_paths();
     init_mode_state_io();
     init_ralph();
@@ -28711,7 +28952,10 @@ function isTmuxAvailable() {
 }
 function isCopilotAvailable() {
   try {
-    (0, import_child_process18.execFileSync)("claude", ["--version"], { stdio: "ignore" });
+    (0, import_child_process18.execFileSync)("claude", ["--version"], {
+      stdio: "ignore",
+      shell: process.platform === "win32"
+    });
     return true;
   } catch {
     return false;
@@ -28777,7 +29021,7 @@ function wrapWithLoginShell(command) {
     const comspec = process.env.COMSPEC || "cmd.exe";
     return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
   }
-  const shell = process.env.SHELL || "/bin/bash";
+  const shell = process.env.SHELL || "/bin/sh";
   const shellName = (0, import_path61.basename)(shell).replace(/\.(exe|cmd|bat)$/i, "");
   const rcFile = process.env.HOME ? `${process.env.HOME}/.${shellName}rc` : "";
   const sourcePrefix = rcFile ? `[ -f ${quoteShellArg2(rcFile)} ] && . ${quoteShellArg2(rcFile)}; ` : "";
@@ -33808,10 +34052,11 @@ var init_model_contract = __esm({
         binary: "codex",
         installInstructions: "Install Codex CLI: npm install -g @openai/codex",
         supportsPromptMode: true,
-        // Codex accepts prompt as a positional argument (no flag needed):
-        //   codex [OPTIONS] [PROMPT]
+        // Codex uses the `exec` subcommand for non-interactive runs that exit
+        // on completion. The prompt still remains positional after options:
+        //   codex exec [OPTIONS] [PROMPT]
         buildLaunchArgs(model, extraFlags = []) {
-          const args = ["--dangerously-bypass-approvals-and-sandbox"];
+          const args = ["exec", "--dangerously-bypass-approvals-and-sandbox"];
           if (model) args.push("--model", model);
           return [...args, ...extraFlags];
         },
@@ -33837,7 +34082,7 @@ var init_model_contract = __esm({
         binary: "gemini",
         installInstructions: "Install Gemini CLI: npm install -g @google/gemini-cli",
         supportsPromptMode: true,
-        promptModeFlag: "-i",
+        promptModeFlag: "-p",
         buildLaunchArgs(model, extraFlags = []) {
           const args = ["--approval-mode", "yolo"];
           if (model) args.push("--model", model);
@@ -33955,7 +34200,7 @@ function getDefaultShell() {
   if (process.platform === "win32" && !isUnixLikeOnWindows2()) {
     return process.env.COMSPEC || "cmd.exe";
   }
-  const shell = process.env.SHELL || "/bin/bash";
+  const shell = process.env.SHELL || "/bin/sh";
   const name = (0, import_path76.basename)(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
@@ -48796,6 +49041,18 @@ __export(hud_exports, {
   _resetSummarySpawnTimestamp: () => _resetSummarySpawnTimestamp,
   main: () => main2
 });
+function mergeStdinRateLimits(stdinRateLimits, usageResult) {
+  if (!stdinRateLimits) {
+    return usageResult;
+  }
+  return {
+    ...usageResult ?? {},
+    rateLimits: {
+      ...usageResult?.rateLimits ?? {},
+      ...stdinRateLimits
+    }
+  };
+}
 function readSessionSummary(stateDir, sessionId) {
   const statePath = (0, import_path116.join)(stateDir, `session-summary-${sessionId}.json`);
   if (!(0, import_fs101.existsSync)(statePath)) return null;
@@ -48910,7 +49167,8 @@ async function main2(watchMode = false, skipInit = false) {
       writeHudState(stateToWrite, cwd, currentSessionId ?? void 0);
     }
     const stdinRateLimits = getRateLimitsFromStdin(stdin);
-    const rateLimitsResult = config2.elements.rateLimits === false ? null : stdinRateLimits ? { rateLimits: stdinRateLimits } : await getUsage();
+    const usageResult = config2.elements.rateLimits === false ? null : await getUsage();
+    const rateLimitsResult = config2.elements.rateLimits === false ? null : mergeStdinRateLimits(stdinRateLimits, usageResult);
     const customBuckets = config2.rateLimitsProvider?.type === "custom" ? await executeCustomProvider(config2.rateLimitsProvider) : null;
     let omcVersion = null;
     let updateAvailable = null;
@@ -78386,192 +78644,18 @@ function getOmcToolNames(options) {
 }
 
 // src/features/magic-keywords.ts
+init_ultrawork();
 var CODE_BLOCK_PATTERN = /```[\s\S]*?```/g;
 var INLINE_CODE_PATTERN = /`[^`]+`/g;
 function removeCodeBlocks(text) {
   return text.replace(CODE_BLOCK_PATTERN, "").replace(INLINE_CODE_PATTERN, "");
 }
-var ULTRAWORK_PLANNER_SECTION = `## CRITICAL: YOU ARE A PLANNER, NOT AN IMPLEMENTER
-
-**IDENTITY CONSTRAINT (NON-NEGOTIABLE):**
-You ARE the planner. You ARE NOT an implementer. You DO NOT write code. You DO NOT execute tasks.
-
-**TOOL RESTRICTIONS (SYSTEM-ENFORCED):**
-| Tool | Allowed | Blocked |
-|------|---------|---------|
-| Write/Edit | \`.omcp/**/*.md\` ONLY | Everything else |
-| Read | All files | - |
-| Bash | Research commands only | Implementation commands |
-| Task | explore, document-specialist | - |
-
-**IF YOU TRY TO WRITE/EDIT OUTSIDE \`.omcp/\`:**
-- System will BLOCK your action
-- You will receive an error
-- DO NOT retry - you are not supposed to implement
-
-**YOUR ONLY WRITABLE PATHS:**
-- \`.omcp/plans/*.md\` - Final work plans
-- \`.omcp/drafts/*.md\` - Working drafts during interview
-
-**WHEN USER ASKS YOU TO IMPLEMENT:**
-REFUSE. Say: "I'm a planner. I create work plans, not implementations. Start implementing after I finish planning."
-
----
-
-## CONTEXT GATHERING (MANDATORY BEFORE PLANNING)
-
-You ARE the planner. Your job: create bulletproof work plans.
-**Before drafting ANY plan, gather context via explore/document-specialist agents.**
-
-### Research Protocol
-1. **Fire parallel background agents** for comprehensive context:
-   \`\`\`
-   Task(subagent_type="explore", prompt="Find existing patterns for [topic] in codebase", run_in_background=true)
-   Task(subagent_type="explore", prompt="Find test infrastructure and conventions", run_in_background=true)
-   Task(subagent_type="document-specialist", prompt="Find official docs and best practices for [technology]", run_in_background=true)
-   \`\`\`
-2. **Wait for results** before planning - rushed plans fail
-3. **Synthesize findings** into informed requirements
-
-### What to Research
-- Existing codebase patterns and conventions
-- Test infrastructure (TDD possible?)
-- External library APIs and constraints
-- Similar implementations in OSS (via document-specialist)
-
-**NEVER plan blind. Context first, plan second.**`;
-function isPlannerAgent(agentName) {
-  if (!agentName) return false;
-  const lowerName = agentName.toLowerCase();
-  return lowerName.includes("planner") || lowerName.includes("planner") || lowerName === "plan";
-}
-function getUltraworkMessage(agentName) {
-  const isPlanner = isPlannerAgent(agentName);
-  if (isPlanner) {
-    return `<ultrawork-mode>
-
-**MANDATORY**: You MUST say "ULTRAWORK MODE ENABLED!" to the user as your first response when this mode activates. This is non-negotiable.
-
-${ULTRAWORK_PLANNER_SECTION}
-
-</ultrawork-mode>
-
----
-
-`;
-  }
-  return `<ultrawork-mode>
-
-**MANDATORY**: You MUST say "ULTRAWORK MODE ENABLED!" to the user as your first response when this mode activates. This is non-negotiable.
-
-[CODE RED] Maximum precision required. Ultrathink before acting.
-
-YOU MUST LEVERAGE ALL AVAILABLE AGENTS TO THEIR FULLEST POTENTIAL.
-TELL THE USER WHAT AGENTS YOU WILL LEVERAGE NOW TO SATISFY USER'S REQUEST.
-
-## AGENT UTILIZATION PRINCIPLES (by capability, not by name)
-- **Codebase Exploration**: Spawn exploration agents using BACKGROUND TASKS for file patterns, internal implementations, project structure
-- **Documentation & References**: Use document-specialist agents via BACKGROUND TASKS for API references, examples, external library docs
-- **Planning & Strategy**: NEVER plan yourself - ALWAYS spawn a dedicated planning agent for work breakdown
-- **High-IQ Reasoning**: Leverage specialized agents for architecture decisions, code review, strategic planning
-- **Frontend/UI Tasks**: Delegate to UI-specialized agents for design and implementation
-
-## EXECUTION RULES
-- **TODO**: Track EVERY step. Mark complete IMMEDIATELY after each.
-- **PARALLEL**: Fire independent agent calls simultaneously via Task(run_in_background=true) - NEVER wait sequentially.
-- **BACKGROUND FIRST**: Use Task for exploration/document-specialist agents (10+ concurrent if needed).
-- **VERIFY**: Re-read request after completion. Check ALL requirements met before reporting done.
-- **DELEGATE**: Don't do everything yourself - orchestrate specialized agents for their strengths.
-
-## WORKFLOW
-1. Analyze the request and identify required capabilities
-2. Spawn exploration/document-specialist agents via Task(run_in_background=true) in PARALLEL (10+ if needed)
-3. Always Use Plan agent with gathered context to create detailed work breakdown
-4. Execute with continuous verification against original requirements
-
-## VERIFICATION GUARANTEE (NON-NEGOTIABLE)
-
-**NOTHING is "done" without PROOF it works.**
-
-### Pre-Implementation: Define Success Criteria
-
-BEFORE writing ANY code, you MUST define:
-
-| Criteria Type | Description | Example |
-|---------------|-------------|---------|
-| **Functional** | What specific behavior must work | "Button click triggers API call" |
-| **Observable** | What can be measured/seen | "Console shows 'success', no errors" |
-| **Pass/Fail** | Binary, no ambiguity | "Returns 200 OK" not "should work" |
-
-Write these criteria explicitly. Share with user if scope is non-trivial.
-
-### Test Plan Template (MANDATORY for non-trivial tasks)
-
-\`\`\`
-## Test Plan
-### Objective: [What we're verifying]
-### Prerequisites: [Setup needed]
-### Test Cases:
-1. [Test Name]: [Input] \u2192 [Expected Output] \u2192 [How to verify]
-2. ...
-### Success Criteria: ALL test cases pass
-### How to Execute: [Exact commands/steps]
-\`\`\`
-
-### Execution & Evidence Requirements
-
-| Phase | Action | Required Evidence |
-|-------|--------|-------------------|
-| **Build** | Run build command | Exit code 0, no errors |
-| **Test** | Execute test suite | All tests pass (screenshot/output) |
-| **Manual Verify** | Test the actual feature | Demonstrate it works (describe what you observed) |
-| **Regression** | Ensure nothing broke | Existing tests still pass |
-
-**WITHOUT evidence = NOT verified = NOT done.**
-
-### TDD Workflow (when test infrastructure exists)
-
-1. **SPEC**: Define what "working" means (success criteria above)
-2. **RED**: Write failing test \u2192 Run it \u2192 Confirm it FAILS
-3. **GREEN**: Write minimal code \u2192 Run test \u2192 Confirm it PASSES
-4. **REFACTOR**: Clean up \u2192 Tests MUST stay green
-5. **VERIFY**: Run full test suite, confirm no regressions
-6. **EVIDENCE**: Report what you ran and what output you saw
-
-### Verification Anti-Patterns (BLOCKING)
-
-| Violation | Why It Fails |
-|-----------|--------------|
-| "It should work now" | No evidence. Run it. |
-| "I added the tests" | Did they pass? Show output. |
-| "Fixed the bug" | How do you know? What did you test? |
-| "Implementation complete" | Did you verify against success criteria? |
-| Skipping test execution | Tests exist to be RUN, not just written |
-
-**CLAIM NOTHING WITHOUT PROOF. EXECUTE. VERIFY. SHOW EVIDENCE.**
-
-## ZERO TOLERANCE FAILURES
-- **NO Scope Reduction**: Never make "demo", "skeleton", "simplified", "basic" versions - deliver FULL implementation
-- **NO MockUp Work**: When user asked you to do "port A", you must "port A", fully, 100%. No Extra feature, No reduced feature, no mock data, fully working 100% port.
-- **NO Partial Completion**: Never stop at 60-80% saying "you can extend this..." - finish 100%
-- **NO Assumed Shortcuts**: Never skip requirements you deem "optional" or "can be added later"
-- **NO Premature Stopping**: Never declare done until ALL TODOs are completed and verified
-- **NO TEST DELETION**: Never delete or skip failing tests to make the build pass. Fix the code, not the tests.
-
-THE USER ASKED FOR X. DELIVER EXACTLY X. NOT A SUBSET. NOT A DEMO. NOT A STARTING POINT.
-
-</ultrawork-mode>
-
----
-
-`;
-}
 var ultraworkEnhancement = {
   triggers: ["ultrawork", "ulw", "uw"],
   description: "Activates maximum performance mode with parallel agent orchestration",
-  action: (prompt, agentName) => {
+  action: (prompt, agentName, modelId) => {
     const cleanPrompt = removeTriggerWords(prompt, ["ultrawork", "ulw", "uw"]);
-    return getUltraworkMessage(agentName) + cleanPrompt;
+    return getUltraworkMessage(agentName, modelId) + cleanPrompt;
   }
 };
 var searchEnhancement = {
@@ -78687,7 +78771,7 @@ function createMagicKeywordProcessor(config2) {
       }
     }
   }
-  return (prompt, agentName) => {
+  return (prompt, agentName, modelId) => {
     let result = prompt;
     for (const keyword of keywords) {
       const hasKeyword = keyword.triggers.some((trigger) => {
@@ -78695,7 +78779,7 @@ function createMagicKeywordProcessor(config2) {
         return regex.test(removeCodeBlocks(result));
       });
       if (hasKeyword) {
-        result = keyword.action(result, agentName);
+        result = keyword.action(result, agentName, modelId);
       }
     }
     return result;
@@ -79219,7 +79303,7 @@ function removeCodeBlocks2(text) {
 var PASTED_MAGIC_KEYWORD_HEADER_PATTERN = /^\s*\[MAGIC KEYWORDS?(?: DETECTED)?:.*$/i;
 var ROLE_BOUNDARY_PATTERN = /^<\s*\/?\s*(system|human|assistant|user|tool_use|tool_result)\b[^>]*>/i;
 var SKILL_TRANSCRIPT_LINE_PATTERN = /^\s*Skill:\s+oh-my-(?:copilot|claudecode|codex):/i;
-var USER_REQUEST_LINE_PATTERN = /^\s*User request:\s*$/i;
+var USER_REQUEST_LINE_PATTERN = /^\s*User request(?:\s*\([^)]*\))?:\s*$/i;
 var SHELL_TRANSCRIPT_LINE_PATTERN = /^\s*[$%❯]\s+/;
 var GIT_DIFF_START_PATTERNS = [
   /^diff\s+--git\s+a\//,
@@ -80182,6 +80266,11 @@ var HookInputSchema = external_exports3.object({
   prompt: external_exports3.string().optional(),
   message: external_exports3.object({ content: external_exports3.string().optional() }).optional(),
   parts: external_exports3.array(external_exports3.object({ type: external_exports3.string(), text: external_exports3.string().optional() })).optional(),
+  model: external_exports3.string().optional(),
+  model_id: external_exports3.string().optional(),
+  modelId: external_exports3.string().optional(),
+  agent_name: external_exports3.string().optional(),
+  agentName: external_exports3.string().optional(),
   // Stop hook fields
   stop_reason: external_exports3.string().optional(),
   stopReason: external_exports3.string().optional(),
@@ -80219,6 +80308,10 @@ var KNOWN_FIELDS = /* @__PURE__ */ new Set([
   "agent_name",
   "agent_type",
   "parent_session_id",
+  "agentName",
+  "model",
+  "model_id",
+  "modelId",
   // Common extra fields from Copilot CLI
   "input",
   "output",
@@ -80730,6 +80823,7 @@ init_plan_output();
 init_runtime_insight();
 init_skill_state();
 init_hooks();
+init_ultrawork();
 init_subagent_tracker();
 init_session_replay();
 init_permission_handler();
@@ -80779,12 +80873,62 @@ var MODE_CONFIRMATION_SKILL_MAP = {
   autopilot: ["autopilot"],
   ralplan: ["ralplan"]
 };
+var SESSION_START_CONTEXT_BUDGET = 6e3;
+var SESSION_START_OMISSION_NOTICE = "[Additional SessionStart context omitted to preserve the 6000-character aggregate budget.]";
+function compactBudgetedText2(text, maxChars) {
+  const notice = "\n...[truncated to preserve SessionStart context budget]";
+  if (!text || text.length <= maxChars) return text || "";
+  if (maxChars <= notice.length) return notice.slice(0, Math.max(0, maxChars));
+  return `${text.slice(0, maxChars - notice.length).trimEnd()}${notice}`;
+}
+function buildSessionStartAdditionalContext(messages) {
+  if (messages.length === 0) return "";
+  const priorityOrder = [
+    /\[MODEL ROUTING OVERRIDE/,
+    /\[AUTOPILOT MODE RESTORED\]/,
+    /\[ULTRAWORK MODE RESTORED\]/,
+    /\[RALPLAN MODE RESTORED\]/,
+    /\[TEAM MODE RESTORED\]/,
+    /\[ROOT AGENTS\.md LOADED\]/,
+    /\[PENDING TASKS DETECTED\]/
+  ];
+  const ordered = messages.map((message, index) => {
+    const priority = priorityOrder.findIndex((pattern) => pattern.test(message));
+    return { message, index, priority: priority === -1 ? priorityOrder.length + index : priority };
+  }).sort((a, b) => a.priority - b.priority || a.index - b.index).map((entry) => entry.message);
+  let used = 0;
+  const selected = [];
+  for (const message of ordered) {
+    const separatorLength = selected.length > 0 ? 1 : 0;
+    if (used + separatorLength + message.length > SESSION_START_CONTEXT_BUDGET) {
+      const remainingBudget = SESSION_START_CONTEXT_BUDGET - used - separatorLength;
+      if (remainingBudget > 0) {
+        selected.push(
+          remainingBudget > 120 ? compactBudgetedText2(message, remainingBudget) : compactBudgetedText2(SESSION_START_OMISSION_NOTICE, remainingBudget)
+        );
+      }
+      break;
+    }
+    selected.push(message);
+    used += separatorLength + message.length;
+  }
+  return selected.join("\n");
+}
 function getExtraField(input, key) {
   return input[key];
 }
 function getHookToolUseId(input) {
   const value = getExtraField(input, "tool_use_id");
   return typeof value === "string" && value.trim().length > 0 ? value : void 0;
+}
+function getHookContextString(input, ...keys) {
+  for (const key of keys) {
+    const value = getExtraField(input, key);
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return void 0;
 }
 function extractAsyncAgentId(toolOutput) {
   if (typeof toolOutput !== "string") {
@@ -81490,12 +81634,17 @@ Running directly without heavy agent stacking. Prefix with \`quick:\`, \`simple:
         break;
       }
       case "ultrawork": {
-        const { activateUltrawork: activateUltrawork2 } = await Promise.resolve().then(() => (init_ultrawork(), ultrawork_exports));
+        const { activateUltrawork: activateUltrawork2 } = await Promise.resolve().then(() => (init_ultrawork2(), ultrawork_exports));
         const activated = activateUltrawork2(promptText, sessionId, directory);
         if (activated) {
           markModeAwaitingConfirmation(directory, sessionId, "ultrawork");
         }
-        messages.push(ULTRAWORK_MESSAGE);
+        messages.push(
+          getUltraworkMessage(
+            getHookContextString(input, "agentName", "agent_name"),
+            getHookContextString(input, "model", "modelId", "model_id")
+          )
+        );
         break;
       }
       case "ultrathink":
@@ -81668,7 +81817,7 @@ async function processSessionStart(input) {
   const directory = resolveToWorktreeRoot(input.directory);
   const { initSilentAutoUpdate: initSilentAutoUpdate2 } = await Promise.resolve().then(() => (init_auto_update(), auto_update_exports));
   const { readAutopilotState: readAutopilotState2 } = await Promise.resolve().then(() => (init_autopilot(), autopilot_exports));
-  const { readUltraworkState: readUltraworkState2 } = await Promise.resolve().then(() => (init_ultrawork(), ultrawork_exports));
+  const { readUltraworkState: readUltraworkState2 } = await Promise.resolve().then(() => (init_ultrawork2(), ultrawork_exports));
   const { checkIncompleteTodos: checkIncompleteTodos2 } = await Promise.resolve().then(() => (init_todo_continuation(), todo_continuation_exports));
   const { buildAgentsOverlay: buildAgentsOverlay2 } = await Promise.resolve().then(() => (init_agents_overlay(), agents_overlay_exports));
   initSilentAutoUpdate2();
@@ -81873,7 +82022,7 @@ The CLAUDE.md instruction "Pass model on Task calls: haiku, sonnet, opus" does N
   if (messages.length > 0) {
     return {
       continue: true,
-      message: messages.join("\n")
+      message: buildSessionStartAdditionalContext(messages)
     };
   }
   return { continue: true };
@@ -83004,7 +83153,7 @@ var AGENT_USAGE_REMINDER_STORAGE = (0, import_path96.join)(
 );
 
 // src/hooks/index.ts
-init_ultrawork();
+init_ultrawork2();
 init_persistent_mode();
 
 // src/hooks/plugin-patterns/index.ts
@@ -86492,7 +86641,11 @@ function runCopilotInsideTmux(cwd, args) {
   } catch {
   }
   try {
-    (0, import_child_process29.execFileSync)("copilot", args, { cwd, stdio: "inherit" });
+    (0, import_child_process29.execFileSync)("copilot", args, {
+      cwd,
+      stdio: "inherit",
+      shell: process.platform === "win32"
+    });
   } catch (error48) {
     const err = error48;
     if (err.code === "ENOENT") {
@@ -86554,7 +86707,11 @@ function runCopilotOutsideTmux(cwd, args, _sessionId) {
 }
 function runCopilotDirect(cwd, args) {
   try {
-    (0, import_child_process29.execFileSync)("copilot", args, { cwd, stdio: "inherit" });
+    (0, import_child_process29.execFileSync)("copilot", args, {
+      cwd,
+      stdio: "inherit",
+      shell: process.platform === "win32"
+    });
   } catch (error48) {
     const err = error48;
     if (err.code === "ENOENT") {

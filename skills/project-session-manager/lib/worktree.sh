@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Worktree Management
 
 # Validate worktree path is under PSM worktree root before deletion

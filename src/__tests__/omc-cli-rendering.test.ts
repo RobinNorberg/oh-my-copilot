@@ -35,28 +35,31 @@ describe('omcp CLI rendering', () => {
     expect(output).toContain('> node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex --agent-prompt critic "check"');
   });
 
-  it('keeps omc ask invocations inside an active Claude session to avoid nested bridge launches', () => {
+  it('routes ask invocations through the plugin bridge inside an active Claude session when CLAUDE_PLUGIN_ROOT is set', () => {
+    // Previously, ask flows were pinned to the omcp binary inside a Claude session
+    // to avoid nested bridge launches. That guard broke /ccg ask routing whenever
+    // PATH lacked omcp (fresh shells, CI, workspace setups) — the intended prefix
+    // fell through to a binary that did not exist. The standard resolution path
+    // already prefers omcp when available and falls back to the plugin bridge
+    // otherwise, so the guard is removed and ask flows follow the same rules.
     const env = {
       CLAUDE_PLUGIN_ROOT: '/tmp/plugin-root',
       CLAUDECODE: '1',
       CLAUDE_SESSION_ID: 'session-123',
     } as NodeJS.ProcessEnv;
 
-    expect(resolveOmcCliPrefix({ omcAvailable: true, env })).toBe('omcp');
-    expect(formatOmcCliInvocation('ask codex --prompt "check"', { omcAvailable: true, env }))
-      .toBe('omcp ask codex --prompt "check"');
+    expect(resolveOmcCliPrefix({ omcAvailable: false, env })).toBe('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs');
+    expect(formatOmcCliInvocation('ask codex --prompt "check"', { omcAvailable: false, env }))
+      .toBe('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex --prompt "check"');
 
     const input = [
       'Run `omc ask codex "review"`.',
       '> omc ask gemini --prompt "improve docs"',
     ].join('\n');
 
-    // ask commands stay on omcp (not rewritten to bridge), preserving the CLI binary name
-    const expected = [
-      'Run `omcp ask codex "review"`.',
-      '> omcp ask gemini --prompt "improve docs"',
-    ].join('\n');
-    expect(rewriteOmcCliInvocations(input, { omcAvailable: true, env })).toBe(expected);
+    const output = rewriteOmcCliInvocations(input, { omcAvailable: false, env });
+    expect(output).toContain('`node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex "review"`');
+    expect(output).toContain('> node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini --prompt "improve docs"');
   });
 
   it('rewrites omc to omcp when the binary is available', () => {

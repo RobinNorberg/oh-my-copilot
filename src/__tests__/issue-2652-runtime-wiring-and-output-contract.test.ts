@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { ULTRAWORK_MESSAGE } from '../installer/hooks.js';
+import { getUltraworkMessage } from '../hooks/keyword-detector/ultrawork/index.js';
 
 describe('issue #2652 runtime wiring and output contract', () => {
   it('ships the agentStop hook through persistent-mode.cjs', () => {
@@ -20,6 +21,7 @@ describe('issue #2652 runtime wiring and output contract', () => {
   });
 
   it('ultrawork mode instructs spawned agents to keep outputs concise', () => {
+    expect(ULTRAWORK_MESSAGE).toBe(getUltraworkMessage());
     expect(ULTRAWORK_MESSAGE).toContain('CONCISE OUTPUTS');
     expect(ULTRAWORK_MESSAGE).toContain('under 100 words');
     expect(ULTRAWORK_MESSAGE).toContain('files touched');

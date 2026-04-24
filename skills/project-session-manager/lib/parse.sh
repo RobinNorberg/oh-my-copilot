@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # PSM Reference Parser
 
 # Parse a reference string into components
