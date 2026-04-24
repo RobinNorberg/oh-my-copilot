@@ -216,9 +216,16 @@ export function recordSessionMetrics(directory: string, input: SessionEndInput):
 }
 
 /**
- * Clean up transient state files
+ * Clean up transient state files.
+ *
+ * @param directory - Worktree root (or any path under it).
+ * @param endingSessionId - Optional id of the session that is ending.
+ *   When provided, per-session transient caches (HUD stdin cache) are
+ *   removed only from that session's directory so other concurrent
+ *   sessions keep their live state. When omitted (e.g. legacy callers
+ *   or tests), the previous behavior is preserved for compatibility.
  */
-export function cleanupTransientState(directory: string): number {
+export function cleanupTransientState(directory: string, endingSessionId?: string): number {
   let filesRemoved = 0;
   const omcDir = getOmcRoot(directory);
 
@@ -281,43 +288,94 @@ export function cleanupTransientState(directory: string): number {
 
   removeTmpFiles(omcDir);
 
-  // Clean stale per-session transient markers across every session dir.
-  // Patterns are cross-session-safe: short-lived markers/breakers that no
-  // live concurrent session is reading.
-  //
-  // NOTE: hud-stdin-cache.json is now session-scoped (see src/hud/stdin.ts)
-  // but is NOT pruned here — deleting it from the wrong session would
-  // reintroduce the cross-session interference the new scoping fixed.
-  // Proper per-ending-session cleanup requires the caller to pass the
-  // ending sessionId in; until that plumbing exists we leave the cache to
-  // be overwritten on the next write in the owning session.
-  const sessionsDir = path.join(omcDir, 'state', 'sessions');
-  if (fs.existsSync(sessionsDir)) {
-    const crossSessionSafePatterns = [
-      /^cancel-signal/,
-      /stop-breaker/,
+  // Remove transient state files that accumulate across sessions
+  const stateDir = path.join(omcDir, 'state');
+  if (fs.existsSync(stateDir)) {
+    const transientPatterns = [
+      /^agent-replay-.*\.jsonl$/,
+      /^last-tool-error\.json$/,
+      /^hud-state\.json$/,
+      /^hud-stdin-cache\.json$/,
+      /^idle-notif-cooldown\.json$/,
+      /^.*-stop-breaker\.json$/,
     ];
+
     try {
-      for (const sid of fs.readdirSync(sessionsDir)) {
-        const sessionDir = path.join(sessionsDir, sid);
-        try {
-          if (!fs.statSync(sessionDir).isDirectory()) continue;
-          for (const file of fs.readdirSync(sessionDir)) {
-            if (crossSessionSafePatterns.some((p) => p.test(file))) {
-              try {
-                fs.unlinkSync(path.join(sessionDir, file));
-                filesRemoved++;
-              } catch {
-                // Best-effort
-              }
-            }
+      const stateFiles = fs.readdirSync(stateDir);
+      for (const file of stateFiles) {
+        if (transientPatterns.some(p => p.test(file))) {
+          try {
+            fs.unlinkSync(path.join(stateDir, file));
+            filesRemoved++;
+          } catch (_error) {
+            // Ignore removal errors
           }
-        } catch {
-          // Skip entries we can't stat/read
         }
       }
-    } catch {
-      // Ignore top-level sessions dir read errors
+    } catch (_error) {
+      // Ignore errors
+    }
+
+    // Clean up cancel signal files, stale per-session transient caches,
+    // and empty session directories.
+    const sessionsDir = path.join(stateDir, 'sessions');
+    if (fs.existsSync(sessionsDir)) {
+      // Patterns that are safe to delete across every session dir:
+      // these are short-lived markers/breakers that do not represent
+      // live per-session state an active concurrent session is reading.
+      const crossSessionSafePatterns = [
+        /^cancel-signal/,
+        /stop-breaker/,
+      ];
+      // Patterns that must only be deleted from the session that is
+      // actually ending — deleting them from a still-running session
+      // would reintroduce cross-session interference.
+      const endingSessionOnlyPatterns = [
+        // HUD's stdin cache is session-scoped (see `src/hud/stdin.ts`)
+        // and consumed by `omc hud --watch` for the owning session.
+        /^hud-stdin-cache\.json$/,
+      ];
+      const isEndingSession = (sid: string): boolean =>
+        typeof endingSessionId === 'string'
+        && endingSessionId.length > 0
+        && sid === endingSessionId;
+      try {
+        const sessionDirs = fs.readdirSync(sessionsDir);
+        for (const sid of sessionDirs) {
+          const sessionDir = path.join(sessionsDir, sid);
+          try {
+            const stat = fs.statSync(sessionDir);
+            if (!stat.isDirectory()) continue;
+
+            const activePatterns = isEndingSession(sid)
+              ? [...crossSessionSafePatterns, ...endingSessionOnlyPatterns]
+              : crossSessionSafePatterns;
+
+            const sessionFiles = fs.readdirSync(sessionDir);
+            for (const file of sessionFiles) {
+              if (activePatterns.some(p => p.test(file))) {
+                try {
+                  fs.unlinkSync(path.join(sessionDir, file));
+                  filesRemoved++;
+                } catch (_error) { /* ignore */ }
+              }
+            }
+
+            // Remove empty session directories
+            const remaining = fs.readdirSync(sessionDir);
+            if (remaining.length === 0) {
+              try {
+                fs.rmdirSync(sessionDir);
+                filesRemoved++;
+              } catch (_error) { /* ignore */ }
+            }
+          } catch (_error) {
+            // Ignore per-session errors
+          }
+        }
+      } catch (_error) {
+        // Ignore errors
+      }
     }
   }
 
@@ -701,7 +759,7 @@ export async function processSessionEnd(input: SessionEndInput): Promise<HookOut
   await cleanupSessionOwnedTeams(directory, input.session_id);
 
   // Clean up transient state files
-  cleanupTransientState(directory);
+  cleanupTransientState(directory, input.session_id);
 
   // Clean up mode state files to prevent stale state issues
   // This ensures the stop hook won't malfunction in subsequent sessions
