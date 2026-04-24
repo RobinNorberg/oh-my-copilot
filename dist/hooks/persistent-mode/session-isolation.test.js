@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -19,12 +19,17 @@ function writePendingTodo(tempDir, content) {
 }
 describe("Persistent Mode Session Isolation (Issue #311)", () => {
     let tempDir;
-    beforeEach(() => {
+    beforeAll(() => {
         tempDir = mkdtempSync(join(tmpdir(), "persistent-mode-test-"));
         execSync('git init', { cwd: tempDir });
     });
-    afterEach(() => {
+    afterAll(() => {
         rmSync(tempDir, { recursive: true, force: true });
+    });
+    beforeEach(() => {
+        rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+        rmSync(join(tempDir, ".omc"), { recursive: true, force: true });
+        rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
     });
     describe("checkPersistentModes session isolation", () => {
         it("should block stop when session_id matches active ultrawork", async () => {
