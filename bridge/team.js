@@ -3914,6 +3914,2046 @@ var init_loader = __esm({
   }
 });
 
+// src/agents/architect.ts
+var ARCHITECT_PROMPT_METADATA, architectAgent;
+var init_architect = __esm({
+  "src/agents/architect.ts"() {
+    "use strict";
+    init_utils();
+    ARCHITECT_PROMPT_METADATA = {
+      category: "advisor",
+      cost: "EXPENSIVE",
+      promptAlias: "architect",
+      triggers: [
+        { domain: "Architecture decisions", trigger: "Multi-system tradeoffs, unfamiliar patterns" },
+        { domain: "Self-review", trigger: "After completing significant implementation" },
+        { domain: "Hard debugging", trigger: "After 2+ failed fix attempts" }
+      ],
+      useWhen: [
+        "Complex architecture design",
+        "After completing significant work",
+        "2+ failed fix attempts",
+        "Unfamiliar code patterns",
+        "Security/performance concerns",
+        "Multi-system tradeoffs"
+      ],
+      avoidWhen: [
+        "Simple file operations (use direct tools)",
+        "First attempt at any fix (try yourself first)",
+        "Questions answerable from code you've read",
+        "Trivial decisions (variable names, formatting)",
+        "Things you can infer from existing code patterns"
+      ]
+    };
+    architectAgent = {
+      name: "architect",
+      description: "Read-only consultation agent. High-IQ reasoning specialist for debugging hard problems and high-difficulty architecture design.",
+      prompt: loadAgentPrompt("architect"),
+      model: "opus",
+      defaultModel: "opus",
+      metadata: ARCHITECT_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/designer.ts
+var FRONTEND_ENGINEER_PROMPT_METADATA, designerAgent;
+var init_designer = __esm({
+  "src/agents/designer.ts"() {
+    "use strict";
+    init_utils();
+    FRONTEND_ENGINEER_PROMPT_METADATA = {
+      category: "specialist",
+      cost: "CHEAP",
+      promptAlias: "designer",
+      triggers: [
+        {
+          domain: "UI/UX",
+          trigger: "Visual changes, styling, components, accessibility"
+        },
+        {
+          domain: "Design",
+          trigger: "Layout, animations, responsive design"
+        }
+      ],
+      useWhen: [
+        "Visual styling or layout changes",
+        "Component design or refactoring",
+        "Animation implementation",
+        "Accessibility improvements",
+        "Responsive design work"
+      ],
+      avoidWhen: [
+        "Pure logic changes in frontend files",
+        "Backend/API work",
+        "Non-visual refactoring"
+      ]
+    };
+    designerAgent = {
+      name: "designer",
+      description: `Designer-turned-developer who crafts stunning UI/UX even without design mockups. Use for VISUAL changes only (styling, layout, animation). Pure logic changes in frontend files should be handled directly.`,
+      prompt: loadAgentPrompt("designer"),
+      model: "sonnet",
+      defaultModel: "sonnet",
+      metadata: FRONTEND_ENGINEER_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/writer.ts
+var DOCUMENT_WRITER_PROMPT_METADATA, writerAgent;
+var init_writer = __esm({
+  "src/agents/writer.ts"() {
+    "use strict";
+    init_utils();
+    DOCUMENT_WRITER_PROMPT_METADATA = {
+      category: "specialist",
+      cost: "FREE",
+      promptAlias: "writer",
+      triggers: [
+        {
+          domain: "Documentation",
+          trigger: "README, API docs, guides, comments"
+        }
+      ],
+      useWhen: [
+        "Creating or updating README files",
+        "Writing API documentation",
+        "Creating user guides or tutorials",
+        "Adding code comments or JSDoc",
+        "Architecture documentation"
+      ],
+      avoidWhen: [
+        "Code implementation tasks",
+        "Bug fixes",
+        "Non-documentation tasks"
+      ]
+    };
+    writerAgent = {
+      name: "writer",
+      description: `Technical writer who crafts clear, comprehensive documentation. Specializes in README files, API docs, architecture docs, and user guides.`,
+      prompt: loadAgentPrompt("writer"),
+      model: "haiku",
+      defaultModel: "haiku",
+      metadata: DOCUMENT_WRITER_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/critic.ts
+var CRITIC_PROMPT_METADATA, criticAgent;
+var init_critic = __esm({
+  "src/agents/critic.ts"() {
+    "use strict";
+    init_utils();
+    CRITIC_PROMPT_METADATA = {
+      category: "reviewer",
+      cost: "EXPENSIVE",
+      promptAlias: "critic",
+      triggers: [
+        {
+          domain: "Plan Review",
+          trigger: "Evaluating work plans before execution"
+        }
+      ],
+      useWhen: [
+        "After planner creates a work plan",
+        "Before executing a complex plan",
+        "When plan quality validation is needed",
+        "To catch gaps before implementation"
+      ],
+      avoidWhen: [
+        "Simple, straightforward tasks",
+        "When no plan exists to review",
+        "During implementation phase"
+      ]
+    };
+    criticAgent = {
+      name: "critic",
+      description: `Expert reviewer for evaluating work plans against rigorous clarity, verifiability, and completeness standards. Use after planner creates a work plan to validate it before execution.`,
+      prompt: loadAgentPrompt("critic"),
+      model: "opus",
+      defaultModel: "opus",
+      metadata: CRITIC_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/analyst.ts
+var ANALYST_PROMPT_METADATA, analystAgent;
+var init_analyst = __esm({
+  "src/agents/analyst.ts"() {
+    "use strict";
+    init_utils();
+    ANALYST_PROMPT_METADATA = {
+      category: "planner",
+      cost: "EXPENSIVE",
+      promptAlias: "analyst",
+      triggers: [
+        {
+          domain: "Pre-Planning",
+          trigger: "Hidden requirements, edge cases, risk analysis"
+        }
+      ],
+      useWhen: [
+        "Before creating a work plan",
+        "When requirements seem incomplete",
+        "To identify hidden assumptions",
+        "Risk analysis before implementation",
+        "Scope validation"
+      ],
+      avoidWhen: [
+        "Simple, well-defined tasks",
+        "During implementation phase",
+        "When plan already reviewed"
+      ]
+    };
+    analystAgent = {
+      name: "analyst",
+      description: `Pre-planning consultant that analyzes requests before implementation to identify hidden requirements, edge cases, and potential risks. Use before creating a work plan.`,
+      prompt: loadAgentPrompt("analyst"),
+      model: "opus",
+      defaultModel: "opus",
+      metadata: ANALYST_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/executor.ts
+var EXECUTOR_PROMPT_METADATA, executorAgent;
+var init_executor = __esm({
+  "src/agents/executor.ts"() {
+    "use strict";
+    init_utils();
+    EXECUTOR_PROMPT_METADATA = {
+      category: "specialist",
+      cost: "CHEAP",
+      promptAlias: "Junior",
+      triggers: [
+        { domain: "Direct implementation", trigger: "Single-file changes, focused tasks" },
+        { domain: "Bug fixes", trigger: "Clear, scoped fixes" },
+        { domain: "Small features", trigger: "Well-defined, isolated work" }
+      ],
+      useWhen: [
+        "Direct, focused implementation tasks",
+        "Single-file or few-file changes",
+        "When delegation overhead isn't worth it",
+        "Clear, well-scoped work items"
+      ],
+      avoidWhen: [
+        "Multi-file refactoring (use orchestrator)",
+        "Tasks requiring research (use explore/document-specialist first)",
+        "Complex decisions (consult architect)"
+      ]
+    };
+    executorAgent = {
+      name: "executor",
+      description: "Focused task executor. Execute tasks directly. NEVER delegate or spawn other agents. Same discipline as OMC, no delegation.",
+      prompt: loadAgentPrompt("executor"),
+      model: "sonnet",
+      defaultModel: "sonnet",
+      metadata: EXECUTOR_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/planner.ts
+var PLANNER_PROMPT_METADATA, plannerAgent;
+var init_planner = __esm({
+  "src/agents/planner.ts"() {
+    "use strict";
+    init_utils();
+    PLANNER_PROMPT_METADATA = {
+      category: "planner",
+      cost: "EXPENSIVE",
+      promptAlias: "planner",
+      triggers: [
+        {
+          domain: "Strategic Planning",
+          trigger: "Comprehensive work plans, interview-style consultation"
+        }
+      ],
+      useWhen: [
+        "Complex features requiring planning",
+        "When requirements need clarification through interview",
+        "Creating comprehensive work plans",
+        "Before large implementation efforts"
+      ],
+      avoidWhen: [
+        "Simple, straightforward tasks",
+        "When implementation should just start",
+        "When a plan already exists"
+      ]
+    };
+    plannerAgent = {
+      name: "planner",
+      description: `Strategic planning consultant. Interviews users to understand requirements, then creates comprehensive work plans. NEVER implements - only plans.`,
+      prompt: loadAgentPrompt("planner"),
+      model: "opus",
+      defaultModel: "opus",
+      metadata: PLANNER_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/qa-tester.ts
+var QA_TESTER_PROMPT_METADATA, qaTesterAgent;
+var init_qa_tester = __esm({
+  "src/agents/qa-tester.ts"() {
+    "use strict";
+    init_utils();
+    QA_TESTER_PROMPT_METADATA = {
+      category: "specialist",
+      cost: "CHEAP",
+      promptAlias: "QATester",
+      triggers: [
+        { domain: "CLI testing", trigger: "Testing command-line applications" },
+        { domain: "Service testing", trigger: "Starting and testing background services" },
+        { domain: "Integration testing", trigger: "End-to-end CLI workflow verification" },
+        { domain: "Interactive testing", trigger: "Testing applications requiring user input" }
+      ],
+      useWhen: [
+        "Testing CLI applications that need interactive input",
+        "Starting background services and verifying their behavior",
+        "Running end-to-end tests on command-line tools",
+        "Testing applications that produce streaming output",
+        "Verifying service startup and shutdown behavior"
+      ],
+      avoidWhen: [
+        "Unit testing (use standard test runners)",
+        "API testing without CLI interface (use curl/httpie directly)",
+        "Static code analysis (use architect or explore)"
+      ]
+    };
+    qaTesterAgent = {
+      name: "qa-tester",
+      description: "Interactive CLI testing specialist using tmux. Tests CLI applications, background services, and interactive tools. Manages test sessions, sends commands, verifies output, and ensures cleanup.",
+      prompt: loadAgentPrompt("qa-tester"),
+      model: "sonnet",
+      defaultModel: "sonnet",
+      metadata: QA_TESTER_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/scientist.ts
+var SCIENTIST_PROMPT_METADATA, scientistAgent;
+var init_scientist = __esm({
+  "src/agents/scientist.ts"() {
+    "use strict";
+    init_utils();
+    SCIENTIST_PROMPT_METADATA = {
+      category: "specialist",
+      cost: "CHEAP",
+      promptAlias: "scientist",
+      triggers: [
+        { domain: "Data analysis", trigger: "Analyzing datasets and computing statistics" },
+        { domain: "Research execution", trigger: "Running data experiments and generating findings" },
+        { domain: "Python data work", trigger: "Using pandas, numpy, scipy for data tasks" },
+        { domain: "EDA", trigger: "Exploratory data analysis on files" },
+        { domain: "Hypothesis testing", trigger: "Statistical tests with confidence intervals and effect sizes" },
+        { domain: "Research stages", trigger: "Multi-stage analysis with structured markers" }
+      ],
+      useWhen: [
+        "Analyzing CSV, JSON, Parquet, or other data files",
+        "Computing descriptive statistics or aggregations",
+        "Performing exploratory data analysis (EDA)",
+        "Generating data-driven findings and insights",
+        "Simple ML tasks like clustering or regression",
+        "Data transformations and feature engineering",
+        "Generating data analysis reports with visualizations",
+        "Hypothesis testing with statistical evidence markers",
+        "Research stages with [STAGE:*] markers for orchestration"
+      ],
+      avoidWhen: [
+        "Researching external documentation or APIs (use document-specialist)",
+        "Implementing production code features (use executor)",
+        "Architecture or system design questions (use architect)",
+        "No data files to analyze - just theoretical questions",
+        "Web scraping or external data fetching (use document-specialist)"
+      ]
+    };
+    scientistAgent = {
+      name: "scientist",
+      description: "Data analysis and research execution specialist. Executes Python code for EDA, statistical analysis, and generating data-driven findings. Works with CSV, JSON, Parquet files using pandas, numpy, scipy.",
+      prompt: loadAgentPrompt("scientist"),
+      model: "sonnet",
+      defaultModel: "sonnet",
+      metadata: SCIENTIST_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/explore.ts
+var EXPLORE_PROMPT_METADATA, exploreAgent;
+var init_explore = __esm({
+  "src/agents/explore.ts"() {
+    "use strict";
+    init_utils();
+    EXPLORE_PROMPT_METADATA = {
+      category: "exploration",
+      cost: "CHEAP",
+      promptAlias: "Explore",
+      triggers: [
+        { domain: "Internal codebase search", trigger: "Finding implementations, patterns, files" },
+        { domain: "Project structure", trigger: "Understanding code organization" },
+        { domain: "Code discovery", trigger: "Locating specific code by pattern" }
+      ],
+      useWhen: [
+        "Finding files by pattern or name",
+        "Searching for implementations in current project",
+        "Understanding project structure",
+        "Locating code by content or pattern",
+        "Quick codebase exploration"
+      ],
+      avoidWhen: [
+        "External documentation, literature, or academic paper lookup (use document-specialist)",
+        "Database/reference/manual lookups outside the current project (use document-specialist)",
+        "GitHub/npm package research (use document-specialist)",
+        "Complex architectural analysis (use architect)",
+        "When you already know the file location"
+      ]
+    };
+    exploreAgent = {
+      name: "explore",
+      description: "Fast codebase exploration and pattern search. Use for finding files, understanding structure, locating implementations. Searches INTERNAL codebase only; external docs, literature, papers, and reference databases belong to document-specialist.",
+      prompt: loadAgentPrompt("explore"),
+      model: "haiku",
+      defaultModel: "haiku",
+      metadata: EXPLORE_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/tracer.ts
+var TRACER_PROMPT_METADATA, tracerAgent;
+var init_tracer = __esm({
+  "src/agents/tracer.ts"() {
+    "use strict";
+    init_utils();
+    TRACER_PROMPT_METADATA = {
+      category: "advisor",
+      cost: "EXPENSIVE",
+      promptAlias: "tracer",
+      triggers: [
+        { domain: "Causal tracing", trigger: "Why did this happen? Which explanation best fits the evidence?" },
+        { domain: "Forensic analysis", trigger: "Observed output, artifact, or behavior needs ranked explanations" },
+        { domain: "Evidence-driven uncertainty reduction", trigger: "Need competing hypotheses and the next best probe" }
+      ],
+      useWhen: [
+        "Tracing ambiguous runtime behavior, regressions, or orchestration outcomes",
+        "Ranking competing explanations for an observed result",
+        "Separating observation, evidence, and inference",
+        "Explaining performance, architecture, scientific, or configuration outcomes",
+        "Identifying the next probe that would collapse uncertainty fastest"
+      ],
+      avoidWhen: [
+        "The task is pure implementation or fixing (use executor/debugger)",
+        "The task is a generic summary without causal analysis",
+        "A single-file code search is enough (use explore)",
+        "You already have decisive evidence and only need execution"
+      ]
+    };
+    tracerAgent = {
+      name: "tracer",
+      description: "Evidence-driven causal tracing specialist. Explains observed outcomes using competing hypotheses, evidence for and against, uncertainty tracking, and next-probe recommendations.",
+      prompt: loadAgentPrompt("tracer"),
+      model: "sonnet",
+      defaultModel: "sonnet",
+      metadata: TRACER_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/document-specialist.ts
+var DOCUMENT_SPECIALIST_PROMPT_METADATA, documentSpecialistAgent;
+var init_document_specialist = __esm({
+  "src/agents/document-specialist.ts"() {
+    "use strict";
+    init_utils();
+    DOCUMENT_SPECIALIST_PROMPT_METADATA = {
+      category: "exploration",
+      cost: "CHEAP",
+      promptAlias: "document-specialist",
+      triggers: [
+        {
+          domain: "Project documentation",
+          trigger: "README, docs/, migration guides, local references"
+        },
+        {
+          domain: "External documentation",
+          trigger: "API references, official docs"
+        },
+        {
+          domain: "API/framework correctness",
+          trigger: "Context Hub / chub first when available; curated backend fallback otherwise"
+        },
+        {
+          domain: "OSS implementations",
+          trigger: "GitHub examples, package source"
+        },
+        {
+          domain: "Best practices",
+          trigger: "Community patterns, recommendations"
+        },
+        {
+          domain: "Literature and reference research",
+          trigger: "Academic papers, manuals, reference databases"
+        }
+      ],
+      useWhen: [
+        "Checking README/docs/local reference files before broader research",
+        "Looking up official documentation",
+        "Using Context Hub / chub (or another curated docs backend) for external API/framework correctness when available",
+        "Finding GitHub examples",
+        "Researching npm/pip packages",
+        "Stack Overflow solutions",
+        "External API references",
+        "Searching external literature or academic papers",
+        "Looking up manuals, databases, or reference material outside the current project"
+      ],
+      avoidWhen: [
+        "Internal codebase implementation search (use explore)",
+        "Current project source files when the task is code discovery rather than documentation lookup (use explore)",
+        "When you already have the information"
+      ]
+    };
+    documentSpecialistAgent = {
+      name: "document-specialist",
+      description: "Document Specialist for documentation research and reference finding. Use for local repo docs, official docs, Context Hub / chub or other curated docs backends for API/framework correctness, GitHub examples, OSS implementations, external literature, academic papers, and reference/database lookups. Avoid internal implementation search; use explore for code discovery.",
+      prompt: loadAgentPrompt("document-specialist"),
+      model: "sonnet",
+      defaultModel: "sonnet",
+      metadata: DOCUMENT_SPECIALIST_PROMPT_METADATA
+    };
+  }
+});
+
+// src/agents/definitions.ts
+var debuggerAgent, verifierAgent, testEngineerAgent, securityReviewerAgent, codeReviewerAgent, gitMasterAgent, codeSimplifierAgent;
+var init_definitions = __esm({
+  "src/agents/definitions.ts"() {
+    "use strict";
+    init_utils();
+    init_loader();
+    init_skininthegamebros_guidance();
+    init_architect();
+    init_designer();
+    init_writer();
+    init_critic();
+    init_analyst();
+    init_executor();
+    init_planner();
+    init_qa_tester();
+    init_scientist();
+    init_explore();
+    init_tracer();
+    init_document_specialist();
+    init_architect();
+    init_designer();
+    init_writer();
+    init_critic();
+    init_analyst();
+    init_executor();
+    init_planner();
+    init_qa_tester();
+    init_scientist();
+    init_explore();
+    init_tracer();
+    init_document_specialist();
+    debuggerAgent = {
+      name: "debugger",
+      description: "Root-cause analysis, regression isolation, failure diagnosis (Sonnet).",
+      prompt: loadAgentPrompt("debugger"),
+      model: "sonnet",
+      defaultModel: "sonnet"
+    };
+    verifierAgent = {
+      name: "verifier",
+      description: "Completion evidence, claim validation, test adequacy (Sonnet).",
+      prompt: loadAgentPrompt("verifier"),
+      model: "sonnet",
+      defaultModel: "sonnet"
+    };
+    testEngineerAgent = {
+      name: "test-engineer",
+      description: "Test strategy, coverage, flaky test hardening (Sonnet).",
+      prompt: loadAgentPrompt("test-engineer"),
+      model: "sonnet",
+      defaultModel: "sonnet"
+    };
+    securityReviewerAgent = {
+      name: "security-reviewer",
+      description: "Security vulnerability detection specialist (Sonnet). Use for security audits and OWASP detection.",
+      prompt: loadAgentPrompt("security-reviewer"),
+      model: "sonnet",
+      defaultModel: "sonnet"
+    };
+    codeReviewerAgent = {
+      name: "code-reviewer",
+      description: "Expert code review specialist (Opus). Use for comprehensive code quality review.",
+      prompt: loadAgentPrompt("code-reviewer"),
+      model: "opus",
+      defaultModel: "opus"
+    };
+    gitMasterAgent = {
+      name: "git-master",
+      description: "Git expert for atomic commits, rebasing, and history management with style detection",
+      prompt: loadAgentPrompt("git-master"),
+      model: "sonnet",
+      defaultModel: "sonnet"
+    };
+    codeSimplifierAgent = {
+      name: "code-simplifier",
+      description: "Simplifies and refines code for clarity, consistency, and maintainability (Opus).",
+      prompt: loadAgentPrompt("code-simplifier"),
+      model: "opus",
+      defaultModel: "opus"
+    };
+  }
+});
+
+// src/features/delegation-enforcer.ts
+function normalizeToCcAlias(model) {
+  const family = resolveClaudeFamily(model);
+  return family ? FAMILY_TO_ALIAS[family] ?? model : model;
+}
+var FAMILY_TO_ALIAS;
+var init_delegation_enforcer = __esm({
+  "src/features/delegation-enforcer.ts"() {
+    "use strict";
+    init_definitions();
+    init_types2();
+    init_loader();
+    init_models();
+    FAMILY_TO_ALIAS = {
+      SONNET: "sonnet",
+      OPUS: "opus",
+      HAIKU: "haiku"
+    };
+  }
+});
+
+// src/lib/security-config.ts
+import { existsSync as existsSync8, readFileSync as readFileSync4 } from "fs";
+import { join as join12 } from "path";
+function loadSecurityFromConfigFiles() {
+  const paths = [
+    join12(process.cwd(), ".claude", "omc.jsonc"),
+    join12(getConfigDir(), "claude-omc", "config.jsonc")
+  ];
+  for (const configPath of paths) {
+    if (!existsSync8(configPath)) continue;
+    try {
+      const content = readFileSync4(configPath, "utf-8");
+      const parsed = parseJsonc(content);
+      if (parsed?.security && typeof parsed.security === "object") {
+        return parsed.security;
+      }
+    } catch {
+    }
+  }
+  return {};
+}
+function getSecurityConfig() {
+  if (cachedConfig) return cachedConfig;
+  const isStrict = process.env.OMC_SECURITY === "strict";
+  const base = isStrict ? { ...STRICT_OVERRIDES } : { ...DEFAULTS };
+  const fileOverrides = loadSecurityFromConfigFiles();
+  if (isStrict) {
+    cachedConfig = {
+      restrictToolPaths: base.restrictToolPaths || (fileOverrides.restrictToolPaths ?? false),
+      pythonSandbox: base.pythonSandbox || (fileOverrides.pythonSandbox ?? false),
+      disableProjectSkills: base.disableProjectSkills || (fileOverrides.disableProjectSkills ?? false),
+      disableAutoUpdate: base.disableAutoUpdate || (fileOverrides.disableAutoUpdate ?? false),
+      disableRemoteMcp: base.disableRemoteMcp || (fileOverrides.disableRemoteMcp ?? false),
+      disableExternalLLM: base.disableExternalLLM || (fileOverrides.disableExternalLLM ?? false),
+      hardMaxIterations: Math.min(base.hardMaxIterations, typeof fileOverrides.hardMaxIterations === "number" && fileOverrides.hardMaxIterations > 0 ? fileOverrides.hardMaxIterations : base.hardMaxIterations)
+    };
+  } else {
+    cachedConfig = {
+      restrictToolPaths: fileOverrides.restrictToolPaths ?? base.restrictToolPaths,
+      pythonSandbox: fileOverrides.pythonSandbox ?? base.pythonSandbox,
+      disableProjectSkills: fileOverrides.disableProjectSkills ?? base.disableProjectSkills,
+      disableAutoUpdate: fileOverrides.disableAutoUpdate ?? base.disableAutoUpdate,
+      disableRemoteMcp: fileOverrides.disableRemoteMcp ?? base.disableRemoteMcp,
+      disableExternalLLM: fileOverrides.disableExternalLLM ?? base.disableExternalLLM,
+      hardMaxIterations: fileOverrides.hardMaxIterations ?? base.hardMaxIterations
+    };
+  }
+  return cachedConfig;
+}
+function isExternalLLMDisabled() {
+  return getSecurityConfig().disableExternalLLM;
+}
+var DEFAULTS, STRICT_OVERRIDES, cachedConfig;
+var init_security_config = __esm({
+  "src/lib/security-config.ts"() {
+    "use strict";
+    init_jsonc();
+    init_paths();
+    DEFAULTS = {
+      restrictToolPaths: false,
+      pythonSandbox: false,
+      disableProjectSkills: false,
+      disableAutoUpdate: false,
+      hardMaxIterations: 500,
+      disableRemoteMcp: false,
+      disableExternalLLM: false
+    };
+    STRICT_OVERRIDES = {
+      restrictToolPaths: true,
+      pythonSandbox: true,
+      disableProjectSkills: true,
+      disableAutoUpdate: true,
+      hardMaxIterations: 200,
+      disableRemoteMcp: true,
+      disableExternalLLM: true
+    };
+    cachedConfig = null;
+  }
+});
+
+// src/team/model-contract.ts
+import { spawnSync as spawnSync3 } from "child_process";
+import { isAbsolute as isAbsolute5, normalize as normalize2, win32 as win32Path2 } from "path";
+function getTrustedPrefixes() {
+  const trusted = [
+    "/usr/local/bin",
+    "/usr/bin",
+    "/opt/homebrew/"
+  ];
+  const home = process.env.HOME;
+  if (home) {
+    trusted.push(`${home}/.local/bin`);
+    trusted.push(`${home}/.nvm/`);
+    trusted.push(`${home}/.cargo/bin`);
+  }
+  const custom = (process.env.OMC_TRUSTED_CLI_DIRS ?? "").split(":").map((part) => part.trim()).filter(Boolean).filter((part) => isAbsolute5(part));
+  trusted.push(...custom);
+  return trusted;
+}
+function isTrustedPrefix(resolvedPath) {
+  const normalized = normalize2(resolvedPath);
+  return getTrustedPrefixes().some((prefix) => normalized.startsWith(normalize2(prefix)));
+}
+function assertBinaryName(binary) {
+  if (!/^[A-Za-z0-9._-]+$/.test(binary)) {
+    throw new Error(`Invalid CLI binary name: ${binary}`);
+  }
+}
+function resolveCliBinaryPath(binary) {
+  assertBinaryName(binary);
+  const cached = resolvedPathCache.get(binary);
+  if (cached) return cached;
+  const finder = process.platform === "win32" ? "where" : "which";
+  const result = spawnSync3(finder, [binary], {
+    timeout: 5e3,
+    env: process.env
+  });
+  if (result.status !== 0) {
+    throw new Error(`CLI binary '${binary}' not found in PATH`);
+  }
+  const stdout = result.stdout?.toString().trim() ?? "";
+  const firstLine = stdout.split("\n").map((line) => line.trim()).find(Boolean) ?? "";
+  if (!firstLine) {
+    throw new Error(`CLI binary '${binary}' not found in PATH`);
+  }
+  const resolvedPath = normalize2(firstLine);
+  if (!isAbsolute5(resolvedPath)) {
+    throw new Error(`Resolved CLI binary '${binary}' to relative path`);
+  }
+  if (UNTRUSTED_PATH_PATTERNS.some((pattern) => pattern.test(resolvedPath))) {
+    throw new Error(`Resolved CLI binary '${binary}' to untrusted location: ${resolvedPath}`);
+  }
+  if (!isTrustedPrefix(resolvedPath)) {
+    console.warn(`[omc:cli-security] CLI binary '${binary}' resolved to non-standard path: ${resolvedPath}`);
+  }
+  resolvedPathCache.set(binary, resolvedPath);
+  return resolvedPath;
+}
+function getContract(agentType) {
+  const contract = CONTRACTS[agentType];
+  if (!contract) {
+    throw new Error(`Unknown agent type: ${agentType}. Supported: ${Object.keys(CONTRACTS).join(", ")}`);
+  }
+  if (agentType !== "claude" && isExternalLLMDisabled()) {
+    throw new Error(
+      `External LLM provider "${agentType}" is blocked by security policy (disableExternalLLM). Only Claude workers are allowed in the current security configuration.`
+    );
+  }
+  return contract;
+}
+function validateBinaryRef(binary) {
+  if (isAbsolute5(binary)) return;
+  if (/^[A-Za-z0-9._-]+$/.test(binary)) return;
+  throw new Error(`Unsafe CLI binary reference: ${binary}`);
+}
+function resolveBinaryPath(binary) {
+  validateBinaryRef(binary);
+  if (isAbsolute5(binary)) return binary;
+  try {
+    const resolver = process.platform === "win32" ? "where" : "which";
+    const result = spawnSync3(resolver, [binary], { timeout: 5e3, encoding: "utf8" });
+    if (result.status !== 0) return binary;
+    const lines = result.stdout?.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) ?? [];
+    const firstPath = lines[0];
+    const isResolvedAbsolute = !!firstPath && (isAbsolute5(firstPath) || win32Path2.isAbsolute(firstPath));
+    return isResolvedAbsolute ? firstPath : binary;
+  } catch {
+    return binary;
+  }
+}
+function resolveValidatedBinaryPath(agentType) {
+  const contract = getContract(agentType);
+  return resolveCliBinaryPath(contract.binary);
+}
+function buildLaunchArgs(agentType, config) {
+  return getContract(agentType).buildLaunchArgs(config.model, config.extraFlags);
+}
+function buildWorkerArgv(agentType, config) {
+  validateTeamName(config.teamName);
+  const contract = getContract(agentType);
+  const binary = config.resolvedBinaryPath ? (() => {
+    validateBinaryRef(config.resolvedBinaryPath);
+    return config.resolvedBinaryPath;
+  })() : resolveBinaryPath(contract.binary);
+  const args = buildLaunchArgs(agentType, config);
+  return [binary, ...args];
+}
+function getWorkerEnv(teamName, workerName, agentType, env = process.env) {
+  validateTeamName(teamName);
+  const workerEnv = {
+    OMC_TEAM_WORKER: `${teamName}/${workerName}`,
+    OMC_TEAM_NAME: teamName,
+    OMC_WORKER_AGENT_TYPE: agentType
+  };
+  for (const key of WORKER_MODEL_ENV_ALLOWLIST) {
+    const value = env[key];
+    if (typeof value === "string" && value.length > 0) {
+      workerEnv[key] = value;
+    }
+  }
+  return workerEnv;
+}
+function isPromptModeAgent(agentType) {
+  const contract = getContract(agentType);
+  return !!contract.supportsPromptMode;
+}
+function resolveClaudeWorkerModel(env = process.env) {
+  if (env.OMC_ROUTING_FORCE_INHERIT === "true") {
+    return void 0;
+  }
+  if (!isBedrock() && !isVertexAI()) {
+    return void 0;
+  }
+  const directModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || "";
+  if (directModel) {
+    return directModel;
+  }
+  const bedrockModel = env.CLAUDE_CODE_BEDROCK_SONNET_MODEL || env.ANTHROPIC_DEFAULT_SONNET_MODEL || "";
+  if (bedrockModel) {
+    return bedrockModel;
+  }
+  const omcModel = env.OMC_MODEL_MEDIUM || "";
+  if (omcModel) {
+    return omcModel;
+  }
+  return void 0;
+}
+function getPromptModeArgs(agentType, instruction) {
+  const contract = getContract(agentType);
+  if (!contract.supportsPromptMode) {
+    return [];
+  }
+  if (contract.promptModeFlag) {
+    return [contract.promptModeFlag, instruction];
+  }
+  return [instruction];
+}
+var resolvedPathCache, UNTRUSTED_PATH_PATTERNS, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST;
+var init_model_contract = __esm({
+  "src/team/model-contract.ts"() {
+    "use strict";
+    init_team_name();
+    init_delegation_enforcer();
+    init_models();
+    init_security_config();
+    resolvedPathCache = /* @__PURE__ */ new Map();
+    UNTRUSTED_PATH_PATTERNS = [
+      /^\/tmp(\/|$)/,
+      /^\/var\/tmp(\/|$)/,
+      /^\/dev\/shm(\/|$)/
+    ];
+    CONTRACTS = {
+      claude: {
+        agentType: "claude",
+        binary: "claude",
+        installInstructions: "Install Claude CLI: https://claude.ai/download",
+        buildLaunchArgs(model, extraFlags = []) {
+          const args = ["--dangerously-skip-permissions"];
+          if (model) {
+            const resolved = isProviderSpecificModelId(model) ? model : normalizeToCcAlias(model);
+            args.push("--model", resolved);
+          }
+          return [...args, ...extraFlags];
+        },
+        parseOutput(rawOutput) {
+          return rawOutput.trim();
+        }
+      },
+      codex: {
+        agentType: "codex",
+        binary: "codex",
+        installInstructions: "Install Codex CLI: npm install -g @openai/codex",
+        supportsPromptMode: true,
+        // Codex accepts prompt as a positional argument (no flag needed):
+        //   codex [OPTIONS] [PROMPT]
+        buildLaunchArgs(model, extraFlags = []) {
+          const args = ["--dangerously-bypass-approvals-and-sandbox"];
+          if (model) args.push("--model", model);
+          return [...args, ...extraFlags];
+        },
+        parseOutput(rawOutput) {
+          const lines = rawOutput.trim().split("\n").filter(Boolean);
+          for (let i = lines.length - 1; i >= 0; i--) {
+            try {
+              const parsed = JSON.parse(lines[i]);
+              if (parsed.type === "message" && parsed.role === "assistant") {
+                return parsed.content ?? rawOutput;
+              }
+              if (parsed.type === "result" || parsed.output) {
+                return parsed.output ?? parsed.result ?? rawOutput;
+              }
+            } catch {
+            }
+          }
+          return rawOutput.trim();
+        }
+      },
+      gemini: {
+        agentType: "gemini",
+        binary: "gemini",
+        installInstructions: "Install Gemini CLI: npm install -g @google/gemini-cli",
+        supportsPromptMode: true,
+        promptModeFlag: "-i",
+        buildLaunchArgs(model, extraFlags = []) {
+          const args = ["--approval-mode", "yolo"];
+          if (model) args.push("--model", model);
+          return [...args, ...extraFlags];
+        },
+        parseOutput(rawOutput) {
+          return rawOutput.trim();
+        }
+      },
+      cursor: {
+        agentType: "cursor",
+        binary: "cursor-agent",
+        installInstructions: "Install Cursor Agent CLI: see https://docs.cursor.com/cli",
+        // cursor-agent runs as an interactive REPL — no exit-on-complete prompt mode.
+        // Keep supportsPromptMode false so the verdict-file contract path
+        // (CONTRACT_ROLES + shouldInjectContract) skips this provider; cursor
+        // workers participate as executors only.
+        supportsPromptMode: false,
+        buildLaunchArgs(_model, extraFlags = []) {
+          return [...extraFlags];
+        },
+        parseOutput(rawOutput) {
+          return rawOutput.trim();
+        }
+      }
+    };
+    WORKER_MODEL_ENV_ALLOWLIST = [
+      "ANTHROPIC_MODEL",
+      "CLAUDE_MODEL",
+      "ANTHROPIC_BASE_URL",
+      "CLAUDE_CODE_USE_BEDROCK",
+      "CLAUDE_CODE_USE_VERTEX",
+      "CLAUDE_CODE_BEDROCK_OPUS_MODEL",
+      "CLAUDE_CODE_BEDROCK_SONNET_MODEL",
+      "CLAUDE_CODE_BEDROCK_HAIKU_MODEL",
+      "ANTHROPIC_DEFAULT_OPUS_MODEL",
+      "ANTHROPIC_DEFAULT_SONNET_MODEL",
+      "ANTHROPIC_DEFAULT_HAIKU_MODEL",
+      "OMC_MODEL_HIGH",
+      "OMC_MODEL_MEDIUM",
+      "OMC_MODEL_LOW",
+      "OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL",
+      "OMC_CODEX_DEFAULT_MODEL",
+      "OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL",
+      "OMC_GEMINI_DEFAULT_MODEL"
+    ];
+  }
+});
+
+// src/team/worker-bootstrap.ts
+import { mkdir as mkdir3, writeFile as writeFile3, appendFile as appendFile2 } from "fs/promises";
+import { join as join13, dirname as dirname7 } from "path";
+function buildInstructionPath(...parts) {
+  return join13(...parts).replaceAll("\\", "/");
+}
+function generateTriggerMessage(teamName, workerName, teamStateRoot3 = ".omc/state") {
+  const inboxPath = buildInstructionPath(teamStateRoot3, "team", teamName, "workers", workerName, "inbox.md");
+  if (teamStateRoot3 !== ".omc/state") {
+    return `Read ${inboxPath}, work now, report progress.`;
+  }
+  return `Read ${inboxPath}, execute now, report concrete progress.`;
+}
+function generatePromptModeStartupPrompt(teamName, workerName, teamStateRoot3 = ".omc/state", cliOutputContract) {
+  const inboxPath = buildInstructionPath(teamStateRoot3, "team", teamName, "workers", workerName, "inbox.md");
+  const base = `Open ${inboxPath}. Follow it and begin the assigned work.`;
+  return cliOutputContract ? `${base}
+${cliOutputContract}` : base;
+}
+function generateMailboxTriggerMessage(teamName, workerName, count = 1, teamStateRoot3 = ".omc/state") {
+  const normalizedCount = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
+  const mailboxPath = buildInstructionPath(teamStateRoot3, "team", teamName, "mailbox", `${workerName}.json`);
+  if (teamStateRoot3 !== ".omc/state") {
+    return `${normalizedCount} new msg(s): check ${mailboxPath}, act and report progress.`;
+  }
+  return `${normalizedCount} new msg(s). Read ${mailboxPath}, act now, report concrete progress.`;
+}
+function agentTypeGuidance(agentType) {
+  const teamApiCommand = formatOmcCliInvocation("team api");
+  const claimTaskCommand = formatOmcCliInvocation("team api claim-task");
+  const transitionTaskStatusCommand = formatOmcCliInvocation("team api transition-task-status");
+  switch (agentType) {
+    case "codex":
+      return [
+        "### Agent-Type Guidance (codex)",
+        `- Prefer short, explicit \`${teamApiCommand} ... --json\` commands and parse outputs before next step.`,
+        "- If a command fails, report the exact stderr to leader-fixed before retrying.",
+        `- You MUST run \`${claimTaskCommand}\` before starting work and \`${transitionTaskStatusCommand}\` when done.`
+      ].join("\n");
+    case "gemini":
+      return [
+        "### Agent-Type Guidance (gemini)",
+        "- Execute task work in small, verifiable increments and report each milestone to leader-fixed.",
+        "- Keep commit-sized changes scoped to assigned files only; no broad refactors.",
+        `- CRITICAL: You MUST run \`${claimTaskCommand}\` before starting work and \`${transitionTaskStatusCommand}\` when done. Do not exit without transitioning the task status.`
+      ].join("\n");
+    case "cursor":
+      return [
+        "### Agent-Type Guidance (cursor)",
+        "- You are an interactive REPL (cursor-agent), not a one-shot CLI. Stay in the session; the leader will continue to send prompts via mailbox.",
+        `- You MUST run \`${claimTaskCommand}\` before starting work and \`${transitionTaskStatusCommand}\` when done. Then keep waiting for the next mailbox message; do NOT type \`/exit\` unless the leader sends an explicit shutdown.`,
+        "- Reviewer/critic/security-review roles are NOT supported for cursor workers \u2014 those require a verdict-file write-and-exit which the REPL does not perform. Take only executor-style tasks."
+      ].join("\n");
+    case "claude":
+    default:
+      return [
+        "### Agent-Type Guidance (claude)",
+        "- Keep reasoning focused on assigned task IDs and send concise progress acks to leader-fixed.",
+        "- Before any risky command, send a blocker/proposal message to leader-fixed and wait for updated inbox instructions."
+      ].join("\n");
+  }
+}
+function generateWorkerOverlay(params) {
+  const { teamName, workerName, agentType, tasks, bootstrapInstructions } = params;
+  const sanitizedTasks = tasks.map((t) => ({
+    id: t.id,
+    subject: sanitizePromptContent(t.subject),
+    description: sanitizePromptContent(t.description)
+  }));
+  const sentinelPath = `.omc/state/team/${teamName}/workers/${workerName}/.ready`;
+  const heartbeatPath = `.omc/state/team/${teamName}/workers/${workerName}/heartbeat.json`;
+  const inboxPath = `.omc/state/team/${teamName}/workers/${workerName}/inbox.md`;
+  const statusPath = `.omc/state/team/${teamName}/workers/${workerName}/status.json`;
+  const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"worker\\":\\"${workerName}\\"}" --json`);
+  const sendAckCommand = formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"ACK: ${workerName} initialized\\"}" --json`);
+  const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"from\\":\\"in_progress\\",\\"to\\":\\"completed\\",\\"claim_token\\":\\"<claim_token>\\"}" --json`);
+  const failTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"from\\":\\"in_progress\\",\\"to\\":\\"failed\\",\\"claim_token\\":\\"<claim_token>\\"}" --json`);
+  const readTaskCommand = formatOmcCliInvocation(`team api read-task --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\"}" --json`);
+  const releaseClaimCommand = formatOmcCliInvocation(`team api release-task-claim --input "{\\"team_name\\":\\"${teamName}\\",\\"task_id\\":\\"<id>\\",\\"claim_token\\":\\"<claim_token>\\",\\"worker\\":\\"${workerName}\\"}" --json`);
+  const mailboxListCommand = formatOmcCliInvocation(`team api mailbox-list --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName}\\"}" --json`);
+  const mailboxDeliveredCommand = formatOmcCliInvocation(`team api mailbox-mark-delivered --input "{\\"team_name\\":\\"${teamName}\\",\\"worker\\":\\"${workerName}\\",\\"message_id\\":\\"<id>\\"}" --json`);
+  const teamApiCommand = formatOmcCliInvocation("team api");
+  const teamCommand2 = formatOmcCliInvocation("team");
+  const taskList = sanitizedTasks.length > 0 ? sanitizedTasks.map((t) => `- **Task ${t.id}**: ${t.subject}
+  Description: ${t.description}
+  Status: pending`).join("\n") : "- No tasks assigned yet. Check your inbox for assignments.";
+  return `# Team Worker Protocol
+
+You are a **team worker**, not the team leader. Operate strictly within worker protocol.
+
+## FIRST ACTION REQUIRED
+Before doing anything else, write your ready sentinel file:
+\`\`\`bash
+mkdir -p $(dirname ${sentinelPath}) && touch ${sentinelPath}
+\`\`\`
+
+## MANDATORY WORKFLOW \u2014 Follow These Steps In Order
+You MUST complete ALL of these steps. Do NOT skip any step. Do NOT exit without step 4.
+
+1. **Claim** your task (run this command first):
+   \`${claimTaskCommand}\`
+   Save the \`claim_token\` from the response \u2014 you need it for step 4.
+2. **Do the work** described in your task assignment below.
+3. **Send ACK** to the leader:
+   \`${sendAckCommand}\`
+4. **Transition** the task status (REQUIRED before exit):
+   - On success: \`${completeTaskCommand}\`
+   - On failure: \`${failTaskCommand}\`
+5. **Keep going after replies**: ACK/progress messages are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.
+
+## Identity
+- **Team**: ${teamName}
+- **Worker**: ${workerName}
+- **Agent Type**: ${agentType}
+- **Environment**: OMC_TEAM_WORKER=${teamName}/${workerName}
+
+## Your Tasks
+${taskList}
+
+## Task Lifecycle Reference (CLI API)
+Use the CLI API for all task lifecycle operations. Do NOT directly edit task files.
+
+- Inspect task state: \`${readTaskCommand}\`
+- Task id format: State/CLI APIs use task_id: "<id>" (example: "1"), not "task-1"
+- Claim task: \`${claimTaskCommand}\`
+- Complete task: \`${completeTaskCommand}\`
+- Fail task: \`${failTaskCommand}\`
+- Release claim (rollback): \`${releaseClaimCommand}\`
+
+## Canonical Team State Root
+- Resolve the team state root in this order: \`OMC_TEAM_STATE_ROOT\` env -> worker identity \`team_state_root\` -> config/manifest \`team_state_root\` -> ${params.cwd}/.omc/state.
+- Worktree-backed workers MUST use the canonical leader-owned state root for inbox, mailbox, task lifecycle, status, heartbeat, and shutdown files; do not use a local worktree \`.omc/state\` when \`OMC_TEAM_STATE_ROOT\` is set.
+
+## Communication Protocol
+- **Inbox**: Read ${inboxPath} for new instructions
+- **Status**: Write to ${statusPath}:
+  \`\`\`json
+  {"state": "idle", "updated_at": "<ISO timestamp>"}
+  \`\`\`
+  States: "idle" | "working" | "blocked" | "done" | "failed"
+- **Heartbeat**: Update ${heartbeatPath} every few minutes:
+  \`\`\`json
+  {"pid":<pid>,"last_turn_at":"<ISO timestamp>","turn_count":<n>,"alive":true}
+  \`\`\`
+
+## Message Protocol
+Send messages via CLI API:
+- To leader: \`${formatOmcCliInvocation(`team api send-message --input "{\\"team_name\\":\\"${teamName}\\",\\"from_worker\\":\\"${workerName}\\",\\"to_worker\\":\\"leader-fixed\\",\\"body\\":\\"<message>\\"}" --json`)}\`
+- Check mailbox: \`${mailboxListCommand}\`
+- Mark delivered: \`${mailboxDeliveredCommand}\`
+
+## Startup Handshake (Required)
+Before doing any task work, send exactly one startup ACK to the leader:
+\`${sendAckCommand}\`
+
+## Shutdown Protocol
+When you see a shutdown request in your inbox:
+1. Write your decision to: .omc/state/team/${teamName}/workers/${workerName}/shutdown-ack.json
+2. Format:
+   - Accept: {"status":"accept","reason":"ok","updated_at":"<iso>"}
+   - Reject: {"status":"reject","reason":"still working","updated_at":"<iso>"}
+3. Exit your session
+
+## Rules
+- You are NOT the leader. Never run leader orchestration workflows.
+- Do NOT edit files outside the paths listed in your task description
+- Do NOT write lifecycle fields (status, owner, result, error) directly in task files; use CLI API
+- Do NOT spawn sub-agents. Complete work in this worker session only.
+- Do NOT create tmux panes/sessions (\`tmux split-window\`, \`tmux new-session\`, etc.).
+- Do NOT run team spawning/orchestration commands (for example: \`${teamCommand2} ...\`, \`omx team ...\`, \`$team\`, \`$ultrawork\`, \`$autopilot\`, \`$ralph\`).
+- Worker-allowed control surface is only: \`${teamApiCommand} ... --json\` (and equivalent \`omx team api ... --json\` where configured).
+- If blocked, write {"state": "blocked", "reason": "..."} to your status file
+
+${agentTypeGuidance(agentType)}
+
+## BEFORE YOU EXIT
+You MUST call \`${formatOmcCliInvocation("team api transition-task-status")}\` to mark your task as "completed" or "failed" before exiting.
+If you skip this step, the leader cannot track your work and the task will appear stuck.
+
+${bootstrapInstructions ? `## Role Context
+${bootstrapInstructions}
+` : ""}`;
+}
+async function composeInitialInbox(teamName, workerName, content, cwd, cliOutputContract) {
+  const inboxPath = join13(cwd, `.omc/state/team/${teamName}/workers/${workerName}/inbox.md`);
+  await mkdir3(dirname7(inboxPath), { recursive: true });
+  const finalContent = cliOutputContract && !content.includes(cliOutputContract) ? `${content}
+${cliOutputContract}` : content;
+  await writeFile3(inboxPath, finalContent, "utf-8");
+}
+async function ensureWorkerStateDir(teamName, workerName, cwd) {
+  const workerDir = join13(cwd, `.omc/state/team/${teamName}/workers/${workerName}`);
+  await mkdir3(workerDir, { recursive: true });
+  const mailboxDir = join13(cwd, `.omc/state/team/${teamName}/mailbox`);
+  await mkdir3(mailboxDir, { recursive: true });
+  const tasksDir = join13(cwd, `.omc/state/team/${teamName}/tasks`);
+  await mkdir3(tasksDir, { recursive: true });
+}
+async function writeWorkerOverlay(params) {
+  const { teamName, workerName, cwd } = params;
+  const overlay = generateWorkerOverlay(params);
+  const overlayPath = join13(cwd, `.omc/state/team/${teamName}/workers/${workerName}/AGENTS.md`);
+  await mkdir3(dirname7(overlayPath), { recursive: true });
+  await writeFile3(overlayPath, overlay, "utf-8");
+  return overlayPath;
+}
+var init_worker_bootstrap = __esm({
+  "src/team/worker-bootstrap.ts"() {
+    "use strict";
+    init_prompt_helpers();
+    init_omc_cli_rendering();
+    init_model_contract();
+  }
+});
+
+// src/lib/atomic-write.ts
+import * as fs2 from "fs/promises";
+import * as fsSync from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
+function ensureDirSync(dir) {
+  if (fsSync.existsSync(dir)) {
+    return;
+  }
+  try {
+    fsSync.mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    if (err.code === "EEXIST") {
+      return;
+    }
+    throw err;
+  }
+}
+var init_atomic_write = __esm({
+  "src/lib/atomic-write.ts"() {
+    "use strict";
+  }
+});
+
+// src/platform/process-utils.ts
+import { execFileSync as execFileSync2, execFile as execFile2 } from "child_process";
+import { promisify as promisify2 } from "util";
+import * as fsPromises from "fs/promises";
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    if (e && typeof e === "object" && "code" in e && e.code === "EPERM") {
+      return true;
+    }
+    return false;
+  }
+}
+var execFileAsync;
+var init_process_utils = __esm({
+  "src/platform/process-utils.ts"() {
+    "use strict";
+    execFileAsync = promisify2(execFile2);
+  }
+});
+
+// src/platform/index.ts
+import * as path2 from "path";
+import { readFileSync as readFileSync5 } from "fs";
+var PLATFORM;
+var init_platform = __esm({
+  "src/platform/index.ts"() {
+    "use strict";
+    init_process_utils();
+    PLATFORM = process.platform;
+  }
+});
+
+// src/lib/file-lock.ts
+var file_lock_exports = {};
+__export(file_lock_exports, {
+  acquireFileLock: () => acquireFileLock,
+  acquireFileLockSync: () => acquireFileLockSync,
+  lockPathFor: () => lockPathFor,
+  releaseFileLock: () => releaseFileLock,
+  releaseFileLockSync: () => releaseFileLockSync,
+  withFileLock: () => withFileLock,
+  withFileLockSync: () => withFileLockSync
+});
+import {
+  openSync as openSync3,
+  closeSync as closeSync3,
+  unlinkSync as unlinkSync3,
+  writeSync as writeSync3,
+  readFileSync as readFileSync6,
+  statSync as statSync2,
+  constants as fsConstants
+} from "fs";
+import * as path3 from "path";
+function isLockStale(lockPath, staleLockMs) {
+  try {
+    const stat2 = statSync2(lockPath);
+    const ageMs = Date.now() - stat2.mtimeMs;
+    if (ageMs < staleLockMs) return false;
+    try {
+      const raw = readFileSync6(lockPath, "utf-8");
+      const payload = JSON.parse(raw);
+      if (payload.pid && isProcessAlive(payload.pid)) return false;
+    } catch {
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+function lockPathFor(filePath) {
+  return filePath + ".lock";
+}
+function tryAcquireSync(lockPath, staleLockMs) {
+  ensureDirSync(path3.dirname(lockPath));
+  try {
+    const fd = openSync3(
+      lockPath,
+      fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
+      384
+    );
+    try {
+      const payload = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
+      writeSync3(fd, payload, null, "utf-8");
+    } catch (writeErr) {
+      try {
+        closeSync3(fd);
+      } catch {
+      }
+      try {
+        unlinkSync3(lockPath);
+      } catch {
+      }
+      throw writeErr;
+    }
+    return { fd, path: lockPath };
+  } catch (err) {
+    if (err && typeof err === "object" && "code" in err && err.code === "EEXIST") {
+      if (isLockStale(lockPath, staleLockMs)) {
+        try {
+          unlinkSync3(lockPath);
+        } catch {
+        }
+        try {
+          const fd = openSync3(
+            lockPath,
+            fsConstants.O_CREAT | fsConstants.O_EXCL | fsConstants.O_WRONLY,
+            384
+          );
+          try {
+            const payload = JSON.stringify({ pid: process.pid, timestamp: Date.now() });
+            writeSync3(fd, payload, null, "utf-8");
+          } catch (writeErr) {
+            try {
+              closeSync3(fd);
+            } catch {
+            }
+            try {
+              unlinkSync3(lockPath);
+            } catch {
+            }
+            throw writeErr;
+          }
+          return { fd, path: lockPath };
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    }
+    throw err;
+  }
+}
+function acquireFileLockSync(lockPath, opts) {
+  const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
+  const timeoutMs = opts?.timeoutMs ?? 0;
+  const retryDelayMs = opts?.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  const handle = tryAcquireSync(lockPath, staleLockMs);
+  if (handle || timeoutMs <= 0) return handle;
+  const deadline = Date.now() + timeoutMs;
+  const sharedBuf = new SharedArrayBuffer(4);
+  const sharedArr = new Int32Array(sharedBuf);
+  while (Date.now() < deadline) {
+    const waitMs = Math.min(retryDelayMs, deadline - Date.now());
+    try {
+      Atomics.wait(sharedArr, 0, 0, waitMs);
+    } catch {
+      const waitUntil = Date.now() + waitMs;
+      while (Date.now() < waitUntil) {
+      }
+    }
+    const retryHandle = tryAcquireSync(lockPath, staleLockMs);
+    if (retryHandle) return retryHandle;
+  }
+  return null;
+}
+function releaseFileLockSync(handle) {
+  try {
+    closeSync3(handle.fd);
+  } catch {
+  }
+  try {
+    unlinkSync3(handle.path);
+  } catch {
+  }
+}
+function withFileLockSync(lockPath, fn, opts) {
+  const handle = acquireFileLockSync(lockPath, opts);
+  if (!handle) {
+    throw new Error(`Failed to acquire file lock: ${lockPath}`);
+  }
+  try {
+    return fn();
+  } finally {
+    releaseFileLockSync(handle);
+  }
+}
+function sleep2(ms) {
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
+}
+async function acquireFileLock(lockPath, opts) {
+  const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
+  const timeoutMs = opts?.timeoutMs ?? 0;
+  const retryDelayMs = opts?.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  const handle = tryAcquireSync(lockPath, staleLockMs);
+  if (handle || timeoutMs <= 0) return handle;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await sleep2(Math.min(retryDelayMs, deadline - Date.now()));
+    const retryHandle = tryAcquireSync(lockPath, staleLockMs);
+    if (retryHandle) return retryHandle;
+  }
+  return null;
+}
+function releaseFileLock(handle) {
+  releaseFileLockSync(handle);
+}
+async function withFileLock(lockPath, fn, opts) {
+  const handle = await acquireFileLock(lockPath, opts);
+  if (!handle) {
+    throw new Error(`Failed to acquire file lock: ${lockPath}`);
+  }
+  try {
+    return await fn();
+  } finally {
+    releaseFileLock(handle);
+  }
+}
+var DEFAULT_STALE_LOCK_MS, DEFAULT_RETRY_DELAY_MS;
+var init_file_lock = __esm({
+  "src/lib/file-lock.ts"() {
+    "use strict";
+    init_atomic_write();
+    init_platform();
+    DEFAULT_STALE_LOCK_MS = 3e4;
+    DEFAULT_RETRY_DELAY_MS = 50;
+  }
+});
+
+// src/team/git-worktree.ts
+import { existsSync as existsSync10, readFileSync as readFileSync7, rmSync as rmSync2 } from "node:fs";
+import { join as join15, resolve as resolve3 } from "node:path";
+import { execFileSync as execFileSync3 } from "node:child_process";
+function getWorktreePath(repoRoot, teamName, workerName) {
+  return join15(repoRoot, ".omc", "team", sanitizeName(teamName), "worktrees", sanitizeName(workerName));
+}
+function getBranchName(teamName, workerName) {
+  return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName)}`;
+}
+function git(repoRoot, args, cwd = repoRoot) {
+  return execFileSync3("git", args, { cwd, encoding: "utf-8", stdio: "pipe" }).trim();
+}
+function isInsideGitRepo(repoRoot) {
+  try {
+    git(repoRoot, ["rev-parse", "--show-toplevel"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function assertCleanLeaderWorktree(repoRoot) {
+  const status = git(repoRoot, ["status", "--porcelain"]);
+  if (status.length > 0) {
+    const error = new Error("leader_worktree_dirty: commit, stash, or clean changes before enabling team worktree mode");
+    error.code = "leader_worktree_dirty";
+    throw error;
+  }
+}
+function getRegisteredWorktreeBranch(repoRoot, wtPath) {
+  try {
+    const output2 = git(repoRoot, ["worktree", "list", "--porcelain"]);
+    const resolvedWtPath = resolve3(wtPath);
+    let currentMatches = false;
+    for (const line of output2.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        currentMatches = resolve3(line.slice("worktree ".length).trim()) === resolvedWtPath;
+        continue;
+      }
+      if (!currentMatches) continue;
+      if (line.startsWith("branch ")) return line.slice("branch ".length).trim().replace(/^refs\/heads\//, "");
+      if (line === "detached") return "HEAD";
+    }
+  } catch {
+  }
+  return void 0;
+}
+function isRegisteredWorktreePath(repoRoot, wtPath) {
+  try {
+    const output2 = git(repoRoot, ["worktree", "list", "--porcelain"]);
+    const resolvedWtPath = resolve3(wtPath);
+    return output2.split("\n").some((line) => line.startsWith("worktree ") && resolve3(line.slice("worktree ".length).trim()) === resolvedWtPath);
+  } catch {
+    return false;
+  }
+}
+function isDetached(wtPath) {
+  try {
+    const branch = execFileSync3("git", ["branch", "--show-current"], { cwd: wtPath, encoding: "utf-8", stdio: "pipe" }).trim();
+    return branch.length === 0;
+  } catch {
+    return false;
+  }
+}
+function isWorktreeDirty(wtPath) {
+  try {
+    return execFileSync3("git", ["status", "--porcelain"], { cwd: wtPath, encoding: "utf-8", stdio: "pipe" }).trim().length > 0;
+  } catch {
+    return true;
+  }
+}
+function getMetadataPath(repoRoot, teamName) {
+  return join15(repoRoot, ".omc", "state", "team", sanitizeName(teamName), "worktrees.json");
+}
+function getLegacyMetadataPath(repoRoot, teamName) {
+  return join15(repoRoot, ".omc", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
+}
+function readMetadata(repoRoot, teamName) {
+  const paths = [getMetadataPath(repoRoot, teamName), getLegacyMetadataPath(repoRoot, teamName)];
+  const byWorker = /* @__PURE__ */ new Map();
+  for (const metaPath of paths) {
+    if (!existsSync10(metaPath)) continue;
+    try {
+      const entries = JSON.parse(readFileSync7(metaPath, "utf-8"));
+      for (const entry of entries) byWorker.set(entry.workerName, entry);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[omc] warning: worktrees.json parse error: ${msg}
+`);
+    }
+  }
+  return [...byWorker.values()];
+}
+function writeMetadata(repoRoot, teamName, entries) {
+  const metaPath = getMetadataPath(repoRoot, teamName);
+  validateResolvedPath(metaPath, repoRoot);
+  ensureDirWithMode(join15(repoRoot, ".omc", "state", "team", sanitizeName(teamName)));
+  atomicWriteJson(metaPath, entries);
+}
+function recordMetadata(repoRoot, teamName, info) {
+  const metaLockPath = getMetadataPath(repoRoot, teamName) + ".lock";
+  withFileLockSync(metaLockPath, () => {
+    const existing = readMetadata(repoRoot, teamName).filter((entry) => entry.workerName !== info.workerName);
+    writeMetadata(repoRoot, teamName, [...existing, info]);
+  });
+}
+function forgetMetadata(repoRoot, teamName, workerName) {
+  const metaLockPath = getMetadataPath(repoRoot, teamName) + ".lock";
+  withFileLockSync(metaLockPath, () => {
+    const existing = readMetadata(repoRoot, teamName).filter((entry) => entry.workerName !== workerName);
+    writeMetadata(repoRoot, teamName, existing);
+  });
+}
+function assertCompatibleExistingWorktree(repoRoot, wtPath, expectedBranch, mode) {
+  const registeredBranch = getRegisteredWorktreeBranch(repoRoot, wtPath);
+  if (!registeredBranch) {
+    const error = new Error(`worktree_path_mismatch: existing path is not a registered git worktree: ${wtPath}`);
+    error.code = "worktree_path_mismatch";
+    throw error;
+  }
+  if (isWorktreeDirty(wtPath)) {
+    const error = new Error(`worktree_dirty: preserving dirty worker worktree at ${wtPath}`);
+    error.code = "worktree_dirty";
+    throw error;
+  }
+  if (mode === "named" && registeredBranch !== expectedBranch) {
+    const error = new Error(`worktree_mismatch: expected branch ${expectedBranch} at ${wtPath}, found ${registeredBranch}`);
+    error.code = "worktree_mismatch";
+    throw error;
+  }
+  if (mode === "detached" && registeredBranch !== "HEAD") {
+    const error = new Error(`worktree_mismatch: expected detached worktree at ${wtPath}, found ${registeredBranch}`);
+    error.code = "worktree_mismatch";
+    throw error;
+  }
+}
+function normalizeTeamWorktreeMode(value) {
+  if (typeof value !== "string") return "disabled";
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on", "enabled", "detached"].includes(normalized)) return "detached";
+  if (["branch", "named", "named-branch"].includes(normalized)) return "named";
+  return "disabled";
+}
+function ensureWorkerWorktree(teamName, workerName, repoRoot, options = {}) {
+  const mode = options.mode ?? "disabled";
+  if (mode === "disabled") return null;
+  if (!isInsideGitRepo(repoRoot)) {
+    throw new Error(`not_a_git_repository: ${repoRoot}`);
+  }
+  if (options.requireCleanLeader !== false) {
+    assertCleanLeaderWorktree(repoRoot);
+  }
+  const wtPath = getWorktreePath(repoRoot, teamName, workerName);
+  const branch = mode === "named" ? getBranchName(teamName, workerName) : "HEAD";
+  validateResolvedPath(wtPath, repoRoot);
+  try {
+    execFileSync3("git", ["worktree", "prune"], { cwd: repoRoot, stdio: "pipe" });
+  } catch {
+  }
+  if (existsSync10(wtPath)) {
+    assertCompatibleExistingWorktree(repoRoot, wtPath, branch, mode);
+    const info2 = {
+      path: wtPath,
+      branch,
+      workerName,
+      teamName,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      repoRoot,
+      mode,
+      detached: isDetached(wtPath),
+      created: false,
+      reused: true
+    };
+    recordMetadata(repoRoot, teamName, info2);
+    return info2;
+  }
+  const wtDir = join15(repoRoot, ".omc", "team", sanitizeName(teamName), "worktrees");
+  ensureDirWithMode(wtDir);
+  const args = mode === "named" ? ["worktree", "add", "-b", branch, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
+  execFileSync3("git", args, { cwd: repoRoot, stdio: "pipe" });
+  const info = {
+    path: wtPath,
+    branch,
+    workerName,
+    teamName,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    repoRoot,
+    mode,
+    detached: mode === "detached",
+    created: true,
+    reused: false
+  };
+  recordMetadata(repoRoot, teamName, info);
+  return info;
+}
+function removeWorkerWorktree(teamName, workerName, repoRoot) {
+  const wtPath = getWorktreePath(repoRoot, teamName, workerName);
+  const branch = getBranchName(teamName, workerName);
+  if (existsSync10(wtPath) && isWorktreeDirty(wtPath)) {
+    const error = new Error(`worktree_dirty: preserving dirty worker worktree at ${wtPath}`);
+    error.code = "worktree_dirty";
+    throw error;
+  }
+  try {
+    execFileSync3("git", ["worktree", "remove", wtPath], { cwd: repoRoot, stdio: "pipe" });
+  } catch {
+  }
+  try {
+    execFileSync3("git", ["worktree", "prune"], { cwd: repoRoot, stdio: "pipe" });
+  } catch {
+  }
+  try {
+    execFileSync3("git", ["branch", "-D", branch], { cwd: repoRoot, stdio: "pipe" });
+  } catch {
+  }
+  if (existsSync10(wtPath) && !isRegisteredWorktreePath(repoRoot, wtPath)) {
+    rmSync2(wtPath, { recursive: true, force: true });
+  }
+  forgetMetadata(repoRoot, teamName, workerName);
+}
+function cleanupTeamWorktrees(teamName, repoRoot) {
+  const entries = readMetadata(repoRoot, teamName);
+  const removed = [];
+  const preserved = [];
+  for (const entry of entries) {
+    try {
+      removeWorkerWorktree(teamName, entry.workerName, repoRoot);
+      removed.push(entry.workerName);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : String(err);
+      preserved.push({ workerName: entry.workerName, path: entry.path, reason });
+      process.stderr.write(`[omc] warning: preserved worktree ${entry.path}: ${reason}
+`);
+    }
+  }
+  return { removed, preserved };
+}
+var init_git_worktree = __esm({
+  "src/team/git-worktree.ts"() {
+    "use strict";
+    init_fs_utils();
+    init_tmux_session();
+    init_file_lock();
+  }
+});
+
+// src/team/allocation-policy.ts
+function allocateTasksToWorkers(tasks, workers) {
+  if (tasks.length === 0 || workers.length === 0) return [];
+  const uniformRolePool = isUniformRolePool(workers);
+  const results = [];
+  const loadMap = new Map(workers.map((w) => [w.name, w.currentLoad]));
+  if (uniformRolePool) {
+    for (const task of tasks) {
+      const target = pickLeastLoaded(workers, loadMap);
+      results.push({
+        taskId: task.id,
+        workerName: target.name,
+        reason: `uniform pool round-robin (role=${target.role}, load=${loadMap.get(target.name)})`
+      });
+      loadMap.set(target.name, (loadMap.get(target.name) ?? 0) + 1);
+    }
+  } else {
+    for (const task of tasks) {
+      const target = pickBestWorker(task, workers, loadMap);
+      results.push({
+        taskId: task.id,
+        workerName: target.name,
+        reason: `role match (task.role=${task.role ?? "any"}, worker.role=${target.role}, load=${loadMap.get(target.name)})`
+      });
+      loadMap.set(target.name, (loadMap.get(target.name) ?? 0) + 1);
+    }
+  }
+  return results;
+}
+function isUniformRolePool(workers) {
+  if (workers.length === 0) return true;
+  const firstRole = workers[0].role;
+  return workers.every((w) => w.role === firstRole);
+}
+function pickLeastLoaded(workers, loadMap) {
+  let best = workers[0];
+  let bestLoad = loadMap.get(best.name) ?? 0;
+  for (const w of workers) {
+    const load = loadMap.get(w.name) ?? 0;
+    if (load < bestLoad) {
+      best = w;
+      bestLoad = load;
+    }
+  }
+  return best;
+}
+function pickBestWorker(task, workers, loadMap) {
+  const scored = workers.map((w) => {
+    const load = loadMap.get(w.name) ?? 0;
+    const roleScore = task.role ? w.role === task.role ? 1 : 0 : 0.5;
+    const score = roleScore - load * 0.2;
+    return { worker: w, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0].worker;
+}
+var init_allocation_policy = __esm({
+  "src/team/allocation-policy.ts"() {
+    "use strict";
+  }
+});
+
+// src/team/monitor.ts
+import { existsSync as existsSync13 } from "fs";
+import { readFile as readFile7, mkdir as mkdir5 } from "fs/promises";
+import { dirname as dirname10 } from "path";
+async function readJsonSafe3(filePath) {
+  try {
+    if (!existsSync13(filePath)) return null;
+    const raw = await readFile7(filePath, "utf-8");
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+async function writeAtomic2(filePath, data) {
+  const { writeFile: writeFile6 } = await import("fs/promises");
+  await mkdir5(dirname10(filePath), { recursive: true });
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  await writeFile6(tmpPath, data, "utf-8");
+  const { rename: rename3 } = await import("fs/promises");
+  await rename3(tmpPath, filePath);
+}
+function configFromManifest2(manifest) {
+  return {
+    name: manifest.name,
+    task: manifest.task,
+    agent_type: "claude",
+    policy: manifest.policy,
+    governance: manifest.governance,
+    worker_launch_mode: manifest.policy.worker_launch_mode,
+    worker_count: manifest.worker_count,
+    max_workers: 20,
+    workers: manifest.workers,
+    created_at: manifest.created_at,
+    tmux_session: manifest.tmux_session,
+    next_task_id: manifest.next_task_id,
+    leader_cwd: manifest.leader_cwd,
+    team_state_root: manifest.team_state_root,
+    workspace_mode: manifest.workspace_mode,
+    worktree_mode: manifest.worktree_mode,
+    leader_pane_id: manifest.leader_pane_id,
+    hud_pane_id: manifest.hud_pane_id,
+    resize_hook_name: manifest.resize_hook_name,
+    resize_hook_target: manifest.resize_hook_target,
+    next_worker_index: manifest.next_worker_index
+  };
+}
+async function readTeamConfig(teamName, cwd) {
+  const [config, manifest] = await Promise.all([
+    readJsonSafe3(absPath(cwd, TeamPaths.config(teamName))),
+    readTeamManifest(teamName, cwd)
+  ]);
+  if (!config && !manifest) return null;
+  if (!manifest) return config ? canonicalizeTeamConfigWorkers(config) : null;
+  if (!config) return canonicalizeTeamConfigWorkers(configFromManifest2(manifest));
+  return canonicalizeTeamConfigWorkers({
+    ...configFromManifest2(manifest),
+    ...config,
+    workers: [...config.workers ?? [], ...manifest.workers ?? []],
+    worker_count: Math.max(config.worker_count ?? 0, manifest.worker_count ?? 0),
+    next_task_id: Math.max(config.next_task_id ?? 1, manifest.next_task_id ?? 1),
+    max_workers: Math.max(config.max_workers ?? 0, 20)
+  });
+}
+async function readTeamManifest(teamName, cwd) {
+  const manifest = await readJsonSafe3(absPath(cwd, TeamPaths.manifest(teamName)));
+  return manifest ? normalizeTeamManifest(manifest) : null;
+}
+async function readWorkerStatus(teamName, workerName, cwd) {
+  const data = await readJsonSafe3(absPath(cwd, TeamPaths.workerStatus(teamName, workerName)));
+  return data ?? { state: "unknown", updated_at: "" };
+}
+async function readWorkerHeartbeat(teamName, workerName, cwd) {
+  return readJsonSafe3(absPath(cwd, TeamPaths.heartbeat(teamName, workerName)));
+}
+async function readMonitorSnapshot(teamName, cwd) {
+  const p = absPath(cwd, TeamPaths.monitorSnapshot(teamName));
+  if (!existsSync13(p)) return null;
+  try {
+    const raw = await readFile7(p, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const monitorTimings = (() => {
+      const candidate = parsed.monitorTimings;
+      if (!candidate || typeof candidate !== "object") return void 0;
+      if (typeof candidate.list_tasks_ms !== "number" || typeof candidate.worker_scan_ms !== "number" || typeof candidate.mailbox_delivery_ms !== "number" || typeof candidate.total_ms !== "number" || typeof candidate.updated_at !== "string") {
+        return void 0;
+      }
+      return candidate;
+    })();
+    return {
+      taskStatusById: parsed.taskStatusById ?? {},
+      workerAliveByName: parsed.workerAliveByName ?? {},
+      workerStateByName: parsed.workerStateByName ?? {},
+      workerTurnCountByName: parsed.workerTurnCountByName ?? {},
+      workerTaskIdByName: parsed.workerTaskIdByName ?? {},
+      mailboxNotifiedByMessageId: parsed.mailboxNotifiedByMessageId ?? {},
+      completedEventTaskIds: parsed.completedEventTaskIds ?? {},
+      monitorTimings
+    };
+  } catch {
+    return null;
+  }
+}
+async function writeMonitorSnapshot(teamName, snapshot, cwd) {
+  await writeAtomic2(absPath(cwd, TeamPaths.monitorSnapshot(teamName)), JSON.stringify(snapshot, null, 2));
+}
+async function writeShutdownRequest(teamName, workerName, fromWorker, cwd) {
+  const data = {
+    from: fromWorker,
+    requested_at: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  await writeAtomic2(absPath(cwd, TeamPaths.shutdownRequest(teamName, workerName)), JSON.stringify(data, null, 2));
+}
+async function readShutdownAck(teamName, workerName, cwd, requestedAfter) {
+  const ack = await readJsonSafe3(
+    absPath(cwd, TeamPaths.shutdownAck(teamName, workerName))
+  );
+  if (!ack) return null;
+  if (requestedAfter && ack.updated_at) {
+    if (new Date(ack.updated_at).getTime() < new Date(requestedAfter).getTime()) {
+      return null;
+    }
+  }
+  return ack;
+}
+async function listTasksFromFiles(teamName, cwd) {
+  const tasksDir = absPath(cwd, TeamPaths.tasks(teamName));
+  if (!existsSync13(tasksDir)) return [];
+  const { readdir: readdir3 } = await import("fs/promises");
+  const entries = await readdir3(tasksDir);
+  const tasks = [];
+  for (const entry of entries) {
+    const match = /^(?:task-)?(\d+)\.json$/.exec(entry);
+    if (!match) continue;
+    const task = await readJsonSafe3(absPath(cwd, `${TeamPaths.tasks(teamName)}/${entry}`));
+    if (task) tasks.push(task);
+  }
+  return tasks.sort((a, b) => Number(a.id) - Number(b.id));
+}
+async function writeWorkerInbox(teamName, workerName, content, cwd) {
+  await writeAtomic2(absPath(cwd, TeamPaths.inbox(teamName, workerName)), content);
+}
+async function saveTeamConfig(config, cwd) {
+  await writeAtomic2(absPath(cwd, TeamPaths.config(config.name)), JSON.stringify(config, null, 2));
+  const manifestPath = absPath(cwd, TeamPaths.manifest(config.name));
+  const existingManifest = await readJsonSafe3(manifestPath);
+  if (existingManifest) {
+    const nextManifest = normalizeTeamManifest({
+      ...existingManifest,
+      workers: config.workers,
+      worker_count: config.worker_count,
+      tmux_session: config.tmux_session,
+      next_task_id: config.next_task_id,
+      created_at: config.created_at,
+      leader_cwd: config.leader_cwd,
+      team_state_root: config.team_state_root,
+      workspace_mode: config.workspace_mode,
+      worktree_mode: config.worktree_mode,
+      leader_pane_id: config.leader_pane_id,
+      hud_pane_id: config.hud_pane_id,
+      resize_hook_name: config.resize_hook_name,
+      resize_hook_target: config.resize_hook_target,
+      next_worker_index: config.next_worker_index,
+      policy: config.policy ?? existingManifest.policy,
+      governance: config.governance ?? existingManifest.governance
+    });
+    await writeAtomic2(manifestPath, JSON.stringify(nextManifest, null, 2));
+  }
+}
+async function cleanupTeamState(teamName, cwd) {
+  const root = absPath(cwd, TeamPaths.root(teamName));
+  const { rm: rm5 } = await import("fs/promises");
+  try {
+    await rm5(root, { recursive: true, force: true });
+  } catch {
+  }
+}
+var init_monitor = __esm({
+  "src/team/monitor.ts"() {
+    "use strict";
+    init_state_paths();
+    init_governance();
+    init_worker_canonicalization();
+  }
+});
+
+// src/team/events.ts
+import { randomUUID as randomUUID5 } from "crypto";
+import { dirname as dirname11 } from "path";
+import { mkdir as mkdir6, readFile as readFile8, appendFile as appendFile3 } from "fs/promises";
+import { existsSync as existsSync14 } from "fs";
+async function appendTeamEvent(teamName, event, cwd) {
+  const full = {
+    event_id: randomUUID5(),
+    team: teamName,
+    created_at: (/* @__PURE__ */ new Date()).toISOString(),
+    ...event
+  };
+  const p = absPath(cwd, TeamPaths.events(teamName));
+  await mkdir6(dirname11(p), { recursive: true });
+  await appendFile3(p, `${JSON.stringify(full)}
+`, "utf8");
+  return full;
+}
+async function emitMonitorDerivedEvents(teamName, tasks, workers, previousSnapshot, cwd) {
+  if (!previousSnapshot) return;
+  const logDerivedEventFailure = createSwallowedErrorLogger(
+    "team.events.emitMonitorDerivedEvents appendTeamEvent failed"
+  );
+  const completedEventTaskIds = { ...previousSnapshot.completedEventTaskIds ?? {} };
+  for (const task of tasks) {
+    const prevStatus = previousSnapshot.taskStatusById?.[task.id];
+    if (!prevStatus || prevStatus === task.status) continue;
+    if (task.status === "completed" && !completedEventTaskIds[task.id]) {
+      await appendTeamEvent(teamName, {
+        type: "task_completed",
+        worker: "leader-fixed",
+        task_id: task.id,
+        reason: `status_transition:${prevStatus}->${task.status}`
+      }, cwd).catch(logDerivedEventFailure);
+      completedEventTaskIds[task.id] = true;
+    } else if (task.status === "failed") {
+      await appendTeamEvent(teamName, {
+        type: "task_failed",
+        worker: "leader-fixed",
+        task_id: task.id,
+        reason: `status_transition:${prevStatus}->${task.status}`
+      }, cwd).catch(logDerivedEventFailure);
+    }
+  }
+  for (const worker of workers) {
+    const prevAlive = previousSnapshot.workerAliveByName?.[worker.name];
+    const prevState = previousSnapshot.workerStateByName?.[worker.name];
+    if (prevAlive === true && !worker.alive) {
+      await appendTeamEvent(teamName, {
+        type: "worker_stopped",
+        worker: worker.name,
+        reason: "pane_exited"
+      }, cwd).catch(logDerivedEventFailure);
+    }
+    if (prevState === "working" && worker.status.state === "idle") {
+      await appendTeamEvent(teamName, {
+        type: "worker_idle",
+        worker: worker.name,
+        reason: `state_transition:${prevState}->${worker.status.state}`
+      }, cwd).catch(logDerivedEventFailure);
+    }
+  }
+}
+var init_events = __esm({
+  "src/team/events.ts"() {
+    "use strict";
+    init_state_paths();
+    init_swallowed_error();
+  }
+});
+
+// src/team/phase-controller.ts
+function inferPhase(tasks) {
+  if (tasks.length === 0) return "initializing";
+  const inProgress = tasks.filter((t) => t.status === "in_progress");
+  const pending = tasks.filter((t) => t.status === "pending");
+  const permanentlyFailed = tasks.filter(
+    (t) => t.status === "completed" && t.metadata?.permanentlyFailed === true
+  );
+  const genuinelyCompleted = tasks.filter(
+    (t) => t.status === "completed" && !t.metadata?.permanentlyFailed
+  );
+  const explicitlyFailed = tasks.filter((t) => t.status === "failed");
+  const allFailed = [...permanentlyFailed, ...explicitlyFailed];
+  if (inProgress.length > 0) return "executing";
+  if (pending.length === tasks.length && genuinelyCompleted.length === 0 && allFailed.length === 0) {
+    return "planning";
+  }
+  if (pending.length > 0 && genuinelyCompleted.length > 0 && inProgress.length === 0 && allFailed.length === 0) {
+    return "executing";
+  }
+  if (allFailed.length > 0) {
+    const hasRetriesRemaining = allFailed.some((t) => {
+      const retryCount = t.metadata?.retryCount ?? 0;
+      const maxRetries = t.metadata?.maxRetries ?? 3;
+      return retryCount < maxRetries;
+    });
+    if (allFailed.length === tasks.length && !hasRetriesRemaining || pending.length === 0 && inProgress.length === 0 && genuinelyCompleted.length === 0 && !hasRetriesRemaining) {
+      return "failed";
+    }
+    if (hasRetriesRemaining) return "fixing";
+  }
+  if (genuinelyCompleted.length === tasks.length && allFailed.length === 0) {
+    return "completed";
+  }
+  return "executing";
+}
+var init_phase_controller = __esm({
+  "src/team/phase-controller.ts"() {
+    "use strict";
+  }
+});
+
 // src/team/stage-router.ts
 function isTier(value) {
   return TIER_SET.has(value);
@@ -4831,7 +6871,7 @@ async function startTeamV2(config) {
     resize_hook_name: null,
     resize_hook_target: null,
     resolved_routing: resolvedRouting,
-    ...ownsWindow ? { workspace_mode: "single" } : {}
+    ...ownsWindow ? { workspace_mode: "single", worktree_mode: "disabled" } : {}
   };
   await saveTeamConfig(teamConfig, leaderCwd);
   const permissionsSnapshot = {
@@ -7352,6 +9392,16 @@ async function teamStatusByTeamName(teamName, cwd = process.cwd()) {
       workerPaneIds: Array.from(new Set(
         (config?.workers ?? []).map((worker) => worker.pane_id).filter((paneId) => typeof paneId === "string" && paneId.trim().length > 0)
       )),
+      workers: (config?.workers ?? []).map((worker) => ({
+        name: worker.name,
+        working_dir: worker.working_dir,
+        worktree_repo_root: worker.worktree_repo_root,
+        worktree_path: worker.worktree_path,
+        worktree_branch: worker.worktree_branch,
+        worktree_detached: worker.worktree_detached,
+        worktree_created: worker.worktree_created,
+        team_state_root: worker.team_state_root
+      })),
       snapshot: snapshot2
     };
   }
@@ -7481,23 +9531,31 @@ async function teamCleanupCommand(jobId, cleanupOptions = {}, options = {}) {
 }
 var TEAM_USAGE = `
 Usage:
-  omcp team start --agent <claude|copilot|codex|gemini|cursor>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--json]
-  omcp team status <job_id|team_name> [--json] [--cwd DIR]
-  omcp team wait <job_id> [--timeout-ms MS] [--json]
-  omcp team cleanup <job_id> [--grace-ms MS] [--json]
-  omcp team resume <team_name> [--json] [--cwd DIR]
-  omcp team shutdown <team_name> [--force] [--json] [--cwd DIR]
-  omcp team api <operation> [--input '<json>'] [--json] [--cwd DIR]
-  omcp team [ralph] <N:agent-type[:role]> "task" [--json] [--cwd DIR] [--new-window]
+  omc team start --agent <claude|codex|gemini|cursor>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--json]
+  omc team status <job_id|team_name> [--json] [--cwd DIR]
+  omc team wait <job_id> [--timeout-ms MS] [--json]
+  omc team cleanup <job_id> [--grace-ms MS] [--json]
+  omc team resume <team_name> [--json] [--cwd DIR]
+  omc team shutdown <team_name> [--force] [--json] [--cwd DIR]
+  omc team api <operation> [--input '<json>'] [--json] [--cwd DIR]
+  omc team [ralph] <N:agent-type[:role]> "task" [--json] [--cwd DIR] [--new-window]
+
+Worktrees:
+  Native per-worker git worktree mode is opt-in/config-gated with team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|named.
+  Status JSON includes workspaceMode, worktreeMode, teamStateRoot, and per-worker worktree metadata.
 
 Examples:
-  omcp team start --agent codex --count 2 --task "review auth flow" --new-window
-  omcp team status omc-abc123
-  omcp team status auth-review
-  omcp team resume auth-review
-  omcp team shutdown auth-review --force
-  omcp team api list-tasks --input '{"teamName":"auth-review"}' --json
-  omcp team 3:codex "refactor launch command"
+  omc team start --agent codex --count 2 --task "review auth flow" --new-window
+  omc team status omc-abc123
+  omc team status auth-review
+  omc team resume auth-review
+  omc team shutdown auth-review --force
+  omc team api list-tasks --input '{"teamName":"auth-review"}' --json
+  omc team 3:codex "refactor launch command"
+
+Worktree mode:
+  Native worker worktrees are opt-in/config-gated for runtime-v2.
+  Status surfaces workspace_mode, worktree_mode, team_state_root, and worker worktree metadata when enabled.
 `.trim();
 function parseStartArgs(args) {
   const agentValues = [];

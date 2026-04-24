@@ -2171,6 +2171,67 @@ function getWorktreePath(repoRoot, teamName, workerName2) {
 function getBranchName(teamName, workerName2) {
   return `omc-team/${sanitizeName(teamName)}/${sanitizeName(workerName2)}`;
 }
+function git(repoRoot, args, cwd = repoRoot) {
+  return (0, import_node_child_process.execFileSync)("git", args, { cwd, encoding: "utf-8", stdio: "pipe" }).trim();
+}
+function isInsideGitRepo(repoRoot) {
+  try {
+    git(repoRoot, ["rev-parse", "--show-toplevel"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function assertCleanLeaderWorktree(repoRoot) {
+  const status = git(repoRoot, ["status", "--porcelain"]);
+  if (status.length > 0) {
+    const error = new Error("leader_worktree_dirty: commit, stash, or clean changes before enabling team worktree mode");
+    error.code = "leader_worktree_dirty";
+    throw error;
+  }
+}
+function getRegisteredWorktreeBranch(repoRoot, wtPath) {
+  try {
+    const output = git(repoRoot, ["worktree", "list", "--porcelain"]);
+    const resolvedWtPath = (0, import_node_path.resolve)(wtPath);
+    let currentMatches = false;
+    for (const line of output.split("\n")) {
+      if (line.startsWith("worktree ")) {
+        currentMatches = (0, import_node_path.resolve)(line.slice("worktree ".length).trim()) === resolvedWtPath;
+        continue;
+      }
+      if (!currentMatches) continue;
+      if (line.startsWith("branch ")) return line.slice("branch ".length).trim().replace(/^refs\/heads\//, "");
+      if (line === "detached") return "HEAD";
+    }
+  } catch {
+  }
+  return void 0;
+}
+function isRegisteredWorktreePath(repoRoot, wtPath) {
+  try {
+    const output = git(repoRoot, ["worktree", "list", "--porcelain"]);
+    const resolvedWtPath = (0, import_node_path.resolve)(wtPath);
+    return output.split("\n").some((line) => line.startsWith("worktree ") && (0, import_node_path.resolve)(line.slice("worktree ".length).trim()) === resolvedWtPath);
+  } catch {
+    return false;
+  }
+}
+function isDetached(wtPath) {
+  try {
+    const branch = (0, import_node_child_process.execFileSync)("git", ["branch", "--show-current"], { cwd: wtPath, encoding: "utf-8", stdio: "pipe" }).trim();
+    return branch.length === 0;
+  } catch {
+    return false;
+  }
+}
+function isWorktreeDirty(wtPath) {
+  try {
+    return (0, import_node_child_process.execFileSync)("git", ["status", "--porcelain"], { cwd: wtPath, encoding: "utf-8", stdio: "pipe" }).trim().length > 0;
+  } catch {
+    return true;
+  }
+}
 function getMetadataPath(repoRoot, teamName) {
   return (0, import_node_path.join)(repoRoot, ".omcp", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
 }
@@ -2192,6 +2253,102 @@ function writeMetadata(repoRoot, teamName, entries) {
   const dir = (0, import_node_path.join)(repoRoot, ".omcp", "state", "team-bridge", sanitizeName(teamName));
   ensureDirWithMode(dir);
   atomicWriteJson(metaPath, entries);
+}
+function recordMetadata(repoRoot, teamName, info) {
+  const metaLockPath = getMetadataPath(repoRoot, teamName) + ".lock";
+  withFileLockSync(metaLockPath, () => {
+    const existing = readMetadata(repoRoot, teamName).filter((entry) => entry.workerName !== info.workerName);
+    writeMetadata(repoRoot, teamName, [...existing, info]);
+  });
+}
+function forgetMetadata(repoRoot, teamName, workerName2) {
+  const metaLockPath = getMetadataPath(repoRoot, teamName) + ".lock";
+  withFileLockSync(metaLockPath, () => {
+    const existing = readMetadata(repoRoot, teamName).filter((entry) => entry.workerName !== workerName2);
+    writeMetadata(repoRoot, teamName, existing);
+  });
+}
+function assertCompatibleExistingWorktree(repoRoot, wtPath, expectedBranch, mode) {
+  const registeredBranch = getRegisteredWorktreeBranch(repoRoot, wtPath);
+  if (!registeredBranch) {
+    const error = new Error(`worktree_path_mismatch: existing path is not a registered git worktree: ${wtPath}`);
+    error.code = "worktree_path_mismatch";
+    throw error;
+  }
+  if (isWorktreeDirty(wtPath)) {
+    const error = new Error(`worktree_dirty: preserving dirty worker worktree at ${wtPath}`);
+    error.code = "worktree_dirty";
+    throw error;
+  }
+  if (mode === "named" && registeredBranch !== expectedBranch) {
+    const error = new Error(`worktree_mismatch: expected branch ${expectedBranch} at ${wtPath}, found ${registeredBranch}`);
+    error.code = "worktree_mismatch";
+    throw error;
+  }
+  if (mode === "detached" && registeredBranch !== "HEAD") {
+    const error = new Error(`worktree_mismatch: expected detached worktree at ${wtPath}, found ${registeredBranch}`);
+    error.code = "worktree_mismatch";
+    throw error;
+  }
+}
+function normalizeTeamWorktreeMode(value) {
+  if (typeof value !== "string") return "disabled";
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on", "enabled", "detached"].includes(normalized)) return "detached";
+  if (["branch", "named", "named-branch"].includes(normalized)) return "named";
+  return "disabled";
+}
+function ensureWorkerWorktree(teamName, workerName2, repoRoot, options = {}) {
+  const mode = options.mode ?? "disabled";
+  if (mode === "disabled") return null;
+  if (!isInsideGitRepo(repoRoot)) {
+    throw new Error(`not_a_git_repository: ${repoRoot}`);
+  }
+  if (options.requireCleanLeader !== false) {
+    assertCleanLeaderWorktree(repoRoot);
+  }
+  const wtPath = getWorktreePath(repoRoot, teamName, workerName2);
+  const branch = mode === "named" ? getBranchName(teamName, workerName2) : "HEAD";
+  validateResolvedPath(wtPath, repoRoot);
+  try {
+    (0, import_node_child_process.execFileSync)("git", ["worktree", "prune"], { cwd: repoRoot, stdio: "pipe" });
+  } catch {
+  }
+  if ((0, import_node_fs.existsSync)(wtPath)) {
+    assertCompatibleExistingWorktree(repoRoot, wtPath, branch, mode);
+    const info2 = {
+      path: wtPath,
+      branch,
+      workerName: workerName2,
+      teamName,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      repoRoot,
+      mode,
+      detached: isDetached(wtPath),
+      created: false,
+      reused: true
+    };
+    recordMetadata(repoRoot, teamName, info2);
+    return info2;
+  }
+  const wtDir = (0, import_node_path.join)(repoRoot, ".omc", "team", sanitizeName(teamName), "worktrees");
+  ensureDirWithMode(wtDir);
+  const args = mode === "named" ? ["worktree", "add", "-b", branch, wtPath, options.baseRef ?? "HEAD"] : ["worktree", "add", "--detach", wtPath, options.baseRef ?? "HEAD"];
+  (0, import_node_child_process.execFileSync)("git", args, { cwd: repoRoot, stdio: "pipe" });
+  const info = {
+    path: wtPath,
+    branch,
+    workerName: workerName2,
+    teamName,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    repoRoot,
+    mode,
+    detached: mode === "detached",
+    created: true,
+    reused: false
+  };
+  recordMetadata(repoRoot, teamName, info);
+  return info;
 }
 function removeWorkerWorktree(teamName, workerName2, repoRoot) {
   const wtPath = getWorktreePath(repoRoot, teamName, workerName2);
@@ -5744,7 +5901,7 @@ async function startTeamV2(config) {
     resize_hook_name: null,
     resize_hook_target: null,
     resolved_routing: resolvedRouting,
-    ...ownsWindow ? { workspace_mode: "single" } : {}
+    ...ownsWindow ? { workspace_mode: "single", worktree_mode: "disabled" } : {}
   };
   await saveTeamConfig(teamConfig, leaderCwd);
   const permissionsSnapshot = {

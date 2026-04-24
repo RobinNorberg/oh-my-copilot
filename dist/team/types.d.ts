@@ -200,6 +200,8 @@ export interface TeamManifestV2 {
     leader_cwd?: string;
     team_state_root?: string;
     workspace_mode?: 'single' | 'worktree';
+    worktree_mode?: 'disabled' | 'detached' | 'named';
+    lifecycle_profile?: 'default' | 'linked_ralph';
     leader_pane_id: string | null;
     hud_pane_id: string | null;
     resize_hook_name: string | null;
@@ -243,6 +245,8 @@ export interface TeamConfig {
     leader_cwd?: string;
     team_state_root?: string;
     workspace_mode?: 'single' | 'worktree';
+    worktree_mode?: 'disabled' | 'detached' | 'named';
+    lifecycle_profile?: 'default' | 'linked_ralph';
     leader_pane_id: string | null;
     hud_pane_id: string | null;
     resize_hook_name: string | null;
@@ -375,6 +379,9 @@ export type ReleaseTaskClaimResult = {
 export interface TeamSummary {
     teamName: string;
     workerCount: number;
+    team_state_root?: string;
+    workspace_mode?: 'single' | 'worktree';
+    worktree_mode?: 'disabled' | 'detached' | 'named';
     tasks: {
         total: number;
         pending: number;

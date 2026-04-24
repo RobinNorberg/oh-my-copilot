@@ -1,3 +1,4 @@
+export type TeamWorktreeMode = 'disabled' | 'detached' | 'named';
 export interface WorktreeInfo {
     path: string;
     branch: string;
@@ -10,6 +11,8 @@ export interface WorktreeInfo {
  * Path: {repoRoot}/.omcp/worktrees/{team}/{worker}
  * Branch: omc-team/{teamName}/{workerName}
  */
+export declare function ensureWorkerWorktree(teamName: string, workerName: string, repoRoot: string, options?: EnsureWorkerWorktreeOptions): EnsureWorkerWorktreeResult | null;
+/** Legacy creation helper: create or reuse a named-branch worker worktree. */
 export declare function createWorkerWorktree(teamName: string, workerName: string, repoRoot: string, baseBranch?: string): WorktreeInfo;
 /**
  * Remove a worker's worktree and branch.

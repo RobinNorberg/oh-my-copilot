@@ -53,7 +53,38 @@ function isRegisteredWorktreePath(repoRoot: string, wtPath: string): boolean {
   return false;
 }
 
-/** Get worktree metadata path */
+
+function isRegisteredWorktreePath(repoRoot: string, wtPath: string): boolean {
+  try {
+    const output = git(repoRoot, ['worktree', 'list', '--porcelain']);
+    const resolvedWtPath = resolve(wtPath);
+    return output.split('\n').some(line => (
+      line.startsWith('worktree ') && resolve(line.slice('worktree '.length).trim()) === resolvedWtPath
+    ));
+  } catch {
+    return false;
+  }
+}
+
+
+function isDetached(wtPath: string): boolean {
+  try {
+    const branch = execFileSync('git', ['branch', '--show-current'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe' }).trim();
+    return branch.length === 0;
+  } catch {
+    return false;
+  }
+}
+
+function isWorktreeDirty(wtPath: string): boolean {
+  try {
+    return execFileSync('git', ['status', '--porcelain'], { cwd: wtPath, encoding: 'utf-8', stdio: 'pipe' }).trim().length > 0;
+  } catch {
+    return true;
+  }
+}
+
+/** Get worktree metadata path. */
 function getMetadataPath(repoRoot: string, teamName: string): string {
   return join(repoRoot, '.omcp', 'state', 'team-bridge', sanitizeName(teamName), 'worktrees.json');
 }
@@ -79,6 +110,75 @@ function writeMetadata(repoRoot: string, teamName: string, entries: WorktreeInfo
   const dir = join(repoRoot, '.omcp', 'state', 'team-bridge', sanitizeName(teamName));
   ensureDirWithMode(dir);
   atomicWriteJson(metaPath, entries);
+}
+
+function recordMetadata(repoRoot: string, teamName: string, info: WorktreeInfo): void {
+  const metaLockPath = getMetadataPath(repoRoot, teamName) + '.lock';
+  withFileLockSync(metaLockPath, () => {
+    const existing = readMetadata(repoRoot, teamName).filter(entry => entry.workerName !== info.workerName);
+    writeMetadata(repoRoot, teamName, [...existing, info]);
+  });
+}
+
+function forgetMetadata(repoRoot: string, teamName: string, workerName: string): void {
+  const metaLockPath = getMetadataPath(repoRoot, teamName) + '.lock';
+  withFileLockSync(metaLockPath, () => {
+    const existing = readMetadata(repoRoot, teamName).filter(entry => entry.workerName !== workerName);
+    writeMetadata(repoRoot, teamName, existing);
+  });
+}
+
+function assertCompatibleExistingWorktree(
+  repoRoot: string,
+  wtPath: string,
+  expectedBranch: string,
+  mode: TeamWorktreeMode,
+): void {
+  const registeredBranch = getRegisteredWorktreeBranch(repoRoot, wtPath);
+  if (!registeredBranch) {
+    const error = new Error(`worktree_path_mismatch: existing path is not a registered git worktree: ${wtPath}`);
+    (error as Error & { code?: string }).code = 'worktree_path_mismatch';
+    throw error;
+  }
+
+  if (isWorktreeDirty(wtPath)) {
+    const error = new Error(`worktree_dirty: preserving dirty worker worktree at ${wtPath}`);
+    (error as Error & { code?: string }).code = 'worktree_dirty';
+    throw error;
+  }
+
+  if (mode === 'named' && registeredBranch !== expectedBranch) {
+    const error = new Error(`worktree_mismatch: expected branch ${expectedBranch} at ${wtPath}, found ${registeredBranch}`);
+    (error as Error & { code?: string }).code = 'worktree_mismatch';
+    throw error;
+  }
+
+  if (mode === 'detached' && registeredBranch !== 'HEAD') {
+    const error = new Error(`worktree_mismatch: expected detached worktree at ${wtPath}, found ${registeredBranch}`);
+    (error as Error & { code?: string }).code = 'worktree_mismatch';
+    throw error;
+  }
+}
+
+function assertLeaderRepoClean(repoRoot: string): void {
+  const status = git(repoRoot, ['status', '--porcelain'])
+    .split('\n')
+    .filter(line => line.trim() !== '' && !/^\?\? \.omc(?:\/|$)/.test(line))
+    .join('\n')
+    .trim();
+  if (status !== '') {
+    const err = new Error('leader_worktree_dirty: refusing to provision team worktrees from a dirty leader repository');
+    err.name = 'leader_worktree_dirty';
+    throw err;
+  }
+}
+
+export function normalizeTeamWorktreeMode(value: unknown): TeamWorktreeMode {
+  if (typeof value !== 'string') return 'disabled';
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on', 'enabled', 'detached'].includes(normalized)) return 'detached';
+  if (['branch', 'named', 'named-branch'].includes(normalized)) return 'named';
+  return 'disabled';
 }
 
 /**

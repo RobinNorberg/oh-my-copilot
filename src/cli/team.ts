@@ -680,14 +680,18 @@ export async function teamCleanupCommand(
 
 export const TEAM_USAGE = `
 Usage:
-  omcp team start --agent <claude|copilot|codex|gemini|cursor>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--json]
-  omcp team status <job_id|team_name> [--json] [--cwd DIR]
-  omcp team wait <job_id> [--timeout-ms MS] [--json]
-  omcp team cleanup <job_id> [--grace-ms MS] [--json]
-  omcp team resume <team_name> [--json] [--cwd DIR]
-  omcp team shutdown <team_name> [--force] [--json] [--cwd DIR]
-  omcp team api <operation> [--input '<json>'] [--json] [--cwd DIR]
-  omcp team [ralph] <N:agent-type[:role]> "task" [--json] [--cwd DIR] [--new-window]
+  omc team start --agent <claude|codex|gemini|cursor>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--json]
+  omc team status <job_id|team_name> [--json] [--cwd DIR]
+  omc team wait <job_id> [--timeout-ms MS] [--json]
+  omc team cleanup <job_id> [--grace-ms MS] [--json]
+  omc team resume <team_name> [--json] [--cwd DIR]
+  omc team shutdown <team_name> [--force] [--json] [--cwd DIR]
+  omc team api <operation> [--input '<json>'] [--json] [--cwd DIR]
+  omc team [ralph] <N:agent-type[:role]> "task" [--json] [--cwd DIR] [--new-window]
+
+Worktrees:
+  Native per-worker git worktree mode is opt-in/config-gated with team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|named.
+  Status JSON includes workspaceMode, worktreeMode, teamStateRoot, and per-worker worktree metadata.
 
 Examples:
   omcp team start --agent codex --count 2 --task "review auth flow" --new-window
