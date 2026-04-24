@@ -27,7 +27,7 @@ describe('context-safety hook (issue #1006)', () => {
         });
         expect(result.exitCode).toBe(0);
         const output = JSON.parse(result.stdout);
-        expect(output.continue).toBe(true);
+        expect(output.permissionDecision).toBe('allow');
     });
     it('still blocks ExitPlanMode when transcript shows high context', () => {
         // Without a valid transcript_path, estimateContextPercent returns 0,
@@ -42,7 +42,7 @@ describe('context-safety hook (issue #1006)', () => {
         // Should pass (0% < 55%) but ExitPlanMode is still checked
         expect(result.exitCode).toBe(0);
         const output = JSON.parse(result.stdout);
-        expect(output.continue).toBe(true);
+        expect(output.permissionDecision).toBe('allow');
     });
     it('allows unknown tools through without blocking', () => {
         const result = runContextSafety({
@@ -53,7 +53,7 @@ describe('context-safety hook (issue #1006)', () => {
         });
         expect(result.exitCode).toBe(0);
         const output = JSON.parse(result.stdout);
-        expect(output.continue).toBe(true);
+        expect(output.permissionDecision).toBe('allow');
     });
 });
 //# sourceMappingURL=context-safety.test.js.map

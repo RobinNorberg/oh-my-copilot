@@ -9,7 +9,7 @@ import { join } from 'path';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import process from 'process';
-import { detectBashFailure, detectWriteFailure, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
+import { detectBashFailure, detectWriteFailure, isCopilotCliWriteSuccess, isNonZeroExitWithOutput, summarizeAgentResult } from '../../scripts/post-tool-verifier.mjs';
 
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'post-tool-verifier.mjs');
 const PYTEST_RED_RUN_OUTPUT = [
@@ -277,6 +277,30 @@ describe('isNonZeroExitWithOutput (issue #960)', () => {
   });
 });
 
+describe('isCopilotCliWriteSuccess', () => {
+  it('detects canonical edit success output', () => {
+    expect(isCopilotCliWriteSuccess('The file /tmp/doc.md has been updated successfully.')).toBe(true);
+  });
+
+  it('detects canonical write success output with location suffix', () => {
+    expect(isCopilotCliWriteSuccess('File created successfully at: /tmp/doc.md')).toBe(true);
+  });
+
+  it('detects file-state confirmation output', () => {
+    expect(isCopilotCliWriteSuccess('The file state is current in your context window.')).toBe(true);
+  });
+
+  it('ignores arbitrary markdown diagnostic prose without a success marker', () => {
+    const content = [
+      '## Example',
+      '',
+      '$ ls graphify-out',
+      'No such file or directory',
+    ].join('\n');
+    expect(isCopilotCliWriteSuccess(content)).toBe(false);
+  });
+});
+
 describe('detectWriteFailure', () => {
   describe('Claude Code temp CWD false positives (issue #696)', () => {
     it('should not flag macOS temp CWD permission error as a write failure', () => {
@@ -331,6 +355,16 @@ describe('detectWriteFailure', () => {
 
     it('should return false for clean output', () => {
       expect(detectWriteFailure('File written successfully')).toBe(false);
+    });
+
+    it('should still report diagnostic-looking markdown as a raw failure signal without a tool success guard', () => {
+      const content = [
+        '## Example',
+        '',
+        '$ ls graphify-out',
+        'No such file or directory',
+      ].join('\n');
+      expect(detectWriteFailure(content)).toBe(true);
     });
   });
 
@@ -426,6 +460,40 @@ describe('agent output summarization / truncation (issue #1373)', () => {
 });
 
 describe('post-tool hook regression coverage (issue #2615)', () => {
+  it('prefers canonical edit success output over embedded markdown diagnostics', () => {
+    const out = runPostToolVerifier({
+      tool_name: 'Edit',
+      tool_response: [
+        'The file /tmp/doc.md has been updated successfully.',
+        '',
+        '## Example',
+        '',
+        '$ ls graphify-out',
+        'No such file or directory',
+      ].join('\n'),
+      session_id: 'issue-2792-edit',
+      cwd: process.cwd(),
+    });
+
+    expect(out.hookSpecificOutput?.additionalContext).toContain('Code modified.');
+    expect(out.hookSpecificOutput?.additionalContext).not.toContain('Edit operation failed');
+  });
+
+  it('prefers canonical write success output over serialized tool output with diagnostics', () => {
+    const out = runPostToolVerifier({
+      tool_name: 'Write',
+      tool_response: [
+        'File created successfully at: /tmp/doc.md',
+        '{"stdout":"No such file or directory","exitCode":1}',
+      ].join('\n'),
+      session_id: 'issue-2792-write',
+      cwd: process.cwd(),
+    });
+
+    expect(out.hookSpecificOutput?.additionalContext).toContain('File written.');
+    expect(out.hookSpecificOutput?.additionalContext).not.toContain('Write operation failed');
+  });
+
   it('does not treat inline error-like strings in Edit output as an edit failure', () => {
     const out = runPostToolVerifier({
       tool_name: 'Edit',
