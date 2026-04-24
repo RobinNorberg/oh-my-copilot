@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { getTeamSummary } from '../monitor.js';
+import { executeTeamApiOperation } from '../api-interop.js';
 
 describe('team summary worktree metadata', () => {
   it('surfaces workspace and worker worktree contract fields', async () => {
@@ -59,6 +60,24 @@ describe('team summary worktree metadata', () => {
         worktree_detached: false,
         worktree_created: true,
         team_state_root: teamStateRoot,
+      });
+
+      const apiResult = await executeTeamApiOperation('get-summary', { team_name: teamName }, cwd);
+      expect(apiResult.ok).toBe(true);
+      if (!apiResult.ok) throw new Error('expected get-summary success');
+      expect(apiResult.data.summary).toMatchObject({
+        workspace_mode: 'worktree',
+        worktree_mode: 'named',
+        team_state_root: teamStateRoot,
+        workers: [expect.objectContaining({
+          working_dir: worktreePath,
+          worktree_repo_root: cwd,
+          worktree_path: worktreePath,
+          worktree_branch: 'omc-team/summary-team/worker-1',
+          worktree_detached: false,
+          worktree_created: true,
+          team_state_root: teamStateRoot,
+        })],
       });
     } finally {
       rmSync(cwd, { recursive: true, force: true });

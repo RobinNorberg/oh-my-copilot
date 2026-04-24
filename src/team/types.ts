@@ -454,6 +454,7 @@ export interface ShutdownAck {
 export interface TeamMonitorSnapshotState {
   taskStatusById: Record<string, string>;
   workerAliveByName: Record<string, boolean>;
+  workerLivenessByName?: Record<string, 'alive' | 'dead' | 'unknown'>;
   workerStateByName: Record<string, string>;
   workerTurnCountByName: Record<string, number>;
   workerTaskIdByName: Record<string, string>;

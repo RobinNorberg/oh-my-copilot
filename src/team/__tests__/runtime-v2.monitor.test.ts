@@ -168,15 +168,28 @@ describe('monitorTeamV2 pane-based stall inference', () => {
   it('does not mark unknown pane liveness as dead or recommend reassignment', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-unknown-liveness-'));
     await writeConfigAndTask('in_progress');
+    const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    await writeFile(join(teamRoot, 'monitor-snapshot.json'), JSON.stringify({
+      taskStatusById: { 1: 'in_progress' },
+      workerAliveByName: { 'worker-1': true },
+      workerLivenessByName: { 'worker-1': 'alive' },
+      workerStateByName: { 'worker-1': 'working' },
+      workerTurnCountByName: { 'worker-1': 1 },
+      workerTaskIdByName: { 'worker-1': '1' },
+      mailboxNotifiedByMessageId: {},
+      completedEventTaskIds: {},
+    }, null, 2), 'utf-8');
     mocks.getWorkerLiveness.mockResolvedValueOnce('unknown');
 
     const { monitorTeamV2 } = await import('../runtime-v2.js');
+    const { readTeamEventsByType } = await import('../events.js');
     const snapshot = await monitorTeamV2('demo-team', cwd);
 
     expect(snapshot?.workers[0]?.alive).toBe(false);
     expect(snapshot?.workers[0]?.liveness).toBe('unknown');
     expect(snapshot?.deadWorkers).toEqual([]);
     expect(snapshot?.recommendations).not.toContain('Reassign task-1 from dead worker-1');
+    await expect(readTeamEventsByType('demo-team', 'worker_stopped', cwd)).resolves.toEqual([]);
   });
 
   it('does not flag a worker when pane evidence shows startup bootstrapping instead of idle readiness', async () => {

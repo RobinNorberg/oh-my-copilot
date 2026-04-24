@@ -9,6 +9,7 @@
  */
 import type { TeamEventType } from './contracts.js';
 import type { TeamEvent } from './types.js';
+import type { WorkerPaneLiveness } from './tmux-session.js';
 /**
  * Append a team event to the JSONL event log.
  * Thread-safe via atomic append (O_WRONLY|O_APPEND|O_CREAT).
@@ -37,12 +38,14 @@ export declare function emitMonitorDerivedEvents(teamName: string, tasks: Array<
 }>, workers: Array<{
     name: string;
     alive: boolean;
+    liveness?: WorkerPaneLiveness;
     status: {
         state: string;
     };
 }>, previousSnapshot: {
     taskStatusById?: Record<string, string>;
     workerAliveByName?: Record<string, boolean>;
+    workerLivenessByName?: Record<string, WorkerPaneLiveness>;
     workerStateByName?: Record<string, string>;
     completedEventTaskIds?: Record<string, boolean>;
 } | null, cwd: string): Promise<void>;

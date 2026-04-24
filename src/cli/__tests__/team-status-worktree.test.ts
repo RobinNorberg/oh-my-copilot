@@ -84,9 +84,9 @@ describe('team CLI worktree status contract', () => {
     expect(status).toMatchObject({
       teamName: 'demo-team',
       running: true,
-      workspaceMode: 'worktree',
-      worktreeMode: 'named',
-      teamStateRoot: '/repo/.omc/state/team/demo-team',
+      workspace_mode: 'worktree',
+      worktree_mode: 'named',
+      team_state_root: '/repo/.omc/state/team/demo-team',
       workers: [expect.objectContaining({
         worktree_repo_root: '/repo',
         worktree_path: '/repo/.omc/team/demo-team/worktrees/worker-1',

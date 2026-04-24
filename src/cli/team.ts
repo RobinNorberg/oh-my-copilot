@@ -595,6 +595,9 @@ export async function teamStatusByTeamName(teamName: string, cwd = process.cwd()
       running: true,
       sessionName: config?.tmux_session,
       leaderPaneId: config?.leader_pane_id,
+      workspace_mode: config?.workspace_mode,
+      worktree_mode: config?.worktree_mode,
+      team_state_root: config?.team_state_root,
       workerPaneIds: Array.from(new Set(
         (config?.workers ?? [])
           .map((worker) => worker.pane_id)
@@ -783,7 +786,7 @@ Usage:
 
 Worktrees:
   Native per-worker git worktree mode is opt-in/config-gated with team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|named.
-  Status JSON includes workspaceMode, worktreeMode, teamStateRoot, and per-worker worktree metadata.
+  Status JSON includes workspace_mode, worktree_mode, team_state_root, and per-worker worktree metadata.
 
 Examples:
   omcp team start --agent codex --count 2 --task "review auth flow" --new-window
