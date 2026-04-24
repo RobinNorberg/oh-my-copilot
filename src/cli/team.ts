@@ -697,6 +697,10 @@ Examples:
   omcp team shutdown auth-review --force
   omcp team api list-tasks --input '{"teamName":"auth-review"}' --json
   omcp team 3:codex "refactor launch command"
+
+Worktree mode:
+  Native worker worktrees are opt-in/config-gated for runtime-v2.
+  Status surfaces workspace_mode, worktree_mode, team_state_root, and worker worktree metadata when enabled.
 `.trim();
 
 interface StartArgsParsed {
