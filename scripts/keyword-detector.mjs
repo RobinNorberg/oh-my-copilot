@@ -367,43 +367,40 @@ const QUESTION_FOLLOWUP_PATTERNS = [
 // copies a "[RALPH LOOP - ITERATION N] ..." block into a new session to debug
 // it will unintentionally re-trigger ralph, and the pasted text ends up as
 // the new state.prompt — producing a recursive self-reinforcing loop.
-// NOTE: all patterns use the `gim` flags. Matching is case-insensitive because
-// hasActionableKeyword operates on a `.toLowerCase()`-ed cleanPrompt, and
-// multi-line because each pattern now consumes a SINGLE line of echoed hook
-// output at a time. Previously we matched the entire echo block up to a blank
-// line, but that swallowed a user's real follow-up request when they typed it
-// on the very next line without inserting a blank separator (reviewed and
-// flagged as P1 by Codex automated review). Single-line matches keep the
-// guard strong (every recognizable echo line is stripped) while preserving
-// any non-echo text that follows.
+// Continuation lines that hook output typically emits DIRECTLY after a
+// recognized block header. They must be stripped only in that context —
+// never standalone — because a user might legitimately start a prompt with
+// "Task: …" or similar (Codex automated review P1/P2 on #2795).
+const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-claudecode:cancel).*)*';
+
+// NOTE: each pattern is a SINGLE LOGICAL BLOCK: the block header line +
+// zero-or-more continuation lines that hooks emit right after it. The whole
+// match is stripped together. Both `i` (case-insensitive against the
+// lower-cased cleanPrompt upstream) and `m` (so `^`/`$` match line
+// boundaries) are required.
+function buildEchoBlockRegex(headerBody) {
+  return new RegExp(`^[ \\t]*${headerBody}.*${ECHO_CONTINUATION}$`, 'gim');
+}
+
 const SYSTEM_ECHO_BLOCK_PATTERNS = [
   // persistent-mode.mjs block headers
-  /^[ \t]*\[RALPH LOOP\s*-\s*ITERATION[^\]\n]*\].*$/gim,
-  /^[ \t]*\[RALPH LOOP\s*-\s*(?:HARD LIMIT|EXTENDED)\].*$/gim,
-  /^[ \t]*\[TEAM\s*-\s*Phase:[^\]\n]*\].*$/gim,
-  /^[ \t]*\[AUTOPILOT[^\]\n]*\].*$/gim,
-  /^[ \t]*\[ULTRAPILOT[^\]\n]*\].*$/gim,
-  /^[ \t]*\[ULTRAWORK[^\]\n]*\].*$/gim,
-  /^[ \t]*\[ULTRAQA[^\]\n]*\].*$/gim,
-  /^[ \t]*\[PIPELINE[^\]\n]*\].*$/gim,
-  /^[ \t]*\[SWARM[^\]\n]*\].*$/gim,
-  /^[ \t]*\[TOOL ERROR[^\]\n]*\].*$/gim,
+  buildEchoBlockRegex('\\[RALPH LOOP\\s*-\\s*ITERATION[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[RALPH LOOP\\s*-\\s*(?:HARD LIMIT|EXTENDED)\\]'),
+  buildEchoBlockRegex('\\[TEAM\\s*-\\s*Phase:[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[AUTOPILOT[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[ULTRAPILOT[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[ULTRAWORK[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[ULTRAQA[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[PIPELINE[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[SWARM[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[TOOL ERROR[^\\]\\n]*\\]'),
   // keyword-detector.mjs block headers
-  /^[ \t]*\[MAGIC KEYWORD:[^\]\n]*\].*$/gim,
-  /^[ \t]*\[MAGIC KEYWORDS DETECTED:[^\]\n]*\].*$/gim,
+  buildEchoBlockRegex('\\[MAGIC KEYWORD:[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[MAGIC KEYWORDS DETECTED:[^\\]\\n]*\\]'),
   // Stop-hook wrapping by the Claude Code harness
-  /^[ \t]*Stop hook (?:blocking error|feedback|stopped continuation).*$/gim,
-  /^[ \t]*PreToolUse:[^\n]*hook additional context:.*$/gim,
-  /^[ \t]*PostToolUse:[^\n]*hook additional context:.*$/gim,
-  // Continuation lines that the hooks above almost always emit directly after
-  // the block header. These are stripped separately so that only genuine hook
-  // echoes disappear — a line like "Task: 사용자가 직접 쓴 내용" that a user
-  // authors on their own (outside any recognized echo block) would lack the
-  // surrounding signatures, and while the line itself would still match, the
-  // user rarely starts a real request with these exact tokens.
-  /^[ \t]*When FULLY complete \(after Architect verification\).*$/gim,
-  /^[ \t]*run\s+\/oh-my-claudecode:cancel.*$/gim,
-  /^[ \t]*Task:\s.*$/gim,
+  buildEchoBlockRegex('Stop hook (?:blocking error|feedback|stopped continuation)'),
+  buildEchoBlockRegex('PreToolUse:[^\\n]*hook additional context:'),
+  buildEchoBlockRegex('PostToolUse:[^\\n]*hook additional context:'),
 ];
 
 // Signature lines indicating the text is predominantly a system echo. Even

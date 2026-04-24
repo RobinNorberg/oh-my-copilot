@@ -144,6 +144,28 @@ describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {
     expect(existsSync(stateFile(cwd, sid, 'ralph'))).toBe(true);
   });
 
+  // Regression for Codex automated review P1/P2 (third round): the previous
+  // revision added standalone single-line strippers for `Task:\s`,
+  // `When FULLY complete`, and `run /oh-my-claudecode:cancel`, which meant
+  // a user's legitimate "Task: ralph로 이거 해줘" prompt would have its
+  // only line removed before keyword dispatch. Continuation stripping must
+  // happen ONLY in the context of an echo block header.
+  it('STILL activates ralph for a user prompt that starts with "Task:" (no echo header)', () => {
+    const cwd = makeCwd('kd-task-standalone-');
+    const sid = 'sess-task-standalone';
+
+    const output = runKeywordDetector('Task: ralph로 이 문제 계속 고쳐주세요', cwd, sid);
+    const context = output.hookSpecificOutput?.additionalContext ?? '';
+
+    expect(context).toContain('[MAGIC KEYWORD: RALPH]');
+    expect(existsSync(stateFile(cwd, sid, 'ralph'))).toBe(true);
+
+    const state = JSON.parse(readFileSync(stateFile(cwd, sid, 'ralph'), 'utf-8'));
+    // The user's `Task:` line is NOT treated as echo continuation here, so
+    // its content is preserved in state.prompt (up to the 500-char cap).
+    expect(state.prompt).toContain('이 문제 계속 고쳐주세요');
+  });
+
   // Regression for Codex automated review P1: echo-block body was being
   // consumed all the way to EOF when no blank line separated it from the
   // user's follow-up request. Users commonly type the real request on the

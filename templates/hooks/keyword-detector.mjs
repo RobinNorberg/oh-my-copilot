@@ -357,35 +357,35 @@ const QUESTION_FOLLOWUP_PATTERNS = [
 // copying a "[RALPH LOOP - ITERATION N] ..." block to ask "why does this keep
 // firing?" silently re-triggers ralph and the echo itself becomes state.prompt
 // — a self-reinforcing loop that is hard to cancel.
-// NOTE: all patterns use the `gim` flags. Matching is case-insensitive because
-// hasActionableKeyword operates on a `.toLowerCase()`-ed cleanPrompt, and
-// multi-line because each pattern now consumes a SINGLE line of echoed hook
-// output at a time. A previous version used a multi-line `[\s\S]*?(?=\n\n|\n?$)`
-// body that swallowed a user's real follow-up request when they typed it on
-// the very next line without inserting a blank separator (P1 flagged by
-// Codex automated review). Single-line matches keep the guard strong while
-// preserving any non-echo text that follows.
+// Continuation lines that hook output typically emits DIRECTLY after a
+// recognized block header. They must be stripped only in that context —
+// never standalone — because a user might legitimately start a prompt with
+// "Task: …" or similar (Codex automated review P1/P2 on #2795).
+const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-claudecode:cancel).*)*';
+
+// Each pattern is a single logical block: the block header line + zero or
+// more continuation lines emitted right after it. The whole match is
+// stripped together.
+function buildEchoBlockRegex(headerBody) {
+  return new RegExp(`^[ \\t]*${headerBody}.*${ECHO_CONTINUATION}$`, 'gim');
+}
+
 const SYSTEM_ECHO_BLOCK_PATTERNS = [
-  /^[ \t]*\[RALPH LOOP\s*-\s*ITERATION[^\]\n]*\].*$/gim,
-  /^[ \t]*\[RALPH LOOP\s*-\s*(?:HARD LIMIT|EXTENDED)\].*$/gim,
-  /^[ \t]*\[TEAM\s*-\s*Phase:[^\]\n]*\].*$/gim,
-  /^[ \t]*\[AUTOPILOT[^\]\n]*\].*$/gim,
-  /^[ \t]*\[ULTRAPILOT[^\]\n]*\].*$/gim,
-  /^[ \t]*\[ULTRAWORK[^\]\n]*\].*$/gim,
-  /^[ \t]*\[ULTRAQA[^\]\n]*\].*$/gim,
-  /^[ \t]*\[PIPELINE[^\]\n]*\].*$/gim,
-  /^[ \t]*\[SWARM[^\]\n]*\].*$/gim,
-  /^[ \t]*\[TOOL ERROR[^\]\n]*\].*$/gim,
-  /^[ \t]*\[MAGIC KEYWORD:[^\]\n]*\].*$/gim,
-  /^[ \t]*\[MAGIC KEYWORDS DETECTED:[^\]\n]*\].*$/gim,
-  /^[ \t]*Stop hook (?:blocking error|feedback|stopped continuation).*$/gim,
-  /^[ \t]*PreToolUse:[^\n]*hook additional context:.*$/gim,
-  /^[ \t]*PostToolUse:[^\n]*hook additional context:.*$/gim,
-  // Continuation lines (single-line too) — signatures that hooks emit right
-  // after the block header.
-  /^[ \t]*When FULLY complete \(after Architect verification\).*$/gim,
-  /^[ \t]*run\s+\/oh-my-claudecode:cancel.*$/gim,
-  /^[ \t]*Task:\s.*$/gim,
+  buildEchoBlockRegex('\\[RALPH LOOP\\s*-\\s*ITERATION[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[RALPH LOOP\\s*-\\s*(?:HARD LIMIT|EXTENDED)\\]'),
+  buildEchoBlockRegex('\\[TEAM\\s*-\\s*Phase:[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[AUTOPILOT[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[ULTRAPILOT[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[ULTRAWORK[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[ULTRAQA[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[PIPELINE[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[SWARM[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[TOOL ERROR[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[MAGIC KEYWORD:[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('\\[MAGIC KEYWORDS DETECTED:[^\\]\\n]*\\]'),
+  buildEchoBlockRegex('Stop hook (?:blocking error|feedback|stopped continuation)'),
+  buildEchoBlockRegex('PreToolUse:[^\\n]*hook additional context:'),
+  buildEchoBlockRegex('PostToolUse:[^\\n]*hook additional context:'),
 ];
 
 const SYSTEM_ECHO_SIGNATURES = [
