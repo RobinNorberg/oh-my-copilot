@@ -359,6 +359,107 @@ const QUESTION_FOLLOWUP_PATTERNS = [
   /\b(?:how\s+many|how\s+much|why|what\s+happened|what\s+went\s+wrong|token\s+budget|cost|pricing)\b/i,
   /(?:왜|얼마|몇\s*번|몇번|토큰|가격|비용|질문)/u,
 ];
+
+// Patterns that identify system-generated echoes (hook outputs) which can be
+// pasted back into the prompt verbatim. If a mode keyword only appears inside
+// such an echo block we MUST NOT re-activate the mode: otherwise a user who
+// copies a "[RALPH LOOP - ITERATION N] ..." block into a new session to debug
+// it will unintentionally re-trigger ralph, and the pasted text ends up as
+// the new state.prompt — producing a recursive self-reinforcing loop.
+// NOTE: all patterns use the `i` flag. hasActionableKeyword operates on
+// cleanPrompt which is `.toLowerCase()`-ed, so these patterns must match
+// case-insensitively to catch pasted echoes.
+const SYSTEM_ECHO_BLOCK_PATTERNS = [
+  // persistent-mode.mjs outputs
+  /\[RALPH LOOP\s*-\s*ITERATION[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[RALPH LOOP\s*-\s*(?:HARD LIMIT|EXTENDED)\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[TEAM\s*-\s*Phase:[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[AUTOPILOT[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[ULTRAPILOT[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[ULTRAWORK[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[ULTRAQA[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[PIPELINE[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[SWARM[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[TOOL ERROR[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  // keyword-detector.mjs outputs
+  /\[MAGIC KEYWORD:[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  /\[MAGIC KEYWORDS DETECTED:[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
+  // Stop-hook wrapping by the Claude Code harness
+  /Stop hook (?:blocking error|feedback|stopped continuation)[\s\S]*?(?=\n\n|\n?$)/gi,
+  /PreToolUse:[^\n]*hook additional context:[\s\S]*?(?=\n\n|\n?$)/gi,
+  /PostToolUse:[^\n]*hook additional context:[\s\S]*?(?=\n\n|\n?$)/gi,
+];
+
+// Signature lines indicating the text is predominantly a system echo. Even
+// when the block patterns above fail to delimit cleanly (e.g. truncation),
+// presence of these sentinels should make us treat the prompt as an echo.
+// All patterns use `i` because hasActionableKeyword sees a lowercased prompt.
+const SYSTEM_ECHO_SIGNATURES = [
+  /\bWhen FULLY complete \(after Architect verification\)\b/i,
+  /\brun\s+\/oh-my-claudecode:cancel\b/i,
+  /\[RALPH LOOP\s*-\s*ITERATION\b/i,
+];
+
+const MAX_STATE_PROMPT_LEN = 500;
+
+function stripSystemEchoes(text) {
+  if (typeof text !== 'string' || text.length === 0) return '';
+  let cleaned = text;
+  for (const pattern of SYSTEM_ECHO_BLOCK_PATTERNS) {
+    cleaned = cleaned.replace(pattern, ' ');
+  }
+  return cleaned;
+}
+
+function looksLikeSystemEcho(text) {
+  if (typeof text !== 'string' || text.length === 0) return false;
+  if (SYSTEM_ECHO_SIGNATURES.some((pattern) => pattern.test(text))) return true;
+  // Also treat the presence of ANY echo block pattern as an echo, so that
+  // mode-specific paste blocks (AUTOPILOT, ULTRAWORK, TEAM, etc.) are
+  // recognized without needing a dedicated signature line.
+  for (const pattern of SYSTEM_ECHO_BLOCK_PATTERNS) {
+    const probe = new RegExp(pattern.source, pattern.flags.replace('g', ''));
+    if (probe.test(text)) return true;
+  }
+  return false;
+}
+
+/**
+ * Sanitize a prompt before persisting it to a *-state.json file.
+ * Returning the raw prompt risks storing large system echoes or pasted
+ * hook output, which persistent-mode.mjs would then blast back into the
+ * next Stop-hook block reason on every iteration.
+ *
+ * Strategy:
+ * 1. Strip echoes first. If non-empty content remains AND that remainder no
+ *    longer looks like an echo, keep it (preserves the real user request in
+ *    an "echo + blank line + real request" paste).
+ * 2. Otherwise, if the raw prompt looks like a pure echo, substitute the
+ *    placeholder sentinel.
+ * 3. Finally, hard-truncate to MAX_STATE_PROMPT_LEN chars.
+ */
+function sanitizePromptForState(prompt) {
+  if (typeof prompt !== 'string') return '';
+  const trimmed = prompt.trim();
+  if (!trimmed) return '';
+
+  const stripped = stripSystemEchoes(trimmed).trim();
+  if (stripped.length > 0 && !looksLikeSystemEcho(stripped)) {
+    return stripped.length > MAX_STATE_PROMPT_LEN
+      ? `${stripped.slice(0, MAX_STATE_PROMPT_LEN - 3)}...`
+      : stripped;
+  }
+
+  if (looksLikeSystemEcho(trimmed)) {
+    return '(prompt omitted: pasted system echo)';
+  }
+
+  // Fallback (stripping left nothing but original isn't recognizably an echo)
+  const base = stripped.length > 0 ? stripped : trimmed;
+  return base.length > MAX_STATE_PROMPT_LEN
+    ? `${base.slice(0, MAX_STATE_PROMPT_LEN - 3)}...`
+    : base;
+}
 const MODE_REFERENCE_PATTERN =
   /\b(?:ralph|autopilot|auto[\s-]?pilot|ultrawork|ulw|ralplan|ultrathink|deepsearch|deep[\s-]?analyze|deepanalyze|deep[\s-]interview|ouroboros|ccg|claude-codex-gemini|deerflow)\b/gi;
 
@@ -473,15 +574,25 @@ function isInformationalKeywordContext(text, position, keywordLength, keywordTex
 }
 
 function hasActionableKeyword(text, pattern) {
+  // Strip system-generated echo blocks (persistent-mode/keyword-detector
+  // outputs, Stop-hook wrappers) BEFORE searching for keywords. Otherwise
+  // pasting a previous "[RALPH LOOP - ITERATION N] ..." block into a prompt
+  // would re-activate ralph mode and the echo itself would be saved as
+  // state.prompt, which persistent-mode.mjs then blasts back on every
+  // iteration — a self-reinforcing loop that is hard to cancel.
+  const searchText = looksLikeSystemEcho(text)
+    ? stripSystemEchoes(text)
+    : text;
+
   const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
   const globalPattern = new RegExp(pattern.source, flags);
 
-  for (const match of text.matchAll(globalPattern)) {
+  for (const match of searchText.matchAll(globalPattern)) {
     if (match.index === undefined) {
       continue;
     }
 
-    if (isInformationalKeywordContext(text, match.index, match[0].length, match[0])) {
+    if (isInformationalKeywordContext(searchText, match.index, match[0].length, match[0])) {
       continue;
     }
 
@@ -508,19 +619,26 @@ function hasExplicitInvocationContext(text, position, keywordLength, keywordText
 }
 
 function hasActionableRalplanKeyword(text, pattern) {
+  // Same echo guard as hasActionableKeyword.
+  const searchText = looksLikeSystemEcho(text)
+    ? stripSystemEchoes(text)
+    : text;
+
   const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
   const globalPattern = new RegExp(pattern.source, flags);
 
-  for (const match of text.matchAll(globalPattern)) {
+  for (const match of searchText.matchAll(globalPattern)) {
     if (match.index === undefined) {
       continue;
     }
 
-    if (isInformationalKeywordContext(text, match.index, match[0].length, match[0])) {
+    // match.index is relative to searchText — use searchText for all
+    // downstream context lookups to keep indices aligned.
+    if (isInformationalKeywordContext(searchText, match.index, match[0].length, match[0])) {
       continue;
     }
 
-    if (!hasExplicitInvocationContext(text, match.index, match[0].length, match[0])) {
+    if (!hasExplicitInvocationContext(searchText, match.index, match[0].length, match[0])) {
       continue;
     }
 
@@ -532,6 +650,10 @@ function hasActionableRalplanKeyword(text, pattern) {
 
 // Create state file for a mode
 function activateState(directory, prompt, stateName, sessionId) {
+  const now = new Date().toISOString();
+  // Sanitize prompt BEFORE writing to state: prevents pasted system echoes
+  // and oversized blobs from being persisted and re-emitted by Stop hook.
+  const safePrompt = sanitizePromptForState(prompt);
   let state;
 
   if (stateName === 'ralph') {
@@ -540,35 +662,38 @@ function activateState(directory, prompt, stateName, sessionId) {
       active: true,
       iteration: 1,
       max_iterations: 100,
-      started_at: new Date().toISOString(),
-      prompt: prompt,
+      started_at: now,
+      prompt: safePrompt,
       session_id: sessionId || undefined,
       project_path: directory,
       linked_ultrawork: true,
       awaiting_confirmation: true,
-      last_checked_at: new Date().toISOString()
+      awaiting_confirmation_set_at: now,
+      last_checked_at: now
     };
   } else if (stateName === 'ralplan') {
     // Ralplan needs active + session_id for stop-hook enforcement
     state = {
       active: true,
-      started_at: new Date().toISOString(),
+      started_at: now,
       session_id: sessionId || undefined,
       project_path: directory,
       awaiting_confirmation: true,
-      last_checked_at: new Date().toISOString()
+      awaiting_confirmation_set_at: now,
+      last_checked_at: now
     };
   } else {
     // Generic state for ultrawork, autopilot, etc.
     state = {
       active: true,
-      started_at: new Date().toISOString(),
-      original_prompt: prompt,
+      started_at: now,
+      original_prompt: safePrompt,
       session_id: sessionId || undefined,
       project_path: directory,
       reinforcement_count: 0,
       awaiting_confirmation: true,
-      last_checked_at: new Date().toISOString()
+      awaiting_confirmation_set_at: now,
+      last_checked_at: now
     };
   }
 
@@ -596,7 +721,7 @@ function activateRalplanStartupState(directory, prompt, sessionId) {
     active: true,
     started_at: now,
     current_phase: 'ralplan',
-    original_prompt: prompt,
+    original_prompt: sanitizePromptForState(prompt),
     session_id: sessionId || undefined,
     project_path: directory,
     awaiting_confirmation: true,
