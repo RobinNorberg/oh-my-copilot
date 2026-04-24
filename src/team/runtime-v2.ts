@@ -19,7 +19,7 @@
 import { join, resolve } from 'path';
 import { tmuxExecAsync } from '../cli/tmux-utils.js';
 import { existsSync } from 'fs';
-import { mkdir, readdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
 import { performance } from 'perf_hooks';
 import { TeamPaths, absPath, teamStateRoot } from './state-paths.js';
 import { allocateTasksToWorkers } from './allocation-policy.js';
@@ -704,6 +704,37 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   };
 }
 
+
+async function rollbackUnpersistedNativeWorktreeStartup(teamName: string, cwd: string, cause: unknown): Promise<void> {
+  const safety = inspectTeamWorktreeCleanupSafety(teamName, cwd);
+  if (!safety.hasEvidence) return;
+
+  const teamRoot = absPath(cwd, TeamPaths.root(teamName));
+  const errorMessage = cause instanceof Error ? cause.message : String(cause);
+  try {
+    const cleanup = cleanupTeamWorktrees(teamName, cwd);
+    if (cleanup.preserved.length === 0) {
+      await rm(teamRoot, { recursive: true, force: true });
+      return;
+    }
+    await mkdir(teamRoot, { recursive: true });
+    await writeFile(join(teamRoot, 'startup-failure.json'), JSON.stringify({
+      reason: 'startup_failed_before_config_persisted',
+      error: errorMessage,
+      preserved: cleanup.preserved,
+      recorded_at: new Date().toISOString(),
+    }, null, 2), 'utf-8');
+  } catch (rollbackError) {
+    await mkdir(teamRoot, { recursive: true });
+    await writeFile(join(teamRoot, 'startup-failure.json'), JSON.stringify({
+      reason: 'startup_failed_before_config_persisted',
+      error: errorMessage,
+      rollback_error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+      recorded_at: new Date().toISOString(),
+    }, null, 2), 'utf-8');
+  }
+}
+
 // ---------------------------------------------------------------------------
 // startTeamV2 — direct tmux creation, CLI API inbox, NO watchdog
 // ---------------------------------------------------------------------------
@@ -806,6 +837,21 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
 
   // Build allocation inputs for the new role-aware allocator
   const workerNames = Array.from({ length: config.workerCount }, (_, index) => `worker-${index + 1}`);
+  const workerWorktrees = new Map<string, NonNullable<ReturnType<typeof ensureWorkerWorktree>>>();
+  try {
+    if (worktreeMode !== 'disabled') {
+      for (const workerName of workerNames) {
+        const worktree = ensureWorkerWorktree(sanitized, workerName, leaderCwd, {
+          mode: worktreeMode,
+          requireCleanLeader: true,
+        });
+        if (worktree) workerWorktrees.set(workerName, worktree);
+      }
+    }
+  } catch (error) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error);
+    throw error;
+  }
   const workerNameSet = new Set(workerNames);
 
   // Respect explicit owner fields first, then allocate remaining tasks
@@ -838,25 +884,41 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   }
 
   // Set up worker state dirs and overlays (with v2 CLI API instructions)
-  for (let i = 0; i < workerNames.length; i++) {
-    const wName = workerNames[i];
-    const agentType = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType()) as CliAgentType;
-    await ensureWorkerStateDir(sanitized, wName, leaderCwd);
-    await writeWorkerOverlay({
-      teamName: sanitized, workerName: wName, agentType,
-      tasks: config.tasks.map((t, idx) => ({
-        id: String(idx + 1), subject: t.subject, description: t.description,
-      })),
-      cwd: leaderCwd,
-      ...(config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {}),
-      ...(workerWorktrees.has(wName) ? { instructionStateRoot: '$OMC_TEAM_STATE_ROOT' } : {}),
-    });
+  try {
+    for (let i = 0; i < workerNames.length; i++) {
+      const wName = workerNames[i];
+      const agentType = (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as CliAgentType;
+      await ensureWorkerStateDir(sanitized, wName, leaderCwd);
+      const overlayPath = await writeWorkerOverlay({
+        teamName: sanitized, workerName: wName, agentType,
+        tasks: config.tasks.map((t, idx) => ({
+          id: String(idx + 1), subject: t.subject, description: t.description,
+        })),
+        cwd: leaderCwd,
+        ...(config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {}),
+        ...(workerWorktrees.has(wName) ? { instructionStateRoot: '$OMC_TEAM_STATE_ROOT' } : {}),
+      });
+      const worktree = workerWorktrees.get(wName);
+      if (worktree) {
+        const overlayContent = await readFile(overlayPath, 'utf-8');
+        installWorktreeRootAgents(sanitized, wName, leaderCwd, worktree.path, overlayContent);
+      }
+    }
+  } catch (error) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error);
+    throw error;
   }
 
   // Create tmux session (leader only — workers spawned below)
-  const session = await createTeamSession(sanitized, 0, leaderCwd, {
-    newWindow: Boolean(config.newWindow),
-  });
+  let session: Awaited<ReturnType<typeof createTeamSession>>;
+  try {
+    session = await createTeamSession(sanitized, 0, leaderCwd, {
+      newWindow: Boolean(config.newWindow),
+    });
+  } catch (error) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error);
+    throw error;
+  }
   const sessionName = session.sessionName;
   const leaderPaneId = session.leaderPaneId;
   const ownsWindow = session.sessionMode !== 'split-pane';

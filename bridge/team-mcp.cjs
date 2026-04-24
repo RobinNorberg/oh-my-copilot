@@ -18040,6 +18040,11 @@ async function sendToWorker(_sessionName, paneId, message) {
     return false;
   }
 }
+function isTmuxPaneNotFoundError(error2) {
+  const err = error2;
+  const text = [err?.stderr, err?.stdout, err?.message].filter((part) => typeof part === "string").join("\n").toLowerCase();
+  return /can't find pane|can't find window|can't find session|no such pane|pane not found|unknown pane/.test(text);
+}
 async function getWorkerLiveness(paneId) {
   try {
     const result = await tmuxCmdAsync([
@@ -18050,8 +18055,8 @@ async function getWorkerLiveness(paneId) {
       "#{pane_dead}"
     ]);
     return result.stdout.trim() === "0" ? "alive" : "dead";
-  } catch {
-    return "unknown";
+  } catch (error2) {
+    return isTmuxPaneNotFoundError(error2) ? "dead" : "unknown";
   }
 }
 async function isWorkerAlive(paneId) {

@@ -766,6 +766,11 @@ async function injectToLeaderPane(sessionName2, leaderPaneId, message) {
   }
   return sendToWorker(sessionName2, leaderPaneId, prefixed);
 }
+function isTmuxPaneNotFoundError(error) {
+  const err = error;
+  const text = [err?.stderr, err?.stdout, err?.message].filter((part) => typeof part === "string").join("\n").toLowerCase();
+  return /can't find pane|can't find window|can't find session|no such pane|pane not found|unknown pane/.test(text);
+}
 async function getWorkerLiveness(paneId) {
   try {
     const result = await tmuxCmdAsync([
@@ -776,8 +781,8 @@ async function getWorkerLiveness(paneId) {
       "#{pane_dead}"
     ]);
     return result.stdout.trim() === "0" ? "alive" : "dead";
-  } catch {
-    return "unknown";
+  } catch (error) {
+    return isTmuxPaneNotFoundError(error) ? "dead" : "unknown";
   }
 }
 async function isWorkerAlive(paneId) {
@@ -4838,9 +4843,9 @@ async function saveTeamConfig(config, cwd) {
 }
 async function cleanupTeamState(teamName, cwd) {
   const root = absPath(cwd, TeamPaths.root(teamName));
-  const { rm: rm3 } = await import("fs/promises");
+  const { rm: rm4 } = await import("fs/promises");
   try {
-    await rm3(root, { recursive: true, force: true });
+    await rm4(root, { recursive: true, force: true });
   } catch {
   }
 }
@@ -5970,6 +5975,34 @@ async function spawnV2Worker(opts) {
     ...outputFile ? { outputFile } : {}
   };
 }
+async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause) {
+  const safety = inspectTeamWorktreeCleanupSafety(teamName, cwd);
+  if (!safety.hasEvidence) return;
+  const teamRoot = absPath(cwd, TeamPaths.root(teamName));
+  const errorMessage = cause instanceof Error ? cause.message : String(cause);
+  try {
+    const cleanup = cleanupTeamWorktrees(teamName, cwd);
+    if (cleanup.preserved.length === 0) {
+      await (0, import_promises7.rm)(teamRoot, { recursive: true, force: true });
+      return;
+    }
+    await (0, import_promises7.mkdir)(teamRoot, { recursive: true });
+    await (0, import_promises7.writeFile)((0, import_path19.join)(teamRoot, "startup-failure.json"), JSON.stringify({
+      reason: "startup_failed_before_config_persisted",
+      error: errorMessage,
+      preserved: cleanup.preserved,
+      recorded_at: (/* @__PURE__ */ new Date()).toISOString()
+    }, null, 2), "utf-8");
+  } catch (rollbackError) {
+    await (0, import_promises7.mkdir)(teamRoot, { recursive: true });
+    await (0, import_promises7.writeFile)((0, import_path19.join)(teamRoot, "startup-failure.json"), JSON.stringify({
+      reason: "startup_failed_before_config_persisted",
+      error: errorMessage,
+      rollback_error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+      recorded_at: (/* @__PURE__ */ new Date()).toISOString()
+    }, null, 2), "utf-8");
+  }
+}
 async function startTeamV2(config) {
   const sanitized = sanitizeTeamName(config.teamName);
   const leaderCwd = (0, import_path20.resolve)(config.cwd);
@@ -6036,6 +6069,21 @@ async function startTeamV2(config) {
     }, null, 2), "utf-8");
   }
   const workerNames = Array.from({ length: config.workerCount }, (_, index) => `worker-${index + 1}`);
+  const workerWorktrees = /* @__PURE__ */ new Map();
+  try {
+    if (worktreeMode !== "disabled") {
+      for (const workerName2 of workerNames) {
+        const worktree = ensureWorkerWorktree(sanitized, workerName2, leaderCwd, {
+          mode: worktreeMode,
+          requireCleanLeader: true
+        });
+        if (worktree) workerWorktrees.set(workerName2, worktree);
+      }
+    }
+  } catch (error) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error);
+    throw error;
+  }
   const workerNameSet = new Set(workerNames);
   const startupAllocations = [];
   const unownedTaskIndices = [];
@@ -6062,27 +6110,43 @@ async function startTeamV2(config) {
       startupAllocations.push({ workerName: r.workerName, taskIndex: Number(r.taskId) });
     }
   }
-  for (let i = 0; i < workerNames.length; i++) {
-    const wName = workerNames[i];
-    const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType();
-    await ensureWorkerStateDir(sanitized, wName, leaderCwd);
-    await writeWorkerOverlay({
-      teamName: sanitized,
-      workerName: wName,
-      agentType,
-      tasks: config.tasks.map((t, idx) => ({
-        id: String(idx + 1),
-        subject: t.subject,
-        description: t.description
-      })),
-      cwd: leaderCwd,
-      ...config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {},
-      ...workerWorktrees.has(wName) ? { instructionStateRoot: "$OMC_TEAM_STATE_ROOT" } : {}
-    });
+  try {
+    for (let i = 0; i < workerNames.length; i++) {
+      const wName = workerNames[i];
+      const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? "claude";
+      await ensureWorkerStateDir(sanitized, wName, leaderCwd);
+      const overlayPath = await writeWorkerOverlay({
+        teamName: sanitized,
+        workerName: wName,
+        agentType,
+        tasks: config.tasks.map((t, idx) => ({
+          id: String(idx + 1),
+          subject: t.subject,
+          description: t.description
+        })),
+        cwd: leaderCwd,
+        ...config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {},
+        ...workerWorktrees.has(wName) ? { instructionStateRoot: "$OMC_TEAM_STATE_ROOT" } : {}
+      });
+      const worktree = workerWorktrees.get(wName);
+      if (worktree) {
+        const overlayContent = await (0, import_promises7.readFile)(overlayPath, "utf-8");
+        installWorktreeRootAgents(sanitized, wName, leaderCwd, worktree.path, overlayContent);
+      }
+    }
+  } catch (error) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error);
+    throw error;
   }
-  const session = await createTeamSession(sanitized, 0, leaderCwd, {
-    newWindow: Boolean(config.newWindow)
-  });
+  let session;
+  try {
+    session = await createTeamSession(sanitized, 0, leaderCwd, {
+      newWindow: Boolean(config.newWindow)
+    });
+  } catch (error) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error);
+    throw error;
+  }
   const sessionName2 = session.sessionName;
   const leaderPaneId = session.leaderPaneId;
   const ownsWindow = session.sessionMode !== "split-pane";

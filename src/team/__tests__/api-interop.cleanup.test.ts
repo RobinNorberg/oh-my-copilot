@@ -165,6 +165,56 @@ describe('team api cleanup', () => {
     expect(shutdownTeamMock).not.toHaveBeenCalled();
   });
 
+  it('blocks orphan-cleanup when worktree recovery evidence exists without explicit acknowledgement', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-api-orphan-cleanup-guard-'));
+    const teamName = 'orphan-cleanup-guard';
+    const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+    await mkdir(teamRoot, { recursive: true });
+    await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
+    const backupPath = join(teamRoot, 'workers', 'worker-1', 'worktree-root-agents.json');
+    await writeJson(cwd, `.omc/state/team/${teamName}/workers/worker-1/worktree-root-agents.json`, {
+      worktreePath: join(cwd, '.omc-worktrees', `${teamName}-worker-1`),
+      hadOriginal: false,
+      installedContent: 'worker overlay',
+      installedAt: new Date().toISOString(),
+    });
+
+    const result = await executeTeamApiOperation('orphan-cleanup', { team_name: teamName }, cwd);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected orphan-cleanup to be blocked');
+    expect(result.error.code).toBe('invalid_input');
+    expect(result.error.message).toContain('orphan_cleanup_blocked:worktree_recovery_evidence_present');
+    await expect(readFile(join(teamRoot, 'orphan.txt'), 'utf-8')).resolves.toBe('stale');
+    await expect(readFile(backupPath, 'utf-8')).resolves.toBeTruthy();
+    expect(shutdownTeamV2Mock).not.toHaveBeenCalled();
+    expect(shutdownTeamMock).not.toHaveBeenCalled();
+  });
+
+  it('allows acknowledged orphan-cleanup to remove team state despite worktree recovery evidence', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-api-orphan-cleanup-ack-'));
+    const teamName = 'orphan-cleanup-ack';
+    const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+    await mkdir(teamRoot, { recursive: true });
+    await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
+    await writeJson(cwd, `.omc/state/team/${teamName}/workers/worker-1/worktree-root-agents.json`, {
+      worktreePath: join(cwd, '.omc-worktrees', `${teamName}-worker-1`),
+      hadOriginal: false,
+      installedContent: 'worker overlay',
+      installedAt: new Date().toISOString(),
+    });
+
+    const result = await executeTeamApiOperation('orphan-cleanup', {
+      team_name: teamName,
+      acknowledge_lost_worktree_recovery: true,
+    }, cwd);
+
+    expect(result).toEqual({ ok: true, operation: 'orphan-cleanup', data: { team_name: teamName } });
+    await expect(readFile(join(teamRoot, 'orphan.txt'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(shutdownTeamV2Mock).not.toHaveBeenCalled();
+    expect(shutdownTeamMock).not.toHaveBeenCalled();
+  });
+
   it('blocks no-config cleanup when worktree metadata is unreadable', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-api-cleanup-corrupt-worktrees-'));
     const teamName = 'cleanup-corrupt-worktrees';

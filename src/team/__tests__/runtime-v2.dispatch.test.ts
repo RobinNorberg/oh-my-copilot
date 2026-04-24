@@ -222,6 +222,36 @@ describe('runtime v2 startup inbox dispatch', () => {
   });
 
 
+  it('rolls back clean native worktrees when startup fails before config is persisted', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-worktree-rollback-'));
+    execFileSync('git', ['init'], { cwd, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd, stdio: 'pipe' });
+    await writeFile(join(cwd, 'README.md'), 'worktree rollback test\n', 'utf-8');
+    execFileSync('git', ['add', 'README.md'], { cwd, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd, stdio: 'pipe' });
+    mocks.createTeamSession.mockRejectedValueOnce(new Error('tmux_start_failed'));
+
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    await expect(startTeamV2({
+      teamName: 'dispatch-team',
+      workerCount: 1,
+      agentTypes: ['claude'],
+      pluginConfig: { team: { ops: { worktreeMode: 'named' } } },
+      tasks: [{ subject: 'Worktree rollback', description: 'Fail before config persists' }],
+      cwd,
+    })).rejects.toThrow('tmux_start_failed');
+
+    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+
   it('uses owner-aware startup allocation when task owners are provided', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-owner-startup-'));
     const { startTeamV2 } = await import('../runtime-v2.js');

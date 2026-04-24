@@ -33788,11 +33788,102 @@ async function getTeamSummary(teamName, cwd2) {
     performance: perf
   };
 }
-async function cleanupTeamState(teamName, cwd) {
-  const root = absPath(cwd, TeamPaths.root(teamName));
-  const { rm: rm4 } = await import("fs/promises");
+async function saveTeamConfig(config2, cwd2) {
+  await writeAtomic2(absPath(cwd2, TeamPaths.config(config2.name)), JSON.stringify(config2, null, 2));
+  const manifestPath = absPath(cwd2, TeamPaths.manifest(config2.name));
+  const existingManifest = await readJsonSafe4(manifestPath);
+  if (existingManifest) {
+    const nextManifest = normalizeTeamManifest({
+      ...existingManifest,
+      workers: config2.workers,
+      worker_count: config2.worker_count,
+      tmux_session: config2.tmux_session,
+      next_task_id: config2.next_task_id,
+      created_at: config2.created_at,
+      leader_cwd: config2.leader_cwd,
+      team_state_root: config2.team_state_root,
+      workspace_mode: config2.workspace_mode,
+      worktree_mode: config2.worktree_mode,
+      leader_pane_id: config2.leader_pane_id,
+      hud_pane_id: config2.hud_pane_id,
+      resize_hook_name: config2.resize_hook_name,
+      resize_hook_target: config2.resize_hook_target,
+      next_worker_index: config2.next_worker_index,
+      policy: config2.policy ?? existingManifest.policy,
+      governance: config2.governance ?? existingManifest.governance
+    });
+    await writeAtomic2(manifestPath, JSON.stringify(nextManifest, null, 2));
+  }
+}
+async function withScalingLock(teamName, cwd2, fn, timeoutMs = 1e4) {
+  const lockDir = absPath(cwd2, TeamPaths.scalingLock(teamName));
+  const { mkdir: mkdirAsync, rm: rm5 } = await import("fs/promises");
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    try {
+      await mkdirAsync(lockDir, { recursive: false });
+      try {
+        return await fn();
+      } finally {
+        await rm5(lockDir, { recursive: true, force: true }).catch(() => {
+        });
+      }
+    } catch (error2) {
+      const code = error2.code;
+      if (code !== "EEXIST") throw error2;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+  throw new Error(`scaling lock timeout for team ${teamName}`);
+}
+function diffSnapshots(prev, current) {
+  const events = [];
+  for (const [taskId, currentStatus] of Object.entries(current.taskStatusById)) {
+    const prevStatus = prev.taskStatusById[taskId];
+    if (!prevStatus || prevStatus === currentStatus) continue;
+    if (currentStatus === "completed" && !prev.completedEventTaskIds[taskId]) {
+      events.push({
+        type: "task_completed",
+        worker: "leader-fixed",
+        task_id: taskId,
+        reason: `status_transition:${prevStatus}->${currentStatus}`
+      });
+    } else if (currentStatus === "failed") {
+      events.push({
+        type: "task_failed",
+        worker: "leader-fixed",
+        task_id: taskId,
+        reason: `status_transition:${prevStatus}->${currentStatus}`
+      });
+    }
+  }
+  for (const [workerName2, currentAlive] of Object.entries(current.workerAliveByName)) {
+    const prevAlive = prev.workerAliveByName[workerName2];
+    if (prevAlive === true && !currentAlive) {
+      events.push({
+        type: "worker_stopped",
+        worker: workerName2,
+        reason: "pane_exited"
+      });
+    }
+  }
+  for (const [workerName2, currentState] of Object.entries(current.workerStateByName)) {
+    const prevState = prev.workerStateByName[workerName2];
+    if (prevState === "working" && currentState === "idle") {
+      events.push({
+        type: "worker_idle",
+        worker: workerName2,
+        reason: `state_transition:${prevState}->${currentState}`
+      });
+    }
+  }
+  return events;
+}
+async function cleanupTeamState(teamName, cwd2) {
+  const root2 = absPath(cwd2, TeamPaths.root(teamName));
+  const { rm: rm5 } = await import("fs/promises");
   try {
-    await rm4(root, { recursive: true, force: true });
+    await rm5(root2, { recursive: true, force: true });
   } catch {
   }
 }
@@ -34871,6 +34962,11 @@ async function injectToLeaderPane(sessionName2, leaderPaneId, message) {
   }
   return sendToWorker(sessionName2, leaderPaneId, prefixed);
 }
+function isTmuxPaneNotFoundError(error2) {
+  const err = error2;
+  const text = [err?.stderr, err?.stdout, err?.message].filter((part) => typeof part === "string").join("\n").toLowerCase();
+  return /can't find pane|can't find window|can't find session|no such pane|pane not found|unknown pane/.test(text);
+}
 async function getWorkerLiveness(paneId) {
   try {
     const result = await tmuxCmdAsync([
@@ -34881,8 +34977,8 @@ async function getWorkerLiveness(paneId) {
       "#{pane_dead}"
     ]);
     return result.stdout.trim() === "0" ? "alive" : "dead";
-  } catch {
-    return "unknown";
+  } catch (error2) {
+    return isTmuxPaneNotFoundError(error2) ? "dead" : "unknown";
   }
 }
 async function isWorkerAlive(paneId) {
@@ -37005,6 +37101,34 @@ async function spawnV2Worker(opts) {
     ...outputFile ? { outputFile } : {}
   };
 }
+async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd2, cause) {
+  const safety = inspectTeamWorktreeCleanupSafety(teamName, cwd2);
+  if (!safety.hasEvidence) return;
+  const teamRoot = absPath(cwd2, TeamPaths.root(teamName));
+  const errorMessage = cause instanceof Error ? cause.message : String(cause);
+  try {
+    const cleanup = cleanupTeamWorktrees(teamName, cwd2);
+    if (cleanup.preserved.length === 0) {
+      await (0, import_promises13.rm)(teamRoot, { recursive: true, force: true });
+      return;
+    }
+    await (0, import_promises13.mkdir)(teamRoot, { recursive: true });
+    await (0, import_promises13.writeFile)((0, import_path89.join)(teamRoot, "startup-failure.json"), JSON.stringify({
+      reason: "startup_failed_before_config_persisted",
+      error: errorMessage,
+      preserved: cleanup.preserved,
+      recorded_at: (/* @__PURE__ */ new Date()).toISOString()
+    }, null, 2), "utf-8");
+  } catch (rollbackError) {
+    await (0, import_promises13.mkdir)(teamRoot, { recursive: true });
+    await (0, import_promises13.writeFile)((0, import_path89.join)(teamRoot, "startup-failure.json"), JSON.stringify({
+      reason: "startup_failed_before_config_persisted",
+      error: errorMessage,
+      rollback_error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+      recorded_at: (/* @__PURE__ */ new Date()).toISOString()
+    }, null, 2), "utf-8");
+  }
+}
 async function startTeamV2(config2) {
   const sanitized = sanitizeTeamName(config2.teamName);
   const leaderCwd = (0, import_path80.resolve)(config2.cwd);
@@ -37071,6 +37195,21 @@ async function startTeamV2(config2) {
     }, null, 2), "utf-8");
   }
   const workerNames = Array.from({ length: config2.workerCount }, (_, index) => `worker-${index + 1}`);
+  const workerWorktrees = /* @__PURE__ */ new Map();
+  try {
+    if (worktreeMode !== "disabled") {
+      for (const workerName2 of workerNames) {
+        const worktree = ensureWorkerWorktree(sanitized, workerName2, leaderCwd, {
+          mode: worktreeMode,
+          requireCleanLeader: true
+        });
+        if (worktree) workerWorktrees.set(workerName2, worktree);
+      }
+    }
+  } catch (error2) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error2);
+    throw error2;
+  }
   const workerNameSet = new Set(workerNames);
   const startupAllocations = [];
   const unownedTaskIndices = [];
@@ -37097,27 +37236,43 @@ async function startTeamV2(config2) {
       startupAllocations.push({ workerName: r.workerName, taskIndex: Number(r.taskId) });
     }
   }
-  for (let i = 0; i < workerNames.length; i++) {
-    const wName = workerNames[i];
-    const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType();
-    await ensureWorkerStateDir(sanitized, wName, leaderCwd);
-    await writeWorkerOverlay({
-      teamName: sanitized,
-      workerName: wName,
-      agentType,
-      tasks: config2.tasks.map((t, idx) => ({
-        id: String(idx + 1),
-        subject: t.subject,
-        description: t.description
-      })),
-      cwd: leaderCwd,
-      ...config2.rolePrompt ? { bootstrapInstructions: config2.rolePrompt } : {},
-      ...workerWorktrees.has(wName) ? { instructionStateRoot: "$OMC_TEAM_STATE_ROOT" } : {}
-    });
+  try {
+    for (let i = 0; i < workerNames.length; i++) {
+      const wName = workerNames[i];
+      const agentType = agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? "claude";
+      await ensureWorkerStateDir(sanitized, wName, leaderCwd);
+      const overlayPath = await writeWorkerOverlay({
+        teamName: sanitized,
+        workerName: wName,
+        agentType,
+        tasks: config2.tasks.map((t, idx) => ({
+          id: String(idx + 1),
+          subject: t.subject,
+          description: t.description
+        })),
+        cwd: leaderCwd,
+        ...config2.rolePrompt ? { bootstrapInstructions: config2.rolePrompt } : {},
+        ...workerWorktrees.has(wName) ? { instructionStateRoot: "$OMC_TEAM_STATE_ROOT" } : {}
+      });
+      const worktree = workerWorktrees.get(wName);
+      if (worktree) {
+        const overlayContent = await (0, import_promises13.readFile)(overlayPath, "utf-8");
+        installWorktreeRootAgents(sanitized, wName, leaderCwd, worktree.path, overlayContent);
+      }
+    }
+  } catch (error2) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error2);
+    throw error2;
   }
-  const session = await createTeamSession(sanitized, 0, leaderCwd, {
-    newWindow: Boolean(config2.newWindow)
-  });
+  let session;
+  try {
+    session = await createTeamSession(sanitized, 0, leaderCwd, {
+      newWindow: Boolean(config2.newWindow)
+    });
+  } catch (error2) {
+    await rollbackUnpersistedNativeWorktreeStartup(sanitized, leaderCwd, error2);
+    throw error2;
+  }
   const sessionName2 = session.sessionName;
   const leaderPaneId = session.leaderPaneId;
   const ownsWindow = session.sessionMode !== "split-pane";
@@ -97900,7 +98055,18 @@ async function executeTeamApiOperation(operation, args, fallbackCwd) {
       case "orphan-cleanup": {
         const teamName = String(args.team_name || "").trim();
         if (!teamName) return { ok: false, operation, error: { code: "invalid_input", message: "team_name is required" } };
-        await teamCleanup(teamName, cwd);
+        const safety = inspectTeamWorktreeCleanupSafety(teamName, cwd2);
+        if (safety.hasEvidence && args.acknowledge_lost_worktree_recovery !== true) {
+          return {
+            ok: false,
+            operation,
+            error: {
+              code: "invalid_input",
+              message: "orphan_cleanup_blocked:worktree_recovery_evidence_present; pass acknowledge_lost_worktree_recovery=true only after manually preserving or intentionally discarding worker worktrees and root AGENTS backups"
+            }
+          };
+        }
+        await teamCleanup(teamName, cwd2);
         return { ok: true, operation, data: { team_name: teamName } };
       }
       case "write-shutdown-request": {

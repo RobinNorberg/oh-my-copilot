@@ -800,9 +800,22 @@ export async function executeTeamApiOperation(
         return { ok: true, operation, data: { team_name: teamName } };
       }
       case 'orphan-cleanup': {
-        // Destructive escape hatch: always calls teamCleanup directly, bypasses shutdown orchestration
+        // Destructive escape hatch: calls teamCleanup directly, bypassing shutdown orchestration.
+        // Native worktree recovery metadata/root AGENTS backups are protected unless callers
+        // explicitly acknowledge that this force path may delete those recovery records.
         const teamName = String(args.team_name || '').trim();
         if (!teamName) return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name is required' } };
+        const safety = inspectTeamWorktreeCleanupSafety(teamName, cwd);
+        if (safety.hasEvidence && args.acknowledge_lost_worktree_recovery !== true) {
+          return {
+            ok: false,
+            operation,
+            error: {
+              code: 'invalid_input',
+              message: 'orphan_cleanup_blocked:worktree_recovery_evidence_present; pass acknowledge_lost_worktree_recovery=true only after manually preserving or intentionally discarding worker worktrees and root AGENTS backups',
+            },
+          };
+        }
         await teamCleanup(teamName, cwd);
         return { ok: true, operation, data: { team_name: teamName } };
       }
