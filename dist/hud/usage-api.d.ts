@@ -34,6 +34,10 @@ interface UsageApiResponse {
         spent_usd?: number;
         limit_usd?: number;
         resets_at?: string;
+        is_enabled?: boolean;
+        used_credits?: number;
+        monthly_limit?: number | null;
+        currency?: string;
     };
 }
 interface ZaiQuotaResponse {
@@ -85,6 +89,14 @@ interface MinimaxCodingPlanResponse {
         status_msg: string;
     };
 }
+/**
+ * Get subscription info from OAuth credentials.
+ * Returns subscriptionType and rateLimitTier (null when unavailable; never throws).
+ */
+export declare function getSubscriptionInfo(): {
+    subscriptionType: string | null;
+    rateLimitTier: string | null;
+};
 /**
  * Parse API response into RateLimits
  */

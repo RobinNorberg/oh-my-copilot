@@ -69,6 +69,10 @@ interface OAuthCredentials {
   refreshToken?: string;
   /** Where the credentials were read from, needed for write-back */
   source?: 'keychain' | 'file';
+  /** Subscription type from OAuth credentials (e.g. 'enterprise') */
+  subscriptionType?: string;
+  /** Rate limit tier from OAuth credentials (e.g. 'default_claude_zero') */
+  rateLimitTier?: string;
 }
 
 interface UsageApiResponse {
@@ -83,6 +87,11 @@ interface UsageApiResponse {
     spent_usd?: number;
     limit_usd?: number;
     resets_at?: string;
+    // Enterprise-specific fields
+    is_enabled?: boolean;
+    used_credits?: number;
+    monthly_limit?: number | null;
+    currency?: string;
   };
 }
 
@@ -440,6 +449,8 @@ function readKeychainCredential(serviceName: string, account?: string): OAuthCre
       expiresAt: creds.expiresAt,
       refreshToken: creds.refreshToken,
       source: 'keychain' as const,
+      subscriptionType: creds.subscriptionType,
+      rateLimitTier: creds.rateLimitTier,
     };
   } catch {
     return null;
@@ -502,6 +513,8 @@ function readFileCredentials(): OAuthCredentials | null {
         expiresAt: creds.expiresAt,
         refreshToken: creds.refreshToken,
         source: 'file' as const,
+        subscriptionType: creds.subscriptionType,
+        rateLimitTier: creds.rateLimitTier,
       };
     }
   } catch {
@@ -521,6 +534,22 @@ function getCredentials(): OAuthCredentials | null {
 
   // Fall back to file
   return readFileCredentials();
+}
+
+/**
+ * Get subscription info from OAuth credentials.
+ * Returns subscriptionType and rateLimitTier (null when unavailable; never throws).
+ */
+export function getSubscriptionInfo(): { subscriptionType: string | null; rateLimitTier: string | null } {
+  try {
+    const creds = getCredentials();
+    return {
+      subscriptionType: creds?.subscriptionType ?? null,
+      rateLimitTier: creds?.rateLimitTier ?? null,
+    };
+  } catch {
+    return { subscriptionType: null, rateLimitTier: null };
+  }
 }
 
 /**
@@ -790,9 +819,14 @@ function clamp(v: number | undefined): number {
 export function parseUsageResponse(response: UsageApiResponse): RateLimits | null {
   const fiveHour = response.five_hour?.utilization;
   const sevenDay = response.seven_day?.utilization;
+  const enterpriseCredits = response.extra_usage?.used_credits;
+  const enterpriseCurrency = (response.extra_usage?.currency ?? 'USD').toUpperCase();
+  // Enterprise credits are only usable when we know how to interpret the minor-unit digits;
+  // see the USD guard in the extra_usage branch below for rationale.
+  const hasUsableEnterprise = enterpriseCredits != null && enterpriseCurrency === 'USD';
 
-  // Need at least one valid value
-  if (fiveHour == null && sevenDay == null) return null;
+  // Need at least one valid value (5h/7d for Pro/Max, or usable enterprise credits)
+  if (fiveHour == null && sevenDay == null && !hasUsableEnterprise) return null;
 
   // Parse ISO 8601 date strings to Date objects
   const parseDate = (dateStr: string | undefined): Date | null => {
@@ -833,15 +867,33 @@ export function parseUsageResponse(response: UsageApiResponse): RateLimits | nul
 
   // Add extra (metered) usage if available (Pro subscribers with extra usage allocation)
   const extra = response.extra_usage;
-  if (extra != null && extra.limit_usd != null && extra.limit_usd > 0) {
-    const spentUsd = extra.spent_usd ?? 0;
-    result.extraUsageSpentUsd = spentUsd;
-    result.extraUsageLimitUsd = extra.limit_usd;
-    // Use API-provided utilization when available; fall back to spent/limit ratio
-    result.extraUsagePercent = extra.utilization != null
-      ? clamp(extra.utilization)
-      : clamp((spentUsd / extra.limit_usd) * 100);
-    result.extraUsageResetsAt = parseDate(extra.resets_at);
+  if (extra != null) {
+    // Enterprise path: used_credits (minor units) is present instead of spent_usd/limit_usd.
+    // Only USD is observed in practice; the /100 divisor below assumes 2-digit minor units.
+    // For any non-USD currency we refuse to guess the minor-unit digit count (JPY/KRW are
+    // 0-digit, TND/BHD are 3-digit per ISO 4217) and skip the enterprise fields — the
+    // renderer will then return null rather than display a wrong figure.
+    const currency = (extra.currency ?? 'USD').toUpperCase();
+    if (extra.used_credits != null && currency === 'USD') {
+      result.enterpriseSpentUsd = extra.used_credits / 100;
+      result.enterpriseLimitUsd = extra.monthly_limit == null ? null : extra.monthly_limit / 100;
+      result.enterpriseCurrency = currency;
+      // Only compute utilization when there is a positive cap
+      if (extra.monthly_limit != null && extra.monthly_limit > 0) {
+        result.enterpriseUtilization = clamp((extra.used_credits / extra.monthly_limit) * 100);
+      }
+      // resets_at not provided in enterprise response — leave enterpriseResetsAt unset
+    } else if (extra.limit_usd != null && extra.limit_usd > 0) {
+      // Pro metered path
+      const spentUsd = extra.spent_usd ?? 0;
+      result.extraUsageSpentUsd = spentUsd;
+      result.extraUsageLimitUsd = extra.limit_usd;
+      // Use API-provided utilization when available; fall back to spent/limit ratio
+      result.extraUsagePercent = extra.utilization != null
+        ? clamp(extra.utilization)
+        : clamp((spentUsd / extra.limit_usd) * 100);
+      result.extraUsageResetsAt = parseDate(extra.resets_at);
+    }
   }
 
   return result;
