@@ -28,6 +28,7 @@ import { join, dirname } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
 import { getClaudeConfigDir } from './lib/config-dir.mjs';
+import { atomicWriteFileSync } from './lib/atomic-write.mjs';
 import { readStdin } from './lib/stdin.mjs';
 
 // Resolve OMC package root: PLUGIN_ROOT (plugin system) or derive from this script's location
@@ -697,13 +698,16 @@ function activateState(directory, prompt, stateName, sessionId) {
     };
   }
 
-  // Write to session-scoped path if sessionId available
+  // Write to session-scoped path if sessionId available. Use atomic writes
+  // so that concurrent hook processes cannot expose half-written JSON to
+  // persistent-mode.mjs's readJsonFile (which would otherwise return null
+  // and temporarily drop mode enforcement).
   if (sessionId && /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/.test(sessionId)) {
     const sessionDir = join(directory, '.omcp', 'state', 'sessions', sessionId);
     if (!existsSync(sessionDir)) {
       try { mkdirSync(sessionDir, { recursive: true }); } catch {}
     }
-    try { writeFileSync(join(sessionDir, `${stateName}-state.json`), JSON.stringify(state, null, 2), { mode: 0o600 }); } catch {}
+    try { atomicWriteFileSync(join(sessionDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
     return;
   }
 
@@ -712,7 +716,7 @@ function activateState(directory, prompt, stateName, sessionId) {
   if (!existsSync(localDir)) {
     try { mkdirSync(localDir, { recursive: true }); } catch {}
   }
-  try { writeFileSync(join(localDir, `${stateName}-state.json`), JSON.stringify(state, null, 2), { mode: 0o600 }); } catch {}
+  try { atomicWriteFileSync(join(localDir, `${stateName}-state.json`), JSON.stringify(state, null, 2)); } catch {}
 }
 
 function activateRalplanStartupState(directory, prompt, sessionId) {
@@ -734,7 +738,7 @@ function activateRalplanStartupState(directory, prompt, sessionId) {
     if (!existsSync(sessionDir)) {
       try { mkdirSync(sessionDir, { recursive: true }); } catch {}
     }
-    try { writeFileSync(join(sessionDir, 'ralplan-state.json'), JSON.stringify(state, null, 2), { mode: 0o600 }); } catch {}
+    try { atomicWriteFileSync(join(sessionDir, 'ralplan-state.json'), JSON.stringify(state, null, 2)); } catch {}
     return;
   }
 
@@ -742,7 +746,7 @@ function activateRalplanStartupState(directory, prompt, sessionId) {
   if (!existsSync(localDir)) {
     try { mkdirSync(localDir, { recursive: true }); } catch {}
   }
-  try { writeFileSync(join(localDir, 'ralplan-state.json'), JSON.stringify(state, null, 2), { mode: 0o600 }); } catch {}
+  try { atomicWriteFileSync(join(localDir, 'ralplan-state.json'), JSON.stringify(state, null, 2)); } catch {}
 }
 
 /**
@@ -983,7 +987,14 @@ async function main() {
       return;
     }
 
-    const cleanPrompt = sanitizeForKeywordDetection(prompt).toLowerCase();
+    // Strip pasted system-echo blocks BEFORE any mode-keyword dispatch runs.
+    // This covers both the hasActionableKeyword() call sites AND alternative
+    // matchers (e.g. isAntiSlopCleanupRequest) that bypass it. The helper
+    // inside hasActionableKeyword also strips defensively, which stays as
+    // belt-and-suspenders.
+    const cleanPrompt = stripSystemEchoes(
+      sanitizeForKeywordDetection(prompt).toLowerCase(),
+    );
 
     // Collect all matching keywords
     const matches = [];

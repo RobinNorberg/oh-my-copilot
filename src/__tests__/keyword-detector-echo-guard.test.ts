@@ -96,6 +96,26 @@ describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {
   });
 
   // A "Stop hook feedback:" wrapper must also be recognized as echo.
+  // Regression for Major #1 (GPT-5.5): isAntiSlopCleanupRequest bypasses
+  // hasActionableKeyword. Stripping must happen upstream in the main dispatch
+  // so all matchers benefit, not only the hasActionableKeyword ones.
+  it('does NOT re-activate ai-slop-cleaner from a pasted echo whose Task line contains cleanup/deslop terms', () => {
+    const cwd = makeCwd('kd-echo-anti-slop-');
+    const sid = 'sess-anti-slop';
+    const prompt = [
+      '[RALPH LOOP - ITERATION 7/100] Work is NOT done.',
+      'Task: please run ai-slop-cleaner and deslop the duplicated functions',
+    ].join('\n');
+
+    const output = runKeywordDetector(prompt, cwd, sid);
+    const context = output.hookSpecificOutput?.additionalContext ?? '';
+
+    expect(output.continue).toBe(true);
+    expect(context).not.toContain('[MAGIC KEYWORD: AI-SLOP-CLEANER]');
+    expect(context).not.toContain('<ai-slop-cleaner-mode>');
+    expect(existsSync(stateFile(cwd, sid, 'ai-slop-cleaner'))).toBe(false);
+  });
+
   it('does NOT re-activate ralph when the prompt is a Stop hook feedback block', () => {
     const cwd = makeCwd('kd-echo-stop-hook-');
     const sid = 'sess-stop-hook';
