@@ -62,7 +62,7 @@ import {
 } from './model-contract.js';
 import {
   createTeamSession, spawnWorkerInPane, sendToWorker,
-  waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, type WorkerPaneConfig,
+  waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, getWorkerLiveness, type WorkerPaneConfig, type WorkerPaneLiveness,
 } from './tmux-session.js';
 import {
   composeInitialInbox,
@@ -131,6 +131,7 @@ export interface TeamSnapshotV2 {
   workers: Array<{
     name: string;
     alive: boolean;
+    liveness: WorkerPaneLiveness;
     status: WorkerStatus;
     heartbeat: WorkerHeartbeat | null;
     assignedTasks: string[];
@@ -269,14 +270,9 @@ function resolvePreflightBinaryPath(agentType: CliAgentType): { path: string; de
 // Helper: check worker liveness via tmux pane
 // ---------------------------------------------------------------------------
 
-async function isWorkerPaneAlive(paneId: string | undefined): Promise<boolean> {
-  if (!paneId) return false;
-  try {
-    const { isWorkerAlive } = await import('./tmux-session.js');
-    return await isWorkerAlive(paneId);
-  } catch {
-    return false;
-  }
+async function getWorkerPaneLiveness(paneId: string | undefined): Promise<WorkerPaneLiveness> {
+  if (!paneId) return 'dead';
+  return getWorkerLiveness(paneId);
 }
 
 async function captureWorkerPane(paneId: string | undefined): Promise<string> {
@@ -1265,8 +1261,8 @@ export async function processCliWorkerVerdicts(
     const outputFile = worker.output_file;
     if (!outputFile) continue;
 
-    const alive = await isWorkerPaneAlive(worker.pane_id);
-    if (alive) continue;
+    const liveness = await getWorkerPaneLiveness(worker.pane_id);
+    if (liveness !== 'dead') continue;
     if (!fsExistsSync(outputFile)) {
       results.push({ workerName: worker.name, taskId: null, status: 'file_missing' });
       continue;
@@ -1443,18 +1439,19 @@ export async function monitorTeamV2(
   const workerScanStartMs = performance.now();
   const workerSignals = await Promise.all(
     config.workers.map(async (worker) => {
-      const alive = await isWorkerPaneAlive(worker.pane_id);
+      const liveness = await getWorkerPaneLiveness(worker.pane_id);
+      const alive = liveness === 'alive';
       const [status, heartbeat, paneCapture] = await Promise.all([
         readWorkerStatus(sanitized, worker.name, cwd),
         readWorkerHeartbeat(sanitized, worker.name, cwd),
         alive ? captureWorkerPane(worker.pane_id) : Promise.resolve(''),
       ]);
-      return { worker, alive, status, heartbeat, paneCapture };
+      return { worker, alive, liveness, status, heartbeat, paneCapture };
     }),
   );
   const workerScanMs = performance.now() - workerScanStartMs;
 
-  for (const { worker: w, alive, status, heartbeat, paneCapture } of workerSignals) {
+  for (const { worker: w, alive, liveness, status, heartbeat, paneCapture } of workerSignals) {
     const currentTask = status.current_task_id ? taskById.get(status.current_task_id) ?? null : null;
     const outstandingTask = currentTask ?? findOutstandingWorkerTask(w, taskById, inProgressByOwner);
     const expectedTaskId = status.current_task_id ?? outstandingTask?.id ?? w.assigned_tasks[0] ?? '';
@@ -1475,13 +1472,14 @@ export async function monitorTeamV2(
     workers.push({
       name: w.name,
       alive,
+      liveness,
       status,
       heartbeat,
       assignedTasks: w.assigned_tasks,
       turnsWithoutProgress,
     });
 
-    if (!alive) {
+    if (liveness === 'dead') {
       deadWorkers.push(w.name);
       const deadWorkerTasks = inProgressByOwner.get(w.name) || [];
       for (const t of deadWorkerTasks) {

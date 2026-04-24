@@ -28,7 +28,7 @@ import { DEFAULT_TEAM_GOVERNANCE, DEFAULT_TEAM_TRANSPORT_POLICY, getConfigGovern
 import { inferPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
 import { buildWorkerArgv, getContract, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, } from './model-contract.js';
-import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, } from './tmux-session.js';
+import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, getWorkerLiveness, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
 import { cleanupTeamWorktrees, inspectTeamWorktreeCleanupSafety, ensureWorkerWorktree, installWorktreeRootAgents, normalizeTeamWorktreeMode, } from './git-worktree.js';
@@ -125,16 +125,10 @@ function resolvePreflightBinaryPath(agentType) {
 // ---------------------------------------------------------------------------
 // Helper: check worker liveness via tmux pane
 // ---------------------------------------------------------------------------
-async function isWorkerPaneAlive(paneId) {
+async function getWorkerPaneLiveness(paneId) {
     if (!paneId)
-        return false;
-    try {
-        const { isWorkerAlive } = await import('./tmux-session.js');
-        return await isWorkerAlive(paneId);
-    }
-    catch {
-        return false;
-    }
+        return 'dead';
+    return getWorkerLiveness(paneId);
 }
 async function captureWorkerPane(paneId) {
     if (!paneId)
@@ -905,8 +899,8 @@ export async function processCliWorkerVerdicts(teamName, cwd) {
         const outputFile = worker.output_file;
         if (!outputFile)
             continue;
-        const alive = await isWorkerPaneAlive(worker.pane_id);
-        if (alive)
+        const liveness = await getWorkerPaneLiveness(worker.pane_id);
+        if (liveness !== 'dead')
             continue;
         if (!fsExistsSync(outputFile)) {
             results.push({ workerName: worker.name, taskId: null, status: 'file_missing' });
@@ -1070,16 +1064,17 @@ export async function monitorTeamV2(teamName, cwd) {
     const recommendations = [];
     const workerScanStartMs = performance.now();
     const workerSignals = await Promise.all(config.workers.map(async (worker) => {
-        const alive = await isWorkerPaneAlive(worker.pane_id);
+        const liveness = await getWorkerPaneLiveness(worker.pane_id);
+        const alive = liveness === 'alive';
         const [status, heartbeat, paneCapture] = await Promise.all([
             readWorkerStatus(sanitized, worker.name, cwd),
             readWorkerHeartbeat(sanitized, worker.name, cwd),
             alive ? captureWorkerPane(worker.pane_id) : Promise.resolve(''),
         ]);
-        return { worker, alive, status, heartbeat, paneCapture };
+        return { worker, alive, liveness, status, heartbeat, paneCapture };
     }));
     const workerScanMs = performance.now() - workerScanStartMs;
-    for (const { worker: w, alive, status, heartbeat, paneCapture } of workerSignals) {
+    for (const { worker: w, alive, liveness, status, heartbeat, paneCapture } of workerSignals) {
         const currentTask = status.current_task_id ? taskById.get(status.current_task_id) ?? null : null;
         const outstandingTask = currentTask ?? findOutstandingWorkerTask(w, taskById, inProgressByOwner);
         const expectedTaskId = status.current_task_id ?? outstandingTask?.id ?? w.assigned_tasks[0] ?? '';
@@ -1098,12 +1093,13 @@ export async function monitorTeamV2(teamName, cwd) {
         workers.push({
             name: w.name,
             alive,
+            liveness,
             status,
             heartbeat,
             assignedTasks: w.assigned_tasks,
             turnsWithoutProgress,
         });
-        if (!alive) {
+        if (liveness === 'dead') {
             deadWorkers.push(w.name);
             const deadWorkerTasks = inProgressByOwner.get(w.name) || [];
             for (const t of deadWorkerTasks) {
