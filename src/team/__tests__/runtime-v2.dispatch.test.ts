@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   sendToWorker: vi.fn(),
   waitForPaneReady: vi.fn(),
   applyMainVerticalLayout: vi.fn(),
+  killTeamSession: vi.fn(async () => {}),
   execFile: vi.fn(),
   spawnSync: vi.fn(() => ({ status: 0 })),
   tmuxExecAsync: vi.fn(),
@@ -51,13 +52,18 @@ vi.mock('../model-contract.js', () => ({
   resolveClaudeWorkerModel: vi.fn(() => undefined),
 }));
 
-vi.mock('../tmux-session.js', () => ({
-  createTeamSession: mocks.createTeamSession,
-  spawnWorkerInPane: mocks.spawnWorkerInPane,
-  sendToWorker: mocks.sendToWorker,
-  waitForPaneReady: mocks.waitForPaneReady,
-  applyMainVerticalLayout: mocks.applyMainVerticalLayout,
-}));
+vi.mock('../tmux-session.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../tmux-session.js')>();
+  return {
+    ...actual,
+    createTeamSession: mocks.createTeamSession,
+    spawnWorkerInPane: mocks.spawnWorkerInPane,
+    sendToWorker: mocks.sendToWorker,
+    waitForPaneReady: mocks.waitForPaneReady,
+    applyMainVerticalLayout: mocks.applyMainVerticalLayout,
+    killTeamSession: mocks.killTeamSession,
+  };
+});
 
 describe('runtime v2 startup inbox dispatch', () => {
   let cwd: string;
@@ -70,6 +76,8 @@ describe('runtime v2 startup inbox dispatch', () => {
     mocks.sendToWorker.mockReset();
     mocks.waitForPaneReady.mockReset();
     mocks.applyMainVerticalLayout.mockReset();
+    mocks.killTeamSession.mockReset();
+    mocks.killTeamSession.mockResolvedValue(undefined);
     mocks.execFile.mockReset();
     mocks.spawnSync.mockReset();
     modelContractMocks.buildWorkerArgv.mockReset();
@@ -219,6 +227,49 @@ describe('runtime v2 startup inbox dispatch', () => {
     const overlay = await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'AGENTS.md'), 'utf-8');
     expect(overlay).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/status.json');
     expect(overlay).not.toContain('$OMC_TEAM_STATE_ROOT/team/dispatch-team');
+  });
+
+
+  it('kills the started team session and rolls back worktrees when manifest persistence fails', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-post-session-rollback-'));
+    execFileSync('git', ['init'], { cwd, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd, stdio: 'pipe' });
+    execFileSync('git', ['config', 'user.name', 'Test User'], { cwd, stdio: 'pipe' });
+    await writeFile(join(cwd, 'README.md'), 'post-session rollback test\n', 'utf-8');
+    execFileSync('git', ['add', 'README.md'], { cwd, stdio: 'pipe' });
+    execFileSync('git', ['commit', '-m', 'initial'], { cwd, stdio: 'pipe' });
+    mocks.createTeamSession.mockResolvedValueOnce({
+      sessionName: 'dispatch-window',
+      leaderPaneId: '%1',
+      workerPaneIds: [],
+      sessionMode: 'dedicated-window',
+    });
+    await mkdir(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json'), { recursive: true });
+
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    await expect(startTeamV2({
+      teamName: 'dispatch-team',
+      workerCount: 1,
+      agentTypes: ['claude'],
+      pluginConfig: { team: { ops: { worktreeMode: 'named' } } },
+      tasks: [{ subject: 'Worktree rollback', description: 'Fail after tmux session starts' }],
+      cwd,
+      newWindow: true,
+    })).rejects.toThrow();
+
+    expect(mocks.killTeamSession).toHaveBeenCalledWith(
+      'dispatch-window',
+      [],
+      '%1',
+      { sessionMode: 'dedicated-window' },
+    );
+    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(readFile(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
+      .rejects.toMatchObject({ code: 'ENOENT' });
   });
 
 

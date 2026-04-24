@@ -28,7 +28,7 @@ import { DEFAULT_TEAM_GOVERNANCE, DEFAULT_TEAM_TRANSPORT_POLICY, getConfigGovern
 import { inferPhase } from './phase-controller.js';
 import { validateTeamName } from './team-name.js';
 import { buildWorkerArgv, getContract, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, } from './model-contract.js';
-import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, getWorkerLiveness, } from './tmux-session.js';
+import { createTeamSession, spawnWorkerInPane, sendToWorker, killTeamSession, waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, getWorkerLiveness, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
 import { cleanupTeamWorktrees, inspectTeamWorktreeCleanupSafety, ensureWorkerWorktree, installWorktreeRootAgents, normalizeTeamWorktreeMode, } from './git-worktree.js';
@@ -437,6 +437,16 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName, cwd, cause) {
         }, null, 2), 'utf-8');
     }
 }
+async function rollbackStartedNativeWorktreeStartup(args) {
+    try {
+        await killTeamSession(args.sessionName, args.workerPaneIds, args.leaderPaneId ?? undefined, { sessionMode: args.sessionMode });
+    }
+    catch (killError) {
+        process.stderr.write(`[team/runtime-v2] startup rollback tmux cleanup failed: ${killError instanceof Error ? killError.message : String(killError)}
+`);
+    }
+    await rollbackUnpersistedNativeWorktreeStartup(args.teamName, args.cwd, args.cause);
+}
 // ---------------------------------------------------------------------------
 // startTeamV2 — direct tmux creation, CLI API inbox, NO watchdog
 // ---------------------------------------------------------------------------
@@ -653,7 +663,21 @@ export async function startTeamV2(config) {
         resolved_routing: resolvedRouting,
         ...(ownsWindow ? { workspace_mode: 'single' } : {}),
     };
-    await saveTeamConfig(teamConfig, leaderCwd);
+    try {
+        await saveTeamConfig(teamConfig, leaderCwd);
+    }
+    catch (error) {
+        await rollbackStartedNativeWorktreeStartup({
+            teamName: sanitized,
+            cwd: leaderCwd,
+            cause: error,
+            sessionName,
+            leaderPaneId,
+            workerPaneIds,
+            sessionMode: session.sessionMode,
+        });
+        throw error;
+    }
     const permissionsSnapshot = {
         approval_mode: process.env.OMC_APPROVAL_MODE || 'default',
         sandbox_mode: process.env.OMC_SANDBOX_MODE || 'default',
@@ -685,7 +709,21 @@ export async function startTeamV2(config) {
         resize_hook_target: null,
         next_worker_index: teamConfig.next_worker_index,
     };
-    await writeFile(absPath(leaderCwd, TeamPaths.manifest(sanitized)), JSON.stringify(teamManifest, null, 2), 'utf-8');
+    try {
+        await writeFile(absPath(leaderCwd, TeamPaths.manifest(sanitized)), JSON.stringify(teamManifest, null, 2), 'utf-8');
+    }
+    catch (error) {
+        await rollbackStartedNativeWorktreeStartup({
+            teamName: sanitized,
+            cwd: leaderCwd,
+            cause: error,
+            sessionName,
+            leaderPaneId,
+            workerPaneIds,
+            sessionMode: session.sessionMode,
+        });
+        throw error;
+    }
     // Spawn workers for initial tasks (at most one startup task per worker)
     const initialStartupAllocations = [];
     const seenStartupWorkers = new Set();
@@ -697,56 +735,88 @@ export async function startTeamV2(config) {
         if (initialStartupAllocations.length >= config.workerCount)
             break;
     }
-    for (const decision of initialStartupAllocations) {
-        const wName = decision.workerName;
-        const workerIndex = Number.parseInt(wName.replace('worker-', ''), 10) - 1;
-        const taskId = String(decision.taskIndex + 1);
-        const task = config.tasks[decision.taskIndex];
-        if (!task || workerIndex < 0)
-            continue;
-        // Route the task through the team's immutable snapshot (Option E).
-        // Falls back to the round-robin agentType when the inferred role is
-        // outside the canonical vocabulary (preserves pre-patch behavior).
-        const fallbackAgent = (agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? 'claude');
-        const assignment = resolveTaskAssignment(task, resolvedRouting, pluginCfg.team?.roleRouting, resolvedBinaryPaths, fallbackAgent);
-        const workerLaunch = await spawnV2Worker({
-            sessionName,
-            leaderPaneId,
-            existingWorkerPaneIds: workerPaneIds,
-            teamName: sanitized,
-            workerName: wName,
-            workerIndex,
-            agentType: assignment.agentType,
-            task,
-            taskId,
-            cwd: leaderCwd,
-            resolvedBinaryPaths,
-            ...(assignment.model ? { model: assignment.model } : {}),
-            ...(assignment.role ? { role: assignment.role } : {}),
-        });
-        if (workerLaunch.paneId) {
-            workerPaneIds.push(workerLaunch.paneId);
-            const workerInfo = workersInfo[workerIndex];
-            if (workerInfo) {
-                workerInfo.pane_id = workerLaunch.paneId;
-                workerInfo.assigned_tasks = workerLaunch.startupAssigned ? [taskId] : [];
-                workerInfo.worker_cli = (assignment.agentType === 'copilot' ? 'claude' : assignment.agentType);
-                if (workerLaunch.outputFile) {
-                    workerInfo.output_file = workerLaunch.outputFile;
+    try {
+        for (const decision of initialStartupAllocations) {
+            const wName = decision.workerName;
+            const workerIndex = Number.parseInt(wName.replace('worker-', ''), 10) - 1;
+            const taskId = String(decision.taskIndex + 1);
+            const task = config.tasks[decision.taskIndex];
+            if (!task || workerIndex < 0)
+                continue;
+            // Route the task through the team's immutable snapshot (Option E).
+            // Falls back to the round-robin agentType when the inferred role is
+            // outside the canonical vocabulary (preserves pre-patch behavior).
+            const fallbackAgent = (agentTypes[workerIndex % agentTypes.length] ?? agentTypes[0] ?? 'claude');
+            const assignment = resolveTaskAssignment(task, resolvedRouting, pluginCfg.team?.roleRouting, resolvedBinaryPaths, fallbackAgent);
+            const workerLaunch = await spawnV2Worker({
+                sessionName,
+                leaderPaneId,
+                existingWorkerPaneIds: workerPaneIds,
+                teamName: sanitized,
+                workerName: wName,
+                workerIndex,
+                agentType: assignment.agentType,
+                task,
+                taskId,
+                cwd: leaderCwd,
+                workerCwd: workersInfo[workerIndex]?.working_dir ?? leaderCwd,
+                worktreePath: workersInfo[workerIndex]?.worktree_path,
+                resolvedBinaryPaths,
+                ...(assignment.model ? { model: assignment.model } : {}),
+                ...(assignment.role ? { role: assignment.role } : {}),
+            });
+            if (workerLaunch.paneId) {
+                workerPaneIds.push(workerLaunch.paneId);
+                const workerInfo = workersInfo[workerIndex];
+                if (workerInfo) {
+                    workerInfo.pane_id = workerLaunch.paneId;
+                    workerInfo.assigned_tasks = workerLaunch.startupAssigned ? [taskId] : [];
+                    workerInfo.worker_cli = assignment.agentType;
+                    if (workerLaunch.outputFile) {
+                        workerInfo.output_file = workerLaunch.outputFile;
+                    }
                 }
             }
+            if (workerLaunch.startupFailureReason) {
+                const logEventFailure = createSwallowedErrorLogger('team.runtime-v2.startTeamV2 appendTeamEvent failed');
+                appendTeamEvent(sanitized, {
+                    type: 'team_leader_nudge',
+                    worker: 'leader-fixed',
+                    reason: `startup_manual_intervention_required:${wName}:${workerLaunch.startupFailureReason}`,
+                }, leaderCwd).catch(logEventFailure);
+            }
         }
-        if (workerLaunch.startupFailureReason) {
-            await appendTeamEvent(sanitized, {
-                type: 'team_leader_nudge',
-                worker: 'leader-fixed',
-                reason: `startup_manual_intervention_required:${wName}:${workerLaunch.startupFailureReason}`,
-            }, leaderCwd);
-        }
+    }
+    catch (error) {
+        await rollbackStartedNativeWorktreeStartup({
+            teamName: sanitized,
+            cwd: leaderCwd,
+            cause: error,
+            sessionName,
+            leaderPaneId,
+            workerPaneIds,
+            sessionMode: session.sessionMode,
+        });
+        throw error;
     }
     // Persist config with pane IDs
     teamConfig.workers = workersInfo;
-    await saveTeamConfig(teamConfig, leaderCwd);
+    try {
+        await saveTeamConfig(teamConfig, leaderCwd);
+    }
+    catch (error) {
+        await rollbackStartedNativeWorktreeStartup({
+            teamName: sanitized,
+            cwd: leaderCwd,
+            cause: error,
+            sessionName,
+            leaderPaneId,
+            workerPaneIds,
+            sessionMode: session.sessionMode,
+        });
+        throw error;
+    }
+    const logEventFailure = createSwallowedErrorLogger('team.runtime-v2.startTeamV2 appendTeamEvent failed');
     // Emit start event — NO watchdog, leader drives via monitorTeamV2()
     await appendTeamEvent(sanitized, {
         type: 'team_leader_nudge',

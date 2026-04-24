@@ -61,8 +61,8 @@ import {
   resolveClaudeWorkerModel,
 } from './model-contract.js';
 import {
-  createTeamSession, spawnWorkerInPane, sendToWorker,
-  waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, getWorkerLiveness, type WorkerPaneConfig, type WorkerPaneLiveness,
+  createTeamSession, spawnWorkerInPane, sendToWorker, killTeamSession,
+  waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, getWorkerLiveness, type WorkerPaneConfig, type WorkerPaneLiveness, type TeamSessionMode,
 } from './tmux-session.js';
 import {
   composeInitialInbox,
@@ -731,6 +731,31 @@ async function rollbackUnpersistedNativeWorktreeStartup(teamName: string, cwd: s
   }
 }
 
+async function rollbackStartedNativeWorktreeStartup(args: {
+  teamName: string;
+  cwd: string;
+  cause: unknown;
+  sessionName: string;
+  leaderPaneId?: string | null;
+  workerPaneIds: string[];
+  sessionMode: TeamSessionMode;
+}): Promise<void> {
+  try {
+    await killTeamSession(
+      args.sessionName,
+      args.workerPaneIds,
+      args.leaderPaneId ?? undefined,
+      { sessionMode: args.sessionMode },
+    );
+  } catch (killError) {
+    process.stderr.write(
+      `[team/runtime-v2] startup rollback tmux cleanup failed: ${killError instanceof Error ? killError.message : String(killError)}
+`,
+    );
+  }
+  await rollbackUnpersistedNativeWorktreeStartup(args.teamName, args.cwd, args.cause);
+}
+
 // ---------------------------------------------------------------------------
 // startTeamV2 — direct tmux creation, CLI API inbox, NO watchdog
 // ---------------------------------------------------------------------------
@@ -954,7 +979,20 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     resolved_routing: resolvedRouting,
     ...(ownsWindow ? { workspace_mode: 'single' as const } : {}),
   };
-  await saveTeamConfig(teamConfig, leaderCwd);
+  try {
+    await saveTeamConfig(teamConfig, leaderCwd);
+  } catch (error) {
+    await rollbackStartedNativeWorktreeStartup({
+      teamName: sanitized,
+      cwd: leaderCwd,
+      cause: error,
+      sessionName,
+      leaderPaneId,
+      workerPaneIds,
+      sessionMode: session.sessionMode,
+    });
+    throw error;
+  }
   const permissionsSnapshot = {
     approval_mode: process.env.OMC_APPROVAL_MODE || 'default',
     sandbox_mode: process.env.OMC_SANDBOX_MODE || 'default',
@@ -986,7 +1024,20 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     resize_hook_target: null,
     next_worker_index: teamConfig.next_worker_index,
   };
-  await writeFile(absPath(leaderCwd, TeamPaths.manifest(sanitized)), JSON.stringify(teamManifest, null, 2), 'utf-8');
+  try {
+    await writeFile(absPath(leaderCwd, TeamPaths.manifest(sanitized)), JSON.stringify(teamManifest, null, 2), 'utf-8');
+  } catch (error) {
+    await rollbackStartedNativeWorktreeStartup({
+      teamName: sanitized,
+      cwd: leaderCwd,
+      cause: error,
+      sessionName,
+      leaderPaneId,
+      workerPaneIds,
+      sessionMode: session.sessionMode,
+    });
+    throw error;
+  }
 
   // Spawn workers for initial tasks (at most one startup task per worker)
   const initialStartupAllocations: typeof startupAllocations = [];
@@ -998,7 +1049,8 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     if (initialStartupAllocations.length >= config.workerCount) break;
   }
 
-  for (const decision of initialStartupAllocations) {
+  try {
+    for (const decision of initialStartupAllocations) {
     const wName = decision.workerName;
     const workerIndex = Number.parseInt(wName.replace('worker-', ''), 10) - 1;
     const taskId = String(decision.taskIndex + 1);
@@ -1053,11 +1105,36 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
         reason: `startup_manual_intervention_required:${wName}:${workerLaunch.startupFailureReason}`,
       }, leaderCwd);
     }
+    }
+  } catch (error) {
+    await rollbackStartedNativeWorktreeStartup({
+      teamName: sanitized,
+      cwd: leaderCwd,
+      cause: error,
+      sessionName,
+      leaderPaneId,
+      workerPaneIds,
+      sessionMode: session.sessionMode,
+    });
+    throw error;
   }
 
   // Persist config with pane IDs
   teamConfig.workers = workersInfo;
-  await saveTeamConfig(teamConfig, leaderCwd);
+  try {
+    await saveTeamConfig(teamConfig, leaderCwd);
+  } catch (error) {
+    await rollbackStartedNativeWorktreeStartup({
+      teamName: sanitized,
+      cwd: leaderCwd,
+      cause: error,
+      sessionName,
+      leaderPaneId,
+      workerPaneIds,
+      sessionMode: session.sessionMode,
+    });
+    throw error;
+  }
 
   // Emit start event — NO watchdog, leader drives via monitorTeamV2()
   await appendTeamEvent(sanitized, {
