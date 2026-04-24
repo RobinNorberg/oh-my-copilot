@@ -357,25 +357,35 @@ const QUESTION_FOLLOWUP_PATTERNS = [
 // copying a "[RALPH LOOP - ITERATION N] ..." block to ask "why does this keep
 // firing?" silently re-triggers ralph and the echo itself becomes state.prompt
 // — a self-reinforcing loop that is hard to cancel.
-// NOTE: all patterns use the `i` flag. hasActionableKeyword operates on
-// cleanPrompt which is `.toLowerCase()`-ed, so these patterns must match
-// case-insensitively to catch pasted echoes.
+// NOTE: all patterns use the `gim` flags. Matching is case-insensitive because
+// hasActionableKeyword operates on a `.toLowerCase()`-ed cleanPrompt, and
+// multi-line because each pattern now consumes a SINGLE line of echoed hook
+// output at a time. A previous version used a multi-line `[\s\S]*?(?=\n\n|\n?$)`
+// body that swallowed a user's real follow-up request when they typed it on
+// the very next line without inserting a blank separator (P1 flagged by
+// Codex automated review). Single-line matches keep the guard strong while
+// preserving any non-echo text that follows.
 const SYSTEM_ECHO_BLOCK_PATTERNS = [
-  /\[RALPH LOOP\s*-\s*ITERATION[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[RALPH LOOP\s*-\s*(?:HARD LIMIT|EXTENDED)\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[TEAM\s*-\s*Phase:[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[AUTOPILOT[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[ULTRAPILOT[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[ULTRAWORK[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[ULTRAQA[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[PIPELINE[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[SWARM[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[TOOL ERROR[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[MAGIC KEYWORD:[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /\[MAGIC KEYWORDS DETECTED:[^\]]*\][\s\S]*?(?=\n\n|\n?$)/gi,
-  /Stop hook (?:blocking error|feedback|stopped continuation)[\s\S]*?(?=\n\n|\n?$)/gi,
-  /PreToolUse:[^\n]*hook additional context:[\s\S]*?(?=\n\n|\n?$)/gi,
-  /PostToolUse:[^\n]*hook additional context:[\s\S]*?(?=\n\n|\n?$)/gi,
+  /^[ \t]*\[RALPH LOOP\s*-\s*ITERATION[^\]\n]*\].*$/gim,
+  /^[ \t]*\[RALPH LOOP\s*-\s*(?:HARD LIMIT|EXTENDED)\].*$/gim,
+  /^[ \t]*\[TEAM\s*-\s*Phase:[^\]\n]*\].*$/gim,
+  /^[ \t]*\[AUTOPILOT[^\]\n]*\].*$/gim,
+  /^[ \t]*\[ULTRAPILOT[^\]\n]*\].*$/gim,
+  /^[ \t]*\[ULTRAWORK[^\]\n]*\].*$/gim,
+  /^[ \t]*\[ULTRAQA[^\]\n]*\].*$/gim,
+  /^[ \t]*\[PIPELINE[^\]\n]*\].*$/gim,
+  /^[ \t]*\[SWARM[^\]\n]*\].*$/gim,
+  /^[ \t]*\[TOOL ERROR[^\]\n]*\].*$/gim,
+  /^[ \t]*\[MAGIC KEYWORD:[^\]\n]*\].*$/gim,
+  /^[ \t]*\[MAGIC KEYWORDS DETECTED:[^\]\n]*\].*$/gim,
+  /^[ \t]*Stop hook (?:blocking error|feedback|stopped continuation).*$/gim,
+  /^[ \t]*PreToolUse:[^\n]*hook additional context:.*$/gim,
+  /^[ \t]*PostToolUse:[^\n]*hook additional context:.*$/gim,
+  // Continuation lines (single-line too) — signatures that hooks emit right
+  // after the block header.
+  /^[ \t]*When FULLY complete \(after Architect verification\).*$/gim,
+  /^[ \t]*run\s+\/oh-my-claudecode:cancel.*$/gim,
+  /^[ \t]*Task:\s.*$/gim,
 ];
 
 const SYSTEM_ECHO_SIGNATURES = [

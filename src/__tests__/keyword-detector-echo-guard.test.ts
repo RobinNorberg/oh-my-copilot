@@ -144,6 +144,32 @@ describe('keyword-detector.mjs — pasted system-echo re-entry guard', () => {
     expect(existsSync(stateFile(cwd, sid, 'ralph'))).toBe(true);
   });
 
+  // Regression for Codex automated review P1: echo-block body was being
+  // consumed all the way to EOF when no blank line separated it from the
+  // user's follow-up request. Users commonly type the real request on the
+  // immediate next line. Must STILL activate ralph in that shape.
+  it('activates ralph when an echo block is DIRECTLY followed (no blank line) by a real ralph request', () => {
+    const cwd = makeCwd('kd-echo-no-blank-');
+    const sid = 'sess-echo-no-blank';
+
+    const prompt = [
+      '[RALPH LOOP - ITERATION 2/100] Work is NOT done.',
+      'Task: previous task',
+      'ralph로 새 작업 계속 진행',
+    ].join('\n');
+
+    const output = runKeywordDetector(prompt, cwd, sid);
+    const context = output.hookSpecificOutput?.additionalContext ?? '';
+
+    expect(context).toContain('[MAGIC KEYWORD: RALPH]');
+    expect(existsSync(stateFile(cwd, sid, 'ralph'))).toBe(true);
+
+    const state = JSON.parse(readFileSync(stateFile(cwd, sid, 'ralph'), 'utf-8'));
+    expect(state.prompt).toContain('새 작업 계속 진행');
+    expect(state.prompt).not.toContain('[RALPH LOOP');
+    expect(state.prompt).not.toContain('Task: previous task');
+  });
+
   // Regression for hasActionableKeyword searchText-index alignment:
   // user quotes a previous RALPH LOOP block AND issues a fresh explicit ralph
   // request after a blank line. Stripping the echo must NOT prevent the
