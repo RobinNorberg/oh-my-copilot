@@ -13435,6 +13435,15 @@ function parseYamlMetadata(yamlContent) {
       case "sessionId":
         metadata.sessionId = parseStringValue(rawValue);
         break;
+      case "model":
+        metadata.model = parseStringValue(rawValue);
+        break;
+      case "agent":
+        metadata.agent = parseStringValue(rawValue);
+        break;
+      case "matching":
+        metadata.matching = parseStringValue(rawValue);
+        break;
       case "quality":
         metadata.quality = parseInt(rawValue, 10) || void 0;
         break;
@@ -13445,9 +13454,9 @@ function parseYamlMetadata(yamlContent) {
       case "tags": {
         const { value, consumed } = parseArrayValue(rawValue, lines, i);
         if (key === "triggers") {
-          metadata.triggers = Array.isArray(value) ? value : [value];
+          metadata.triggers = normalizeStringArray(value);
         } else {
-          metadata.tags = Array.isArray(value) ? value : [value];
+          metadata.tags = normalizeStringArray(value);
         }
         i += consumed - 1;
         break;
@@ -13463,6 +13472,10 @@ function parseStringValue(value) {
     return value.slice(1, -1);
   }
   return value;
+}
+function normalizeStringArray(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return values.map((item) => item.trim()).filter(Boolean);
 }
 function parseArrayValue(rawValue, lines, currentIndex) {
   if (rawValue.startsWith("[")) {
@@ -15047,6 +15060,17 @@ var init_version = __esm({
 function isKnownEphemeralNodePath(nodePath) {
   return EPHEMERAL_NODE_PATH_MARKERS.some((marker) => nodePath.includes(marker));
 }
+function resolveLatestVersionedNode(baseDir, nodeSegments) {
+  if (!(0, import_fs27.existsSync)(baseDir)) return void 0;
+  try {
+    const latest2 = pickLatestVersion((0, import_fs27.readdirSync)(baseDir));
+    if (!latest2) return void 0;
+    const nodePath = (0, import_path36.join)(baseDir, latest2, ...nodeSegments);
+    return (0, import_fs27.existsSync)(nodePath) ? nodePath : void 0;
+  } catch {
+    return void 0;
+  }
+}
 function resolveNodeBinary() {
   try {
     const cmd = process.platform === "win32" ? "where node" : "which node";
@@ -15063,35 +15087,18 @@ function resolveNodeBinary() {
     return "node";
   }
   const home = (0, import_os8.homedir)();
-  const nvmBase = (0, import_path36.join)(home, ".nvm", "versions", "node");
-  if ((0, import_fs27.existsSync)(nvmBase)) {
-    try {
-      const latest2 = pickLatestVersion((0, import_fs27.readdirSync)(nvmBase));
-      if (latest2) {
-        const nodePath = (0, import_path36.join)(nvmBase, latest2, "bin", "node");
-        if ((0, import_fs27.existsSync)(nodePath)) return nodePath;
-      }
-    } catch {
-    }
-  }
+  const nvmNode = resolveLatestVersionedNode((0, import_path36.join)(home, ".nvm", "versions", "node"), ["bin", "node"]);
+  if (nvmNode) return nvmNode;
   const fnmBases = [
     (0, import_path36.join)(home, ".fnm", "node-versions"),
     (0, import_path36.join)(home, "Library", "Application Support", "fnm", "node-versions"),
     (0, import_path36.join)(home, ".local", "share", "fnm", "node-versions")
   ];
   for (const fnmBase of fnmBases) {
-    if ((0, import_fs27.existsSync)(fnmBase)) {
-      try {
-        const latest2 = pickLatestVersion((0, import_fs27.readdirSync)(fnmBase));
-        if (latest2) {
-          const nodePath = (0, import_path36.join)(fnmBase, latest2, "installation", "bin", "node");
-          if ((0, import_fs27.existsSync)(nodePath)) return nodePath;
-        }
-      } catch {
-      }
-    }
+    const fnmNode = resolveLatestVersionedNode(fnmBase, ["installation", "bin", "node"]);
+    if (fnmNode) return fnmNode;
   }
-  for (const p of ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"]) {
+  for (const p of SYSTEM_NODE_PATHS) {
     if ((0, import_fs27.existsSync)(p)) return p;
   }
   return "node";
@@ -15108,7 +15115,7 @@ function pickLatestVersion(versions) {
     return 0;
   })[0];
 }
-var import_fs27, import_child_process10, import_path36, import_os8, EPHEMERAL_NODE_PATH_MARKERS;
+var import_fs27, import_child_process10, import_path36, import_os8, EPHEMERAL_NODE_PATH_MARKERS, SYSTEM_NODE_PATHS;
 var init_resolve_node = __esm({
   "src/utils/resolve-node.ts"() {
     "use strict";
@@ -15117,6 +15124,7 @@ var init_resolve_node = __esm({
     import_path36 = require("path");
     import_os8 = require("os");
     EPHEMERAL_NODE_PATH_MARKERS = ["hostedtoolcache", "/runner/", "\\runner\\"];
+    SYSTEM_NODE_PATHS = ["/opt/homebrew/bin/node", "/usr/local/bin/node", "/usr/bin/node"];
   }
 });
 
@@ -15146,16 +15154,19 @@ function parseFrontmatter2(content) {
   return { metadata, body };
 }
 function parseFrontmatterAliases(rawAliases) {
-  if (!rawAliases) return [];
-  const trimmed = rawAliases.trim();
+  return parseFrontmatterList(rawAliases);
+}
+function parseFrontmatterList(rawValue) {
+  if (!rawValue) return [];
+  const trimmed = rawValue.trim();
   if (!trimmed) return [];
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
     const inner = trimmed.slice(1, -1).trim();
     if (!inner) return [];
-    return inner.split(",").map((alias) => stripOptionalQuotes(alias)).filter((alias) => alias.length > 0);
+    return inner.split(",").map((item) => stripOptionalQuotes(item)).filter((item) => item.length > 0);
   }
-  const singleAlias = stripOptionalQuotes(trimmed);
-  return singleAlias ? [singleAlias] : [];
+  const singleValue = stripOptionalQuotes(trimmed);
+  return singleValue ? [singleValue] : [];
 }
 var init_frontmatter = __esm({
   "src/utils/frontmatter.ts"() {
@@ -49634,15 +49645,12 @@ var init_limits = __esm({
 // src/hud/elements/permission.ts
 function renderPermission(pending) {
   if (!pending) return null;
-  return `${YELLOW7}APPROVE?${RESET} ${DIM5}${pending.toolName.toLowerCase()}${RESET}:${pending.targetSummary}`;
+  return `${yellow("APPROVE?")} ${dim(pending.toolName.toLowerCase())}:${pending.targetSummary}`;
 }
-var YELLOW7, DIM5;
 var init_permission = __esm({
   "src/hud/elements/permission.ts"() {
     "use strict";
     init_colors();
-    YELLOW7 = "\x1B[33m";
-    DIM5 = "\x1B[2m";
   }
 });
 
@@ -49674,17 +49682,13 @@ var init_thinking = __esm({
 // src/hud/elements/session.ts
 function renderSession(session) {
   if (!session) return null;
-  const color = session.health === "critical" ? RED5 : session.health === "warning" ? YELLOW8 : GREEN8;
-  return `session:${color}${session.durationMinutes}m${RESET}`;
+  const colorize = session.health === "critical" ? red : session.health === "warning" ? yellow : green;
+  return `session:${colorize(`${session.durationMinutes}m`)}`;
 }
-var GREEN8, YELLOW8, RED5;
 var init_session = __esm({
   "src/hud/elements/session.ts"() {
     "use strict";
     init_colors();
-    GREEN8 = "\x1B[32m";
-    YELLOW8 = "\x1B[33m";
-    RED5 = "\x1B[31m";
   }
 });
 
@@ -49713,9 +49717,9 @@ var init_token_usage = __esm({
 
 // src/hud/elements/enterprise-cost.ts
 function getColor2(percent) {
-  if (percent >= CRITICAL_THRESHOLD3) return RED6;
-  if (percent >= WARNING_THRESHOLD2) return YELLOW9;
-  return GREEN9;
+  if (percent >= CRITICAL_THRESHOLD3) return RED5;
+  if (percent >= WARNING_THRESHOLD2) return YELLOW7;
+  return GREEN8;
 }
 function formatMoney(amount) {
   const [intPart, decPart] = amount.toFixed(2).split(".");
@@ -49727,28 +49731,28 @@ function currencyPrefix(currency) {
 }
 function renderEnterpriseCost(limits, stale) {
   if (!limits || limits.enterpriseSpentUsd === void 0) return null;
-  const staleMarker = stale ? `${DIM6}*${RESET}` : "";
+  const staleMarker = stale ? `${DIM5}*${RESET}` : "";
   const currency = limits.enterpriseCurrency ?? "USD";
   const prefix = currencyPrefix(currency);
   const spentStr = formatMoney(limits.enterpriseSpentUsd);
   if (limits.enterpriseLimitUsd == null) {
-    return `${DIM6}spent:${RESET}${prefix}${spentStr}${staleMarker}`;
+    return `${DIM5}spent:${RESET}${prefix}${spentStr}${staleMarker}`;
   }
   const limitStr = formatMoney(limits.enterpriseLimitUsd);
   const utilization = limits.enterpriseUtilization ?? 0;
   const rounded = Math.min(100, Math.max(0, Math.round(utilization)));
   const color = getColor2(rounded);
-  return `${DIM6}spent:${RESET}${prefix}${spentStr}/${prefix}${limitStr} ${color}(${rounded}%)${RESET}${staleMarker}`;
+  return `${DIM5}spent:${RESET}${prefix}${spentStr}/${prefix}${limitStr} ${color}(${rounded}%)${RESET}${staleMarker}`;
 }
-var GREEN9, YELLOW9, RED6, DIM6, WARNING_THRESHOLD2, CRITICAL_THRESHOLD3;
+var GREEN8, YELLOW7, RED5, DIM5, WARNING_THRESHOLD2, CRITICAL_THRESHOLD3;
 var init_enterprise_cost = __esm({
   "src/hud/elements/enterprise-cost.ts"() {
     "use strict";
     init_colors();
-    GREEN9 = "\x1B[32m";
-    YELLOW9 = "\x1B[33m";
-    RED6 = "\x1B[31m";
-    DIM6 = "\x1B[2m";
+    GREEN8 = "\x1B[32m";
+    YELLOW7 = "\x1B[33m";
+    RED5 = "\x1B[31m";
+    DIM5 = "\x1B[2m";
     WARNING_THRESHOLD2 = 70;
     CRITICAL_THRESHOLD3 = 90;
   }
@@ -49794,16 +49798,16 @@ function renderAutopilot(state, _thresholds) {
   let phaseColor;
   switch (phase) {
     case "complete":
-      phaseColor = GREEN10;
+      phaseColor = GREEN9;
       break;
     case "failed":
-      phaseColor = RED7;
+      phaseColor = RED6;
       break;
     case "validation":
       phaseColor = MAGENTA3;
       break;
     case "qa":
-      phaseColor = YELLOW10;
+      phaseColor = YELLOW8;
       break;
     default:
       phaseColor = CYAN7;
@@ -49813,7 +49817,7 @@ function renderAutopilot(state, _thresholds) {
     output += ` (iter ${iteration}/${maxIterations})`;
   }
   if (phase === "execution" && tasksTotal && tasksTotal > 0) {
-    const taskColor = tasksCompleted === tasksTotal ? GREEN10 : YELLOW10;
+    const taskColor = tasksCompleted === tasksTotal ? GREEN9 : YELLOW8;
     output += ` | Tasks: ${taskColor}${tasksCompleted || 0}/${tasksTotal}${RESET}`;
   }
   if (filesCreated && filesCreated > 0) {
@@ -49821,15 +49825,15 @@ function renderAutopilot(state, _thresholds) {
   }
   return output;
 }
-var CYAN7, GREEN10, YELLOW10, RED7, MAGENTA3, PHASE_NAMES, PHASE_INDEX;
+var CYAN7, GREEN9, YELLOW8, RED6, MAGENTA3, PHASE_NAMES, PHASE_INDEX;
 var init_autopilot2 = __esm({
   "src/hud/elements/autopilot.ts"() {
     "use strict";
     init_colors();
     CYAN7 = "\x1B[36m";
-    GREEN10 = "\x1B[32m";
-    YELLOW10 = "\x1B[33m";
-    RED7 = "\x1B[31m";
+    GREEN9 = "\x1B[32m";
+    YELLOW8 = "\x1B[33m";
+    RED6 = "\x1B[31m";
     MAGENTA3 = "\x1B[35m";
     PHASE_NAMES = {
       expansion: "Expand",
@@ -50212,18 +50216,18 @@ function renderContextLimitWarning(contextPercent, threshold, autoCompact) {
     return null;
   }
   const isCritical = safePercent >= 90;
-  const color = isCritical ? RED8 : YELLOW11;
+  const color = isCritical ? RED7 : YELLOW9;
   const icon = isCritical ? "!!" : "!";
   const action = autoCompact ? "(auto-compact queued)" : "run /compact";
   return `${color}${BOLD2}[${icon}] ctx ${safePercent}% >= ${threshold}% threshold - ${action}${RESET}`;
 }
-var YELLOW11, RED8, BOLD2;
+var YELLOW9, RED7, BOLD2;
 var init_context_warning = __esm({
   "src/hud/elements/context-warning.ts"() {
     "use strict";
     init_colors();
-    YELLOW11 = "\x1B[33m";
-    RED8 = "\x1B[31m";
+    YELLOW9 = "\x1B[33m";
+    RED7 = "\x1B[31m";
     BOLD2 = "\x1B[1m";
   }
 });
@@ -79678,7 +79682,7 @@ var omcToolNames = enabledTools.map((t) => `mcp__t__${t.name}`);
 var toolCategoryMap = new Map(
   allTools.map((t) => [`mcp__t__${t.name}`, t.category])
 );
-function getOmcToolNames(options) {
+function getExcludedCategories(options) {
   const {
     includeLsp = true,
     includeAst = true,
@@ -79688,7 +79692,9 @@ function getOmcToolNames(options) {
     includeNotepad = true,
     includeMemory = true,
     includeTrace = true,
-    includeSharedMemory = true
+    includeSharedMemory = true,
+    includeDeepinit = true,
+    includeWiki = true
   } = options || {};
   const excludedCategories = /* @__PURE__ */ new Set();
   if (!includeLsp) excludedCategories.add(TOOL_CATEGORIES.LSP);
@@ -79700,11 +79706,20 @@ function getOmcToolNames(options) {
   if (!includeMemory) excludedCategories.add(TOOL_CATEGORIES.MEMORY);
   if (!includeTrace) excludedCategories.add(TOOL_CATEGORIES.TRACE);
   if (!includeSharedMemory) excludedCategories.add(TOOL_CATEGORIES.SHARED_MEMORY);
-  if (excludedCategories.size === 0) return [...omcToolNames];
-  return omcToolNames.filter((name) => {
-    const category = toolCategoryMap.get(name);
+  if (!includeDeepinit) excludedCategories.add(TOOL_CATEGORIES.DEEPINIT);
+  if (!includeWiki) excludedCategories.add(TOOL_CATEGORIES.WIKI);
+  return excludedCategories;
+}
+function filterToolNames(names, categoriesByName, options) {
+  const excludedCategories = getExcludedCategories(options);
+  if (excludedCategories.size === 0) return [...names];
+  return names.filter((name) => {
+    const category = categoriesByName.get(name);
     return !category || !excludedCategories.has(category);
   });
+}
+function getOmcToolNames(options) {
+  return filterToolNames(omcToolNames, toolCategoryMap, options);
 }
 
 // src/features/magic-keywords.ts
@@ -86417,7 +86432,7 @@ Examples:
   omcp team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
 
 Roles (optional): architect, executor, planner, analyst, critic, debugger, verifier,
-  code-reviewer, security-reviewer, test-engineer, debugger, designer, writer, scientist
+  code-reviewer, security-reviewer, test-engineer, designer, writer, scientist
 `;
 var TEAM_API_HELP = `
 Usage: omcp team api <operation> [--input <json>] [--json]

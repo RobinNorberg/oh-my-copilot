@@ -75,7 +75,7 @@ export function parseSkillFile(rawContent: string): SkillParseResult {
 /**
  * Parse YAML metadata without external library.
  */
-function parseYamlMetadata(yamlContent: string): Partial<SkillMetadata> {
+export function parseYamlMetadata(yamlContent: string): Partial<SkillMetadata> {
   const lines = yamlContent.split('\n');
   const metadata: Partial<SkillMetadata> = {};
 
@@ -111,6 +111,15 @@ function parseYamlMetadata(yamlContent: string): Partial<SkillMetadata> {
       case 'sessionId':
         metadata.sessionId = parseStringValue(rawValue);
         break;
+      case 'model':
+        metadata.model = parseStringValue(rawValue);
+        break;
+      case 'agent':
+        metadata.agent = parseStringValue(rawValue);
+        break;
+      case 'matching':
+        metadata.matching = parseStringValue(rawValue) as 'exact' | 'fuzzy';
+        break;
       case 'quality':
         metadata.quality = parseInt(rawValue, 10) || undefined;
         break;
@@ -121,9 +130,9 @@ function parseYamlMetadata(yamlContent: string): Partial<SkillMetadata> {
       case 'tags': {
         const { value, consumed } = parseArrayValue(rawValue, lines, i);
         if (key === 'triggers') {
-          metadata.triggers = Array.isArray(value) ? value : [value];
+          metadata.triggers = normalizeStringArray(value);
         } else {
-          metadata.tags = Array.isArray(value) ? value : [value];
+          metadata.tags = normalizeStringArray(value);
         }
         i += consumed - 1;
         break;
@@ -136,7 +145,7 @@ function parseYamlMetadata(yamlContent: string): Partial<SkillMetadata> {
   return metadata;
 }
 
-function parseStringValue(value: string): string {
+export function parseStringValue(value: string): string {
   if (!value) return '';
   if ((value.startsWith('"') && value.endsWith('"')) ||
       (value.startsWith("'") && value.endsWith("'"))) {
@@ -145,7 +154,12 @@ function parseStringValue(value: string): string {
   return value;
 }
 
-function parseArrayValue(
+function normalizeStringArray(value: string | string[]): string[] {
+  const values = Array.isArray(value) ? value : [value];
+  return values.map((item) => item.trim()).filter(Boolean);
+}
+
+export function parseArrayValue(
   rawValue: string,
   lines: string[],
   currentIndex: number
