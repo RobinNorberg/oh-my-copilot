@@ -217,6 +217,49 @@ export function cleanupTransientState(directory) {
         }
     };
     removeTmpFiles(omcDir);
+    // Clean stale per-session transient markers across every session dir.
+    // Patterns are cross-session-safe: short-lived markers/breakers that no
+    // live concurrent session is reading.
+    //
+    // NOTE: hud-stdin-cache.json is now session-scoped (see src/hud/stdin.ts)
+    // but is NOT pruned here — deleting it from the wrong session would
+    // reintroduce the cross-session interference the new scoping fixed.
+    // Proper per-ending-session cleanup requires the caller to pass the
+    // ending sessionId in; until that plumbing exists we leave the cache to
+    // be overwritten on the next write in the owning session.
+    const sessionsDir = path.join(omcDir, 'state', 'sessions');
+    if (fs.existsSync(sessionsDir)) {
+        const crossSessionSafePatterns = [
+            /^cancel-signal/,
+            /stop-breaker/,
+        ];
+        try {
+            for (const sid of fs.readdirSync(sessionsDir)) {
+                const sessionDir = path.join(sessionsDir, sid);
+                try {
+                    if (!fs.statSync(sessionDir).isDirectory())
+                        continue;
+                    for (const file of fs.readdirSync(sessionDir)) {
+                        if (crossSessionSafePatterns.some((p) => p.test(file))) {
+                            try {
+                                fs.unlinkSync(path.join(sessionDir, file));
+                                filesRemoved++;
+                            }
+                            catch {
+                                // Best-effort
+                            }
+                        }
+                    }
+                }
+                catch {
+                    // Skip entries we can't stat/read
+                }
+            }
+        }
+        catch {
+            // Ignore top-level sessions dir read errors
+        }
+    }
     return filesRemoved;
 }
 /**

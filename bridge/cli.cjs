@@ -38377,6 +38377,32 @@ function cleanupTransientState(directory) {
     }
   };
   removeTmpFiles(omcDir);
+  const sessionsDir = path16.join(omcDir, "state", "sessions");
+  if (fs11.existsSync(sessionsDir)) {
+    const crossSessionSafePatterns = [
+      /^cancel-signal/,
+      /stop-breaker/
+    ];
+    try {
+      for (const sid of fs11.readdirSync(sessionsDir)) {
+        const sessionDir = path16.join(sessionsDir, sid);
+        try {
+          if (!fs11.statSync(sessionDir).isDirectory()) continue;
+          for (const file2 of fs11.readdirSync(sessionDir)) {
+            if (crossSessionSafePatterns.some((p) => p.test(file2))) {
+              try {
+                fs11.unlinkSync(path16.join(sessionDir, file2));
+                filesRemoved++;
+              } catch {
+              }
+            }
+          }
+        } catch {
+        }
+      }
+    } catch {
+    }
+  }
   return filesRemoved;
 }
 async function extractPythonReplSessionIdsFromTranscript(transcriptPath) {
@@ -46239,18 +46265,31 @@ var init_usage_api = __esm({
 });
 
 // src/hud/stdin.ts
+function normalizeCandidate(value) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 function getStdinCachePath() {
   const root = getWorktreeRoot() || process.cwd();
+  for (const envVar of SESSION_ID_ENV_VARS) {
+    const candidate = normalizeCandidate(process.env[envVar]);
+    if (!candidate) continue;
+    try {
+      return (0, import_path111.join)(getSessionStateDir(candidate, root), "hud-stdin-cache.json");
+    } catch {
+    }
+  }
   return (0, import_path111.join)(root, ".omcp", "state", "hud-stdin-cache.json");
 }
 function writeStdinCache(stdin) {
   try {
-    const root = getWorktreeRoot() || process.cwd();
-    const cacheDir = (0, import_path111.join)(root, ".omcp", "state");
+    const cachePath = getStdinCachePath();
+    const cacheDir = (0, import_path111.dirname)(cachePath);
     if (!(0, import_fs96.existsSync)(cacheDir)) {
       (0, import_fs96.mkdirSync)(cacheDir, { recursive: true });
     }
-    (0, import_fs96.writeFileSync)(getStdinCachePath(), JSON.stringify(stdin));
+    (0, import_fs96.writeFileSync)(cachePath, JSON.stringify(stdin));
   } catch {
   }
 }
@@ -46377,7 +46416,7 @@ function getRateLimitsFromStdin(stdin) {
 function getModelName(stdin) {
   return stdin.model?.display_name ?? stdin.model?.id ?? "Unknown";
 }
-var import_fs96, import_path111, TRANSIENT_CONTEXT_PERCENT_TOLERANCE;
+var import_fs96, import_path111, TRANSIENT_CONTEXT_PERCENT_TOLERANCE, SESSION_ID_ENV_VARS;
 var init_stdin = __esm({
   "src/hud/stdin.ts"() {
     "use strict";
@@ -46385,6 +46424,7 @@ var init_stdin = __esm({
     import_path111 = require("path");
     init_worktree_paths();
     TRANSIENT_CONTEXT_PERCENT_TOLERANCE = 3;
+    SESSION_ID_ENV_VARS = ["CLAUDE_SESSION_ID", "CLAUDECODE_SESSION_ID"];
   }
 });
 
