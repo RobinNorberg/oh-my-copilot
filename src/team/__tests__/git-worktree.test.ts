@@ -81,6 +81,69 @@ describe('git-worktree', () => {
     });
   });
 
+
+
+  describe('worktree root AGENTS.md lifecycle', () => {
+    it('installs a managed overlay and removes it on cleanup when no root AGENTS.md existed', () => {
+      rmSync(join(repoDir, 'AGENTS.md'));
+      execFileSync('git', ['add', '-u', 'AGENTS.md'], { cwd: repoDir, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'Remove root agents'], { cwd: repoDir, stdio: 'pipe' });
+
+      const info = createWorkerWorktree(teamName, 'worker-agents-new', repoDir);
+      const agentsPath = join(info.path, 'AGENTS.md');
+      expect(existsSync(agentsPath)).toBe(false);
+
+      installWorktreeRootAgents(teamName, 'worker-agents-new', repoDir, info.path, 'managed overlay\n');
+      expect(readFileSync(agentsPath, 'utf-8')).toBe('managed overlay\n');
+
+      const restored = restoreWorktreeRootAgents(teamName, 'worker-agents-new', repoDir, info.path);
+      expect(restored).toEqual({ restored: true });
+      expect(existsSync(agentsPath)).toBe(false);
+    });
+
+    it('backs up an existing root AGENTS.md and restores it before removal', () => {
+      writeFileSync(join(repoDir, 'AGENTS.md'), 'original root instructions\n');
+      execFileSync('git', ['add', 'AGENTS.md'], { cwd: repoDir, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'Add root agents'], { cwd: repoDir, stdio: 'pipe' });
+      const info = createWorkerWorktree(teamName, 'worker-agents-existing', repoDir);
+      const agentsPath = join(info.path, 'AGENTS.md');
+
+      installWorktreeRootAgents(teamName, 'worker-agents-existing', repoDir, info.path, 'managed overlay\n');
+      expect(readFileSync(agentsPath, 'utf-8')).toBe('managed overlay\n');
+
+      removeWorkerWorktree(teamName, 'worker-agents-existing', repoDir);
+      expect(existsSync(info.path)).toBe(false);
+    });
+
+    it('restores root AGENTS.md but preserves a worktree with other dirty edits', () => {
+      writeFileSync(join(repoDir, 'AGENTS.md'), 'original root instructions\n');
+      execFileSync('git', ['add', 'AGENTS.md'], { cwd: repoDir, stdio: 'pipe' });
+      execFileSync('git', ['commit', '-m', 'Add root agents'], { cwd: repoDir, stdio: 'pipe' });
+      const info = createWorkerWorktree(teamName, 'worker-agents-dirty', repoDir);
+      const agentsPath = join(info.path, 'AGENTS.md');
+      installWorktreeRootAgents(teamName, 'worker-agents-dirty', repoDir, info.path, 'managed overlay\n');
+      writeFileSync(join(info.path, 'dirty.txt'), 'dirty');
+
+      const result = cleanupTeamWorktrees(teamName, repoDir);
+
+      expect(result.preserved).toHaveLength(1);
+      expect(result.preserved[0]?.reason).toMatch(/worktree_dirty/);
+      expect(existsSync(info.path)).toBe(true);
+      expect(readFileSync(agentsPath, 'utf-8')).toBe('original root instructions\n');
+    });
+
+    it('preserves the worktree when AGENTS.md itself was modified by the worker', () => {
+      const info = createWorkerWorktree(teamName, 'worker-agents-edited', repoDir);
+      const agentsPath = join(info.path, 'AGENTS.md');
+      installWorktreeRootAgents(teamName, 'worker-agents-edited', repoDir, info.path, 'managed overlay\n');
+      writeFileSync(agentsPath, 'worker edited instructions\n');
+
+      expect(() => removeWorkerWorktree(teamName, 'worker-agents-edited', repoDir)).toThrow(/agents_dirty/);
+      expect(existsSync(info.path)).toBe(true);
+      expect(readFileSync(agentsPath, 'utf-8')).toBe('worker edited instructions\n');
+    });
+  });
+
   describe('listTeamWorktrees', () => {
     it('returns empty for team with no worktrees', () => {
       const list = listTeamWorktrees(teamName, repoDir);

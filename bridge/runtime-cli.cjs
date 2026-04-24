@@ -2233,7 +2233,83 @@ function isWorktreeDirty(wtPath) {
   }
 }
 function getMetadataPath(repoRoot, teamName) {
-  return (0, import_node_path.join)(repoRoot, ".omcp", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
+  return (0, import_node_path.join)(repoRoot, ".omc", "state", "team", sanitizeName(teamName), "worktrees.json");
+}
+function getLegacyMetadataPath(repoRoot, teamName) {
+  return (0, import_node_path.join)(repoRoot, ".omc", "state", "team-bridge", sanitizeName(teamName), "worktrees.json");
+}
+function getWorkerStateDir(repoRoot, teamName, workerName2) {
+  return (0, import_node_path.join)(repoRoot, ".omc", "state", "team", sanitizeName(teamName), "workers", sanitizeName(workerName2));
+}
+function getRootAgentsBackupPath(repoRoot, teamName, workerName2) {
+  return (0, import_node_path.join)(getWorkerStateDir(repoRoot, teamName, workerName2), "worktree-root-agents.json");
+}
+function readRootAgentsBackup(repoRoot, teamName, workerName2) {
+  const backupPath = getRootAgentsBackupPath(repoRoot, teamName, workerName2);
+  if (!(0, import_node_fs.existsSync)(backupPath)) return null;
+  try {
+    return JSON.parse((0, import_node_fs.readFileSync)(backupPath, "utf-8"));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`[omc] warning: worktree root AGENTS backup parse error: ${msg}
+`);
+    return null;
+  }
+}
+function installWorktreeRootAgents(teamName, workerName2, repoRoot, worktreePath, overlayContent) {
+  validateResolvedPath(worktreePath, repoRoot);
+  const agentsPath = (0, import_node_path.join)(worktreePath, "AGENTS.md");
+  validateResolvedPath(agentsPath, repoRoot);
+  const backupPath = getRootAgentsBackupPath(repoRoot, teamName, workerName2);
+  validateResolvedPath(backupPath, repoRoot);
+  ensureDirWithMode(getWorkerStateDir(repoRoot, teamName, workerName2));
+  const previous = readRootAgentsBackup(repoRoot, teamName, workerName2);
+  const currentContent = (0, import_node_fs.existsSync)(agentsPath) ? (0, import_node_fs.readFileSync)(agentsPath, "utf-8") : void 0;
+  if (previous && currentContent !== void 0 && currentContent !== previous.installedContent) {
+    const error = new Error(`agents_dirty: preserving modified worktree root AGENTS.md at ${agentsPath}`);
+    error.code = "agents_dirty";
+    throw error;
+  }
+  const backup = previous ? { ...previous, worktreePath, installedContent: overlayContent, installedAt: (/* @__PURE__ */ new Date()).toISOString() } : {
+    worktreePath,
+    hadOriginal: currentContent !== void 0,
+    ...currentContent !== void 0 ? { originalContent: currentContent } : {},
+    installedContent: overlayContent,
+    installedAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  atomicWriteJson(backupPath, backup);
+  (0, import_node_fs.writeFileSync)(agentsPath, overlayContent, "utf-8");
+}
+function restoreWorktreeRootAgents(teamName, workerName2, repoRoot, worktreePath) {
+  const backupPath = getRootAgentsBackupPath(repoRoot, teamName, workerName2);
+  validateResolvedPath(backupPath, repoRoot);
+  const backup = readRootAgentsBackup(repoRoot, teamName, workerName2);
+  if (!backup) return { restored: false, reason: "no_backup" };
+  const resolvedWorktreePath = worktreePath ?? backup.worktreePath;
+  validateResolvedPath(resolvedWorktreePath, repoRoot);
+  if (!(0, import_node_fs.existsSync)(resolvedWorktreePath)) {
+    try {
+      (0, import_node_fs.unlinkSync)(backupPath);
+    } catch {
+    }
+    return { restored: false, reason: "worktree_missing" };
+  }
+  const agentsPath = (0, import_node_path.join)(resolvedWorktreePath, "AGENTS.md");
+  validateResolvedPath(agentsPath, repoRoot);
+  const currentContent = (0, import_node_fs.existsSync)(agentsPath) ? (0, import_node_fs.readFileSync)(agentsPath, "utf-8") : void 0;
+  if (currentContent !== void 0 && currentContent !== backup.installedContent) {
+    return { restored: false, reason: "agents_dirty" };
+  }
+  if (backup.hadOriginal) {
+    (0, import_node_fs.writeFileSync)(agentsPath, backup.originalContent ?? "", "utf-8");
+  } else if ((0, import_node_fs.existsSync)(agentsPath)) {
+    (0, import_node_fs.unlinkSync)(agentsPath);
+  }
+  try {
+    (0, import_node_fs.unlinkSync)(backupPath);
+  } catch {
+  }
+  return { restored: true };
 }
 function readMetadata(repoRoot, teamName) {
   const metaPath = getMetadataPath(repoRoot, teamName);
