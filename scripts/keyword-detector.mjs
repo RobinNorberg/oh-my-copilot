@@ -371,7 +371,7 @@ const QUESTION_FOLLOWUP_PATTERNS = [
 // recognized block header. They must be stripped only in that context —
 // never standalone — because a user might legitimately start a prompt with
 // "Task: …" or similar (Codex automated review P1/P2 on #2795).
-const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-claudecode:cancel).*)*';
+const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-(?:claudecode|codex|copilot):cancel).*)*';
 
 // NOTE: each pattern is a SINGLE LOGICAL BLOCK: the block header line +
 // zero-or-more continuation lines that hooks emit right after it. The whole
@@ -409,7 +409,7 @@ const SYSTEM_ECHO_BLOCK_PATTERNS = [
 // All patterns use `i` because hasActionableKeyword sees a lowercased prompt.
 const SYSTEM_ECHO_SIGNATURES = [
   /\bWhen FULLY complete \(after Architect verification\)\b/i,
-  /\brun\s+\/oh-my-claudecode:cancel\b/i,
+  /\brun\s+\/oh-my-(?:claudecode|codex|copilot):cancel\b/i,
   /\[RALPH LOOP\s*-\s*ITERATION\b/i,
 ];
 
