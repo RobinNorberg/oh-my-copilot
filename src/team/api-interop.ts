@@ -47,6 +47,8 @@ import { injectToLeaderPane, sendToWorker } from './tmux-session.js';
 import { listDispatchRequests, markDispatchRequestDelivered, markDispatchRequestNotified } from './dispatch-queue.js';
 import { generateMailboxTriggerMessage } from './worker-bootstrap.js';
 import { shutdownTeamV2 } from './runtime-v2.js';
+import { inspectTeamWorktreeCleanupSafety } from './git-worktree.js';
+import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 
 const TEAM_UPDATE_TASK_MUTABLE_FIELDS = new Set(['subject', 'description', 'blocked_by', 'requires_code_change']);
 const TEAM_UPDATE_TASK_REQUEST_FIELDS = new Set(['team_name', 'task_id', 'workingDirectory', ...TEAM_UPDATE_TASK_MUTABLE_FIELDS]);
@@ -144,10 +146,32 @@ function isRuntimeV2Config(config: unknown): config is { workers: unknown[] } {
   return !!config && typeof config === 'object' && Array.isArray((config as { workers?: unknown[] }).workers);
 }
 
+function isLegacyRuntimeConfig(config: unknown): config is { tmuxSession?: string; leaderPaneId?: string | null; tmuxOwnsWindow?: boolean } {
+  return !!config && typeof config === 'object' && Array.isArray((config as { agentTypes?: unknown[] }).agentTypes);
+}
+
+function assertNoNativeWorktreeCleanupEvidence(teamName: string, cwd: string): void {
+  const safety = inspectTeamWorktreeCleanupSafety(teamName, cwd);
+  if (!safety.hasEvidence) return;
+
+  const evidence = safety.blockers.length > 0
+    ? safety.blockers
+    : safety.entries.map((entry) => ({
+      workerName: entry.workerName,
+      path: entry.path,
+      reason: 'worktree_cleanup_evidence_present',
+    }));
+  const details = evidence
+    .map((item) => `${item.workerName}:${item.reason}:${item.path}`)
+    .join(';');
+  throw new Error(`cleanup_blocked:worktree_cleanup_evidence_present:${details}`);
+}
+
 async function executeTeamCleanupViaRuntime(teamName: string, cwd: string): Promise<void> {
   const config = await teamReadConfig(teamName, cwd) as unknown;
 
   if (!config) {
+    assertNoNativeWorktreeCleanupEvidence(teamName, cwd);
     await teamCleanup(teamName, cwd);
     return;
   }
@@ -157,6 +181,19 @@ async function executeTeamCleanupViaRuntime(teamName: string, cwd: string): Prom
     return;
   }
 
+  if (isLegacyRuntimeConfig(config)) {
+    const legacyConfig = config as { tmuxSession?: string; leaderPaneId?: string | null; tmuxOwnsWindow?: boolean };
+    const sessionName = typeof legacyConfig.tmuxSession === 'string' && legacyConfig.tmuxSession.trim() !== ''
+      ? legacyConfig.tmuxSession.trim()
+      : `omc-team-${teamName}`;
+    const leaderPaneId = typeof legacyConfig.leaderPaneId === 'string' && legacyConfig.leaderPaneId.trim() !== ''
+      ? legacyConfig.leaderPaneId.trim()
+      : undefined;
+    await shutdownTeam(teamName, sessionName, cwd, 30_000, undefined, leaderPaneId, legacyConfig.tmuxOwnsWindow === true);
+    return;
+  }
+
+  assertNoNativeWorktreeCleanupEvidence(teamName, cwd);
   await teamCleanup(teamName, cwd);
 }
 

@@ -11,6 +11,52 @@ describe('worker-bootstrap', () => {
         cwd: '/tmp',
     };
     describe('generateWorkerOverlay', () => {
+        it('uses urgent trigger wording that requires immediate work and concrete progress', () => {
+            expect(generateTriggerMessage('test-team', 'worker-1')).toContain('.omc/state/team/test-team/workers/worker-1/inbox.md');
+            expect(generateTriggerMessage('test-team', 'worker-1')).toContain('execute now');
+            expect(generateTriggerMessage('test-team', 'worker-1')).toContain('concrete progress');
+            expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2)).toContain('.omc/state/team/test-team/mailbox/worker-1.json');
+            expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2)).toContain('act now');
+            expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2)).toContain('concrete progress');
+        });
+        it('keeps trigger messages under sendToWorker 200-char limit even with long names', () => {
+            const longTeam = 'my-very-long-team-name-for-testing';
+            const longWorker = 'codex-worker-with-long-name-1';
+            const trigger = generateTriggerMessage(longTeam, longWorker);
+            const mailbox = generateMailboxTriggerMessage(longTeam, longWorker, 99);
+            expect(trigger.length).toBeLessThan(200);
+            expect(mailbox.length).toBeLessThan(200);
+        });
+        it('supports team-root placeholders for worktree-backed trigger paths', () => {
+            expect(generateTriggerMessage('test-team', 'worker-1', '$OMC_TEAM_STATE_ROOT'))
+                .toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md');
+            expect(generateTriggerMessage('test-team', 'worker-1', '$OMC_TEAM_STATE_ROOT'))
+                .not.toContain('$OMC_TEAM_STATE_ROOT/team/test-team');
+            expect(generateTriggerMessage('test-team', 'worker-1', '$OMC_TEAM_STATE_ROOT'))
+                .toContain('work now');
+            expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2, '$OMC_TEAM_STATE_ROOT'))
+                .toContain('$OMC_TEAM_STATE_ROOT/mailbox/worker-1.json');
+            expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2, '$OMC_TEAM_STATE_ROOT'))
+                .not.toContain('$OMC_TEAM_STATE_ROOT/team/test-team');
+            expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2, '$OMC_TEAM_STATE_ROOT'))
+                .toContain('report progress');
+        });
+        it('renders canonical team-root paths in worktree overlays', () => {
+            const overlay = generateWorkerOverlay({ ...baseParams, instructionStateRoot: '$OMC_TEAM_STATE_ROOT' });
+            expect(overlay).toContain('touch $OMC_TEAM_STATE_ROOT/workers/worker-1/.ready');
+            expect(overlay).toContain('Read $OMC_TEAM_STATE_ROOT/workers/worker-1/inbox.md');
+            expect(overlay).toContain('Write to $OMC_TEAM_STATE_ROOT/workers/worker-1/status.json');
+            expect(overlay).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/shutdown-ack.json');
+            expect(overlay).not.toContain('$OMC_TEAM_STATE_ROOT/team/test-team');
+        });
+        it('uses a short prompt-mode startup pointer instead of lifecycle/task text', () => {
+            const prompt = generatePromptModeStartupPrompt('test-team', 'worker-1');
+            expect(prompt).toContain('.omc/state/team/test-team/workers/worker-1/inbox.md');
+            expect(prompt).toContain('Open');
+            expect(prompt).not.toContain('claim-task');
+            expect(prompt).not.toContain('transition-task-status');
+            expect(prompt).not.toContain('blocked');
+        });
         it('includes sentinel file write instruction first', () => {
             const overlay = generateWorkerOverlay(baseParams);
             const sentinelIdx = overlay.indexOf('.ready');

@@ -580,6 +580,8 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     });
     // For prompt-mode agents (e.g. Gemini Ink TUI), pass instruction via CLI
     // flag so tmux send-keys never needs to interact with the TUI input widget.
+    // Codex and Claude team workers are persistent interactive panes and are
+    // nudged through the inbox transport instead of `codex exec`/print modes.
     if (usePromptMode) {
         const promptArgs = getPromptModeArgs(agentType, `Read and execute your task from: ${relInboxPath}`);
         launchArgs.push(...promptArgs);

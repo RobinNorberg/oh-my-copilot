@@ -6,12 +6,15 @@ const mocks = vi.hoisted(() => ({
     spawn: vi.fn(),
     killWorkerPanes: vi.fn(),
     killTeamSession: vi.fn(),
+    isWorkerAlive: vi.fn(),
+    getWorkerLiveness: vi.fn(),
     resumeTeam: vi.fn(),
     monitorTeam: vi.fn(),
     shutdownTeam: vi.fn(),
     isRuntimeV2Enabled: vi.fn(() => false),
     monitorTeamV2: vi.fn(),
     shutdownTeamV2: vi.fn(),
+    cleanupTeamWorktrees: vi.fn(),
 }));
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
@@ -26,6 +29,8 @@ vi.mock('../../team/tmux-session.js', async (importOriginal) => {
         ...actual,
         killWorkerPanes: mocks.killWorkerPanes,
         killTeamSession: mocks.killTeamSession,
+        isWorkerAlive: mocks.isWorkerAlive,
+        getWorkerLiveness: mocks.getWorkerLiveness,
     };
 });
 vi.mock('../../team/runtime-v2.js', async (importOriginal) => {
@@ -46,6 +51,13 @@ vi.mock('../../team/runtime.js', async (importOriginal) => {
         shutdownTeam: mocks.shutdownTeam,
     };
 });
+vi.mock('../../team/git-worktree.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        cleanupTeamWorktrees: mocks.cleanupTeamWorktrees,
+    };
+});
 describe('team cli', () => {
     let jobsDir;
     beforeEach(() => {
@@ -55,6 +67,10 @@ describe('team cli', () => {
         mocks.spawn.mockReset();
         mocks.killWorkerPanes.mockReset();
         mocks.killTeamSession.mockReset();
+        mocks.isWorkerAlive.mockReset();
+        mocks.isWorkerAlive.mockResolvedValue(false);
+        mocks.getWorkerLiveness.mockReset();
+        mocks.getWorkerLiveness.mockResolvedValue('dead');
         mocks.resumeTeam.mockReset();
         mocks.monitorTeam.mockReset();
         mocks.shutdownTeam.mockReset();
@@ -62,6 +78,8 @@ describe('team cli', () => {
         mocks.isRuntimeV2Enabled.mockReturnValue(false);
         mocks.monitorTeamV2.mockReset();
         mocks.shutdownTeamV2.mockReset();
+        mocks.cleanupTeamWorktrees.mockReset();
+        mocks.cleanupTeamWorktrees.mockReturnValue({ removed: [], preserved: [] });
     });
     afterEach(() => {
         delete process.env.OMC_JOBS_DIR;
@@ -238,6 +256,10 @@ describe('team cli', () => {
             sessionName: 'leader-session:0',
             ownsWindow: false,
         }));
+        mocks.cleanupTeamWorktrees.mockImplementation(() => {
+            expect(existsSync(stateRoot)).toBe(true);
+            return { removed: [], preserved: [] };
+        });
         const result = await cleanupTeamJob(jobId, 1234);
         expect(result.message).toContain('Cleaned up 2 worker pane(s)');
         expect(mocks.killWorkerPanes).toHaveBeenCalledWith({
@@ -248,7 +270,149 @@ describe('team cli', () => {
             graceMs: 1234,
         });
         expect(mocks.killTeamSession).not.toHaveBeenCalled();
+        expect(mocks.cleanupTeamWorktrees).toHaveBeenCalledWith('demo-team', cwd);
         expect(existsSync(stateRoot)).toBe(false);
+        rmSync(cwd, { recursive: true, force: true });
+    });
+    it('cleanupTeamJob keeps state root when worktree cleanup preserves metadata', async () => {
+        const { cleanupTeamJob } = await import('../team.js');
+        const jobId = 'omc-cleanup3';
+        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-preserve-cleanup-'));
+        const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        mkdirSync(stateRoot, { recursive: true });
+        writeFileSync(join(stateRoot, 'config.json'), JSON.stringify({
+            name: 'demo-team',
+            task: 'demo',
+            agent_type: 'claude',
+            worker_launch_mode: 'interactive',
+            worker_count: 0,
+            max_workers: 20,
+            workers: [],
+            created_at: new Date().toISOString(),
+            tmux_session: '',
+            leader_pane_id: null,
+            hud_pane_id: null,
+            resize_hook_name: null,
+            resize_hook_target: null,
+            next_task_id: 1,
+        }));
+        writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
+            status: 'running',
+            startedAt: Date.now(),
+            teamName: 'demo-team',
+            cwd,
+        }));
+        writeFileSync(join(jobsDir, `${jobId}-panes.json`), JSON.stringify({
+            paneIds: [],
+            leaderPaneId: '%10',
+            sessionName: 'leader-session:0',
+            ownsWindow: false,
+        }));
+        mocks.cleanupTeamWorktrees.mockReturnValueOnce({
+            removed: [],
+            preserved: [{ workerName: 'worker-1', path: '/tmp/wt', reason: 'worktree_dirty' }],
+        });
+        const result = await cleanupTeamJob(jobId, 1234);
+        expect(result.message).toContain('require follow-up cleanup');
+        expect(mocks.cleanupTeamWorktrees).toHaveBeenCalledWith('demo-team', cwd);
+        expect(existsSync(stateRoot)).toBe(true);
+        const job = JSON.parse(readFileSync(join(jobsDir, `${jobId}.json`), 'utf-8'));
+        expect(job.cleanedUpAt).toBeUndefined();
+        expect(job.cleanupBlockedReason).toBe('worktrees_preserved:1');
+        rmSync(cwd, { recursive: true, force: true });
+    });
+    it('cleanupTeamJob blocks state cleanup when panes artifact is missing and config still has workers', async () => {
+        const { cleanupTeamJob } = await import('../team.js');
+        const jobId = 'omc-cleanup5';
+        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-unknown-liveness-'));
+        const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        mkdirSync(stateRoot, { recursive: true });
+        writeFileSync(join(stateRoot, 'config.json'), JSON.stringify({
+            name: 'demo-team',
+            task: 'demo',
+            agent_type: 'claude',
+            worker_launch_mode: 'interactive',
+            worker_count: 1,
+            max_workers: 20,
+            workers: [{ name: 'worker-1', index: 1, role: 'executor', assigned_tasks: [] }],
+            created_at: new Date().toISOString(),
+            tmux_session: '',
+            leader_pane_id: null,
+            hud_pane_id: null,
+            resize_hook_name: null,
+            resize_hook_target: null,
+            next_task_id: 1,
+        }));
+        writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
+            status: 'running',
+            startedAt: Date.now(),
+            teamName: 'demo-team',
+            cwd,
+        }));
+        const result = await cleanupTeamJob(jobId, 1234);
+        expect(result.message).toContain('worker liveness could not be proven');
+        expect(mocks.killWorkerPanes).not.toHaveBeenCalled();
+        expect(mocks.cleanupTeamWorktrees).not.toHaveBeenCalled();
+        expect(existsSync(stateRoot)).toBe(true);
+        const job = JSON.parse(readFileSync(join(jobsDir, `${jobId}.json`), 'utf-8'));
+        expect(job.cleanedUpAt).toBeUndefined();
+        expect(job.cleanupBlockedReason).toBe('worker_liveness_unknown:no_worker_pane_ids');
+        rmSync(cwd, { recursive: true, force: true });
+    });
+    it('cleanupTeamJob preserves state when pane liveness probe is unknown', async () => {
+        const { cleanupTeamJob } = await import('../team.js');
+        const jobId = 'omc-cleanup6';
+        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-unknown-probe-'));
+        const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        mkdirSync(stateRoot, { recursive: true });
+        writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
+            status: 'running',
+            startedAt: Date.now(),
+            teamName: 'demo-team',
+            cwd,
+        }));
+        writeFileSync(join(jobsDir, `${jobId}-panes.json`), JSON.stringify({
+            paneIds: ['%77'],
+            leaderPaneId: '%10',
+            sessionName: 'leader-session:0',
+            ownsWindow: false,
+        }));
+        mocks.getWorkerLiveness.mockResolvedValueOnce('unknown');
+        const result = await cleanupTeamJob(jobId, 1234);
+        expect(result.message).toContain('liveness is unknown');
+        expect(mocks.cleanupTeamWorktrees).not.toHaveBeenCalled();
+        expect(existsSync(stateRoot)).toBe(true);
+        const job = JSON.parse(readFileSync(join(jobsDir, `${jobId}.json`), 'utf-8'));
+        expect(job.cleanedUpAt).toBeUndefined();
+        expect(job.cleanupBlockedReason).toBe('worker_liveness_unknown:%77');
+        rmSync(cwd, { recursive: true, force: true });
+    });
+    it('cleanupTeamJob preserves worktrees and state when worker panes remain alive', async () => {
+        const { cleanupTeamJob } = await import('../team.js');
+        const jobId = 'omc-cleanup4';
+        const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-live-cleanup-'));
+        const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        mkdirSync(stateRoot, { recursive: true });
+        writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
+            status: 'running',
+            startedAt: Date.now(),
+            teamName: 'demo-team',
+            cwd,
+        }));
+        writeFileSync(join(jobsDir, `${jobId}-panes.json`), JSON.stringify({
+            paneIds: ['%11'],
+            leaderPaneId: '%10',
+            sessionName: 'leader-session:0',
+            ownsWindow: false,
+        }));
+        mocks.getWorkerLiveness.mockResolvedValue('alive');
+        const result = await cleanupTeamJob(jobId, 1234);
+        expect(result.message).toContain('still alive');
+        expect(mocks.killWorkerPanes).toHaveBeenCalled();
+        expect(mocks.cleanupTeamWorktrees).not.toHaveBeenCalled();
+        expect(existsSync(stateRoot)).toBe(true);
+        const job = JSON.parse(readFileSync(join(jobsDir, `${jobId}.json`), 'utf-8'));
+        expect(job.cleanupBlockedReason).toContain('worker_panes_still_alive');
         rmSync(cwd, { recursive: true, force: true });
     });
     it('cleanupTeamJob removes a dedicated team tmux window when recorded', async () => {

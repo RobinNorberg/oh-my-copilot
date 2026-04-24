@@ -31,7 +31,7 @@ import { buildWorkerArgv, getContract, resolveValidatedBinaryPath, getWorkerEnv 
 import { createTeamSession, spawnWorkerInPane, sendToWorker, waitForPaneReady, paneHasActiveTask, paneLooksReady, applyMainVerticalLayout, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, generateTriggerMessage, generatePromptModeStartupPrompt, } from './worker-bootstrap.js';
 import { queueInboxInstruction } from './mcp-comm.js';
-import { cleanupTeamWorktrees } from './git-worktree.js';
+import { cleanupTeamWorktrees, inspectTeamWorktreeCleanupSafety, ensureWorkerWorktree, installWorktreeRootAgents, normalizeTeamWorktreeMode, } from './git-worktree.js';
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
 import { getHostCliType } from '../utils/host-detection.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
@@ -324,7 +324,9 @@ async function spawnV2Worker(opts) {
         resolvedBinaryPath,
         model: modelForAgent,
     });
-    // For prompt-mode agents (codex, gemini), pass instruction via CLI flag
+    // For prompt-mode agents (currently gemini), keep the full instruction in
+    // inbox.md and pass only a short file-pointer prompt via CLI args. This
+    // avoids echoing reviewer/seed prompt text into tmux scrollback.
     if (usePromptMode) {
         launchArgs.push(...getPromptModeArgs(opts.agentType, instruction));
     }
@@ -548,6 +550,7 @@ export async function startTeamV2(config) {
             })),
             cwd: leaderCwd,
             ...(config.rolePrompt ? { bootstrapInstructions: config.rolePrompt } : {}),
+            ...(workerWorktrees.has(wName) ? { instructionStateRoot: '$OMC_TEAM_STATE_ROOT' } : {}),
         });
     }
     // Create tmux session (leader only — workers spawned below)
@@ -1144,8 +1147,14 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
     const sanitized = sanitizeTeamName(teamName);
     const config = await readTeamConfig(sanitized, cwd);
     if (!config) {
-        // No config available; only clean state. We intentionally avoid guessing
-        // a tmux session name here to prevent accidental self-session termination.
+        // No config means worker liveness cannot be proven. Worktree metadata and
+        // root AGENTS backups live under the scoped state tree, so use non-mutating
+        // inspection and preserve state whenever any worktree recovery evidence exists.
+        const cleanupSafety = inspectTeamWorktreeCleanupSafety(sanitized, cwd);
+        if (cleanupSafety.hasEvidence) {
+            process.stderr.write('[team/runtime-v2] preserving team state because config is missing and worktree cleanup evidence remains\n');
+            return;
+        }
         await cleanupTeamState(sanitized, cwd);
         return;
     }
@@ -1205,7 +1214,10 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
             await writeShutdownRequest(sanitized, w.name, 'leader-fixed', cwd);
             shutdownRequestTimes.set(w.name, requestedAt);
             // Write shutdown inbox
-            const shutdownInbox = `# Shutdown Request\n\nAll tasks are complete. Please wrap up and respond with a shutdown acknowledgement.\n\nWrite your ack to: ${TeamPaths.shutdownAck(sanitized, w.name)}\nFormat: {"status":"accept","reason":"ok","updated_at":"<iso>"}\n\nThen exit your session.\n`;
+            const shutdownAckPath = w.worktree_path
+                ? `$OMC_TEAM_STATE_ROOT/workers/${w.name}/shutdown-ack.json`
+                : TeamPaths.shutdownAck(sanitized, w.name);
+            const shutdownInbox = `# Shutdown Request\n\nAll tasks are complete. Please wrap up and respond with a shutdown acknowledgement.\n\nWrite your ack to: ${shutdownAckPath}\nFormat: {"status":"accept","reason":"ok","updated_at":"<iso>"}\n\nThen exit your session.\n`;
             await writeWorkerInbox(sanitized, w.name, shutdownInbox, cwd);
         }
         catch (err) {
@@ -1244,11 +1256,11 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
         await new Promise((r) => setTimeout(r, 2_000));
     }
     // 4. Force kill remaining tmux panes
+    const recordedWorkerPaneIds = config.workers
+        .map((w) => w.pane_id)
+        .filter((p) => typeof p === 'string' && p.trim().length > 0);
     try {
-        const { killWorkerPanes, killTeamSession, resolveSplitPaneWorkerPaneIds } = await import('./tmux-session.js');
-        const recordedWorkerPaneIds = config.workers
-            .map((w) => w.pane_id)
-            .filter((p) => typeof p === 'string' && p.trim().length > 0);
+        const { killWorkerPanes, killTeamSession, resolveSplitPaneWorkerPaneIds, getWorkerLiveness } = await import('./tmux-session.js');
         const ownsWindow = config.tmux_window_owned === true;
         const workerPaneIds = ownsWindow
             ? recordedWorkerPaneIds
@@ -1265,9 +1277,33 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
                 : 'detached-session';
             await killTeamSession(config.tmux_session, workerPaneIds, config.leader_pane_id ?? undefined, { sessionMode });
         }
+        const paneById = new Map(config.workers
+            .filter((w) => typeof w.pane_id === 'string' && w.pane_id.trim().length > 0)
+            .map((w) => [w.pane_id, w.name]));
+        const liveness = await Promise.all(workerPaneIds.map(async (paneId) => [paneId, await getWorkerLiveness(paneId)]));
+        const aliveWorkers = liveness
+            .filter(([, state]) => state === 'alive')
+            .map(([paneId]) => paneById.get(paneId) ?? paneId);
+        if (aliveWorkers.length > 0) {
+            process.stderr.write(`[team/runtime-v2] preserving worktrees/state because worker pane(s) are still alive: ${aliveWorkers.join(', ')}
+`);
+            return;
+        }
+        const unknownWorkers = liveness
+            .filter(([, state]) => state === 'unknown')
+            .map(([paneId]) => paneById.get(paneId) ?? paneId);
+        if (unknownWorkers.length > 0) {
+            process.stderr.write(`[team/runtime-v2] preserving worktrees/state because worker pane liveness is unknown: ${unknownWorkers.join(', ')}
+`);
+            return;
+        }
     }
     catch (err) {
         process.stderr.write(`[team/runtime-v2] tmux cleanup: ${err}\n`);
+        if (recordedWorkerPaneIds.length > 0) {
+            process.stderr.write('[team/runtime-v2] preserving worktrees/state because tmux cleanup did not prove worker panes exited\n');
+            return;
+        }
     }
     // 5. Ralph completion logging
     if (ralph) {
@@ -1281,14 +1317,24 @@ export async function shutdownTeamV2(teamName, cwd, options = {}) {
             reason: `ralph_cleanup_summary: total=${finalTasks.length} completed=${completed} failed=${failed} pending=${pending} force=${force}`,
         }, cwd).catch(logEventFailure);
     }
-    // 6. Clean up state
+    // 6. Clean up state. If worktree cleanup preserved dirty worktrees, keep the
+    // team state directory too; it contains the metadata and root AGENTS.md backups
+    // needed for a later safe cleanup attempt.
+    let preservedWorktrees = 0;
     try {
-        cleanupTeamWorktrees(sanitized, cwd);
+        const worktreeCleanup = cleanupTeamWorktrees(sanitized, cwd);
+        preservedWorktrees = worktreeCleanup.preserved.length;
     }
     catch (err) {
+        preservedWorktrees = 1;
         process.stderr.write(`[team/runtime-v2] worktree cleanup: ${err}\n`);
     }
-    await cleanupTeamState(sanitized, cwd);
+    if (preservedWorktrees === 0) {
+        await cleanupTeamState(sanitized, cwd);
+    }
+    else {
+        process.stderr.write(`[team/runtime-v2] preserved ${preservedWorktrees} worktree(s); keeping team state for follow-up cleanup\n`);
+    }
 }
 // ---------------------------------------------------------------------------
 // resumeTeam — reconstruct runtime from persisted state

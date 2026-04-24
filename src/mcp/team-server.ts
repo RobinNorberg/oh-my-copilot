@@ -21,8 +21,9 @@ const __ownDir: string = (() => {
 })();
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs';
 import { readFile } from 'fs/promises';
-import { killWorkerPanes, killTeamSession } from '../team/tmux-session.js';
+import { killWorkerPanes, killTeamSession, getWorkerLiveness } from '../team/tmux-session.js';
 import { validateTeamName } from '../team/team-name.js';
+import { readTeamConfig } from '../team/monitor.js';
 import { NudgeTracker } from '../team/idle-nudge.js';
 import {
   clearScopedTeamState,
@@ -180,6 +181,45 @@ async function loadPaneIds(jobId: string): Promise<{ paneIds: string[]; leaderPa
   const p = join(OMC_JOBS_DIR, `${jobId}-panes.json`);
   try { return JSON.parse(await readFile(p, 'utf-8')); }
   catch { return null; }
+}
+
+
+async function resolveCleanupPaneEvidence(job: OmcTeamJob, jobId: string): Promise<{
+  panes: { paneIds: string[]; leaderPaneId: string; sessionName?: string; ownsWindow?: boolean } | null;
+  livenessUnknownReason?: string;
+}> {
+  const panes = await loadPaneIds(jobId);
+  if (panes?.paneIds?.length) return { panes };
+
+  if (!job.teamName || !job.cwd) {
+    return { panes, livenessUnknownReason: 'worker_liveness_unknown:missing_job_team_or_cwd' };
+  }
+
+  const config = await readTeamConfig(job.teamName, job.cwd).catch(() => null);
+  if (!config) {
+    return { panes, livenessUnknownReason: 'worker_liveness_unknown:no_config_or_panes' };
+  }
+
+  const configPaneIds = (config.workers ?? [])
+    .map((worker) => worker.pane_id)
+    .filter((paneId): paneId is string => typeof paneId === 'string' && paneId.trim().length > 0);
+  if (configPaneIds.length > 0) {
+    return {
+      panes: {
+        paneIds: configPaneIds,
+        leaderPaneId: config.leader_pane_id ?? panes?.leaderPaneId ?? '',
+        sessionName: config.tmux_session || panes?.sessionName,
+        ownsWindow: config.tmux_window_owned ?? panes?.ownsWindow,
+      },
+    };
+  }
+
+  const hasConfiguredWorkers = (config.workers ?? []).length > 0 || config.worker_count > 0;
+  if (hasConfiguredWorkers) {
+    return { panes, livenessUnknownReason: 'worker_liveness_unknown:no_worker_pane_ids' };
+  }
+
+  return { panes };
 }
 
 function validateJobId(job_id: string): void {
@@ -420,37 +460,87 @@ export async function handleCleanup(args: unknown): Promise<{ content: Array<{ t
   const job = omcTeamJobs.get(job_id) ?? loadJobFromDisk(job_id);
   if (!job) return { content: [{ type: 'text', text: `Job ${job_id} not found` }] };
 
-  const panes = await loadPaneIds(job_id);
+  const blockCleanup = (paneCleanupMessage: string, reason: string): { content: Array<{ type: 'text'; text: string }> } => {
+    job.cleanupBlockedAt = new Date().toISOString();
+    job.cleanupBlockedReason = reason;
+    delete job.cleanedUpAt;
+    persistJob(job_id, job);
+    return {
+      content: [{
+        type: 'text',
+        text: `${paneCleanupMessage} Team state/worktree cleanup preserved because ${reason}.`,
+      }],
+    };
+  };
+
+  const { panes, livenessUnknownReason } = await resolveCleanupPaneEvidence(job, job_id);
+  if (livenessUnknownReason) return blockCleanup('Worker pane liveness could not be proven.', livenessUnknownReason);
+
   let paneCleanupMessage = 'No pane IDs recorded for this job — pane cleanup skipped.';
   if (panes?.sessionName && (panes.ownsWindow === true || !panes.sessionName.includes(':'))) {
     const sessionMode = panes.ownsWindow === true
       ? (panes.sessionName.includes(':') ? 'dedicated-window' : 'detached-session')
       : 'detached-session';
-    await killTeamSession(
-      panes.sessionName,
-      panes.paneIds,
-      panes.leaderPaneId,
-      { sessionMode },
-    );
+    try {
+      await killTeamSession(
+        panes.sessionName,
+        panes.paneIds,
+        panes.leaderPaneId,
+        { sessionMode },
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return blockCleanup('Team tmux cleanup did not complete.', `tmux_cleanup_failed:${message}`);
+    }
     paneCleanupMessage = panes.ownsWindow
       ? 'Cleaned up team tmux window.'
       : `Cleaned up ${panes.paneIds.length} worker pane(s).`;
   } else if (panes?.paneIds?.length) {
-    await killWorkerPanes({
-      paneIds: panes.paneIds,
-      leaderPaneId: panes.leaderPaneId,
-      teamName: job.teamName ?? '',
-      cwd: job.cwd ?? '',
-      graceMs: grace_ms ?? 10_000,
-    });
+    try {
+      await killWorkerPanes({
+        paneIds: panes.paneIds,
+        leaderPaneId: panes.leaderPaneId,
+        teamName: job.teamName ?? '',
+        cwd: job.cwd ?? '',
+        graceMs: grace_ms ?? 10_000,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return blockCleanup('Worker pane cleanup did not complete.', `tmux_cleanup_failed:${message}`);
+    }
     paneCleanupMessage = `Cleaned up ${panes.paneIds.length} worker pane(s).`;
   }
 
-  job.cleanedUpAt = new Date().toISOString();
-  persistJob(job_id, job);
+  if (panes?.paneIds?.length) {
+    const liveness = await Promise.all(panes.paneIds.map(async (paneId) => ({
+      paneId,
+      state: await getWorkerLiveness(paneId),
+    })));
+    const alivePaneIds = liveness.filter((check) => check.state === 'alive').map((check) => check.paneId);
+    if (alivePaneIds.length > 0) {
+      return blockCleanup(paneCleanupMessage, `worker_panes_still_alive:${alivePaneIds.join(',')}`);
+    }
+    const unknownPaneIds = liveness.filter((check) => check.state === 'unknown').map((check) => check.paneId);
+    if (unknownPaneIds.length > 0) {
+      return blockCleanup(paneCleanupMessage, `worker_liveness_unknown:${unknownPaneIds.join(',')}`);
+    }
+  }
 
   const cleanupOutcome = clearScopedTeamState(job);
-  return { content: [{ type: 'text', text: `${paneCleanupMessage} ${cleanupOutcome}` }] };
+  if (!cleanupOutcome.ok) {
+    job.cleanupBlockedAt = new Date().toISOString();
+    job.cleanupBlockedReason = cleanupOutcome.reason ?? 'team_state_cleanup_blocked';
+    delete job.cleanedUpAt;
+    persistJob(job_id, job);
+    return { content: [{ type: 'text', text: `${paneCleanupMessage} ${cleanupOutcome.message}` }] };
+  }
+
+  job.cleanedUpAt = new Date().toISOString();
+  delete job.cleanupBlockedAt;
+  delete job.cleanupBlockedReason;
+  persistJob(job_id, job);
+
+  return { content: [{ type: 'text', text: `${paneCleanupMessage} ${cleanupOutcome.message}` }] };
 }
 
 const TOOLS = [
@@ -508,7 +598,7 @@ const TOOLS = [
   },
   {
     name: 'omc_run_team_cleanup',
-    description: '[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omcp team cleanup <job_id>`.',
+    description: '[DEPRECATED COMPAT] Prefer `omc team cleanup <job_id>`; this compatibility cleanup surface preserves team state when worker liveness or worktree cleanup is not proven safe.',
     inputSchema: {
       type: 'object' as const,
       properties: {

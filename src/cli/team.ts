@@ -6,7 +6,8 @@ import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { executeTeamApiOperation as executeCanonicalTeamApiOperation, resolveTeamApiOperation } from '../team/api-interop.js';
-import { killWorkerPanes, killTeamSession } from '../team/tmux-session.js';
+import { cleanupTeamWorktrees } from '../team/git-worktree.js';
+import { killWorkerPanes, killTeamSession, getWorkerLiveness } from '../team/tmux-session.js';
 import { validateTeamName } from '../team/team-name.js';
 import { monitorTeam, resumeTeam, shutdownTeam } from '../team/runtime.js';
 import { readTeamConfig } from '../team/monitor.js';
@@ -122,6 +123,8 @@ interface TeamJobRecord {
   result?: string;
   stderr?: string;
   cleanedUpAt?: string;
+  cleanupBlockedAt?: string;
+  cleanupBlockedReason?: string;
 }
 
 interface TeamPanesFile {
@@ -192,6 +195,43 @@ function parseJsonSafe<T>(content: string): T | null {
   } catch {
     return null;
   }
+}
+
+
+async function resolveCleanupPaneEvidence(job: TeamJobRecord, jobsDir: string, jobId: string): Promise<{
+  paneArtifact: TeamPanesFile | null;
+  livenessUnknownReason?: string;
+}> {
+  const paneArtifact = await readFile(panesArtifactPath(jobsDir, jobId), 'utf-8')
+    .then((content) => parseJsonSafe<TeamPanesFile>(content))
+    .catch(() => null);
+  if (paneArtifact?.paneIds?.length) return { paneArtifact };
+
+  const config = await readTeamConfig(job.teamName, job.cwd).catch(() => null);
+  if (!config) {
+    return { paneArtifact, livenessUnknownReason: 'worker_liveness_unknown:no_config_or_panes' };
+  }
+
+  const configPaneIds = (config.workers ?? [])
+    .map((worker) => worker.pane_id)
+    .filter((paneId): paneId is string => typeof paneId === 'string' && paneId.trim().length > 0);
+  if (configPaneIds.length > 0) {
+    return {
+      paneArtifact: {
+        paneIds: configPaneIds,
+        leaderPaneId: config.leader_pane_id ?? paneArtifact?.leaderPaneId ?? '',
+        sessionName: config.tmux_session || paneArtifact?.sessionName,
+        ownsWindow: config.tmux_window_owned ?? paneArtifact?.ownsWindow,
+      },
+    };
+  }
+
+  const hasConfiguredWorkers = (config.workers ?? []).length > 0 || config.worker_count > 0;
+  if (hasConfiguredWorkers) {
+    return { paneArtifact, livenessUnknownReason: 'worker_liveness_unknown:no_worker_pane_ids' };
+  }
+
+  return { paneArtifact };
 }
 
 function readJobFromDisk(jobId: string, jobsDir: string): TeamJobRecord | null {
@@ -439,9 +479,18 @@ export async function cleanupTeamJob(jobId: string, graceMs = 10_000): Promise<T
     throw new Error(`No job found: ${jobId}`);
   }
 
-  const paneArtifact = await readFile(panesArtifactPath(jobsDir, jobId), 'utf-8')
-    .then((content) => parseJsonSafe<TeamPanesFile>(content))
-    .catch(() => null);
+  const { paneArtifact, livenessUnknownReason } = await resolveCleanupPaneEvidence(job, jobsDir, jobId);
+  if (livenessUnknownReason) {
+    writeJobToDisk(jobId, {
+      ...job,
+      cleanupBlockedAt: new Date().toISOString(),
+      cleanupBlockedReason: livenessUnknownReason,
+    }, jobsDir);
+    return {
+      jobId,
+      message: `Preserved team state because worker liveness could not be proven (${livenessUnknownReason})`,
+    };
+  }
 
   if (paneArtifact?.sessionName && (paneArtifact.ownsWindow === true || !paneArtifact.sessionName.includes(':'))) {
     const sessionMode = paneArtifact.ownsWindow === true
@@ -461,6 +510,49 @@ export async function cleanupTeamJob(jobId: string, graceMs = 10_000): Promise<T
       cwd: job.cwd,
       graceMs,
     });
+  }
+
+  if (paneArtifact?.paneIds?.length) {
+    const liveness = await Promise.all(paneArtifact.paneIds.map(async (paneId) => [paneId, await getWorkerLiveness(paneId)] as const));
+    const alivePaneIds = liveness.filter(([, state]) => state === 'alive').map(([paneId]) => paneId);
+    const unknownPaneIds = liveness.filter(([, state]) => state === 'unknown').map(([paneId]) => paneId);
+    if (alivePaneIds.length > 0 || unknownPaneIds.length > 0) {
+      const reason = alivePaneIds.length > 0
+        ? `worker_panes_still_alive:${alivePaneIds.join(',')}`
+        : `worker_liveness_unknown:${unknownPaneIds.join(',')}`;
+      writeJobToDisk(jobId, {
+        ...job,
+        cleanupBlockedAt: new Date().toISOString(),
+        cleanupBlockedReason: reason,
+      }, jobsDir);
+      return {
+        jobId,
+        message: alivePaneIds.length > 0
+          ? `Preserved team state because worker pane(s) are still alive: ${alivePaneIds.join(', ')}`
+          : `Preserved team state because worker pane liveness is unknown: ${unknownPaneIds.join(', ')}`,
+      };
+    }
+  }
+
+  let preservedWorktrees = 0;
+  try {
+    const cleanupResult = cleanupTeamWorktrees(job.teamName, job.cwd);
+    preservedWorktrees = cleanupResult.preserved.length;
+  } catch {
+    // best-effort for dormant team-owned worktree infrastructure; preserve state
+    // when cleanup could not prove worktree metadata/backups are disposable.
+    preservedWorktrees = 1;
+  }
+  if (preservedWorktrees > 0) {
+    writeJobToDisk(jobId, {
+      ...job,
+      cleanupBlockedAt: new Date().toISOString(),
+      cleanupBlockedReason: `worktrees_preserved:${preservedWorktrees}`,
+    }, jobsDir);
+    return {
+      jobId,
+      message: `Preserved team state because ${preservedWorktrees} worktree(s) require follow-up cleanup`,
+    };
   }
 
   await rm(teamStateRoot(job.cwd, job.teamName), {
