@@ -6,8 +6,8 @@
  */
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { getWorktreeRoot } from '../lib/worktree-paths.js';
+import { dirname, join } from 'path';
+import { getSessionStateDir, getWorktreeRoot } from '../lib/worktree-paths.js';
 import type { RateLimits, StatuslineStdin } from './types.js';
 
 const TRANSIENT_CONTEXT_PERCENT_TOLERANCE = 3;
@@ -16,8 +16,51 @@ const TRANSIENT_CONTEXT_PERCENT_TOLERANCE = 3;
 // Stdin Cache (for --watch mode)
 // ============================================================================
 
+/**
+ * Session-id environment variables consulted in priority order.
+ * Copilot CLI populates `CLAUDE_SESSION_ID` first; `CLAUDECODE_SESSION_ID`
+ * is a legacy / compatibility alias for the same value.
+ */
+const SESSION_ID_ENV_VARS = ['CLAUDE_SESSION_ID', 'CLAUDECODE_SESSION_ID'] as const;
+
+/**
+ * Normalize an env value to a session-id candidate.
+ * Empty / whitespace-only strings are treated as "not set" so a defined
+ * but blank slot does not block the fallback to the next candidate.
+ */
+function normalizeCandidate(value: string | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Resolve the stdin cache path.
+ *
+ * Walks the session-id env vars in priority order, and for each candidate
+ * tries to resolve a session-scoped path via the shared validated helper
+ * `getSessionStateDir` (which calls `validateSessionId`). A candidate
+ * that fails validation (path traversal, disallowed chars, overlong) is
+ * skipped so the next candidate still gets a chance — a non-empty-but-
+ * invalid primary does not silently bypass a valid secondary. Only when
+ * no candidate yields a valid session path do we fall back to the legacy
+ * flat path.
+ *
+ * The file name remains `hud-stdin-cache.json` so that the existing
+ * session-end cleanup pattern (`/^hud-stdin-cache\.json$/`) still matches
+ * and no migration is required for existing environments.
+ */
 function getStdinCachePath(): string {
   const root = getWorktreeRoot() || process.cwd();
+  for (const envVar of SESSION_ID_ENV_VARS) {
+    const candidate = normalizeCandidate(process.env[envVar]);
+    if (!candidate) continue;
+    try {
+      return join(getSessionStateDir(candidate, root), 'hud-stdin-cache.json');
+    } catch {
+      // Invalid session id — try the next candidate.
+    }
+  }
   return join(root, '.omcp', 'state', 'hud-stdin-cache.json');
 }
 
@@ -27,12 +70,12 @@ function getStdinCachePath(): string {
  */
 export function writeStdinCache(stdin: StatuslineStdin): void {
   try {
-    const root = getWorktreeRoot() || process.cwd();
-    const cacheDir = join(root, '.omcp', 'state');
+    const cachePath = getStdinCachePath();
+    const cacheDir = dirname(cachePath);
     if (!existsSync(cacheDir)) {
       mkdirSync(cacheDir, { recursive: true });
     }
-    writeFileSync(getStdinCachePath(), JSON.stringify(stdin));
+    writeFileSync(cachePath, JSON.stringify(stdin));
   } catch {
     // Best-effort; ignore failures
   }
