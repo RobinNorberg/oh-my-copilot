@@ -96,7 +96,8 @@ export async function emitMonitorDerivedEvents(teamName, tasks, workers, previou
     for (const worker of workers) {
         const prevAlive = previousSnapshot.workerAliveByName?.[worker.name];
         const prevState = previousSnapshot.workerStateByName?.[worker.name];
-        if (prevAlive === true && !worker.alive) {
+        const currentLiveness = worker.liveness ?? (worker.alive ? 'alive' : 'dead');
+        if (prevAlive === true && currentLiveness === 'dead') {
             await appendTeamEvent(teamName, {
                 type: 'worker_stopped',
                 worker: worker.name,

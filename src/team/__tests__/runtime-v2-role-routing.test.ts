@@ -6,6 +6,7 @@ import { tmpdir } from 'os';
 const mocks = vi.hoisted(() => ({
   isWorkerAlive: vi.fn(async () => false),
   isWorkerPaneAlive: vi.fn(async () => false),
+  getWorkerLiveness: vi.fn(async () => 'dead'),
   execFile: vi.fn(),
   tmuxExecAsync: vi.fn(),
 }));
@@ -32,6 +33,7 @@ vi.mock('../tmux-session.js', async (importOriginal) => {
     ...actual,
     isWorkerAlive: mocks.isWorkerAlive,
     isWorkerPaneAlive: mocks.isWorkerPaneAlive,
+    getWorkerLiveness: mocks.getWorkerLiveness,
   };
 });
 
@@ -42,10 +44,12 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
     vi.resetModules();
     mocks.isWorkerAlive.mockReset();
     mocks.isWorkerPaneAlive.mockReset();
+    mocks.getWorkerLiveness.mockReset();
     mocks.execFile.mockReset();
     mocks.tmuxExecAsync.mockReset();
     mocks.isWorkerAlive.mockResolvedValue(false);
     mocks.isWorkerPaneAlive.mockResolvedValue(false);
+    mocks.getWorkerLiveness.mockResolvedValue('dead');
     mocks.execFile.mockImplementation(
       (_cmd: string, _args: string[], cb: (err: Error | null, stdout: string, stderr: string) => void) => {
         cb(null, '', '');
@@ -71,7 +75,10 @@ describe('runtime-v2 role routing — processCliWorkerVerdicts (AC-7)', () => {
     await mkdir(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
     const outputFile = join(teamRoot, 'workers', 'worker-1', 'verdict.json');
 
-    if (opts.paneAlive) mocks.isWorkerAlive.mockResolvedValue(true);
+    if (opts.paneAlive) {
+      mocks.isWorkerAlive.mockResolvedValue(true);
+      mocks.getWorkerLiveness.mockResolvedValue('alive');
+    }
 
     await writeFile(
       join(teamRoot, 'config.json'),

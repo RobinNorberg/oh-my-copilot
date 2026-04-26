@@ -13,6 +13,7 @@ import { readFile, mkdir } from 'fs/promises';
 import { dirname } from 'path';
 import { performance } from 'perf_hooks';
 import { TeamPaths, absPath } from './state-paths.js';
+import { normalizeTeamManifest } from './governance.js';
 import { canonicalizeTeamConfigWorkers } from './worker-canonicalization.js';
 // ---------------------------------------------------------------------------
 // State I/O helpers (self-contained, no external deps beyond fs)
@@ -56,6 +57,7 @@ function configFromManifest(manifest) {
         leader_cwd: manifest.leader_cwd,
         team_state_root: manifest.team_state_root,
         workspace_mode: manifest.workspace_mode,
+        worktree_mode: manifest.worktree_mode,
         leader_pane_id: manifest.leader_pane_id,
         hud_pane_id: manifest.hud_pane_id,
         resize_hook_name: manifest.resize_hook_name,
@@ -84,7 +86,8 @@ export async function readTeamConfig(teamName, cwd) {
     });
 }
 export async function readTeamManifest(teamName, cwd) {
-    return readJsonSafe(absPath(cwd, TeamPaths.manifest(teamName)));
+    const manifest = await readJsonSafe(absPath(cwd, TeamPaths.manifest(teamName)));
+    return manifest ? normalizeTeamManifest(manifest) : null;
 }
 // ---------------------------------------------------------------------------
 // Worker status / heartbeat readers
@@ -127,6 +130,7 @@ export async function readMonitorSnapshot(teamName, cwd) {
         return {
             taskStatusById: parsed.taskStatusById ?? {},
             workerAliveByName: parsed.workerAliveByName ?? {},
+            workerLivenessByName: parsed.workerLivenessByName ?? {},
             workerStateByName: parsed.workerStateByName ?? {},
             workerTurnCountByName: parsed.workerTurnCountByName ?? {},
             workerTaskIdByName: parsed.workerTaskIdByName ?? {},
@@ -264,7 +268,19 @@ export async function getTeamSummary(teamName, cwd) {
         if (alive && status.state === 'working' && (hb?.turn_count ?? 0) > 5) {
             nonReportingWorkers.push(worker.name);
         }
-        workerSummaries.push({ name: worker.name, alive, lastTurnAt, turnsWithoutProgress });
+        workerSummaries.push({
+            name: worker.name,
+            alive,
+            lastTurnAt,
+            turnsWithoutProgress,
+            working_dir: worker.working_dir,
+            worktree_repo_root: worker.worktree_repo_root,
+            worktree_path: worker.worktree_path,
+            worktree_branch: worker.worktree_branch,
+            worktree_detached: worker.worktree_detached,
+            worktree_created: worker.worktree_created,
+            team_state_root: worker.team_state_root,
+        });
     }
     const perf = {
         total_ms: Number((performance.now() - summaryStartMs).toFixed(2)),
@@ -276,6 +292,9 @@ export async function getTeamSummary(teamName, cwd) {
     return {
         teamName: config.name,
         workerCount: config.worker_count,
+        team_state_root: config.team_state_root,
+        workspace_mode: config.workspace_mode,
+        worktree_mode: config.worktree_mode,
         tasks: counts,
         workers: workerSummaries,
         nonReportingWorkers,
@@ -287,6 +306,30 @@ export async function getTeamSummary(teamName, cwd) {
 // ---------------------------------------------------------------------------
 export async function saveTeamConfig(config, cwd) {
     await writeAtomic(absPath(cwd, TeamPaths.config(config.name)), JSON.stringify(config, null, 2));
+    const manifestPath = absPath(cwd, TeamPaths.manifest(config.name));
+    const existingManifest = await readJsonSafe(manifestPath);
+    if (existingManifest) {
+        const nextManifest = normalizeTeamManifest({
+            ...existingManifest,
+            workers: config.workers,
+            worker_count: config.worker_count,
+            tmux_session: config.tmux_session,
+            next_task_id: config.next_task_id,
+            created_at: config.created_at,
+            leader_cwd: config.leader_cwd,
+            team_state_root: config.team_state_root,
+            workspace_mode: config.workspace_mode,
+            worktree_mode: config.worktree_mode,
+            leader_pane_id: config.leader_pane_id,
+            hud_pane_id: config.hud_pane_id,
+            resize_hook_name: config.resize_hook_name,
+            resize_hook_target: config.resize_hook_target,
+            next_worker_index: config.next_worker_index,
+            policy: config.policy ?? existingManifest.policy,
+            governance: config.governance ?? existingManifest.governance,
+        });
+        await writeAtomic(manifestPath, JSON.stringify(nextManifest, null, 2));
+    }
 }
 // ---------------------------------------------------------------------------
 // Scaling lock (file-based mutex for scale up/down)
@@ -345,7 +388,8 @@ export function diffSnapshots(prev, current) {
     // Worker state transitions
     for (const [workerName, currentAlive] of Object.entries(current.workerAliveByName)) {
         const prevAlive = prev.workerAliveByName[workerName];
-        if (prevAlive === true && !currentAlive) {
+        const currentLiveness = current.workerLivenessByName?.[workerName] ?? (currentAlive ? 'alive' : 'dead');
+        if (prevAlive === true && currentLiveness === 'dead') {
             events.push({
                 type: 'worker_stopped',
                 worker: workerName,

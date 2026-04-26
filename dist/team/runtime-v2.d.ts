@@ -17,6 +17,7 @@
  */
 import type { TeamConfig, TeamTask, WorkerStatus, WorkerHeartbeat } from './types.js';
 import type { TeamPhase } from './phase-controller.js';
+import { type WorkerPaneLiveness } from './tmux-session.js';
 import type { PluginConfig } from '../shared/types.js';
 import { type CliWorkerOutputPayload } from './cli-worker-contract.js';
 export declare function isRuntimeV2Enabled(env?: NodeJS.ProcessEnv): boolean;
@@ -34,9 +35,17 @@ export interface TeamSnapshotV2 {
     workers: Array<{
         name: string;
         alive: boolean;
+        liveness: WorkerPaneLiveness;
         status: WorkerStatus;
         heartbeat: WorkerHeartbeat | null;
         assignedTasks: string[];
+        working_dir?: string;
+        worktree_repo_root?: string;
+        worktree_path?: string;
+        worktree_branch?: string;
+        worktree_detached?: boolean;
+        worktree_created?: boolean;
+        team_state_root?: string;
         turnsWithoutProgress: number;
     }>;
     tasks: {

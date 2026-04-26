@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { validateTeamName } from '../team/team-name.js';
+import { cleanupTeamWorktrees } from '../team/git-worktree.js';
 
 export interface OmcTeamJob {
   status: 'running' | 'completed' | 'failed' | 'timeout';
@@ -13,6 +14,15 @@ export interface OmcTeamJob {
   teamName?: string;
   cwd?: string;
   cleanedUpAt?: string;
+  cleanupBlockedAt?: string;
+  cleanupBlockedReason?: string;
+}
+
+export interface ScopedTeamStateCleanupResult {
+  ok: boolean;
+  message: string;
+  preservedWorktrees?: number;
+  reason?: string;
 }
 
 type ArtifactOutcome =
@@ -93,34 +103,54 @@ export function isJobTerminal(job: OmcTeamJob): boolean {
   return job.status === 'completed' || job.status === 'failed' || job.status === 'timeout';
 }
 
-export function isPidAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-export function clearScopedTeamState(job: Pick<OmcTeamJob, 'cwd' | 'teamName'>): string {
+export function clearScopedTeamState(job: Pick<OmcTeamJob, 'cwd' | 'teamName'>): ScopedTeamStateCleanupResult {
   if (!job.cwd || !job.teamName) {
-    return 'team state cleanup skipped (missing job cwd/teamName).';
+    return { ok: true, message: 'team state cleanup skipped (missing job cwd/teamName).' };
   }
 
   try {
     validateTeamName(job.teamName);
   } catch (error) {
-    return `team state cleanup skipped (invalid teamName): ${error instanceof Error ? error.message : String(error)}`;
+    return {
+      ok: true,
+      message: `team state cleanup skipped (invalid teamName): ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
   const stateDir = join(job.cwd, '.omcp', 'state', 'team', job.teamName);
+  let worktreeMessage = 'worktree cleanup skipped.';
+  try {
+    const cleanup = cleanupTeamWorktrees(job.teamName, job.cwd);
+    worktreeMessage = `worktree cleanup attempted for ${job.teamName}.`;
+    if (cleanup.preserved.length > 0) {
+      return {
+        ok: false,
+        message: `${worktreeMessage} preserved ${cleanup.preserved.length} worktree(s); team state retained at ${stateDir}.`,
+        preservedWorktrees: cleanup.preserved.length,
+        reason: `worktrees_preserved:${cleanup.preserved.length}`,
+      };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      message: `worktree cleanup skipped: ${message}; team state retained at ${stateDir}.`,
+      reason: `worktree_cleanup_failed:${message}`,
+    };
+  }
+
   try {
     if (!existsSync(stateDir)) {
-      return `team state dir not found at ${stateDir}.`;
+      return { ok: true, message: `${worktreeMessage} team state dir not found at ${stateDir}.` };
     }
     rmSync(stateDir, { recursive: true, force: true });
-    return `team state dir removed at ${stateDir}.`;
+    return { ok: true, message: `${worktreeMessage} team state dir removed at ${stateDir}.` };
   } catch (error) {
-    return `team state cleanup failed at ${stateDir}: ${error instanceof Error ? error.message : String(error)}`;
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      message: `${worktreeMessage} team state cleanup failed at ${stateDir}: ${message}`,
+      reason: `team_state_cleanup_failed:${message}`,
+    };
   }
 }

@@ -19,6 +19,18 @@ import { loadConfig } from '../config/loader.js';
 import { resolveClaudeFamily } from '../config/models.js';
 import type { PluginConfig } from '../shared/types.js';
 
+const CC_FAMILY_TO_ALIAS: Record<string, string> = {
+  SONNET: 'sonnet',
+  OPUS: 'opus',
+  HAIKU: 'haiku',
+};
+
+/** Normalize a model ID to a CC-supported alias (sonnet/opus/haiku) if possible */
+export function normalizeToCcAlias(model: string): string {
+  const family = resolveClaudeFamily(model);
+  return family ? (CC_FAMILY_TO_ALIAS[family] ?? model) : model;
+}
+
 // ---------------------------------------------------------------------------
 // Config cache — avoids repeated disk reads on every enforceModel() call (F10)
 //

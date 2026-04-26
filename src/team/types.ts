@@ -103,7 +103,7 @@ export interface McpWorkerMember {
 export interface HeartbeatData {
   workerName: string;
   teamName: string;
-  provider: 'codex' | 'gemini' | 'copilot';
+  provider: 'codex' | 'gemini' | 'claude';
   pid: number;
   lastPollAt: string;       // ISO timestamp of last poll cycle
   currentTaskId?: string;   // task being executed, if any
@@ -138,7 +138,7 @@ export interface TaskFailureSidecar {
 }
 
 /** Worker backend type */
-export type WorkerBackend = 'copilot-native' | 'mcp-codex' | 'mcp-gemini' | 'tmux-copilot' | 'tmux-codex' | 'tmux-gemini' | 'tmux-cursor';
+export type WorkerBackend = 'claude-native' | 'copilot-native' | 'mcp-codex' | 'mcp-gemini' | 'tmux-claude' | 'tmux-copilot' | 'tmux-codex' | 'tmux-gemini' | 'tmux-cursor';
 
 /** Worker capability tag */
 export type WorkerCapability =
@@ -196,12 +196,16 @@ export interface TeamLeader {
   role: string;
 }
 
-/** Team-level policy configuration */
-export interface TeamPolicy {
+/** Team transport/runtime policy configuration */
+export interface TeamTransportPolicy {
   display_mode: 'split_pane' | 'auto';
   worker_launch_mode: 'interactive' | 'prompt';
   dispatch_mode: 'hook_preferred_with_fallback' | 'transport_direct';
   dispatch_ack_timeout_ms: number;
+}
+
+/** Team governance controls independent from transport/runtime policy */
+export interface TeamGovernance {
   delegation_only: boolean;
   plan_approval_required: boolean;
   nested_teams_allowed: boolean;
@@ -209,14 +213,8 @@ export interface TeamPolicy {
   cleanup_requires_all_workers_inactive: boolean;
 }
 
-/** Transport-specific fields (split from TeamPolicy for governance.ts) */
-export type TeamTransportPolicy = Pick<TeamPolicy, 'display_mode' | 'worker_launch_mode' | 'dispatch_mode' | 'dispatch_ack_timeout_ms'>;
-
-/** Governance-specific fields (split from TeamPolicy for governance.ts) */
-export type TeamGovernance = Pick<TeamPolicy, 'delegation_only' | 'plan_approval_required' | 'nested_teams_allowed' | 'one_team_per_leader_session' | 'cleanup_requires_all_workers_inactive'>;
-
-/** Team lifecycle profile */
-export type LifecycleProfile = 'default' | 'linked_ralph';
+/** Legacy alias kept for backwards compatibility when reading old manifests */
+export type TeamPolicy = TeamTransportPolicy & Partial<TeamGovernance>;
 
 /** Permissions snapshot captured at team creation */
 export interface PermissionsSnapshot {
@@ -231,9 +229,8 @@ export interface TeamManifestV2 {
   name: string;
   task: string;
   leader: TeamLeader;
-  policy: TeamPolicy;
-  governance?: Partial<TeamGovernance>;
-  lifecycle_profile?: LifecycleProfile;
+  policy: TeamTransportPolicy;
+  governance: TeamGovernance;
   permissions_snapshot: PermissionsSnapshot;
   tmux_session: string;
   worker_count: number;
@@ -243,6 +240,8 @@ export interface TeamManifestV2 {
   leader_cwd?: string;
   team_state_root?: string;
   workspace_mode?: 'single' | 'worktree';
+  worktree_mode?: 'disabled' | 'detached' | 'named';
+  lifecycle_profile?: 'default' | 'linked_ralph';
   leader_pane_id: string | null;
   hud_pane_id: string | null;
   resize_hook_name: string | null;
@@ -255,14 +254,16 @@ export interface WorkerInfo {
   name: string;
   index: number;
   role: string;
-  worker_cli?: 'codex' | 'claude' | 'gemini' | 'cursor';
+  worker_cli?: 'codex' | 'claude' | 'copilot' | 'gemini' | 'cursor';
   assigned_tasks: string[];
   pid?: number;
   pane_id?: string;
   working_dir?: string;
+  worktree_repo_root?: string;
   worktree_path?: string;
   worktree_branch?: string;
   worktree_detached?: boolean;
+  worktree_created?: boolean;
   team_state_root?: string;
   /**
    * Verdict-output file path for CLI-worker output contract (AC-7).
@@ -278,6 +279,8 @@ export interface TeamConfig {
   task: string;
   agent_type: string;
   worker_launch_mode: 'interactive' | 'prompt';
+  policy?: TeamTransportPolicy;
+  governance?: TeamGovernance;
   worker_count: number;
   max_workers: number;
   workers: WorkerInfo[];
@@ -288,6 +291,8 @@ export interface TeamConfig {
   leader_cwd?: string;
   team_state_root?: string;
   workspace_mode?: 'single' | 'worktree';
+  worktree_mode?: 'disabled' | 'detached' | 'named';
+  lifecycle_profile?: 'default' | 'linked_ralph';
   leader_pane_id: string | null;
   hud_pane_id: string | null;
   resize_hook_name: string | null;
@@ -299,9 +304,6 @@ export interface TeamConfig {
    * `scaleUp`, worker restart, and spawn paths. Immutable for the team's lifetime.
    */
   resolved_routing?: Record<CanonicalTeamRole, { primary: RoleAssignment; fallback: RoleAssignment }>;
-  policy?: Partial<TeamPolicy>;
-  governance?: Partial<TeamGovernance>;
-  lifecycle_profile?: LifecycleProfile;
 }
 
 /** Dispatch request kinds */
@@ -421,6 +423,9 @@ export type ReleaseTaskClaimResult =
 export interface TeamSummary {
   teamName: string;
   workerCount: number;
+  team_state_root?: string;
+  workspace_mode?: 'single' | 'worktree';
+  worktree_mode?: 'disabled' | 'detached' | 'named';
   tasks: {
     total: number;
     pending: number;
@@ -429,7 +434,19 @@ export interface TeamSummary {
     completed: number;
     failed: number;
   };
-  workers: Array<{ name: string; alive: boolean; lastTurnAt: string | null; turnsWithoutProgress: number }>;
+  workers: Array<{
+    name: string;
+    alive: boolean;
+    lastTurnAt: string | null;
+    turnsWithoutProgress: number;
+    working_dir?: string;
+    worktree_repo_root?: string;
+    worktree_path?: string;
+    worktree_branch?: string;
+    worktree_detached?: boolean;
+    worktree_created?: boolean;
+    team_state_root?: string;
+  }>;
   nonReportingWorkers: string[];
   performance?: TeamSummaryPerformance;
 }
@@ -454,6 +471,7 @@ export interface ShutdownAck {
 export interface TeamMonitorSnapshotState {
   taskStatusById: Record<string, string>;
   workerAliveByName: Record<string, boolean>;
+  workerLivenessByName?: Record<string, 'alive' | 'dead' | 'unknown'>;
   workerStateByName: Record<string, string>;
   workerTurnCountByName: Record<string, number>;
   workerTaskIdByName: Record<string, string>;

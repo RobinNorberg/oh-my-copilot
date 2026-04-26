@@ -106,6 +106,7 @@ export async function transitionTaskStatus(taskId, from, to, claimToken, deps) {
             : {
                 taskStatusById: {},
                 workerAliveByName: {},
+                workerLivenessByName: {},
                 workerStateByName: {},
                 workerTurnCountByName: {},
                 workerTaskIdByName: {},
