@@ -190,7 +190,7 @@ describe('spawnWorkerForTask – prompt mode and interactive worker launch', () 
         await spawnWorkerForTask(runtime, 'worker-1', 0);
         const captureCalls = tmuxCalls.args.filter(args => args[0] === 'capture-pane');
         expect(captureCalls.length).toBeGreaterThan(0);
-        const readInstructionCalls = tmuxCalls.args.filter(args => args[0] === 'send-keys' && args.includes('-l') && (args[args.length - 1] ?? '').includes('Read and execute your task from:'));
+        const readInstructionCalls = tmuxCalls.args.filter(args => args[0] === 'send-keys' && args.includes('-l') && (args[args.length - 1] ?? '').includes('execute now'));
         expect(readInstructionCalls.length).toBe(1);
         expect(tmuxCalls.args).toContainEqual(['set-window-option', '-t', 'test-session:0', 'main-pane-width', '80']);
         rmSync(cwd, { recursive: true, force: true });

@@ -209,7 +209,7 @@ function getDefaultShell() {
     return process.env.COMSPEC || "cmd.exe";
   }
   const shell = process.env.SHELL || "/bin/sh";
-  const name = (0, import_path9.basename)(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = (0, import_path11.basename)(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
   }
@@ -219,7 +219,7 @@ function pathEntries(envPath) {
   return (envPath ?? "").split(process.platform === "win32" ? ";" : ":").map((entry) => entry.trim()).filter(Boolean);
 }
 function pathCandidateNames(candidatePath) {
-  const base = (0, import_path9.basename)(candidatePath.replace(/\\/g, "/"));
+  const base = (0, import_path11.basename)(candidatePath.replace(/\\/g, "/"));
   const bare = base.replace(/\.(exe|cmd|bat)$/i, "");
   if (process.platform === "win32") {
     return Array.from(/* @__PURE__ */ new Set([`${bare}.exe`, `${bare}.cmd`, `${bare}.bat`, bare]));
@@ -229,15 +229,15 @@ function pathCandidateNames(candidatePath) {
 function resolveShellFromPath(candidatePath) {
   for (const dir of pathEntries(process.env.PATH)) {
     for (const name of pathCandidateNames(candidatePath)) {
-      const full = (0, import_path9.join)(dir, name);
-      if ((0, import_fs6.existsSync)(full)) return full;
+      const full = (0, import_path11.join)(dir, name);
+      if ((0, import_fs7.existsSync)(full)) return full;
     }
   }
   return null;
 }
 function resolveShellFromCandidates(paths, rcFile) {
   for (const p of paths) {
-    if ((0, import_fs6.existsSync)(p)) return { shell: p, rcFile };
+    if ((0, import_fs7.existsSync)(p)) return { shell: p, rcFile };
     const resolvedFromPath = resolveShellFromPath(p);
     if (resolvedFromPath) return { shell: resolvedFromPath, rcFile };
   }
@@ -245,9 +245,9 @@ function resolveShellFromCandidates(paths, rcFile) {
 }
 function resolveSupportedShellAffinity(shellPath) {
   if (!shellPath) return null;
-  const name = (0, import_path9.basename)(shellPath.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
+  const name = (0, import_path11.basename)(shellPath.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (name !== "zsh" && name !== "bash") return null;
-  if (!(0, import_fs6.existsSync)(shellPath)) return null;
+  if (!(0, import_fs7.existsSync)(shellPath)) return null;
   const home = process.env.HOME ?? "";
   const rcFile = home ? `${home}/.${name}rc` : null;
   return { shell: shellPath, rcFile };
@@ -271,7 +271,7 @@ function escapeForCmdSet(value) {
   return value.replace(/"/g, '""');
 }
 function shellNameFromPath(shellPath) {
-  const shellName = (0, import_path9.basename)(shellPath.replace(/\\/g, "/"));
+  const shellName = (0, import_path11.basename)(shellPath.replace(/\\/g, "/"));
   return shellName.replace(/\.(exe|cmd|bat)$/i, "");
 }
 function shellEscape(value) {
@@ -283,7 +283,7 @@ function assertSafeEnvKey(key) {
   }
 }
 function isAbsoluteLaunchBinaryPath(value) {
-  return (0, import_path9.isAbsolute)(value) || import_path9.win32.isAbsolute(value);
+  return (0, import_path11.isAbsolute)(value) || import_path11.win32.isAbsolute(value);
 }
 function assertSafeLaunchBinary(launchBinary) {
   if (launchBinary.trim().length === 0) {
@@ -791,9 +791,9 @@ async function isWorkerAlive(paneId) {
 async function killWorkerPanes(opts) {
   const { paneIds, leaderPaneId, teamName, cwd, graceMs = 1e4 } = opts;
   if (!paneIds.length) return;
-  const shutdownPath = (0, import_path9.join)(cwd, ".omcp", "state", "team", teamName, "shutdown.json");
+  const shutdownPath = (0, import_path11.join)(cwd, ".omcp", "state", "team", teamName, "shutdown.json");
   try {
-    await import_promises.default.writeFile(shutdownPath, JSON.stringify({ requestedAt: Date.now() }));
+    await import_promises2.default.writeFile(shutdownPath, JSON.stringify({ requestedAt: Date.now() }));
     await sleep(graceMs);
   } catch {
   }
@@ -879,14 +879,14 @@ async function resolveSplitPaneWorkerPaneIds(sessionName2, configPaneIds, leader
     return deduped;
   }
 }
-var import_fs6, import_path9, import_promises, sleep, TMUX_SESSION_PREFIX, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
+var import_fs7, import_path11, import_promises2, sleep, TMUX_SESSION_PREFIX, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
     init_tmux_utils();
-    import_fs6 = require("fs");
-    import_path9 = require("path");
-    import_promises = __toESM(require("fs/promises"), 1);
+    import_fs7 = require("fs");
+    import_path11 = require("path");
+    import_promises2 = __toESM(require("fs/promises"), 1);
     init_team_name();
     sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     TMUX_SESSION_PREFIX = "omcp-team";
@@ -2835,39 +2835,30 @@ function getPromptModeArgs(agentType, instruction) {
 // src/team/runtime.ts
 init_team_name();
 
-// src/utils/host-detection.ts
-function getHostCliType() {
-  if (process.env.CLAUDE_CODE_ENTRYPOINT) return "claude";
-  return "copilot";
-}
-
-// src/team/runtime.ts
-init_tmux_session();
-
 // src/team/worker-bootstrap.ts
-var import_promises2 = require("fs/promises");
-var import_path11 = require("path");
+var import_promises = require("fs/promises");
+var import_path10 = require("path");
 
 // src/agents/prompt-helpers.ts
-var import_fs7 = require("fs");
-var import_path10 = require("path");
+var import_fs6 = require("fs");
+var import_path9 = require("path");
 var import_url2 = require("url");
 var import_meta2 = {};
 function getPackageDir2() {
   if (typeof __dirname !== "undefined" && __dirname) {
-    const currentDirName = (0, import_path10.basename)(__dirname);
-    const parentDirName = (0, import_path10.basename)((0, import_path10.dirname)(__dirname));
+    const currentDirName = (0, import_path9.basename)(__dirname);
+    const parentDirName = (0, import_path9.basename)((0, import_path9.dirname)(__dirname));
     if (currentDirName === "bridge") {
-      return (0, import_path10.join)(__dirname, "..");
+      return (0, import_path9.join)(__dirname, "..");
     }
     if (currentDirName === "agents" && (parentDirName === "src" || parentDirName === "dist")) {
-      return (0, import_path10.join)(__dirname, "..", "..");
+      return (0, import_path9.join)(__dirname, "..", "..");
     }
   }
   try {
     const __filename = (0, import_url2.fileURLToPath)(import_meta2.url);
-    const __dirname2 = (0, import_path10.dirname)(__filename);
-    return (0, import_path10.join)(__dirname2, "..", "..");
+    const __dirname2 = (0, import_path9.dirname)(__filename);
+    return (0, import_path9.join)(__dirname2, "..", "..");
   } catch {
   }
   return process.cwd();
@@ -2883,9 +2874,9 @@ function getValidAgentRoles() {
   } catch {
   }
   try {
-    const agentsDir = (0, import_path10.join)(getPackageDir2(), "agents");
-    const files = (0, import_fs7.readdirSync)(agentsDir);
-    _cachedRoles = files.filter((f) => f.endsWith(".md") && f !== "AGENTS.md").map((f) => (0, import_path10.basename)(f, ".md").replace(/\.agent$/, "")).sort();
+    const agentsDir = (0, import_path9.join)(getPackageDir2(), "agents");
+    const files = (0, import_fs6.readdirSync)(agentsDir);
+    _cachedRoles = files.filter((f) => f.endsWith(".md") && f !== "AGENTS.md").map((f) => (0, import_path9.basename)(f, ".md").replace(/\.agent$/, "")).sort();
   } catch (err) {
     console.error("[prompt-injection] CRITICAL: Could not scan agents/ directory for role discovery:", err);
     _cachedRoles = [];
@@ -2952,7 +2943,7 @@ function formatOmcCliInvocation(commandSuffix, options = {}) {
 // src/team/worker-bootstrap.ts
 var DEFAULT_INSTRUCTION_STATE_ROOT = ".omcp/state";
 function buildInstructionPath(...parts) {
-  return (0, import_path11.join)(...parts).replaceAll("\\", "/");
+  return (0, import_path10.join)(...parts).replaceAll("\\", "/");
 }
 function buildTeamStateInstructionPath(teamName, instructionStateRoot, ...teamRelativeParts) {
   const baseParts = instructionStateRoot === DEFAULT_INSTRUCTION_STATE_ROOT ? [instructionStateRoot, "team", teamName] : [instructionStateRoot];
@@ -3131,28 +3122,37 @@ ${bootstrapInstructions}
 ` : ""}`;
 }
 async function composeInitialInbox(teamName, workerName2, content, cwd, cliOutputContract) {
-  const inboxPath = (0, import_path11.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`);
-  await (0, import_promises2.mkdir)((0, import_path11.dirname)(inboxPath), { recursive: true });
+  const inboxPath = (0, import_path10.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}/inbox.md`);
+  await (0, import_promises.mkdir)((0, import_path10.dirname)(inboxPath), { recursive: true });
   const finalContent = cliOutputContract && !content.includes(cliOutputContract) ? `${content}
 ${cliOutputContract}` : content;
-  await (0, import_promises2.writeFile)(inboxPath, finalContent, "utf-8");
+  await (0, import_promises.writeFile)(inboxPath, finalContent, "utf-8");
 }
 async function ensureWorkerStateDir(teamName, workerName2, cwd) {
-  const workerDir = (0, import_path11.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}`);
-  await (0, import_promises2.mkdir)(workerDir, { recursive: true });
-  const mailboxDir = (0, import_path11.join)(cwd, `.omcp/state/team/${teamName}/mailbox`);
-  await (0, import_promises2.mkdir)(mailboxDir, { recursive: true });
-  const tasksDir = (0, import_path11.join)(cwd, `.omcp/state/team/${teamName}/tasks`);
-  await (0, import_promises2.mkdir)(tasksDir, { recursive: true });
+  const workerDir = (0, import_path10.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}`);
+  await (0, import_promises.mkdir)(workerDir, { recursive: true });
+  const mailboxDir = (0, import_path10.join)(cwd, `.omcp/state/team/${teamName}/mailbox`);
+  await (0, import_promises.mkdir)(mailboxDir, { recursive: true });
+  const tasksDir = (0, import_path10.join)(cwd, `.omcp/state/team/${teamName}/tasks`);
+  await (0, import_promises.mkdir)(tasksDir, { recursive: true });
 }
 async function writeWorkerOverlay(params) {
   const { teamName, workerName: workerName2, cwd } = params;
   const overlay = generateWorkerOverlay(params);
-  const overlayPath = (0, import_path11.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}/AGENTS.md`);
-  await (0, import_promises2.mkdir)((0, import_path11.dirname)(overlayPath), { recursive: true });
-  await (0, import_promises2.writeFile)(overlayPath, overlay, "utf-8");
+  const overlayPath = (0, import_path10.join)(cwd, `.omcp/state/team/${teamName}/workers/${workerName2}/AGENTS.md`);
+  await (0, import_promises.mkdir)((0, import_path10.dirname)(overlayPath), { recursive: true });
+  await (0, import_promises.writeFile)(overlayPath, overlay, "utf-8");
   return overlayPath;
 }
+
+// src/utils/host-detection.ts
+function getHostCliType() {
+  if (process.env.CLAUDE_CODE_ENTRYPOINT) return "claude";
+  return "copilot";
+}
+
+// src/team/runtime.ts
+init_tmux_session();
 
 // src/team/git-worktree.ts
 var import_node_fs = require("node:fs");
@@ -4353,7 +4353,7 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     const notified = await notifyPaneWithRetry(
       runtime.sessionName,
       paneId,
-      `Read and execute your task from: ${relInboxPath}`
+      generateTriggerMessage(runtime.teamName, workerNameValue)
     );
     if (!notified) {
       await killWorkerPane(runtime, workerNameValue, paneId);

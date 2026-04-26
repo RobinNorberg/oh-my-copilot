@@ -39548,7 +39548,7 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     const notified = await notifyPaneWithRetry2(
       runtime.sessionName,
       paneId,
-      `Read and execute your task from: ${relInboxPath}`
+      generateTriggerMessage(runtime.teamName, workerNameValue)
     );
     if (!notified) {
       await killWorkerPane(runtime, workerNameValue, paneId);
@@ -39717,6 +39717,7 @@ var init_runtime = __esm({
     init_tmux_utils();
     init_model_contract();
     init_team_name();
+    init_worker_bootstrap();
     init_host_detection();
     init_tmux_session();
     init_worker_bootstrap();

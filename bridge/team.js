@@ -7515,6 +7515,7 @@ init_worker_bootstrap();
 init_tmux_utils();
 init_model_contract();
 init_team_name();
+init_worker_bootstrap();
 import { mkdir as mkdir4, writeFile as writeFile4, readFile as readFile6, rm as rm3, rename as rename2 } from "fs/promises";
 import { join as join18 } from "path";
 import { existsSync as existsSync13 } from "fs";
@@ -8857,6 +8858,17 @@ async function teamStatusByTeamName(teamName, cwd = process.cwd()) {
       workerPaneIds: Array.from(new Set(
         (config?.workers ?? []).map((worker) => worker.pane_id).filter((paneId) => typeof paneId === "string" && paneId.trim().length > 0)
       )),
+      workers: (config?.workers ?? []).map((worker) => ({
+        name: worker.name,
+        pane_id: worker.pane_id,
+        working_dir: worker.working_dir,
+        worktree_repo_root: worker.worktree_repo_root,
+        worktree_path: worker.worktree_path,
+        worktree_branch: worker.worktree_branch,
+        worktree_detached: worker.worktree_detached,
+        worktree_created: worker.worktree_created,
+        team_state_root: worker.team_state_root
+      })),
       snapshot: snapshot2
     };
   }

@@ -438,6 +438,17 @@ export async function teamStatusByTeamName(teamName, cwd = process.cwd()) {
             workerPaneIds: Array.from(new Set((config?.workers ?? [])
                 .map((worker) => worker.pane_id)
                 .filter((paneId) => typeof paneId === 'string' && paneId.trim().length > 0))),
+            workers: (config?.workers ?? []).map((worker) => ({
+                name: worker.name,
+                pane_id: worker.pane_id,
+                working_dir: worker.working_dir,
+                worktree_repo_root: worker.worktree_repo_root,
+                worktree_path: worker.worktree_path,
+                worktree_branch: worker.worktree_branch,
+                worktree_detached: worker.worktree_detached,
+                worktree_created: worker.worktree_created,
+                team_state_root: worker.team_state_root,
+            })),
             snapshot,
         };
     }
