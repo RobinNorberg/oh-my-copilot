@@ -165,7 +165,7 @@ describe('extendLeaderBootstrapPrompt', () => {
     // team-name segment of the path must not contain '!' or spaces.
     expect(prompt).not.toContain('!');
     // Extract the path segment from the prompt and verify no spaces in it
-    const pathMatch = prompt.match(/\.omc\/state\/team\/([^/]+)\/leader\/inbox\.md/);
+    const pathMatch = prompt.match(/\.omcp\/state\/team\/([^/]+)\/leader\/inbox\.md/);
     expect(pathMatch).not.toBeNull();
     expect(pathMatch![1]).not.toContain('!');
     expect(pathMatch![1]).not.toContain(' ');
