@@ -34897,20 +34897,9 @@ function resolveClaudeWorkerModel(env2 = process.env) {
   if (env2.OMC_ROUTING_FORCE_INHERIT === "true") {
     return void 0;
   }
-  if (!isBedrock() && !isVertexAI()) {
-    return void 0;
-  }
-  const directModel = env2.ANTHROPIC_MODEL || env2.CLAUDE_MODEL || "";
-  if (directModel) {
-    return directModel;
-  }
-  const bedrockModel = env2.CLAUDE_CODE_BEDROCK_SONNET_MODEL || env2.ANTHROPIC_DEFAULT_SONNET_MODEL || "";
-  if (bedrockModel) {
-    return bedrockModel;
-  }
-  const omcModel = env2.OMC_MODEL_MEDIUM || "";
-  if (omcModel) {
-    return omcModel;
+  const explicitModel = env2.ANTHROPIC_MODEL || env2.CLAUDE_MODEL;
+  if (explicitModel && isProviderSpecificModelId(explicitModel)) {
+    return explicitModel;
   }
   return void 0;
 }

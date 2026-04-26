@@ -2,7 +2,7 @@ import { spawnSync } from 'child_process';
 import { isAbsolute, normalize, win32 as win32Path } from 'path';
 import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
-import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
+import { isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 const resolvedPathCache = new Map();
 const UNTRUSTED_PATH_PATTERNS = [
@@ -356,26 +356,15 @@ export function resolveClaudeWorkerModel(env = process.env) {
     if (env.OMC_ROUTING_FORCE_INHERIT === 'true') {
         return undefined;
     }
-    // Only needed for non-standard providers
-    if (!isBedrock() && !isVertexAI()) {
-        return undefined;
-    }
-    // Direct model env vars — highest priority
-    const directModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || '';
-    if (directModel) {
-        return directModel;
-    }
-    // Fallback: Bedrock tier-specific env vars (default to sonnet tier)
-    const bedrockModel = env.CLAUDE_CODE_BEDROCK_SONNET_MODEL ||
-        env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
-        '';
-    if (bedrockModel) {
-        return bedrockModel;
-    }
-    // OMC tier env vars
-    const omcModel = env.OMC_MODEL_MEDIUM || '';
-    if (omcModel) {
-        return omcModel;
+    // Only return an explicit --model when the env carries a provider-specific
+    // model id (e.g. a Bedrock ARN). Tier-specific env vars
+    // (CLAUDE_CODE_BEDROCK_*_MODEL, ANTHROPIC_DEFAULT_*_MODEL, OMC_MODEL_*) are
+    // already propagated into the worker pane via env, so adding `--model` would
+    // either duplicate or conflict with the runtime's own selection. See the
+    // copilot worker / Bedrock test in runtime-prompt-mode.test.ts.
+    const explicitModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL;
+    if (explicitModel && isProviderSpecificModelId(explicitModel)) {
+        return explicitModel;
     }
     return undefined;
 }

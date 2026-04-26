@@ -3523,20 +3523,9 @@ function resolveClaudeWorkerModel(env = process.env) {
   if (env.OMC_ROUTING_FORCE_INHERIT === "true") {
     return void 0;
   }
-  if (!isBedrock() && !isVertexAI()) {
-    return void 0;
-  }
-  const directModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || "";
-  if (directModel) {
-    return directModel;
-  }
-  const bedrockModel = env.CLAUDE_CODE_BEDROCK_SONNET_MODEL || env.ANTHROPIC_DEFAULT_SONNET_MODEL || "";
-  if (bedrockModel) {
-    return bedrockModel;
-  }
-  const omcModel = env.OMC_MODEL_MEDIUM || "";
-  if (omcModel) {
-    return omcModel;
+  const explicitModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL;
+  if (explicitModel && isProviderSpecificModelId(explicitModel)) {
+    return explicitModel;
   }
   return void 0;
 }

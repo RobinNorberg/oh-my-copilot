@@ -438,32 +438,16 @@ export function resolveClaudeWorkerModel(
     return undefined;
   }
 
-  // Only needed for non-standard providers
-  if (!isBedrock() && !isVertexAI()) {
-    return undefined;
+  // Only return an explicit --model when the env carries a provider-specific
+  // model id (e.g. a Bedrock ARN). Tier-specific env vars
+  // (CLAUDE_CODE_BEDROCK_*_MODEL, ANTHROPIC_DEFAULT_*_MODEL, OMC_MODEL_*) are
+  // already propagated into the worker pane via env, so adding `--model` would
+  // either duplicate or conflict with the runtime's own selection. See the
+  // copilot worker / Bedrock test in runtime-prompt-mode.test.ts.
+  const explicitModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL;
+  if (explicitModel && isProviderSpecificModelId(explicitModel)) {
+    return explicitModel;
   }
-
-  // Direct model env vars — highest priority
-  const directModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL || '';
-  if (directModel) {
-    return directModel;
-  }
-
-  // Fallback: Bedrock tier-specific env vars (default to sonnet tier)
-  const bedrockModel =
-    env.CLAUDE_CODE_BEDROCK_SONNET_MODEL ||
-    env.ANTHROPIC_DEFAULT_SONNET_MODEL ||
-    '';
-  if (bedrockModel) {
-    return bedrockModel;
-  }
-
-  // OMC tier env vars
-  const omcModel = env.OMC_MODEL_MEDIUM || '';
-  if (omcModel) {
-    return omcModel;
-  }
-
   return undefined;
 }
 
