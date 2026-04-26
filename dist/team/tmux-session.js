@@ -3,15 +3,22 @@
  * Tmux Session Management for MCP Team Bridge
  *
  * Create, kill, list, and manage tmux sessions for MCP worker bridge daemons.
- * Sessions are named "omcp-team-{teamName}-{workerName}".
+ * Sessions are named "omc-team-{teamName}-{workerName}".
  */
-import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync } from '../cli/tmux-utils.js';
 import { existsSync } from 'fs';
 import { join, basename, isAbsolute, win32 } from 'path';
 import fs from 'fs/promises';
 import { validateTeamName } from './team-name.js';
+import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync } from '../cli/tmux-utils.js';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const TMUX_SESSION_PREFIX = 'omcp-team';
+export function detectTeamMultiplexerContext(env = process.env) {
+    if (env.TMUX)
+        return 'tmux';
+    if (env.CMUX_SURFACE_ID)
+        return 'cmux';
+    return 'none';
+}
 /**
  * True when running on Windows under MSYS2/Git Bash.
  * Tmux panes run bash in this environment, not cmd.exe.
@@ -19,13 +26,6 @@ const TMUX_SESSION_PREFIX = 'omcp-team';
 export function isUnixLikeOnWindows() {
     return process.platform === 'win32' &&
         !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
-}
-export function detectTeamMultiplexerContext(env = process.env) {
-    if (env.TMUX)
-        return 'tmux';
-    if (env.CMUX_SURFACE_ID)
-        return 'cmux';
-    return 'none';
 }
 export async function applyMainVerticalLayout(teamTarget) {
     try {
@@ -55,7 +55,7 @@ export function getDefaultShell() {
     if (process.platform === 'win32' && !isUnixLikeOnWindows()) {
         return process.env.COMSPEC || 'cmd.exe';
     }
-    const shell = process.env.SHELL || '/bin/sh';
+    const shell = process.env.SHELL || '/bin/bash';
     // Validate that the shell supports our launch script syntax.
     // Unsupported shells (tcsh, csh, etc.) fall back to /bin/sh.
     const name = basename(shell.replace(/\\/g, '/')).replace(/\.(exe|cmd|bat)$/i, '');
@@ -238,15 +238,16 @@ export function buildWorkerStartCommand(config) {
         }
         // Fish doesn't support combined -lc; use separate -l -c flags
         const shellFlags = isFish ? ['-l', '-c'] : ['-lc'];
+        // envAssignments are already shell-escaped (KEY='value'), so they must
+        // NOT go through shellEscape again — that would wrap them in a second
+        // layer of quotes, causing `env` to receive literal quote characters
+        // in the values (e.g. ANTHROPIC_MODEL="'us.anthropic...'" instead of
+        // ANTHROPIC_MODEL="us.anthropic..."). Issue #1415.
         return [
-            'env',
+            shellEscape('env'),
             ...envAssignments,
-            shell,
-            ...shellFlags,
-            script,
-            '--',
-            ...launchWords,
-        ].map(shellEscape).join(' ');
+            ...[shell, ...shellFlags, script, '--', ...launchWords].map(shellEscape),
+        ].join(' ');
     }
     const envString = Object.entries(config.envVars)
         .map(([k, v]) => {
@@ -300,7 +301,7 @@ export function sanitizeName(name) {
     // Truncate to safe length for tmux session names
     return sanitized.slice(0, 50);
 }
-/** Build session name: "omcp-team-{teamName}-{workerName}" */
+/** Build session name: "omc-team-{teamName}-{workerName}" */
 export function sessionName(teamName, workerName) {
     return `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-${sanitizeName(workerName)}`;
 }
@@ -310,7 +311,7 @@ export function createSession(teamName, workerName, workingDirectory) {
     const name = sessionName(teamName, workerName);
     // Kill existing session if present (stale from previous run)
     try {
-        tmuxExec(['kill-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
+        tmuxExec(['kill-session', '-t', name], { stripTmux: true, stdio: 'pipe', timeout: 5000 });
     }
     catch { /* ignore — session may not exist */ }
     // Create detached session with reasonable terminal size
@@ -318,7 +319,7 @@ export function createSession(teamName, workerName, workingDirectory) {
     if (workingDirectory) {
         args.push('-c', workingDirectory);
     }
-    tmuxExec(args, { stdio: 'pipe', timeout: 5000 });
+    tmuxExec(args, { stripTmux: true, stdio: 'pipe', timeout: 5000 });
     return name;
 }
 /** @deprecated Use killTeamSession() instead */
@@ -326,7 +327,7 @@ export function createSession(teamName, workerName, workingDirectory) {
 export function killSession(teamName, workerName) {
     const name = sessionName(teamName, workerName);
     try {
-        tmuxExec(['kill-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
+        tmuxExec(['kill-session', '-t', name], { stripTmux: true, stdio: 'pipe', timeout: 5000 });
     }
     catch { /* ignore — session may not exist */ }
 }
@@ -335,7 +336,7 @@ export function killSession(teamName, workerName) {
 export function isSessionAlive(teamName, workerName) {
     const name = sessionName(teamName, workerName);
     try {
-        tmuxExec(['has-session', '-t', name], { stdio: 'pipe', timeout: 5000 });
+        tmuxExec(['has-session', '-t', name], { stripTmux: true, stdio: 'pipe', timeout: 5000 });
         return true;
     }
     catch {
@@ -369,23 +370,27 @@ export function listActiveSessions(teamName) {
  */
 export function spawnBridgeInSession(tmuxSession, bridgeScriptPath, configFilePath) {
     const cmd = `node "${bridgeScriptPath}" --config "${configFilePath}"`;
-    tmuxExec(['send-keys', '-t', tmuxSession, cmd, 'Enter'], { stdio: 'pipe', timeout: 5000 });
+    tmuxExec(['send-keys', '-t', tmuxSession, cmd, 'Enter'], { stripTmux: true, stdio: 'pipe', timeout: 5000 });
 }
 /**
  * Create a tmux team topology for a team leader/worker layout.
  *
- * Must be run inside an existing tmux session ($TMUX must be set).
- * By default, creates splits in the CURRENT window so panes appear immediately
- * in the user's view. When options.newWindow is true, creates a detached
- * dedicated tmux window first and then splits worker panes there.
- * Returns sessionName in "session:window" form.
+ * When running inside a classic tmux session, creates splits in the CURRENT
+ * window so panes appear immediately in the user's view. When options.newWindow
+ * is true, creates a detached dedicated tmux window first and then splits worker
+ * panes there.
+ *
+ * When running inside cmux (CMUX_SURFACE_ID without TMUX) or a plain terminal,
+ * falls back to a detached tmux session because the current surface cannot be
+ * targeted as a normal tmux pane/window. Returns sessionName in "session:window"
+ * form.
  *
  * Layout: leader pane on the left, worker panes stacked vertically on the right.
  * IMPORTANT: Uses pane IDs (%N format) not pane indices for stable targeting.
  */
 export async function createTeamSession(teamName, workerCount, cwd, options = {}) {
-    const muxContext = detectTeamMultiplexerContext();
-    const inTmux = muxContext === 'tmux';
+    const multiplexerContext = detectTeamMultiplexerContext();
+    const inTmux = multiplexerContext === 'tmux';
     const useDedicatedWindow = Boolean(options.newWindow && inTmux);
     if (!inTmux) {
         validateTmux();
@@ -399,13 +404,15 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     let sessionMode = inTmux ? 'split-pane' : 'detached-session';
     if (!inTmux) {
         // Backward-compatible fallback: create an isolated detached tmux session
-        // so workflows can run when launched outside an attached tmux client.
+        // so workflows can run when launched outside an attached tmux client. This
+        // also covers cmux, which exposes its own surface metadata without a tmux
+        // pane/window that OMC can split directly.
         const detachedSessionName = `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-${Date.now().toString(36)}`;
         const detachedResult = await tmuxExecAsync([
             'new-session', '-d', '-P', '-F', '#S:0 #{pane_id}',
             '-s', detachedSessionName,
             '-c', cwd,
-        ]);
+        ], { stripTmux: true });
         const detachedLine = detachedResult.stdout.trim();
         const detachedMatch = detachedLine.match(/^(\S+)\s+(%\d+)$/);
         if (!detachedMatch) {
@@ -535,28 +542,46 @@ function paneHasTrustPrompt(captured) {
     const hasChoices = tail.some(l => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
     return hasQuestion && hasChoices;
 }
+function paneIsBootstrapping(captured) {
+    const lines = captured
+        .split('\n')
+        .map((line) => line.replace(/\r/g, '').trim())
+        .filter((line) => line.length > 0);
+    return lines.some((line) => /\b(loading|initializing|starting up)\b/i.test(line)
+        || /\bmodel:\s*loading\b/i.test(line)
+        || /\bconnecting\s+to\b/i.test(line));
+}
 export function paneHasActiveTask(captured) {
     const lines = captured.split('\n').map(l => l.replace(/\r/g, '').trim()).filter(l => l.length > 0);
     const tail = lines.slice(-40);
+    if (tail.some(l => /\b\d+\s+background terminal running\b/i.test(l)))
+        return true;
     if (tail.some(l => /esc to interrupt/i.test(l)))
         return true;
     if (tail.some(l => /\bbackground terminal running\b/i.test(l)))
         return true;
+    if (tail.some(l => /^[·✻]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})$/u.test(l)))
+        return true;
     return false;
 }
 export function paneLooksReady(captured) {
-    const lines = captured
+    const content = captured.trimEnd();
+    if (content === '')
+        return false;
+    const lines = content
         .split('\n')
-        .map(line => line.replace(/\r/g, '').trim())
-        .filter(line => line.length > 0);
+        .map(line => line.replace(/\r/g, '').trimEnd())
+        .filter(line => line.trim() !== '');
     if (lines.length === 0)
         return false;
-    const tail = lines.slice(-20);
-    const hasPrompt = tail.some(line => /^\s*[›>❯]\s*/u.test(line));
-    if (hasPrompt)
+    if (paneIsBootstrapping(content))
+        return false;
+    const lastLine = lines[lines.length - 1];
+    if (/^\s*[›>❯]\s*/u.test(lastLine))
         return true;
-    const hasCodexHint = tail.some(line => /\bgpt-[\w.-]+\b/i.test(line) || /\b\d+% left\b/i.test(line));
-    return hasCodexHint;
+    const hasCodexPromptLine = lines.some((line) => /^\s*›\s*/u.test(line));
+    const hasClaudePromptLine = lines.some((line) => /^\s*❯\s*/u.test(line));
+    return hasCodexPromptLine || hasClaudePromptLine;
 }
 export async function waitForPaneReady(paneId, opts = {}) {
     const envTimeout = Number.parseInt(process.env.OMC_SHELL_READY_TIMEOUT_MS ?? '', 10);
@@ -613,12 +638,12 @@ export function shouldAttemptAdaptiveRetry(args) {
  * Send a short trigger message to a worker via tmux send-keys.
  * Uses robust C-m double-press with delays to ensure the message is submitted.
  * Detects and auto-dismisses trust prompts. Handles busy panes with queue semantics.
- * Message must be < 500 chars; longer payloads should use file-backed inbox.
+ * Message must be < 200 chars.
  * Returns false on error (does not throw).
  */
 export async function sendToWorker(_sessionName, paneId, message) {
-    if (message.length > 500) {
-        console.warn(`[tmux-session] sendToWorker: message rejected (${message.length} chars > 500 limit). Use file-backed inbox for long payloads.`);
+    if (message.length > 200) {
+        console.warn(`[tmux-session] sendToWorker: message rejected (${message.length} chars exceeds 200 char limit)`);
         return false;
     }
     try {
@@ -721,13 +746,13 @@ export async function sendToWorker(_sessionName, paneId, message) {
     }
 }
 /**
- * Inject a status message into the leader Copilot pane.
+ * Inject a status message into the leader Claude pane.
  * The message is typed into the leader's input, triggering a new conversation turn.
  * Prefixes with [OMC_TMUX_INJECT] marker to distinguish from user input.
  * Returns false on error (does not throw).
  */
 export async function injectToLeaderPane(sessionName, leaderPaneId, message) {
-    const prefixed = `[OMC_TMUX_INJECT] ${message}`.slice(0, 500);
+    const prefixed = `[OMC_TMUX_INJECT] ${message}`.slice(0, 200);
     // If the leader is running a blocking tool (e.g. omc_run_team_wait shows
     // "esc to interrupt"), send C-c first so the message is not queued in the
     // stdin buffer behind the blocked process.
@@ -776,10 +801,13 @@ export async function killWorkerPanes(opts) {
     if (!paneIds.length)
         return; // guard: nothing to kill
     // 1. Write graceful shutdown sentinel
-    const shutdownPath = join(cwd, '.omcp', 'state', 'team', teamName, 'shutdown.json');
+    const shutdownPath = join(cwd, '.omc', 'state', 'team', teamName, 'shutdown.json');
     try {
         await fs.writeFile(shutdownPath, JSON.stringify({ requestedAt: Date.now() }));
-        await sleep(graceMs);
+        const aliveChecks = await Promise.all(paneIds.map(id => isWorkerAlive(id)));
+        if (aliveChecks.some(alive => alive)) {
+            await sleep(graceMs);
+        }
     }
     catch { /* sentinel write failure is non-fatal */ }
     // 2. Force-kill each worker pane, guarding leader
@@ -790,6 +818,33 @@ export async function killWorkerPanes(opts) {
             await tmuxExecAsync(['kill-pane', '-t', paneId]);
         }
         catch { /* pane already gone — OK */ }
+    }
+}
+function isPaneId(value) {
+    return typeof value === 'string' && /^%\d+$/.test(value.trim());
+}
+function dedupeWorkerPaneIds(paneIds, leaderPaneId) {
+    const unique = new Set();
+    for (const paneId of paneIds) {
+        if (!isPaneId(paneId))
+            continue;
+        const normalized = paneId.trim();
+        if (normalized === leaderPaneId)
+            continue;
+        unique.add(normalized);
+    }
+    return [...unique];
+}
+export async function resolveSplitPaneWorkerPaneIds(sessionName, recordedPaneIds, leaderPaneId) {
+    const resolved = dedupeWorkerPaneIds(recordedPaneIds ?? [], leaderPaneId);
+    if (!sessionName.includes(':'))
+        return resolved;
+    try {
+        const paneResult = await tmuxCmdAsync(['list-panes', '-t', sessionName, '-F', '#{pane_id}']);
+        return dedupeWorkerPaneIds([...resolved, ...paneResult.stdout.split('\n').map((paneId) => paneId.trim())], leaderPaneId);
+    }
+    catch {
+        return resolved;
     }
 }
 /**
@@ -843,59 +898,6 @@ export async function killTeamSession(sessionName, workerPaneIds, leaderPaneId, 
     }
     catch {
         // Session may already be dead.
-    }
-}
-/**
- * Return true if `value` looks like a tmux pane ID (e.g. "%12").
- */
-export function isPaneId(value) {
-    return /^%\d+$/.test(value.trim());
-}
-/**
- * Deduplicate pane IDs, preserving first-seen order and filtering invalid entries.
- */
-export function dedupeWorkerPaneIds(paneIds) {
-    const seen = new Set();
-    const result = [];
-    for (const id of paneIds) {
-        const trimmed = id.trim();
-        if (isPaneId(trimmed) && !seen.has(trimmed)) {
-            seen.add(trimmed);
-            result.push(trimmed);
-        }
-    }
-    return result;
-}
-/**
- * Resolve the definitive list of worker pane IDs for split-pane cleanup.
- *
- * For split-pane sessions the tmux server is the source of truth — pane IDs
- * stored in config may be stale (worker already exited, pane recycled).
- * This function queries tmux for the live pane list and intersects it with
- * the config-stored IDs so we never kill panes that belong to other windows.
- *
- * Falls back to the config-stored IDs when tmux is unreachable.
- */
-export async function resolveSplitPaneWorkerPaneIds(sessionName, configPaneIds, leaderPaneId) {
-    const deduped = dedupeWorkerPaneIds(configPaneIds);
-    if (!sessionName || deduped.length === 0)
-        return deduped;
-    try {
-        // Query live panes in the session/window
-        const target = sessionName.includes(':') ? sessionName : sessionName.split(':')[0];
-        const result = await tmuxCmdAsync([
-            'list-panes', '-t', target, '-F', '#{pane_id}',
-        ]);
-        const livePaneIds = new Set(result.stdout.trim().split('\n').map(l => l.trim()).filter(isPaneId));
-        // Intersect: only kill panes still alive in this session, excluding leader
-        const resolved = deduped.filter(id => livePaneIds.has(id) && id !== leaderPaneId);
-        // If intersection is empty (all workers already exited), return deduped
-        // config list so callers still attempt best-effort kill.
-        return resolved.length > 0 ? resolved : deduped;
-    }
-    catch {
-        // tmux unavailable or session already gone — fall back to config IDs
-        return deduped;
     }
 }
 //# sourceMappingURL=tmux-session.js.map

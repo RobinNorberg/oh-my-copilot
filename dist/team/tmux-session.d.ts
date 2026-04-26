@@ -1,10 +1,10 @@
+export type TeamMultiplexerContext = 'tmux' | 'cmux' | 'none';
+export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): TeamMultiplexerContext;
 /**
  * True when running on Windows under MSYS2/Git Bash.
  * Tmux panes run bash in this environment, not cmd.exe.
  */
 export declare function isUnixLikeOnWindows(): boolean;
-export type TeamMultiplexerContext = 'tmux' | 'cmux' | 'none';
-export declare function detectTeamMultiplexerContext(env?: NodeJS.ProcessEnv): TeamMultiplexerContext;
 export declare function applyMainVerticalLayout(teamTarget: string): Promise<void>;
 export type TeamSessionMode = 'split-pane' | 'dedicated-window' | 'detached-session';
 export interface TeamSession {
@@ -52,7 +52,7 @@ export declare function buildWorkerStartCommand(config: WorkerPaneConfig): strin
 export declare function validateTmux(hasTmuxContext?: boolean): void;
 /** Sanitize name to prevent tmux command injection (alphanum + hyphen only) */
 export declare function sanitizeName(name: string): string;
-/** Build session name: "omcp-team-{teamName}-{workerName}" */
+/** Build session name: "omc-team-{teamName}-{workerName}" */
 export declare function sessionName(teamName: string, workerName: string): string;
 /** @deprecated Use createTeamSession() instead for split-pane topology */
 /** Create a detached tmux session. Kills stale session with same name first. */
@@ -76,11 +76,15 @@ export declare function spawnBridgeInSession(tmuxSession: string, bridgeScriptPa
 /**
  * Create a tmux team topology for a team leader/worker layout.
  *
- * Must be run inside an existing tmux session ($TMUX must be set).
- * By default, creates splits in the CURRENT window so panes appear immediately
- * in the user's view. When options.newWindow is true, creates a detached
- * dedicated tmux window first and then splits worker panes there.
- * Returns sessionName in "session:window" form.
+ * When running inside a classic tmux session, creates splits in the CURRENT
+ * window so panes appear immediately in the user's view. When options.newWindow
+ * is true, creates a detached dedicated tmux window first and then splits worker
+ * panes there.
+ *
+ * When running inside cmux (CMUX_SURFACE_ID without TMUX) or a plain terminal,
+ * falls back to a detached tmux session because the current surface cannot be
+ * targeted as a normal tmux pane/window. Returns sessionName in "session:window"
+ * form.
  *
  * Layout: leader pane on the left, worker panes stacked vertically on the right.
  * IMPORTANT: Uses pane IDs (%N format) not pane indices for stable targeting.
@@ -110,12 +114,12 @@ export declare function shouldAttemptAdaptiveRetry(args: {
  * Send a short trigger message to a worker via tmux send-keys.
  * Uses robust C-m double-press with delays to ensure the message is submitted.
  * Detects and auto-dismisses trust prompts. Handles busy panes with queue semantics.
- * Message must be < 500 chars; longer payloads should use file-backed inbox.
+ * Message must be < 200 chars.
  * Returns false on error (does not throw).
  */
 export declare function sendToWorker(_sessionName: string, paneId: string, message: string): Promise<boolean>;
 /**
- * Inject a status message into the leader Copilot pane.
+ * Inject a status message into the leader Claude pane.
  * The message is typed into the leader's input, triggering a new conversation turn.
  * Prefixes with [OMC_TMUX_INJECT] marker to distinguish from user input.
  * Returns false on error (does not throw).
@@ -140,6 +144,7 @@ export declare function killWorkerPanes(opts: {
     cwd: string;
     graceMs?: number;
 }): Promise<void>;
+export declare function resolveSplitPaneWorkerPaneIds(sessionName: string, recordedPaneIds?: string[], leaderPaneId?: string): Promise<string[]>;
 /**
  * Kill the team tmux session or just the worker panes, depending on how the
  * team was created.
@@ -151,23 +156,4 @@ export declare function killWorkerPanes(opts: {
 export declare function killTeamSession(sessionName: string, workerPaneIds?: string[], leaderPaneId?: string, options?: {
     sessionMode?: TeamSessionMode;
 }): Promise<void>;
-/**
- * Return true if `value` looks like a tmux pane ID (e.g. "%12").
- */
-export declare function isPaneId(value: string): boolean;
-/**
- * Deduplicate pane IDs, preserving first-seen order and filtering invalid entries.
- */
-export declare function dedupeWorkerPaneIds(paneIds: string[]): string[];
-/**
- * Resolve the definitive list of worker pane IDs for split-pane cleanup.
- *
- * For split-pane sessions the tmux server is the source of truth — pane IDs
- * stored in config may be stale (worker already exited, pane recycled).
- * This function queries tmux for the live pane list and intersects it with
- * the config-stored IDs so we never kill panes that belong to other windows.
- *
- * Falls back to the config-stored IDs when tmux is unreachable.
- */
-export declare function resolveSplitPaneWorkerPaneIds(sessionName: string, configPaneIds: string[], leaderPaneId?: string): Promise<string[]>;
 //# sourceMappingURL=tmux-session.d.ts.map

@@ -823,6 +823,23 @@ var init_mcp_comm = __esm({
   }
 });
 
+// src/team/team-name.ts
+function validateTeamName(teamName) {
+  if (!TEAM_NAME_PATTERN.test(teamName)) {
+    throw new Error(
+      `Invalid team name: "${teamName}". Team name must match /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/.`
+    );
+  }
+  return teamName;
+}
+var TEAM_NAME_PATTERN;
+var init_team_name = __esm({
+  "src/team/team-name.ts"() {
+    "use strict";
+    TEAM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/;
+  }
+});
+
 // src/cli/tmux-utils.ts
 import {
   exec,
@@ -920,23 +937,6 @@ var init_tmux_utils = __esm({
   }
 });
 
-// src/team/team-name.ts
-function validateTeamName(teamName) {
-  if (!TEAM_NAME_PATTERN.test(teamName)) {
-    throw new Error(
-      `Invalid team name: "${teamName}". Team name must match /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/.`
-    );
-  }
-  return teamName;
-}
-var TEAM_NAME_PATTERN;
-var init_team_name = __esm({
-  "src/team/team-name.ts"() {
-    "use strict";
-    TEAM_NAME_PATTERN = /^[a-z0-9][a-z0-9-]{0,48}[a-z0-9]$/;
-  }
-});
-
 // src/team/tmux-session.ts
 var tmux_session_exports = {};
 __export(tmux_session_exports, {
@@ -945,12 +945,10 @@ __export(tmux_session_exports, {
   buildWorkerStartCommand: () => buildWorkerStartCommand,
   createSession: () => createSession,
   createTeamSession: () => createTeamSession,
-  dedupeWorkerPaneIds: () => dedupeWorkerPaneIds,
   detectTeamMultiplexerContext: () => detectTeamMultiplexerContext,
   getDefaultShell: () => getDefaultShell,
   getWorkerLiveness: () => getWorkerLiveness,
   injectToLeaderPane: () => injectToLeaderPane,
-  isPaneId: () => isPaneId,
   isSessionAlive: () => isSessionAlive,
   isUnixLikeOnWindows: () => isUnixLikeOnWindows,
   isWorkerAlive: () => isWorkerAlive,
@@ -975,13 +973,13 @@ __export(tmux_session_exports, {
 import { existsSync as existsSync5 } from "fs";
 import { join as join6, basename as basename3, isAbsolute as isAbsolute3, win32 } from "path";
 import fs from "fs/promises";
-function isUnixLikeOnWindows() {
-  return process.platform === "win32" && !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
-}
 function detectTeamMultiplexerContext(env = process.env) {
   if (env.TMUX) return "tmux";
   if (env.CMUX_SURFACE_ID) return "cmux";
   return "none";
+}
+function isUnixLikeOnWindows() {
+  return process.platform === "win32" && !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
 }
 async function applyMainVerticalLayout(teamTarget) {
   try {
@@ -1009,7 +1007,7 @@ function getDefaultShell() {
   if (process.platform === "win32" && !isUnixLikeOnWindows()) {
     return process.env.COMSPEC || "cmd.exe";
   }
-  const shell = process.env.SHELL || "/bin/sh";
+  const shell = process.env.SHELL || "/bin/bash";
   const name = basename3(shell.replace(/\\/g, "/")).replace(/\.(exe|cmd|bat)$/i, "");
   if (!SUPPORTED_POSIX_SHELLS.has(name)) {
     return "/bin/sh";
@@ -1146,14 +1144,10 @@ function buildWorkerStartCommand(config) {
     }
     const shellFlags = isFish2 ? ["-l", "-c"] : ["-lc"];
     return [
-      "env",
+      shellEscape("env"),
       ...envAssignments,
-      shell,
-      ...shellFlags,
-      script,
-      "--",
-      ...launchWords
-    ].map(shellEscape).join(" ");
+      ...[shell, ...shellFlags, script, "--", ...launchWords].map(shellEscape)
+    ].join(" ");
   }
   const envString = Object.entries(config.envVars).map(([k, v]) => {
     assertSafeEnvKey(k);
@@ -1199,27 +1193,27 @@ function sessionName(teamName, workerName) {
 function createSession(teamName, workerName, workingDirectory) {
   const name = sessionName(teamName, workerName);
   try {
-    tmuxExec(["kill-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
+    tmuxExec(["kill-session", "-t", name], { stripTmux: true, stdio: "pipe", timeout: 5e3 });
   } catch {
   }
   const args = ["new-session", "-d", "-s", name, "-x", "200", "-y", "50"];
   if (workingDirectory) {
     args.push("-c", workingDirectory);
   }
-  tmuxExec(args, { stdio: "pipe", timeout: 5e3 });
+  tmuxExec(args, { stripTmux: true, stdio: "pipe", timeout: 5e3 });
   return name;
 }
 function killSession(teamName, workerName) {
   const name = sessionName(teamName, workerName);
   try {
-    tmuxExec(["kill-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
+    tmuxExec(["kill-session", "-t", name], { stripTmux: true, stdio: "pipe", timeout: 5e3 });
   } catch {
   }
 }
 function isSessionAlive(teamName, workerName) {
   const name = sessionName(teamName, workerName);
   try {
-    tmuxExec(["has-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
+    tmuxExec(["has-session", "-t", name], { stripTmux: true, stdio: "pipe", timeout: 5e3 });
     return true;
   } catch {
     return false;
@@ -1239,11 +1233,11 @@ function listActiveSessions(teamName) {
 }
 function spawnBridgeInSession(tmuxSession, bridgeScriptPath, configFilePath) {
   const cmd = `node "${bridgeScriptPath}" --config "${configFilePath}"`;
-  tmuxExec(["send-keys", "-t", tmuxSession, cmd, "Enter"], { stdio: "pipe", timeout: 5e3 });
+  tmuxExec(["send-keys", "-t", tmuxSession, cmd, "Enter"], { stripTmux: true, stdio: "pipe", timeout: 5e3 });
 }
 async function createTeamSession(teamName, workerCount, cwd, options = {}) {
-  const muxContext = detectTeamMultiplexerContext();
-  const inTmux = muxContext === "tmux";
+  const multiplexerContext = detectTeamMultiplexerContext();
+  const inTmux = multiplexerContext === "tmux";
   const useDedicatedWindow = Boolean(options.newWindow && inTmux);
   if (!inTmux) {
     validateTmux();
@@ -1265,7 +1259,7 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
       detachedSessionName,
       "-c",
       cwd
-    ]);
+    ], { stripTmux: true });
     const detachedLine = detachedResult.stdout.trim();
     const detachedMatch = detachedLine.match(/^(\S+)\s+(%\d+)$/);
     if (!detachedMatch) {
@@ -1409,23 +1403,32 @@ function paneHasTrustPrompt(captured) {
   const hasChoices = tail.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
   return hasQuestion && hasChoices;
 }
+function paneIsBootstrapping(captured) {
+  const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0);
+  return lines.some(
+    (line) => /\b(loading|initializing|starting up)\b/i.test(line) || /\bmodel:\s*loading\b/i.test(line) || /\bconnecting\s+to\b/i.test(line)
+  );
+}
 function paneHasActiveTask(captured) {
   const lines = captured.split("\n").map((l) => l.replace(/\r/g, "").trim()).filter((l) => l.length > 0);
   const tail = lines.slice(-40);
+  if (tail.some((l) => /\b\d+\s+background terminal running\b/i.test(l))) return true;
   if (tail.some((l) => /esc to interrupt/i.test(l))) return true;
   if (tail.some((l) => /\bbackground terminal running\b/i.test(l))) return true;
+  if (tail.some((l) => /^[·✻]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})$/u.test(l))) return true;
   return false;
 }
 function paneLooksReady(captured) {
-  const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0);
+  const content = captured.trimEnd();
+  if (content === "") return false;
+  const lines = content.split("\n").map((line) => line.replace(/\r/g, "").trimEnd()).filter((line) => line.trim() !== "");
   if (lines.length === 0) return false;
-  const tail = lines.slice(-20);
-  const hasPrompt = tail.some((line) => /^\s*[›>❯]\s*/u.test(line));
-  if (hasPrompt) return true;
-  const hasCodexHint = tail.some(
-    (line) => /\bgpt-[\w.-]+\b/i.test(line) || /\b\d+% left\b/i.test(line)
-  );
-  return hasCodexHint;
+  if (paneIsBootstrapping(content)) return false;
+  const lastLine = lines[lines.length - 1];
+  if (/^\s*[›>❯]\s*/u.test(lastLine)) return true;
+  const hasCodexPromptLine = lines.some((line) => /^\s*›\s*/u.test(line));
+  const hasClaudePromptLine = lines.some((line) => /^\s*❯\s*/u.test(line));
+  return hasCodexPromptLine || hasClaudePromptLine;
 }
 async function waitForPaneReady(paneId, opts = {}) {
   const envTimeout = Number.parseInt(process.env.OMC_SHELL_READY_TIMEOUT_MS ?? "", 10);
@@ -1467,8 +1470,8 @@ function shouldAttemptAdaptiveRetry(args) {
   return true;
 }
 async function sendToWorker(_sessionName, paneId, message) {
-  if (message.length > 500) {
-    console.warn(`[tmux-session] sendToWorker: message rejected (${message.length} chars > 500 limit). Use file-backed inbox for long payloads.`);
+  if (message.length > 200) {
+    console.warn(`[tmux-session] sendToWorker: message rejected (${message.length} chars exceeds 200 char limit)`);
     return false;
   }
   try {
@@ -1553,7 +1556,7 @@ async function sendToWorker(_sessionName, paneId, message) {
   }
 }
 async function injectToLeaderPane(sessionName2, leaderPaneId, message) {
-  const prefixed = `[OMC_TMUX_INJECT] ${message}`.slice(0, 500);
+  const prefixed = `[OMC_TMUX_INJECT] ${message}`.slice(0, 200);
   try {
     if (await paneInCopyMode(leaderPaneId)) {
       return false;
@@ -1592,10 +1595,13 @@ async function isWorkerAlive(paneId) {
 async function killWorkerPanes(opts) {
   const { paneIds, leaderPaneId, teamName, cwd, graceMs = 1e4 } = opts;
   if (!paneIds.length) return;
-  const shutdownPath = join6(cwd, ".omcp", "state", "team", teamName, "shutdown.json");
+  const shutdownPath = join6(cwd, ".omc", "state", "team", teamName, "shutdown.json");
   try {
     await fs.writeFile(shutdownPath, JSON.stringify({ requestedAt: Date.now() }));
-    await sleep(graceMs);
+    const aliveChecks = await Promise.all(paneIds.map((id) => isWorkerAlive(id)));
+    if (aliveChecks.some((alive) => alive)) {
+      await sleep(graceMs);
+    }
   } catch {
   }
   for (const paneId of paneIds) {
@@ -1604,6 +1610,32 @@ async function killWorkerPanes(opts) {
       await tmuxExecAsync(["kill-pane", "-t", paneId]);
     } catch {
     }
+  }
+}
+function isPaneId(value) {
+  return typeof value === "string" && /^%\d+$/.test(value.trim());
+}
+function dedupeWorkerPaneIds(paneIds, leaderPaneId) {
+  const unique = /* @__PURE__ */ new Set();
+  for (const paneId of paneIds) {
+    if (!isPaneId(paneId)) continue;
+    const normalized = paneId.trim();
+    if (normalized === leaderPaneId) continue;
+    unique.add(normalized);
+  }
+  return [...unique];
+}
+async function resolveSplitPaneWorkerPaneIds(sessionName2, recordedPaneIds, leaderPaneId) {
+  const resolved = dedupeWorkerPaneIds(recordedPaneIds ?? [], leaderPaneId);
+  if (!sessionName2.includes(":")) return resolved;
+  try {
+    const paneResult = await tmuxCmdAsync(["list-panes", "-t", sessionName2, "-F", "#{pane_id}"]);
+    return dedupeWorkerPaneIds(
+      [...resolved, ...paneResult.stdout.split("\n").map((paneId) => paneId.trim())],
+      leaderPaneId
+    );
+  } catch {
+    return resolved;
   }
 }
 async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, options = {}) {
@@ -1642,50 +1674,12 @@ async function killTeamSession(sessionName2, workerPaneIds, leaderPaneId, option
   } catch {
   }
 }
-function isPaneId(value) {
-  return /^%\d+$/.test(value.trim());
-}
-function dedupeWorkerPaneIds(paneIds) {
-  const seen = /* @__PURE__ */ new Set();
-  const result = [];
-  for (const id of paneIds) {
-    const trimmed = id.trim();
-    if (isPaneId(trimmed) && !seen.has(trimmed)) {
-      seen.add(trimmed);
-      result.push(trimmed);
-    }
-  }
-  return result;
-}
-async function resolveSplitPaneWorkerPaneIds(sessionName2, configPaneIds, leaderPaneId) {
-  const deduped = dedupeWorkerPaneIds(configPaneIds);
-  if (!sessionName2 || deduped.length === 0) return deduped;
-  try {
-    const target = sessionName2.includes(":") ? sessionName2 : sessionName2.split(":")[0];
-    const result = await tmuxCmdAsync([
-      "list-panes",
-      "-t",
-      target,
-      "-F",
-      "#{pane_id}"
-    ]);
-    const livePaneIds = new Set(
-      result.stdout.trim().split("\n").map((l) => l.trim()).filter(isPaneId)
-    );
-    const resolved = deduped.filter(
-      (id) => livePaneIds.has(id) && id !== leaderPaneId
-    );
-    return resolved.length > 0 ? resolved : deduped;
-  } catch {
-    return deduped;
-  }
-}
 var sleep, TMUX_SESSION_PREFIX, SUPPORTED_POSIX_SHELLS, ZSH_CANDIDATES, BASH_CANDIDATES, DANGEROUS_LAUNCH_BINARY_CHARS;
 var init_tmux_session = __esm({
   "src/team/tmux-session.ts"() {
     "use strict";
-    init_tmux_utils();
     init_team_name();
+    init_tmux_utils();
     sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     TMUX_SESSION_PREFIX = "omcp-team";
     SUPPORTED_POSIX_SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "fish", "ksh"]);
