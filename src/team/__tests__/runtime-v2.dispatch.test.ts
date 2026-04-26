@@ -558,21 +558,34 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     });
 
-    // Source passes the full v2 lifecycle instruction to getPromptModeArgs (not the inbox path)
+    // Source passes a short inbox pointer to getPromptModeArgs and keeps the
+    // full lifecycle instruction in inbox.md (not echoed into prompt args).
     expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith(
       'gemini',
       expect.stringContaining('.omcp/state/team/dispatch-team/workers/worker-1/inbox.md'),
     );
+    const promptModeInstruction = modelContractMocks.getPromptModeArgs.mock.calls[0]?.[1];
+    expect(promptModeInstruction).toContain('Open');
+    expect(promptModeInstruction).toContain('.omcp/state/team/dispatch-team/workers/worker-1/inbox.md');
+    expect(promptModeInstruction).not.toContain('claim-task');
+    expect(promptModeInstruction).not.toContain('transition-task-status');
+    expect(promptModeInstruction).not.toContain('blocked');
+    expect(promptModeInstruction).not.toContain('Reviewer seed');
     expect(mocks.spawnWorkerInPane).toHaveBeenCalledWith(
       'dispatch-session',
       '%2',
       expect.objectContaining({
         launchBinary: '/usr/bin/gemini',
         launchArgs: expect.arrayContaining([
-          expect.stringContaining('## REQUIRED: Task Lifecycle Commands'),
+          expect.stringContaining('.omcp/state/team/dispatch-team/workers/worker-1/inbox.md'),
         ]),
       }),
     );
+    const launchArgs = mocks.spawnWorkerInPane.mock.calls[0]?.[2]?.launchArgs ?? [];
+    expect(launchArgs.some((arg: string) => arg.includes('claim-task'))).toBe(false);
+    expect(launchArgs.some((arg: string) => arg.includes('transition-task-status'))).toBe(false);
+    expect(launchArgs.some((arg: string) => arg.includes('blocked'))).toBe(false);
+    expect(launchArgs.some((arg: string) => arg.includes('Reviewer seed'))).toBe(false);
     expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
     expect(mocks.sendToWorker).not.toHaveBeenCalled();
   });
