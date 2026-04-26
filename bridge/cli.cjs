@@ -24582,7 +24582,7 @@ async function checkPersistentModes(sessionId, directory, stopContext) {
     };
   };
   const runRalphPriority = async () => {
-    if (tombstonedWorkflowModes.has("ralph")) return null;
+    if (tombstonedWorkflowModes.has("ralph") || !isModeActive("ralph", workingDir, sessionId)) return null;
     return checkRalphLoop(sessionId, workingDir, cancelInProgress);
   };
   if (autopilotPriorityFirst) {
@@ -24612,7 +24612,7 @@ async function checkPersistentModes(sessionId, directory, stopContext) {
       return teamResult;
     }
   }
-  if (!tombstonedWorkflowModes.has("ultrawork")) {
+  if (!tombstonedWorkflowModes.has("ultrawork") && isModeActive("ultrawork", workingDir, sessionId)) {
     const ultraworkResult = await checkUltrawork(sessionId, workingDir, hasIncompleteTodos, cancelInProgress);
     if (ultraworkResult) {
       return ultraworkResult;
@@ -24667,6 +24667,7 @@ var init_persistent_mode = __esm({
     init_state();
     init_subagent_tracker();
     init_truncate_prompt();
+    init_mode_registry();
     CANCEL_SIGNAL_TTL_MS2 = 3e4;
     STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1e3;
     todoContinuationAttempts = /* @__PURE__ */ new Map();
@@ -48927,8 +48928,9 @@ async function render(context, config2) {
       rendered.set("omcLabel", bold(`[OMC${versionTag}]`));
     }
   }
-  const hasEnterpriseData = context.rateLimitsResult?.rateLimits?.enterpriseSpentUsd !== void 0;
-  if (enabledElements.rateLimits && context.rateLimitsResult && !hasEnterpriseData) {
+  const isEnterprise = enabledElements.enterpriseMode !== void 0 ? enabledElements.enterpriseMode : (context.subscriptionType ?? "").toLowerCase() === "enterprise" || /claude_zero/i.test(context.rateLimitTier ?? "");
+  const enterpriseCostReplacesRateLimits = isEnterprise && context.rateLimitsResult?.rateLimits?.enterpriseSpentUsd !== void 0;
+  if (enabledElements.rateLimits && context.rateLimitsResult && !enterpriseCostReplacesRateLimits) {
     if (context.rateLimitsResult.rateLimits) {
       const stale = context.rateLimitsResult.stale;
       const limits = enabledElements.useBars ? renderRateLimitsWithBar(
@@ -48969,7 +48971,6 @@ async function render(context, config2) {
       if (session) rendered.set("session", session);
     }
   }
-  const isEnterprise = enabledElements.enterpriseMode !== void 0 ? enabledElements.enterpriseMode : (context.subscriptionType ?? "").toLowerCase() === "enterprise" || /claude_zero/i.test(context.rateLimitTier ?? "");
   if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
     const stale = context.rateLimitsResult?.stale;
     const cost = renderEnterpriseCost(
