@@ -81,7 +81,7 @@ export function clearScopedTeamState(job) {
             message: `team state cleanup skipped (invalid teamName): ${error instanceof Error ? error.message : String(error)}`,
         };
     }
-    const stateDir = join(job.cwd, '.omc', 'state', 'team', job.teamName);
+    const stateDir = join(job.cwd, '.omcp', 'state', 'team', job.teamName);
     let worktreeMessage = 'worktree cleanup skipped.';
     try {
         const cleanup = cleanupTeamWorktrees(job.teamName, job.cwd);

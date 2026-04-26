@@ -82,12 +82,12 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const persisted = JSON.parse(readFileSync(join(jobsDir, `${jobId}.json`), 'utf-8'));
         expect(persisted.status).toBe('failed');
     });
-    it('handleCleanup removes only scoped .omc/state/team/<teamName> directory', async () => {
+    it('handleCleanup removes only scoped .omcp/state/team/<teamName> directory', async () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art3';
         const cwd = join(testRoot, 'workspace');
-        const teamOneDir = join(cwd, '.omc', 'state', 'team', 'team-one');
-        const teamTwoDir = join(cwd, '.omc', 'state', 'team', 'team-two');
+        const teamOneDir = join(cwd, '.omcp', 'state', 'team', 'team-one');
+        const teamTwoDir = join(cwd, '.omcp', 'state', 'team', 'team-two');
         mkdirSync(teamOneDir, { recursive: true });
         mkdirSync(teamTwoDir, { recursive: true });
         writeFileSync(join(teamOneDir, 'a.json'), '{}', 'utf-8');
@@ -103,7 +103,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art5';
         const cwd = join(testRoot, 'workspace-live-pane');
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = join(cwd, '.omcp', 'state', 'team', 'team-one');
         mkdirSync(teamDir, { recursive: true });
         writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({ status: 'running', startedAt: Date.now(), cwd, teamName: 'team-one' }), 'utf-8');
         writeFileSync(join(jobsDir, `${jobId}-panes.json`), JSON.stringify({ paneIds: ['%2'], leaderPaneId: '%1' }), 'utf-8');
@@ -119,7 +119,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art9';
         const cwd = join(testRoot, 'workspace-unknown-probe');
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = join(cwd, '.omcp', 'state', 'team', 'team-one');
         mkdirSync(teamDir, { recursive: true });
         writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({ status: 'running', startedAt: Date.now(), cwd, teamName: 'team-one' }), 'utf-8');
         writeFileSync(join(jobsDir, `${jobId}-panes.json`), JSON.stringify({ paneIds: ['%9'], leaderPaneId: '%1' }), 'utf-8');
@@ -142,7 +142,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         writeFileSync(join(cwd, 'README.md'), 'hello\n', 'utf-8');
         execFileSync('git', ['add', 'README.md'], { cwd, stdio: 'pipe' });
         execFileSync('git', ['commit', '-m', 'init'], { cwd, stdio: 'pipe' });
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = join(cwd, '.omcp', 'state', 'team', 'team-one');
         mkdirSync(teamDir, { recursive: true });
         const worktree = createWorkerWorktree('team-one', 'worker1', cwd);
         writeFileSync(join(worktree.path, 'dirty.txt'), 'uncommitted\n', 'utf-8');
@@ -160,7 +160,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art7';
         const cwd = join(testRoot, 'workspace-unknown-liveness');
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = join(cwd, '.omcp', 'state', 'team', 'team-one');
         mkdirSync(teamDir, { recursive: true });
         writeFileSync(join(teamDir, 'config.json'), JSON.stringify({
             name: 'team-one',
@@ -191,11 +191,11 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art8';
         const cwd = join(testRoot, 'workspace-backup-only');
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = join(cwd, '.omcp', 'state', 'team', 'team-one');
         const backupPath = join(teamDir, 'workers', 'worker-1', 'worktree-root-agents.json');
         mkdirSync(join(teamDir, 'workers', 'worker-1'), { recursive: true });
         writeFileSync(backupPath, JSON.stringify({
-            worktreePath: join(cwd, '.omc', 'team', 'team-one', 'worktrees', 'worker-1'),
+            worktreePath: join(cwd, '.omcp', 'team', 'team-one', 'worktrees', 'worker-1'),
             hadOriginal: true,
             originalContent: 'original',
             installedContent: 'managed',
@@ -222,7 +222,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         writeFileSync(join(cwd, 'README.md'), 'hello\n', 'utf-8');
         execFileSync('git', ['add', 'README.md'], { cwd, stdio: 'pipe' });
         execFileSync('git', ['commit', '-m', 'init'], { cwd, stdio: 'pipe' });
-        const teamOneDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamOneDir = join(cwd, '.omcp', 'state', 'team', 'team-one');
         mkdirSync(teamOneDir, { recursive: true });
         const worktree = createWorkerWorktree('team-one', 'worker1', cwd);
         expect(existsSync(worktree.path)).toBe(true);

@@ -117,7 +117,7 @@ export function clearScopedTeamState(job: Pick<OmcTeamJob, 'cwd' | 'teamName'>):
     };
   }
 
-  const stateDir = join(job.cwd, '.omc', 'state', 'team', job.teamName);
+  const stateDir = join(job.cwd, '.omcp', 'state', 'team', job.teamName);
   let worktreeMessage = 'worktree cleanup skipped.';
   try {
     const cleanup = cleanupTeamWorktrees(job.teamName, job.cwd);
