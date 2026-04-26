@@ -9,7 +9,7 @@ import { readStdin, writeStdinCache, readStdinCache, getContextPercent, getModel
 import { parseTranscript } from "./transcript.js";
 import { readHudState, readHudConfig, getRunningTasks, writeHudState, initializeHUDState, } from "./state.js";
 import { readRalphStateForHud, readUltraworkStateForHud, readPrdStateForHud, readAutopilotStateForHud, } from "./omc-state.js";
-import { getUsage } from "./usage-api.js";
+import { getUsage, getSubscriptionInfo } from "./usage-api.js";
 import { executeCustomProvider } from "./custom-rate-provider.js";
 import { render } from "./render.js";
 import { detectApiKeySource } from "./elements/api-key-source.js";
@@ -264,6 +264,8 @@ async function main(watchMode = false, skipInit = false) {
             ? await refreshMissionBoardState(cwd, config.missionBoard)
             : null;
         const contextPercent = getContextPercent(stdin);
+        // Read subscription info for enterprise detection (best-effort, never throws)
+        const subscriptionInfo = getSubscriptionInfo();
         // Build render context
         const context = {
             contextPercent,
@@ -297,6 +299,8 @@ async function main(watchMode = false, skipInit = false) {
             apiKeySource: config.elements.apiKeySource
                 ? detectApiKeySource(cwd)
                 : null,
+            subscriptionType: subscriptionInfo.subscriptionType,
+            rateLimitTier: subscriptionInfo.rateLimitTier,
             profileName: process.env.COPILOT_CONFIG_DIR
                 ? basename(process.env.COPILOT_CONFIG_DIR).replace(/^\./, '')
                 : null,

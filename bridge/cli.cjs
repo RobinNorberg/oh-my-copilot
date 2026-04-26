@@ -19623,6 +19623,7 @@ var init_types4 = __esm({
       line1: ["hostname", "cwd", "gitRepo", "gitBranch", "gitStatus", "model", "apiKeySource", "profile"],
       main: [
         "omcLabel",
+        "enterpriseCost",
         "rateLimits",
         "customBuckets",
         "permission",
@@ -45659,7 +45660,9 @@ function readKeychainCredential(serviceName, account) {
       accessToken: creds.accessToken,
       expiresAt: creds.expiresAt,
       refreshToken: creds.refreshToken,
-      source: "keychain"
+      source: "keychain",
+      subscriptionType: creds.subscriptionType,
+      rateLimitTier: creds.rateLimitTier
     };
   } catch {
     return null;
@@ -45700,7 +45703,9 @@ function readFileCredentials() {
         accessToken: creds.accessToken,
         expiresAt: creds.expiresAt,
         refreshToken: creds.refreshToken,
-        source: "file"
+        source: "file",
+        subscriptionType: creds.subscriptionType,
+        rateLimitTier: creds.rateLimitTier
       };
     }
   } catch {
@@ -45711,6 +45716,17 @@ function getCredentials() {
   const keychainCreds = readKeychainCredentials();
   if (keychainCreds) return keychainCreds;
   return readFileCredentials();
+}
+function getSubscriptionInfo() {
+  try {
+    const creds = getCredentials();
+    return {
+      subscriptionType: creds?.subscriptionType ?? null,
+      rateLimitTier: creds?.rateLimitTier ?? null
+    };
+  } catch {
+    return { subscriptionType: null, rateLimitTier: null };
+  }
 }
 function validateCredentials(creds) {
   if (!creds.accessToken) return false;
@@ -45929,7 +45945,10 @@ function clamp(v) {
 function parseUsageResponse(response) {
   const fiveHour = response.five_hour?.utilization;
   const sevenDay = response.seven_day?.utilization;
-  if (fiveHour == null && sevenDay == null) return null;
+  const enterpriseCredits = response.extra_usage?.used_credits;
+  const enterpriseCurrency = (response.extra_usage?.currency ?? "USD").toUpperCase();
+  const hasUsableEnterprise = enterpriseCredits != null && enterpriseCurrency === "USD";
+  if (fiveHour == null && sevenDay == null && !hasUsableEnterprise) return null;
   const parseDate = (dateStr) => {
     if (!dateStr) return null;
     try {
@@ -45958,12 +45977,22 @@ function parseUsageResponse(response) {
     result.opusWeeklyResetsAt = parseDate(opusResetsAt);
   }
   const extra = response.extra_usage;
-  if (extra != null && extra.limit_usd != null && extra.limit_usd > 0) {
-    const spentUsd = extra.spent_usd ?? 0;
-    result.extraUsageSpentUsd = spentUsd;
-    result.extraUsageLimitUsd = extra.limit_usd;
-    result.extraUsagePercent = extra.utilization != null ? clamp(extra.utilization) : clamp(spentUsd / extra.limit_usd * 100);
-    result.extraUsageResetsAt = parseDate(extra.resets_at);
+  if (extra != null) {
+    const currency = (extra.currency ?? "USD").toUpperCase();
+    if (extra.used_credits != null && currency === "USD") {
+      result.enterpriseSpentUsd = extra.used_credits / 100;
+      result.enterpriseLimitUsd = extra.monthly_limit == null ? null : extra.monthly_limit / 100;
+      result.enterpriseCurrency = currency;
+      if (extra.monthly_limit != null && extra.monthly_limit > 0) {
+        result.enterpriseUtilization = clamp(extra.used_credits / extra.monthly_limit * 100);
+      }
+    } else if (extra.limit_usd != null && extra.limit_usd > 0) {
+      const spentUsd = extra.spent_usd ?? 0;
+      result.extraUsageSpentUsd = spentUsd;
+      result.extraUsageLimitUsd = extra.limit_usd;
+      result.extraUsagePercent = extra.utilization != null ? clamp(extra.utilization) : clamp(spentUsd / extra.limit_usd * 100);
+      result.extraUsageResetsAt = parseDate(extra.resets_at);
+    }
   }
   return result;
 }
@@ -46261,6 +46290,29 @@ var init_usage_api = __esm({
     TOKEN_REFRESH_URL_PATH = "/v1/oauth/token";
     DEFAULT_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
     ZAI_UNIT_WEEK = 6;
+  }
+});
+
+// src/cli/utils/formatting.ts
+function formatTokenCount(tokens) {
+  if (tokens < 1e3) return `${tokens}`;
+  if (tokens < 1e6) return `${(tokens / 1e3).toFixed(1)}k`;
+  return `${(tokens / 1e6).toFixed(2)}M`;
+}
+var colors;
+var init_formatting = __esm({
+  "src/cli/utils/formatting.ts"() {
+    "use strict";
+    colors = {
+      red: (text) => `\x1B[31m${text}\x1B[0m`,
+      green: (text) => `\x1B[32m${text}\x1B[0m`,
+      yellow: (text) => `\x1B[33m${text}\x1B[0m`,
+      blue: (text) => `\x1B[34m${text}\x1B[0m`,
+      magenta: (text) => `\x1B[35m${text}\x1B[0m`,
+      cyan: (text) => `\x1B[36m${text}\x1B[0m`,
+      gray: (text) => `\x1B[90m${text}\x1B[0m`,
+      bold: (text) => `\x1B[1m${text}\x1B[0m`
+    };
   }
 });
 
@@ -48106,6 +48158,72 @@ var init_session = __esm({
   }
 });
 
+// src/hud/elements/token-usage.ts
+function renderTokenUsage(usage, sessionTotalTokens) {
+  if (!usage) return null;
+  const hasUsage = usage.inputTokens > 0 || usage.outputTokens > 0;
+  if (!hasUsage) return null;
+  const parts = [
+    `tok:i${formatTokenCount(usage.inputTokens)}/o${formatTokenCount(usage.outputTokens)}`
+  ];
+  if (usage.reasoningTokens && usage.reasoningTokens > 0) {
+    parts.push(`r${formatTokenCount(usage.reasoningTokens)}`);
+  }
+  if (sessionTotalTokens && sessionTotalTokens > 0) {
+    parts.push(`s${formatTokenCount(sessionTotalTokens)}`);
+  }
+  return parts.join(" ");
+}
+var init_token_usage = __esm({
+  "src/hud/elements/token-usage.ts"() {
+    "use strict";
+    init_formatting();
+  }
+});
+
+// src/hud/elements/enterprise-cost.ts
+function getColor2(percent) {
+  if (percent >= CRITICAL_THRESHOLD3) return RED6;
+  if (percent >= WARNING_THRESHOLD2) return YELLOW9;
+  return GREEN9;
+}
+function formatMoney(amount) {
+  const [intPart, decPart] = amount.toFixed(2).split(".");
+  const withCommas = (intPart ?? "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${withCommas}.${decPart ?? "00"}`;
+}
+function currencyPrefix(currency) {
+  return currency.toUpperCase() === "USD" ? "$" : `${currency.toUpperCase()} `;
+}
+function renderEnterpriseCost(limits, stale) {
+  if (!limits || limits.enterpriseSpentUsd === void 0) return null;
+  const staleMarker = stale ? `${DIM6}*${RESET}` : "";
+  const currency = limits.enterpriseCurrency ?? "USD";
+  const prefix = currencyPrefix(currency);
+  const spentStr = formatMoney(limits.enterpriseSpentUsd);
+  if (limits.enterpriseLimitUsd == null) {
+    return `${DIM6}spent:${RESET}${prefix}${spentStr}${staleMarker}`;
+  }
+  const limitStr = formatMoney(limits.enterpriseLimitUsd);
+  const utilization = limits.enterpriseUtilization ?? 0;
+  const rounded = Math.min(100, Math.max(0, Math.round(utilization)));
+  const color = getColor2(rounded);
+  return `${DIM6}spent:${RESET}${prefix}${spentStr}/${prefix}${limitStr} ${color}(${rounded}%)${RESET}${staleMarker}`;
+}
+var GREEN9, YELLOW9, RED6, DIM6, WARNING_THRESHOLD2, CRITICAL_THRESHOLD3;
+var init_enterprise_cost = __esm({
+  "src/hud/elements/enterprise-cost.ts"() {
+    "use strict";
+    init_colors();
+    GREEN9 = "\x1B[32m";
+    YELLOW9 = "\x1B[33m";
+    RED6 = "\x1B[31m";
+    DIM6 = "\x1B[2m";
+    WARNING_THRESHOLD2 = 70;
+    CRITICAL_THRESHOLD3 = 90;
+  }
+});
+
 // src/hud/elements/prompt-time.ts
 function formatElapsed(ms) {
   const totalSeconds = Math.floor(ms / 1e3);
@@ -48146,16 +48264,16 @@ function renderAutopilot(state, _thresholds) {
   let phaseColor;
   switch (phase) {
     case "complete":
-      phaseColor = GREEN9;
+      phaseColor = GREEN10;
       break;
     case "failed":
-      phaseColor = RED6;
+      phaseColor = RED7;
       break;
     case "validation":
       phaseColor = MAGENTA3;
       break;
     case "qa":
-      phaseColor = YELLOW9;
+      phaseColor = YELLOW10;
       break;
     default:
       phaseColor = CYAN7;
@@ -48165,7 +48283,7 @@ function renderAutopilot(state, _thresholds) {
     output += ` (iter ${iteration}/${maxIterations})`;
   }
   if (phase === "execution" && tasksTotal && tasksTotal > 0) {
-    const taskColor = tasksCompleted === tasksTotal ? GREEN9 : YELLOW9;
+    const taskColor = tasksCompleted === tasksTotal ? GREEN10 : YELLOW10;
     output += ` | Tasks: ${taskColor}${tasksCompleted || 0}/${tasksTotal}${RESET}`;
   }
   if (filesCreated && filesCreated > 0) {
@@ -48173,15 +48291,15 @@ function renderAutopilot(state, _thresholds) {
   }
   return output;
 }
-var CYAN7, GREEN9, YELLOW9, RED6, MAGENTA3, PHASE_NAMES, PHASE_INDEX;
+var CYAN7, GREEN10, YELLOW10, RED7, MAGENTA3, PHASE_NAMES, PHASE_INDEX;
 var init_autopilot2 = __esm({
   "src/hud/elements/autopilot.ts"() {
     "use strict";
     init_colors();
     CYAN7 = "\x1B[36m";
-    GREEN9 = "\x1B[32m";
-    YELLOW9 = "\x1B[33m";
-    RED6 = "\x1B[31m";
+    GREEN10 = "\x1B[32m";
+    YELLOW10 = "\x1B[33m";
+    RED7 = "\x1B[31m";
     MAGENTA3 = "\x1B[35m";
     PHASE_NAMES = {
       expansion: "Expand",
@@ -48564,18 +48682,18 @@ function renderContextLimitWarning(contextPercent, threshold, autoCompact) {
     return null;
   }
   const isCritical = safePercent >= 90;
-  const color = isCritical ? RED7 : YELLOW10;
+  const color = isCritical ? RED8 : YELLOW11;
   const icon = isCritical ? "!!" : "!";
   const action = autoCompact ? "(auto-compact queued)" : "run /compact";
   return `${color}${BOLD2}[${icon}] ctx ${safePercent}% >= ${threshold}% threshold - ${action}${RESET}`;
 }
-var YELLOW10, RED7, BOLD2;
+var YELLOW11, RED8, BOLD2;
 var init_context_warning = __esm({
   "src/hud/elements/context-warning.ts"() {
     "use strict";
     init_colors();
-    YELLOW10 = "\x1B[33m";
-    RED7 = "\x1B[31m";
+    YELLOW11 = "\x1B[33m";
+    RED8 = "\x1B[31m";
     BOLD2 = "\x1B[1m";
   }
 });
@@ -48809,7 +48927,8 @@ async function render(context, config2) {
       rendered.set("omcLabel", bold(`[OMC${versionTag}]`));
     }
   }
-  if (enabledElements.rateLimits && context.rateLimitsResult) {
+  const hasEnterpriseData = context.rateLimitsResult?.rateLimits?.enterpriseSpentUsd !== void 0;
+  if (enabledElements.rateLimits && context.rateLimitsResult && !hasEnterpriseData) {
     if (context.rateLimitsResult.rateLimits) {
       const stale = context.rateLimitsResult.stale;
       const limits = enabledElements.useBars ? renderRateLimitsWithBar(
@@ -48849,6 +48968,29 @@ async function render(context, config2) {
       const session = renderSession(context.sessionHealth);
       if (session) rendered.set("session", session);
     }
+  }
+  const isEnterprise = enabledElements.enterpriseMode !== void 0 ? enabledElements.enterpriseMode : (context.subscriptionType ?? "").toLowerCase() === "enterprise" || /claude_zero/i.test(context.rateLimitTier ?? "");
+  if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
+    const stale = context.rateLimitsResult?.stale;
+    const cost = renderEnterpriseCost(
+      context.rateLimitsResult?.rateLimits,
+      stale
+    );
+    if (cost) {
+      rendered.set("enterpriseCost", cost);
+    } else if (enabledElements.showTokens === true) {
+      const tokenUsage = renderTokenUsage(
+        context.lastRequestTokenUsage,
+        context.sessionTotalTokens
+      );
+      if (tokenUsage) rendered.set("tokens", tokenUsage);
+    }
+  } else if (enabledElements.showTokens === true) {
+    const tokenUsage = renderTokenUsage(
+      context.lastRequestTokenUsage,
+      context.sessionTotalTokens
+    );
+    if (tokenUsage) rendered.set("tokens", tokenUsage);
   }
   if (enabledElements.ralph && context.ralph) {
     const ralph = renderRalph(context.ralph, config2.thresholds);
@@ -49030,6 +49172,8 @@ var init_render = __esm({
     init_permission();
     init_thinking();
     init_session();
+    init_token_usage();
+    init_enterprise_cost();
     init_prompt_time();
     init_autopilot2();
     init_cwd();
@@ -49236,6 +49380,7 @@ async function main2(watchMode = false, skipInit = false) {
     const missionBoardEnabled = config2.missionBoard?.enabled ?? config2.elements.missionBoard ?? false;
     const missionBoard = missionBoardEnabled ? await refreshMissionBoardState(cwd, config2.missionBoard) : null;
     const contextPercent = getContextPercent(stdin);
+    const subscriptionInfo = getSubscriptionInfo();
     const context = {
       contextPercent,
       contextDisplayScope: currentSessionId ?? cwd,
@@ -49264,6 +49409,8 @@ async function main2(watchMode = false, skipInit = false) {
       sessionTotalTokens: transcriptData.sessionTotalTokens ?? null,
       promptTime: hudState?.lastPromptTimestamp ? new Date(hudState.lastPromptTimestamp) : null,
       apiKeySource: config2.elements.apiKeySource ? detectApiKeySource(cwd) : null,
+      subscriptionType: subscriptionInfo.subscriptionType,
+      rateLimitTier: subscriptionInfo.rateLimitTier,
       profileName: process.env.COPILOT_CONFIG_DIR ? (0, import_path116.basename)(process.env.COPILOT_CONFIG_DIR).replace(/^\./, "") : null,
       sessionSummary: currentSessionId ? readSessionSummary((0, import_path116.join)(getOmcRoot(cwd), "state"), currentSessionId) : null,
       lastToolName: transcriptData.lastToolName,
@@ -84199,20 +84346,7 @@ var import_fs90 = require("fs");
 var import_path106 = require("path");
 init_config_dir();
 init_installer();
-
-// src/cli/utils/formatting.ts
-var colors = {
-  red: (text) => `\x1B[31m${text}\x1B[0m`,
-  green: (text) => `\x1B[32m${text}\x1B[0m`,
-  yellow: (text) => `\x1B[33m${text}\x1B[0m`,
-  blue: (text) => `\x1B[34m${text}\x1B[0m`,
-  magenta: (text) => `\x1B[35m${text}\x1B[0m`,
-  cyan: (text) => `\x1B[36m${text}\x1B[0m`,
-  gray: (text) => `\x1B[90m${text}\x1B[0m`,
-  bold: (text) => `\x1B[1m${text}\x1B[0m`
-};
-
-// src/cli/commands/doctor-conflicts.ts
+init_formatting();
 function collectHooksFromSettings(settingsPath) {
   const conflicts = [];
   if (!(0, import_fs90.existsSync)(settingsPath)) {
@@ -84527,6 +84661,7 @@ async function doctorConflictsCommand(options) {
 
 // src/cli/commands/doctor-team-routing.ts
 var import_child_process27 = require("child_process");
+init_formatting();
 init_loader();
 var PROVIDER_BINARY = {
   claude: "claude",

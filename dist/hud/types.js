@@ -11,7 +11,7 @@ import { DEFAULT_MISSION_BOARD_CONFIG } from './mission-board.js';
 export const DEFAULT_ELEMENT_ORDER = {
     line1: ['hostname', 'cwd', 'gitRepo', 'gitBranch', 'gitStatus', 'model', 'apiKeySource', 'profile'],
     main: [
-        'omcLabel', 'rateLimits', 'customBuckets', 'permission', 'thinking',
+        'omcLabel', 'enterpriseCost', 'rateLimits', 'customBuckets', 'permission', 'thinking',
         'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
         'skills', 'lastSkill', 'contextBar', 'agents', 'background',
         'callCounts', 'recentTools', 'lastTool', 'sessionSummary',
