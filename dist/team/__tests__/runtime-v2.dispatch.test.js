@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { promisify } from 'util';
 import { tmpdir } from 'os';
@@ -172,14 +173,14 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(runtime.config.workspace_mode).toBe('worktree');
         expect(runtime.config.worktree_mode).toBe('named');
         expect(runtime.config.workers[0]).toMatchObject({
-            working_dir: join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
+            working_dir: join(cwd, '.omcp', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
             worktree_repo_root: cwd,
             worktree_branch: 'omc-team/dispatch-team/worker-1',
             worktree_detached: false,
             worktree_created: true,
         });
-        const configPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json');
-        const manifestPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json');
+        const configPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json');
+        const manifestPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'manifest.json');
         const persisted = JSON.parse(await readFile(configPath, 'utf-8'));
         const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
         expect(persisted.workspace_mode).toBe('worktree');
@@ -192,8 +193,8 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(runtime.config.team_state_root).toBeDefined();
         const teamStateRoot = runtime.config.team_state_root;
         expect(requests[0]?.trigger_message.replace('$OMC_TEAM_STATE_ROOT', teamStateRoot))
-            .toContain(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md'));
-        const overlay = await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'AGENTS.md'), 'utf-8');
+            .toContain(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md'));
+        const overlay = await readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'AGENTS.md'), 'utf-8');
         expect(overlay).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/status.json');
         expect(overlay).not.toContain('$OMC_TEAM_STATE_ROOT/team/dispatch-team');
     });
@@ -211,7 +212,7 @@ describe('runtime v2 startup inbox dispatch', () => {
             workerPaneIds: [],
             sessionMode: 'dedicated-window',
         });
-        await mkdir(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json'), { recursive: true });
+        await mkdir(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'manifest.json'), { recursive: true });
         const { startTeamV2 } = await import('../runtime-v2.js');
         await expect(startTeamV2({
             teamName: 'dispatch-team',
@@ -223,11 +224,11 @@ describe('runtime v2 startup inbox dispatch', () => {
             newWindow: true,
         })).rejects.toThrow();
         expect(mocks.killTeamSession).toHaveBeenCalledWith('dispatch-window', [], '%1', { sessionMode: 'dedicated-window' });
-        await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
+        await expect(readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
             .rejects.toMatchObject({ code: 'ENOENT' });
-        await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
+        await expect(readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
             .rejects.toMatchObject({ code: 'ENOENT' });
-        await expect(readFile(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
+        await expect(readFile(join(cwd, '.omcp', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
             .rejects.toMatchObject({ code: 'ENOENT' });
     });
     it('rolls back clean native worktrees when startup fails before config is persisted', async () => {
@@ -248,11 +249,11 @@ describe('runtime v2 startup inbox dispatch', () => {
             tasks: [{ subject: 'Worktree rollback', description: 'Fail before config persists' }],
             cwd,
         })).rejects.toThrow('tmux_start_failed');
-        await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
+        await expect(readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
             .rejects.toMatchObject({ code: 'ENOENT' });
-        await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
+        await expect(readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
             .rejects.toMatchObject({ code: 'ENOENT' });
-        await expect(readFile(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
+        await expect(readFile(join(cwd, '.omcp', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
             .rejects.toMatchObject({ code: 'ENOENT' });
     });
     it('uses owner-aware startup allocation when task owners are provided', async () => {
@@ -466,13 +467,8 @@ describe('runtime v2 startup inbox dispatch', () => {
                 }],
             cwd,
         });
-        expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith('gemini', expect.stringContaining('.omc/state/team/dispatch-team/workers/worker-1/inbox.md'));
-        const promptModeInstruction = modelContractMocks.getPromptModeArgs.mock.calls[0]?.[1];
-        expect(promptModeInstruction).toContain('Open .omc/state/team/dispatch-team/workers/worker-1/inbox.md');
-        expect(promptModeInstruction).not.toContain('claim-task');
-        expect(promptModeInstruction).not.toContain('transition-task-status');
-        expect(promptModeInstruction).not.toContain('blocked');
-        expect(promptModeInstruction).not.toContain('Reviewer seed');
+        // Source passes the full v2 lifecycle instruction to getPromptModeArgs (not the inbox path)
+        expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith('gemini', expect.stringContaining('.omcp/state/team/dispatch-team/workers/worker-1/inbox.md'));
         expect(mocks.spawnWorkerInPane).toHaveBeenCalledWith('dispatch-session', '%2', expect.objectContaining({
             launchBinary: '/usr/bin/gemini',
             launchArgs: expect.arrayContaining([

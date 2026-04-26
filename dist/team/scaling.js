@@ -10,7 +10,7 @@
  * - 'draining' worker status for graceful transitions during scale_down
  */
 import { resolve } from 'path';
-import { mkdir } from 'fs/promises';
+import { mkdir, readFile } from 'fs/promises';
 import { tmuxExec, tmuxSpawn } from '../cli/tmux-utils.js';
 import { buildWorkerArgv, getWorkerEnv as getModelWorkerEnv, resolveClaudeWorkerModel, } from './model-contract.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
@@ -71,7 +71,7 @@ export async function scaleUp(teamName, count, agentType, tasks, cwd, env = proc
                 error: `Cannot add ${count} workers: would exceed max_workers (${currentCount} + ${count} > ${maxWorkers})`,
             };
         }
-        const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omc/state/team/${sanitized}`;
+        const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omcp/state/team/${sanitized}`;
         const worktreeMode = config.worktree_mode ?? 'disabled';
         // Resolve the monotonic worker index counter
         let nextIndex = config.next_worker_index ?? (currentCount + 1);
@@ -212,7 +212,7 @@ export async function scaleUp(teamName, count, agentType, tasks, cwd, env = proc
                 const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
                     teamName: sanitized,
                     workerName,
-                    cwd: leaderCwd,
+                    cwd: workerCwd,
                     ...(model ? { model } : {}),
                 });
                 return { launchBinary, launchArgs };
@@ -252,6 +252,7 @@ export async function scaleUp(teamName, count, agentType, tasks, cwd, env = proc
                 ...getModelWorkerEnv(sanitized, workerName, workerAgentType, env),
                 OMC_TEAM_STATE_ROOT: teamStateRoot,
                 OMC_TEAM_LEADER_CWD: leaderCwd,
+                ...(worktree ? { OMC_TEAM_WORKTREE_PATH: worktree.path, OMC_TEAM_WORKER_CWD: workerCwd } : {}),
             };
             if (worktree) {
                 try {
@@ -284,7 +285,7 @@ export async function scaleUp(teamName, count, agentType, tasks, cwd, env = proc
                     envVars: extraEnv,
                     launchArgs,
                     launchBinary,
-                    cwd: leaderCwd,
+                    cwd: workerCwd,
                 });
             }
             catch (error) {
@@ -297,7 +298,7 @@ export async function scaleUp(teamName, count, agentType, tasks, cwd, env = proc
                 : (config.leader_pane_id ?? '');
             const splitDirection = splitTarget === (config.leader_pane_id ?? '') ? '-h' : '-v';
             const result = tmuxSpawn([
-                'split-window', splitDirection, '-t', splitTarget, '-d', '-P', '-F', '#{pane_id}', '-c', leaderCwd, cmd,
+                'split-window', splitDirection, '-t', splitTarget, '-d', '-P', '-F', '#{pane_id}', '-c', workerCwd, cmd,
             ]);
             if (result.status !== 0) {
                 return await rollbackScaleUp(`Failed to create tmux pane for ${workerName}: ${(result.stderr || '').trim()}`);
@@ -329,8 +330,15 @@ export async function scaleUp(teamName, count, agentType, tasks, cwd, env = proc
                 assigned_tasks: [],
                 pid: panePid,
                 pane_id: paneId,
-                working_dir: leaderCwd,
+                working_dir: workerCwd,
                 team_state_root: teamStateRoot,
+                ...(worktree ? {
+                    worktree_repo_root: leaderCwd,
+                    worktree_path: worktree.path,
+                    worktree_branch: worktree.branch,
+                    worktree_detached: worktree.detached,
+                    worktree_created: worktree.created,
+                } : {}),
             };
             await teamWriteWorkerIdentity(sanitized, workerName, workerInfo, leaderCwd);
             // Wait for worker readiness

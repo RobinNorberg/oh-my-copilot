@@ -13,16 +13,16 @@ import { existsSync } from 'node:fs';
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { TeamPaths, absPath } from './state-paths.js';
+import { normalizeTeamManifest } from './governance.js';
+import { normalizeTeamGovernance } from './governance.js';
 import { isTerminalTeamTaskStatus, canTransitionTeamTaskStatus, } from './contracts.js';
 import { claimTask as claimTaskImpl, transitionTaskStatus as transitionTaskStatusImpl, releaseTaskClaim as releaseTaskClaimImpl, listTasks as listTasksImpl, } from './state/tasks.js';
+import { canonicalizeTeamConfigWorkers } from './worker-canonicalization.js';
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
 function teamDir(teamName, cwd) {
     return absPath(cwd, TeamPaths.root(teamName));
-}
-function workerDir(teamName, workerName, cwd) {
-    return absPath(cwd, TeamPaths.workerDir(teamName, workerName));
 }
 function normalizeTaskId(taskId) {
     const raw = String(taskId).trim();
@@ -31,6 +31,15 @@ function normalizeTaskId(taskId) {
 function canonicalTaskFilePath(teamName, taskId, cwd) {
     const normalizedTaskId = normalizeTaskId(taskId);
     return join(absPath(cwd, TeamPaths.tasks(teamName)), `task-${normalizedTaskId}.json`);
+}
+function legacyTaskFilePath(teamName, taskId, cwd) {
+    const normalizedTaskId = normalizeTaskId(taskId);
+    return join(absPath(cwd, TeamPaths.tasks(teamName)), `${normalizedTaskId}.json`);
+}
+function taskFileCandidates(teamName, taskId, cwd) {
+    const canonical = canonicalTaskFilePath(teamName, taskId, cwd);
+    const legacy = legacyTaskFilePath(teamName, taskId, cwd);
+    return canonical === legacy ? [canonical] : [canonical, legacy];
 }
 async function writeAtomic(path, data) {
     const tmp = `${path}.${process.pid}.tmp`;
@@ -138,6 +147,7 @@ function configFromManifest(manifest) {
         leader_cwd: manifest.leader_cwd,
         team_state_root: manifest.team_state_root,
         workspace_mode: manifest.workspace_mode,
+        worktree_mode: manifest.worktree_mode,
         leader_pane_id: manifest.leader_pane_id,
         hud_pane_id: manifest.hud_pane_id,
         resize_hook_name: manifest.resize_hook_name,
@@ -149,17 +159,17 @@ function mergeTeamConfigSources(config, manifest) {
     if (!config && !manifest)
         return null;
     if (!manifest)
-        return config ?? null;
+        return config ? canonicalizeTeamConfigWorkers(config) : null;
     if (!config)
-        return configFromManifest(manifest);
-    return {
+        return canonicalizeTeamConfigWorkers(configFromManifest(manifest));
+    return canonicalizeTeamConfigWorkers({
         ...configFromManifest(manifest),
         ...config,
         workers: [...(config.workers ?? []), ...(manifest.workers ?? [])],
         worker_count: Math.max(config.worker_count ?? 0, manifest.worker_count ?? 0),
         next_task_id: Math.max(config.next_task_id ?? 1, manifest.next_task_id ?? 1),
         max_workers: Math.max(config.max_workers ?? 0, 20),
-    };
+    });
 }
 export async function teamReadConfig(teamName, cwd) {
     const [manifest, config] = await Promise.all([
@@ -170,7 +180,8 @@ export async function teamReadConfig(teamName, cwd) {
 }
 export async function teamReadManifest(teamName, cwd) {
     const manifestPath = absPath(cwd, TeamPaths.manifest(teamName));
-    return readJsonSafe(manifestPath);
+    const manifest = await readJsonSafe(manifestPath);
+    return manifest ? normalizeTeamManifest(manifest) : null;
 }
 export async function teamCleanup(teamName, cwd) {
     await rm(teamDir(teamName, cwd), { recursive: true, force: true });
@@ -238,11 +249,13 @@ export async function teamCreateTask(teamName, task, cwd) {
     throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
 }
 export async function teamReadTask(teamName, taskId, cwd) {
-    const filePath = canonicalTaskFilePath(teamName, taskId, cwd);
-    const task = await readJsonSafe(filePath);
-    if (!task || !isTeamTask(task))
-        return null;
-    return normalizeTask(task);
+    for (const candidate of taskFileCandidates(teamName, taskId, cwd)) {
+        const task = await readJsonSafe(candidate);
+        if (!task || !isTeamTask(task))
+            continue;
+        return normalizeTask(task);
+    }
+    return null;
 }
 export async function teamListTasks(teamName, cwd) {
     return listTasksImpl(teamName, cwd, {
@@ -279,6 +292,17 @@ export async function teamUpdateTask(teamName, taskId, updates, cwd) {
     throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
 }
 export async function teamClaimTask(teamName, taskId, workerName, expectedVersion, cwd) {
+    const manifest = await teamReadManifest(teamName, cwd);
+    const governance = normalizeTeamGovernance(manifest?.governance, manifest?.policy);
+    if (governance.plan_approval_required) {
+        const task = await teamReadTask(teamName, taskId, cwd);
+        if (task?.requires_code_change) {
+            const approval = await teamReadTaskApproval(teamName, taskId, cwd);
+            if (!approval || approval.status !== 'approved') {
+                return { ok: false, error: 'blocked_dependency', dependencies: ['approval-required'] };
+            }
+        }
+    }
     return claimTaskImpl(taskId, workerName, expectedVersion, {
         teamName,
         cwd,
@@ -324,13 +348,72 @@ export async function teamReleaseTaskClaim(teamName, taskId, claimToken, workerN
 // ---------------------------------------------------------------------------
 // Messaging
 // ---------------------------------------------------------------------------
+function normalizeLegacyMailboxMessage(raw) {
+    if (raw.type === 'notified')
+        return null;
+    const messageId = typeof raw.message_id === 'string' && raw.message_id.trim() !== ''
+        ? raw.message_id
+        : (typeof raw.id === 'string' && raw.id.trim() !== '' ? raw.id : '');
+    const fromWorker = typeof raw.from_worker === 'string' && raw.from_worker.trim() !== ''
+        ? raw.from_worker
+        : (typeof raw.from === 'string' ? raw.from : '');
+    const toWorker = typeof raw.to_worker === 'string' && raw.to_worker.trim() !== ''
+        ? raw.to_worker
+        : (typeof raw.to === 'string' ? raw.to : '');
+    const body = typeof raw.body === 'string' ? raw.body : '';
+    const createdAt = typeof raw.created_at === 'string' && raw.created_at.trim() !== ''
+        ? raw.created_at
+        : (typeof raw.createdAt === 'string' ? raw.createdAt : '');
+    if (!messageId || !fromWorker || !toWorker || !body || !createdAt)
+        return null;
+    return {
+        message_id: messageId,
+        from_worker: fromWorker,
+        to_worker: toWorker,
+        body,
+        created_at: createdAt,
+        ...(typeof raw.notified_at === 'string' ? { notified_at: raw.notified_at } : {}),
+        ...(typeof raw.notifiedAt === 'string' ? { notified_at: raw.notifiedAt } : {}),
+        ...(typeof raw.delivered_at === 'string' ? { delivered_at: raw.delivered_at } : {}),
+        ...(typeof raw.deliveredAt === 'string' ? { delivered_at: raw.deliveredAt } : {}),
+    };
+}
+async function readLegacyMailboxJsonl(teamName, workerName, cwd) {
+    const legacyPath = absPath(cwd, TeamPaths.mailbox(teamName, workerName).replace(/\.json$/i, '.jsonl'));
+    if (!existsSync(legacyPath))
+        return { worker: workerName, messages: [] };
+    try {
+        const raw = await readFile(legacyPath, 'utf8');
+        const lines = raw.split('\n').map((line) => line.trim()).filter(Boolean);
+        const byMessageId = new Map();
+        for (const line of lines) {
+            let parsed;
+            try {
+                parsed = JSON.parse(line);
+            }
+            catch {
+                continue;
+            }
+            if (!parsed || typeof parsed !== 'object')
+                continue;
+            const normalized = normalizeLegacyMailboxMessage(parsed);
+            if (!normalized)
+                continue;
+            byMessageId.set(normalized.message_id, normalized);
+        }
+        return { worker: workerName, messages: [...byMessageId.values()] };
+    }
+    catch {
+        return { worker: workerName, messages: [] };
+    }
+}
 async function readMailbox(teamName, workerName, cwd) {
     const p = absPath(cwd, TeamPaths.mailbox(teamName, workerName));
     const mailbox = await readJsonSafe(p);
     if (mailbox && Array.isArray(mailbox.messages)) {
         return { worker: workerName, messages: mailbox.messages };
     }
-    return { worker: workerName, messages: [] };
+    return readLegacyMailboxJsonl(teamName, workerName, cwd);
 }
 async function writeMailbox(teamName, workerName, mailbox, cwd) {
     const p = absPath(cwd, TeamPaths.mailbox(teamName, workerName));

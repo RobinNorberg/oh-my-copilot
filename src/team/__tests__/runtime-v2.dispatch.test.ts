@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
+import { mkdirSync, readFileSync } from 'fs';
+import { execFileSync } from 'child_process';
 import { join } from 'path';
 import { promisify } from 'util';
 import { tmpdir } from 'os';
@@ -200,15 +202,15 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(runtime.config.workspace_mode).toBe('worktree');
     expect(runtime.config.worktree_mode).toBe('named');
     expect(runtime.config.workers[0]).toMatchObject({
-      working_dir: join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
+      working_dir: join(cwd, '.omcp', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
       worktree_repo_root: cwd,
       worktree_branch: 'omc-team/dispatch-team/worker-1',
       worktree_detached: false,
       worktree_created: true,
     });
 
-    const configPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json');
-    const manifestPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json');
+    const configPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json');
+    const manifestPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'manifest.json');
     const persisted = JSON.parse(await readFile(configPath, 'utf-8'));
     const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
     expect(persisted.workspace_mode).toBe('worktree');
@@ -222,9 +224,9 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(runtime.config.team_state_root).toBeDefined();
     const teamStateRoot = runtime.config.team_state_root!;
     expect(requests[0]?.trigger_message.replace('$OMC_TEAM_STATE_ROOT', teamStateRoot))
-      .toContain(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md'));
+      .toContain(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md'));
 
-    const overlay = await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'AGENTS.md'), 'utf-8');
+    const overlay = await readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'AGENTS.md'), 'utf-8');
     expect(overlay).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/status.json');
     expect(overlay).not.toContain('$OMC_TEAM_STATE_ROOT/team/dispatch-team');
   });
@@ -244,7 +246,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       workerPaneIds: [],
       sessionMode: 'dedicated-window',
     });
-    await mkdir(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json'), { recursive: true });
+    await mkdir(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'manifest.json'), { recursive: true });
 
     const { startTeamV2 } = await import('../runtime-v2.js');
 
@@ -264,11 +266,11 @@ describe('runtime v2 startup inbox dispatch', () => {
       '%1',
       { sessionMode: 'dedicated-window' },
     );
-    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omcp', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -294,11 +296,11 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     })).rejects.toThrow('tmux_start_failed');
 
-    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omcp', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -559,7 +561,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     // Source passes the full v2 lifecycle instruction to getPromptModeArgs (not the inbox path)
     expect(modelContractMocks.getPromptModeArgs).toHaveBeenCalledWith(
       'gemini',
-      expect.stringContaining('.omc/state/team/dispatch-team/workers/worker-1/inbox.md'),
+      expect.stringContaining('.omcp/state/team/dispatch-team/workers/worker-1/inbox.md'),
     );
     expect(mocks.spawnWorkerInPane).toHaveBeenCalledWith(
       'dispatch-session',

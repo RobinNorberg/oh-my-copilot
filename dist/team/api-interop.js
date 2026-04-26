@@ -6,11 +6,42 @@ import { queueBroadcastMailboxMessage, queueDirectMailboxMessage } from './mcp-c
 import { injectToLeaderPane, sendToWorker } from './tmux-session.js';
 import { listDispatchRequests, markDispatchRequestDelivered, markDispatchRequestNotified } from './dispatch-queue.js';
 import { generateMailboxTriggerMessage } from './worker-bootstrap.js';
+import { shutdownTeam } from './runtime.js';
 import { shutdownTeamV2 } from './runtime-v2.js';
 import { inspectTeamWorktreeCleanupSafety } from './git-worktree.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 const TEAM_UPDATE_TASK_MUTABLE_FIELDS = new Set(['subject', 'description', 'blocked_by', 'requires_code_change']);
 const TEAM_UPDATE_TASK_REQUEST_FIELDS = new Set(['team_name', 'task_id', 'workingDirectory', ...TEAM_UPDATE_TASK_MUTABLE_FIELDS]);
+export const LEGACY_TEAM_MCP_TOOLS = [
+    'team_send_message',
+    'team_broadcast',
+    'team_mailbox_list',
+    'team_mailbox_mark_delivered',
+    'team_mailbox_mark_notified',
+    'team_create_task',
+    'team_read_task',
+    'team_list_tasks',
+    'team_update_task',
+    'team_claim_task',
+    'team_transition_task_status',
+    'team_release_task_claim',
+    'team_read_config',
+    'team_read_manifest',
+    'team_read_worker_status',
+    'team_read_worker_heartbeat',
+    'team_update_worker_heartbeat',
+    'team_write_worker_inbox',
+    'team_write_worker_identity',
+    'team_append_event',
+    'team_get_summary',
+    'team_cleanup',
+    'team_write_shutdown_request',
+    'team_read_shutdown_ack',
+    'team_read_monitor_snapshot',
+    'team_write_monitor_snapshot',
+    'team_read_task_approval',
+    'team_write_task_approval',
+];
 export const TEAM_API_OPERATIONS = [
     'send-message',
     'broadcast',
@@ -77,15 +108,25 @@ function parseTeamWorkerEnv(raw) {
     return { teamName: match[1], workerName: match[2] };
 }
 function parseTeamWorkerContextFromEnv(env = process.env) {
-    return parseTeamWorkerEnv(env.OMC_TEAM_WORKER);
+    return parseTeamWorkerEnv(env.OMC_TEAM_WORKER) ?? parseTeamWorkerEnv(env.OMX_TEAM_WORKER);
 }
 function readTeamStateRootFromEnv(env = process.env) {
     const candidate = typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== ''
         ? env.OMC_TEAM_STATE_ROOT.trim()
-        : '';
+        : (typeof env.OMX_TEAM_STATE_ROOT === 'string' && env.OMX_TEAM_STATE_ROOT.trim() !== ''
+            ? env.OMX_TEAM_STATE_ROOT.trim()
+            : '');
     return candidate || null;
 }
-export function resolveTeamApiCliCommand(_env = process.env) {
+export function resolveTeamApiCliCommand(env = process.env) {
+    const hasOmcContext = ((typeof env.OMC_TEAM_WORKER === 'string' && env.OMC_TEAM_WORKER.trim() !== '')
+        || (typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== ''));
+    if (hasOmcContext)
+        return 'omcp team api';
+    const hasOmxContext = ((typeof env.OMX_TEAM_WORKER === 'string' && env.OMX_TEAM_WORKER.trim() !== '')
+        || (typeof env.OMX_TEAM_STATE_ROOT === 'string' && env.OMX_TEAM_STATE_ROOT.trim() !== ''));
+    if (hasOmxContext)
+        return 'omx team api';
     return 'omcp team api';
 }
 function isRuntimeV2Config(config) {
@@ -183,9 +224,11 @@ function resolveTeamWorkingDirectoryFromMetadata(teamName, candidateCwd, workerC
     const fromConfig = readTeamStateRootFromFile(join(teamRoot, 'config.json'));
     if (fromConfig)
         return stateRootToWorkingDirectory(fromConfig);
-    const fromManifest = readTeamStateRootFromFile(join(teamRoot, 'manifest.v2.json'));
-    if (fromManifest)
-        return stateRootToWorkingDirectory(fromManifest);
+    for (const manifestName of ['manifest.json', 'manifest.v2.json']) {
+        const fromManifest = readTeamStateRootFromFile(join(teamRoot, manifestName));
+        if (fromManifest)
+            return stateRootToWorkingDirectory(fromManifest);
+    }
     return null;
 }
 function resolveTeamWorkingDirectory(teamName, preferredCwd) {
@@ -194,7 +237,10 @@ function resolveTeamWorkingDirectory(teamName, preferredCwd) {
         return preferredCwd;
     const envTeamStateRoot = readTeamStateRootFromEnv();
     if (typeof envTeamStateRoot === 'string' && envTeamStateRoot.trim() !== '') {
-        return stateRootToWorkingDirectory(envTeamStateRoot.trim());
+        const envWorkingDirectory = stateRootToWorkingDirectory(envTeamStateRoot.trim());
+        if (teamStateExists(normalizedTeamName, envWorkingDirectory)) {
+            return envWorkingDirectory;
+        }
     }
     const seeds = [];
     for (const seed of [preferredCwd, process.cwd()]) {
@@ -238,6 +284,10 @@ export function buildLegacyTeamDeprecationHint(legacyName, originalArgs, env = p
 }
 const QUEUED_FOR_HOOK_DISPATCH_REASON = 'queued_for_hook_dispatch';
 const LEADER_PANE_MISSING_MAILBOX_PERSISTED_REASON = 'leader_pane_missing_mailbox_persisted';
+const WORKTREE_TRIGGER_STATE_ROOT = '$OMC_TEAM_STATE_ROOT';
+function resolveInstructionStateRoot(worktreePath) {
+    return worktreePath ? WORKTREE_TRIGGER_STATE_ROOT : undefined;
+}
 function queuedForHookDispatch() {
     return {
         ok: true,
@@ -280,6 +330,7 @@ function findWorkerDispatchTarget(teamName, toWorker, cwd) {
         return {
             paneId: recipient?.pane_id,
             workerIndex: recipient?.index,
+            instructionStateRoot: resolveInstructionStateRoot(recipient?.worktree_path),
         };
     });
 }
@@ -291,17 +342,19 @@ async function findMailboxDispatchRequestId(teamName, workerName, messageId, cwd
     return matching[0]?.request_id ?? null;
 }
 async function syncMailboxDispatchNotified(teamName, workerName, messageId, cwd) {
+    const logDispatchSyncFailure = createSwallowedErrorLogger('team.api-interop syncMailboxDispatchNotified dispatch state sync failed');
     const requestId = await findMailboxDispatchRequestId(teamName, workerName, messageId, cwd);
     if (!requestId)
         return;
-    await markDispatchRequestNotified(teamName, requestId, { message_id: messageId, last_reason: 'mailbox_mark_notified' }, cwd).catch(() => { });
+    await markDispatchRequestNotified(teamName, requestId, { message_id: messageId, last_reason: 'mailbox_mark_notified' }, cwd).catch(logDispatchSyncFailure);
 }
 async function syncMailboxDispatchDelivered(teamName, workerName, messageId, cwd) {
+    const logDispatchSyncFailure = createSwallowedErrorLogger('team.api-interop syncMailboxDispatchDelivered dispatch state sync failed');
     const requestId = await findMailboxDispatchRequestId(teamName, workerName, messageId, cwd);
     if (!requestId)
         return;
-    await markDispatchRequestNotified(teamName, requestId, { message_id: messageId, last_reason: 'mailbox_mark_delivered' }, cwd).catch(() => { });
-    await markDispatchRequestDelivered(teamName, requestId, { message_id: messageId, last_reason: 'mailbox_mark_delivered' }, cwd).catch(() => { });
+    await markDispatchRequestNotified(teamName, requestId, { message_id: messageId, last_reason: 'mailbox_mark_delivered' }, cwd).catch(logDispatchSyncFailure);
+    await markDispatchRequestDelivered(teamName, requestId, { message_id: messageId, last_reason: 'mailbox_mark_delivered' }, cwd).catch(logDispatchSyncFailure);
 }
 function validateCommonFields(args) {
     const teamName = String(args.team_name || '').trim();
@@ -345,7 +398,7 @@ export async function executeTeamApiOperation(operation, args, fallbackCwd) {
                     toWorkerIndex: target.workerIndex,
                     toPaneId: target.paneId,
                     body,
-                    triggerMessage: generateMailboxTriggerMessage(teamName, toWorker),
+                    triggerMessage: generateMailboxTriggerMessage(teamName, toWorker, 1, target.instructionStateRoot),
                     cwd,
                     notify: ({ workerName }, triggerMessage) => notifyMailboxTarget(teamName, workerName, triggerMessage, cwd),
                     deps: {
@@ -372,14 +425,19 @@ export async function executeTeamApiOperation(operation, args, fallbackCwd) {
                 const config = await teamReadConfig(teamName, cwd);
                 const recipients = (config?.workers ?? [])
                     .filter((worker) => worker.name !== fromWorker)
-                    .map((worker) => ({ workerName: worker.name, workerIndex: worker.index, paneId: worker.pane_id }));
+                    .map((worker) => ({
+                    workerName: worker.name,
+                    workerIndex: worker.index,
+                    paneId: worker.pane_id,
+                    instructionStateRoot: resolveInstructionStateRoot(worker.worktree_path),
+                }));
                 await queueBroadcastMailboxMessage({
                     teamName,
                     fromWorker,
                     recipients,
                     body,
                     cwd,
-                    triggerFor: (workerName) => generateMailboxTriggerMessage(teamName, workerName),
+                    triggerFor: (workerName) => generateMailboxTriggerMessage(teamName, workerName, 1, recipients.find((recipient) => recipient.workerName === workerName)?.instructionStateRoot),
                     notify: ({ workerName }, triggerMessage) => notifyMailboxTarget(teamName, workerName, triggerMessage, cwd),
                     deps: {
                         sendDirectMessage,
@@ -625,9 +683,11 @@ export async function executeTeamApiOperation(operation, args, fallbackCwd) {
                     pid: args.pid,
                     pane_id: args.pane_id,
                     working_dir: args.working_dir,
+                    worktree_repo_root: args.worktree_repo_root,
                     worktree_path: args.worktree_path,
                     worktree_branch: args.worktree_branch,
                     worktree_detached: args.worktree_detached,
+                    worktree_created: args.worktree_created,
                     team_state_root: args.team_state_root,
                 }, cwd);
                 return { ok: true, operation, data: { worker } };

@@ -16,8 +16,8 @@
  * assignTask, resumeTeam as discrete operations driven by the caller.
  */
 
-import { join, resolve } from 'path';
 import { tmuxExecAsync } from '../cli/tmux-utils.js';
+import { join, resolve } from 'path';
 import { existsSync } from 'fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'fs/promises';
 import { performance } from 'perf_hooks';
@@ -81,9 +81,8 @@ import {
   type TeamWorktreeMode,
 } from './git-worktree.js';
 import { formatOmcCliInvocation } from '../utils/omc-cli-rendering.js';
-import { getHostCliType } from '../utils/host-detection.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
-import type { CanonicalTeamRole, PluginConfig, RoleAssignment, TeamRoleAssignmentSpec, TeamRoleProvider } from '../shared/types.js';
+import type { CanonicalTeamRole, PluginConfig, RoleAssignment, TeamRoleAssignmentSpec } from '../shared/types.js';
 import { CANONICAL_TEAM_ROLES } from '../shared/types.js';
 import { loadConfig } from '../config/loader.js';
 import { buildResolvedRoutingSnapshot, getRoleRoutingSpec } from './stage-router.js';
@@ -135,6 +134,13 @@ export interface TeamSnapshotV2 {
     status: WorkerStatus;
     heartbeat: WorkerHeartbeat | null;
     assignedTasks: string[];
+    working_dir?: string;
+    worktree_repo_root?: string;
+    worktree_path?: string;
+    worktree_branch?: string;
+    worktree_detached?: boolean;
+    worktree_created?: boolean;
+    team_state_root?: string;
     turnsWithoutProgress: number;
   }>;
   tasks: {
@@ -278,8 +284,8 @@ async function getWorkerPaneLiveness(paneId: string | undefined): Promise<Worker
 async function captureWorkerPane(paneId: string | undefined): Promise<string> {
   if (!paneId) return '';
   try {
-    const { stdout } = await tmuxExecAsync(['capture-pane', '-t', paneId, '-p', '-S', '-80']);
-    return stdout;
+    const result = await tmuxExecAsync(['capture-pane', '-t', paneId, '-p', '-S', '-80']);
+    return result.stdout ?? '';
   } catch {
     return '';
   }
@@ -307,6 +313,17 @@ function findOutstandingWorkerTask(
   }
   const owned = inProgressByOwner.get(worker.name) ?? [];
   return owned[0] ?? null;
+}
+
+function getTaskDependencyIds(task: TeamTask): string[] {
+  return task.depends_on ?? task.blocked_by ?? [];
+}
+
+function getMissingDependencyIds(
+  task: TeamTask,
+  taskById: Map<string, TeamTask>,
+): string[] {
+  return getTaskDependencyIds(task).filter((dependencyId) => !taskById.has(dependencyId));
 }
 
 // ---------------------------------------------------------------------------
@@ -340,7 +357,7 @@ export interface StartTeamV2Config {
 
 /**
  * Build the initial task instruction for v2 workers.
- * Workers use `omcp team api` CLI commands for all lifecycle transitions.
+ * Workers use `omc team api` CLI commands for all lifecycle transitions.
  */
 function buildV2TaskInstruction(
   teamName: string,
@@ -430,6 +447,8 @@ interface SpawnV2WorkerOptions {
   task: { subject: string; description: string };
   taskId: string;
   cwd: string;
+  workerCwd?: string;
+  worktreePath?: string;
   resolvedBinaryPaths: Partial<Record<CliAgentType, string>>;
   /**
    * Pre-resolved model ID from the team's routing snapshot. When set, overrides
@@ -523,7 +542,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   const splitResult = await tmuxExecAsync([
     'split-window', splitType, '-t', splitTarget,
     '-d', '-P', '-F', '#{pane_id}',
-    '-c', opts.cwd,
+    '-c', opts.workerCwd ?? opts.cwd,
   ]);
   const paneId = splitResult.stdout.split('\n')[0]?.trim();
   if (!paneId) {
@@ -547,9 +566,10 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   const instruction = buildV2TaskInstruction(
     opts.teamName, opts.workerName, opts.task, opts.taskId, cliOutputContract,
   );
-  const inboxTriggerMessage = generateTriggerMessage(opts.teamName, opts.workerName);
+  const instructionStateRoot = opts.worktreePath ? '$OMC_TEAM_STATE_ROOT' : undefined;
+  const inboxTriggerMessage = generateTriggerMessage(opts.teamName, opts.workerName, instructionStateRoot);
   const promptModeStartupPrompt = generatePromptModeStartupPrompt(
-    opts.teamName, opts.workerName, undefined, cliOutputContract,
+    opts.teamName, opts.workerName, instructionStateRoot, cliOutputContract,
   );
   if (usePromptMode) {
     await composeInitialInbox(
@@ -562,11 +582,15 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     ...getModelWorkerEnv(opts.teamName, opts.workerName, opts.agentType),
     OMC_TEAM_STATE_ROOT: teamStateRoot(opts.cwd, opts.teamName),
     OMC_TEAM_LEADER_CWD: opts.cwd,
+    ...(opts.worktreePath ? { OMC_TEAM_WORKTREE_PATH: opts.worktreePath } : {}),
+    ...(opts.workerCwd ? { OMC_TEAM_WORKER_CWD: opts.workerCwd } : {}),
   };
   const resolvedBinaryPath = opts.resolvedBinaryPaths[opts.agentType]
     ?? resolveValidatedBinaryPath(opts.agentType);
 
   // Resolve model from environment variables.
+  // For Claude agents on Bedrock/Vertex, resolve the provider-specific model
+  // so workers don't fall back to invalid Anthropic API model names. (#1695)
   // Snapshot-provided model (from resolved_routing) takes precedence so
   // per-role routing (codex/gemini/claude-tier) is honored at spawn time.
   const modelForAgent = opts.model ?? (() => {
@@ -580,13 +604,14 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
         || process.env.OMC_GEMINI_DEFAULT_MODEL
         || undefined;
     }
+    // Claude agents: resolve Bedrock/Vertex model when on those providers
     return resolveClaudeWorkerModel();
   })();
 
   const [launchBinary, ...launchArgs] = buildWorkerArgv(opts.agentType, {
     teamName: opts.teamName,
     workerName: opts.workerName,
-    cwd: opts.cwd,
+    cwd: opts.workerCwd ?? opts.cwd,
     resolvedBinaryPath,
     model: modelForAgent,
   });
@@ -595,7 +620,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   // inbox.md and pass only a short file-pointer prompt via CLI args. This
   // avoids echoing reviewer/seed prompt text into tmux scrollback.
   if (usePromptMode) {
-    launchArgs.push(...getPromptModeArgs(opts.agentType, instruction));
+    launchArgs.push(...getPromptModeArgs(opts.agentType, promptModeStartupPrompt));
   }
 
   const paneConfig: WorkerPaneConfig = {
@@ -604,7 +629,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     envVars,
     launchBinary,
     launchArgs,
-    cwd: opts.cwd,
+    cwd: opts.workerCwd ?? opts.cwd,
   };
 
   await spawnWorkerInPane(opts.sessionName, paneId, paneConfig);
@@ -660,7 +685,7 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
     };
   }
 
-  if (opts.agentType === 'claude' || opts.agentType === 'copilot') {
+  if (opts.agentType === 'claude') {
     const settled = await waitForWorkerStartupEvidence(
       opts.teamName,
       opts.workerName,
@@ -777,6 +802,10 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   // do NOT change routing — user must recreate the team to pick up changes.
   const pluginCfg: PluginConfig = config.pluginConfig ?? loadConfig();
   const resolvedRouting = buildResolvedRoutingSnapshot(pluginCfg);
+  const worktreeMode: TeamWorktreeMode = normalizeTeamWorktreeMode(
+    process.env.OMC_TEAM_WORKTREE_MODE ?? pluginCfg.team?.ops?.worktreeMode,
+  );
+  const workspaceMode = worktreeMode === 'disabled' ? 'single' as const : 'worktree' as const;
 
   // Validate CLIs and pin absolute binary paths for user-declared agentTypes.
   // AC-8: missing/untrusted binaries fall back to the snapshot's Claude tuple at
@@ -896,7 +925,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     const allocationWorkers: WorkerAllocationInput[] = workerNames.map((name, i) => ({
       name,
       role: config.workerRoles?.[i]
-        ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType()) as string,
+        ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as string,
       currentLoad: 0,
     }));
     for (const r of allocateTasksToWorkers(allocationTasks, allocationWorkers)) {
@@ -946,20 +975,31 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
   const workerPaneIds: string[] = [];
 
   // Build workers info for config
-  const workersInfo: WorkerInfo[] = workerNames.map((wName, i) => ({
-    name: wName,
-    index: i + 1,
-    role: config.workerRoles?.[i]
-      ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? getHostCliType()) as string,
-    assigned_tasks: [] as string[],
-    working_dir: leaderCwd,
-  }));
+  const workersInfo: WorkerInfo[] = workerNames.map((wName, i) => {
+    const worktree = workerWorktrees.get(wName);
+    return {
+      name: wName,
+      index: i + 1,
+      role: config.workerRoles?.[i]
+        ?? (agentTypes[i % agentTypes.length] ?? agentTypes[0] ?? 'claude') as string,
+      assigned_tasks: [] as string[],
+      working_dir: worktree?.path ?? leaderCwd,
+      team_state_root: teamStateRoot(leaderCwd, sanitized),
+      ...(worktree ? {
+        worktree_repo_root: leaderCwd,
+        worktree_path: worktree.path,
+        worktree_branch: worktree.branch,
+        worktree_detached: worktree.detached,
+        worktree_created: worktree.created,
+      } : {}),
+    };
+  });
 
   // Write initial v2 config
   const teamConfig: TeamConfig = {
     name: sanitized,
     task: config.tasks.map(t => t.subject).join('; '),
-    agent_type: agentTypes[0] || getHostCliType(),
+    agent_type: agentTypes[0] || 'claude',
     worker_launch_mode: 'interactive',
     policy: DEFAULT_TEAM_TRANSPORT_POLICY,
     governance: DEFAULT_TEAM_GOVERNANCE,
@@ -977,7 +1017,8 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     resize_hook_name: null,
     resize_hook_target: null,
     resolved_routing: resolvedRouting,
-    ...(ownsWindow ? { workspace_mode: 'single' as const } : {}),
+    workspace_mode: workspaceMode,
+    worktree_mode: worktreeMode,
   };
   try {
     await saveTeamConfig(teamConfig, leaderCwd);
@@ -1007,7 +1048,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
       worker_id: 'leader-fixed',
       role: 'leader',
     },
-    policy: { ...DEFAULT_TEAM_TRANSPORT_POLICY, ...DEFAULT_TEAM_GOVERNANCE },
+    policy: DEFAULT_TEAM_TRANSPORT_POLICY,
     governance: DEFAULT_TEAM_GOVERNANCE,
     permissions_snapshot: permissionsSnapshot,
     tmux_session: sessionName,
@@ -1018,6 +1059,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     leader_cwd: leaderCwd,
     team_state_root: teamConfig.team_state_root,
     workspace_mode: teamConfig.workspace_mode,
+    worktree_mode: teamConfig.worktree_mode,
     leader_pane_id: leaderPaneId,
     hud_pane_id: null,
     resize_hook_name: null,
@@ -1080,6 +1122,8 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
       task,
       taskId,
       cwd: leaderCwd,
+      workerCwd: workersInfo[workerIndex]?.working_dir ?? leaderCwd,
+      worktreePath: workersInfo[workerIndex]?.worktree_path,
       resolvedBinaryPaths,
       ...(assignment.model ? { model: assignment.model } : {}),
       ...(assignment.role ? { role: assignment.role } : {}),
@@ -1091,7 +1135,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
       if (workerInfo) {
         workerInfo.pane_id = workerLaunch.paneId;
         workerInfo.assigned_tasks = workerLaunch.startupAssigned ? [taskId] : [];
-        workerInfo.worker_cli = (assignment.agentType === 'copilot' ? 'claude' : assignment.agentType) as TeamRoleProvider;
+        workerInfo.worker_cli = assignment.agentType;
         if (workerLaunch.outputFile) {
           workerInfo.output_file = workerLaunch.outputFile;
         }
@@ -1099,11 +1143,14 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     }
 
     if (workerLaunch.startupFailureReason) {
-      await appendTeamEvent(sanitized, {
+      const logEventFailure = createSwallowedErrorLogger(
+        'team.runtime-v2.startTeamV2 appendTeamEvent failed',
+      );
+      appendTeamEvent(sanitized, {
         type: 'team_leader_nudge',
         worker: 'leader-fixed',
         reason: `startup_manual_intervention_required:${wName}:${workerLaunch.startupFailureReason}`,
-      }, leaderCwd);
+      }, leaderCwd).catch(logEventFailure);
     }
     }
   } catch (error) {
@@ -1136,12 +1183,15 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
     throw error;
   }
 
+  const logEventFailure = createSwallowedErrorLogger(
+    'team.runtime-v2.startTeamV2 appendTeamEvent failed',
+  );
   // Emit start event — NO watchdog, leader drives via monitorTeamV2()
-  await appendTeamEvent(sanitized, {
+  appendTeamEvent(sanitized, {
     type: 'team_leader_nudge',
     worker: 'leader-fixed',
     reason: `start_team_v2: workers=${config.workerCount} tasks=${config.tasks.length} panes=${workerPaneIds.length}`,
-  }, leaderCwd);
+  }, leaderCwd).catch(logEventFailure);
 
   return {
     teamName: sanitized,
@@ -1553,6 +1603,13 @@ export async function monitorTeamV2(
       status,
       heartbeat,
       assignedTasks: w.assigned_tasks,
+      working_dir: w.working_dir,
+      worktree_repo_root: w.worktree_repo_root,
+      worktree_path: w.worktree_path,
+      worktree_branch: w.worktree_branch,
+      worktree_detached: w.worktree_detached,
+      worktree_created: w.worktree_created,
+      team_state_root: w.team_state_root,
       turnsWithoutProgress,
     });
 
@@ -1568,9 +1625,14 @@ export async function monitorTeamV2(
     const statusFresh = isFreshTimestamp(status.updated_at);
     const heartbeatFresh = isFreshTimestamp(heartbeat?.last_turn_at);
     const hasWorkStartEvidence = expectedTaskId !== '' && hasWorkerStatusProgress(status, expectedTaskId);
+    const missingDependencyIds = outstandingTask
+      ? getMissingDependencyIds(outstandingTask, taskById)
+      : [];
 
     let stallReason: string | null = null;
-    if (paneSuggestsIdle && expectedTaskId !== '' && !hasWorkStartEvidence) {
+    if (paneSuggestsIdle && missingDependencyIds.length > 0) {
+      stallReason = 'missing_dependency';
+    } else if (paneSuggestsIdle && expectedTaskId !== '' && !hasWorkStartEvidence) {
       stallReason = 'no_work_start_evidence';
     } else if (paneSuggestsIdle && expectedTaskId !== '' && (!statusFresh || !heartbeatFresh)) {
       stallReason = 'stale_or_missing_worker_reports';
@@ -1580,7 +1642,11 @@ export async function monitorTeamV2(
 
     if (stallReason) {
       nonReportingWorkers.push(w.name);
-      if (stallReason === 'no_work_start_evidence') {
+      if (stallReason === 'missing_dependency') {
+        recommendations.push(
+          `Investigate ${w.name}: task-${outstandingTask?.id ?? expectedTaskId} is blocked by missing task ids [${missingDependencyIds.join(', ')}]; pane is idle at prompt`,
+        );
+      } else if (stallReason === 'no_work_start_evidence') {
         recommendations.push(`Investigate ${w.name}: assigned work but no work-start evidence; pane is idle at prompt`);
       } else if (stallReason === 'stale_or_missing_worker_reports') {
         recommendations.push(`Investigate ${w.name}: pane is idle while status/heartbeat are stale or missing`);
@@ -1601,6 +1667,17 @@ export async function monitorTeamV2(
   };
 
   const allTasksTerminal = taskCounts.pending === 0 && taskCounts.blocked === 0 && taskCounts.in_progress === 0;
+
+  for (const task of allTasks) {
+    const missingDependencyIds = getMissingDependencyIds(task, taskById);
+    if (missingDependencyIds.length === 0) {
+      continue;
+    }
+
+    recommendations.push(
+      `Investigate task-${task.id}: depends on missing task ids [${missingDependencyIds.join(', ')}]`,
+    );
+  }
 
   // Infer phase from task distribution
   const phase = inferPhase(allTasks.map((t) => ({
@@ -1906,7 +1983,7 @@ export async function resumeTeamV2(
 
   // Verify tmux session is alive
   try {
-    const sessionName = config.tmux_session || `omcp-team-${sanitized}`;
+    const sessionName = config.tmux_session || `omc-team-${sanitized}`;
     await tmuxExecAsync(['has-session', '-t', sessionName.split(':')[0]]);
 
     return {

@@ -177,7 +177,7 @@ describe('model-contract', () => {
     });
     it('codex includes --dangerously-bypass-approvals-and-sandbox', () => {
       const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp' });
-      expect(args[0]).toBe('exec');
+      expect(args).not.toContain('exec');
       expect(args).not.toContain('--full-auto');
       expect(args).toContain('--dangerously-bypass-approvals-and-sandbox');
     });
@@ -250,11 +250,6 @@ describe('model-contract', () => {
       const mockSpawnSync = vi.mocked(spawnSync);
       mockSpawnSync.mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null } as any);
 
-      expect(buildWorkerArgv('codex', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' })).toEqual([
-        'codex',
-        'exec',
-        '--dangerously-bypass-approvals-and-sandbox',
-      ]);
       expect(buildWorkerArgv('codex', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' })).not.toContain('exec');
       expect(mockSpawnSync).toHaveBeenCalledWith('which', ['codex'], { timeout: 5000, encoding: 'utf8' });
       mockSpawnSync.mockRestore();

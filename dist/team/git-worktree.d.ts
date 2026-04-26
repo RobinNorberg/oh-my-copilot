@@ -5,6 +5,10 @@ export interface WorktreeInfo {
     workerName: string;
     teamName: string;
     createdAt: string;
+    repoRoot?: string;
+    detached?: boolean;
+    created?: boolean;
+    reused?: boolean;
 }
 export interface EnsureWorkerWorktreeOptions {
     mode?: TeamWorktreeMode;
@@ -44,9 +48,23 @@ export declare function getWorktreePath(repoRoot: string, teamName: string, work
 /** Get branch name for a worker. */
 export declare function getBranchName(teamName: string, workerName: string): string;
 /**
- * Create a git worktree for a team worker.
- * Path: {repoRoot}/.omcp/worktrees/{team}/{worker}
- * Branch: omc-team/{teamName}/{workerName}
+ * Install the generated worker overlay into the root of a native worker worktree.
+ * Existing root AGENTS.md content is backed up under leader-owned state so cleanup
+ * can safely restore it. Reinstalling preserves the first original backup instead
+ * of treating an older managed overlay as user content.
+ */
+export declare function installWorktreeRootAgents(teamName: string, workerName: string, repoRoot: string, worktreePath: string, overlayContent: string): void;
+/**
+ * Restore or remove a managed worktree-root AGENTS.md when it is still unchanged.
+ * If a worker edited AGENTS.md, leave it and report agents_dirty so cleanup can
+ * preserve the worktree instead of overwriting user changes.
+ */
+export declare function restoreWorktreeRootAgents(teamName: string, workerName: string, repoRoot: string, worktreePath?: string): WorktreeRootAgentsRestoreResult;
+export declare function normalizeTeamWorktreeMode(value: unknown): TeamWorktreeMode;
+/**
+ * Ensure a worker worktree exists according to the selected opt-in mode.
+ * Disabled mode is a no-op. Existing clean compatible worktrees are reused;
+ * dirty or mismatched existing worktrees throw without deleting files.
  */
 export declare function ensureWorkerWorktree(teamName: string, workerName: string, repoRoot: string, options?: EnsureWorkerWorktreeOptions): EnsureWorkerWorktreeResult | null;
 /** Legacy creation helper: create or reuse a named-branch worker worktree. */
@@ -68,9 +86,7 @@ export declare function checkWorkerWorktreeRemovalSafety(teamName: string, worke
 export declare function prepareWorkerWorktreeForRemoval(teamName: string, workerName: string, repoRoot: string, worktreePath?: string): void;
 /** Remove a worker's worktree and branch, preserving dirty worktrees. */
 export declare function removeWorkerWorktree(teamName: string, workerName: string, repoRoot: string): void;
-/**
- * List all worktrees for a team.
- */
+/** List all worktrees for a team. */
 export declare function listTeamWorktrees(teamName: string, repoRoot: string): WorktreeInfo[];
 export declare function inspectTeamWorktreeCleanupSafety(teamName: string, repoRoot: string): TeamWorktreeCleanupSafety;
 /** Remove all clean worktrees for a team, preserving dirty worktrees. */

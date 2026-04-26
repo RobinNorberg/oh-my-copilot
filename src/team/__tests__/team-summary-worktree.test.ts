@@ -9,9 +9,9 @@ describe('team summary worktree metadata', () => {
   it('surfaces workspace and worker worktree contract fields', async () => {
     const cwd = mkdtempSync(join(tmpdir(), 'omc-summary-worktree-'));
     const teamName = 'summary-team';
-    const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
-    const teamStateRoot = join(cwd, '.omc', 'state', 'team', teamName);
-    const worktreePath = join(cwd, '.omc', 'team', teamName, 'worktrees', 'worker-1');
+    const teamRoot = join(cwd, '.omcp', 'state', 'team', teamName);
+    const teamStateRoot = join(cwd, '.omcp', 'state', 'team', teamName);
+    const worktreePath = join(cwd, '.omcp', 'team', teamName, 'worktrees', 'worker-1');
     try {
       mkdirSync(teamRoot, { recursive: true });
       writeFileSync(join(teamRoot, 'config.json'), JSON.stringify({

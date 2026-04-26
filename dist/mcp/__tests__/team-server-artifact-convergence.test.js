@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { execFileSync } from 'child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -81,12 +82,12 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const persisted = JSON.parse(readFileSync(join(jobsDir, `${jobId}.json`), 'utf-8'));
         expect(persisted.status).toBe('failed');
     });
-    it('handleCleanup removes only scoped .omg/state/team/<teamName> directory', async () => {
+    it('handleCleanup removes only scoped .omc/state/team/<teamName> directory', async () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art3';
         const cwd = join(testRoot, 'workspace');
-        const teamOneDir = join(cwd, '.omg', 'state', 'team', 'team-one');
-        const teamTwoDir = join(cwd, '.omg', 'state', 'team', 'team-two');
+        const teamOneDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamTwoDir = join(cwd, '.omc', 'state', 'team', 'team-two');
         mkdirSync(teamOneDir, { recursive: true });
         mkdirSync(teamTwoDir, { recursive: true });
         writeFileSync(join(teamOneDir, 'a.json'), '{}', 'utf-8');

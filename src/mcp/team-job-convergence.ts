@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { validateTeamName } from '../team/team-name.js';
+import { cleanupTeamWorktrees } from '../team/git-worktree.js';
 
 export interface OmcTeamJob {
   status: 'running' | 'completed' | 'failed' | 'timeout';

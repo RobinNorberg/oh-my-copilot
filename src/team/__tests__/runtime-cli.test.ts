@@ -217,7 +217,7 @@ describe('runtime-cli terminal preservation helper', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-terminal-complete-'));
     try {
       const teamName = 'runtime-cli-preserve-complete';
-      const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+      const stateRoot = join(cwd, '.omcp', 'state', 'team', teamName);
       const tasksDir = join(stateRoot, 'tasks');
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(
@@ -254,7 +254,7 @@ describe('runtime-cli terminal preservation helper', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-terminal-cancelled-'));
     try {
       const teamName = 'runtime-cli-preserve-cancelled';
-      const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+      const stateRoot = join(cwd, '.omcp', 'state', 'team', teamName);
       const tasksDir = join(stateRoot, 'tasks');
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(

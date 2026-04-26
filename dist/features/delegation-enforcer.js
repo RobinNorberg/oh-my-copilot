@@ -16,6 +16,16 @@ import { getAgentDefinitions } from '../agents/definitions.js';
 import { normalizeDelegationRole } from './delegation-routing/types.js';
 import { loadConfig } from '../config/loader.js';
 import { resolveClaudeFamily } from '../config/models.js';
+const CC_FAMILY_TO_ALIAS = {
+    SONNET: 'sonnet',
+    OPUS: 'opus',
+    HAIKU: 'haiku',
+};
+/** Normalize a model ID to a CC-supported alias (sonnet/opus/haiku) if possible */
+export function normalizeToCcAlias(model) {
+    const family = resolveClaudeFamily(model);
+    return family ? (CC_FAMILY_TO_ALIAS[family] ?? model) : model;
+}
 // ---------------------------------------------------------------------------
 // Config cache — avoids repeated disk reads on every enforceModel() call (F10)
 //

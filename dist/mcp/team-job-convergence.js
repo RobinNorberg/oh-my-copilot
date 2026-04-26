@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { validateTeamName } from '../team/team-name.js';
+import { cleanupTeamWorktrees } from '../team/git-worktree.js';
 function readResultArtifact(omcJobsDir, jobId) {
     const artifactPath = join(omcJobsDir, `${jobId}-result.json`);
     if (!existsSync(artifactPath))
@@ -66,15 +67,6 @@ export function convergeJobWithResultArtifact(job, jobId, omcJobsDir) {
 }
 export function isJobTerminal(job) {
     return job.status === 'completed' || job.status === 'failed' || job.status === 'timeout';
-}
-export function isPidAlive(pid) {
-    try {
-        process.kill(pid, 0);
-        return true;
-    }
-    catch {
-        return false;
-    }
 }
 export function clearScopedTeamState(job) {
     if (!job.cwd || !job.teamName) {

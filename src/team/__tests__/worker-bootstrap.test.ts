@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateWorkerOverlay, generateTriggerMessage, generateMailboxTriggerMessage, getWorkerEnv } from '../worker-bootstrap.js';
+import { generateWorkerOverlay, generateTriggerMessage, generateMailboxTriggerMessage, getWorkerEnv, generatePromptModeStartupPrompt } from '../worker-bootstrap.js';
 
 describe('worker-bootstrap', () => {
   const baseParams = {

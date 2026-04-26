@@ -278,7 +278,7 @@ describe('team cli', () => {
         const { cleanupTeamJob } = await import('../team.js');
         const jobId = 'omc-cleanup3';
         const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-preserve-cleanup-'));
-        const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        const stateRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         mkdirSync(stateRoot, { recursive: true });
         writeFileSync(join(stateRoot, 'config.json'), JSON.stringify({
             name: 'demo-team',
@@ -325,7 +325,7 @@ describe('team cli', () => {
         const { cleanupTeamJob } = await import('../team.js');
         const jobId = 'omc-cleanup5';
         const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-unknown-liveness-'));
-        const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        const stateRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         mkdirSync(stateRoot, { recursive: true });
         writeFileSync(join(stateRoot, 'config.json'), JSON.stringify({
             name: 'demo-team',
@@ -363,7 +363,7 @@ describe('team cli', () => {
         const { cleanupTeamJob } = await import('../team.js');
         const jobId = 'omc-cleanup6';
         const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-unknown-probe-'));
-        const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        const stateRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         mkdirSync(stateRoot, { recursive: true });
         writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
             status: 'running',
@@ -391,7 +391,7 @@ describe('team cli', () => {
         const { cleanupTeamJob } = await import('../team.js');
         const jobId = 'omc-cleanup4';
         const cwd = mkdtempSync(join(tmpdir(), 'omc-team-cli-live-cleanup-'));
-        const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        const stateRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         mkdirSync(stateRoot, { recursive: true });
         writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
             status: 'running',

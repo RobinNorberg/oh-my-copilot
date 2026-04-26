@@ -11,7 +11,7 @@
  */
 
 import { resolve } from 'path';
-import { mkdir } from 'fs/promises';
+import { mkdir, readFile } from 'fs/promises';
 import { tmuxExec, tmuxSpawn } from '../cli/tmux-utils.js';
 import {
   buildWorkerArgv,
@@ -142,7 +142,7 @@ export async function scaleUp(
       };
     }
 
-    const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omc/state/team/${sanitized}`;
+    const teamStateRoot = config.team_state_root ?? `${leaderCwd}/.omcp/state/team/${sanitized}`;
     const worktreeMode: TeamWorktreeMode = config.worktree_mode ?? 'disabled';
 
     // Resolve the monotonic worker index counter
@@ -292,7 +292,7 @@ export async function scaleUp(
         const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
           teamName: sanitized,
           workerName,
-          cwd: leaderCwd,
+          cwd: workerCwd,
           ...(model ? { model } : {}),
         });
         return { launchBinary, launchArgs };
@@ -338,6 +338,7 @@ export async function scaleUp(
         ...getModelWorkerEnv(sanitized, workerName, workerAgentType, env),
         OMC_TEAM_STATE_ROOT: teamStateRoot,
         OMC_TEAM_LEADER_CWD: leaderCwd,
+        ...(worktree ? { OMC_TEAM_WORKTREE_PATH: worktree.path, OMC_TEAM_WORKER_CWD: workerCwd } : {}),
       };
 
       if (worktree) {
@@ -371,7 +372,7 @@ export async function scaleUp(
           envVars: extraEnv,
           launchArgs,
           launchBinary,
-          cwd: leaderCwd,
+          cwd: workerCwd,
         });
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
@@ -388,7 +389,7 @@ export async function scaleUp(
       const splitDirection = splitTarget === (config.leader_pane_id ?? '') ? '-h' : '-v';
 
       const result = tmuxSpawn([
-        'split-window', splitDirection, '-t', splitTarget, '-d', '-P', '-F', '#{pane_id}', '-c', leaderCwd, cmd,
+        'split-window', splitDirection, '-t', splitTarget, '-d', '-P', '-F', '#{pane_id}', '-c', workerCwd, cmd,
       ]);
 
       if (result.status !== 0) {
@@ -423,8 +424,15 @@ export async function scaleUp(
         assigned_tasks: [],
         pid: panePid,
         pane_id: paneId,
-        working_dir: leaderCwd,
+        working_dir: workerCwd,
         team_state_root: teamStateRoot,
+        ...(worktree ? {
+          worktree_repo_root: leaderCwd,
+          worktree_path: worktree.path,
+          worktree_branch: worktree.branch,
+          worktree_detached: worktree.detached,
+          worktree_created: worktree.created,
+        } : {}),
       };
 
       await teamWriteWorkerIdentity(sanitized, workerName, workerInfo, leaderCwd);

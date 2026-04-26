@@ -1,5 +1,5 @@
-import type { TeamConfig, TeamGovernance, TeamManifestV2, TeamPolicy, TeamTransportPolicy, LifecycleProfile } from './types.js';
-export type { LifecycleProfile };
+import type { TeamConfig, TeamGovernance, TeamManifestV2, TeamPolicy, TeamTransportPolicy } from './types.js';
+export type LifecycleProfile = 'default' | 'linked_ralph';
 export declare const DEFAULT_TEAM_TRANSPORT_POLICY: TeamTransportPolicy;
 export declare const DEFAULT_TEAM_GOVERNANCE: TeamGovernance;
 type LegacyPolicyLike = Partial<TeamPolicy> & Partial<TeamGovernance>;
@@ -14,4 +14,5 @@ export declare function getConfigGovernance(config: TeamConfig | null | undefine
 export declare function resolveLifecycleProfile(config?: Pick<TeamConfig, 'lifecycle_profile'> | null, manifest?: Pick<TeamManifestV2, 'lifecycle_profile'> | null): LifecycleProfile;
 /** Returns true when the effective lifecycle profile is 'linked_ralph' */
 export declare function isLinkedRalphProfile(config?: Pick<TeamConfig, 'lifecycle_profile'> | null, manifest?: Pick<TeamManifestV2, 'lifecycle_profile'> | null): boolean;
+export {};
 //# sourceMappingURL=governance.d.ts.map

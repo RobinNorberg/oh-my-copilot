@@ -183,7 +183,7 @@ describe('scaleUp launch config', () => {
         OMC_TEAM_WORKER: 'demo-team/worker-1',
         OMC_TEAM_NAME: 'demo-team',
         OMC_WORKER_AGENT_TYPE: agentType,
-        OMC_TEAM_STATE_ROOT: `${resolve(cwd)}/.omc/state/team/demo-team`,
+        OMC_TEAM_STATE_ROOT: `${resolve(cwd)}/.omcp/state/team/demo-team`,
         OMC_TEAM_LEADER_CWD: resolve(cwd),
       }),
     }));
@@ -207,11 +207,11 @@ describe('scaleUp launch config', () => {
       hud_pane_id: null,
       resize_hook_name: null,
       resize_hook_target: null,
-      team_state_root: `${resolve(cwd)}/.omc/state/team/demo-team`,
+      team_state_root: `${resolve(cwd)}/.omcp/state/team/demo-team`,
       worktree_mode: 'named',
     });
     gitWorktreeMocks.ensureWorkerWorktree.mockReturnValue({
-      path: join(resolve(cwd), '.omc', 'team', 'demo-team', 'worktrees', 'worker-1'),
+      path: join(resolve(cwd), '.omcp', 'team', 'demo-team', 'worktrees', 'worker-1'),
       branch: 'omc-team/demo-team/worker-1',
       workerName: 'worker-1',
       teamName: 'demo-team',
@@ -258,11 +258,11 @@ describe('scaleUp launch config', () => {
       hud_pane_id: null,
       resize_hook_name: null,
       resize_hook_target: null,
-      team_state_root: `${resolve(cwd)}/.omc/state/team/demo-team`,
+      team_state_root: `${resolve(cwd)}/.omcp/state/team/demo-team`,
       worktree_mode: 'named',
     });
     gitWorktreeMocks.ensureWorkerWorktree.mockReturnValue({
-      path: join(resolve(cwd), '.omc', 'team', 'demo-team', 'worktrees', 'worker-1'),
+      path: join(resolve(cwd), '.omcp', 'team', 'demo-team', 'worktrees', 'worker-1'),
       branch: 'omc-team/demo-team/worker-1',
       workerName: 'worker-1',
       teamName: 'demo-team',
@@ -311,7 +311,7 @@ describe('scaleUp launch config', () => {
       hud_pane_id: null,
       resize_hook_name: null,
       resize_hook_target: null,
-      team_state_root: `${resolve(cwd)}/.omc/state/team/demo-team`,
+      team_state_root: `${resolve(cwd)}/.omcp/state/team/demo-team`,
     };
     teamOpsMocks.teamReadConfig.mockResolvedValueOnce(config);
     teamOpsMocks.teamReadWorkerStatus.mockResolvedValue({ state: 'idle', updated_at: new Date().toISOString() });
@@ -352,7 +352,7 @@ describe('scaleUp launch config', () => {
       hud_pane_id: null,
       resize_hook_name: null,
       resize_hook_target: null,
-      team_state_root: `${resolve(cwd)}/.omc/state/team/demo-team`,
+      team_state_root: `${resolve(cwd)}/.omcp/state/team/demo-team`,
     };
     teamOpsMocks.teamReadConfig.mockResolvedValueOnce(config);
     teamOpsMocks.teamReadWorkerStatus.mockResolvedValue({ state: 'idle', updated_at: new Date().toISOString() });
@@ -394,7 +394,7 @@ describe('scaleUp launch config', () => {
       hud_pane_id: null,
       resize_hook_name: null,
       resize_hook_target: null,
-      team_state_root: `${resolve(cwd)}/.omc/state/team/demo-team`,
+      team_state_root: `${resolve(cwd)}/.omcp/state/team/demo-team`,
     };
     teamOpsMocks.teamReadConfig.mockResolvedValueOnce(config);
     teamOpsMocks.teamReadWorkerStatus.mockResolvedValue({ state: 'idle', updated_at: new Date().toISOString() });

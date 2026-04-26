@@ -55,7 +55,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
             await rm(cwd, { recursive: true, force: true });
     });
     async function writeConfigAndTask(taskStatus = 'pending') {
-        const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        const teamRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         await mkdir(join(teamRoot, 'tasks'), { recursive: true });
         await mkdir(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
         await writeFile(join(teamRoot, 'config.json'), JSON.stringify({
@@ -80,7 +80,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
             resize_hook_name: null,
             resize_hook_target: null,
             next_task_id: 2,
-            team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+            team_state_root: join(cwd, '.omcp', 'state', 'team', 'demo-team'),
             workspace_mode: 'single',
         }, null, 2), 'utf-8');
         await writeFile(join(teamRoot, 'tasks', '1.json'), JSON.stringify({
@@ -103,7 +103,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     it('surfaces missing blocker task ids in monitor recommendations', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-missing-blocker-'));
         await writeConfigAndTask('pending');
-        const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        const teamRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         await writeFile(join(teamRoot, 'tasks', '1.json'), JSON.stringify({
             id: '1',
             subject: 'Blocked task',
@@ -143,7 +143,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     it('does not mark unknown pane liveness as dead or recommend reassignment', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-unknown-liveness-'));
         await writeConfigAndTask('in_progress');
-        const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        const teamRoot = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         await writeFile(join(teamRoot, 'monitor-snapshot.json'), JSON.stringify({
             taskStatusById: { 1: 'in_progress' },
             workerAliveByName: { 'worker-1': true },
@@ -187,7 +187,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     it('deduplicates duplicate worker rows from persisted config during monitoring', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-dedup-'));
         await writeConfigAndTask('pending');
-        const root = join(cwd, '.omc', 'state', 'team', 'demo-team');
+        const root = join(cwd, '.omcp', 'state', 'team', 'demo-team');
         await writeFile(join(root, 'config.json'), JSON.stringify({
             name: 'demo-team',
             task: 'demo',
@@ -206,7 +206,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
             resize_hook_name: null,
             resize_hook_target: null,
             next_task_id: 2,
-            team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+            team_state_root: join(cwd, '.omcp', 'state', 'team', 'demo-team'),
             workspace_mode: 'single',
         }, null, 2), 'utf-8');
         const { monitorTeamV2 } = await import('../runtime-v2.js');

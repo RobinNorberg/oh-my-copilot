@@ -4,10 +4,9 @@ import type {
   TeamManifestV2,
   TeamPolicy,
   TeamTransportPolicy,
-  LifecycleProfile,
 } from './types.js';
 
-export type { LifecycleProfile };
+export type LifecycleProfile = 'default' | 'linked_ralph';
 
 export const DEFAULT_TEAM_TRANSPORT_POLICY: TeamTransportPolicy = {
   display_mode: 'split_pane',
