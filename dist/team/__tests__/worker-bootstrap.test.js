@@ -12,10 +12,10 @@ describe('worker-bootstrap', () => {
     };
     describe('generateWorkerOverlay', () => {
         it('uses urgent trigger wording that requires immediate work and concrete progress', () => {
-            expect(generateTriggerMessage('test-team', 'worker-1')).toContain('.omc/state/team/test-team/workers/worker-1/inbox.md');
+            expect(generateTriggerMessage('test-team', 'worker-1')).toContain('.omcp/state/team/test-team/workers/worker-1/inbox.md');
             expect(generateTriggerMessage('test-team', 'worker-1')).toContain('execute now');
             expect(generateTriggerMessage('test-team', 'worker-1')).toContain('concrete progress');
-            expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2)).toContain('.omc/state/team/test-team/mailbox/worker-1.json');
+            expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2)).toContain('.omcp/state/team/test-team/mailbox/worker-1.json');
             expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2)).toContain('act now');
             expect(generateMailboxTriggerMessage('test-team', 'worker-1', 2)).toContain('concrete progress');
         });
@@ -51,7 +51,7 @@ describe('worker-bootstrap', () => {
         });
         it('uses a short prompt-mode startup pointer instead of lifecycle/task text', () => {
             const prompt = generatePromptModeStartupPrompt('test-team', 'worker-1');
-            expect(prompt).toContain('.omc/state/team/test-team/workers/worker-1/inbox.md');
+            expect(prompt).toContain('.omcp/state/team/test-team/workers/worker-1/inbox.md');
             expect(prompt).toContain('Open');
             expect(prompt).not.toContain('claim-task');
             expect(prompt).not.toContain('transition-task-status');
