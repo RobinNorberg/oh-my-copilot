@@ -36632,7 +36632,7 @@ function isInsideGitRepo(repoRoot) {
   }
 }
 function assertCleanLeaderWorktree(repoRoot) {
-  const status = git(repoRoot, ["status", "--porcelain"]).split("\n").filter((line) => line.trim() !== "" && !/^\?\? \.omc(?:\/|$)/.test(line)).join("\n").trim();
+  const status = git(repoRoot, ["status", "--porcelain"]).split("\n").filter((line) => line.trim() !== "" && !/^\?\? \.omcp?(?:\/|$)/.test(line)).join("\n").trim();
   if (status.length > 0) {
     const error48 = new Error("leader_worktree_dirty: commit, stash, or clean changes before enabling team worktree mode");
     error48.code = "leader_worktree_dirty";

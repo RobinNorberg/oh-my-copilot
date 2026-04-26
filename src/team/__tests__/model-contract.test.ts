@@ -395,10 +395,20 @@ describe('model-contract', () => {
     });
 
     it('returns explicit model when OMC_ROUTING_FORCE_INHERIT is not set', () => {
-      const result = resolveClaudeWorkerModel({
-        ANTHROPIC_MODEL: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
-      });
-      expect(result).toBe('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+      const previous = process.env.CLAUDE_CODE_USE_BEDROCK;
+      process.env.CLAUDE_CODE_USE_BEDROCK = '1';
+      try {
+        const result = resolveClaudeWorkerModel({
+          ANTHROPIC_MODEL: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+        });
+        expect(result).toBe('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+      } finally {
+        if (previous === undefined) {
+          delete process.env.CLAUDE_CODE_USE_BEDROCK;
+        } else {
+          process.env.CLAUDE_CODE_USE_BEDROCK = previous;
+        }
+      }
     });
 
     it('returns undefined when no model env vars and no forceInherit', () => {

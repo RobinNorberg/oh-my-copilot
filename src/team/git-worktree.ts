@@ -108,7 +108,7 @@ function isInsideGitRepo(repoRoot: string): boolean {
 function assertCleanLeaderWorktree(repoRoot: string): void {
   const status = git(repoRoot, ['status', '--porcelain'])
     .split('\n')
-    .filter(line => line.trim() !== '' && !/^\?\? \.omc(?:\/|$)/.test(line))
+    .filter(line => line.trim() !== '' && !/^\?\? \.omcp?(?:\/|$)/.test(line))
     .join('\n')
     .trim();
   if (status.length > 0) {

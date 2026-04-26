@@ -14,6 +14,7 @@ describe('git-worktree', () => {
         execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: repoDir, stdio: 'pipe' });
         execFileSync('git', ['config', 'user.name', 'Test'], { cwd: repoDir, stdio: 'pipe' });
         writeFileSync(join(repoDir, 'README.md'), '# Test\n');
+        writeFileSync(join(repoDir, 'AGENTS.md'), 'original instructions');
         execFileSync('git', ['add', '.'], { cwd: repoDir, stdio: 'pipe' });
         execFileSync('git', ['commit', '-m', 'Initial commit'], { cwd: repoDir, stdio: 'pipe' });
     });
