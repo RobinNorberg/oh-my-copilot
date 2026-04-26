@@ -26,6 +26,7 @@ import { checkAutopilot } from '../autopilot/enforcement.js';
 import { readTeamPipelineState } from '../team-pipeline/state.js';
 import { getActiveAgentSnapshot } from '../subagent-tracker/index.js';
 import { truncatePromptForEcho } from '../../lib/truncate-prompt.js';
+import { isModeActive } from '../mode-registry/index.js';
 /** Maximum todo-continuation attempts before giving up (prevents infinite loops) */
 const MAX_TODO_CONTINUATION_ATTEMPTS = 5;
 const CANCEL_SIGNAL_TTL_MS = 30_000;
@@ -1483,9 +1484,11 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
         };
     };
     const runRalphPriority = async () => {
-        // Skip when the ralph workflow slot is tombstoned — a stale `ralph-state.json`
-        // from a crashed session must not block a fresh invocation.
-        if (tombstonedWorkflowModes.has('ralph'))
+        // Skip when the authoritative registry says Ralph is inactive. This keeps
+        // Stop enforcement aligned with state_list_active and ignores stale
+        // restored/cache artifacts (including tombstoned workflow slots) after
+        // cancel/state_clear has made the registry empty.
+        if (tombstonedWorkflowModes.has('ralph') || !isModeActive('ralph', workingDir, sessionId))
             return null;
         return checkRalphLoop(sessionId, workingDir, cancelInProgress);
     };
@@ -1527,7 +1530,7 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
         }
     }
     // Priority 2: Ultrawork Mode (performance mode with persistence)
-    if (!tombstonedWorkflowModes.has('ultrawork')) {
+    if (!tombstonedWorkflowModes.has('ultrawork') && isModeActive('ultrawork', workingDir, sessionId)) {
         const ultraworkResult = await checkUltrawork(sessionId, workingDir, hasIncompleteTodos, cancelInProgress);
         if (ultraworkResult) {
             return ultraworkResult;
