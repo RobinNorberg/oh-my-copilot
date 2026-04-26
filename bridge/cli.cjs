@@ -46970,6 +46970,13 @@ var require_safe_regex = __commonJS({
 });
 
 // src/hud/usage-api.ts
+function isEnterpriseUsageContext(options) {
+  if (!options) return true;
+  const subscriptionType = options.subscriptionType?.toLowerCase() ?? null;
+  const rateLimitTier = options.rateLimitTier ?? null;
+  if (subscriptionType == null && rateLimitTier == null) return true;
+  return subscriptionType === "enterprise" || /claude_zero/i.test(rateLimitTier ?? "");
+}
 function isZaiHost(urlString) {
   try {
     const url2 = new URL(urlString);
@@ -47447,13 +47454,21 @@ function clamp(v) {
   if (v == null || !isFinite(v)) return 0;
   return Math.max(0, Math.min(100, v));
 }
-function parseUsageResponse(response) {
+function parseUsageResponse(response, options) {
   const fiveHour = response.five_hour?.utilization;
   const sevenDay = response.seven_day?.utilization;
-  const enterpriseCredits = response.extra_usage?.used_credits;
-  const enterpriseCurrency = (response.extra_usage?.currency ?? "USD").toUpperCase();
-  const hasUsableEnterprise = enterpriseCredits != null && enterpriseCurrency === "USD";
-  if (fiveHour == null && sevenDay == null && !hasUsableEnterprise) return null;
+  const sonnetSevenDay = response.seven_day_sonnet?.utilization;
+  const opusSevenDay = response.seven_day_opus?.utilization;
+  const extra = response.extra_usage;
+  const usedCredits = extra?.used_credits;
+  const extraCurrency = (extra?.currency ?? "USD").toUpperCase();
+  const isEnterpriseContext = isEnterpriseUsageContext(options);
+  const hasUsableUsedCredits = usedCredits != null && extraCurrency === "USD";
+  const hasUsableEnterprise = isEnterpriseContext && hasUsableUsedCredits;
+  const hasUsableUsdExtraUsage = extra?.limit_usd != null && extra.limit_usd > 0;
+  const hasUsableCreditExtraUsage = !isEnterpriseContext && hasUsableUsedCredits && extra?.monthly_limit != null && extra.monthly_limit > 0;
+  const hasUsableExtraUsage = hasUsableUsdExtraUsage || hasUsableCreditExtraUsage;
+  if (fiveHour == null && sevenDay == null && sonnetSevenDay == null && opusSevenDay == null && !hasUsableEnterprise && !hasUsableExtraUsage) return null;
   const parseDate = (dateStr) => {
     if (!dateStr) return null;
     try {
@@ -47463,34 +47478,39 @@ function parseUsageResponse(response) {
       return null;
     }
   };
-  const sonnetSevenDay = response.seven_day_sonnet?.utilization;
   const sonnetResetsAt = response.seven_day_sonnet?.resets_at;
   const result = {
     fiveHourPercent: clamp(fiveHour),
-    weeklyPercent: clamp(sevenDay),
-    fiveHourResetsAt: parseDate(response.five_hour?.resets_at),
-    weeklyResetsAt: parseDate(response.seven_day?.resets_at)
+    fiveHourResetsAt: parseDate(response.five_hour?.resets_at)
   };
+  if (sevenDay != null) {
+    result.weeklyPercent = clamp(sevenDay);
+    result.weeklyResetsAt = parseDate(response.seven_day?.resets_at);
+  }
   if (sonnetSevenDay != null) {
     result.sonnetWeeklyPercent = clamp(sonnetSevenDay);
     result.sonnetWeeklyResetsAt = parseDate(sonnetResetsAt);
   }
-  const opusSevenDay = response.seven_day_opus?.utilization;
   const opusResetsAt = response.seven_day_opus?.resets_at;
   if (opusSevenDay != null) {
     result.opusWeeklyPercent = clamp(opusSevenDay);
     result.opusWeeklyResetsAt = parseDate(opusResetsAt);
   }
-  const extra = response.extra_usage;
   if (extra != null) {
     const currency = (extra.currency ?? "USD").toUpperCase();
-    if (extra.used_credits != null && currency === "USD") {
+    if (extra.used_credits != null && currency === "USD" && isEnterpriseContext) {
       result.enterpriseSpentUsd = extra.used_credits / 100;
       result.enterpriseLimitUsd = extra.monthly_limit == null ? null : extra.monthly_limit / 100;
       result.enterpriseCurrency = currency;
       if (extra.monthly_limit != null && extra.monthly_limit > 0) {
         result.enterpriseUtilization = clamp(extra.used_credits / extra.monthly_limit * 100);
       }
+    } else if (extra.used_credits != null && currency === "USD" && !isEnterpriseContext && extra.monthly_limit != null && extra.monthly_limit > 0) {
+      const spentUsd = extra.used_credits / 100;
+      result.extraUsageSpentUsd = spentUsd;
+      result.extraUsageLimitUsd = extra.monthly_limit / 100;
+      result.extraUsagePercent = extra.utilization != null ? clamp(extra.utilization) : clamp(extra.used_credits / extra.monthly_limit * 100);
+      result.extraUsageResetsAt = parseDate(extra.resets_at);
     } else if (extra.limit_usd != null && extra.limit_usd > 0) {
       const spentUsd = extra.spent_usd ?? 0;
       result.extraUsageSpentUsd = spentUsd;
@@ -47749,10 +47769,15 @@ async function getUsage() {
           }
         }
         const accessToken = creds.accessToken;
+        const subscriptionType = creds.subscriptionType;
+        const rateLimitTier = creds.rateLimitTier;
         return fetchAndCacheUsage({
           source: "anthropic",
           fetchFn: () => fetchUsageFromApi(accessToken),
-          parseFn: parseUsageResponse,
+          parseFn: (data) => parseUsageResponse(data, {
+            subscriptionType,
+            rateLimitTier
+          }),
           cache,
           pollIntervalMs
         });
