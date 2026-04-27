@@ -15638,7 +15638,7 @@ function isDefaultClaudeConfigDirPath(configDir) {
 function quoteShellArg(value) {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
-function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath) {
+function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath, cacheWrapperPath) {
   if (isWindows()) {
     const cmdWrapperPath = (0, import_path38.join)(COPILOT_CONFIG_DIR, "copilot-hud.cmd");
     const hudPathNormalized = hudScriptPath.replace(/\//g, "\\");
@@ -15655,13 +15655,19 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath) {
     }
     return cmdWrapperPath.replace(/\\/g, "/");
   }
+  const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, "/");
+  if (cacheWrapperPath) {
+    if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
+      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
+    }
+    return `sh ${quoteShellArg(cacheWrapperPath.replace(/\\/g, "/"))} ${quoteShellArg(normalizedHudScriptPath)}`;
+  }
   if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
     if (findNodePath) {
       return "sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
     }
     return "node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
   }
-  const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, "/");
   if (findNodePath) {
     return `sh ${quoteShellArg(findNodePath.replace(/\\/g, "/"))} ${quoteShellArg(normalizedHudScriptPath)}`;
   }
@@ -15813,6 +15819,8 @@ function configureInstallerSettings(baseSettings, context) {
       try {
         const findNodeSrc = (0, import_path38.join)(getPackageDir3(), "scripts", "find-node.sh");
         const findNodeDest = (0, import_path38.join)(HUD_DIR, "find-node.sh");
+        const cacheWrapperSrc = (0, import_path38.join)(getPackageDir3(), "scripts", "lib", "hud-cache-wrapper.sh");
+        const cacheWrapperDest = (0, import_path38.join)(HUD_DIR, "omcp-hud-cache.sh");
         const configDirHelperSrc = (0, import_path38.join)(getPackageDir3(), "scripts", "lib", "config-dir.sh");
         const hudLibDir = (0, import_path38.join)(HUD_DIR, "lib");
         const configDirHelperDest = (0, import_path38.join)(hudLibDir, "config-dir.sh");
@@ -15820,10 +15828,12 @@ function configureInstallerSettings(baseSettings, context) {
           (0, import_fs29.mkdirSync)(hudLibDir, { recursive: true });
         }
         (0, import_fs29.copyFileSync)(findNodeSrc, findNodeDest);
+        (0, import_fs29.copyFileSync)(cacheWrapperSrc, cacheWrapperDest);
         (0, import_fs29.copyFileSync)(configDirHelperSrc, configDirHelperDest);
         (0, import_fs29.chmodSync)(findNodeDest, 493);
+        (0, import_fs29.chmodSync)(cacheWrapperDest, 493);
         (0, import_fs29.chmodSync)(configDirHelperDest, 493);
-        statusLineCommand = buildStatusLineCommand(nodeBin, context.hudScriptPath.replace(/\\/g, "/"), findNodeDest);
+        statusLineCommand = buildStatusLineCommand(nodeBin, context.hudScriptPath.replace(/\\/g, "/"), findNodeDest, cacheWrapperDest);
       } catch {
         statusLineCommand = buildStatusLineCommand(nodeBin, context.hudScriptPath.replace(/\\/g, "/"));
       }
