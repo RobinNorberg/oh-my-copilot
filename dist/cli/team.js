@@ -275,6 +275,7 @@ export async function startTeamJob(input) {
         pollIntervalMs: input.pollIntervalMs,
         sentinelGateTimeoutMs: input.sentinelGateTimeoutMs,
         sentinelGatePollIntervalMs: input.sentinelGatePollIntervalMs,
+        autoMerge: input.autoMerge,
     };
     child.stdin.write(JSON.stringify(payload));
     child.stdin.end();
@@ -582,7 +583,7 @@ export async function teamCleanupCommand(jobId, cleanupOptions = {}, options = {
 }
 export const TEAM_USAGE = `
 Usage:
-  omcp team start --agent <claude|copilot|codex|gemini|cursor>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--json]
+  omcp team start --agent <claude|copilot|codex|gemini|cursor>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--auto-merge] [--json]
   omcp team status <job_id|team_name> [--json] [--cwd DIR]
   omcp team wait <job_id> [--timeout-ms MS] [--json]
   omcp team cleanup <job_id> [--grace-ms MS] [--json]
@@ -594,6 +595,13 @@ Usage:
 Worktrees:
   Native per-worker git worktree mode is opt-in/config-gated with team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|named.
   Status JSON includes workspace_mode, worktree_mode, team_state_root, and per-worker worktree metadata.
+
+Auto-merge (v2-only):
+  --auto-merge          Enable per-commit auto-merge to leader and auto-rebase fanout.
+                        Each worker runs in a dedicated git worktree on omc-team/{team}/{worker}.
+                        Bursts of rapid worker commits coalesce to a single merge of HEAD.
+                        Requires OMC_RUNTIME_V2=1. Leader branch must not be 'main' or 'master'.
+                        Equivalent to OMC_TEAMS_AUTO_MERGE=1.
 
 Examples:
   omcp team start --agent codex --count 2 --task "review auth flow" --new-window
@@ -616,6 +624,8 @@ function parseStartArgs(args) {
     let pollIntervalMs;
     let sentinelGateTimeoutMs;
     let sentinelGatePollIntervalMs;
+    // --auto-merge / OMC_TEAMS_AUTO_MERGE=1 enables the merge orchestrator (v2-only).
+    let autoMerge = process.env.OMC_TEAMS_AUTO_MERGE === '1';
     for (let i = 0; i < args.length; i += 1) {
         const token = args[i];
         const next = args[i + 1];
@@ -625,6 +635,10 @@ function parseStartArgs(args) {
         }
         if (token === '--new-window') {
             newWindow = true;
+            continue;
+        }
+        if (token === '--auto-merge') {
+            autoMerge = true;
             continue;
         }
         if (token === '--agent') {
@@ -761,6 +775,7 @@ function parseStartArgs(args) {
             ...(pollIntervalMs != null ? { pollIntervalMs } : {}),
             ...(sentinelGateTimeoutMs != null ? { sentinelGateTimeoutMs } : {}),
             ...(sentinelGatePollIntervalMs != null ? { sentinelGatePollIntervalMs } : {}),
+            ...(autoMerge ? { autoMerge: true } : {}),
         },
         json,
     };
@@ -960,6 +975,7 @@ function parseLegacyStartAlias(args) {
     let json = false;
     let cwd = process.cwd();
     let newWindow = false;
+    let autoMerge = process.env.OMC_TEAMS_AUTO_MERGE === '1';
     const taskParts = [];
     for (let i = index; i < args.length; i += 1) {
         const token = args[i];
@@ -970,6 +986,10 @@ function parseLegacyStartAlias(args) {
         }
         if (token === '--new-window') {
             newWindow = true;
+            continue;
+        }
+        if (token === '--auto-merge') {
+            autoMerge = true;
             continue;
         }
         if (token === '--cwd') {
@@ -998,6 +1018,7 @@ function parseLegacyStartAlias(args) {
         json,
         cwd,
         ...(newWindow ? { newWindow: true } : {}),
+        ...(autoMerge ? { autoMerge: true } : {}),
     };
 }
 export async function teamCommand(argv) {
@@ -1074,6 +1095,7 @@ export async function teamCommand(argv) {
                 tasks,
                 cwd: legacy.cwd,
                 ...(legacy.newWindow ? { newWindow: true } : {}),
+                ...(legacy.autoMerge ? { autoMerge: true } : {}),
             });
             output(result, legacy.json);
             return;

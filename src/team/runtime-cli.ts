@@ -28,6 +28,14 @@ interface CliInput {
   pollIntervalMs?: number;
   sentinelGateTimeoutMs?: number;
   sentinelGatePollIntervalMs?: number;
+  /** v2-only: when true, start the merge orchestrator (auto-merge + fan-out rebase). */
+  autoMerge?: boolean;
+}
+
+export function assertAutoMergeRuntimeSupported(useV2: boolean, autoMerge: boolean): void {
+  if (autoMerge && !useV2) {
+    throw new Error('--auto-merge requires runtime v2; unset OMC_RUNTIME_V2=0 or disable --auto-merge');
+  }
 }
 
 interface TaskResult {
@@ -251,10 +259,11 @@ async function main(): Promise<void> {
     pollIntervalMs = 5000,
     sentinelGateTimeoutMs = 30_000,
     sentinelGatePollIntervalMs = 250,
+    autoMerge = false,
   } = input;
 
   const workerCount = input.workerCount ?? agentTypes.length;
-  const stateRoot = join(cwd, `.omc/state/team/${teamName}`);
+  const stateRoot = join(cwd, `.omcp/state/team/${teamName}`);
 
   const config: TeamConfig = {
     teamName,
@@ -266,6 +275,12 @@ async function main(): Promise<void> {
   };
 
   const useV2 = isRuntimeV2Enabled();
+  try {
+    assertAutoMergeRuntimeSupported(useV2, autoMerge);
+  } catch (err) {
+    process.stderr.write(`[runtime-cli] ${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  }
   let runtime: TeamRuntime | null = null;
   let finalStatus: 'completed' | 'failed' = 'failed';
   let pollActive = true;
@@ -345,6 +360,7 @@ async function main(): Promise<void> {
         tasks,
         cwd,
         newWindow,
+        autoMerge,
       });
       const v2PaneIds = v2Runtime.config.workers
         .map(w => w.pane_id)

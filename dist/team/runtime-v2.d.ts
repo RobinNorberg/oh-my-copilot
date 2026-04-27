@@ -20,7 +20,7 @@ import type { TeamPhase } from './phase-controller.js';
 import { type WorkerPaneLiveness } from './tmux-session.js';
 import type { PluginConfig } from '../shared/types.js';
 import { type CliWorkerOutputPayload } from './cli-worker-contract.js';
-export declare function isRuntimeV2Enabled(env?: NodeJS.ProcessEnv): boolean;
+export { isRuntimeV2Enabled } from './runtime-flags.js';
 export interface TeamRuntimeV2 {
     teamName: string;
     sanitizedName: string;
@@ -98,6 +98,12 @@ export interface StartTeamV2Config {
      * team (stickiness guarantee per plan AC-10 / R11).
      */
     pluginConfig?: PluginConfig;
+    /**
+     * v2-only: when true, start the merge orchestrator. Forces worktreeMode to
+     * 'named' (worker branches must exist) and rejects 'main'/'master' leader
+     * branch. See merge-orchestrator.ts.
+     */
+    autoMerge?: boolean;
 }
 /**
  * Start a team with the v2 event-driven runtime.

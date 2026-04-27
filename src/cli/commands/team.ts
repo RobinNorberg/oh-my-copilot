@@ -24,7 +24,7 @@ const VALID_TEAM_CLI_AGENT_TYPES = new Set(['claude', 'copilot', 'codex', 'gemin
 const DEFAULT_TEAM_CLI_AGENT_TYPE: CliAgentType = 'claude';
 
 const TEAM_HELP = `
-Usage: omcp team [N:agent-type[:role]] [--new-window] "<task description>"
+Usage: omcp team [N:agent-type[:role]] [--new-window] [--auto-merge] "<task description>"
        omcp team status <team-name>
        omcp team shutdown <team-name> [--force]
        omcp team api <operation> [--input <json>] [--json]
@@ -39,6 +39,13 @@ Examples:
   omcp team status fix-failing-tests
   omcp team shutdown fix-failing-tests
   omcp team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
+
+Auto-merge (v2-only):
+  --auto-merge          Enable per-commit auto-merge to leader and auto-rebase fanout.
+                        Each worker runs in a dedicated git worktree on omc-team/{team}/{worker}.
+                        Bursts of rapid worker commits coalesce to a single merge of HEAD.
+                        Requires OMC_RUNTIME_V2=1. Leader branch must not be 'main' or 'master'.
+                        Equivalent to OMC_TEAMS_AUTO_MERGE=1.
 
 Roles (optional): architect, executor, planner, analyst, critic, debugger, verifier,
   code-reviewer, security-reviewer, test-engineer, designer, writer, scientist
@@ -240,6 +247,7 @@ export interface ParsedTeamArgs {
   teamName: string;
   json: boolean;
   newWindow: boolean;
+  autoMerge: boolean;
 }
 
 function getTeamWorkerIdentityFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
@@ -296,6 +304,7 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = 'copi
   let workerSpecs: ParsedWorkerSpec[] = [];
   let json = false;
   let newWindow = false;
+  let autoMerge: boolean = process.env.OMC_TEAMS_AUTO_MERGE === '1';
   const normalizedDefaultAgentType = VALID_TEAM_CLI_AGENT_TYPES.has(defaultAgentType as CliAgentType)
     ? defaultAgentType
     : DEFAULT_TEAM_CLI_AGENT_TYPE;
@@ -307,6 +316,8 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = 'copi
       json = true;
     } else if (arg === '--new-window') {
       newWindow = true;
+    } else if (arg === '--auto-merge') {
+      autoMerge = true;
     } else {
       filteredArgs.push(arg);
     }
@@ -378,7 +389,7 @@ export function parseTeamArgs(tokens: string[], defaultAgentType: string = 'copi
   }
 
   const teamName = slugifyTask(task);
-  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow };
+  return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge };
 }
 
 export function buildStartupTasks(parsed: ParsedTeamArgs): Array<{ subject: string; description: string; owner?: string }> {
@@ -577,6 +588,7 @@ async function handleTeamStart(parsed: ParsedTeamArgs, cwd: string): Promise<voi
       newWindow: parsed.newWindow,
       workerRoles: parsed.workerSpecs.map((spec) => spec.role ?? spec.agentType),
       ...(rolePrompt ? { roleName: parsed.role, rolePrompt } : {}),
+      ...(parsed.autoMerge ? { autoMerge: true } : {}),
     });
 
     const uniqueTypes = [...new Set(parsed.agentTypes)].join(',');
