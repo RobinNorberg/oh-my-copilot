@@ -480,6 +480,137 @@ $ ultrawork search the codebase`,
                 rmSync(tempDir, { recursive: true, force: true });
             }
         });
+        it('writes a durable started marker on session-start', async () => {
+            const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-session-start-marker-'));
+            try {
+                execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+                const sessionId = 'session-start-marker';
+                const result = await processHook('session-start', {
+                    sessionId,
+                    directory: tempDir,
+                });
+                expect(result.continue).toBe(true);
+                const markerPath = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'session-started.json');
+                expect(existsSync(markerPath)).toBe(true);
+                const marker = JSON.parse(readFileSync(markerPath, 'utf-8'));
+                expect(marker.session_id).toBe(sessionId);
+                expect(typeof marker.started_at).toBe('string');
+                expect(marker.ppid).toBeUndefined();
+            }
+            finally {
+                rmSync(tempDir, { recursive: true, force: true });
+            }
+        });
+        // Windows: bridge.ts hasDurableAbandonmentEvidence reads /proc/sys/kernel/random/boot_id
+        // which doesn't exist on win32, so cleanup never triggers regardless of marker boot_id.
+        // Adding a Windows boot-id source is upstream work; skip until upstream supports it.
+        it.skipIf(process.platform === 'win32')('reconciles a prior session only with durable abandonment evidence', async () => {
+            const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-session-start-reconcile-'));
+            try {
+                execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+                const staleSessionId = 'stale-durable-abandoned-session';
+                const currentSessionId = 'current-reconcile-session';
+                const staleSessionDir = join(tempDir, '.omcp', 'state', 'sessions', staleSessionId);
+                mkdirSync(staleSessionDir, { recursive: true });
+                writeFileSync(join(staleSessionDir, 'ralph-state.json'), JSON.stringify({
+                    active: true,
+                    session_id: staleSessionId,
+                    started_at: '2026-04-20T00:00:00.000Z',
+                }));
+                writeFileSync(join(staleSessionDir, 'session-started.json'), JSON.stringify({
+                    session_id: staleSessionId,
+                    started_at: '2026-04-20T00:00:00.000Z',
+                    ppid: 999999,
+                    boot_id: 'definitely-not-the-current-boot-id',
+                }));
+                const missionStatePath = join(tempDir, '.omcp', 'state', 'mission-state.json');
+                const legacyRalphStatePath = join(tempDir, '.omcp', 'state', 'ralph-state.json');
+                const otherLegacyAutopilotStatePath = join(tempDir, '.omcp', 'state', 'autopilot-state.json');
+                writeFileSync(legacyRalphStatePath, JSON.stringify({
+                    active: true,
+                    started_at: '2026-04-19T00:00:00.000Z',
+                }));
+                writeFileSync(otherLegacyAutopilotStatePath, JSON.stringify({
+                    active: true,
+                    session_id: 'unrelated-global-owner',
+                    started_at: '2026-04-19T00:00:00.000Z',
+                }));
+                writeFileSync(missionStatePath, JSON.stringify({
+                    missions: [
+                        { id: `ralph-${staleSessionId}`, source: 'session' },
+                        { id: 'team-still-owned', source: 'team' },
+                    ],
+                }));
+                const result = await processHook('session-start', {
+                    sessionId: currentSessionId,
+                    directory: tempDir,
+                });
+                expect(result.continue).toBe(true);
+                expect(existsSync(join(staleSessionDir, 'ralph-state.json'))).toBe(false);
+                expect(existsSync(join(staleSessionDir, 'session-started.json'))).toBe(false);
+                const missionState = JSON.parse(readFileSync(missionStatePath, 'utf-8'));
+                expect(missionState.missions).toEqual([{ id: 'team-still-owned', source: 'team' }]);
+                expect(existsSync(join(tempDir, '.omcp', 'state', 'sessions', currentSessionId, 'session-started.json'))).toBe(true);
+                expect(existsSync(legacyRalphStatePath)).toBe(true);
+                expect(existsSync(otherLegacyAutopilotStatePath)).toBe(true);
+            }
+            finally {
+                rmSync(tempDir, { recursive: true, force: true });
+            }
+        });
+        it('leaves prior session state untouched when only same-boot hook metadata is present', async () => {
+            const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-session-start-live-'));
+            try {
+                execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+                const priorSessionId = 'prior-same-boot-session';
+                const currentSessionId = 'current-same-boot-session';
+                const priorSessionDir = join(tempDir, '.omcp', 'state', 'sessions', priorSessionId);
+                mkdirSync(priorSessionDir, { recursive: true });
+                writeFileSync(join(priorSessionDir, 'ultrawork-state.json'), JSON.stringify({ active: true, session_id: priorSessionId }));
+                writeFileSync(join(priorSessionDir, 'session-started.json'), JSON.stringify({
+                    session_id: priorSessionId,
+                    started_at: new Date().toISOString(),
+                    ppid: 999999,
+                    transcript_path: join(tempDir, '.claude', 'projects', 'prior.jsonl'),
+                    source: 'startup',
+                    model: 'claude-sonnet-4-6',
+                }));
+                await processHook('session-start', {
+                    sessionId: currentSessionId,
+                    directory: tempDir,
+                });
+                expect(existsSync(join(priorSessionDir, 'ultrawork-state.json'))).toBe(true);
+                expect(existsSync(join(priorSessionDir, 'session-started.json'))).toBe(true);
+            }
+            finally {
+                rmSync(tempDir, { recursive: true, force: true });
+            }
+        });
+        it('leaves prior session state untouched when the marker ownership is ambiguous', async () => {
+            const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-session-start-ambiguous-'));
+            try {
+                execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+                const priorSessionId = 'prior-ambiguous-session';
+                const currentSessionId = 'current-ambiguous-session';
+                const priorSessionDir = join(tempDir, '.omcp', 'state', 'sessions', priorSessionId);
+                mkdirSync(priorSessionDir, { recursive: true });
+                writeFileSync(join(priorSessionDir, 'team-state.json'), JSON.stringify({ active: true, session_id: priorSessionId }));
+                writeFileSync(join(priorSessionDir, 'session-started.json'), JSON.stringify({
+                    session_id: 'different-session-owner',
+                    started_at: '2026-04-20T00:00:00.000Z',
+                    ppid: 999999,
+                }));
+                await processHook('session-start', {
+                    sessionId: currentSessionId,
+                    directory: tempDir,
+                });
+                expect(existsSync(join(priorSessionDir, 'team-state.json'))).toBe(true);
+                expect(existsSync(join(priorSessionDir, 'session-started.json'))).toBe(true);
+            }
+            finally {
+                rmSync(tempDir, { recursive: true, force: true });
+            }
+        });
         it('restores ralplan session context on session-start', async () => {
             const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-session-start-ralplan-'));
             try {
