@@ -55,7 +55,7 @@ describe('HUD marketplace resolution', () => {
     expect(content).toContain('import { fileURLToPath, pathToFileURL } from "node:url"');
     expect(content).toContain('const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);');
     expect(content).toContain('await import(pathToFileURL(pluginPath).href);');
-    expect(content).toContain('await import(pathToFileURL(envHudPath).href);');
+    expect(content).toContain('await import(pathToFileURL(devPath).href);');
     expect(content).toContain('await import(pathToFileURL(marketplaceHudPath).href);');
     expect(content).not.toContain('await import(pluginPath);');
     expect(content).not.toContain('await import(marketplaceHudPath);');
