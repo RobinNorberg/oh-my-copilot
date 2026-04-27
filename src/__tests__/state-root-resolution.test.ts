@@ -223,7 +223,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     const priorSessionId = 'prior-runner-session';
     const currentSessionId = 'current-runner-session';
 
-    const priorStateDir = join(fakeProject, '.omc', 'state', 'sessions', priorSessionId);
+    const priorStateDir = join(fakeProject, '.omcp', 'state', 'sessions', priorSessionId);
     mkdirSync(priorStateDir, { recursive: true });
     writeFileSync(
       join(priorStateDir, 'ralph-state.json'),
@@ -262,7 +262,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
 
     expect(existsSync(join(priorStateDir, 'ralph-state.json'))).toBe(true);
     expect(existsSync(markerPath)).toBe(true);
-    expect(existsSync(join(fakeProject, '.omc', 'state', 'sessions', currentSessionId, 'session-started.json'))).toBe(true);
+    expect(existsSync(join(fakeProject, '.omcp', 'state', 'sessions', currentSessionId, 'session-started.json'))).toBe(true);
   });
 
   // ────────────────────────────────────────────────────────────────────────────
