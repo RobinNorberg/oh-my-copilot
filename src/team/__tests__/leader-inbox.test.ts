@@ -35,7 +35,7 @@ describe('leaderInboxPath', () => {
     const p = leaderInboxPath('my team!', TEST_CWD);
     expect(p).not.toContain('!');
     expect(p).not.toContain(' ');
-    expect(p).toContain('leader/inbox.md');
+    expect(p).toContain(join('leader', 'inbox.md'));
   });
 
   it('prevents traversal via team name: dots and slashes stripped', () => {
@@ -175,8 +175,9 @@ describe('extendLeaderBootstrapPrompt', () => {
     const prompt = extendLeaderBootstrapPrompt(TEST_TEAM);
     const fullPath = leaderInboxPath(TEST_TEAM, TEST_CWD);
     // The prompt uses relative path; fullPath has cwd prefix
-    const relSegment = `.omcp/state/team/my-team/leader/inbox.md`;
-    expect(fullPath).toContain(relSegment);
-    expect(prompt).toContain(relSegment);
+    const relSegmentNative = join('.omcp', 'state', 'team', 'my-team', 'leader', 'inbox.md');
+    const relSegmentPosix = `.omcp/state/team/my-team/leader/inbox.md`;
+    expect(fullPath).toContain(relSegmentNative);
+    expect(prompt).toContain(relSegmentPosix);
   });
 });

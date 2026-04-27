@@ -281,7 +281,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(runtime.config.team_state_root).toBeDefined();
     const teamStateRoot = runtime.config.team_state_root!;
     expect(requests[0]?.trigger_message.replace('$OMC_TEAM_STATE_ROOT', teamStateRoot))
-      .toContain(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md'));
+      .toContain(`${join(cwd, '.omcp', 'state', 'team', 'dispatch-team')}/workers/worker-1/inbox.md`);
 
     const overlay = await readFile(join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'AGENTS.md'), 'utf-8');
     expect(overlay).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/status.json');
@@ -350,10 +350,10 @@ describe('runtime v2 startup inbox dispatch', () => {
       workerName: 'worker-1',
       agentType: 'codex',
       enabled: true,
-      worktreePath: join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
+      worktreePath: join(cwd, '.omcp', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
     }));
     expect(cadenceMocks.startFallbackPoller).toHaveBeenCalledWith(
-      join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
+      join(cwd, '.omcp', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
       'worker-1',
     );
 

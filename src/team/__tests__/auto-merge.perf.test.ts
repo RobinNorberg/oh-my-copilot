@@ -35,7 +35,7 @@ afterEach(() => {
 // Performance test: p95 merge latency < 2000ms over 50 sequential merges
 // ---------------------------------------------------------------------------
 
-describe.skipIf(process.env.CI === '1')(
+describe.skipIf(process.env.CI === '1' || process.platform === 'win32')(
   'auto-merge perf: p95 < 2000ms over 50 sequential merges',
   () => {
     let fixture: GitFixture;
