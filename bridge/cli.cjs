@@ -40906,6 +40906,7 @@ var init_runtime = __esm({
 // src/hooks/session-end/index.ts
 var session_end_exports = {};
 __export(session_end_exports, {
+  cleanupMissionState: () => cleanupMissionState,
   cleanupModeStates: () => cleanupModeStates,
   cleanupTransientState: () => cleanupTransientState,
   exportSessionSummary: () => exportSessionSummary,
@@ -41199,6 +41200,50 @@ function cleanupModeStates(directory, sessionId) {
   }
   return { filesRemoved, modesCleaned };
 }
+function cleanupMissionState(directory, sessionId) {
+  const missionStatePath = path16.join(getOmcRoot(directory), "state", "mission-state.json");
+  if (!fs11.existsSync(missionStatePath)) {
+    return 0;
+  }
+  try {
+    const content = fs11.readFileSync(missionStatePath, "utf-8");
+    const parsed = JSON.parse(content);
+    if (!Array.isArray(parsed.missions)) {
+      return 0;
+    }
+    const before = parsed.missions.length;
+    parsed.missions = parsed.missions.filter((mission) => {
+      if (mission.source !== "session") return true;
+      if (sessionId) {
+        const missionId = typeof mission.id === "string" ? mission.id : "";
+        return !missionId.includes(sessionId);
+      }
+      return false;
+    });
+    const removed = before - parsed.missions.length;
+    if (removed > 0) {
+      parsed.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+      fs11.writeFileSync(missionStatePath, JSON.stringify(parsed, null, 2));
+    }
+    return removed;
+  } catch {
+    return 0;
+  }
+}
+function cleanupSessionStartedMarker(directory, sessionId) {
+  try {
+    validateSessionId(sessionId);
+  } catch {
+    return;
+  }
+  try {
+    const markerPath = path16.join(getOmcRoot(directory), "state", "sessions", sessionId, SESSION_STARTED_MARKER_FILE);
+    if (fs11.existsSync(markerPath)) {
+      fs11.unlinkSync(markerPath);
+    }
+  } catch {
+  }
+}
 function extractTeamNameFromState(state) {
   if (!state || typeof state !== "object") return null;
   const rawTeamName = state.team_name ?? state.teamName;
@@ -41300,6 +41345,8 @@ async function processSessionEnd(input) {
   await cleanupSessionOwnedTeams(directory, input.session_id);
   cleanupTransientState(directory);
   cleanupModeStates(directory, input.session_id);
+  cleanupMissionState(directory, input.session_id);
+  cleanupSessionStartedMarker(directory, input.session_id);
   try {
     const pythonSessionIds = await extractPythonReplSessionIdsFromTranscript(input.transcript_path);
     if (pythonSessionIds.length > 0) {
@@ -41350,7 +41397,7 @@ async function processSessionEnd(input) {
 async function handleSessionEnd(input) {
   return processSessionEnd(input);
 }
-var fs11, path16, readline, PYTHON_REPL_TOOL_NAMES;
+var fs11, path16, readline, SESSION_STARTED_MARKER_FILE, PYTHON_REPL_TOOL_NAMES;
 var init_session_end = __esm({
   "src/hooks/session-end/index.ts"() {
     "use strict";
@@ -41365,6 +41412,7 @@ var init_session_end = __esm({
     init_worktree_paths();
     init_mode_names();
     init_mode_state_io();
+    SESSION_STARTED_MARKER_FILE = "session-started.json";
     PYTHON_REPL_TOOL_NAMES = /* @__PURE__ */ new Set(["python_repl", "mcp__t__python_repl"]);
   }
 });
@@ -81989,6 +82037,7 @@ var import_fs75 = require("fs");
 var import_path89 = require("path");
 init_worktree_paths();
 init_mode_state_io();
+init_mode_names();
 init_omc_cli_rendering();
 init_swallowed_error();
 init_team_canonical_state();
@@ -83137,6 +83186,8 @@ var MODE_CONFIRMATION_SKILL_MAP = {
 };
 var SESSION_START_CONTEXT_BUDGET = 6e3;
 var SESSION_START_OMISSION_NOTICE = "[Additional SessionStart context omitted to preserve the 6000-character aggregate budget.]";
+var SESSION_STARTED_MARKER_FILE2 = "session-started.json";
+var LINUX_BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
 function compactBudgetedText2(text, maxChars) {
   const notice = "\n...[truncated to preserve SessionStart context budget]";
   if (!text || text.length <= maxChars) return text || "";
@@ -83175,6 +83226,136 @@ function buildSessionStartAdditionalContext(messages) {
     used += separatorLength + message.length;
   }
   return selected.join("\n");
+}
+function readLinuxBootId() {
+  try {
+    if (!(0, import_fs75.existsSync)(LINUX_BOOT_ID_PATH)) return void 0;
+    const bootId = (0, import_fs75.readFileSync)(LINUX_BOOT_ID_PATH, "utf-8").trim();
+    return bootId.length > 0 ? bootId : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function sessionStateDir(directory, sessionId) {
+  return (0, import_path89.join)(getOmcRoot(directory), "state", "sessions", sessionId);
+}
+function sessionStartedMarkerPath(directory, sessionId) {
+  return (0, import_path89.join)(sessionStateDir(directory, sessionId), SESSION_STARTED_MARKER_FILE2);
+}
+function readJsonObject2(filePath) {
+  try {
+    if (!(0, import_fs75.existsSync)(filePath)) return null;
+    const parsed = JSON.parse((0, import_fs75.readFileSync)(filePath, "utf-8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function writeSessionStartedMarker(directory, sessionId) {
+  if (!sessionId || !SAFE_SESSION_ID_PATTERN.test(sessionId)) return;
+  try {
+    const dir = sessionStateDir(directory, sessionId);
+    (0, import_fs75.mkdirSync)(dir, { recursive: true });
+    const marker = {
+      session_id: sessionId,
+      started_at: (/* @__PURE__ */ new Date()).toISOString(),
+      cwd: directory,
+      pid: process.pid,
+      // Do not persist process.ppid here: installed hooks run through
+      // scripts/run.cjs, whose short-lived process exits as soon as this
+      // hook returns. Treating that runner PID as owner liveness caused
+      // later SessionStart hooks to falsely clean live session state.
+      boot_id: readLinuxBootId()
+    };
+    (0, import_fs75.writeFileSync)(sessionStartedMarkerPath(directory, sessionId), JSON.stringify(marker, null, 2), {
+      encoding: "utf-8",
+      mode: 384
+    });
+  } catch {
+  }
+}
+function removeSessionStartedMarker(directory, sessionId) {
+  if (!sessionId || !SAFE_SESSION_ID_PATTERN.test(sessionId)) return;
+  try {
+    const markerPath = sessionStartedMarkerPath(directory, sessionId);
+    if ((0, import_fs75.existsSync)(markerPath)) {
+      (0, import_fs75.unlinkSync)(markerPath);
+    }
+  } catch {
+  }
+}
+function hasSessionEndSummary(directory, sessionId) {
+  return (0, import_fs75.existsSync)((0, import_path89.join)(getOmcRoot(directory), "sessions", `${sessionId}.json`));
+}
+function cleanupSessionModeStateFiles(directory, sessionId) {
+  const dir = sessionStateDir(directory, sessionId);
+  for (const { file: file2 } of SESSION_END_MODE_STATE_FILES) {
+    const filePath = (0, import_path89.join)(dir, file2);
+    const state = readJsonObject2(filePath);
+    if (state?.active === true || file2 === "skill-active-state.json") {
+      try {
+        (0, import_fs75.unlinkSync)(filePath);
+      } catch {
+      }
+    }
+  }
+}
+function cleanupMissionStateForSession(directory, sessionId) {
+  const missionStatePath = (0, import_path89.join)(getOmcRoot(directory), "state", "mission-state.json");
+  const parsed = readJsonObject2(missionStatePath);
+  if (!Array.isArray(parsed?.missions)) return;
+  const before = parsed.missions.length;
+  parsed.missions = parsed.missions.filter((mission) => {
+    if (mission.source !== "session") return true;
+    const missionId = typeof mission.id === "string" ? mission.id : "";
+    return !missionId.includes(sessionId);
+  });
+  if (parsed.missions.length === before) return;
+  try {
+    parsed.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    (0, import_fs75.writeFileSync)(missionStatePath, JSON.stringify(parsed, null, 2));
+  } catch {
+  }
+}
+function hasDurableAbandonmentEvidence(marker) {
+  const storedBootId = typeof marker.boot_id === "string" ? marker.boot_id : void 0;
+  const currentBootId = readLinuxBootId();
+  if (storedBootId && currentBootId && storedBootId !== currentBootId) {
+    return true;
+  }
+  return false;
+}
+async function reconcileAbandonedSessionStarts(directory, currentSessionId) {
+  const sessionsDir = (0, import_path89.join)(getOmcRoot(directory), "state", "sessions");
+  if (!(0, import_fs75.existsSync)(sessionsDir)) return;
+  let entries;
+  try {
+    entries = (0, import_fs75.readdirSync)(sessionsDir);
+  } catch {
+    return;
+  }
+  for (const sessionId of entries) {
+    if (!SAFE_SESSION_ID_PATTERN.test(sessionId) || sessionId === currentSessionId) continue;
+    const markerPath = sessionStartedMarkerPath(directory, sessionId);
+    const marker = readJsonObject2(markerPath);
+    if (!marker) continue;
+    if (marker.session_id !== sessionId) continue;
+    if (hasSessionEndSummary(directory, sessionId)) {
+      removeSessionStartedMarker(directory, sessionId);
+      continue;
+    }
+    if (!hasDurableAbandonmentEvidence(marker)) continue;
+    cleanupSessionModeStateFiles(directory, sessionId);
+    cleanupMissionStateForSession(directory, sessionId);
+    removeSessionStartedMarker(directory, sessionId);
+    try {
+      const remaining = (0, import_fs75.readdirSync)(sessionStateDir(directory, sessionId));
+      if (remaining.length === 0) {
+        (0, import_fs75.rmdirSync)(sessionStateDir(directory, sessionId));
+      }
+    } catch {
+    }
+  }
 }
 function getExtraField(input, key) {
   return input[key];
@@ -84077,6 +84258,8 @@ When team verification passes or cancel is requested, allow terminal cleanup beh
 async function processSessionStart(input) {
   const sessionId = input.sessionId;
   const directory = resolveToWorktreeRoot(input.directory);
+  writeSessionStartedMarker(directory, sessionId);
+  await reconcileAbandonedSessionStarts(directory, sessionId);
   const { initSilentAutoUpdate: initSilentAutoUpdate2 } = await Promise.resolve().then(() => (init_auto_update(), auto_update_exports));
   const { readAutopilotState: readAutopilotState2 } = await Promise.resolve().then(() => (init_autopilot(), autopilot_exports));
   const { readUltraworkState: readUltraworkState2 } = await Promise.resolve().then(() => (init_ultrawork2(), ultrawork_exports));
@@ -85098,7 +85281,7 @@ var STRICT_MODE_ONLY_SKILLS = /* @__PURE__ */ new Set([
   "skillify"
 ]);
 var DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD = 0.2;
-function readJsonObject2(path22) {
+function readJsonObject3(path22) {
   if (!(0, import_fs80.existsSync)(path22)) {
     return null;
   }
@@ -85110,7 +85293,7 @@ function readJsonObject2(path22) {
   }
 }
 function readDeepInterviewThresholdFromSettings(path22) {
-  const settings = readJsonObject2(path22);
+  const settings = readJsonObject3(path22);
   const omc = settings?.omc;
   if (!omc || typeof omc !== "object" || Array.isArray(omc)) {
     return null;
