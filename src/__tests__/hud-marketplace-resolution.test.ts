@@ -19,6 +19,48 @@ afterEach(() => {
 });
 
 describe('HUD marketplace resolution', () => {
+  it('omcp-hud.mjs converts absolute HUD paths to file URLs before dynamic imports', () => {
+    const configDir = mkdtempSync(join(tmpdir(), 'omcp-hud-wrapper-'));
+    tempDirs.push(configDir);
+
+    const fakeHome = join(configDir, 'home');
+    mkdirSync(fakeHome, { recursive: true });
+
+    execFileSync(process.execPath, [join(root, 'scripts', 'plugin-setup.mjs')], {
+      cwd: root,
+      env: {
+        ...process.env,
+        COPILOT_CONFIG_DIR: configDir,
+        HOME: fakeHome,
+      },
+      stdio: 'pipe',
+    });
+
+    const hudScriptPath = join(configDir, 'hud', 'omcp-hud.mjs');
+    expect(existsSync(hudScriptPath)).toBe(true);
+    expect(existsSync(join(configDir, 'hud', 'lib', 'config-dir.mjs'))).toBe(true);
+
+    const settings = JSON.parse(readFileSync(join(configDir, 'settings.json'), 'utf-8')) as {
+      statusLine?: { command?: string };
+    };
+    expect(settings.statusLine?.command).toContain(`${join(configDir, 'hud', 'omcp-hud.mjs').replace(/\\/g, '/')}`);
+    if (process.platform !== 'win32') {
+      expect(settings.statusLine?.command).toContain('omcp-hud-cache.sh');
+      expect(existsSync(join(configDir, 'hud', 'omcp-hud-cache.sh'))).toBe(true);
+      expect(existsSync(join(configDir, 'hud', 'find-node.sh'))).toBe(true);
+    }
+    expect(existsSync(join(configDir, '.omcp-config.json'))).toBe(true);
+
+    const content = readFileSync(hudScriptPath, 'utf-8');
+    expect(content).toContain('import { fileURLToPath, pathToFileURL } from "node:url"');
+    expect(content).toContain('const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);');
+    expect(content).toContain('await import(pathToFileURL(pluginPath).href);');
+    expect(content).toContain('await import(pathToFileURL(envHudPath).href);');
+    expect(content).toContain('await import(pathToFileURL(marketplaceHudPath).href);');
+    expect(content).not.toContain('await import(pluginPath);');
+    expect(content).not.toContain('await import(marketplaceHudPath);');
+  });
+
   it('omcp-hud.mjs loads a marketplace install when plugin cache is unavailable', () => {
     const configDir = mkdtempSync(join(tmpdir(), 'omcp-hud-marketplace-'));
     tempDirs.push(configDir);
