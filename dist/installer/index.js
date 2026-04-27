@@ -29,6 +29,7 @@ export const SKILLS_DIR = join(COPILOT_CONFIG_DIR, 'skills');
 export const HOOKS_DIR = join(COPILOT_CONFIG_DIR, 'hooks');
 export const HUD_DIR = join(COPILOT_CONFIG_DIR, 'hud');
 export const SETTINGS_FILE = join(COPILOT_CONFIG_DIR, 'settings.json');
+export const COPILOT_CONFIG_FILE = join(COPILOT_CONFIG_DIR, 'config.json');
 export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
 const OMC_MANAGED_SKILL_MARKER = '.omc-managed';
 /**
@@ -168,7 +169,21 @@ function quoteShellArg(value) {
 }
 function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath) {
     if (isWindows()) {
-        return `${quoteShellArg(nodeBin)} ${quoteShellArg(hudScriptPath)}`;
+        // Windows: write a .cmd wrapper into the HUD dir and invoke that. cmd.exe
+        // inherits the parent console so stdout flows back to Copilot CLI; bash/sh
+        // wrappers spawn separate console windows on Windows that drop stdout.
+        // See PR #10: feat: fix HUD statusline for Copilot CLI on Windows.
+        const cmdWrapperPath = join(COPILOT_CONFIG_DIR, 'copilot-hud.cmd');
+        const hudPathNormalized = hudScriptPath.replace(/\//g, '\\');
+        const nodeBinNormalized = nodeBin.replace(/\//g, '\\');
+        try {
+            writeFileSync(cmdWrapperPath, `@echo off\r\n"${nodeBinNormalized}" "${hudPathNormalized}"\r\n`);
+        }
+        catch {
+            // Best-effort: fall back to direct node invocation if write fails.
+            return `${quoteShellArg(nodeBin)} ${quoteShellArg(hudScriptPath)}`;
+        }
+        return cmdWrapperPath.replace(/\\/g, '/');
     }
     if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
         if (findNodePath) {
@@ -231,13 +246,19 @@ export function isOmcStatusLine(statusLine) {
         return false;
     // Legacy string format (pre-v4.5): "~/.claude/hud/omcp-hud.mjs"
     if (typeof statusLine === 'string') {
-        return statusLine.includes('omcp-hud');
+        return statusLine.includes('omcp-hud')
+            || statusLine.includes('omc-hud')
+            || statusLine.includes('copilot-hud.cmd')
+            || statusLine.includes('oh-my-copilot');
     }
     // Current object format: { type: "command", command: "node ...omcp-hud.mjs" }
     if (typeof statusLine === 'object') {
         const sl = statusLine;
         if (typeof sl.command === 'string') {
-            return sl.command.includes('omcp-hud');
+            return sl.command.includes('omcp-hud')
+                || sl.command.includes('omc-hud')
+                || sl.command.includes('copilot-hud.cmd')
+                || sl.command.includes('oh-my-copilot');
         }
     }
     return false;
@@ -428,29 +449,48 @@ function configureInstallerSettings(baseSettings, context) {
         else {
             statusLineCommand = buildStatusLineCommand(nodeBin, context.hudScriptPath);
         }
-        const needsMigration = typeof settings.statusLine === 'string'
-            && isOmcStatusLine(settings.statusLine);
-        if (!settings.statusLine || needsMigration) {
-            settings.statusLine = {
-                type: 'command',
-                command: statusLineCommand
-            };
-            context.log(needsMigration
-                ? '  Migrated statusLine from legacy string to object format'
-                : '  Configured statusLine');
+        // Copilot CLI reads statusLine from config.json (NOT settings.json), and the
+        // statusLine feature is gated behind `experimental: true`. See PR #10.
+        try {
+            let copilotConfig = {};
+            if (existsSync(COPILOT_CONFIG_FILE)) {
+                try {
+                    copilotConfig = JSON.parse(readFileSync(COPILOT_CONFIG_FILE, 'utf-8'));
+                }
+                catch {
+                    copilotConfig = {};
+                }
+            }
+            copilotConfig.experimental = true;
+            const existingStatusLine = copilotConfig.statusLine;
+            const needsMigration = typeof existingStatusLine === 'string'
+                && isOmcStatusLine(existingStatusLine);
+            if (!existingStatusLine || needsMigration) {
+                copilotConfig.statusLine = { type: 'command', command: statusLineCommand };
+                writeFileSync(COPILOT_CONFIG_FILE, JSON.stringify(copilotConfig, null, 2));
+                context.log(needsMigration
+                    ? '  Migrated statusLine to config.json'
+                    : '  Configured statusLine in config.json');
+            }
+            else if (context.options.force && isOmcStatusLine(existingStatusLine)) {
+                copilotConfig.statusLine = { type: 'command', command: statusLineCommand };
+                writeFileSync(COPILOT_CONFIG_FILE, JSON.stringify(copilotConfig, null, 2));
+                context.log('  Updated statusLine in config.json (--force)');
+            }
+            else if (context.options.force) {
+                context.log('  statusLine owned by another tool, preserving (use manual edit to override)');
+            }
+            else {
+                context.log('  statusLine already configured in config.json, skipping');
+            }
         }
-        else if (context.options.force && isOmcStatusLine(settings.statusLine)) {
-            settings.statusLine = {
-                type: 'command',
-                command: statusLineCommand
-            };
-            context.log('  Updated statusLine (--force)');
+        catch (error) {
+            context.log(`  Warning: Could not update config.json: ${error instanceof Error ? error.message : error}`);
         }
-        else if (context.options.force) {
-            context.log('  statusLine owned by another tool, preserving (use manual edit to override)');
-        }
-        else {
-            context.log('  statusLine already configured, skipping (use --force to override)');
+        // Clean up legacy statusLine from settings.json (Copilot CLI ignores it there).
+        if (settings.statusLine && isOmcStatusLine(settings.statusLine)) {
+            delete settings.statusLine;
+            context.log('  Removed legacy statusLine from settings.json');
         }
     }
     const mcpSync = syncUnifiedMcpRegistryTargets(settings);
