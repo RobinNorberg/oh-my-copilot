@@ -155,6 +155,11 @@ function getConfigDir() {
   return stripTrailingSep((0, import_path2.normalize)(configured));
 }
 
+// src/team/tmux-session.ts
+var import_fs2 = require("fs");
+var import_path4 = require("path");
+var import_promises = __toESM(require("fs/promises"), 1);
+
 // src/cli/tmux-utils.ts
 var import_child_process = require("child_process");
 var import_path3 = require("path");
@@ -212,9 +217,6 @@ function resolveTmuxBinaryPath() {
 }
 
 // src/team/tmux-session.ts
-var import_fs2 = require("fs");
-var import_path4 = require("path");
-var import_promises = __toESM(require("fs/promises"), 1);
 var TMUX_SESSION_PREFIX = "omcp-team";
 function sanitizeName(name) {
   const sanitized = name.replace(/[^a-zA-Z0-9-]/g, "");
@@ -232,7 +234,7 @@ function sessionName(teamName, workerName) {
 function killSession(teamName, workerName) {
   const name = sessionName(teamName, workerName);
   try {
-    tmuxExec(["kill-session", "-t", name], { stdio: "pipe", timeout: 5e3 });
+    tmuxExec(["kill-session", "-t", name], { stripTmux: true, stdio: "pipe", timeout: 5e3 });
   } catch {
   }
 }

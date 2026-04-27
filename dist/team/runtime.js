@@ -4,6 +4,7 @@ import { existsSync } from 'fs';
 import { tmuxExecAsync } from '../cli/tmux-utils.js';
 import { buildWorkerArgv, resolveValidatedBinaryPath, getWorkerEnv as getModelWorkerEnv, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel } from './model-contract.js';
 import { validateTeamName } from './team-name.js';
+import { generateTriggerMessage } from './worker-bootstrap.js';
 import { getHostCliType } from '../utils/host-detection.js';
 import { createTeamSession, spawnWorkerInPane, sendToWorker, isWorkerAlive, killTeamSession, resolveSplitPaneWorkerPaneIds, waitForPaneReady, applyMainVerticalLayout, } from './tmux-session.js';
 import { composeInitialInbox, ensureWorkerStateDir, writeWorkerOverlay, } from './worker-bootstrap.js';
@@ -580,6 +581,8 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     });
     // For prompt-mode agents (e.g. Gemini Ink TUI), pass instruction via CLI
     // flag so tmux send-keys never needs to interact with the TUI input widget.
+    // Codex and Claude team workers are persistent interactive panes and are
+    // nudged through the inbox transport instead of `codex exec`/print modes.
     if (usePromptMode) {
         const promptArgs = getPromptModeArgs(agentType, `Read and execute your task from: ${relInboxPath}`);
         launchArgs.push(...promptArgs);
@@ -620,7 +623,7 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
             }
             await new Promise(r => setTimeout(r, 800));
         }
-        const notified = await notifyPaneWithRetry(runtime.sessionName, paneId, `Read and execute your task from: ${relInboxPath}`);
+        const notified = await notifyPaneWithRetry(runtime.sessionName, paneId, generateTriggerMessage(runtime.teamName, workerNameValue));
         if (!notified) {
             await killWorkerPane(runtime, workerNameValue, paneId);
             await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);

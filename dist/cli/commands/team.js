@@ -32,7 +32,7 @@ Examples:
   omcp team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
 
 Roles (optional): architect, executor, planner, analyst, critic, debugger, verifier,
-  code-reviewer, security-reviewer, test-engineer, debugger, designer, writer, scientist
+  code-reviewer, security-reviewer, test-engineer, designer, writer, scientist
 `;
 const TEAM_API_HELP = `
 Usage: omcp team api <operation> [--input <json>] [--json]

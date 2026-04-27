@@ -15,6 +15,7 @@ import { existsSync } from 'fs';
 import { TeamPaths, absPath } from './state-paths.js';
 import type { TeamEventType } from './contracts.js';
 import type { TeamEvent } from './types.js';
+import type { WorkerPaneLiveness } from './tmux-session.js';
 import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 
 /**
@@ -83,10 +84,11 @@ export async function readTeamEventsByType(
 export async function emitMonitorDerivedEvents(
   teamName: string,
   tasks: Array<{ id: string; status: string }>,
-  workers: Array<{ name: string; alive: boolean; status: { state: string } }>,
+  workers: Array<{ name: string; alive: boolean; liveness?: WorkerPaneLiveness; status: { state: string } }>,
   previousSnapshot: {
     taskStatusById?: Record<string, string>;
     workerAliveByName?: Record<string, boolean>;
+    workerLivenessByName?: Record<string, WorkerPaneLiveness>;
     workerStateByName?: Record<string, string>;
     completedEventTaskIds?: Record<string, boolean>;
   } | null,
@@ -127,8 +129,9 @@ export async function emitMonitorDerivedEvents(
   for (const worker of workers) {
     const prevAlive = previousSnapshot.workerAliveByName?.[worker.name];
     const prevState = previousSnapshot.workerStateByName?.[worker.name];
+    const currentLiveness = worker.liveness ?? (worker.alive ? 'alive' : 'dead');
 
-    if (prevAlive === true && !worker.alive) {
+    if (prevAlive === true && currentLiveness === 'dead') {
       await appendTeamEvent(teamName, {
         type: 'worker_stopped',
         worker: worker.name,

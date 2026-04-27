@@ -46,11 +46,44 @@ import { queueBroadcastMailboxMessage, queueDirectMailboxMessage, type DispatchO
 import { injectToLeaderPane, sendToWorker } from './tmux-session.js';
 import { listDispatchRequests, markDispatchRequestDelivered, markDispatchRequestNotified } from './dispatch-queue.js';
 import { generateMailboxTriggerMessage } from './worker-bootstrap.js';
+import { shutdownTeam } from './runtime.js';
 import { shutdownTeamV2 } from './runtime-v2.js';
+import { inspectTeamWorktreeCleanupSafety } from './git-worktree.js';
+import { createSwallowedErrorLogger } from '../lib/swallowed-error.js';
 
 const TEAM_UPDATE_TASK_MUTABLE_FIELDS = new Set(['subject', 'description', 'blocked_by', 'requires_code_change']);
 const TEAM_UPDATE_TASK_REQUEST_FIELDS = new Set(['team_name', 'task_id', 'workingDirectory', ...TEAM_UPDATE_TASK_MUTABLE_FIELDS]);
 
+export const LEGACY_TEAM_MCP_TOOLS = [
+  'team_send_message',
+  'team_broadcast',
+  'team_mailbox_list',
+  'team_mailbox_mark_delivered',
+  'team_mailbox_mark_notified',
+  'team_create_task',
+  'team_read_task',
+  'team_list_tasks',
+  'team_update_task',
+  'team_claim_task',
+  'team_transition_task_status',
+  'team_release_task_claim',
+  'team_read_config',
+  'team_read_manifest',
+  'team_read_worker_status',
+  'team_read_worker_heartbeat',
+  'team_update_worker_heartbeat',
+  'team_write_worker_inbox',
+  'team_write_worker_identity',
+  'team_append_event',
+  'team_get_summary',
+  'team_cleanup',
+  'team_write_shutdown_request',
+  'team_read_shutdown_ack',
+  'team_read_monitor_snapshot',
+  'team_write_monitor_snapshot',
+  'team_read_task_approval',
+  'team_write_task_approval',
+] as const;
 
 export const TEAM_API_OPERATIONS = [
   'send-message',
@@ -126,17 +159,31 @@ function parseTeamWorkerEnv(raw: string | undefined): { teamName: string; worker
 }
 
 function parseTeamWorkerContextFromEnv(env: NodeJS.ProcessEnv = process.env): { teamName: string; workerName: string } | null {
-  return parseTeamWorkerEnv(env.OMC_TEAM_WORKER);
+  return parseTeamWorkerEnv(env.OMC_TEAM_WORKER) ?? parseTeamWorkerEnv(env.OMX_TEAM_WORKER);
 }
 
 function readTeamStateRootFromEnv(env: NodeJS.ProcessEnv = process.env): string | null {
   const candidate = typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== ''
     ? env.OMC_TEAM_STATE_ROOT.trim()
-    : '';
+    : (typeof env.OMX_TEAM_STATE_ROOT === 'string' && env.OMX_TEAM_STATE_ROOT.trim() !== ''
+      ? env.OMX_TEAM_STATE_ROOT.trim()
+      : '');
   return candidate || null;
 }
 
-export function resolveTeamApiCliCommand(_env: NodeJS.ProcessEnv = process.env): 'omcp team api' {
+export function resolveTeamApiCliCommand(env: NodeJS.ProcessEnv = process.env): 'omcp team api' | 'omx team api' {
+  const hasOmcContext = (
+    (typeof env.OMC_TEAM_WORKER === 'string' && env.OMC_TEAM_WORKER.trim() !== '')
+    || (typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== '')
+  );
+  if (hasOmcContext) return 'omcp team api';
+
+  const hasOmxContext = (
+    (typeof env.OMX_TEAM_WORKER === 'string' && env.OMX_TEAM_WORKER.trim() !== '')
+    || (typeof env.OMX_TEAM_STATE_ROOT === 'string' && env.OMX_TEAM_STATE_ROOT.trim() !== '')
+  );
+  if (hasOmxContext) return 'omx team api';
+
   return 'omcp team api';
 }
 
@@ -144,10 +191,32 @@ function isRuntimeV2Config(config: unknown): config is { workers: unknown[] } {
   return !!config && typeof config === 'object' && Array.isArray((config as { workers?: unknown[] }).workers);
 }
 
+function isLegacyRuntimeConfig(config: unknown): config is { tmuxSession?: string; leaderPaneId?: string | null; tmuxOwnsWindow?: boolean } {
+  return !!config && typeof config === 'object' && Array.isArray((config as { agentTypes?: unknown[] }).agentTypes);
+}
+
+function assertNoNativeWorktreeCleanupEvidence(teamName: string, cwd: string): void {
+  const safety = inspectTeamWorktreeCleanupSafety(teamName, cwd);
+  if (!safety.hasEvidence) return;
+
+  const evidence = safety.blockers.length > 0
+    ? safety.blockers
+    : safety.entries.map((entry) => ({
+      workerName: entry.workerName,
+      path: entry.path,
+      reason: 'worktree_cleanup_evidence_present',
+    }));
+  const details = evidence
+    .map((item) => `${item.workerName}:${item.reason}:${item.path}`)
+    .join(';');
+  throw new Error(`cleanup_blocked:worktree_cleanup_evidence_present:${details}`);
+}
+
 async function executeTeamCleanupViaRuntime(teamName: string, cwd: string): Promise<void> {
   const config = await teamReadConfig(teamName, cwd) as unknown;
 
   if (!config) {
+    assertNoNativeWorktreeCleanupEvidence(teamName, cwd);
     await teamCleanup(teamName, cwd);
     return;
   }
@@ -157,6 +226,19 @@ async function executeTeamCleanupViaRuntime(teamName: string, cwd: string): Prom
     return;
   }
 
+  if (isLegacyRuntimeConfig(config)) {
+    const legacyConfig = config as { tmuxSession?: string; leaderPaneId?: string | null; tmuxOwnsWindow?: boolean };
+    const sessionName = typeof legacyConfig.tmuxSession === 'string' && legacyConfig.tmuxSession.trim() !== ''
+      ? legacyConfig.tmuxSession.trim()
+      : `omc-team-${teamName}`;
+    const leaderPaneId = typeof legacyConfig.leaderPaneId === 'string' && legacyConfig.leaderPaneId.trim() !== ''
+      ? legacyConfig.leaderPaneId.trim()
+      : undefined;
+    await shutdownTeam(teamName, sessionName, cwd, 30_000, undefined, leaderPaneId, legacyConfig.tmuxOwnsWindow === true);
+    return;
+  }
+
+  assertNoNativeWorktreeCleanupEvidence(teamName, cwd);
   await teamCleanup(teamName, cwd);
 }
 
@@ -213,8 +295,10 @@ function resolveTeamWorkingDirectoryFromMetadata(
   const fromConfig = readTeamStateRootFromFile(join(teamRoot, 'config.json'));
   if (fromConfig) return stateRootToWorkingDirectory(fromConfig);
 
-  const fromManifest = readTeamStateRootFromFile(join(teamRoot, 'manifest.v2.json'));
-  if (fromManifest) return stateRootToWorkingDirectory(fromManifest);
+  for (const manifestName of ['manifest.json', 'manifest.v2.json']) {
+    const fromManifest = readTeamStateRootFromFile(join(teamRoot, manifestName));
+    if (fromManifest) return stateRootToWorkingDirectory(fromManifest);
+  }
 
   return null;
 }
@@ -224,7 +308,10 @@ function resolveTeamWorkingDirectory(teamName: string, preferredCwd: string): st
   if (!normalizedTeamName) return preferredCwd;
   const envTeamStateRoot = readTeamStateRootFromEnv();
   if (typeof envTeamStateRoot === 'string' && envTeamStateRoot.trim() !== '') {
-    return stateRootToWorkingDirectory(envTeamStateRoot.trim());
+    const envWorkingDirectory = stateRootToWorkingDirectory(envTeamStateRoot.trim());
+    if (teamStateExists(normalizedTeamName, envWorkingDirectory)) {
+      return envWorkingDirectory;
+    }
   }
 
   const seeds: string[] = [];
@@ -276,6 +363,11 @@ export function buildLegacyTeamDeprecationHint(
 
 const QUEUED_FOR_HOOK_DISPATCH_REASON = 'queued_for_hook_dispatch';
 const LEADER_PANE_MISSING_MAILBOX_PERSISTED_REASON = 'leader_pane_missing_mailbox_persisted';
+const WORKTREE_TRIGGER_STATE_ROOT = '$OMC_TEAM_STATE_ROOT';
+
+function resolveInstructionStateRoot(worktreePath?: string | null): string | undefined {
+  return worktreePath ? WORKTREE_TRIGGER_STATE_ROOT : undefined;
+}
 
 function queuedForHookDispatch(): DispatchOutcome {
   return {
@@ -325,13 +417,14 @@ function findWorkerDispatchTarget(
   teamName: string,
   toWorker: string,
   cwd: string,
-): Promise<{ paneId?: string; workerIndex?: number }>
+): Promise<{ paneId?: string; workerIndex?: number; instructionStateRoot?: string }>
 {
   return teamReadConfig(teamName, cwd).then((config) => {
     const recipient = config?.workers.find((worker) => worker.name === toWorker);
     return {
       paneId: recipient?.pane_id,
       workerIndex: recipient?.index,
+      instructionStateRoot: resolveInstructionStateRoot(recipient?.worktree_path),
     };
   });
 }
@@ -359,6 +452,9 @@ async function syncMailboxDispatchNotified(
   messageId: string,
   cwd: string,
 ): Promise<void> {
+  const logDispatchSyncFailure = createSwallowedErrorLogger(
+    'team.api-interop syncMailboxDispatchNotified dispatch state sync failed',
+  );
   const requestId = await findMailboxDispatchRequestId(teamName, workerName, messageId, cwd);
   if (!requestId) return;
   await markDispatchRequestNotified(
@@ -366,7 +462,7 @@ async function syncMailboxDispatchNotified(
     requestId,
     { message_id: messageId, last_reason: 'mailbox_mark_notified' },
     cwd,
-  ).catch(() => {});
+  ).catch(logDispatchSyncFailure);
 }
 
 async function syncMailboxDispatchDelivered(
@@ -375,6 +471,9 @@ async function syncMailboxDispatchDelivered(
   messageId: string,
   cwd: string,
 ): Promise<void> {
+  const logDispatchSyncFailure = createSwallowedErrorLogger(
+    'team.api-interop syncMailboxDispatchDelivered dispatch state sync failed',
+  );
   const requestId = await findMailboxDispatchRequestId(teamName, workerName, messageId, cwd);
   if (!requestId) return;
 
@@ -383,13 +482,13 @@ async function syncMailboxDispatchDelivered(
     requestId,
     { message_id: messageId, last_reason: 'mailbox_mark_delivered' },
     cwd,
-  ).catch(() => {});
+  ).catch(logDispatchSyncFailure);
   await markDispatchRequestDelivered(
     teamName,
     requestId,
     { message_id: messageId, last_reason: 'mailbox_mark_delivered' },
     cwd,
-  ).catch(() => {});
+  ).catch(logDispatchSyncFailure);
 }
 
 function validateCommonFields(args: Record<string, unknown>): void {
@@ -443,7 +542,7 @@ export async function executeTeamApiOperation(
           toWorkerIndex: target.workerIndex,
           toPaneId: target.paneId,
           body,
-          triggerMessage: generateMailboxTriggerMessage(teamName, toWorker),
+          triggerMessage: generateMailboxTriggerMessage(teamName, toWorker, 1, target.instructionStateRoot),
           cwd,
           notify: ({ workerName }, triggerMessage) => notifyMailboxTarget(teamName, workerName, triggerMessage, cwd),
           deps: {
@@ -472,7 +571,12 @@ export async function executeTeamApiOperation(
         const config = await teamReadConfig(teamName, cwd);
         const recipients = (config?.workers ?? [])
           .filter((worker) => worker.name !== fromWorker)
-          .map((worker) => ({ workerName: worker.name, workerIndex: worker.index, paneId: worker.pane_id }));
+          .map((worker) => ({
+            workerName: worker.name,
+            workerIndex: worker.index,
+            paneId: worker.pane_id,
+            instructionStateRoot: resolveInstructionStateRoot(worker.worktree_path),
+          }));
 
         await queueBroadcastMailboxMessage({
           teamName,
@@ -480,7 +584,12 @@ export async function executeTeamApiOperation(
           recipients,
           body,
           cwd,
-          triggerFor: (workerName) => generateMailboxTriggerMessage(teamName, workerName),
+          triggerFor: (workerName) => generateMailboxTriggerMessage(
+            teamName,
+            workerName,
+            1,
+            recipients.find((recipient) => recipient.workerName === workerName)?.instructionStateRoot,
+          ),
           notify: ({ workerName }, triggerMessage) => notifyMailboxTarget(teamName, workerName, triggerMessage, cwd),
           deps: {
             sendDirectMessage,
@@ -722,9 +831,11 @@ export async function executeTeamApiOperation(
           pid: args.pid as number | undefined,
           pane_id: args.pane_id as string | undefined,
           working_dir: args.working_dir as string | undefined,
+          worktree_repo_root: args.worktree_repo_root as string | undefined,
           worktree_path: args.worktree_path as string | undefined,
           worktree_branch: args.worktree_branch as string | undefined,
           worktree_detached: args.worktree_detached as boolean | undefined,
+          worktree_created: args.worktree_created as boolean | undefined,
           team_state_root: args.team_state_root as string | undefined,
         }, cwd);
         return { ok: true, operation, data: { worker } };
@@ -763,9 +874,22 @@ export async function executeTeamApiOperation(
         return { ok: true, operation, data: { team_name: teamName } };
       }
       case 'orphan-cleanup': {
-        // Destructive escape hatch: always calls teamCleanup directly, bypasses shutdown orchestration
+        // Destructive escape hatch: calls teamCleanup directly, bypassing shutdown orchestration.
+        // Native worktree recovery metadata/root AGENTS backups are protected unless callers
+        // explicitly acknowledge that this force path may delete those recovery records.
         const teamName = String(args.team_name || '').trim();
         if (!teamName) return { ok: false, operation, error: { code: 'invalid_input', message: 'team_name is required' } };
+        const safety = inspectTeamWorktreeCleanupSafety(teamName, cwd);
+        if (safety.hasEvidence && args.acknowledge_lost_worktree_recovery !== true) {
+          return {
+            ok: false,
+            operation,
+            error: {
+              code: 'invalid_input',
+              message: 'orphan_cleanup_blocked:worktree_recovery_evidence_present; pass acknowledge_lost_worktree_recovery=true only after manually preserving or intentionally discarding worker worktrees and root AGENTS backups',
+            },
+          };
+        }
         await teamCleanup(teamName, cwd);
         return { ok: true, operation, data: { team_name: teamName } };
       }

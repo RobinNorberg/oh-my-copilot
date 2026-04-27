@@ -19,6 +19,8 @@ import { renderRateLimits, renderRateLimitsWithBar, renderRateLimitsError, rende
 import { renderPermission } from './elements/permission.js';
 import { renderThinking } from './elements/thinking.js';
 import { renderSession } from './elements/session.js';
+import { renderTokenUsage } from './elements/token-usage.js';
+import { renderEnterpriseCost } from './elements/enterprise-cost.js';
 import { renderPromptTime } from './elements/prompt-time.js';
 import { renderAutopilot } from './elements/autopilot.js';
 import { renderCwd } from './elements/cwd.js';
@@ -286,8 +288,24 @@ export async function render(
     }
   }
 
-  // Rate limits (5h and weekly) - data takes priority over error indicator
-  if (enabledElements.rateLimits && context.rateLimitsResult) {
+  // Determine effective enterprise mode before rendering limits: only real
+  // enterprise accounts replace token-window limits with enterprise cost.
+  const isEnterprise = enabledElements.enterpriseMode !== undefined
+    ? enabledElements.enterpriseMode
+    : (
+        (context.subscriptionType ?? '').toLowerCase() === 'enterprise' ||
+        /claude_zero/i.test(context.rateLimitTier ?? '')
+      );
+
+  // Rate limits (5h and weekly) - data takes priority over error indicator.
+  // Enterprise cost data only replaces token-window limits for accounts that
+  // are actually enterprise/claude_zero. Anthropic may include zero-dollar
+  // enterprise fields for non-enterprise paid plans; those must still show
+  // normal 5h/wk limits.
+  const enterpriseCostReplacesRateLimits =
+    isEnterprise &&
+    context.rateLimitsResult?.rateLimits?.enterpriseSpentUsd !== undefined;
+  if (enabledElements.rateLimits && context.rateLimitsResult && !enterpriseCostReplacesRateLimits) {
     if (context.rateLimitsResult.rateLimits) {
       const stale = context.rateLimitsResult.stale;
       const limits = enabledElements.useBars
@@ -335,6 +353,30 @@ export async function render(
       const session = renderSession(context.sessionHealth);
       if (session) rendered.set('session', session);
     }
+  }
+
+  if (isEnterprise && enabledElements.showEnterpriseCost !== false) {
+    const stale = context.rateLimitsResult?.stale;
+    const cost = renderEnterpriseCost(
+      context.rateLimitsResult?.rateLimits,
+      stale,
+    );
+    if (cost) {
+      rendered.set('enterpriseCost', cost);
+    } else if (enabledElements.showTokens === true) {
+      // Enterprise but no cost data — fall back to token usage
+      const tokenUsage = renderTokenUsage(
+        context.lastRequestTokenUsage,
+        context.sessionTotalTokens,
+      );
+      if (tokenUsage) rendered.set('tokens', tokenUsage);
+    }
+  } else if (enabledElements.showTokens === true) {
+    const tokenUsage = renderTokenUsage(
+      context.lastRequestTokenUsage,
+      context.sessionTotalTokens,
+    );
+    if (tokenUsage) rendered.set('tokens', tokenUsage);
   }
 
   if (enabledElements.ralph && context.ralph) {

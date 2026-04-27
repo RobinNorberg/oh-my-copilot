@@ -29,7 +29,7 @@ import {
   readPrdStateForHud,
   readAutopilotStateForHud,
 } from "./omc-state.js";
-import { getUsage } from "./usage-api.js";
+import { getUsage, getSubscriptionInfo } from "./usage-api.js";
 import { executeCustomProvider } from "./custom-rate-provider.js";
 import { render } from "./render.js";
 import { detectApiKeySource } from "./elements/api-key-source.js";
@@ -323,6 +323,9 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 
     const contextPercent = getContextPercent(stdin);
 
+    // Read subscription info for enterprise detection (best-effort, never throws)
+    const subscriptionInfo = getSubscriptionInfo();
+
     // Build render context
     const context: HudRenderContext = {
       contextPercent,
@@ -356,6 +359,8 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       apiKeySource: config.elements.apiKeySource
         ? detectApiKeySource(cwd)
         : null,
+      subscriptionType: subscriptionInfo.subscriptionType,
+      rateLimitTier: subscriptionInfo.rateLimitTier,
       profileName: process.env.COPILOT_CONFIG_DIR
         ? basename(process.env.COPILOT_CONFIG_DIR).replace(/^\./, '')
         : null,

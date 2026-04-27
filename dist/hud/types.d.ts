@@ -170,6 +170,16 @@ export interface RateLimits {
     extraUsageLimitUsd?: number;
     /** When the extra usage period resets (null if unavailable) */
     extraUsageResetsAt?: Date | null;
+    /** Enterprise billing-period cumulative spend in USD */
+    enterpriseSpentUsd?: number;
+    /** Enterprise monthly limit in USD (null = unlimited) */
+    enterpriseLimitUsd?: number | null;
+    /** Enterprise billing utilization (0-100), only set when monthly_limit is a positive number */
+    enterpriseUtilization?: number;
+    /** Enterprise billing currency (e.g. 'USD') */
+    enterpriseCurrency?: string;
+    /** When the enterprise billing period resets (null if unavailable or not returned by API) */
+    enterpriseResetsAt?: Date | null;
 }
 /**
  * Categorized error reasons for API usage fetch failures.
@@ -304,6 +314,10 @@ export interface HudRenderContext {
     promptTime: Date | null;
     /** API key source: 'project', 'global', or 'env' */
     apiKeySource: ApiKeySource | null;
+    /** OAuth subscription type (e.g. 'enterprise'), null when unavailable */
+    subscriptionType?: string | null;
+    /** OAuth rate limit tier (e.g. 'default_claude_zero'), null when unavailable */
+    rateLimitTier?: string | null;
     /** Active profile name (derived from COPILOT_CONFIG_DIR), null if default */
     profileName: string | null;
     /** Session summary state (AI-generated brief summary) */
@@ -383,6 +397,8 @@ export interface HudElementConfig {
     showSessionDuration?: boolean;
     showHealthIndicator?: boolean;
     showTokens?: boolean;
+    enterpriseMode?: boolean;
+    showEnterpriseCost?: boolean;
     useBars: boolean;
     showCallCounts?: boolean;
     callCountsFormat?: CallCountsFormat;

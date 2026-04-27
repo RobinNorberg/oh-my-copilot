@@ -1,7 +1,8 @@
 import { spawnSync } from 'child_process';
 import { isAbsolute, normalize, win32 as win32Path } from 'path';
-import { isProviderSpecificModelId } from '../config/models.js';
 import { validateTeamName } from './team-name.js';
+import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
+import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 
 export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor';
@@ -14,7 +15,7 @@ export interface CliAgentContract {
   parseOutput(rawOutput: string): string;
   /** Whether this agent supports a prompt/headless mode that bypasses TUI input */
   supportsPromptMode?: boolean;
-  /** CLI flag for prompt mode (e.g., '-p' for gemini headless mode) */
+  /** CLI flag for prompt mode (e.g., '-p' for gemini) */
   promptModeFlag?: string;
 }
 
@@ -115,10 +116,8 @@ export function resolveCliBinaryPath(binary: string): string {
     throw new Error(`CLI binary '${binary}' not found in PATH`);
   }
 
-  // Do not call normalize() here — on Windows it converts POSIX paths like /usr/local/bin/foo
-  // to \usr\local\bin\foo. The path from which/where is already absolute and canonical.
-  const resolvedPath = firstLine;
-  if (!isAbsolute(resolvedPath) && !win32Path.isAbsolute(resolvedPath)) {
+  const resolvedPath = normalize(firstLine);
+  if (!isAbsolute(resolvedPath)) {
     throw new Error(`Resolved CLI binary '${binary}' to relative path`);
   }
 
@@ -162,10 +161,17 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
   claude: {
     agentType: 'claude',
     binary: 'claude',
-    installInstructions: 'Install Claude Code: https://docs.anthropic.com/en/docs/claude-code',
+    installInstructions: 'Install Claude CLI: https://claude.ai/download',
     buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
       const args = ['--dangerously-skip-permissions'];
-      if (model) args.push('--model', model);
+      if (model) {
+        // Provider-specific model IDs (Bedrock, Vertex) must be passed as-is.
+        // Normalizing them to aliases like "sonnet" causes Claude Code to expand
+        // them to Anthropic API names (claude-sonnet-4-6) which are invalid on
+        // these providers. (issue #1695)
+        const resolved = isProviderSpecificModelId(model) ? model : normalizeToCcAlias(model);
+        args.push('--model', resolved);
+      }
       return [...args, ...extraFlags];
     },
     parseOutput(rawOutput: string): string {
@@ -189,12 +195,12 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     agentType: 'codex',
     binary: 'codex',
     installInstructions: 'Install Codex CLI: npm install -g @openai/codex',
-    supportsPromptMode: true,
-    // Codex uses the `exec` subcommand for non-interactive runs that exit
-    // on completion. The prompt still remains positional after options:
-    //   codex exec [OPTIONS] [PROMPT]
+    // Team workers must be persistent interactive panes. Do not use `codex exec`
+    // or positional prompt mode here; runtime dispatch writes inbox.md and nudges
+    // the live Codex TUI with `codex` as the worker process.
+    supportsPromptMode: false,
     buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
-      const args = ['exec', '--dangerously-bypass-approvals-and-sandbox'];
+      const args = ['--dangerously-bypass-approvals-and-sandbox'];
       if (model) args.push('--model', model);
       return [...args, ...extraFlags];
     },
@@ -257,10 +263,10 @@ export function getContract(agentType: CliAgentType): CliAgentContract {
   if (!contract) {
     throw new Error(`Unknown agent type: ${agentType}. Supported: ${Object.keys(CONTRACTS).join(', ')}`);
   }
-  if (agentType !== 'claude' && agentType !== 'copilot' && isExternalLLMDisabled()) {
+  if (agentType !== 'claude' && isExternalLLMDisabled()) {
     throw new Error(
       `External LLM provider "${agentType}" is blocked by security policy (disableExternalLLM). ` +
-      `Only Claude/Copilot workers are allowed in the current security configuration.`
+      `Only Claude workers are allowed in the current security configuration.`
     );
   }
   return contract;
@@ -408,22 +414,21 @@ export function isPromptModeAgent(agentType: CliAgentType): boolean {
 }
 
 /**
- * Get the extra CLI args needed to pass an instruction in prompt mode.
- * Returns empty array if the agent does not support prompt mode.
+ * Resolve the active model for Claude team workers on Bedrock/Vertex.
+ *
+ * When running on a non-standard provider (Bedrock, Vertex), workers need
+ * the provider-specific model ID passed explicitly via --model. Without it,
+ * Claude Code falls back to its built-in default (claude-sonnet-4-6) which
+ * is invalid on these providers.
+ *
+ * Resolution order:
+ *   1. ANTHROPIC_MODEL / CLAUDE_MODEL env vars (user's explicit setting)
+ *   2. Provider tier-specific env vars (CLAUDE_CODE_BEDROCK_SONNET_MODEL, etc.)
+ *   3. undefined — let Claude Code handle its own default
+ *
+ * Returns undefined when not on Bedrock/Vertex (standard Anthropic API
+ * handles bare aliases fine).
  */
-export function getPromptModeArgs(agentType: CliAgentType, instruction: string): string[] {
-  const contract = getContract(agentType);
-  if (!contract.supportsPromptMode) {
-    return [];
-  }
-  // If a flag is defined (e.g. gemini's '-p'), prepend it; otherwise the
-  // instruction is passed as a positional argument (e.g. codex exec [PROMPT]).
-  if (contract.promptModeFlag) {
-    return [contract.promptModeFlag, instruction];
-  }
-  return [instruction];
-}
-
 export function resolveClaudeWorkerModel(
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
@@ -433,9 +438,32 @@ export function resolveClaudeWorkerModel(
     return undefined;
   }
 
+  // Only return an explicit --model when the env carries a provider-specific
+  // model id (e.g. a Bedrock ARN). Tier-specific env vars
+  // (CLAUDE_CODE_BEDROCK_*_MODEL, ANTHROPIC_DEFAULT_*_MODEL, OMC_MODEL_*) are
+  // already propagated into the worker pane via env, so adding `--model` would
+  // either duplicate or conflict with the runtime's own selection. See the
+  // copilot worker / Bedrock test in runtime-prompt-mode.test.ts.
   const explicitModel = env.ANTHROPIC_MODEL || env.CLAUDE_MODEL;
   if (explicitModel && isProviderSpecificModelId(explicitModel)) {
     return explicitModel;
   }
   return undefined;
+}
+
+/**
+ * Get the extra CLI args needed to pass an instruction in prompt mode.
+ * Returns empty array if the agent does not support prompt mode.
+ */
+export function getPromptModeArgs(agentType: CliAgentType, instruction: string): string[] {
+  const contract = getContract(agentType);
+  if (!contract.supportsPromptMode) {
+    return [];
+  }
+  // If a flag is defined (e.g. gemini's '-p'), prepend it; otherwise the
+  // instruction is passed as a positional argument (e.g. codex [PROMPT]).
+  if (contract.promptModeFlag) {
+    return [contract.promptModeFlag, instruction];
+  }
+  return [instruction];
 }

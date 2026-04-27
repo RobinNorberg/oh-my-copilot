@@ -44,7 +44,7 @@ npm i -g oh-my-copilot@latest
 # or
 autopilot: build a todo-app
 
-# If you enjoy the output, give the repo att ⭐ and tell a friend 
+# If you enjoy the output, give the repo att ⭐ and tell a friend
 ```
 
 ### Not Sure Where to Start?
@@ -146,7 +146,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 ```
 
 ### CCCG
-**C3g** uses multi-model advisor synthesis — fans out via `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesizes the results:
+**CCCG** uses multi-model advisor synthesis — fans out via `ask-copilot` + `ask-claude` + `ask-codex` + `ask-gemini`, then Copilot synthesizes the results:
 
 ```bash
 /cccg "review this branch — architecture, security, and UI components"

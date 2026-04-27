@@ -2,16 +2,17 @@
  * CLI-worker output contract (Option E, plan AC-7).
  *
  * When a /team critic/reviewer stage is routed to an external CLI worker
- * (codex or gemini), the worker is a one-shot process that cannot call
- * TaskUpdate directly. To surface a structured verdict back to the team
- * leader, the worker writes a JSON payload to a pre-agreed file path
- * before exit. The leader's worker-completion handler in runtime-v2 reads
- * the file and calls TaskUpdate with verdict metadata.
+ * (codex or gemini), the worker may not call TaskUpdate directly. To surface
+ * a structured verdict back to the team leader, the worker writes a JSON
+ * payload to a pre-agreed file path. The leader's worker-completion handler
+ * in runtime-v2 reads the file and calls TaskUpdate with verdict metadata.
  *
  * Applies to roles in CONTRACT_ROLES (critic, code-reviewer,
  * security-reviewer, test-engineer) when the resolved provider is
  * `codex` or `gemini`. Claude workers participate in team messaging
- * directly and do not use this contract.
+ * directly and do not use this contract. Codex team workers are launched as
+ * persistent `codex` panes, not `codex exec`; they still receive this verdict
+ * contract in their inbox when assigned reviewer-style roles.
  */
 
 import type { CanonicalTeamRole } from '../shared/types.js';

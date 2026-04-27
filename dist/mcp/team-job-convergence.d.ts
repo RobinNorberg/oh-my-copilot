@@ -9,12 +9,19 @@ export interface OmcTeamJob {
     teamName?: string;
     cwd?: string;
     cleanedUpAt?: string;
+    cleanupBlockedAt?: string;
+    cleanupBlockedReason?: string;
+}
+export interface ScopedTeamStateCleanupResult {
+    ok: boolean;
+    message: string;
+    preservedWorktrees?: number;
+    reason?: string;
 }
 export declare function convergeJobWithResultArtifact(job: OmcTeamJob, jobId: string, omcJobsDir: string): {
     job: OmcTeamJob;
     changed: boolean;
 };
 export declare function isJobTerminal(job: OmcTeamJob): boolean;
-export declare function isPidAlive(pid: number): boolean;
-export declare function clearScopedTeamState(job: Pick<OmcTeamJob, 'cwd' | 'teamName'>): string;
+export declare function clearScopedTeamState(job: Pick<OmcTeamJob, 'cwd' | 'teamName'>): ScopedTeamStateCleanupResult;
 //# sourceMappingURL=team-job-convergence.d.ts.map

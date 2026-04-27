@@ -85,9 +85,11 @@ export function canonicalizeWorkers(workers: WorkerInfo[]): WorkerCanonicalizati
       role: backfillText(winner.role, loser.role) ?? winner.role,
       worker_cli: backfillText(winner.worker_cli, loser.worker_cli) as WorkerInfo['worker_cli'],
       working_dir: backfillText(winner.working_dir, loser.working_dir),
+      worktree_repo_root: backfillText(winner.worktree_repo_root, loser.worktree_repo_root),
       worktree_path: backfillText(winner.worktree_path, loser.worktree_path),
       worktree_branch: backfillText(winner.worktree_branch, loser.worktree_branch),
       worktree_detached: backfillBoolean(winner.worktree_detached, loser.worktree_detached),
+      worktree_created: backfillBoolean(winner.worktree_created, loser.worktree_created),
       team_state_root: backfillText(winner.team_state_root, loser.team_state_root),
     });
   }

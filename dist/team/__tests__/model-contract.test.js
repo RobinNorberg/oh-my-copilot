@@ -153,7 +153,7 @@ describe('model-contract', () => {
         });
         it('codex includes --dangerously-bypass-approvals-and-sandbox', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp' });
-            expect(args[0]).toBe('exec');
+            expect(args).not.toContain('exec');
             expect(args).not.toContain('--full-auto');
             expect(args).toContain('--dangerously-bypass-approvals-and-sandbox');
         });
@@ -217,16 +217,21 @@ describe('model-contract', () => {
         });
     });
     describe('buildWorkerArgv', () => {
-        it('builds binary + args', () => {
+        it('builds codex interactive worker argv without the exec subcommand', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
             mockSpawnSync.mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null });
-            expect(buildWorkerArgv('codex', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' })).toEqual([
-                'codex',
-                'exec',
-                '--dangerously-bypass-approvals-and-sandbox',
-            ]);
-            const finder = process.platform === 'win32' ? 'where' : 'which';
-            expect(mockSpawnSync).toHaveBeenCalledWith(finder, ['codex'], { timeout: 5000, encoding: 'utf8' });
+            expect(buildWorkerArgv('codex', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' })).not.toContain('exec');
+            expect(mockSpawnSync).toHaveBeenCalledWith('which', ['codex'], { timeout: 5000, encoding: 'utf8' });
+            mockSpawnSync.mockRestore();
+        });
+        it('builds claude interactive worker argv without the exec subcommand', () => {
+            const mockSpawnSync = vi.mocked(spawnSync);
+            mockSpawnSync.mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null });
+            const argv = buildWorkerArgv('claude', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' });
+            expect(argv[0]).toBe('claude');
+            expect(argv).toContain('--dangerously-skip-permissions');
+            expect(argv).not.toContain('exec');
+            expect(mockSpawnSync).toHaveBeenCalledWith('which', ['claude'], { timeout: 5000, encoding: 'utf8' });
             mockSpawnSync.mockRestore();
         });
         it('prefers resolved absolute binary path when available', () => {
@@ -301,21 +306,18 @@ describe('model-contract', () => {
         it('copilot does not support prompt mode', () => {
             expect(isPromptModeAgent('claude')).toBe(false);
         });
-        it('codex supports prompt mode (positional argument, no flag)', () => {
-            expect(isPromptModeAgent('codex')).toBe(true);
+        it('codex launches as a persistent interactive worker, not prompt/exec mode', () => {
+            expect(isPromptModeAgent('codex')).toBe(false);
             const c = getContract('codex');
-            expect(c.supportsPromptMode).toBe(true);
+            expect(c.supportsPromptMode).toBe(false);
             expect(c.promptModeFlag).toBeUndefined();
         });
         it('getPromptModeArgs returns flag + instruction for gemini', () => {
             const args = getPromptModeArgs('gemini', 'Read inbox');
             expect(args).toEqual(['-p', 'Read inbox']);
         });
-        it('getPromptModeArgs returns instruction only (positional) for codex', () => {
-            const args = getPromptModeArgs('codex', 'Read inbox');
-            expect(args).toEqual(['Read inbox']);
-        });
-        it('getPromptModeArgs returns empty array for non-prompt-mode agents', () => {
+        it('getPromptModeArgs returns empty array for interactive codex and claude workers', () => {
+            expect(getPromptModeArgs('codex', 'Read inbox')).toEqual([]);
             expect(getPromptModeArgs('claude', 'Read inbox')).toEqual([]);
         });
     });
@@ -333,10 +335,22 @@ describe('model-contract', () => {
             })).toBeUndefined();
         });
         it('returns explicit model when OMC_ROUTING_FORCE_INHERIT is not set', () => {
-            const result = resolveClaudeWorkerModel({
-                ANTHROPIC_MODEL: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
-            });
-            expect(result).toBe('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+            const previous = process.env.CLAUDE_CODE_USE_BEDROCK;
+            process.env.CLAUDE_CODE_USE_BEDROCK = '1';
+            try {
+                const result = resolveClaudeWorkerModel({
+                    ANTHROPIC_MODEL: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+                });
+                expect(result).toBe('us.anthropic.claude-sonnet-4-5-20250929-v1:0');
+            }
+            finally {
+                if (previous === undefined) {
+                    delete process.env.CLAUDE_CODE_USE_BEDROCK;
+                }
+                else {
+                    process.env.CLAUDE_CODE_USE_BEDROCK = previous;
+                }
+            }
         });
         it('returns undefined when no model env vars and no forceInherit', () => {
             expect(resolveClaudeWorkerModel({})).toBeUndefined();
