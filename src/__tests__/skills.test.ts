@@ -392,15 +392,15 @@ describe('Builtin Skills', () => {
       const projectDir = mkdtempSync(join(tmpdir(), 'omc-deep-dive-project-'));
       tempDirs.push(profileDir, projectDir);
 
-      process.env.CLAUDE_CONFIG_DIR = profileDir;
+      process.env.COPILOT_CONFIG_DIR = profileDir;
       writeFileSync(
         join(profileDir, 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.18 } } }),
       );
 
-      mkdirSync(join(projectDir, '.claude'), { recursive: true });
+      mkdirSync(join(projectDir, '.copilot'), { recursive: true });
       writeFileSync(
-        join(projectDir, '.claude', 'settings.json'),
+        join(projectDir, '.copilot', 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.11 } } }),
       );
 
