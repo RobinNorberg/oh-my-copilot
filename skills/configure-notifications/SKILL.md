@@ -1,6 +1,6 @@
 ---
 name: configure-notifications
-description: Configure notification integrations (Telegram, Discord, Slack, Teams) via natural language
+description: Configure notification integrations (Telegram, Discord, Slack) via natural language
 triggers:
   - "configure notifications"
   - "setup notifications"
@@ -13,9 +13,7 @@ triggers:
   - "configure slack"
   - "setup slack"
   - "slack webhook"
-  - "configure teams"
-  - "setup teams"
-  - "teams webhook"
+level: 2
 ---
 
 # Configure Notifications
@@ -28,7 +26,6 @@ Detect which provider the user wants based on their request or argument:
 - If the trigger or argument contains "telegram" → follow the **Telegram** section
 - If the trigger or argument contains "discord" → follow the **Discord** section
 - If the trigger or argument contains "slack" → follow the **Slack** section
-- If the trigger or argument contains "teams" → follow the **Microsoft Teams** section
 - If no provider is specified, use AskUserQuestion:
 
 **Question:** "Which notification service would you like to configure?"
@@ -37,7 +34,6 @@ Detect which provider the user wants based on their request or argument:
 1. **Telegram** - Bot token + chat ID. Works on mobile and desktop.
 2. **Discord** - Webhook or bot token + channel ID.
 3. **Slack** - Incoming webhook URL.
-4. **Microsoft Teams** - Incoming webhook (Power Automate Workflows).
 
 ---
 
@@ -143,8 +139,8 @@ Use AskUserQuestion with multiSelect:
 **Question:** "Which events should trigger Telegram notifications?"
 
 **Options (multiSelect: true):**
-1. **Session end (Recommended)** - When a Copilot session finishes
-2. **Input needed** - When Copilot is waiting for your response (great for long-running tasks)
+1. **Session end (Recommended)** - When a Claude session finishes
+2. **Input needed** - When Claude is waiting for your response (great for long-running tasks)
 3. **Session start** - When a new session begins
 4. **Session continuing** - When a persistent mode keeps the session alive
 
@@ -243,7 +239,7 @@ Telegram Notifications Configured!
   Format:     Markdown
   Events:     session-end, ask-user-question
 
-Config saved to: ~/.copilot/.omc-config.json
+Config saved to: ~/.copilot/.omcp-config.json
 
 You can also set these via environment variables:
   OMC_TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
@@ -252,7 +248,6 @@ You can also set these via environment variables:
 To reconfigure: /oh-my-copilot:configure-notifications telegram
 To configure Discord: /oh-my-copilot:configure-notifications discord
 To configure Slack: /oh-my-copilot:configure-notifications slack
-To configure Teams: /oh-my-copilot:configure-notifications teams
 ```
 
 ### Environment Variable Alternative
@@ -367,8 +362,8 @@ Use AskUserQuestion with multiSelect:
 **Question:** "Which events should trigger Discord notifications?"
 
 **Options (multiSelect: true):**
-1. **Session end (Recommended)** - When a Copilot session finishes
-2. **Input needed** - When Copilot is waiting for your response (great for long-running tasks)
+1. **Session end (Recommended)** - When a Claude session finishes
+2. **Input needed** - When Claude is waiting for your response (great for long-running tasks)
 3. **Session start** - When a new session begins
 4. **Session continuing** - When a persistent mode keeps the session alive
 
@@ -382,7 +377,7 @@ Use AskUserQuestion:
 
 **Options:**
 1. **OMC (default)** - Display as "OMC"
-2. **Copilot CLI** - Display as "Copilot CLI"
+2. **Claude Code** - Display as "Claude Code"
 3. **Custom** - Enter a custom name
 
 ### Step 7: Write Configuration
@@ -486,7 +481,7 @@ Discord Notifications Configured!
   Events:   session-end, ask-user-question
   Username: OMC
 
-Config saved to: ~/.copilot/.omc-config.json
+Config saved to: ~/.copilot/.omcp-config.json
 
 You can also set these via environment variables:
   OMC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
@@ -495,7 +490,6 @@ You can also set these via environment variables:
 To reconfigure: /oh-my-copilot:configure-notifications discord
 To configure Telegram: /oh-my-copilot:configure-notifications telegram
 To configure Slack: /oh-my-copilot:configure-notifications slack
-To configure Teams: /oh-my-copilot:configure-notifications teams
 ```
 
 ### Environment Variable Alternative
@@ -616,8 +610,8 @@ Use AskUserQuestion with multiSelect:
 **Question:** "Which events should trigger Slack notifications?"
 
 **Options (multiSelect: true):**
-1. **Session end (Recommended)** - When a Copilot session finishes
-2. **Input needed** - When Copilot is waiting for your response (great for long-running tasks)
+1. **Session end (Recommended)** - When a Claude session finishes
+2. **Input needed** - When Claude is waiting for your response (great for long-running tasks)
 3. **Session start** - When a new session begins
 4. **Session continuing** - When a persistent mode keeps the session alive
 
@@ -643,7 +637,7 @@ Use AskUserQuestion:
 
 **Options:**
 1. **OMC (default)** - Display as "OMC"
-2. **Copilot CLI** - Display as "Copilot CLI"
+2. **Claude Code** - Display as "Claude Code"
 3. **Custom** - Enter a custom name
 
 ### Step 8: Write Configuration
@@ -734,7 +728,7 @@ Slack Notifications Configured!
   Events:   session-end, ask-user-question
   Username: OMC
 
-Config saved to: ~/.copilot/.omc-config.json
+Config saved to: ~/.copilot/.omcp-config.json
 
 You can also set these via environment variables:
   OMC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
@@ -743,7 +737,6 @@ You can also set these via environment variables:
 To reconfigure: /oh-my-copilot:configure-notifications slack
 To configure Discord: /oh-my-copilot:configure-notifications discord
 To configure Telegram: /oh-my-copilot:configure-notifications telegram
-To configure Teams: /oh-my-copilot:configure-notifications teams
 ```
 
 ### Environment Variable Alternative
@@ -769,181 +762,6 @@ Env vars are auto-detected by the notification system without needing `.omc-conf
 
 ---
 
-## Microsoft Teams Setup
-
-Set up Microsoft Teams notifications so OMC can message you when sessions end, need input, or complete background tasks.
-
-### How This Skill Works
-
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`.
-
-### Step 1: Detect Existing Configuration
-
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-
-if [ -f "$CONFIG_FILE" ]; then
-  HAS_TEAMS=$(jq -r '.notifications.teams.enabled // false' "$CONFIG_FILE" 2>/dev/null)
-  WEBHOOK_URL=$(jq -r '.notifications.teams.webhookUrl // empty' "$CONFIG_FILE" 2>/dev/null)
-
-  if [ "$HAS_TEAMS" = "true" ]; then
-    echo "EXISTING_CONFIG=true"
-    [ -n "$WEBHOOK_URL" ] && echo "WEBHOOK_URL=$WEBHOOK_URL"
-  else
-    echo "EXISTING_CONFIG=false"
-  fi
-else
-  echo "NO_CONFIG_FILE"
-fi
-```
-
-If existing config is found, show the user what's currently configured and ask if they want to update or reconfigure.
-
-### Step 2: Create a Teams Incoming Webhook
-
-Guide the user through creating a webhook:
-
-```
-To set up Teams notifications, you need a Teams incoming webhook URL.
-Microsoft is migrating from O365 Connectors to Power Automate Workflows.
-
-CREATE A WEBHOOK (Power Automate Workflows — recommended):
-1. In Teams, go to the channel where you want notifications
-2. Click the "+" tab > "Workflows"
-3. Search for "Post to a channel when a webhook request is received"
-4. Name your flow (e.g., "OMC Notifier")
-5. Select the team and channel
-6. Copy the webhook URL
-
-LEGACY METHOD (O365 Connectors — being deprecated):
-1. In Teams, right-click the channel > "Connectors"
-2. Find "Incoming Webhook" and click "Configure"
-3. Name your webhook (e.g., "OMC Notifier")
-4. Copy the webhook URL
-```
-
-### Step 3: Collect Webhook URL
-
-Use AskUserQuestion:
-
-**Question:** "Paste your Teams webhook URL"
-
-The user will type their webhook URL in the "Other" field.
-
-**Validate** the URL:
-- Must be HTTPS
-- Should match one of: `*.logic.azure.com`, `*.webhook.office.com`, `outlook.office.com`, `outlook.office365.com`
-- If invalid, explain the format and ask again
-
-### Step 4: Configure Events
-
-Use AskUserQuestion with multiSelect:
-
-**Question:** "Which events should trigger Teams notifications?"
-
-**Options (multiSelect: true):**
-1. **Session end (Recommended)** - When a Copilot session finishes
-2. **Input needed** - When Copilot is waiting for your response (great for long-running tasks)
-3. **Session start** - When a new session begins
-4. **Session continuing** - When a persistent mode keeps the session alive
-
-Default selection: session-end + ask-user-question.
-
-### Step 5: Write Configuration
-
-Read the existing config, merge the new Teams settings, and write back:
-
-```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
-mkdir -p "$(dirname "$CONFIG_FILE")"
-
-if [ -f "$CONFIG_FILE" ]; then
-  EXISTING=$(cat "$CONFIG_FILE")
-else
-  EXISTING='{}'
-fi
-
-# WEBHOOK_URL is collected from user
-echo "$EXISTING" | jq \
-  --arg url "$WEBHOOK_URL" \
-  '.notifications = (.notifications // {enabled: true}) |
-   .notifications.enabled = true |
-   .notifications.teams = {
-     enabled: true,
-     webhookUrl: $url
-   }' > "$CONFIG_FILE"
-```
-
-#### Add event-specific config if user didn't select all events:
-
-For each event NOT selected, disable it:
-
-```bash
-# Example: disable session-start if not selected
-echo "$(cat "$CONFIG_FILE")" | jq \
-  '.notifications.events = (.notifications.events // {}) |
-   .notifications.events["session-start"] = {enabled: false}' > "$CONFIG_FILE"
-```
-
-### Step 6: Test the Configuration
-
-After writing config, offer to send a test notification:
-
-Use AskUserQuestion:
-
-**Question:** "Send a test notification to verify the setup?"
-
-**Options:**
-1. **Yes, test now (Recommended)** - Send a test Adaptive Card to your Teams channel
-2. **No, I'll test later** - Skip testing
-
-#### If testing:
-
-```bash
-curl -s -o /dev/null -w "%{http_code}" \
-  -H "Content-Type: application/json" \
-  -d '{"type":"message","attachments":[{"contentType":"application/vnd.microsoft.card.adaptive","contentUrl":null,"content":{"$schema":"http://adaptivecards.io/schemas/adaptive-card.json","type":"AdaptiveCard","version":"1.4","body":[{"type":"TextBlock","size":"Medium","weight":"Bolder","text":"OMC Test Notification"},{"type":"TextBlock","text":"Teams notifications are configured!","wrap":true}]}}]}' \
-  "$WEBHOOK_URL"
-```
-
-Report success or failure. Common issues:
-- **400 Bad Request**: Webhook URL is invalid or malformed Adaptive Card
-- **404 Not Found**: Webhook URL is incorrect or expired
-- **Network error**: Check connectivity
-
-### Step 7: Confirm
-
-Display the final configuration summary:
-
-```
-Microsoft Teams Notifications Configured!
-
-  Webhook:  https://...logic.azure.com/...
-  Events:   session-end, ask-user-question
-
-Config saved to: ~/.copilot/.omc-config.json
-
-You can also set these via environment variables:
-  OMC_MICROSOFT_TEAMS_WEBHOOK_URL=https://...
-
-To reconfigure: /oh-my-copilot:configure-notifications teams
-To configure Discord: /oh-my-copilot:configure-notifications discord
-To configure Telegram: /oh-my-copilot:configure-notifications telegram
-To configure Slack: /oh-my-copilot:configure-notifications slack
-```
-
-### Environment Variable Alternative
-
-Users can skip this wizard entirely by setting env vars in their shell profile:
-
-```bash
-export OMC_MICROSOFT_TEAMS_WEBHOOK_URL="https://prod-xx.westus.logic.azure.com/workflows/..."
-```
-
-Env vars are auto-detected by the notification system without needing `.omc-config.json`.
-
----
-
 ## Platform Activation Flags
 
 All notification platforms require activation via CLI flags per session:
@@ -951,14 +769,15 @@ All notification platforms require activation via CLI flags per session:
 - `omc --telegram` — Activates Telegram notifications (sets `OMC_TELEGRAM=1`)
 - `omc --discord` — Activates Discord notifications (sets `OMC_DISCORD=1`)
 - `omc --slack` — Activates Slack notifications (sets `OMC_SLACK=1`)
-- `omc --teams` — Activates Teams notifications (sets `OMC_MICROSOFT_TEAMS=1`)
 - `omc --webhook` — Activates webhook notifications (sets `OMC_WEBHOOK=1`)
+- `omc --openclaw` — Activates OpenClaw gateway integration (sets `OMC_OPENCLAW=1`)
+
 Without these flags, configured platforms remain dormant. This prevents unwanted notifications during development while keeping configuration persistent.
 
 **Examples:**
 - `omc --telegram --discord` — Telegram + Discord active
 - `omc --telegram --slack --webhook` — Telegram + Slack + Webhook active
-- `omc --telegram --teams` — Telegram + Teams active
+- `omc --telegram --openclaw` — Telegram + OpenClaw active
 - `omc` — No notifications sent (all platforms require explicit activation)
 
 ---
@@ -980,7 +799,7 @@ Hook event templates let you customize the notification messages sent to each pl
 You can set different messages for Discord vs Telegram vs Slack, and control which
 events fire on which platform.
 
-Config file: ${COPILOT_CONFIG_DIR:-~/.copilot}/omc_config.hook.json
+Config file: ~/.copilot/omcp_config.hook.json
 ```
 
 ### Step 2: Choose Event to Configure
@@ -990,9 +809,9 @@ Use AskUserQuestion:
 **Question:** "Which event would you like to configure templates for?"
 
 **Options:**
-1. **session-end** - When a Copilot session finishes (most common)
-2. **ask-user-question** - When Copilot is waiting for input
-3. **session-idle** - When Copilot finishes and waits for input
+1. **session-end** - When a Claude session finishes (most common)
+2. **ask-user-question** - When Claude is waiting for input
+3. **session-idle** - When Claude finishes and waits for input
 4. **session-start** - When a new session begins
 
 ### Step 3: Show Available Variables
@@ -1114,13 +933,56 @@ Offer to send a test notification with the new template.
 
 ---
 
-## Custom Integration (n8n, CLI, etc.)
+## Related
+
+- `/oh-my-copilot:configure-openclaw` — Configure OpenClaw gateway integration
+
+---
+
+## Custom Integration (OpenClaw, n8n, CLI, etc.)
 
 Configure custom webhooks and CLI commands for services beyond the native Discord/Telegram/Slack integrations.
 
 ### Routing
 
-If the user says "custom integration", "n8n", "webhook", "cli command", or similar → follow this section.
+If the user says "custom integration", "openclaw", "n8n", "webhook", "cli command", or similar → follow this section.
+
+### Migration from OpenClaw
+
+If `~/.copilot/omcp_config.openclaw.json` exists, detect and offer migration:
+
+**Step 1: Detect Legacy Config**
+```bash
+LEGACY_CONFIG="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/omc_config.openclaw.json"
+if [ -f "$LEGACY_CONFIG" ]; then
+  echo "LEGACY_FOUND=true"
+  # Check if already migrated
+  if jq -e '.customIntegrations.integrations[] | select(.preset == "openclaw")' "$CONFIG_FILE" >/dev/null 2>&1; then
+    echo "ALREADY_MIGRATED=true"
+  else
+    echo "ALREADY_MIGRATED=false"
+  fi
+else
+  echo "LEGACY_FOUND=false"
+fi
+```
+
+**Step 2: Offer Migration**
+If legacy found and not migrated:
+
+**Question:** "Existing OpenClaw configuration detected. Would you like to migrate it to the new format?"
+
+**Options:**
+1. **Yes, migrate now** - Convert legacy config to custom integration
+2. **No, configure fresh** - Skip migration and start new
+3. **Show me the legacy config first** - Display current OpenClaw settings
+
+If migrate:
+- Read `omc_config.openclaw.json`
+- Transform to custom integration format
+- Save to `.omc-config.json`
+- Backup legacy to `omc_config.openclaw.json.bak`
+- Show success message
 
 ### Custom Integration Wizard
 
@@ -1129,12 +991,13 @@ If the user says "custom integration", "n8n", "webhook", "cli command", or simil
 **Question:** "Which type of custom integration would you like to configure?"
 
 **Options:**
-1. **n8n Webhook** - Trigger n8n workflows
-2. **ClawdBot** - Send notifications to ClawdBot
-3. **Generic Webhook** - Custom HTTPS webhook
-4. **Generic CLI Command** - Execute shell command on events
+1. **OpenClaw Gateway** - Wake external automations and AI agents
+2. **n8n Webhook** - Trigger n8n workflows
+3. **ClawdBot** - Send notifications to ClawdBot
+4. **Generic Webhook** - Custom HTTPS webhook
+5. **Generic CLI Command** - Execute shell command on events
 
-### n8n/ClawdBot Preset Flow
+### OpenClaw/n8n/ClawdBot Preset Flow
 
 **Step 2: Gateway URL**
 
@@ -1169,6 +1032,7 @@ Use AskUserQuestion with multiSelect:
 - session-idle
 - ask-user-question
 
+Default for OpenClaw: session-start, session-end, stop
 Default for n8n: session-end, ask-user-question
 
 **Step 5: Test**
@@ -1202,20 +1066,21 @@ Merge into `.omc-config.json`:
     "enabled": true,
     "integrations": [
       {
-        "id": "my-n8n",
+        "id": "my-openclaw",
         "type": "webhook",
-        "preset": "n8n",
+        "preset": "openclaw",
         "enabled": true,
         "config": {
-          "url": "https://my-n8n.example.com/webhook/abc123",
+          "url": "https://my-gateway.example.com/wake",
           "method": "POST",
           "headers": {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Authorization": "Bearer ..."
           },
-          "bodyTemplate": "{\\"event\\":\\"{{event}}\\",\\"sessionId\\":\\"{{sessionId}}\\",\\"timestamp\\":\\"{{timestamp}}\\"}",
+          "bodyTemplate": "{\\"event\\":\\"{{event}}\\",\\"instruction\\":\\"Session {{sessionId}} {{event}}\\",\\"timestamp\\":\\"{{timestamp}}\\"}",
           "timeout": 10000
         },
-        "events": ["session-end", "ask-user-question"]
+        "events": ["session-start", "session-end"]
       }
     ]
   }
@@ -1332,7 +1197,7 @@ All custom integrations support these template variables:
 | `{{duration}}` | Human-readable duration | `45s` |
 | `{{durationMs}}` | Duration in milliseconds | `45000` |
 | `{{reason}}` | Stop/end reason | `completed` |
-| `{{tmuxSession}}` | tmux session name | `copilot:my-project` |
+| `{{tmuxSession}}` | tmux session name | `claude:my-project` |
 
 Session-end only:
 - `{{agentsSpawned}}`, `{{agentsCompleted}}`, `{{modesUsed}}`, `{{contextSummary}}`

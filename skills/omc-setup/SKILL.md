@@ -1,6 +1,7 @@
 ---
 name: omc-setup
 description: Install or refresh oh-my-copilot for plugin, npm, and local-dev setups from the canonical setup flow
+level: 2
 ---
 
 # OMC Setup
@@ -9,14 +10,14 @@ This is the **only command you need to learn**. After running this, everything e
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
-Note: All `~/.copilot/...` paths in this guide respect `COPILOT_CONFIG_DIR` when that environment variable is set.
+Note: All `~/.claude/...` paths in this guide respect `COPILOT_CONFIG_DIR` when that environment variable is set.
 
 ## Best-Fit Use
 
 Choose this setup flow when the user wants to **install, refresh, or repair OMC itself**.
 
 - Marketplace/plugin install users should land here after `/plugin install oh-my-copilot`
-- npm users should land here after `npm i -g oh-my-copilot@latest`
+- npm users should land here after `npm i -g oh-my-claude-sisyphus@latest`
 - local-dev and worktree users should land here after updating the checked-out repo and rerunning setup
 
 ## Flag Parsing
@@ -37,15 +38,15 @@ OMC Setup - Configure oh-my-copilot
 
 USAGE:
   /oh-my-copilot:omc-setup           Run initial setup wizard (or update if already configured)
-  /oh-my-copilot:omc-setup --local   Configure local project (.copilot/copilot-instructions.md)
-  /oh-my-copilot:omc-setup --global  Configure global settings (~/.copilot/copilot-instructions.md)
+  /oh-my-copilot:omc-setup --local   Configure local project (.claude/CLAUDE.md)
+  /oh-my-copilot:omc-setup --global  Configure global settings (~/.claude/CLAUDE.md)
   /oh-my-copilot:omc-setup --force   Force full setup wizard even if already configured
   /oh-my-copilot:omc-setup --help    Show this help
 
 MODES:
   Initial Setup (no flags)
     - Interactive wizard for first-time setup
-    - Configures copilot-instructions.md (local or global)
+    - Configures CLAUDE.md (local or global)
     - Sets up HUD statusline
     - Checks for updates
     - Offers MCP server configuration
@@ -53,15 +54,17 @@ MODES:
     - If already configured, offers quick update option
 
   Local Configuration (--local)
-    - Downloads fresh copilot-instructions.md to ./.copilot/
-    - Backs up existing copilot-instructions.md to .copilot/copilot-instructions.md.backup.YYYY-MM-DD
+    - Downloads fresh CLAUDE.md to ./.claude/
+    - Backs up existing CLAUDE.md to .claude/CLAUDE.md.backup.YYYY-MM-DD
     - Project-specific settings
     - Use this to update project config after OMC upgrades
 
   Global Configuration (--global)
-    - Downloads fresh copilot-instructions.md to ~/.copilot/
-    - Backs up existing copilot-instructions.md to ~/.copilot/copilot-instructions.md.backup.YYYY-MM-DD
-    - Applies to all Copilot CLI sessions
+    - Downloads fresh CLAUDE.md to ~/.claude/
+    - Backs up existing CLAUDE.md to ~/.claude/CLAUDE.md.backup.YYYY-MM-DD
+    - Default: explicitly overwrites ~/.claude/CLAUDE.md so plain `claude` also uses OMC
+    - Optional preserve mode keeps the user's base `CLAUDE.md` and installs OMC into `CLAUDE-omc.md` for `omc` launches
+    - Applies to all Claude Code sessions
     - Cleans up legacy hooks
     - Use this to update global config after OMC upgrades
 
@@ -71,30 +74,12 @@ MODES:
     - Use when you want to reconfigure preferences
 
 EXAMPLES:
-  /oh-my-copilot:omc-setup           # First time setup (or update copilot-instructions.md if configured)
+  /oh-my-copilot:omc-setup           # First time setup (or update CLAUDE.md if configured)
   /oh-my-copilot:omc-setup --local   # Update this project
   /oh-my-copilot:omc-setup --global  # Update all projects
   /oh-my-copilot:omc-setup --force   # Re-run full setup wizard
 
-For more info: https://github.com/RobinNorberg/oh-my-copilot
-```
-
-## Step 0: Discover Plugin Root
-
-Before anything else, resolve `COPILOT_PLUGIN_ROOT`. Run this command and use the result for all subsequent `${COPILOT_PLUGIN_ROOT}` references:
-
-```bash
-# Find the oh-my-copilot plugin root
-for d in   "${COPILOT_PLUGIN_ROOT:-}"   "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/installed-plugins/omcp/oh-my-copilot"   "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/installed-plugins/_direct/oh-my-copilot"   "$(npm root -g 2>/dev/null)/oh-my-copilot"   ; do
-  [ -n "$d" ] && [ -f "$d/skills/omc-setup/SKILL.md" ] && { echo "$d"; break; }
-done
-```
-
-Store the output as `COPILOT_PLUGIN_ROOT` for the rest of this setup. If no path is found, tell the user to install first:
-```
-oh-my-copilot plugin not found. Install it first:
-  /plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
-  /plugin install oh-my-copilot@omcp
+For more info: https://github.com/Yeachan-Heo/oh-my-copilot
 ```
 
 ## Pre-Setup Check: Already Configured?
@@ -126,14 +111,14 @@ Use AskUserQuestion to prompt:
 **Question:** "OMC is already configured. What would you like to do?"
 
 **Options:**
-1. **Update copilot-instructions.md only** - Download latest copilot-instructions.md without re-running full setup
+1. **Update CLAUDE.md only** - Download latest CLAUDE.md without re-running full setup
 2. **Run full setup again** - Go through the complete setup wizard
 3. **Cancel** - Exit without changes
 
-**If user chooses "Update copilot-instructions.md only":**
-- Detect if local (.copilot/copilot-instructions.md) or global (~/.copilot/copilot-instructions.md) config exists
-- If local exists, run: `bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-copilot-instructions.sh" local`
-- If only global exists, run: `bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-copilot-instructions.sh" global`
+**If user chooses "Update CLAUDE.md only":**
+- Detect if local (.claude/CLAUDE.md) or global (~/.claude/CLAUDE.md) config exists
+- If local exists, run: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-claude-md.sh" local`
+- If only global exists, run: `bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-claude-md.sh" global`
 - Skip all other steps
 - Report success and exit
 
@@ -152,7 +137,7 @@ If user passes `--force` flag, skip this check and proceed directly to setup.
 Before starting any phase, check for existing state:
 
 ```bash
-bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" resume
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-progress.sh" resume
 ```
 
 If state exists (output is not "fresh"), use AskUserQuestion to prompt:
@@ -165,64 +150,35 @@ If state exists (output is not "fresh"), use AskUserQuestion to prompt:
 
 If user chooses "Start fresh":
 ```bash
-bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" clear
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-progress.sh" clear
 ```
 
 ## Phase Execution
 
 ### For `--local` or `--global` flags:
-Read the file at `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-copilot-instructions.md` and follow its instructions.
+Read the file at `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
 (The phase file handles early exit for flag mode.)
 
 ### For full setup (default or --force):
+Execute phases sequentially. For each phase, read the corresponding file and follow its instructions:
 
-#### Setup Mode Selection
+1. **Phase 1 - Install CLAUDE.md**: Read `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
 
-Before executing phases, ask the user which setup mode they prefer:
+2. **Phase 2 - Environment Configuration**: Read `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/02-configure.md` and follow its instructions. Phase 2 must delegate HUD/statusLine setup to the `hud` skill; do not generate or patch `statusLine` paths inline here.
 
-Use AskUserQuestion to prompt:
+3. **Phase 3 - Integration Setup**: Read `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/03-integrations.md` and follow its instructions.
 
-**Question:** "How would you like to configure oh-my-copilot?"
-
-**Options:**
-1. **Quick Setup (Recommended)** - Apply sensible defaults and jump straight to MCP server configuration. You can customize later with `/omc-setup --force`.
-2. **Step-by-step Setup** - Walk through each option individually (local/global, HUD, CLI install, team defaults, etc.)
-
-Set `SETUP_MODE` to `quick` or `interactive` based on user's choice.
-
-#### Quick Setup Mode (SETUP_MODE=quick)
-
-Apply all recommended defaults automatically with minimal prompts:
-
-1. **Phase 1 - Install copilot-instructions.md (global)**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-copilot-instructions.md` and follow its instructions, but **skip the AskUserQuestion** — use `CONFIG_TARGET=global` automatically.
-
-2. **Phase 2 - Environment Configuration (auto)**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/02-configure.md` and follow its instructions in **quick mode** — apply all defaults without interactive prompts (see phase file for quick-mode behavior).
-
-3. **Phase 3 - Integration Setup (MCP focus)**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/03-integrations.md` and follow its instructions — in quick mode, skip team customization and go straight to MCP server configuration.
-
-4. **Phase 4 - Completion**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/04-welcome.md` and follow its instructions.
-
-#### Step-by-step Setup Mode (SETUP_MODE=interactive)
-
-Execute all phases with full interactive prompts:
-
-1. **Phase 1 - Install copilot-instructions.md**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-copilot-instructions.md` and follow its instructions.
-
-2. **Phase 2 - Environment Configuration**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/02-configure.md` and follow its instructions in **interactive mode**.
-
-3. **Phase 3 - Integration Setup**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/03-integrations.md` and follow its instructions.
-
-4. **Phase 4 - Completion**: Read `${COPILOT_PLUGIN_ROOT}/skills/omc-setup/phases/04-welcome.md` and follow its instructions.
+4. **Phase 4 - Completion**: Read `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/04-welcome.md` and follow its instructions.
 
 ## Graceful Interrupt Handling
 
-**IMPORTANT**: This setup process saves progress after each phase via `${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh`. If interrupted (Ctrl+C or connection loss), the setup can resume from where it left off.
+**IMPORTANT**: This setup process saves progress after each phase via `${CLAUDE_PLUGIN_ROOT}/scripts/setup-progress.sh`. If interrupted (Ctrl+C or connection loss), the setup can resume from where it left off.
 
 ## Keeping Up to Date
 
 After installing oh-my-copilot updates (via npm or plugin update):
 
-**Automatic**: Just run `/oh-my-copilot:omc-setup` - it will detect you've already configured and offer a quick "Update copilot-instructions.md only" option that skips the full wizard.
+**Automatic**: Just run `/oh-my-copilot:omc-setup` - it will detect you've already configured and offer a quick "Update CLAUDE.md only" option that skips the full wizard.
 
 **Manual options**:
 - `/oh-my-copilot:omc-setup --local` to update project config only

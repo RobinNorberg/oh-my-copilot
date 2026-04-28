@@ -14,7 +14,7 @@ Promote durable, reusable knowledge into the right memory surface instead of lea
 - **Project memory** — durable team/project knowledge
 - **Notepad priority** — short high-signal context for the next turns
 - **Notepad working** — temporary active-session notes
-- **Docs / AGENTS / COPILOT files** — durable instructions and conventions when they truly belong there
+- **Docs / AGENTS / CLAUDE files** — durable instructions and conventions when they truly belong there
 
 ## Workflow
 1. Gather the relevant session findings.
@@ -38,3 +38,4 @@ Promote durable, reusable knowledge into the right memory surface instead of lea
 - What was stored
 - Where it was stored
 - Any duplicates/conflicts found
+

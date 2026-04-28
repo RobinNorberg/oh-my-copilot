@@ -5,13 +5,13 @@ description: Diagnose the current OMC session or repo state using logs, traces, 
 
 # Debug
 
-Use this skill when the user wants help diagnosing a current OMC/Copilot CLI session problem, workflow breakage, or confusing runtime behavior.
+Use this skill when the user wants help diagnosing a current OMC/Claude-Code session problem, workflow breakage, or confusing runtime behavior.
 
 ## Goal
 Find the real failure signal quickly and explain the next corrective step.
 
 ## Workflow
-1. Read the user's issue description carefully.
+1. Read the user’s issue description carefully.
 2. Inspect the most relevant local evidence first:
    - trace tools
    - state tools
@@ -32,3 +32,4 @@ Find the real failure signal quickly and explain the next corrective step.
 - Root-cause hypothesis
 - Evidence for that hypothesis
 - Smallest next action
+
