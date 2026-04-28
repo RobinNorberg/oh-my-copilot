@@ -17,7 +17,7 @@ Show all available skills organized by scope.
 
 **Behavior:**
 1. Scan bundled built-in skills in the plugin `skills/` directory (read-only)
-2. Scan user skills at `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/`
+2. Scan user skills at `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/`
 3. Scan project skills at `.omcp/skills/`
 4. Parse YAML frontmatter for metadata
 5. Display in organized table format:
@@ -61,7 +61,7 @@ Interactive wizard for creating a new skill.
 4. **Ask for argument hint** (optional)
    - Example: "<file> [options]"
 5. **Ask for scope:**
-   - `user` → `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/SKILL.md`
+   - `user` → `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/SKILL.md`
    - `project` → `.omcp/skills/<name>/SKILL.md`
 6. **Create skill file** with template:
 
@@ -127,13 +127,13 @@ Remove a skill by name.
 
 **Behavior:**
 1. **Search for skill** in both scopes:
-   - `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/SKILL.md`
+   - `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/SKILL.md`
    - `.omcp/skills/<name>/SKILL.md`
 2. **If found:**
    - Display skill info (name, description, scope)
    - **Ask for confirmation:** "Delete '<name>' skill from <scope>? (yes/no)"
 3. **If confirmed:**
-   - Delete entire skill directory (e.g., `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/`)
+   - Delete entire skill directory (e.g., `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/`)
    - Report: "✓ Removed skill '<name>' from <scope>"
 4. **If not found:**
    - Report: "✗ Skill '<name>' not found in user or project scope"
@@ -300,7 +300,7 @@ Sync skills between user and project scopes.
 
 **Behavior:**
 1. **Scan both scopes:**
-   - User skills: `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/`
+   - User skills: `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/`
    - Project skills: `.omcp/skills/`
 2. **Compare and categorize:**
    - User-only skills (not in project)
@@ -370,7 +370,7 @@ First, check if skill directories exist and create them if needed:
 
 ```bash
 # Check and create user-level skills directory
-USER_SKILLS_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned"
+USER_SKILLS_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned"
 if [ -d "$USER_SKILLS_DIR" ]; then
   echo "User skills directory exists: $USER_SKILLS_DIR"
 else
@@ -395,14 +395,14 @@ Scan both directories and show a comprehensive inventory:
 ```bash
 # Scan user-level skills
 echo "=== USER-LEVEL SKILLS (~/.claude/skills/omc-learned/) ==="
-if [ -d "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" ]; then
-  USER_COUNT=$(find "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
+if [ -d "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned" ]; then
+  USER_COUNT=$(find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
   echo "Total skills: $USER_COUNT"
 
   if [ $USER_COUNT -gt 0 ]; then
     echo ""
     echo "Skills found:"
-    find "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" -name "*.md" -type f -exec sh -c '
+    find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned" -name "*.md" -type f -exec sh -c '
       FILE="$1"
       NAME=$(grep -m1 "^name:" "$FILE" 2>/dev/null | sed "s/name: //")
       DESC=$(grep -m1 "^description:" "$FILE" 2>/dev/null | sed "s/description: //")

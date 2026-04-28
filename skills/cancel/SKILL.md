@@ -198,18 +198,18 @@ Use force mode to clear every session plus legacy artifacts via `state_clear`. D
 
 #### If Team Active (Claude Code native)
 
-Teams are detected by checking for config files in `${COPILOT_CONFIG_DIR:-~/.claude}/teams/`:
+Teams are detected by checking for config files in `${COPILOT_CONFIG_DIR:-~/.copilot}/teams/`:
 
 ```bash
 # Check for active teams
-TEAM_CONFIGS=$(find "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/teams -name config.json -maxdepth 2 2>/dev/null)
+TEAM_CONFIGS=$(find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/teams -name config.json -maxdepth 2 2>/dev/null)
 ```
 
 **Two-pass cancellation protocol:**
 
 **Pass 1: Graceful Shutdown**
 ```
-For each team found in ${COPILOT_CONFIG_DIR:-~/.claude}/teams/:
+For each team found in ${COPILOT_CONFIG_DIR:-~/.copilot}/teams/:
   1. Read config.json to get team_name and members list
   2. For each non-lead member:
      a. Send shutdown_request via SendMessage
@@ -268,7 +268,7 @@ Team "{team_name}" cancelled:
 ```
 
 **Implementation note:** The cancel skill is executed by the LLM, not as a bash script. When you detect an active team:
-1. Read `${COPILOT_CONFIG_DIR:-~/.claude}/teams/*/config.json` to find active teams
+1. Read `${COPILOT_CONFIG_DIR:-~/.copilot}/teams/*/config.json` to find active teams
 2. If multiple teams exist, cancel oldest first (by `createdAt`)
 3. For each non-lead member, call `SendMessage(type: "shutdown_request", recipient: member-name, content: "Cancelling")`
 4. Wait briefly for shutdown responses (15s per member timeout)

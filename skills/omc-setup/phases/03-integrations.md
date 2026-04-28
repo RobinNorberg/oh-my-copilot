@@ -5,7 +5,7 @@
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
-grep -q "oh-my-copilot" "${COPILOT_CONFIG_DIR:-$HOME/.claude}/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-copilot"
+grep -q "oh-my-copilot" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-copilot"
 ```
 
 ## Step 3.2: Offer MCP Server Configuration
@@ -44,7 +44,7 @@ Use AskUserQuestion:
 First, read the current settings.json:
 
 ```bash
-SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/settings.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
 if [ -f "$SETTINGS_FILE" ]; then
   echo "Current settings.json found"
@@ -54,12 +54,12 @@ else
 fi
 ```
 
-Then use the Read tool to read `${COPILOT_CONFIG_DIR:-~/.claude}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
+Then use the Read tool to read `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
 
 Use jq to safely merge without overwriting existing settings:
 
 ```bash
-SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/settings.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
 if [ -f "$SETTINGS_FILE" ]; then
   TEMP_FILE=$(mktemp)
@@ -94,7 +94,7 @@ Use AskUserQuestion:
 If user chooses anything other than "Auto", add `teammateMode` to settings.json:
 
 ```bash
-SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/settings.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
 # TEAMMATE_MODE is "in-process" or "tmux" based on user choice
 # Skip this if user chose "Auto" (that's the default)
@@ -123,7 +123,7 @@ Use AskUserQuestion with multiple questions:
 Store the team configuration in `~/.copilot/.omcp-config.json`:
 
 ```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -151,7 +151,7 @@ echo "  Model: teammates inherit your session model"
 After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/settings.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
 if jq empty "$SETTINGS_FILE" 2>/dev/null; then
   echo "settings.json: valid JSON"

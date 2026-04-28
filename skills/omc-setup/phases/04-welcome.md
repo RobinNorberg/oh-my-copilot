@@ -5,7 +5,7 @@
 Check if user has existing 2.x configuration:
 
 ```bash
-ls "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/commands/ralph-loop.md 2>/dev/null || ls "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/commands/ultrawork.md 2>/dev/null
+ls "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands/ralph-loop.md 2>/dev/null || ls "${COPILOT_CONFIG_DIR:-$HOME/.copilot}"/commands/ultrawork.md 2>/dev/null
 ```
 
 If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
@@ -178,8 +178,8 @@ Get the current OMC version and mark setup complete:
 OMC_VERSION=""
 if [ -f ".claude/CLAUDE.md" ]; then
   OMC_VERSION=$(grep -m1 'OMC:VERSION:' .claude/CLAUDE.md 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
-elif [ -f "${COPILOT_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" ]; then
-  OMC_VERSION=$(grep -m1 'OMC:VERSION:' "${COPILOT_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
+elif [ -f "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/CLAUDE.md" ]; then
+  OMC_VERSION=$(grep -m1 'OMC:VERSION:' "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/CLAUDE.md" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
 fi
 if [ -z "$OMC_VERSION" ]; then
   OMC_VERSION=$(omc --version 2>/dev/null | head -1 || true)

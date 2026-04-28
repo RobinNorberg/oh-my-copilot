@@ -88,7 +88,7 @@ For more info: https://github.com/Yeachan-Heo/oh-my-copilot
 
 ```bash
 # Check if setup was already completed
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   SETUP_COMPLETED=$(jq -r '.setupCompleted // empty' "$CONFIG_FILE" 2>/dev/null)
