@@ -85341,7 +85341,7 @@ function applyDeepInterviewRuntimeSettings(template) {
 }
 function renderBundledSkillBody(skillName, body) {
   const rewrittenBody = rewriteOmcCliInvocations(body.trim());
-  return skillName === "deep-interview" ? applyDeepInterviewRuntimeSettings(rewrittenBody) : rewrittenBody;
+  return skillName === "deep-interview" || skillName === "deep-dive" ? applyDeepInterviewRuntimeSettings(rewrittenBody) : rewrittenBody;
 }
 function toSafeSkillName(name) {
   const normalized = name.trim();
