@@ -17828,7 +17828,19 @@ function getPrdPath(directory) {
 function getOmcPrdPath(directory) {
   return (0, import_path42.join)(getOmcRoot(directory), PRD_FILENAME);
 }
-function findPrdPath(directory) {
+function getSessionPrdPath(directory, sessionId) {
+  return (0, import_path42.join)(getSessionStateDir(sessionId, directory), PRD_FILENAME);
+}
+function getLegacyStatePrdPath(directory) {
+  return (0, import_path42.join)(getOmcRoot(directory), "state", PRD_FILENAME);
+}
+function findPrdPath(directory, sessionId) {
+  if (sessionId) {
+    const sessionPath = getSessionPrdPath(directory, sessionId);
+    if ((0, import_fs33.existsSync)(sessionPath)) {
+      return sessionPath;
+    }
+  }
   const rootPath = getPrdPath(directory);
   if ((0, import_fs33.existsSync)(rootPath)) {
     return rootPath;
@@ -17837,29 +17849,33 @@ function findPrdPath(directory) {
   if ((0, import_fs33.existsSync)(omcPath)) {
     return omcPath;
   }
+  const legacyStatePath = getLegacyStatePrdPath(directory);
+  if ((0, import_fs33.existsSync)(legacyStatePath)) {
+    return legacyStatePath;
+  }
   return null;
 }
-function readPrd(directory) {
-  const prdPath = findPrdPath(directory);
+function readPrd(directory, sessionId) {
+  const prdPath = findPrdPath(directory, sessionId);
   if (!prdPath) {
     return null;
   }
   return readPrdFromPath(prdPath).prd ?? null;
 }
-function writePrd(directory, prd) {
-  let prdPath = findPrdPath(directory);
-  if (!prdPath) {
-    const omcDir = getOmcRoot(directory);
-    if (!(0, import_fs33.existsSync)(omcDir)) {
-      try {
-        (0, import_fs33.mkdirSync)(omcDir, { recursive: true });
-      } catch {
-        return false;
-      }
+function writePrd(directory, prd, sessionId) {
+  let prdPath;
+  if (sessionId) {
+    try {
+      ensureSessionStateDir(sessionId, directory);
+    } catch {
+      return false;
     }
-    prdPath = getOmcPrdPath(directory);
+    prdPath = getSessionPrdPath(directory, sessionId);
+  } else {
+    prdPath = findPrdPath(directory) ?? getOmcPrdPath(directory);
   }
   try {
+    (0, import_fs33.mkdirSync)((0, import_path42.dirname)(prdPath), { recursive: true });
     (0, import_fs33.writeFileSync)(prdPath, JSON.stringify(prd, null, 2));
     return true;
   } catch {
@@ -17880,8 +17896,8 @@ function getPrdStatus(prd) {
     incompleteIds: pending.map((s) => s.id)
   };
 }
-function markStoryComplete(directory, storyId, notes) {
-  const prd = readPrd(directory);
+function markStoryComplete(directory, storyId, notes, sessionId) {
+  const prd = readPrd(directory, sessionId);
   if (!prd) {
     return false;
   }
@@ -17894,10 +17910,10 @@ function markStoryComplete(directory, storyId, notes) {
   if (notes) {
     story.notes = notes;
   }
-  return writePrd(directory, prd);
+  return writePrd(directory, prd, sessionId);
 }
-function markStoryIncomplete(directory, storyId, notes) {
-  const prd = readPrd(directory);
+function markStoryIncomplete(directory, storyId, notes, sessionId) {
+  const prd = readPrd(directory, sessionId);
   if (!prd) {
     return false;
   }
@@ -17910,10 +17926,10 @@ function markStoryIncomplete(directory, storyId, notes) {
   if (notes) {
     story.notes = notes;
   }
-  return writePrd(directory, prd);
+  return writePrd(directory, prd, sessionId);
 }
-function markStoryArchitectVerified(directory, storyId, notes) {
-  const prd = readPrd(directory);
+function markStoryArchitectVerified(directory, storyId, notes, sessionId) {
+  const prd = readPrd(directory, sessionId);
   if (!prd) {
     return false;
   }
@@ -17925,17 +17941,17 @@ function markStoryArchitectVerified(directory, storyId, notes) {
   if (notes) {
     story.notes = notes;
   }
-  return writePrd(directory, prd);
+  return writePrd(directory, prd, sessionId);
 }
-function getStory(directory, storyId) {
-  const prd = readPrd(directory);
+function getStory(directory, storyId, sessionId) {
+  const prd = readPrd(directory, sessionId);
   if (!prd) {
     return null;
   }
   return prd.userStories.find((s) => s.id === storyId) || null;
 }
-function getNextStory(directory) {
-  const prd = readPrd(directory);
+function getNextStory(directory, sessionId) {
+  const prd = readPrd(directory, sessionId);
   if (!prd) {
     return null;
   }
@@ -17971,16 +17987,16 @@ function createSimplePrd(project, branchName, taskDescription) {
     }
   ]);
 }
-function initPrd(directory, project, branchName, description, stories) {
+function initPrd(directory, project, branchName, description, stories, sessionId) {
   const prd = stories ? createPrd(project, branchName, description, stories) : createSimplePrd(project, branchName, description);
-  return writePrd(directory, prd);
+  return writePrd(directory, prd, sessionId);
 }
-function ensurePrdForStartup(directory, project, branchName, description, stories) {
-  const existingPath = findPrdPath(directory);
+function ensurePrdForStartup(directory, project, branchName, description, stories, sessionId) {
+  const existingPath = findPrdPath(directory, sessionId);
   if (!existingPath) {
-    const created = initPrd(directory, project, branchName, description, stories);
-    const createdPath = findPrdPath(directory);
-    const prd = created ? readPrd(directory) : null;
+    const created = initPrd(directory, project, branchName, description, stories, sessionId);
+    const createdPath = findPrdPath(directory, sessionId);
+    const prd = created ? readPrd(directory, sessionId) : null;
     if (!created || !createdPath || !prd) {
       return {
         ok: false,
@@ -18015,6 +18031,25 @@ function ensurePrdForStartup(directory, project, branchName, description, storie
       path: existingPath,
       error: `${existingPath} must contain at least one user story for Ralph to start.`
     };
+  }
+  if (sessionId) {
+    const sessionPath = getSessionPrdPath(directory, sessionId);
+    if (existingPath !== sessionPath) {
+      if (!writePrd(directory, parsed.prd, sessionId)) {
+        return {
+          ok: false,
+          created: false,
+          path: existingPath,
+          error: `Ralph found ${existingPath}, but failed to migrate it to session-scoped ${sessionPath}.`
+        };
+      }
+      return {
+        ok: true,
+        created: false,
+        path: sessionPath,
+        prd: parsed.prd
+      };
+    }
   }
   return {
     ok: true,
@@ -18076,7 +18111,7 @@ function formatPrd(prd) {
   }
   return lines.join("\n");
 }
-function formatNextStoryPrompt(story) {
+function formatNextStoryPrompt(story, prdPath) {
   return `<current-story>
 
 ## Current Story: ${story.id} - ${story.title}
@@ -18086,11 +18121,13 @@ ${story.description}
 **Acceptance Criteria:**
 ${story.acceptanceCriteria.map((c, i) => `${i + 1}. ${c}`).join("\n")}
 
-**Instructions:**
+${prdPath ? `**Active PRD file:** ${prdPath}
+
+` : ""}**Instructions:**
 1. Implement this story completely
 2. Verify ALL acceptance criteria are met
 3. Run quality checks (tests, typecheck, lint)
-4. When complete, mark story as passes: true in prd.json
+4. When complete, mark story as passes: true in the active PRD file
 5. If ALL stories are done, run \`/oh-my-copilot:cancel\` to cleanly exit ralph mode and clean up all state files
 
 </current-story>
@@ -18895,7 +18932,9 @@ function createRalphLoopHook(directory) {
       directory,
       (0, import_path45.basename)(directory),
       branchName,
-      normalizedPrompt
+      normalizedPrompt,
+      void 0,
+      sessionId
     );
     if (!startupPrd.ok) {
       console.error(`[RALPH PRD REQUIRED] ${startupPrd.error}`);
@@ -18916,7 +18955,7 @@ function createRalphLoopHook(directory) {
       critic_mode: options?.criticMode ?? detectCriticModeFlag(prompt) ?? DEFAULT_RALPH_CRITIC_MODE,
       prd_mode: true
     };
-    const prdCompletion = getPrdCompletionStatus(directory);
+    const prdCompletion = getPrdCompletionStatus(directory, sessionId);
     if (prdCompletion.nextStory) {
       state.current_story_id = prdCompletion.nextStory.id;
     }
@@ -18955,12 +18994,12 @@ function createRalphLoopHook(directory) {
     getState
   };
 }
-function hasPrd(directory) {
-  const prd = readPrd(directory);
+function hasPrd(directory, sessionId) {
+  const prd = readPrd(directory, sessionId);
   return prd !== null;
 }
-function getPrdCompletionStatus(directory) {
-  const prd = readPrd(directory);
+function getPrdCompletionStatus(directory, sessionId) {
+  const prd = readPrd(directory, sessionId);
   if (!prd) {
     return {
       hasPrd: false,
@@ -18977,15 +19016,15 @@ function getPrdCompletionStatus(directory) {
     nextStory: status.nextStory
   };
 }
-function getRalphContext(directory) {
+function getRalphContext(directory, sessionId) {
   const parts = [];
   const progressContext = getProgressContext(directory);
   if (progressContext) {
     parts.push(progressContext);
   }
-  const prdStatus = getPrdCompletionStatus(directory);
+  const prdStatus = getPrdCompletionStatus(directory, sessionId);
   if (prdStatus.hasPrd && prdStatus.nextStory) {
-    parts.push(formatNextStoryPrompt(prdStatus.nextStory));
+    parts.push(formatNextStoryPrompt(prdStatus.nextStory, findPrdPath(directory, sessionId) ?? void 0));
   }
   if (prdStatus.status) {
     parts.push(
@@ -18997,22 +19036,22 @@ ${formatPrdStatus(prdStatus.status)}
   }
   return parts.join("\n");
 }
-function setCurrentStory(directory, storyId) {
-  const state = readRalphState(directory);
+function setCurrentStory(directory, storyId, sessionId) {
+  const state = readRalphState(directory, sessionId);
   if (!state) {
     return false;
   }
   state.current_story_id = storyId;
-  return writeRalphState(directory, state);
+  return writeRalphState(directory, state, sessionId);
 }
-function enablePrdMode(directory) {
-  const state = readRalphState(directory);
+function enablePrdMode(directory, sessionId) {
+  const state = readRalphState(directory, sessionId);
   if (!state) {
     return false;
   }
   state.prd_mode = true;
   initProgress(directory);
-  return writeRalphState(directory, state);
+  return writeRalphState(directory, state, sessionId);
 }
 function recordStoryProgress(directory, storyId, implementation, filesChanged, learnings) {
   return appendProgress(directory, {
@@ -19048,8 +19087,8 @@ function getTeamPhaseDirective(directory, sessionId) {
   }
   return null;
 }
-function shouldCompleteByPrd(directory) {
-  const status = getPrdCompletionStatus(directory);
+function shouldCompleteByPrd(directory, sessionId) {
+  const status = getPrdCompletionStatus(directory, sessionId);
   return status.hasPrd && status.allComplete;
 }
 var import_child_process13, import_fs38, import_path45, RALPH_CRITIC_MODES, DEFAULT_MAX_ITERATIONS, DEFAULT_RALPH_CRITIC_MODE;
@@ -19439,6 +19478,7 @@ __export(ralph_exports, {
   formatStory: () => formatStory,
   getArchitectRejectionContinuationPrompt: () => getArchitectRejectionContinuationPrompt,
   getArchitectVerificationPrompt: () => getArchitectVerificationPrompt,
+  getLegacyStatePrdPath: () => getLegacyStatePrdPath,
   getNextStory: () => getNextStory,
   getOmcPrdPath: () => getOmcPrdPath,
   getOmcProgressPath: () => getOmcProgressPath,
@@ -19450,6 +19490,7 @@ __export(ralph_exports, {
   getProgressPath: () => getProgressPath,
   getRalphContext: () => getRalphContext,
   getRecentLearnings: () => getRecentLearnings,
+  getSessionPrdPath: () => getSessionPrdPath,
   getStory: () => getStory,
   getTeamPhaseDirective: () => getTeamPhaseDirective,
   hasPrd: () => hasPrd,
@@ -24766,11 +24807,11 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
     if (sessionId) {
       if (checkArchitectApprovalInTranscript(sessionId, verificationState)) {
         if (verificationState.verification_scope === "story" && verificationState.story_id) {
-          markStoryArchitectVerified(workingDir, verificationState.story_id);
+          markStoryArchitectVerified(workingDir, verificationState.story_id, void 0, sessionId);
           clearVerificationState(workingDir, sessionId);
           const refreshedState = readRalphState(workingDir, sessionId);
           if (refreshedState) {
-            const refreshedPrd = getPrdCompletionStatus(workingDir);
+            const refreshedPrd = getPrdCompletionStatus(workingDir, sessionId);
             refreshedState.current_story_id = refreshedPrd.nextStory?.id;
             writeRalphState(workingDir, refreshedState, sessionId);
           }
@@ -24790,7 +24831,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
       const rejection = checkArchitectRejectionInTranscript(sessionId);
       if (verificationState && rejection.rejected) {
         if (verificationState.verification_scope === "story" && verificationState.story_id) {
-          markStoryIncomplete(workingDir, verificationState.story_id, rejection.feedback);
+          markStoryIncomplete(workingDir, verificationState.story_id, rejection.feedback, sessionId);
         }
         recordArchitectFeedback(workingDir, false, rejection.feedback, sessionId);
         const updatedVerification = readVerificationState(workingDir, sessionId);
@@ -24810,7 +24851,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
       }
     }
     if (verificationState?.pending) {
-      const storyUnderReview = verificationState.story_id ? getStory(workingDir, verificationState.story_id) ?? void 0 : void 0;
+      const storyUnderReview = verificationState.story_id ? getStory(workingDir, verificationState.story_id, sessionId) ?? void 0 : void 0;
       const verificationPrompt = getArchitectVerificationPrompt(verificationState, storyUnderReview);
       return {
         shouldBlock: true,
@@ -24823,8 +24864,8 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
       };
     }
   }
-  const prdStatus = getPrdCompletionStatus(workingDir);
-  const currentStory = state.current_story_id ? getStory(workingDir, state.current_story_id) : prdStatus.nextStory;
+  const prdStatus = getPrdCompletionStatus(workingDir, sessionId);
+  const currentStory = state.current_story_id ? getStory(workingDir, state.current_story_id, sessionId) : prdStatus.nextStory;
   if (currentStory?.passes && currentStory.architectVerified !== true) {
     const startedVerification = startVerification(
       workingDir,
@@ -24897,8 +24938,9 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
   if (!newState) {
     return null;
   }
-  const ralphContext = getRalphContext(workingDir);
-  const prdInstruction = prdStatus.hasPrd ? `2. Check prd.json - verify the current story's acceptance criteria are met, then mark it passes: true. Are ALL stories complete?` : `2. Check your todo list - are ALL items marked complete?`;
+  const ralphContext = getRalphContext(workingDir, sessionId);
+  const activePrdPath = prdStatus.hasPrd ? findPrdPath(workingDir, sessionId) : null;
+  const prdInstruction = prdStatus.hasPrd ? `2. Check ${activePrdPath ?? "prd.json"} - verify the current story's acceptance criteria are met, then mark it passes: true. Are ALL stories complete?` : `2. Check your todo list - are ALL items marked complete?`;
   const continuationPrompt = `<ralph-continuation>
 ${errorGuidance ? errorGuidance + "\n" : ""}
 [RALPH - ITERATION ${newState.iteration}/${newState.max_iterations}]
@@ -85341,7 +85383,7 @@ function applyDeepInterviewRuntimeSettings(template) {
 }
 function renderBundledSkillBody(skillName, body) {
   const rewrittenBody = rewriteOmcCliInvocations(body.trim());
-  return skillName === "deep-interview" ? applyDeepInterviewRuntimeSettings(rewrittenBody) : rewrittenBody;
+  return skillName === "deep-interview" || skillName === "deep-dive" ? applyDeepInterviewRuntimeSettings(rewrittenBody) : rewrittenBody;
 }
 function toSafeSkillName(name) {
   const normalized = name.trim();

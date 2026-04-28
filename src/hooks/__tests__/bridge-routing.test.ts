@@ -417,6 +417,38 @@ $ ultrawork search the codebase`,
       }
     });
 
+    it('strips legacy --no-prd text but still starts Ralph in PRD mode from keyword routing', async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-keyword-ralph-prd-'));
+      try {
+        execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+        const sessionId = 'keyword-ralph-prd-session';
+
+        const result = await processHook('keyword-detector', {
+          sessionId,
+          prompt:
+            'ralph --no-prd fix the startup gate in src/hooks/bridge.ts and src/hooks/ralph/loop.ts by removing legacy bypass handling, preserving critic flag support, keeping linked ultrawork activation intact, adding focused regression coverage for keyword and skill entrypoints, confirming the startup PRD scaffold is still created, and avoiding unrelated orchestration behavior changes anywhere else in this worktree',
+          directory: tempDir,
+        });
+
+        expect(result.continue).toBe(true);
+
+        const ralphPath = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ralph-state.json');
+        const prdPath = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'prd.json');
+        const legacyPrdPath = join(tempDir, '.omcp', 'prd.json');
+        expect(existsSync(ralphPath)).toBe(true);
+        expect(existsSync(prdPath)).toBe(true);
+        expect(existsSync(legacyPrdPath)).toBe(false);
+
+        const ralphState = JSON.parse(readFileSync(ralphPath, 'utf-8')) as { prompt?: string; prd_mode?: boolean };
+        expect(ralphState.prompt).toBe(
+          'ralph fix the startup gate in src/hooks/bridge.ts and src/hooks/ralph/loop.ts by removing legacy bypass handling, preserving critic flag support, keeping linked ultrawork activation intact, adding focused regression coverage for keyword and skill entrypoints, confirming the startup PRD scaffold is still created, and avoiding unrelated orchestration behavior changes anywhere else in this worktree',
+        );
+        expect(ralphState.prd_mode).toBe(true);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
     it('clears awaiting confirmation when Skill tool actually invokes ralph', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-confirm-ralph-'));
       try {
