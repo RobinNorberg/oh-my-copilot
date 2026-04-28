@@ -444,8 +444,8 @@ describe('Builtin Skills', () => {
       expect(raw).toContain('glob `.omcp/specs/deep-*.md` and `.omcp/plans/*.md`');
       expect(raw).toContain('later Round 1 interview design');
       expect(raw).toContain('`.omcp/specs/deep-dive-trace-{slug}.md`');
-      expect(raw).toContain('`.omc/specs/deep-dive-{slug}.md`');
-      expect(raw).toContain('`.omc/state/` or `state_write` for ephemeral artifacts');
+      expect(raw).toContain('`.omcp/specs/deep-dive-{slug}.md`');
+      expect(raw).toContain('`.omcp/state/` or `state_write` for ephemeral artifacts');
 
       expect(raw).not.toContain('omc.deepDive.ambiguityThreshold');
       expect(raw).not.toContain('"threshold": 0.2,');
