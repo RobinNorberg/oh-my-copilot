@@ -3,7 +3,7 @@
 
 # skills
 
-50 skill directories for workflow automation and specialized behaviors.
+30 skill directories for workflow automation and specialized behaviors.
 
 ## Purpose
 
@@ -31,18 +31,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 | `plan/SKILL.md` | omc-plan | Strategic planning with interview workflow |
 | `ralplan/SKILL.md` | ralplan | Iterative planning (Planner+Architect+Critic) with RALPLAN-DR structured deliberation (`--deliberate` for high-risk) |
 | `deep-interview/SKILL.md` | deep-interview | Socratic deep interview with mathematical ambiguity gating (Ouroboros-inspired) |
-| `deep-dive/SKILL.md` | deep-dive | 2-stage pipeline: trace (causal investigation) → deep-interview (requirements crystallization) |
-
-### Analysis Skills
-
-| File | Skill | Purpose |
-|-----------|-------|---------|
-| `critique/SKILL.md` | critique | Pre-push adversarial critique of unpushed commits via independent devils-advocate agent |
-| `deep-review/SKILL.md` | deep-review | Multi-pass code review with security, quality, structural analysis, and validation |
-| `discover/SKILL.md` | discover | Spawn parallel specialist agents to scan the codebase and produce a prioritized improvement backlog |
-| `trace/SKILL.md` | trace | Evidence-driven causal tracing with competing hypotheses |
-| `verify/SKILL.md` | verify | Verify changes work before claiming completion |
-| `debug/SKILL.md` | debug | Diagnose session or repo state using logs, traces, state, and focused reproduction |
+| `ralph-init/SKILL.md` | ralph-init | Initialize PRD for structured ralph |
 
 ### Exploration Skills
 
@@ -50,8 +39,6 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `deepinit/SKILL.md` | deepinit | Generate hierarchical AGENTS.md |
 | `sciomc/SKILL.md` | sciomc | Parallel scientist orchestration |
-| `external-context/SKILL.md` | external-context | Parallel document-specialist agents for external web searches and documentation lookup |
-| `self-improve/SKILL.md` | self-improve | Autonomous evolutionary code improvement engine with tournament selection |
 
 ### Visual Skills
 
@@ -59,57 +46,22 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `visual-verdict/SKILL.md` | visual-verdict | Structured visual QA verdict for screenshot/reference comparisons |
 
-### Orchestration Skills
-
-| File | Skill | Purpose |
-|-----------|-------|---------|
-| `cccg/SKILL.md` | cccg | Quadri-model orchestration — Claude, Codex, Gemini provide independent analysis, Copilot synthesizes |
-| `omc-teams/SKILL.md` | omc-teams | CLI-team runtime for claude, codex, or gemini workers in tmux panes |
-| `omc-reference/SKILL.md` | omc-reference | OMC agent catalog, tools, team pipeline routing, commit protocol, and skills registry |
-
-### Notification Skills
-
-| File | Skill | Purpose |
-|-----------|-------|---------|
-| `configure-notifications/SKILL.md` | configure-notifications | Configure notification integrations (Telegram, Discord, Slack, Teams) |
-
-### Azure DevOps Skills
-
-| File | Skill | Purpose |
-|-----------|-------|---------|
-| `omc-ado-setup/SKILL.md` | omc-ado-setup | Configure Azure DevOps integration |
-| `omc-ado-review/SKILL.md` | omc-ado-review | Review Azure DevOps pull requests |
-| `omc-ado-auto-review/SKILL.md` | omc-ado-auto-review | Automated Azure DevOps PR review |
-| `omc-ado-sprint/SKILL.md` | omc-ado-sprint | Azure DevOps sprint management |
-| `omc-ado-triage/SKILL.md` | omc-ado-triage | Azure DevOps work item triage |
-
-### GitHub Skills
-
-| File | Skill | Purpose |
-|-----------|-------|---------|
-| `omc-gh-setup/SKILL.md` | omc-gh-setup | Configure GitHub integration |
-| `omc-gh-triage/SKILL.md` | omc-gh-triage | Issue/PR/CI triage dashboard |
-| `omc-gh-review/SKILL.md` | omc-gh-review | Interactive PR review |
-| `omc-gh-auto-review/SKILL.md` | omc-gh-auto-review | Automated PR code review |
-| `omc-gh-project/SKILL.md` | omc-gh-project | GitHub Projects board management |
-
 ### Utility Skills
 
 | File | Skill | Purpose |
 |-----------|-------|---------|
 | `ai-slop-cleaner/SKILL.md` | ai-slop-cleaner | Regression-safe cleanup workflow for AI-generated code slop |
 | `learner/SKILL.md` | learner | Extract reusable skill from session |
-| `ask/SKILL.md` | ask | Ask Copilot, Codex, or Gemini via `omcp ask` and capture an artifact |
+| `ask/SKILL.md` | ask | Ask Claude, Codex, or Gemini via `omc ask` and capture an artifact |
+| `note/SKILL.md` | note | Save notes for compaction resilience |
 | `cancel/SKILL.md` | cancel | Cancel any active OMC mode |
-| `hud/SKILL.md` | hud | Configure HUD display options (layout, presets, display elements) |
+| `hud/SKILL.md` | hud | Configure HUD display |
 | `omc-doctor/SKILL.md` | omc-doctor | Diagnose installation issues |
-| `remember/SKILL.md` | remember | Review reusable project knowledge and decide what belongs in project memory, notepad, or docs |
 | `setup/SKILL.md` | setup | Unified setup entrypoint for install, diagnostics, and MCP configuration |
 | `omc-setup/SKILL.md` | omc-setup | One-time setup wizard |
+| `omc-help/SKILL.md` | omc-help | Usage guide |
 | `mcp-setup/SKILL.md` | mcp-setup | Configure MCP servers |
 | `skill/SKILL.md` | skill | Manage local skills |
-| `skillify/SKILL.md` | skillify | Turn a repeatable workflow into a reusable OMC skill draft |
-| `wiki/SKILL.md` | wiki | Persistent markdown knowledge base that compounds across sessions |
 
 ### Domain Skills
 
@@ -117,22 +69,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `project-session-manager/SKILL.md` | project-session-manager (+ `psm` alias) | Isolated dev environments |
 | `writer-memory/SKILL.md` | writer-memory | Agentic memory for writers |
-| `release/SKILL.md` | release | Automated release workflow |
-| `ralph-experiment/SKILL.md` | ralph-experiment | Hypothesis-driven experiment loop with structured notebook and git checkpoints |
-
-## Permission Model
-
-All plugin MCP tools use a **three-tier auto-approval system** so agents can operate without `/yolo`:
-
-- **Tier 1** (read-only): LSP nav, code search, state/memory reads — always auto-approved via `readOnlyHint` annotation
-- **Tier 2** (write): State/memory writes, AST replace, LSP rename — auto-approved via `permissions.allow` in `settings.local.json`
-- **Tier 3** (destructive): `shared_memory_delete`, `shared_memory_cleanup`, `kill_job` — always prompt user
-
-Safe bash patterns (git, npm, dotnet, gh, az, grep, find, ls) are auto-approved by the `permissionRequest` hook. Shell metacharacters are always rejected.
-
-Deny escalation: 3 consecutive or 20 total denials stops the session. All decisions are audit-logged to `.omcp/logs/permissions.log`.
-
-See [permission architecture](../docs/architecture/permissions.md) for details.
+| `release/SKILL.md` | release | Generic release assistant — analyzes repo CI/rules, caches in `.omcp/RELEASE_RULE.md`, guides the release |
 
 ## For AI Agents
 
@@ -149,6 +86,10 @@ triggers:
   - "keyword2"
 agent: executor  # Optional: which agent to use
 model: sonnet    # Optional: model override
+pipeline: [skill-name, follow-up-skill]  # Optional: standardized multi-skill flow
+next-skill: follow-up-skill              # Optional: explicit handoff target
+next-skill-args: --direct                # Optional: arguments for the next skill
+handoff: .omcp/plans/example.md           # Optional: artifact/context handed to next skill
 ---
 
 # Skill Name
@@ -202,6 +143,8 @@ Any configurable options.
 4. Invoke `qa-tester` for verification
 ```
 
+If `pipeline` / `next-skill` metadata is present, OMC appends a standardized **Skill Pipeline** handoff block to the rendered skill prompt so downstream steps are explicit.
+
 **Conditional behavior:**
 ```markdown
 ## Workflow
@@ -232,18 +175,12 @@ None - pure markdown files.
 
 | Category | Skills | Trigger Keywords |
 |----------|--------|------------------|
-| Execution | autopilot, ultrawork, ralph, team, ultraqa, ralph-experiment, self-improve | "autopilot", "ulw", "ralph", "self-improve" |
-| Planning | omc-plan, ralplan, deep-interview, deep-dive | "ralplan", "deep-interview", "ouroboros" |
-| Analysis | critique, deep-review, discover, debug, trace, verify | "critique", "code review", "security review", "trace", "verify", "debug" |
-| Exploration | deepinit, sciomc, external-context | "deepinit", "sciomc", "external-context" |
-| Orchestration | cccg, omc-teams, omc-reference | "cccg", "ask codex", "ask gemini", "ask claude" |
-| Visual | visual-verdict | screenshot QA |
-| Cleanup | ai-slop-cleaner | "deslop", "anti-slop" |
-| Azure DevOps | omc-ado-setup, omc-ado-review, omc-ado-auto-review, omc-ado-sprint, omc-ado-triage | "ado setup", "ado triage" |
-| GitHub | omc-gh-setup, omc-gh-triage, omc-gh-review, omc-gh-auto-review, omc-gh-project | "gh setup", "gh triage", "gh review" |
-| Notifications | configure-notifications | "configure discord", "setup telegram" |
-| Utility | learner, ask, cancel, setup, omc-doctor, omc-setup, mcp-setup, skill, skillify, wiki, hud, remember | "cancelomc", "stopomc", "wiki", "skillify" |
-| Domain | project-session-manager, writer-memory, release | psm context |
+| Execution | autopilot, ultrawork, ralph, team, ultraqa | "autopilot", "ulw", "ralph", "team" |
+| Cleanup | ai-slop-cleaner | "deslop", "anti-slop", cleanup/refactor + slop smells |
+| Planning | omc-plan, ralplan, deep-interview, ralph-init | "plan this", "interview me", "ouroboros" |
+| Exploration | deepinit, sciomc, external-context | "deepinit", "research" |
+| Utility | learner, note, cancel, hud, setup, omc-doctor, omc-setup, omc-help, mcp-setup | "stop", "cancel" |
+| Domain | psm, writer-memory, release | psm context |
 
 ## Auto-Activation
 
@@ -255,13 +192,6 @@ Some skills activate automatically based on context:
 | ultrawork | "ulw", "ultrawork" |
 | ralph | "ralph", "don't stop until" |
 | deep-interview | "deep interview", "interview me", "ouroboros", "don't assume" |
-| critique | "critique", "review before push", "critique my changes" |
-| self-improve | "self-improve" |
-| ai-slop-cleaner | "deslop", "anti-slop", "clean slop" |
-| discover | "discover" |
-| trace | "trace" |
-| verify | "verify" |
-| wiki | "wiki" |
 | cancel | "stop", "cancel", "abort" |
 
 <!-- MANUAL:

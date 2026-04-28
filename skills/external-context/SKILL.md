@@ -2,11 +2,12 @@
 name: external-context
 description: Invoke parallel document-specialist agents for external web searches and documentation lookup
 argument-hint: <search query or topic>
+level: 4
 ---
 
 # External Context Skill
 
-Fetch external documentation, references, and context for a query. Decomposes into 2-5 facets and spawns parallel document-specialist Copilot agents.
+Fetch external documentation, references, and context for a query. Decomposes into 2-5 facets and spawns parallel document-specialist Claude agents.
 
 ## Usage
 

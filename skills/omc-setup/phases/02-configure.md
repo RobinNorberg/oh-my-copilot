@@ -2,27 +2,15 @@
 
 **Skip condition**: If resuming and `lastCompletedStep >= 4`, skip this entire phase.
 
-## Quick Mode Behavior
-
-If `SETUP_MODE=quick`, apply all defaults non-interactively:
-- **Step 2.1 (HUD)**: Run HUD setup automatically (no prompt needed — it doesn't ask questions)
-- **Step 2.2 (Cache)**: Run cache cleanup automatically
-- **Step 2.3 (Updates)**: Run update check automatically
-- **Step 2.4 (Execution mode)**: Set `ultrawork` automatically (it's the only option)
-- **Step 2.5 (CLI install)**: Auto-install if not already present. Before installing, inform the user: "Installing the OMC CLI (`omcp`) — this enables standalone commands like `omcp team`, `omcp ask`, and `omcp status`." Then run `npm i -g oh-my-copilot` without prompting.
-- **Step 2.6 (Task tool)**: Set `builtin` automatically (only prompt if beads/beads-rust is detected)
-
-Then save progress and continue to Phase 3. The rest of this file documents the **interactive mode** behavior.
-
----
-
 ## Step 2.1: Setup HUD Statusline
 
 **Note**: If resuming and `lastCompletedStep >= 3`, skip to Step 2.2.
 
-The HUD shows real-time status in Copilot CLI's status bar. Invoke the hud skill to set up and configure:
+The HUD shows real-time status in Claude Code's status bar. Delegate all HUD/statusLine setup to the `hud` skill:
 
 Use the Skill tool to invoke: `hud` with args: `setup`
+
+Do not generate, normalize, or patch `statusLine` paths inline in this phase. This is especially important on Windows, where backslash path handling must stay inside the `hud` skill.
 
 This will:
 1. Install the HUD wrapper script to `~/.copilot/hud/omcp-hud.mjs`
@@ -32,13 +20,13 @@ This will:
 After HUD setup completes, save progress:
 ```bash
 CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omcp/state/setup-state.json" 2>/dev/null || echo "unknown")
-bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" save 3 "$CONFIG_TYPE"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-progress.sh" save 3 "$CONFIG_TYPE"
 ```
 
 ## Step 2.2: Clear Stale Plugin Cache
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.copilot'),b=p.join(d,'plugins','cache','omc','oh-my-copilot');try{const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(v.length<=1){console.log('Cache is clean');process.exit()}v.slice(0,-1).forEach(x=>{f.rmSync(p.join(b,x),{recursive:true,force:true})});console.log('Cleared',v.length-1,'stale cache version(s)')}catch{console.log('No cache directory found (normal for new installs)')}"
+node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.claude'),b=p.join(d,'plugins','cache','omc','oh-my-copilot');try{const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(v.length<=1){console.log('Cache is clean');process.exit()}v.slice(0,-1).forEach(x=>{f.rmSync(p.join(b,x),{recursive:true,force:true})});console.log('Cleared',v.length-1,'stale cache version(s)')}catch{console.log('No cache directory found (normal for new installs)')}"
 ```
 
 ## Step 2.3: Check for Updates
@@ -49,20 +37,20 @@ Notify user if a newer version is available:
 # Detect installed version (cross-platform)
 node -e "
 const p=require('path'),f=require('fs'),h=require('os').homedir();
-const d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.copilot');
+const d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.claude');
 let v='';
 // Try cache directory first
 const b=p.join(d,'plugins','cache','omc','oh-my-copilot');
 try{const vs=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(vs.length)v=vs[vs.length-1]}catch{}
 // Try .omc-version.json second
 if(v==='')try{const j=JSON.parse(f.readFileSync('.omc-version.json','utf-8'));v=j.version||''}catch{}
-// Try copilot-instructions.md header third
-if(v==='')for(const c of['.copilot/copilot-instructions.md',p.join(d,'copilot-instructions.md')]){try{const m=f.readFileSync(c,'utf-8').match(/^# oh-my-copilot.*?(v?\d+\.\d+\.\d+)/m);if(m){v=m[1].replace(/^v/,'');break}}catch{}}
+// Try CLAUDE.md header third
+if(v==='')for(const c of['.claude/CLAUDE.md',p.join(d,'CLAUDE.md')]){try{const m=f.readFileSync(c,'utf-8').match(/^# oh-my-copilot.*?(v?\d+\.\d+\.\d+)/m);if(m){v=m[1].replace(/^v/,'');break}}catch{}}
 console.log('Installed:',v||'(not found)');
 "
 
 # Check npm for latest version
-LATEST_VERSION=$(npm view oh-my-copilot version 2>/dev/null)
+LATEST_VERSION=$(npm view oh-my-claude-sisyphus version 2>/dev/null)
 
 if [ -n "$INSTALLED_VERSION" ] && [ -n "$LATEST_VERSION" ]; then
   if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
@@ -71,7 +59,7 @@ if [ -n "$INSTALLED_VERSION" ] && [ -n "$LATEST_VERSION" ]; then
     echo "  Installed: v$INSTALLED_VERSION"
     echo "  Latest:    v$LATEST_VERSION"
     echo ""
-    echo "To update, run: copilot /install-plugin oh-my-copilot"
+    echo "To update, run: claude /install-plugin oh-my-copilot"
   else
     echo "You're on the latest version: v$INSTALLED_VERSION"
   fi
@@ -89,10 +77,10 @@ Use the AskUserQuestion tool to prompt the user:
 **Options:**
 1. **ultrawork (maximum capability)** - Uses all agent tiers including Opus for complex tasks. Best for challenging work where quality matters most. (Recommended)
 
-Store the preference in `~/.copilot/.omc-config.json`:
+Store the preference in `~/.copilot/.omcp-config.json`:
 
 ```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -110,16 +98,13 @@ echo "Default execution mode set to: USER_CHOICE"
 
 ## Step 2.5: Install OMC CLI Tool
 
-The OMC CLI (`omcp` command) provides standalone monitoring and analytics commands.
-The `omcp` binary coexists with upstream's `omc` binary (oh-my-claudecode) — no conflict.
+The OMC CLI (`omc` command) provides standalone helper commands such as `omc hud`, `omc teleport`, and `omc team ...`.
 
 First, check if the CLI is already installed:
 
 ```bash
-OMC_CLI_INSTALLED="false"
-
-if command -v omcp &>/dev/null; then
-  OMC_CLI_VERSION=$(omcp --version 2>/dev/null | head -1 || echo "installed")
+if command -v omc &>/dev/null; then
+  OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
   echo "OMC CLI already installed: $OMC_CLI_VERSION"
   OMC_CLI_INSTALLED="true"
 else
@@ -131,31 +116,31 @@ If `OMC_CLI_INSTALLED` is `"true"`, skip the rest of this step.
 
 If `OMC_CLI_INSTALLED` is `"false"`, use AskUserQuestion:
 
-**Question:** "Would you like to install the OMC CLI globally for standalone monitoring and analytics? (`omcp team`, `omcp ask`)"
+**Question:** "Would you like to install the OMC CLI globally for standalone helper commands? (`omc`, `omc hud`, `omc teleport`)"
 
 **Options:**
-1. **Yes (Recommended)** - Install `oh-my-copilot` via `npm install -g`
-2. **No - Skip** - Skip installation (can install manually later with `npm install -g oh-my-copilot`)
+1. **Yes (Recommended)** - Install `oh-my-claude-sisyphus` via `npm install -g`
+2. **No - Skip** - Skip installation (can install manually later with `npm install -g oh-my-claude-sisyphus`)
 
 If user chooses **Yes**:
 
 ```bash
 if ! command -v npm &>/dev/null; then
   echo "WARNING: npm not found. Cannot install OMC CLI automatically."
-  echo "Install Node.js/npm first, then run: npm install -g oh-my-copilot"
+  echo "Install Node.js/npm first, then run: npm install -g oh-my-claude-sisyphus"
 else
-  if npm install -g oh-my-copilot 2>&1; then
+  if npm install -g oh-my-claude-sisyphus 2>&1; then
     echo "OMC CLI installed successfully."
-    if command -v omcp &>/dev/null; then
-      OMC_CLI_VERSION=$(omcp --version 2>/dev/null | head -1 || echo "installed")
-      echo "Verified: omcp $OMC_CLI_VERSION"
+    if command -v omc &>/dev/null; then
+      OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
+      echo "Verified: omc $OMC_CLI_VERSION"
     else
-      echo "Installed but 'omcp' not on PATH. You may need to restart your shell."
+      echo "Installed but 'omc' not on PATH. You may need to restart your shell."
     fi
   else
     echo "WARNING: Failed to install OMC CLI (permission issue or network error)."
-    echo "You can install manually later: npm install -g oh-my-copilot"
-    echo "Or with sudo: sudo npm install -g oh-my-copilot"
+    echo "You can install manually later: npm install -g oh-my-claude-sisyphus"
+    echo "Or with sudo: sudo npm install -g oh-my-claude-sisyphus"
   fi
 fi
 ```
@@ -195,7 +180,7 @@ If beads or beads-rust is detected, use AskUserQuestion:
 **Question:** "Which task management tool should I use for tracking work?"
 
 **Options:**
-1. **Built-in Tasks (default)** - Use Copilot CLI's native TaskCreate/TodoWrite. Tasks are session-only.
+1. **Built-in Tasks (default)** - Use Claude Code's native TaskCreate/TodoWrite. Tasks are session-only.
 2. **Beads (bd)** - Git-backed persistent tasks. Survives across sessions. [Only if detected]
 3. **Beads-Rust (br)** - Lightweight Rust port of beads. [Only if detected]
 
@@ -204,7 +189,7 @@ If beads or beads-rust is detected, use AskUserQuestion:
 Store the preference:
 
 ```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -224,5 +209,5 @@ echo "Task tool set to: USER_CHOICE"
 
 ```bash
 CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omcp/state/setup-state.json" 2>/dev/null || echo "unknown")
-bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" save 4 "$CONFIG_TYPE"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-progress.sh" save 4 "$CONFIG_TYPE"
 ```

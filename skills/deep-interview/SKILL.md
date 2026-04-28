@@ -1,7 +1,12 @@
 ---
 name: deep-interview
 description: Socratic deep interview with mathematical ambiguity gating before autonomous execution
-argument-hint: "<idea or vague description>"
+argument-hint: "[--quick|--standard|--deep] [--autoresearch] <idea or vague description>"
+pipeline: [deep-interview, omc-plan, autopilot]
+next-skill: omc-plan
+next-skill-args: --consensus --direct
+handoff: .omcp/specs/deep-interview-{slug}.md
+level: 3
 ---
 
 <Purpose>
@@ -46,6 +51,17 @@ Inspired by the [Ouroboros project](https://github.com/Q00/ouroboros) which demo
 - Challenge agents activate at specific round thresholds to shift perspective
 </Execution_Policy>
 
+<Autoresearch_Mode>
+When arguments include `--autoresearch`, Deep Interview becomes the zero-learning-curve setup lane for the stateful `autoresearch` skill.
+
+- If no usable mission brief is present yet, start by asking: **"What should autoresearch improve or prove for this repo?"**
+- After the mission is clear, collect an evaluator command. If the user leaves it blank, infer one only when repo evidence is strong; otherwise keep interviewing until an evaluator is explicit enough to launch safely.
+- Keep the usual one-question-per-round rule, but treat **mission clarity** and **evaluator clarity** as hard readiness gates in addition to the normal ambiguity threshold.
+- Once ready, do **not** bridge into `omc-plan`, `autopilot`, `ralph`, `team`, or the hard-deprecated `omc autoresearch` CLI. Instead write the mission/evaluator setup artifacts and invoke:
+  - `Skill("oh-my-copilot:autoresearch")`
+- This handoff enters the real stateful autoresearch skill. After a successful handoff, announce the mission slug, evaluator command/script, max-runtime ceiling, and artifact location.
+</Autoresearch_Mode>
+
 <Steps>
 
 ## Phase 1: Initialize
@@ -70,7 +86,7 @@ Inspired by the [Ouroboros project](https://github.com/Q00/ouroboros) which demo
    - Wait until the summary exists before ambiguity scoring, weakest-dimension selection, brownfield exploration prompts, or any bridge to `omc-plan`, `autopilot`, `ralph`, or `team`.
 3.7. **Artifact path discipline**:
    - Final specs MUST be written to `.omcp/specs/deep-interview-{slug}.md` exactly.
-   - Ephemeral interview artifacts (scoring scratchpads, prompt-safe summaries, transient queues, resume metadata) belong in `.omc/state/` or in `state_write` state, never in the repo root or arbitrary working files.
+   - Ephemeral interview artifacts (scoring scratchpads, prompt-safe summaries, transient queues, resume metadata) belong in `.omcp/state/` or in `state_write` state, never in the repo root or arbitrary working files.
 
 4. **Initialize state** via `state_write(mode="deep-interview")`:
 
@@ -352,6 +368,8 @@ Spec structure:
 ```
 
 ## Phase 5: Execution Bridge
+
+**Autoresearch override:** if `--autoresearch` is active, skip the standard execution options below. The only valid bridge is the `Skill("oh-my-copilot:autoresearch")` handoff described above. The `omc autoresearch` CLI is a hard-deprecated shim and must not be used for execution.
 
 After the spec is written, present execution options via `AskUserQuestion`:
 
