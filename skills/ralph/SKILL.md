@@ -1,7 +1,8 @@
 ---
 name: ralph
-description: Self-referential loop until task completion with architect verification
-argument-hint: "[--no-prd] [--no-deslop] [--critic=architect|critic|codex] <task description>"
+description: Self-referential loop until task completion with configurable verification reviewer
+argument-hint: "[--no-deslop] [--critic=architect|critic|codex] <task description>"
+level: 4
 ---
 
 [RALPH + ULTRAWORK - ITERATION {{ITERATION}}/{{MAX}}]
@@ -9,14 +10,14 @@ argument-hint: "[--no-prd] [--no-deslop] [--critic=architect|critic|codex] <task
 Your previous attempt did not output the completion promise. Continue working on the task.
 
 <Purpose>
-Ralph is a PRD-driven persistence loop that keeps working on a task until ALL user stories in prd.json have passes: true and are architect-verified. It wraps ultrawork's parallel execution with session persistence, automatic retry on failure, structured story tracking, and mandatory verification before completion.
+Ralph is a PRD-driven persistence loop that keeps working on a task until ALL user stories in prd.json have passes: true and are reviewer-verified. It wraps ultrawork's parallel execution with session persistence, automatic retry on failure, structured story tracking, and mandatory verification before completion.
 </Purpose>
 
 <Use_When>
 - Task requires guaranteed completion with verification (not just "do your best")
 - User says "ralph", "don't stop", "must complete", "finish this", or "keep going until done"
 - Work may span multiple iterations and needs persistence across retries
-- Task benefits from structured PRD-driven execution with architect sign-off
+- Task benefits from structured PRD-driven execution with reviewer sign-off
 </Use_When>
 
 <Do_Not_Use_When>
@@ -31,13 +32,17 @@ Complex tasks often fail silently: partial implementations get declared "done", 
 1. Structuring work into discrete user stories with testable acceptance criteria (prd.json)
 2. Iterating story-by-story until each one passes
 3. Tracking progress and learnings across iterations (progress.txt)
-4. Requiring fresh architect verification against specific acceptance criteria before completion
+4. Requiring fresh reviewer verification against specific acceptance criteria before completion
 </Why_This_Exists>
 
 <PRD_Mode>
-By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated when ralph starts if none exists. Active transient PRD state is session-scoped at `.omc/state/sessions/{sessionId}/prd.json` when a session ID is available; legacy project-level `prd.json` / `.omc/prd.json` files are read as startup migration inputs.
+By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated when ralph starts if none exists. Active transient PRD state is session-scoped at `.omcp/state/sessions/{sessionId}/prd.json` when a session ID is available; legacy project-level `prd.json` / `.omcp/prd.json` files are read as startup migration inputs.
 
-**Opt-out:** If `{{PROMPT}}` contains `--no-prd`, skip PRD generation and work in legacy mode (no story tracking, generic verification). Use this for trivial quick fixes.
+**Startup gate:** Ralph always initializes and validates `prd.json` at startup. Legacy `--no-prd` text is sanitized from the prompt for backward compatibility, but it no longer bypasses PRD creation or validation.
+
+**Deslop opt-out:** If `{{PROMPT}}` contains `--no-deslop`, skip the mandatory post-review deslop pass entirely. Use this only when the cleanup pass is intentionally out of scope for the run.
+
+**Reviewer selection:** Pass `--critic=architect`, `--critic=critic`, or `--critic=codex` in the Ralph prompt to choose the completion reviewer for that run. `architect` remains the default.
 </PRD_Mode>
 
 <Execution_Policy>
@@ -46,7 +51,6 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
 - Always pass the `model` parameter explicitly when delegating to agents
 - Read `docs/shared/agent-tiers.md` before first delegation to select correct agent tiers
 - Deliver the full implementation: no scope reduction, no partial completion, no deleting tests to make them pass
-- When a task fails, use the structured recovery manager to classify the failure and determine the recovery action (retry, retry with backoff, skip, or escalate). Do not blindly retry — classify first.
 </Execution_Policy>
 
 <Steps>
@@ -80,26 +84,25 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
 5. **Mark story complete**:
    a. When ALL acceptance criteria are verified, set `passes: true` for this story in the active PRD file
    b. Record progress in `progress.txt`: what was implemented, files changed, learnings for future iterations
-   c. **Carry context forward**: Key learnings and patterns from progress.txt are automatically carried to the next story's agent prompt via `<prior-phase-context>` injection. This includes implementation details, files changed, and discovered codebase patterns.
-   d. Add any discovered codebase patterns to `progress.txt`
+   c. Add any discovered codebase patterns to `progress.txt`
 
 6. **Check PRD completion**:
    a. Read the active PRD file -- are ALL stories marked `passes: true`?
    b. If NOT all complete, loop back to Step 2 (pick next story)
    c. If ALL complete, proceed to Step 7 (architect verification)
 
-7. **Architect verification** (tiered, against acceptance criteria):
+7. **Reviewer verification** (tiered, against acceptance criteria):
    - <5 files, <100 lines with full tests: STANDARD tier minimum (architect-medium / Sonnet)
    - Standard changes: STANDARD tier (architect-medium / Sonnet)
    - >20 files or security/architectural changes: THOROUGH tier (architect / Opus)
    - If `--critic=critic`, use the Claude `critic` agent for the approval pass
-   - If `--critic=codex`, run `omcp ask codex --agent-prompt critic "..."` for the approval pass. The Codex critic prompt MUST include:
+   - If `--critic=codex`, run `omc ask codex --agent-prompt critic "..."` for the approval pass. The Codex critic prompt MUST include:
      1. The full list of acceptance criteria from prd.json for verification
      2. A directive to evaluate whether the implementation is **OPTIMAL** — not just correct, but whether there exists a meaningfully better approach (simpler, faster, more maintainable) that the implementation missed
      3. A directive to review **all code related to the changes** (callers, callees, shared types, adjacent modules), not only the files directly modified
      4. The list of files changed during the ralph session for context
    - Ralph floor: always at least STANDARD, even for small changes
-   - The architect verifies against the SPECIFIC acceptance criteria from prd.json, not vague "is it done?"
+   - The selected reviewer verifies against the SPECIFIC acceptance criteria from prd.json, not vague "is it done?"
    - **On APPROVAL: immediately proceed to Step 7.5 in the same turn. Do NOT pause to report the verdict to the user — reporting happens only at Step 8 (`/oh-my-copilot:cancel`) or on rejection (Step 9). Treating an approved verdict as a reporting checkpoint is a polite-stop anti-pattern.**
 
 7.5 **Mandatory Deslop Pass** (runs unconditionally after Step 7 approval, unless `{{PROMPT}}` contains `--no-deslop`):
@@ -108,15 +111,21 @@ By default, ralph operates in PRD mode. A scaffold `prd.json` is auto-generated 
    - Keep the scope bounded to the Ralph changed-file set; do not broaden the cleanup pass to unrelated files.
    - If the reviewer approved the implementation but the deslop pass introduces follow-up edits, keep those edits inside the same changed-file scope before proceeding.
 
-8. **On approval**: Run `/oh-my-copilot:cancel` to cleanly exit and clean up all state files
+7.6 **Regression Re-verification**:
+   - After the deslop pass, re-run all relevant tests, build, and lint checks for the Ralph session.
+   - Read the output and confirm the post-deslop regression run actually passes.
+   - If regression fails, roll back the cleaner changes or fix the regression, then rerun the verification loop until it passes.
+   - Only proceed to completion after the post-deslop regression run passes (or `--no-deslop` was explicitly specified).
 
-9. **On rejection**: Fix the issues raised, re-verify at the same tier, then loop back to check if the story needs to be marked incomplete
+8. **On approval**: After Step 7.6 passes (with Step 7.5 completed, or skipped via `--no-deslop`), run `/oh-my-copilot:cancel` to cleanly exit and clean up all state files
+
+9. **On rejection**: Fix the issues raised, re-verify with the same reviewer, then loop back to check if the story needs to be marked incomplete
 </Steps>
 
 <Tool_Usage>
 - Use `Task(subagent_type="oh-my-copilot:architect", ...)` for architect verification cross-checks when changes are security-sensitive, architectural, or involve complex multi-system integration
 - Use `Task(subagent_type="oh-my-copilot:critic", ...)` when `--critic=critic`
-- Use `omcp ask codex --agent-prompt critic "..."` when `--critic=codex`. Construct the prompt to include: (a) prd.json acceptance criteria, (b) files changed + related files, (c) explicit optimality question: "Is there a meaningfully simpler, faster, or more maintainable approach that achieves the same acceptance criteria?"
+- Use `omc ask codex --agent-prompt critic "..."` when `--critic=codex`. Construct the prompt to include: (a) prd.json acceptance criteria, (b) files changed + related files, (c) explicit optimality question: "Is there a meaningfully simpler, faster, or more maintainable approach that achieves the same acceptance criteria?"
 - Skip architect consultation for simple feature additions, well-tested changes, or time-critical verification
 - Proceed with architect agent verification alone -- never block on unavailable tools
 - Use `state_write` / `state_read` for ralph mode state persistence between iterations
@@ -132,9 +141,8 @@ Auto-generated scaffold has:
 
 After refinement:
   acceptanceCriteria: [
-    "detectNoPrdFlag('ralph --no-prd fix') returns true",
-    "detectNoPrdFlag('ralph fix this') returns false",
-    "stripNoPrdFlag removes --no-prd and trims whitespace",
+    "Legacy --no-prd text is stripped from the Ralph working prompt",
+    "Ralph startup still creates or validates prd.json when legacy --no-prd text is present",
     "TypeScript compiles with no errors (npm run build)"
   ]
 ```
@@ -144,9 +152,9 @@ Why good: Generic criteria replaced with specific, testable criteria.
 <Good>
 Correct parallel delegation:
 ```
-Task(subagent_type="oh-my-copilot:executor", model="haiku", name="executor-1", prompt="Add type export for UserConfig")
-Task(subagent_type="oh-my-copilot:executor", model="sonnet", name="executor-2", prompt="Implement the caching layer for API responses")
-Task(subagent_type="oh-my-copilot:executor", model="opus", name="executor-3", prompt="Refactor auth module to support OAuth2 flow")
+Task(subagent_type="oh-my-copilot:executor", model="haiku", prompt="Add type export for UserConfig")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="Implement the caching layer for API responses")
+Task(subagent_type="oh-my-copilot:executor", model="opus", prompt="Refactor auth module to support OAuth2 flow")
 ```
 Why good: Three independent tasks fired simultaneously at appropriate tiers.
 </Good>
@@ -155,7 +163,7 @@ Why good: Three independent tasks fired simultaneously at appropriate tiers.
 Story-by-story verification:
 ```
 1. Story US-001: "Add flag detection helpers"
-   - Criterion: "detectNoPrdFlag returns true for --no-prd" → Run test → PASS
+   - Criterion: "Legacy --no-prd is stripped from the working prompt" → Run test → PASS
    - Criterion: "TypeScript compiles" → Run build → PASS
    - Mark US-001 passes: true
 2. Story US-002: "Wire PRD into bridge.ts"
@@ -192,8 +200,8 @@ Why bad: Did not refine scaffold criteria into task-specific ones. This is PRD t
 - Stop when the user says "stop", "cancel", or "abort" -- run `/oh-my-copilot:cancel`
 - Continue working when the hook system sends "The boulder never stops" -- this means the iteration continues
 - If the selected reviewer rejects verification, fix the issues and re-verify (do not stop)
+- If the same issue recurs across 3+ iterations, report it as a potential fundamental problem
 - **Do NOT stop after Step 7 approval.** The boulder continues through 7 → 7.5 → 7.6 → 8 in the same turn as a single chain. Step 7 is a checkpoint inside the loop, not a reporting moment. Treating an architect/critic APPROVED verdict as "time to summarise and wait for user acknowledgment" is a polite-stop anti-pattern — the only reporting moments in Ralph are Step 8 (successful cancel) or Step 9 (rejection).
-- If the same issue recurs across 3+ iterations, the circular fix detector triggers automatically. It generates a structured escalation report at `.omcp/escalation-report.md` with error pattern analysis, occurrence timeline, and recommended manual interventions. The report includes the error hash, occurrence count, and affected files. Stop iteration and present the report.
 </Escalation_And_Stop_Conditions>
 
 <Final_Checklist>
@@ -205,20 +213,13 @@ Why bad: Did not refine scaffold criteria into task-specific ones. This is PRD t
 - [ ] Fresh build output shows success
 - [ ] lsp_diagnostics shows 0 errors on affected files
 - [ ] progress.txt records implementation details and learnings
-- [ ] Architect verification passed (STANDARD tier minimum) against specific acceptance criteria
+- [ ] Selected reviewer verification passed against specific acceptance criteria
+- [ ] ai-slop-cleaner pass completed on changed files (or `--no-deslop` specified)
+- [ ] Post-deslop regression tests pass
 - [ ] `/oh-my-copilot:cancel` run for clean state cleanup
 </Final_Checklist>
 
 <Advanced>
-## Context Accumulation
-
-Ralph captures learnings from each completed story and injects them into the next story's agent prompt as a `<prior-phase-context>` block. This ensures subsequent stories benefit from discoveries made in earlier iterations.
-
-- Context from progress.txt is carried forward between stories
-- Each phase output is truncated to 12KB
-- Context is session-scoped and cleared on `/cancel`
-- Stored in `.omcp/state/sessions/{sessionId}/phase-context.json`
-
 ## Background Execution Rules
 
 **Run in background** (`run_in_background: true`):

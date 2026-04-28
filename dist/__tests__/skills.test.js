@@ -173,7 +173,7 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('shared workspace root');
             expect(skill?.template).toContain('absolute plan path');
             expect(skill?.template).toContain('--cwd <workspace-root>');
-            expect(skill?.template).toContain('Do not anchor the launch cwd to only the repo containing `.omc/plans/...`');
+            expect(skill?.template).toContain('Do not anchor the launch cwd to only the repo containing `.omcp/plans/...`');
             expect(skill?.template).toContain('single-cwd constraint');
         });
         it('stages mcp-setup AskUserQuestion menus so each prompt stays within the current option limit', () => {
@@ -363,7 +363,7 @@ describe('Builtin Skills', () => {
         it('ships config-aware deep-dive SKILL.md using the deep-interview threshold namespace', () => {
             const raw = readFileSync(join(originalCwd, 'skills', 'deep-dive', 'SKILL.md'), 'utf-8');
             expect(raw).toContain('Load runtime settings');
-            expect(raw).toContain('Read `[$CLAUDE_CONFIG_DIR|~/.claude]/settings.json` and `./.claude/settings.json`');
+            expect(raw).toContain('Read `[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json` and `./.copilot/settings.json`');
             expect(raw).toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `<resolvedThreshold>`');
             expect(raw).toContain('"threshold": <resolvedThreshold>,');
             expect(raw).toContain('Gate: ≤<resolvedThresholdPercent> ambiguity');

@@ -1,13 +1,14 @@
 ---
 name: team
-description: N coordinated agents on shared task list using Copilot CLI native teams
+description: N coordinated agents on shared task list using Claude Code native teams
 argument-hint: "[N:agent-type] [ralph] <task description>"
 aliases: []
+level: 4
 ---
 
 # Team Skill
 
-Spawn N coordinated agents working on a shared task list using Copilot CLI's native team tools. Replaces the legacy `/swarm` skill (SQLite-based) with built-in team management, inter-agent messaging, and task dependencies -- no external dependencies required.
+Spawn N coordinated agents working on a shared task list using Claude Code's native team tools. Replaces the legacy `/swarm` skill (SQLite-based) with built-in team management, inter-agent messaging, and task dependencies -- no external dependencies required.
 
 The `swarm` compatibility alias was removed in #1131.
 
@@ -38,7 +39,7 @@ The `swarm` compatibility alias was removed in #1131.
 /team 2:codex "review architecture and suggest improvements"
 # With Gemini CLI workers (requires: npm install -g @google/gemini-cli)
 /team 2:gemini "redesign the UI components"
-# Mixed: Codex for backend analysis, Gemini for frontend (use /cccg instead for this)
+# Mixed: Codex for backend analysis, Gemini for frontend (use /ccg instead for this)
 ```
 
 ## Architecture
@@ -76,9 +77,9 @@ User: "/team 3:executor fix all TypeScript errors"
                       -> rm .omcp/state/team-state.json
 ```
 
-**Storage layout (managed by Copilot CLI):**
+**Storage layout (managed by Claude Code):**
 ```
-~/.copilot/
+~/.claude/
   teams/fix-ts-errors/
     config.json          # Team metadata + members array
   tasks/fix-ts-errors/
@@ -110,7 +111,7 @@ Each pipeline stage uses **specialized agents** -- not just executors. The lead 
 **Routing rules:**
 
 1. **The lead picks agents per stage, not the user.** The user's `N:agent-type` parameter only overrides the `team-exec` stage worker type. All other stages use stage-appropriate specialists.
-2. **Specialist agents complement executor agents.** Route analysis/review to architect/critic Copilot agents and UI work to designer agents. Tmux CLI workers are one-shot and don't participate in team communication.
+2. **Specialist agents complement executor agents.** Route analysis/review to architect/critic Claude agents and UI work to designer agents. Tmux CLI workers are one-shot and don't participate in team communication.
 3. **Cost mode affects model tier.** In downgrade: `opus` agents to `sonnet`, `sonnet` to `haiku` where quality permits. `team-verify` always uses at least `sonnet`.
 4. **Risk level escalates review.** Security-sensitive or >20 file changes must include `security-reviewer` + `code-reviewer` (opus) in `team-verify`.
 
@@ -221,7 +222,7 @@ Call `TeamCreate` with a slug derived from the task:
 ```json
 {
   "team_name": "fix-ts-errors",
-  "team_file_path": "~/.copilot/teams/fix-ts-errors/config.json",
+  "team_file_path": "~/.claude/teams/fix-ts-errors/config.json",
   "lead_agent_id": "team-lead@fix-ts-errors"
 }
 ```
@@ -477,7 +478,7 @@ Do NOT mark the task as completed. Leave it in_progress so the lead can reassign
 == RULES ==
 - NEVER spawn sub-agents or use the Task tool
 - NEVER run tmux pane/session orchestration commands (for example `tmux split-window`, `tmux new-session`)
-- NEVER run team spawning/orchestration skills or commands (for example `$team`, `$ultrawork`, `$autopilot`, `$ralph`, `omcp team ...`, `omx team ...`)
+- NEVER run team spawning/orchestration skills or commands (for example `$team`, `$ultrawork`, `$autopilot`, `$ralph`, `omc team ...`, `omx team ...`)
 - ALWAYS use absolute file paths
 - ALWAYS report progress via SendMessage to "team-lead"
 - Use SendMessage with type "message" only -- never "broadcast"
@@ -488,7 +489,7 @@ Do NOT mark the task as completed. Leave it in_progress so the lead can reassign
 When composing teammate prompts, append a short addendum based on worker type:
 
 - `claude_worker`: Emphasize strict TaskList/TaskUpdate/SendMessage loop and no orchestration commands.
-- `codex_worker`: Emphasize CLI API lifecycle (`omcp team api ... --json`) and explicit failure ACKs with stderr.
+- `codex_worker`: Emphasize CLI API lifecycle (`omc team api ... --json`) and explicit failure ACKs with stderr.
 - `gemini_worker`: Emphasize bounded file ownership and milestone ACKs after each completed sub-step.
 
 This addendum must preserve the core rule: **worker = executor only, never leader/orchestrator**.
@@ -575,7 +576,7 @@ After approval:
 
 Check for agent processes that survived TeamDelete:
 ```bash
-node "${PLUGIN_ROOT}/scripts/cleanup-orphans.mjs" --team-name fix-ts-errors
+node "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-orphans.mjs" --team-name fix-ts-errors
 ```
 
 This scans for processes matching the team name whose config no longer exists, and terminates them (SIGTERM → 5s wait → SIGKILL). Supports `--dry-run` for inspection.
@@ -588,7 +589,7 @@ This scans for processes matching the team name whose config no longer exists, a
 
 ## CLI Workers (Codex and Gemini)
 
-The team skill supports **hybrid execution** combining Copilot agent teammates with external CLI workers (Codex CLI and Gemini CLI). Both types can make code changes -- they differ in capabilities and cost. These are standalone CLI tools, not MCP servers.
+The team skill supports **hybrid execution** combining Claude agent teammates with external CLI workers (Codex CLI and Gemini CLI). Both types can make code changes -- they differ in capabilities and cost. These are standalone CLI tools, not MCP servers.
 
 ### Execution Modes
 
@@ -596,7 +597,7 @@ Tasks are tagged with an execution mode during decomposition:
 
 | Execution Mode | Provider | Capabilities |
 |---------------|----------|-------------|
-| `claude_worker` | Copilot agent | Full Copilot CLI tool access (Read/Write/Edit/Bash/Task). Best for tasks needing Copilot's reasoning + iterative tool use. |
+| `claude_worker` | Claude agent | Full Claude Code tool access (Read/Write/Edit/Bash/Task). Best for tasks needing Claude's reasoning + iterative tool use. |
 | `codex_worker` | Codex CLI (tmux pane) | Full filesystem access in working_directory. Runs autonomously via tmux pane. Best for code review, security analysis, refactoring, architecture. Requires `npm install -g @openai/codex`. |
 | `gemini_worker` | Gemini CLI (tmux pane) | Full filesystem access in working_directory. Runs autonomously via tmux pane. Best for UI/design work, documentation, large-context tasks. Requires `npm install -g @google/gemini-cli`. |
 
@@ -610,8 +611,8 @@ Tmux CLI workers run in dedicated tmux panes with filesystem access. They are **
 4. Results/summary are written to an output file
 5. Lead reads the output, marks the task complete, and feeds results to dependent tasks
 
-**Key difference from Copilot teammates:**
-- CLI workers operate via tmux, not Copilot CLI's tool system
+**Key difference from Claude teammates:**
+- CLI workers operate via tmux, not Claude Code's tool system
 - They cannot use TaskList/TaskUpdate/SendMessage (no team awareness)
 - They run as one-shot autonomous jobs, not persistent teammates
 - The lead manages their lifecycle (spawn, monitor, collect results)
@@ -620,14 +621,14 @@ Tmux CLI workers run in dedicated tmux panes with filesystem access. They are **
 
 | Task Type | Best Route | Why |
 |-----------|-----------|-----|
-| Iterative multi-step work | Copilot teammate | Needs tool-mediated iteration + team communication |
+| Iterative multi-step work | Claude teammate | Needs tool-mediated iteration + team communication |
 | Code review / security audit | CLI worker or specialist agent | Autonomous execution, good at structured analysis |
-| Architecture analysis / planning | architect Copilot agent | Strong analytical reasoning with codebase access |
+| Architecture analysis / planning | architect Claude agent | Strong analytical reasoning with codebase access |
 | Refactoring (well-scoped) | CLI worker or executor agent | Autonomous execution, good at structured transforms |
-| UI/frontend implementation | designer Copilot agent | Design expertise, framework idioms |
-| Large-scale documentation | writer Copilot agent | Writing expertise + large context for consistency |
-| Build/test iteration loops | Copilot teammate | Needs Bash tool + iterative fix cycles |
-| Tasks needing team coordination | Copilot teammate | Needs SendMessage for status updates |
+| UI/frontend implementation | designer Claude agent | Design expertise, framework idioms |
+| Large-scale documentation | writer Claude agent | Writing expertise + large context for consistency |
+| Build/test iteration loops | Claude teammate | Needs Bash tool + iterative fix cycles |
+| Tasks needing team coordination | Claude teammate | Needs SendMessage for status updates |
 
 ### Example: Hybrid Team with CLI Workers
 
@@ -642,13 +643,13 @@ Task decomposition:
 #5 [gemini_worker] Final code review of all changes
 ```
 
-The lead runs #1 (Codex security analysis), then #2 and #3 in parallel (Codex refactors backend, designer agent redesigns frontend), then #4 (Copilot teammate handles test iteration), then #5 (Gemini final review).
+The lead runs #1 (Codex security analysis), then #2 and #3 in parallel (Codex refactors backend, designer agent redesigns frontend), then #4 (Claude teammate handles test iteration), then #5 (Gemini final review).
 
 ### Pre-flight Analysis (Optional)
 
 For large ambiguous tasks, run analysis before team creation:
 
-1. Spawn `Task(subagent_type="oh-my-copilot:planner", name="planner-1", ...)` with task description + codebase context
+1. Spawn `Task(subagent_type="oh-my-copilot:planner", ...)` with task description + codebase context
 2. Use the analysis to produce better task decomposition
 3. Create team and tasks with enriched context
 
@@ -712,18 +713,7 @@ if (status.taskSummary.pending === 0 && status.taskSummary.inProgress === 0) {
 | `shutdown_ack` | Worker acknowledged shutdown -- safe to remove from team |
 | `heartbeat` | Update liveness tracking (redundant with heartbeat files but useful for latency monitoring) |
 
-This approach complements the existing `SendMessage`-based communication by providing a pull-based mechanism for MCP workers that cannot use Copilot CLI's team messaging tools.
-
-## Failure Recovery
-
-When a teammate agent fails, the structured recovery manager classifies the failure and determines the action:
-- **rate_limited**: Retry with exponential backoff
-- **auth_failure**: Escalate immediately (needs user credentials/permissions)
-- **build_error**: Retry with additional context about the error
-- **circular_fix**: Stop retrying and generate escalation report
-- **unknown**: Retry up to 3 times, then escalate
-
-The recovery manager integrates with the circular fix detector — if the same error recurs 3+ times across iterations, it escalates rather than continuing to retry.
+This approach complements the existing `SendMessage`-based communication by providing a pull-based mechanism for MCP workers that cannot use Claude Code's team messaging tools.
 
 ## Error Handling
 
@@ -810,7 +800,7 @@ See Cancellation section below for details.
 
 If the lead crashes mid-run, the team skill should detect existing state and resume:
 
-1. Check `${COPILOT_CONFIG_DIR:-~/.copilot}/teams/` for teams matching the task slug
+1. Check `${COPILOT_CONFIG_DIR:-~/.claude}/teams/` for teams matching the task slug
 2. If found, read `config.json` to discover active members
 3. Resume monitor mode instead of creating a duplicate team
 4. Call `TaskList` to determine current progress
@@ -822,13 +812,13 @@ This prevents duplicate teams and allows graceful recovery from lead failures.
 
 | Aspect | Team (Native) | Swarm (Legacy SQLite) |
 |--------|--------------|----------------------|
-| **Storage** | JSON files in `~/.copilot/teams/` and `~/.copilot/tasks/` | SQLite in `.omcp/state/swarm.db` |
+| **Storage** | JSON files in `~/.claude/teams/` and `~/.claude/tasks/` | SQLite in `.omcp/state/swarm.db` |
 | **Dependencies** | `better-sqlite3` not needed | Requires `better-sqlite3` npm package |
 | **Task claiming** | `TaskUpdate(owner + in_progress)` -- lead pre-assigns | SQLite IMMEDIATE transaction -- atomic |
 | **Race conditions** | Possible if two agents claim same task (mitigate by pre-assigning) | None (SQLite transactions) |
 | **Communication** | `SendMessage` (DM, broadcast, shutdown) | None (fire-and-forget agents) |
 | **Task dependencies** | Built-in `blocks` / `blockedBy` arrays | Not supported |
-| **Heartbeat** | Automatic idle notifications from Copilot CLI | Manual heartbeat table + polling |
+| **Heartbeat** | Automatic idle notifications from Claude Code | Manual heartbeat table + polling |
 | **Shutdown** | Graceful request/response protocol | Signal-based termination |
 | **Agent lifecycle** | Auto-tracked via internal tasks + config members | Manual tracking via heartbeat table |
 | **Progress visibility** | `TaskList` shows live status with owner | SQL queries on tasks table |
@@ -836,7 +826,7 @@ This prevents duplicate teams and allows graceful recovery from lead failures.
 | **Crash recovery** | Lead detects via missing messages, reassigns | Auto-release after 5-min lease timeout |
 | **State cleanup** | `TeamDelete` removes everything | Manual `rm` of SQLite database |
 
-**When to use Team over Swarm:** Always prefer `/team` for new work. It uses Copilot CLI's built-in infrastructure, requires no external dependencies, supports inter-agent communication, and has task dependency management.
+**When to use Team over Swarm:** Always prefer `/team` for new work. It uses Claude Code's built-in infrastructure, requires no external dependencies, supports inter-agent communication, and has task dependency management.
 
 ## Cancellation
 
@@ -857,7 +847,7 @@ When team is linked to ralph, cancellation follows dependency order:
 - **Cancel triggered from Team context:** Clear Team state, then mark Ralph as cancelled. Ralph's stop hook will detect the missing team and stop iterating.
 - **Force cancel (`--force`):** Clears both `team` and `ralph` state unconditionally via `state_clear`.
 
-If teammates are unresponsive, `TeamDelete` may fail. In that case, the cancel skill should wait briefly and retry, or inform the user to manually clean up `~/.copilot/teams/{team_name}/` and `~/.copilot/tasks/{team_name}/`.
+If teammates are unresponsive, `TeamDelete` may fail. In that case, the cancel skill should wait briefly and retry, or inform the user to manually clean up `~/.claude/teams/{team_name}/` and `~/.claude/tasks/{team_name}/`.
 
 ## Runtime V2 (Event-Driven)
 
@@ -882,7 +872,7 @@ When `OMC_TEAM_SCALING_ENABLED=1` is set, the team supports mid-session scaling:
 
 ## Configuration
 
-Optional settings live in `.copilot/omg.jsonc` (project) or `~/.config/copilot-omg/config.jsonc` (user). Project values override user values; `OMCP_TEAM_ROLE_OVERRIDES` (env JSON) supersedes both.
+Optional settings live in `.copilot/omg.jsonc` (project) or `~/.config/copilot-omg/config.jsonc` (user). Project values override user values; `OMC_TEAM_ROLE_OVERRIDES` (env JSON) supersedes both.
 
 ```jsonc
 {
@@ -902,7 +892,7 @@ Optional settings live in `.copilot/omg.jsonc` (project) or `~/.config/copilot-o
 - **ops.monitorIntervalMs** - How often to poll `TaskList` (default: 30s)
 - **ops.shutdownTimeoutMs** - How long to wait for shutdown responses (default: 15s)
 
-> **Note:** Team members do not have a hardcoded model default. Each teammate is a separate Copilot CLI session that inherits the user's configured model. Since teammates can spawn their own subagents, the session model acts as the orchestration layer while subagents can use any model tier.
+> **Note:** Team members do not have a hardcoded model default. Each teammate is a separate Claude Code session that inherits the user's configured model. Since teammates can spawn their own subagents, the session model acts as the orchestration layer while subagents can use any model tier.
 
 ## Per-Role Provider & Model Routing
 
@@ -945,13 +935,41 @@ Declare which provider (`claude`, `codex`, `gemini`) and which model tier should
 
 User-friendly aliases normalize via `normalizeDelegationRole()` — e.g. `reviewer` → `code-reviewer`, `quality-reviewer` → `code-reviewer`, `harsh-critic` → `critic`, `build-fixer` → `debugger`. Accepted alias keys are honored during resolved snapshot creation and later stage routing, not just validation. Unknown roles fail validation at parse time.
 
+### Spec fields (`TeamRoleAssignmentSpec`)
+
+- **provider** — `"claude" | "codex" | "gemini"`. Omitted → defaults to `claude`.
+- **model** — tier name (`"HIGH" | "MEDIUM" | "LOW"`) or an explicit model ID. Tiers resolve through `routing.tierModels`.
+- **agent** — optional Claude agent name (e.g. `"critic"`, `"executor"`). Only honored when the resolved provider is `claude`.
+
+`orchestrator` is pinned to `claude`; only `model` is user-configurable. Any other key on `orchestrator` is rejected by the validator.
+
+### Env override
+
+```bash
+OMC_TEAM_ROLE_OVERRIDES='{"critic":{"provider":"codex"},"code-reviewer":{"provider":"gemini"}}'
+```
+
+Precedence: `OMC_TEAM_ROLE_OVERRIDES` > `.copilot/omg.jsonc` (project) > `~/.config/copilot-omg/config.jsonc` (user) > built-in defaults. Invalid JSON logs a warning and is ignored — env overrides are best-effort and never abort the run.
+
+### Fallback when a CLI is missing
+
+If the CLI for a configured provider is absent from `PATH` at spawn time, `buildLaunchArgs()` throws, the team lead emits a visible `SendMessage` warning, and the runtime falls back to a deterministic Claude assignment pre-computed by `buildResolvedRoutingSnapshot` (same tier + same agent, `provider: "claude"`). Fallback is loud by design — silent fallback is a test failure. Probe provider availability with `omc doctor --team-routing`.
+
+### Stickiness — resolved once, reused everywhere
+
+Resolved routing is immutable per team. Editing config mid-team-lifetime does not affect running teams; a new `/team` invocation picks up the new mapping. This guarantees that spawn, scale-up, and worker-restart all see identical routing, including across worktree detaches (the snapshot travels with `TeamConfig`).
+
+### Zero-config behavior
+
+An empty `team.roleRouting` preserves pre-patch behavior: every worker is Claude, model tiers follow `routing.tierModels`, and `/team 3:executor ...` still spawns three Claude Sonnet executors.
+
 ## State Cleanup
 
 On successful completion:
 
-1. `TeamDelete` handles all Copilot CLI state:
-   - Removes `~/.copilot/teams/{team_name}/` (config)
-   - Removes `~/.copilot/tasks/{team_name}/` (all task files + lock)
+1. `TeamDelete` handles all Claude Code state:
+   - Removes `~/.claude/teams/{team_name}/` (config)
+   - Removes `~/.claude/tasks/{team_name}/` (all task files + lock)
 2. OMC state cleanup via MCP tools:
    ```
    state_clear(mode="team")
@@ -1019,4 +1037,4 @@ MCP workers can operate in isolated git worktrees to prevent file conflicts betw
 
 10. **Broadcast is expensive** -- Each broadcast sends a separate message to every teammate. Use `message` (DM) by default. Only broadcast for truly team-wide critical alerts.
 
-11. **CLI workers are one-shot, not persistent** -- Tmux CLI workers have full filesystem access and CAN make code changes. However, they run as autonomous one-shot jobs -- they cannot use TaskList/TaskUpdate/SendMessage. The lead must manage their lifecycle: write prompt_file, spawn CLI worker, read output_file, mark task complete. They don't participate in team communication like Copilot teammates do.
+11. **CLI workers are one-shot, not persistent** -- Tmux CLI workers have full filesystem access and CAN make code changes. However, they run as autonomous one-shot jobs -- they cannot use TaskList/TaskUpdate/SendMessage. The lead must manage their lifecycle: write prompt_file, spawn CLI worker, read output_file, mark task complete. They don't participate in team communication like Claude teammates do.
