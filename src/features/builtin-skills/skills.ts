@@ -47,7 +47,6 @@ const STRICT_MODE_ONLY_SKILLS = new Set([
   'remember',
   'verify',
   'debug',
-  'skillify',
 ]);
 
 const DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD = 0.2;
@@ -210,7 +209,14 @@ function loadSkillsFromDirectory(): BuiltinSkill[] {
   const seenNames = new Set<string>();
 
   try {
-    const entries = readdirSync(SKILLS_DIR, { withFileTypes: true });
+    const entries = readdirSync(SKILLS_DIR, { withFileTypes: true })
+      .sort((a, b) => {
+        // Public canonical skill-making surface must claim its deprecated
+        // learner alias before the legacy compatibility skill is encountered.
+        if (a.name === 'skillify') return -1;
+        if (b.name === 'skillify') return 1;
+        return a.name.localeCompare(b.name);
+      });
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;

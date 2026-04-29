@@ -19,6 +19,7 @@ export const EXCLUDED_COMMANDS = new Set([
     'ralph',
     'oh-my-copilot:ralplan',
     'oh-my-copilot:ultraqa',
+    'oh-my-copilot:skillify',
     'oh-my-copilot:learner',
     'oh-my-copilot:plan',
     'oh-my-copilot:cancel',

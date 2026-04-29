@@ -105,6 +105,7 @@ describe('Builtin Skills', () => {
         'deepinit',
         'external-context',
         'hud',
+        'skillify',
         'learner',
         'mcp-setup',
         'omc-ado-auto-review',
@@ -131,7 +132,6 @@ describe('Builtin Skills', () => {
         'remember',
         'sciomc',
         'self-improve',
-        'setup',
         'skill',
         'skillify',
         'team',
@@ -154,6 +154,22 @@ describe('Builtin Skills', () => {
       const skillNames = skills.map((s) => s.name);
       const uniqueNames = new Set(skillNames);
       expect(uniqueNames.size).toBe(skillNames.length);
+    });
+
+    it('exposes learner as a deprecated alias for canonical skillify', () => {
+      const skillify = getBuiltinSkill('skillify');
+      const learner = getBuiltinSkill('learner');
+
+      expect(skillify).toBeDefined();
+      expect(skillify!.aliasOf).toBeUndefined();
+      expect(skillify!.aliases).toContain('learner');
+      expect(learner).toBeDefined();
+      expect(learner!.aliasOf).toBe('skillify');
+      expect(learner!.deprecatedAlias).toBe(true);
+      expect(learner!.deprecationMessage).toContain('Use "skillify" instead');
+      expect(listBuiltinSkillNames()).toContain('skillify');
+      expect(listBuiltinSkillNames()).not.toContain('learner');
+      expect(listBuiltinSkillNames({ includeAliases: true })).toContain('learner');
     });
   });
 
@@ -544,7 +560,7 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toHaveLength(52);
+      expect(names).toHaveLength(51);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('ask');
       expect(names).toContain('autopilot');
@@ -575,8 +591,15 @@ describe('Builtin Skills', () => {
 
       // swarm alias removed in #1131, psm alias restored in v4.11.6
       expect(names).toHaveLength(53);
+      expect(names).toContain('ai-slop-cleaner');
+      expect(names).toContain('autoresearch');
+      expect(names).toContain('self-improve');
+      expect(names).toContain('trace');
+      expect(names).toContain('visual-verdict');
+      expect(names).toContain('wiki');
       expect(names).not.toContain('swarm');
       expect(names).toContain('psm');
+      expect(names).toContain('learner');
     });
   });
 
@@ -601,6 +624,30 @@ describe('Builtin Skills', () => {
       expect(getBuiltinSkill('clear')).toBeUndefined();
     });
   });
+
+  describe('skininthegamebros-only builtin skills', () => {
+    it.skip('keeps skininthegamebros-only skills hidden by default while skillify remains public', () => {
+      const names = listBuiltinSkillNames({ includeAliases: true });
+      expect(names).not.toContain('remember');
+      expect(names).not.toContain('verify');
+      expect(names).not.toContain('debug');
+      expect(names).toContain('skillify');
+    });
+
+    it.skip('surfaces skininthegamebros-only skills when USER_TYPE=ant', () => {
+      process.env.USER_TYPE = 'ant';
+      clearSkillsCache();
+
+      const names = listBuiltinSkillNames({ includeAliases: true });
+      expect(names).toContain('remember');
+      expect(names).toContain('verify');
+      expect(names).toContain('debug');
+      expect(names).toContain('skillify');
+      expect(names).not.toContain('stuck');
+      expect(names).not.toContain('lorem-ipsum');
+    });
+  });
+
 
   describe('Template strings', () => {
     const skills = createBuiltinSkills();
