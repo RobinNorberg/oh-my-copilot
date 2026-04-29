@@ -1,7 +1,7 @@
 import { execFileSync, spawnSync } from 'child_process';
 import { existsSync } from 'fs';
 import { mkdir, readFile, symlink, writeFile } from 'fs/promises';
-import { dirname, join, resolve } from 'path';
+import { dirname, join, resolve, sep } from 'path';
 import { readModeState, writeModeState, } from '../lib/mode-state-io.js';
 import { isModeActiveInAnySession } from '../hooks/mode-registry/index.js';
 import { parseEvaluatorResult, } from './contracts.js';
@@ -161,9 +161,12 @@ function allowedBootstrapDirtyPaths(worktreePath, allowedDirtyPaths = []) {
     return new Set(allowedDirtyPaths
         .map((path) => {
         const normalizedPath = resolve(path);
-        return normalizedPath.startsWith(`${normalizedWorktreePath}/`)
-            ? normalizedPath.slice(normalizedWorktreePath.length + 1)
-            : null;
+        // Use sep for cross-platform path matching; git status uses forward slashes
+        // even on Windows, so convert backslashes to forward slashes after slicing.
+        if (!normalizedPath.startsWith(`${normalizedWorktreePath}${sep}`)) {
+            return null;
+        }
+        return normalizedPath.slice(normalizedWorktreePath.length + 1).replace(/\\/g, '/');
     })
         .filter((path) => Boolean(path)));
 }
