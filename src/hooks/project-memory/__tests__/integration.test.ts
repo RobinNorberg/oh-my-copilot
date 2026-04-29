@@ -56,8 +56,8 @@ describe('Project Memory Integration', () => {
       expect(memory?.techStack.packageManager).toBe('pnpm');
       expect(memory?.build.buildCommand).toBe('pnpm build');
 
-      // Verify .omcp directory structure
-      const omcDir = path.join(tempDir, '.omcp');
+      // Verify .omc directory structure (project memory lives under shared root)
+      const omcDir = path.join(tempDir, '.omc');
       const omcStat = await fs.stat(omcDir);
       expect(omcStat.isDirectory()).toBe(true);
     });
@@ -82,7 +82,7 @@ describe('Project Memory Integration', () => {
         const memoryPath = getMemoryPath(tempDir);
         const content = await fs.readFile(memoryPath, 'utf-8');
         expect(JSON.parse(content).projectRoot).toBe(tempDir);
-        await expect(fs.access(path.join(tempDir, '.omcp', 'project-memory.json'))).rejects.toThrow();
+        await expect(fs.access(path.join(tempDir, '.omc', 'project-memory.json'))).rejects.toThrow();
       } finally {
         delete process.env.OMC_STATE_DIR;
         await fs.rm(stateDir, { recursive: true, force: true });

@@ -14,7 +14,7 @@ export declare const NOTEPAD_DIR = "notepads";
 /** Full path for notepads */
 export declare const NOTEPAD_BASE_PATH: string;
 /** Planner plan directory */
-export declare const PLANNER_PLANS_DIR: ".omcp/plans";
+export declare const PLANNER_PLANS_DIR: ".omc/plans";
 /** Plan file extension */
 export declare const PLAN_EXTENSION = ".md";
 //# sourceMappingURL=constants.d.ts.map
