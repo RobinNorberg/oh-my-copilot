@@ -16,17 +16,32 @@ import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 
-/** Standard .omcp subdirectories (formerly .omg) */
+/**
+ * Standard .omcp subdirectories (formerly .omg).
+ *
+ * Two roots are exposed:
+ * - ROOT (`.omcp`): plugin-private state owned by oh-my-copilot. Mode-state
+ *   files, sessions, autoresearch outputs, logs — anything coupled to this
+ *   plugin's runtime stays here so concurrent runs of oh-my-claudecode can't
+ *   corrupt them.
+ * - SHARED_ROOT (`.omc`): cross-plugin content shared with oh-my-claudecode.
+ *   Notepad, project memory, plans, research, plan-scoped notepads. Format-
+ *   stable, runtime-agnostic, and intentionally readable by either plugin.
+ *
+ * See migrateOmcpContentToOmc() for the one-time relocation that moves
+ * pre-existing shared content from `.omcp/` into `.omc/`.
+ */
 export const OmgPaths = {
   ROOT: '.omcp',
+  SHARED_ROOT: '.omc',
   STATE: '.omcp/state',
   SESSIONS: '.omcp/state/sessions',
-  PLANS: '.omcp/plans',
-  RESEARCH: '.omcp/research',
-  NOTEPAD: '.omcp/notepad.md',
-  PROJECT_MEMORY: '.omcp/project-memory.json',
+  PLANS: '.omc/plans',
+  RESEARCH: '.omc/research',
+  NOTEPAD: '.omc/notepad.md',
+  PROJECT_MEMORY: '.omc/project-memory.json',
   DRAFTS: '.omcp/drafts',
-  NOTEPADS: '.omcp/notepads',
+  NOTEPADS: '.omc/notepads',
   LOGS: '.omcp/logs',
   SCIENTIST: '.omcp/scientist',
   AUTOPILOT: '.omcp/autopilot',
@@ -230,8 +245,152 @@ export function getOmcRoot(worktreeRoot?: string): string {
 
   // Auto-migrate legacy .omg/ → .omcp/ if needed
   migrateOmgToOmcp(root);
+  // Auto-relocate shared content from .omcp/ → .omc/ if needed
+  migrateOmcpContentToOmc(root);
 
   return join(root, OmgPaths.ROOT);
+}
+
+/**
+ * Get the cross-plugin shared content root.
+ *
+ * This is the directory shared with oh-my-claudecode for content that is
+ * meaningfully runtime-agnostic: notepad, project memory, plans, research,
+ * plan-scoped notepads. Always resolves to `<worktree>/.omc/` (or the
+ * centralized equivalent under `OMC_STATE_DIR`) regardless of which plugin
+ * is calling, so a plan written in one CLI is visible to the other.
+ *
+ * Plugin-private state (mode-state.json, sessions/, autoresearch/, logs/)
+ * stays under getOmcRoot() to avoid cross-plugin runtime contention.
+ *
+ * @param worktreeRoot - Optional worktree root
+ * @returns Absolute path to the shared content root
+ */
+export function getSharedOmcRoot(worktreeRoot?: string): string {
+  const customDir = process.env.OMC_STATE_DIR;
+  const root = worktreeRoot || getWorktreeRoot() || process.cwd();
+  if (customDir) {
+    const projectId = getProjectIdentifier(root);
+    return join(customDir, projectId, OmgPaths.SHARED_ROOT);
+  }
+  // Auto-relocate shared content from .omcp/ → .omc/ if needed.
+  // Safe to call repeatedly — guarded by existsSync checks.
+  migrateOmcpContentToOmc(root);
+  return join(root, OmgPaths.SHARED_ROOT);
+}
+
+/**
+ * One-time relocation of shared content from `.omcp/` to `.omc/`.
+ *
+ * Mirrors the pattern of migrateOmgToOmcp(). For each item in:
+ *   - notepad.md, project-memory.json
+ *   - plans/, research/, notepads/
+ * if the source exists under `.omcp/` and the corresponding target under
+ * `.omc/` does not, move it. Conflicts (both exist) keep the `.omc/` copy
+ * and warn once. Idempotent — repeated calls are no-ops.
+ *
+ * Skipped when `OMC_STATE_DIR` is set (no `.omcp/` to migrate from in the
+ * centralized layout for this PR; centralized-mode reshuffling will be
+ * handled in a follow-up if needed).
+ *
+ * @param worktreeRoot - The worktree root directory
+ * @returns true if any item was moved, false otherwise
+ */
+export function migrateOmcpContentToOmc(worktreeRoot: string): boolean {
+  if (process.env.OMC_STATE_DIR) return false;
+
+  const omcpRoot = join(worktreeRoot, OmgPaths.ROOT);
+  const omcRoot = join(worktreeRoot, OmgPaths.SHARED_ROOT);
+  if (!existsSync(omcpRoot)) return false;
+
+  let moved = false;
+
+  const fileMoves: Array<[string, string]> = [
+    [join(omcpRoot, 'notepad.md'), join(omcRoot, 'notepad.md')],
+    [join(omcpRoot, 'project-memory.json'), join(omcRoot, 'project-memory.json')],
+  ];
+
+  for (const [src, dst] of fileMoves) {
+    if (!existsSync(src)) continue;
+    if (existsSync(dst)) {
+      const warningKey = `omcp-content:${src}`;
+      if (!omcpContentWarnings.has(warningKey)) {
+        omcpContentWarnings.add(warningKey);
+        console.warn(
+          `[omc-share] Both ${src} and ${dst} exist. Using ${dst}; remove the ` +
+          `legacy file manually after verifying no data loss.`
+        );
+      }
+      continue;
+    }
+    try {
+      mkdirSync(dirname(dst), { recursive: true });
+      renameSync(src, dst);
+      moved = true;
+    } catch (err) {
+      console.warn(
+        `[omc-share] Failed to relocate ${src} → ${dst}: ` +
+        `${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+
+  for (const sub of ['plans', 'research', 'notepads']) {
+    const srcDir = join(omcpRoot, sub);
+    if (!existsSync(srcDir)) continue;
+    const dstDir = join(omcRoot, sub);
+    try {
+      mkdirSync(dstDir, { recursive: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+        console.warn(`[omc-share] Could not create ${dstDir}: ${err}`);
+        continue;
+      }
+    }
+    let entries: string[];
+    try {
+      entries = readdirSync(srcDir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const s = join(srcDir, entry);
+      const d = join(dstDir, entry);
+      if (existsSync(d)) {
+        const warningKey = `omcp-content:${s}`;
+        if (!omcpContentWarnings.has(warningKey)) {
+          omcpContentWarnings.add(warningKey);
+          console.warn(
+            `[omc-share] Both ${s} and ${d} exist. Using ${d}; remove the ` +
+            `legacy entry manually after verifying no data loss.`
+          );
+        }
+        continue;
+      }
+      try {
+        renameSync(s, d);
+        moved = true;
+      } catch (err) {
+        console.warn(
+          `[omc-share] Failed to relocate ${s} → ${d}: ` +
+          `${err instanceof Error ? err.message : err}`
+        );
+      }
+    }
+  }
+
+  return moved;
+}
+
+/** Track which omcp→omc content-migration warnings have been logged */
+const omcpContentWarnings = new Set<string>();
+
+/**
+ * Clear the omcp→omc content migration warning cache (testing only).
+ * @internal
+ */
+export function clearOmcpContentWarnings(): void {
+  omcpContentWarnings.clear();
 }
 
 /**
@@ -300,36 +459,52 @@ export function ensureOmcDir(relativePath: string, worktreeRoot?: string): strin
 
 /**
  * Get the absolute path to the notepad file.
- * NOTE: Named differently from hooks/notepad/getNotepadPath which takes `directory` (required).
- * This version auto-detects worktree root.
+ *
+ * Lives under the cross-plugin shared root (`.omc/`) so the notepad
+ * compounds across oh-my-copilot and oh-my-claudecode sessions in the
+ * same worktree.
+ *
+ * NOTE: Named differently from hooks/notepad/getNotepadPath which takes
+ * `directory` (required). This version auto-detects worktree root.
  */
 export function getWorktreeNotepadPath(worktreeRoot?: string): string {
-  return join(getOmcRoot(worktreeRoot), 'notepad.md');
+  return join(getSharedOmcRoot(worktreeRoot), 'notepad.md');
 }
 
 /**
  * Get the absolute path to the project memory file.
+ *
+ * Lives under the cross-plugin shared root (`.omc/`) so the detected
+ * tech stack and conventions are shared with oh-my-claudecode.
  */
 export function getWorktreeProjectMemoryPath(worktreeRoot?: string): string {
-  return join(getOmcRoot(worktreeRoot), 'project-memory.json');
+  return join(getSharedOmcRoot(worktreeRoot), 'project-memory.json');
 }
 
 /**
  * Resolve a plan file path.
+ *
+ * Plans live under the cross-plugin shared root (`.omc/plans/`). A plan
+ * authored by either CLI is visible to the other.
+ *
  * @param planName - Plan name (without .md extension)
  */
 export function resolvePlanPath(planName: string, worktreeRoot?: string): string {
   validatePath(planName);
-  return join(getOmcRoot(worktreeRoot), 'plans', `${planName}.md`);
+  return join(getSharedOmcRoot(worktreeRoot), 'plans', `${planName}.md`);
 }
 
 /**
  * Resolve a research directory path.
+ *
+ * Research artifacts live under the cross-plugin shared root
+ * (`.omc/research/`).
+ *
  * @param name - Research folder name
  */
 export function resolveResearchPath(name: string, worktreeRoot?: string): string {
   validatePath(name);
-  return join(getOmcRoot(worktreeRoot), 'research', name);
+  return join(getSharedOmcRoot(worktreeRoot), 'research', name);
 }
 
 /**
@@ -341,11 +516,15 @@ export function resolveLogsPath(worktreeRoot?: string): string {
 
 /**
  * Resolve a wisdom/plan-scoped notepad directory path.
+ *
+ * Plan-scoped notepads live under the cross-plugin shared root
+ * (`.omc/notepads/`) alongside the plan they annotate.
+ *
  * @param planName - Plan name for the scoped notepad
  */
 export function resolveWisdomPath(planName: string, worktreeRoot?: string): string {
   validatePath(planName);
-  return join(getOmcRoot(worktreeRoot), 'notepads', planName);
+  return join(getSharedOmcRoot(worktreeRoot), 'notepads', planName);
 }
 
 /**
@@ -360,22 +539,37 @@ export function isPathUnderOmc(absolutePath: string, worktreeRoot?: string): boo
 }
 
 /**
- * Ensure all standard .omc subdirectories exist.
+ * Ensure all standard OMC subdirectories exist.
+ *
+ * Creates entries under both roots:
+ * - Private (`.omcp/`): state, logs, drafts — runtime-coupled
+ * - Shared (`.omc/`): plans, research, notepads — cross-plugin content
  */
 export function ensureAllOmcDirs(worktreeRoot?: string): void {
   const omcRoot = getOmcRoot(worktreeRoot);
-  const subdirs = ['', 'state', 'plans', 'research', 'logs', 'notepads', 'drafts'];
-  for (const subdir of subdirs) {
-    const fullPath = subdir ? join(omcRoot, subdir) : omcRoot;
-    if (!existsSync(fullPath)) {
-      try {
-        mkdirSync(fullPath, { recursive: true });
-      } catch (err) {
-        // On Windows, concurrent hooks can race past the existsSync check and
-        // throw EEXIST. Safe to ignore — see atomic-write.ts:ensureDirSync.
-        if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      }
+  const sharedRoot = getSharedOmcRoot(worktreeRoot);
+
+  const ensure = (path: string) => {
+    if (existsSync(path)) return;
+    try {
+      mkdirSync(path, { recursive: true });
+    } catch (err) {
+      // On Windows, concurrent hooks can race past the existsSync check and
+      // throw EEXIST. Safe to ignore — see atomic-write.ts:ensureDirSync.
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
+  };
+
+  // Private (plugin-owned) tree
+  ensure(omcRoot);
+  for (const subdir of ['state', 'logs', 'drafts']) {
+    ensure(join(omcRoot, subdir));
+  }
+
+  // Shared (cross-plugin) tree
+  ensure(sharedRoot);
+  for (const subdir of ['plans', 'research', 'notepads']) {
+    ensure(join(sharedRoot, subdir));
   }
 }
 
