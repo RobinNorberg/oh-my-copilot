@@ -30,7 +30,7 @@ function runPreToolEnforcerWithEnv(
     env: {
       ...process.env,
       HOME: homeDir,
-      CLAUDE_CONFIG_DIR: join(homeDir, '.claude'),
+      COPILOT_CONFIG_DIR: join(homeDir, '.copilot'),
       NODE_ENV: 'test',
       DISABLE_OMC: '',
       OMC_SKIP_HOOKS: '',
@@ -554,7 +554,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcerWithEnv(
       {
         tool_name: 'Agent',
-        toolInput: { subagent_type: 'oh-my-claudecode:executor', model: tier },
+        toolInput: { subagent_type: 'oh-my-copilot:executor', model: tier },
         cwd: tempDir,
         session_id: sessionId,
       },
@@ -574,7 +574,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcerWithEnv(
       {
         tool_name: 'Agent',
-        toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+        toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
         cwd: tempDir,
         session_id: 'session-tier-proxy-empty',
       },
@@ -585,7 +585,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    const hookOutput = output as Record<string, unknown>;
     expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
@@ -593,7 +593,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcerWithEnv(
       {
         tool_name: 'Agent',
-        toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+        toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
         cwd: tempDir,
         session_id: 'session-tier-proxy-invalid-bedrock-var',
       },
@@ -605,19 +605,19 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    const hookOutput = output as Record<string, unknown>;
     expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 
   it('allows proxy ANTHROPIC_DEFAULT_*_MODEL in config force-inherit mode when no normal Claude model is active', () => {
-    const configDir = join(tempDir, '.omc');
+    const configDir = join(tempDir, '.omcp');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'config.json'), JSON.stringify({ routing: { forceInherit: true } }));
 
     const output = runPreToolEnforcerWithEnv(
       {
         tool_name: 'Agent',
-        toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+        toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
         cwd: tempDir,
         session_id: 'session-tier-config-proxy-default',
       },
@@ -636,7 +636,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcerWithEnv(
       {
         tool_name: 'Agent',
-        toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+        toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
         cwd: tempDir,
         session_id: 'session-tier-env-force-normal-claude-proxy-default',
       },
@@ -648,7 +648,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
       },
     );
 
-    const hookOutput = output.hookSpecificOutput as Record<string, unknown>;
+    const hookOutput = output as Record<string, unknown>;
     expect(hookOutput.permissionDecisionReason as string).toContain('MODEL ROUTING');
   });
 

@@ -22,7 +22,7 @@ function runPreToolEnforcerWithEnv(input, env = {}) {
         env: {
             ...process.env,
             HOME: homeDir,
-            CLAUDE_CONFIG_DIR: join(homeDir, '.claude'),
+            COPILOT_CONFIG_DIR: join(homeDir, '.copilot'),
             NODE_ENV: 'test',
             DISABLE_OMC: '',
             OMC_SKIP_HOOKS: '',
@@ -422,7 +422,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     ])('allows tier alias %s via proxy ANTHROPIC_DEFAULT_*_MODEL when non-Claude routing is active', (tier, envKey, proxyModel, sessionId) => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: tier },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: tier },
             cwd: tempDir,
             session_id: sessionId,
         }, {
@@ -437,7 +437,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('blocks tier alias when proxy ANTHROPIC_DEFAULT_*_MODEL is only whitespace', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-proxy-empty',
         }, {
@@ -445,13 +445,13 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
             OMC_SUBAGENT_MODEL: '',
             ANTHROPIC_DEFAULT_SONNET_MODEL: '   ',
         });
-        const hookOutput = output.hookSpecificOutput;
+        const hookOutput = output;
         expect(hookOutput.permissionDecisionReason).toContain('MODEL ROUTING');
     });
     it('preserves provider-specific validation for CLAUDE_CODE_BEDROCK_*_MODEL in proxy mode', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-proxy-invalid-bedrock-var',
         }, {
@@ -460,16 +460,16 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
             CLAUDE_CODE_BEDROCK_SONNET_MODEL: 'glm-5.1:cloud',
             ANTHROPIC_DEFAULT_SONNET_MODEL: '',
         });
-        const hookOutput = output.hookSpecificOutput;
+        const hookOutput = output;
         expect(hookOutput.permissionDecisionReason).toContain('MODEL ROUTING');
     });
     it('allows proxy ANTHROPIC_DEFAULT_*_MODEL in config force-inherit mode when no normal Claude model is active', () => {
-        const configDir = join(tempDir, '.omc');
+        const configDir = join(tempDir, '.omcp');
         mkdirSync(configDir, { recursive: true });
         writeFileSync(join(configDir, 'config.json'), JSON.stringify({ routing: { forceInherit: true } }));
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-config-proxy-default',
         }, {
@@ -483,7 +483,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('rejects proxy ANTHROPIC_DEFAULT_*_MODEL when env force-inherit runs under a normal Claude active model', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-env-force-normal-claude-proxy-default',
         }, {
@@ -492,7 +492,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
             ANTHROPIC_MODEL: 'claude-sonnet-4-5',
             ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-5.1:cloud',
         });
-        const hookOutput = output.hookSpecificOutput;
+        const hookOutput = output;
         expect(hookOutput.permissionDecisionReason).toContain('MODEL ROUTING');
     });
     it('OMC_SUBAGENT_MODEL takes priority over ANTHROPIC_DEFAULT_*_MODEL when both set', () => {
