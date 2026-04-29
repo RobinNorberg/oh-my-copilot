@@ -13,7 +13,7 @@ function nowIso() {
     return new Date().toISOString();
 }
 export function getAutoresearchMissionArtifactLayout(projectRoot, missionSlug, runId) {
-    const missionRoot = join(projectRoot, '.omc', 'autoresearch', missionSlug);
+    const missionRoot = join(projectRoot, '.omcp', 'autoresearch', missionSlug);
     const runDir = join(missionRoot, 'runs', runId);
     return {
         missionRoot,

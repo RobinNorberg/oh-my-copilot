@@ -158,7 +158,7 @@ export function getAutoresearchMissionArtifactLayout(
   missionSlug: string,
   runId: string,
 ): AutoresearchMissionArtifactLayout {
-  const missionRoot = join(projectRoot, '.omc', 'autoresearch', missionSlug);
+  const missionRoot = join(projectRoot, '.omcp', 'autoresearch', missionSlug);
   const runDir = join(missionRoot, 'runs', runId);
   return {
     missionRoot,
