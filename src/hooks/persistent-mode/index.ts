@@ -1263,6 +1263,15 @@ const RALPLAN_STOP_BLOCKER_MAX = 30;
 const RALPLAN_STOP_BLOCKER_TTL_MS = 45 * 60 * 1000; // 45 min
 const RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS = 5_000;
 
+
+interface RalplanState {
+  active: boolean;
+  session_id?: string;
+  current_phase?: string;
+  phase?: string;
+  status?: string;
+}
+
 interface AutoresearchStopState {
   active: boolean;
   session_id?: string;
@@ -1397,14 +1406,6 @@ Remaining runtime: ${remaining}
       phase: state.current_phase,
     },
   };
-}
-
-interface RalplanState {
-  active: boolean;
-  session_id?: string;
-  current_phase?: string;
-  phase?: string;
-  status?: string;
 }
 
 function getNormalizedRalplanPhase(state: Record<string, unknown> | null | undefined): string | null {

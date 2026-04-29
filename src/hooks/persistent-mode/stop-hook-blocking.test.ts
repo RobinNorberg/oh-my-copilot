@@ -75,7 +75,7 @@ function writeWorkflowTombstone(
   sessionId: string,
   mode: 'ralph' | 'ultrawork',
 ): void {
-  const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+  const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
   mkdirSync(sessionDir, { recursive: true });
   writeFileSync(
     join(sessionDir, "skill-active-state.json"),
@@ -89,7 +89,7 @@ function writeWorkflowTombstone(
           session_id: sessionId,
           mode_state_path: `${mode}-state.json`,
           initialized_mode: mode,
-          initialized_state_path: join(tempDir, ".omc", "state", `${mode}-state.json`),
+          initialized_state_path: join(tempDir, ".omcp", "state", `${mode}-state.json`),
           initialized_session_state_path: join(sessionDir, `${mode}-state.json`),
         },
       },
@@ -168,6 +168,18 @@ describe("Stop Hook Blocking Contract", () => {
       expect(output.continue).toBe(false);
     });
 
+    it("returns continue: false for autoresearch mode blocking", () => {
+      const result: PersistentModeResult = {
+        shouldBlock: true,
+        message: "[AUTORESEARCH] Continue iterating",
+        mode: "autoresearch",
+        metadata: { phase: "running" },
+      };
+      const output = createHookOutput(result);
+      expect(output.continue).toBe(false);
+      expect(output.message).toContain("AUTORESEARCH");
+    });
+
     it("returns undefined message when result message is empty", () => {
       const result: PersistentModeResult = {
         shouldBlock: false,
@@ -194,7 +206,7 @@ describe("Stop Hook Blocking Contract", () => {
     beforeEach(() => {
       // Clean state dirs between tests; keep git repo
       rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
-      rmSync(join(tempDir, ".omc"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
       rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
     });
 
@@ -219,6 +231,61 @@ describe("Stop Hook Blocking Contract", () => {
       const result = await checkPersistentModes(sessionId, tempDir);
       expect(result.shouldBlock).toBe(false);
       expect(result.mode).toBe("none");
+    });
+
+    it("blocks stop while autoresearch max-runtime remains", async () => {
+      const sessionId = "autoresearch-active";
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, "autoresearch-state.json"),
+        JSON.stringify({
+          active: true,
+          session_id: sessionId,
+          mission_slug: "demo",
+          current_phase: "running",
+          started_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          deadline_at: new Date(Date.now() + 60_000).toISOString(),
+          iteration: 2,
+        }),
+      );
+
+      const result = await checkPersistentModes(sessionId, tempDir);
+      expect(result.shouldBlock).toBe(true);
+      expect(result.mode).toBe("autoresearch");
+      expect(result.message).toContain("AUTORESEARCH - STATEFUL MISSION ACTIVE");
+      expect(result.message).toContain("demo");
+    });
+
+    it("releases autoresearch when max-runtime ceiling is reached", async () => {
+      const sessionId = "autoresearch-expired";
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
+      mkdirSync(sessionDir, { recursive: true });
+      const statePath = join(sessionDir, "autoresearch-state.json");
+      writeFileSync(
+        statePath,
+        JSON.stringify({
+          active: true,
+          session_id: sessionId,
+          mission_slug: "demo",
+          current_phase: "running",
+          started_at: new Date(Date.now() - 120_000).toISOString(),
+          updated_at: new Date().toISOString(),
+          deadline_at: new Date(Date.now() - 1_000).toISOString(),
+          iteration: 3,
+        }),
+      );
+
+      const result = await checkPersistentModes(sessionId, tempDir);
+      expect(result.shouldBlock).toBe(false);
+      expect(result.mode).toBe("autoresearch");
+      expect(result.message).toContain("Max-runtime ceiling reached");
+
+      const updated = JSON.parse(readFileSync(statePath, 'utf-8')) as { active: boolean; current_phase: string; stop_reason: string };
+      expect(updated.active).toBe(false);
+      expect(updated.current_phase).toBe('stopped');
+      expect(updated.stop_reason).toBe('max-runtime ceiling reached');
     });
 
 
@@ -358,7 +425,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("does not fire ralph stop reinforcement when authoritative registry is empty after cancel tombstone", async () => {
       const sessionId = "ralph-stale-restored-after-cancel";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "ralph-state.json"),
@@ -385,7 +452,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("does not fire ultrawork stop reinforcement when authoritative registry is empty after cancel tombstone", async () => {
       const sessionId = "ultrawork-stale-restored-after-cancel";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       mkdirSync(sessionDir, { recursive: true });
       writePendingTodo(tempDir, "pending work should not revive stale ultrawork");
       writeFileSync(
@@ -689,7 +756,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     beforeEach(() => {
       rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
-      rmSync(join(tempDir, ".omc"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
       rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
     });
 
@@ -740,7 +807,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("returns continue: true for tombstoned stale ralph state", () => {
       const sessionId = "ralph-mjs-tombstoned";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "ralph-state.json"),
@@ -784,7 +851,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("returns continue: true for tombstoned stale ultrawork state", () => {
       const sessionId = "ultrawork-mjs-tombstoned";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "ultrawork-state.json"),
@@ -1148,7 +1215,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     beforeEach(() => {
       rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
-      rmSync(join(tempDir, ".omc"), { recursive: true, force: true });
+      rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
       rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
       delete process.env.OMC_STATE_DIR;
     });

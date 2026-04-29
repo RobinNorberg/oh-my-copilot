@@ -90435,14 +90435,14 @@ function sleep5(ms) {
 }
 
 // src/cli/autoresearch.ts
-var AUTORESEARCH_HELP = `omcp autoresearch - HARD DEPRECATED
+var AUTORESEARCH_HELP = `omc autoresearch - HARD DEPRECATED
 
 This command is no longer the authoritative autoresearch workflow.
 
 Use this flow instead:
   1. /deep-interview --autoresearch "<mission idea>"
      - use deep-interview to generate/setup the mission and evaluator
-  2. /oh-my-copilot:autoresearch
+  2. /oh-my-claudecode:autoresearch
      - run the stateful single-mission autoresearch skill
 
 Key behavior:
@@ -90452,9 +90452,9 @@ Key behavior:
   - the run stops at an explicit max-runtime ceiling
 
 Legacy CLI examples such as:
-  omcp autoresearch --mission "..." --eval "..."
-  omcp autoresearch init ...
-  omcp autoresearch --resume ...
+  omc autoresearch --mission "..." --eval "..."
+  omc autoresearch init ...
+  omc autoresearch --resume ...
 are hard-deprecated shims and no longer launch the old runtime.
 `;
 function renderDeprecationMessage(args) {

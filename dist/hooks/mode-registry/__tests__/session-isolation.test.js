@@ -74,6 +74,11 @@ describe('Session-Scoped State Isolation', () => {
         });
     });
     describe('Session-scoped path resolution', () => {
+        it('should return session-scoped path when sessionId provided for autoresearch', () => {
+            const path = getStateFilePath(tempDir, 'autoresearch', 'session-123');
+            expect(path).toContain('sessions/session-123');
+            expect(path).toContain('autoresearch-state.json');
+        });
         it('should return session-scoped path when sessionId provided', () => {
             const path = getStateFilePath(tempDir, 'ultrawork', 'session-123');
             expect(path.replace(/\\/g, '/')).toContain('sessions/session-123');
@@ -98,6 +103,10 @@ describe('Session-Scoped State Isolation', () => {
         });
     });
     describe('Cross-session mode discovery (isModeActiveInAnySession)', () => {
+        it('should find autoresearch active in any session', () => {
+            createSessionState('session-A', 'autoresearch', { active: true });
+            expect(isModeActiveInAnySession('autoresearch', tempDir)).toBe(true);
+        });
         it('should find mode active in any session', () => {
             createSessionState('session-A', 'ultrawork', { active: true });
             expect(isModeActiveInAnySession('ultrawork', tempDir)).toBe(true);
@@ -111,6 +120,13 @@ describe('Session-Scoped State Isolation', () => {
         });
     });
     describe('getActiveSessionsForMode', () => {
+        it('should return sessions running autoresearch', () => {
+            createSessionState('session-A', 'autoresearch', { active: true });
+            createSessionState('session-B', 'autoresearch', { active: true });
+            const sessions = getActiveSessionsForMode('autoresearch', tempDir);
+            expect(sessions).toContain('session-A');
+            expect(sessions).toContain('session-B');
+        });
         it('should return sessions running a specific mode', () => {
             createSessionState('session-A', 'ultrawork', { active: true });
             createSessionState('session-B', 'ultrawork', { active: true });
