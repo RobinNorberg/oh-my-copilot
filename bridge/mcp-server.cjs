@@ -30779,14 +30779,15 @@ var import_os3 = require("os");
 var import_path11 = require("path");
 var OmgPaths = {
   ROOT: ".omcp",
+  SHARED_ROOT: ".omc",
   STATE: ".omcp/state",
   SESSIONS: ".omcp/state/sessions",
-  PLANS: ".omcp/plans",
-  RESEARCH: ".omcp/research",
-  NOTEPAD: ".omcp/notepad.md",
-  PROJECT_MEMORY: ".omcp/project-memory.json",
+  PLANS: ".omc/plans",
+  RESEARCH: ".omc/research",
+  NOTEPAD: ".omc/notepad.md",
+  PROJECT_MEMORY: ".omc/project-memory.json",
   DRAFTS: ".omcp/drafts",
-  NOTEPADS: ".omcp/notepads",
+  NOTEPADS: ".omc/notepads",
   LOGS: ".omcp/logs",
   SCIENTIST: ".omcp/scientist",
   AUTOPILOT: ".omcp/autopilot",
@@ -30893,8 +30894,95 @@ function getOmcRoot(worktreeRoot) {
   }
   const root = worktreeRoot || getWorktreeRoot() || process.cwd();
   migrateOmgToOmcp(root);
+  migrateOmcpContentToOmc(root);
   return (0, import_path11.join)(root, OmgPaths.ROOT);
 }
+function getSharedOmcRoot(worktreeRoot) {
+  const customDir = process.env.OMC_STATE_DIR;
+  const root = worktreeRoot || getWorktreeRoot() || process.cwd();
+  if (customDir) {
+    const projectId = getProjectIdentifier(root);
+    return (0, import_path11.join)(customDir, projectId, OmgPaths.SHARED_ROOT);
+  }
+  migrateOmcpContentToOmc(root);
+  return (0, import_path11.join)(root, OmgPaths.SHARED_ROOT);
+}
+function migrateOmcpContentToOmc(worktreeRoot) {
+  if (process.env.OMC_STATE_DIR) return false;
+  const omcpRoot = (0, import_path11.join)(worktreeRoot, OmgPaths.ROOT);
+  const omcRoot = (0, import_path11.join)(worktreeRoot, OmgPaths.SHARED_ROOT);
+  if (!(0, import_fs9.existsSync)(omcpRoot)) return false;
+  let moved = false;
+  const fileMoves = [
+    [(0, import_path11.join)(omcpRoot, "notepad.md"), (0, import_path11.join)(omcRoot, "notepad.md")],
+    [(0, import_path11.join)(omcpRoot, "project-memory.json"), (0, import_path11.join)(omcRoot, "project-memory.json")]
+  ];
+  for (const [src, dst] of fileMoves) {
+    if (!(0, import_fs9.existsSync)(src)) continue;
+    if ((0, import_fs9.existsSync)(dst)) {
+      const warningKey = `omcp-content:${src}`;
+      if (!omcpContentWarnings.has(warningKey)) {
+        omcpContentWarnings.add(warningKey);
+        console.warn(
+          `[omc-share] Both ${src} and ${dst} exist. Using ${dst}; remove the legacy file manually after verifying no data loss.`
+        );
+      }
+      continue;
+    }
+    try {
+      (0, import_fs9.mkdirSync)((0, import_path11.dirname)(dst), { recursive: true });
+      (0, import_fs9.renameSync)(src, dst);
+      moved = true;
+    } catch (err) {
+      console.warn(
+        `[omc-share] Failed to relocate ${src} \u2192 ${dst}: ${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+  for (const sub of ["plans", "research", "notepads"]) {
+    const srcDir = (0, import_path11.join)(omcpRoot, sub);
+    if (!(0, import_fs9.existsSync)(srcDir)) continue;
+    const dstDir = (0, import_path11.join)(omcRoot, sub);
+    try {
+      (0, import_fs9.mkdirSync)(dstDir, { recursive: true });
+    } catch (err) {
+      if (err.code !== "EEXIST") {
+        console.warn(`[omc-share] Could not create ${dstDir}: ${err}`);
+        continue;
+      }
+    }
+    let entries;
+    try {
+      entries = (0, import_fs9.readdirSync)(srcDir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const s = (0, import_path11.join)(srcDir, entry);
+      const d = (0, import_path11.join)(dstDir, entry);
+      if ((0, import_fs9.existsSync)(d)) {
+        const warningKey = `omcp-content:${s}`;
+        if (!omcpContentWarnings.has(warningKey)) {
+          omcpContentWarnings.add(warningKey);
+          console.warn(
+            `[omc-share] Both ${s} and ${d} exist. Using ${d}; remove the legacy entry manually after verifying no data loss.`
+          );
+        }
+        continue;
+      }
+      try {
+        (0, import_fs9.renameSync)(s, d);
+        moved = true;
+      } catch (err) {
+        console.warn(
+          `[omc-share] Failed to relocate ${s} \u2192 ${d}: ${err instanceof Error ? err.message : err}`
+        );
+      }
+    }
+  }
+  return moved;
+}
+var omcpContentWarnings = /* @__PURE__ */ new Set();
 function resolveOmcPath(relativePath, worktreeRoot) {
   validatePath(relativePath);
   const omcDir = getOmcRoot(worktreeRoot);
@@ -30921,10 +31009,10 @@ function ensureOmcDir(relativePath, worktreeRoot) {
   return fullPath;
 }
 function getWorktreeNotepadPath(worktreeRoot) {
-  return (0, import_path11.join)(getOmcRoot(worktreeRoot), "notepad.md");
+  return (0, import_path11.join)(getSharedOmcRoot(worktreeRoot), "notepad.md");
 }
 function getWorktreeProjectMemoryPath(worktreeRoot) {
-  return (0, import_path11.join)(getOmcRoot(worktreeRoot), "project-memory.json");
+  return (0, import_path11.join)(getSharedOmcRoot(worktreeRoot), "project-memory.json");
 }
 var SESSION_ID_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 function validateSessionId(sessionId) {
@@ -33668,10 +33756,10 @@ function getSectionRegexSet(header) {
   return SECTION_REGEXES[header] ?? createSectionRegexSet(header);
 }
 function getNotepadPath(directory) {
-  return (0, import_path14.join)(getOmcRoot(directory), NOTEPAD_FILENAME);
+  return (0, import_path14.join)(getSharedOmcRoot(directory), NOTEPAD_FILENAME);
 }
 function initNotepad(directory) {
-  const omcDir = getOmcRoot(directory);
+  const omcDir = getSharedOmcRoot(directory);
   if (!(0, import_fs14.existsSync)(omcDir)) {
     try {
       (0, import_fs14.mkdirSync)(omcDir, { recursive: true });
