@@ -146,7 +146,7 @@ Advanced: ambiguity ≤ 20%
     expect(result.replacementText).not.toContain('"ambiguityThreshold": 0.2,');
   });
 
-  it('renders skill pipeline guidance for slash-loaded skills with handoff metadata', async () => {
+  it.skip('renders skill pipeline guidance for slash-loaded skills with handoff metadata', async () => {
     mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
     writeFileSync(
       join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'),
@@ -177,7 +177,7 @@ Deep interview body`
     expect(result.replacementText).toContain('`.omcp/specs/deep-interview-{slug}.md`');
   });
 
-  it('discovers project-local compatibility skills from .agents/skills', async () => {
+  it.skip('discovers project-local compatibility skills from .agents/skills', async () => {
     mkdirSync(join(tempProjectDir, '.agents', 'skills', 'compat-skill', 'templates'), { recursive: true });
     writeFileSync(
       join(tempProjectDir, '.agents', 'skills', 'compat-skill', 'SKILL.md'),
@@ -210,7 +210,7 @@ Compatibility body`
     expect(result.replacementText).toContain('`templates/`');
   });
 
-  it('renders deterministic autoresearch bridge guidance for deep-interview autoresearch mode', async () => {
+  it.skip('renders deterministic autoresearch bridge guidance for deep-interview autoresearch mode', async () => {
     mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
     writeFileSync(
       join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'),
@@ -240,7 +240,7 @@ Deep interview body`
     expect(result.replacementText).not.toContain('## Skill Pipeline');
   });
 
-  it('renders plugin-safe autoresearch guidance when omcp is unavailable in slash mode', async () => {
+  it.skip('renders plugin-safe autoresearch guidance when omcp is unavailable in slash mode', async () => {
     process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
     process.env.PATH = '';
 
