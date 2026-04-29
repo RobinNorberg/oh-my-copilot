@@ -51,7 +51,7 @@ function writeEnabledPluginSettings(claudeConfigDir) {
     writeFileSync(join(claudeConfigDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }, null, 2));
 }
 function getBundledSkillNames() {
-    const strictModeOnlySkills = new Set(['remember', 'verify', 'debug', 'skillify']);
+    const strictModeOnlySkills = new Set(['remember', 'verify', 'debug']);
     return readdirSync(join(process.cwd(), 'skills'), { withFileTypes: true })
         .filter(entry => entry.isDirectory())
         .map(entry => entry.name)
