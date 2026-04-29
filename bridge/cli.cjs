@@ -81106,7 +81106,7 @@ var builtInMagicKeywords = [
   ultrathinkEnhancement
 ];
 function createMagicKeywordProcessor(config2) {
-  const keywords = [...builtInMagicKeywords];
+  const keywords = builtInMagicKeywords.map((k) => ({ ...k, triggers: [...k.triggers] }));
   if (config2) {
     if (config2.ultrawork) {
       const ultrawork = keywords.find((k) => k.triggers.includes("ultrawork"));
