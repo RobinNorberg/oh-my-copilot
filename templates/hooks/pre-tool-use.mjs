@@ -16,6 +16,150 @@ const __dirname = dirname(__filename);
 // Dynamic import for the shared stdin module
 const { readStdin } = await import(pathToFileURL(path.join(__dirname, 'lib', 'stdin.mjs')).href);
 
+// ---------------------------------------------------------------------------
+// Skill Active State (issue #1033)
+// Writes skill-active-state.json so the persistent-mode Stop hook can prevent
+// premature session termination while a skill is executing.
+// ---------------------------------------------------------------------------
+
+/**
+ * Skill protection levels: none/light/medium/heavy.
+ * - 'none': Already has dedicated mode state (ralph, autopilot) or instant/read-only
+ * - 'light': Quick agent shortcuts (3 reinforcements, 5 min TTL)
+ * - 'medium': Review/planning skills that run multiple agents (5 reinforcements, 15 min TTL)
+ * - 'heavy': Long-running skills (10 reinforcements, 30 min TTL)
+ */
+const PROTECTION_CONFIGS = {
+  none:   { maxReinforcements: 0,  staleTtlMs: 0 },
+  light:  { maxReinforcements: 3,  staleTtlMs: 5 * 60 * 1000 },
+  medium: { maxReinforcements: 5,  staleTtlMs: 15 * 60 * 1000 },
+  heavy:  { maxReinforcements: 10, staleTtlMs: 30 * 60 * 1000 },
+};
+
+const SKILL_PROTECTION = {
+  // Already have mode state → no protection needed
+  autopilot: 'none', ralph: 'none', ultrawork: 'none', team: 'none',
+  'omc-teams': 'none', ultraqa: 'none', cancel: 'none',
+  // Instant / read-only → no protection needed
+  trace: 'none', hud: 'none', 'omc-doctor': 'none', 'omc-help': 'none',
+  'learn-about-omc': 'none', note: 'none',
+  // Light protection (3 reinforcements)
+  tdd: 'light', 'build-fix': 'light', analyze: 'light', skill: 'light',
+  'configure-notifications': 'light',
+  // Medium protection (5 reinforcements)
+  'code-review': 'medium', 'security-review': 'medium', plan: 'medium',
+  ralplan: 'medium', review: 'medium', 'external-context': 'medium',
+  sciomc: 'medium', skillify: 'medium', learner: 'medium', 'omc-setup': 'medium',
+  'mcp-setup': 'medium', 'project-session-manager': 'medium',
+  'writer-memory': 'medium', 'ralph-init': 'medium', ccg: 'medium',
+  // Heavy protection (10 reinforcements)
+  deepinit: 'heavy',
+};
+
+function getSkillProtection(skillName) {
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  return SKILL_PROTECTION[normalized] || 'light';
+}
+
+function getInvokedSkillName(toolInput) {
+  if (!toolInput || typeof toolInput !== 'object') return null;
+  const rawSkill = toolInput.skill || toolInput.skill_name || toolInput.skillName || toolInput.command || null;
+  if (typeof rawSkill !== 'string' || !rawSkill.trim()) return null;
+  const normalized = rawSkill.trim();
+  return normalized.includes(':') ? normalized.split(':').at(-1).toLowerCase() : normalized.toLowerCase();
+}
+
+const SESSION_ID_ALLOWLIST = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
+
+function writeSkillActiveState(directory, skillName, sessionId) {
+  const protection = getSkillProtection(skillName);
+  if (protection === 'none') return;
+
+  const config = PROTECTION_CONFIGS[protection];
+  const now = new Date().toISOString();
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+
+  const state = {
+    active: true,
+    skill_name: normalized,
+    session_id: sessionId || undefined,
+    started_at: now,
+    last_checked_at: now,
+    reinforcement_count: 0,
+    max_reinforcements: config.maxReinforcements,
+    stale_ttl_ms: config.staleTtlMs,
+  };
+
+  const stateDir = path.join(directory, '.omc', 'state');
+
+  // Write to session-scoped path when sessionId is available (must match persistent-mode.mjs reads)
+  const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
+  const targetDir = safeSessionId
+    ? path.join(stateDir, 'sessions', safeSessionId)
+    : stateDir;
+  const targetPath = path.join(targetDir, 'skill-active-state.json');
+
+  try {
+    if (!existsSync(targetDir)) {
+      mkdirSync(targetDir, { recursive: true });
+    }
+    const tmpPath = targetPath + '.tmp';
+    writeFileSync(tmpPath, JSON.stringify(state, null, 2), { mode: 0o600 });
+    renameSync(tmpPath, targetPath);
+  } catch {
+    // Best-effort; don't fail the hook
+  }
+}
+
+
+function clearAwaitingConfirmationFlag(directory, stateName, sessionId) {
+  const stateDir = path.join(directory, '.omc', 'state');
+  const safeSessionId = sessionId && SESSION_ID_ALLOWLIST.test(sessionId) ? sessionId : '';
+  const paths = [
+    safeSessionId ? path.join(stateDir, 'sessions', safeSessionId, `${stateName}-state.json`) : null,
+    path.join(stateDir, `${stateName}-state.json`),
+    path.join(homedir(), '.omc', 'state', `${stateName}-state.json`),
+  ].filter(Boolean);
+
+  for (const statePath of paths) {
+    try {
+      if (!existsSync(statePath)) continue;
+      const state = JSON.parse(readFileSync(statePath, 'utf-8'));
+      if (!state || typeof state !== 'object' || !state.awaiting_confirmation) continue;
+      delete state.awaiting_confirmation;
+      const tmpPath = statePath + '.tmp';
+      writeFileSync(tmpPath, JSON.stringify(state, null, 2), { mode: 0o600 });
+      renameSync(tmpPath, statePath);
+    } catch {
+      // Best-effort; don't fail the hook
+    }
+  }
+}
+
+function confirmSkillModeStates(directory, skillName, sessionId) {
+  switch (skillName) {
+    case 'ralph':
+      clearAwaitingConfirmationFlag(directory, 'ralph', sessionId);
+      clearAwaitingConfirmationFlag(directory, 'ultrawork', sessionId);
+      break;
+    case 'ultrawork':
+      clearAwaitingConfirmationFlag(directory, 'ultrawork', sessionId);
+      break;
+    case 'autopilot':
+      clearAwaitingConfirmationFlag(directory, 'autopilot', sessionId);
+      break;
+    case 'ralplan':
+      clearAwaitingConfirmationFlag(directory, 'ralplan', sessionId);
+      break;
+    default:
+      break;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Delegation enforcement
+// ---------------------------------------------------------------------------
+
 // Allowed path patterns (no warning)
 // Paths are normalized to forward slashes before matching
 const ALLOWED_PATH_PATTERNS = [

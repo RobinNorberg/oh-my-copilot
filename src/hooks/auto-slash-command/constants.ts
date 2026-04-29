@@ -23,10 +23,12 @@ export const EXCLUDED_COMMANDS = new Set([
   'ralph',
   'oh-my-copilot:ralplan',
   'oh-my-copilot:ultraqa',
+  'oh-my-copilot:skillify',
   'oh-my-copilot:learner',
   'oh-my-copilot:plan',
   'oh-my-copilot:cancel',
   // Copilot CLI built-in commands that shouldn't be expanded
+>>>>>>> 787ea375d (Make skillify the canonical skill-making surface (#2863))
   'help',
   'clear',
   'compact',

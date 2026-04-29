@@ -12,7 +12,7 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 - [CLI Commands: ask/team/session](#cli-commands-askteamsession)
 - [Legacy MCP Team Runtime Tools (Deprecated)](#legacy-mcp-team-runtime-tools-deprecated)
 - [Agents (29 Total)](#agents-29-total)
-- [Skills (35 Total)](#skills-35-total)
+- [Skills (36 Total)](#skills-36-total)
 - [Slash Commands](#slash-commands)
 - [Hooks System](#hooks-system)
 - [Magic Keywords](#magic-keywords)
@@ -520,9 +520,9 @@ Always use `oh-my-copilot:` prefix when calling via Task tool.
 
 ---
 
-## Skills (35 Total)
+## Skills (36 Total)
 
-Includes **34 canonical skills + 1 deprecated alias** (`psm`). Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
+Includes **34 canonical skills + 2 deprecated aliases** (`learner`, `psm`). Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
