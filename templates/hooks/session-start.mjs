@@ -142,6 +142,68 @@ const OMC_STARTUP_GUIDANCE_MAX_CHARS = 8000;
 const SESSION_START_CONTEXT_BUDGET = 6000;
 const SESSION_START_OMISSION_NOTICE = '[Additional SessionStart context omitted to preserve the 6000-character aggregate budget.]';
 
+const { MODEL_ROUTING_OVERRIDE_MESSAGE } = await import(pathToFileURL(join(__dirname, 'lib', 'model-routing-override-message.mjs')).href);
+
+function isTruthyProviderFlag(value) {
+  return value === '1' || value === 'true';
+}
+
+function getSessionModelId() {
+  return process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || '';
+}
+
+function isBedrockSession() {
+  if (isTruthyProviderFlag(process.env.CLAUDE_CODE_USE_BEDROCK)) return true;
+  const modelId = getSessionModelId();
+  return Boolean(
+    modelId && (
+      /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId) ||
+      (
+        /^arn:aws(-[^:]+)?:bedrock:/i.test(modelId) &&
+        /:(inference-profile|application-inference-profile)\//i.test(modelId) &&
+        modelId.toLowerCase().includes('claude')
+      )
+    )
+  );
+}
+
+function isVertexSession() {
+  if (isTruthyProviderFlag(process.env.CLAUDE_CODE_USE_VERTEX)) return true;
+  const modelId = getSessionModelId();
+  return Boolean(modelId && modelId.toLowerCase().startsWith('vertex_ai/'));
+}
+
+function readRoutingForceInheritFromConfig(directory) {
+  const configPaths = [
+    join(configDir, '.omc-config.json'),
+    join(directory, '.omc', 'config.json'),
+  ];
+
+  for (const configPath of configPaths) {
+    const config = readJsonFile(configPath);
+    if (config?.routing?.forceInherit === true) return true;
+  }
+
+  return false;
+}
+
+function shouldEmitModelRoutingOverride(directory) {
+  if (process.env.OMC_ROUTING_FORCE_INHERIT === 'true') return true;
+  if (process.env.OMC_ROUTING_FORCE_INHERIT === 'false') return false;
+  if (readRoutingForceInheritFromConfig(directory)) return true;
+
+  if (isBedrockSession() || isVertexSession()) return true;
+
+  const modelId = getSessionModelId();
+  if (modelId && !modelId.toLowerCase().includes('claude')) return true;
+
+  const baseUrl = process.env.ANTHROPIC_BASE_URL || '';
+  if (baseUrl && !baseUrl.includes('anthropic.com')) return true;
+
+  return false;
+}
+
+
 function compactBudgetedText(text, maxChars) {
   const notice = '\n...[truncated to preserve SessionStart context budget]';
   if (!text || text.length <= maxChars) return text || '';
