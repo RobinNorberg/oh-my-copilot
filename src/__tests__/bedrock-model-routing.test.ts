@@ -205,8 +205,8 @@ describe('Bedrock model routing repro', () => {
   // User has ANTHROPIC_DEFAULT_SONNET_MODEL in Bedrock format,
   // but CLAUDE_CODE_USE_BEDROCK and CLAUDE_MODEL/ANTHROPIC_MODEL are missing
 
-  describe('SCENARIO B: Bedrock tier env vars set but detection misses them', () => {
-    it('full chain: isBedrock misses Bedrock model in ANTHROPIC_DEFAULT_*_MODEL', async () => {
+  describe('SCENARIO B: Bedrock tier env vars set without session model env vars', () => {
+    it('full chain: tier env Bedrock models do not globally force inherit', async () => {
       // ── Setup: user has Bedrock-format models in ANTHROPIC_DEFAULT_*_MODEL
       //    (as shown in their settings) but CLAUDE_CODE_USE_BEDROCK is not set ──
       process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'global.anthropic.claude-sonnet-4-6-v1:0';
@@ -218,7 +218,7 @@ describe('Bedrock model routing repro', () => {
       expect(isBedrock()).toBe(false);
       expect(isNonCopilotProvider()).toBe(false);
 
-      // 2. forceInherit is NOT auto-enabled
+      // 2. tier-only provider IDs do not globally force all spawned agents to inherit.
       const { loadConfig } = await import('../config/loader.js');
       const config = loadConfig();
       expect(config.routing?.forceInherit).toBe(false);
@@ -235,7 +235,8 @@ describe('Bedrock model routing repro', () => {
       expect(config.agents?.architect?.model).toBe('global.anthropic.claude-opus-4-6-v1:0');
       expect(config.agents?.explore?.model).toBe('global.anthropic.claude-haiku-4-5-v1:0');
 
-      // 5. enforceModel normalizes to bare alias (FIX: no longer injects full IDs)
+      // 5. enforceModel injects the configured tier provider ID for that agent,
+      // instead of collapsing every agent call into inheritance mode.
       const { enforceModel } = await import('../features/delegation-enforcer.js');
       const result = enforceModel({
         description: 'Implement feature',
@@ -243,18 +244,13 @@ describe('Bedrock model routing repro', () => {
         subagent_type: 'oh-my-copilot:executor',
       });
       expect(result.injected).toBe(true);
-      // After the fix: enforceModel normalizes to 'sonnet' (CC-supported alias)
-      // instead of the full Bedrock ID from config
-      expect(result.modifiedInput.model).toBe('sonnet');
-
-      // Note: forceInherit should still ideally be enabled for Bedrock,
-      // but even without it, 'sonnet' is safe — Claude Code resolves it
-      // to the correct Bedrock model ID internally.
+      expect(result.model).toBe('global.anthropic.claude-sonnet-4-6-v1:0');
+      expect(result.modifiedInput.model).toBe('global.anthropic.claude-sonnet-4-6-v1:0');
     });
 
-    it('isBedrock should detect Bedrock patterns in tier env vars', async () => {
-      // Verify the detection gap: ANTHROPIC_DEFAULT_*_MODEL values contain
-      // Bedrock patterns but isBedrock only checks CLAUDE_MODEL/ANTHROPIC_MODEL
+    it('isBedrock detects Bedrock patterns in tier env vars', async () => {
+      // ANTHROPIC_DEFAULT_*_MODEL values can be the only Bedrock signal
+      // when CLAUDE_MODEL/ANTHROPIC_MODEL are unset.
       process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'global.anthropic.claude-sonnet-4-6-v1:0';
 
       const { isBedrock, hasTierModelEnvOverrides } = await import('../config/models.js');
@@ -262,10 +258,8 @@ describe('Bedrock model routing repro', () => {
       // The env var IS detected by hasTierModelEnvOverrides
       expect(hasTierModelEnvOverrides()).toBe(true);
 
-      // But isBedrock doesn't use it
-      expect(isBedrock()).toBe(false);
-
-      // A fix: isBedrock() should also scan tier env vars for Bedrock patterns
+      // isBedrock now scans tier env vars for Bedrock patterns.
+      expect(isBedrock()).toBe(true);
     });
   });
 
