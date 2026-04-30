@@ -9,6 +9,26 @@ import { loadProjectMemory, saveProjectMemory, shouldRescan, } from "./storage.j
 import { detectProjectEnvironment } from "./detector.js";
 import { formatContextSummary } from "./formatter.js";
 /**
+ * Rescan merge: `detected` is authoritative for schema-known fields so
+ * removed deps/scripts/workspaces correctly disappear. Three user-contributed
+ * arrays and any unknown top-level fields (written by project_memory_write)
+ * survive across rescans.
+ */
+function applyRescanMerge(detected, existing) {
+    const merged = {
+        ...detected,
+        customNotes: existing.customNotes,
+        userDirectives: existing.userDirectives,
+        hotPaths: existing.hotPaths,
+    };
+    for (const key of Object.keys(existing)) {
+        if (!(key in merged)) {
+            merged[key] = existing[key];
+        }
+    }
+    return merged;
+}
+/**
  * Session caches to prevent duplicate injection.
  * Map<sessionId, Set<projectRoot:scopeKey>>
  * Bounded to MAX_SESSIONS entries to prevent memory leaks in long-running MCP processes.
@@ -39,12 +59,8 @@ export async function registerProjectMemoryContext(sessionId, workingDirectory) 
         let memory = await loadProjectMemory(projectRoot);
         if (!memory || shouldRescan(memory)) {
             const existing = memory;
-            memory = await detectProjectEnvironment(projectRoot);
-            if (existing) {
-                memory.customNotes = existing.customNotes;
-                memory.userDirectives = existing.userDirectives;
-                memory.hotPaths = existing.hotPaths;
-            }
+            const detected = await detectProjectEnvironment(projectRoot);
+            memory = existing ? applyRescanMerge(detected, existing) : detected;
             await saveProjectMemory(projectRoot, memory);
         }
         const content = formatContextSummary(memory, {
@@ -79,12 +95,8 @@ export function clearProjectMemorySession(sessionId) {
 }
 export async function rescanProjectEnvironment(projectRoot) {
     const existing = await loadProjectMemory(projectRoot);
-    const memory = await detectProjectEnvironment(projectRoot);
-    if (existing) {
-        memory.customNotes = existing.customNotes;
-        memory.userDirectives = existing.userDirectives;
-        memory.hotPaths = existing.hotPaths;
-    }
+    const detected = await detectProjectEnvironment(projectRoot);
+    const memory = existing ? applyRescanMerge(detected, existing) : detected;
     await saveProjectMemory(projectRoot, memory);
 }
 function getScopeKey(projectRoot, workingDirectory) {
