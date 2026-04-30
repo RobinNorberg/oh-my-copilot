@@ -123,30 +123,30 @@ The following skills have been **completely removed** in v3.5.3:
 
 | Removed Skill        | Replacement                            |
 | -------------------- | -------------------------------------- |
-| `cancel-autopilot`   | `/oh-my-claudecode:cancel`             |
-| `cancel-ralph`       | `/oh-my-claudecode:cancel`             |
-| `cancel-ultrawork`   | `/oh-my-claudecode:cancel`             |
-| `cancel-ultraqa`     | `/oh-my-claudecode:cancel`             |
-| `omc-default`        | `/oh-my-claudecode:omc-setup --local`  |
-| `omc-default-global` | `/oh-my-claudecode:omc-setup --global` |
-| `planner`            | `/oh-my-claudecode:plan`               |
+| `cancel-autopilot`   | `/oh-my-copilot:cancel`             |
+| `cancel-ralph`       | `/oh-my-copilot:cancel`             |
+| `cancel-ultrawork`   | `/oh-my-copilot:cancel`             |
+| `cancel-ultraqa`     | `/oh-my-copilot:cancel`             |
+| `omc-default`        | `/oh-my-copilot:omc-setup --local`  |
+| `omc-default-global` | `/oh-my-copilot:omc-setup --global` |
+| `planner`            | `/oh-my-copilot:plan`               |
 
 ### What Changed
 
 **Before v3.5.3:**
 
 ```bash
-/oh-my-claudecode:cancel-ralph      # Cancel ralph specifically
-/oh-my-claudecode:omc-default       # Configure local project
-/oh-my-claudecode:planner "task"    # Start planning
+/oh-my-copilot:cancel-ralph      # Cancel ralph specifically
+/oh-my-copilot:omc-default       # Configure local project
+/oh-my-copilot:planner "task"    # Start planning
 ```
 
 **After v3.5.3:**
 
 ```bash
-/oh-my-claudecode:cancel            # Auto-detects and cancels any active mode
-/oh-my-claudecode:omc-setup --local # Configure local project
-/oh-my-claudecode:plan "task"       # Start planning (includes interview mode)
+/oh-my-copilot:cancel            # Auto-detects and cancels any active mode
+/oh-my-copilot:omc-setup --local # Configure local project
+/oh-my-copilot:plan "task"       # Start planning (includes interview mode)
 ```
 
 ### New Features
@@ -160,8 +160,8 @@ The following skills have been **completely removed** in v3.5.3:
 **Plan skill now supports consensus mode:**
 
 ```bash
-/oh-my-claudecode:plan --consensus "task"  # Iterative planning with Critic review
-/oh-my-claudecode:ralplan "task"           # Alias for plan --consensus
+/oh-my-copilot:plan --consensus "task"  # Iterative planning with Critic review
+/oh-my-copilot:ralplan "task"           # Alias for plan --consensus
 ```
 
 ### Migration Steps
@@ -183,7 +183,7 @@ The following skills have been **completely removed** in v3.5.3:
 
 Your old commands still work! But now you don't need them.
 
-**Before 3.0:** Explicitly invoke 25+ commands like `/oh-my-claudecode:ralph "task"`, `/oh-my-claudecode:ultrawork "task"`
+**Before 3.0:** Explicitly invoke 25+ commands like `/oh-my-copilot:ralph "task"`, `/oh-my-copilot:ultrawork "task"`
 
 **After 3.0:** Just work naturally - Claude auto-activates the right behaviors. One-time setup: just say "setup omc"
 
@@ -210,13 +210,13 @@ You had to remember and explicitly invoke specific commands for each mode:
 
 ```bash
 # 2.x workflow: Multiple commands, lots to remember
-/oh-my-claudecode:ralph "implement user authentication"       # Persistence mode
-/oh-my-claudecode:ultrawork "refactor the API layer"          # Maximum parallelism
-/oh-my-claudecode:planner "plan the new dashboard"            # Planning interview
-/oh-my-claudecode:deepsearch "find database schema files"     # Deep search
-/oh-my-claudecode:git-master "commit these changes"           # Git expertise
-/oh-my-claudecode:deepinit ./src                              # Index codebase
-/oh-my-claudecode:analyze "why is this test failing?"         # Deep analysis
+/oh-my-copilot:ralph "implement user authentication"       # Persistence mode
+/oh-my-copilot:ultrawork "refactor the API layer"          # Maximum parallelism
+/oh-my-copilot:planner "plan the new dashboard"            # Planning interview
+/oh-my-copilot:deepsearch "find database schema files"     # Deep search
+/oh-my-copilot:git-master "commit these changes"           # Git expertise
+/oh-my-copilot:deepinit ./src                              # Index codebase
+/oh-my-copilot:analyze "why is this test failing?"         # Deep analysis
 ```
 
 #### After (3.0): Auto-Activation + Keywords
@@ -285,20 +285,20 @@ All 2.x commands continue to work. Here's what changed:
 
 | 2.x Command                            | 3.0 Equivalent                                     | Works?                 |
 | -------------------------------------- | -------------------------------------------------- | ---------------------- |
-| `/oh-my-claudecode:ralph "task"`       | Say "don't stop until done" OR use `ralph` keyword | ✅ YES (both ways)     |
-| `/oh-my-claudecode:ultrawork "task"`   | Say "fast" or "parallel" OR use `ulw` keyword      | ✅ YES (both ways)     |
-| `/oh-my-claudecode:ultrawork-ralph`    | Say "ralph ulw:" prefix                            | ✅ YES (keyword combo) |
-| `/oh-my-claudecode:planner "task"`     | Say "plan this" OR use `plan` keyword              | ✅ YES (both ways)     |
-| `/oh-my-claudecode:plan "description"` | Start planning naturally                           | ✅ YES                 |
-| `/oh-my-claudecode:review [path]`      | Invoke normally                                    | ✅ YES (unchanged)     |
-| `/oh-my-claudecode:deepsearch "query"` | Say "find" or "search"                             | ✅ YES (auto-detect)   |
-| `/oh-my-claudecode:analyze "target"`   | Say "analyze" — routes to debugger/architect agent | ✅ YES (keyword route) |
-| `/oh-my-claudecode:deepinit [path]`    | Invoke normally                                    | ✅ YES (unchanged)     |
-| `/oh-my-claudecode:git-master`         | Say "git", "commit", "atomic commit"               | ✅ YES (auto-detect)   |
-| `/oh-my-claudecode:frontend-ui-ux`     | Say "UI", "styling", "component", "design"         | ✅ YES (auto-detect)   |
-| `/oh-my-claudecode:note "content"`     | Say "remember this" or "save this"                 | ✅ YES (auto-detect)   |
-| `/oh-my-claudecode:cancel-ralph`       | Say "stop", "cancel", or "abort"                   | ✅ YES (auto-detect)   |
-| `/oh-my-claudecode:omc-doctor`         | Invoke normally                                    | ✅ YES (unchanged)     |
+| `/oh-my-copilot:ralph "task"`       | Say "don't stop until done" OR use `ralph` keyword | ✅ YES (both ways)     |
+| `/oh-my-copilot:ultrawork "task"`   | Say "fast" or "parallel" OR use `ulw` keyword      | ✅ YES (both ways)     |
+| `/oh-my-copilot:ultrawork-ralph`    | Say "ralph ulw:" prefix                            | ✅ YES (keyword combo) |
+| `/oh-my-copilot:planner "task"`     | Say "plan this" OR use `plan` keyword              | ✅ YES (both ways)     |
+| `/oh-my-copilot:plan "description"` | Start planning naturally                           | ✅ YES                 |
+| `/oh-my-copilot:review [path]`      | Invoke normally                                    | ✅ YES (unchanged)     |
+| `/oh-my-copilot:deepsearch "query"` | Say "find" or "search"                             | ✅ YES (auto-detect)   |
+| `/oh-my-copilot:analyze "target"`   | Say "analyze" — routes to debugger/architect agent | ✅ YES (keyword route) |
+| `/oh-my-copilot:deepinit [path]`    | Invoke normally                                    | ✅ YES (unchanged)     |
+| `/oh-my-copilot:git-master`         | Say "git", "commit", "atomic commit"               | ✅ YES (auto-detect)   |
+| `/oh-my-copilot:frontend-ui-ux`     | Say "UI", "styling", "component", "design"         | ✅ YES (auto-detect)   |
+| `/oh-my-copilot:note "content"`     | Say "remember this" or "save this"                 | ✅ YES (auto-detect)   |
+| `/oh-my-copilot:cancel-ralph`       | Say "stop", "cancel", or "abort"                   | ✅ YES (auto-detect)   |
+| `/oh-my-copilot:omc-doctor`         | Invoke normally                                    | ✅ YES (unchanged)     |
 | All other commands                     | Work exactly as before                             | ✅ YES                 |
 
 ### Magic Keywords
@@ -348,7 +348,7 @@ If in planning       → End planning interview
 If multiple active   → Stop the most recent
 ```
 
-No more `/oh-my-claudecode:cancel-ralph` - just say "cancel"!
+No more `/oh-my-copilot:cancel-ralph` - just say "cancel"!
 
 ### Migration Steps
 
@@ -442,7 +442,7 @@ After migration, verify your setup:
    ```
 
 3. **Test a simple command**:
-   Run `/oh-my-claudecode:omc-help` in Claude Code to ensure the plugin is loaded correctly.
+   Run `/oh-my-copilot:omc-help` in Claude Code to ensure the plugin is loaded correctly.
 
 ### New Features in 3.0
 
@@ -451,7 +451,7 @@ After migration, verify your setup:
 **No commands to memorize.** Work naturally:
 
 ```
-Before: "OK, I need to use /oh-my-claudecode:ultrawork for speed..."
+Before: "OK, I need to use /oh-my-copilot:ultrawork for speed..."
 After:  "I'm in a hurry, go fast!"
         ↓
         Claude: "I'm activating ultrawork mode..."
@@ -473,9 +473,9 @@ Your request              Claude's action
 
 You don't ask for delegation - it happens automatically.
 
-#### 3. Learned Skills (`/oh-my-claudecode:skillify`)
+#### 3. Learned Skills (`/oh-my-copilot:skillify`)
 
-Extract reusable insights from problem-solving. `/oh-my-claudecode:learner` remains as a deprecated compatibility alias:
+Extract reusable insights from problem-solving. `/oh-my-copilot:learner` remains as a deprecated compatibility alias:
 
 ```bash
 # After solving a tricky bug:
@@ -499,7 +499,7 @@ See what Claude is doing in the status bar:
 [OMC] ralph:3/10 | US-002 | ultrawork skill:planner | ctx:67% | agents:2 | todos:2/5
 ```
 
-Run `/oh-my-claudecode:hud setup` to install. Presets: minimal, focused, full.
+Run `/oh-my-copilot:hud setup` to install. Presets: minimal, focused, full.
 
 #### 5. Three-Tier Memory System
 
@@ -513,10 +513,10 @@ Permanently loaded on session start
 Never lost through compaction
 ```
 
-Or use `/oh-my-claudecode:note` to save discoveries manually:
+Or use `/oh-my-copilot:note` to save discoveries manually:
 
 ```bash
-/oh-my-claudecode:note Project uses PostgreSQL with Prisma ORM
+/oh-my-copilot:note Project uses PostgreSQL with Prisma ORM
 ```
 
 #### 6. Structured Task Tracking (PRD Support)
@@ -524,7 +524,7 @@ Or use `/oh-my-claudecode:note` to save discoveries manually:
 **Ralph Loop now uses Product Requirements Documents:**
 
 ```bash
-/oh-my-claudecode:ralph-init "implement OAuth with multiple providers"
+/oh-my-copilot:ralph-init "implement OAuth with multiple providers"
     ↓
 Auto-creates PRD with user stories
     ↓
@@ -648,7 +648,7 @@ Version 3.4.0 introduces powerful parallel execution modes and advanced workflow
 Chain agents with data passing between stages:
 
 ```bash
-/oh-my-claudecode:pipeline explore:haiku -> architect:opus -> executor:sonnet
+/oh-my-copilot:pipeline explore:haiku -> architect:opus -> executor:sonnet
 ```
 
 **Built-in Presets:**
@@ -665,7 +665,7 @@ Chain agents with data passing between stages:
 Smart cancellation that auto-detects active mode:
 
 ```bash
-/oh-my-claudecode:cancel
+/oh-my-copilot:cancel
 # Or just say: "stop", "cancel", "abort"
 ```
 
@@ -674,12 +674,12 @@ Smart cancellation that auto-detects active mode:
 **Deprecation Notice:**
 Individual cancel commands are deprecated but still work:
 
-- `/oh-my-claudecode:cancel-ralph` (deprecated)
-- `/oh-my-claudecode:cancel-ultraqa` (deprecated)
-- `/oh-my-claudecode:cancel-ultrawork` (deprecated)
-- `/oh-my-claudecode:cancel-autopilot` (deprecated)
+- `/oh-my-copilot:cancel-ralph` (deprecated)
+- `/oh-my-copilot:cancel-ultraqa` (deprecated)
+- `/oh-my-copilot:cancel-ultrawork` (deprecated)
+- `/oh-my-copilot:cancel-autopilot` (deprecated)
 
-Use `/oh-my-claudecode:cancel` instead.
+Use `/oh-my-copilot:cancel` instead.
 
 #### 6. Explore-High Agent
 
@@ -720,7 +720,7 @@ When multiple execution mode keywords are present:
 **Explicit mode keywords:** `ulw`, `ultrawork`
 **Generic keywords:** `fast`, `parallel`
 
-Users set their default mode preference via `/oh-my-claudecode:omc-setup`.
+Users set their default mode preference via `/oh-my-copilot:omc-setup`.
 
 ### Migration Steps
 
@@ -802,7 +802,7 @@ After upgrading, verify new features:
 2. **Test unified cancel**:
 
    ```bash
-   /oh-my-claudecode:cancel
+   /oh-my-copilot:cancel
    ```
 
 3. **Check state directory**:
@@ -864,7 +864,7 @@ Expected timeline: Q1 2026
 **2.x Workflow:**
 
 ```
-/oh-my-claudecode:ultrawork "implement the todo list feature"
+/oh-my-copilot:ultrawork "implement the todo list feature"
 ```
 
 **3.0+ Workflow:**
@@ -882,7 +882,7 @@ Claude: "I'm activating ultrawork for maximum parallelism"
 **2.x Workflow:**
 
 ```
-/oh-my-claudecode:ralph "debug the memory leak"
+/oh-my-copilot:ralph "debug the memory leak"
 ```
 
 **3.0+ Workflow:**
@@ -900,7 +900,7 @@ Claude: "I'm activating ralph-loop to ensure completion"
 **2.x Workflow:**
 
 ```
-/oh-my-claudecode:planner "design the new authentication system"
+/oh-my-copilot:planner "design the new authentication system"
 ```
 
 **3.0+ Workflow:**
@@ -920,7 +920,7 @@ Interview begins automatically
 **2.x Workflow:**
 
 ```
-/oh-my-claudecode:cancel-ralph
+/oh-my-copilot:cancel-ralph
 ```
 
 **3.0+ Workflow:**
@@ -940,7 +940,7 @@ Interview begins automatically
 Apply oh-my-claudecode to current project only:
 
 ```
-/oh-my-claudecode:omc-default
+/oh-my-copilot:omc-default
 ```
 
 Creates: `./.claude/CLAUDE.md`
@@ -950,7 +950,7 @@ Creates: `./.claude/CLAUDE.md`
 Apply to all Claude Code sessions:
 
 ```
-/oh-my-claudecode:omc-default-global
+/oh-my-copilot:omc-default-global
 ```
 
 Creates: `~/.claude/CLAUDE.md`
@@ -968,10 +968,10 @@ A: No. Keywords are optional shortcuts. Claude auto-detects intent without them.
 A: No. All commands continue to work across minor versions (3.0 → 3.1). Major version changes (3.x → 4.0) will provide migration paths.
 
 **Q: What if I like explicit commands?**
-A: Keep using them! `/oh-my-claudecode:ralph`, `/oh-my-claudecode:ultrawork`, and `/oh-my-claudecode:plan` work. Note: `/oh-my-claudecode:planner` now redirects to `/oh-my-claudecode:plan`.
+A: Keep using them! `/oh-my-copilot:ralph`, `/oh-my-copilot:ultrawork`, and `/oh-my-copilot:plan` work. Note: `/oh-my-copilot:planner` now redirects to `/oh-my-copilot:plan`.
 
 **Q: How do I know what Claude is doing?**
-A: Claude announces major behaviors: "I'm activating ralph-loop..." or set up `/oh-my-claudecode:hud` for real-time status.
+A: Claude announces major behaviors: "I'm activating ralph-loop..." or set up `/oh-my-copilot:hud` for real-time status.
 
 **Q: Where's the full command list?**
 A: See [README.md](../README.md) for full command reference. All commands still work.
@@ -983,9 +983,9 @@ A: Keywords are explicit shortcuts. Natural language triggers auto-detection. Bo
 
 ## Need Help?
 
-- **Diagnose issues**: Run `/oh-my-claudecode:omc-doctor`
-- **See all commands**: Run `/oh-my-claudecode:omc-help`
-- **View real-time status**: Run `/oh-my-claudecode:hud setup`
+- **Diagnose issues**: Run `/oh-my-copilot:omc-doctor`
+- **See all commands**: Run `/oh-my-copilot:omc-help`
+- **View real-time status**: Run `/oh-my-copilot:hud setup`
 - **Review detailed changelog**: See [CHANGELOG.md](../CHANGELOG.md)
 - **Report bugs**: [GitHub Issues](https://github.com/Yeachan-Heo/oh-my-claudecode/issues)
 
