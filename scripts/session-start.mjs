@@ -335,8 +335,6 @@ const SESSION_END_MODE_STATE_FILES = [
   'skill-active-state.json',
 ];
 
-<<<<<<< HEAD
-=======
 import { MODEL_ROUTING_OVERRIDE_MESSAGE } from './lib/model-routing-override-message.mjs';
 export { MODEL_ROUTING_OVERRIDE_MESSAGE };
 
@@ -400,7 +398,6 @@ function shouldEmitModelRoutingOverride(directory) {
 }
 
 
->>>>>>> 9dbcf7a37 (fix(hooks): align SessionStart model routing override with pre-tool enforcer (#2868))
 function compactBudgetedText(text, maxChars) {
   const notice = '\n...[truncated to preserve SessionStart context budget]';
   if (!text || text.length <= maxChars) return text || '';
