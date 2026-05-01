@@ -79,7 +79,7 @@ EXAMPLES:
   /oh-my-copilot:omc-setup --global  # Update all projects
   /oh-my-copilot:omc-setup --force   # Re-run full setup wizard
 
-For more info: https://github.com/Yeachan-Heo/oh-my-copilot
+For more info: https://github.com/RobinNorberg/oh-my-copilot
 ```
 
 ## Pre-Setup Check: Already Configured?
@@ -156,13 +156,13 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-progress.sh" clear
 ## Phase Execution
 
 ### For `--local` or `--global` flags:
-Read the file at `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
+Read the file at `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-copilot-instructions.md` and follow its instructions.
 (The phase file handles early exit for flag mode.)
 
 ### For full setup (default or --force):
 Execute phases sequentially. For each phase, read the corresponding file and follow its instructions:
 
-1. **Phase 1 - Install CLAUDE.md**: Read `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-claude-md.md` and follow its instructions.
+1. **Phase 1 - Install copilot-instructions.md**: Read `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/01-install-copilot-instructions.md` and follow its instructions.
 
 2. **Phase 2 - Environment Configuration**: Read `${CLAUDE_PLUGIN_ROOT}/skills/omc-setup/phases/02-configure.md` and follow its instructions. Phase 2 must delegate HUD/statusLine setup to the `hud` skill; do not generate or patch `statusLine` paths inline here.
 
