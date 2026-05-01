@@ -55,13 +55,14 @@ describe('loadConfig() — auto-forceInherit for non-standard providers', () => 
     expect(config.routing?.forceInherit).toBe(true);
   });
 
-  it('does not auto-enable forceInherit for Bedrock inference-profile ARN model IDs (use CLAUDE_CODE_USE_BEDROCK=1 instead)', () => {
+  it('auto-enables forceInherit for Bedrock inference-profile ARN model IDs (port-2866)', () => {
     process.env.ANTHROPIC_MODEL =
       'arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-opus-4-6-v1:0';
     const config = loadConfig();
-    // isBedrock() only checks region prefix patterns and CLAUDE_CODE_USE_BEDROCK env var,
-    // not ARN format. ARN model IDs contain 'claude' so non-copilot model check also skips.
-    expect(config.routing?.forceInherit).toBe(false);
+    // isBedrock() now recognizes Bedrock ARN-based inference profiles
+    // (regex: /^arn:aws(-[^:]+)?:bedrock:/i + inference-profile + claude),
+    // ported from upstream #2866 alongside the region-prefix detection.
+    expect(config.routing?.forceInherit).toBe(true);
   });
 
   it('auto-enables forceInherit when CLAUDE_CODE_USE_VERTEX=1', () => {

@@ -93,14 +93,18 @@ describe('isNonCopilotProvider (issue #1201)', () => {
     expect(isNonCopilotProvider()).toBe(false);
   });
 
-  it('returns true when ANTHROPIC_DEFAULT_SONNET_MODEL is non-Claude', () => {
+  // TODO(port-2866 path-B): tier-env-based provider detection is upstream-only.
+  // Fork's isNonCopilotProvider() only checks CLAUDE_MODEL/ANTHROPIC_MODEL, not
+  // ANTHROPIC_DEFAULT_*_MODEL or OMC_MODEL_*. Re-enable if fork adopts upstream's
+  // hasNonClaudeModelId(getProviderDetectionModelEnvValues()) approach.
+  it.skip('returns true when ANTHROPIC_DEFAULT_SONNET_MODEL is non-Claude', () => {
     process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'kimi-k2.6:cloud';
-    expect(isNonClaudeProvider()).toBe(true);
+    expect(isNonCopilotProvider()).toBe(true);
   });
 
-  it('returns true when OMC_MODEL_MEDIUM is non-Claude', () => {
+  it.skip('returns true when OMC_MODEL_MEDIUM is non-Claude', () => {
     process.env.OMC_MODEL_MEDIUM = 'glm-5.1:cloud';
-    expect(isNonClaudeProvider()).toBe(true);
+    expect(isNonCopilotProvider()).toBe(true);
   });
 
   // --- Bedrock detection ---

@@ -94,7 +94,7 @@ describe('Agent Registry Validation', () => {
     expect(agents.architect?.model).toBe('us.anthropic.claude-opus-4-6-v1:0');
     expect(agents.executor?.model).toBe('us.anthropic.claude-sonnet-4-6-v1:0');
     expect(agents.explore?.model).toBe('us.anthropic.claude-haiku-4-5-v1:0');
-    expect(agents.tracer?.model).toBe('us.anthropic.claude-sonnet-4-6-v1:0');
+    // tracer agent is upstream-only; fork doesn't ship it.
   });
 
 
