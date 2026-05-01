@@ -31015,7 +31015,7 @@ function analyzePaneContent(content) {
     };
   }
   const cleanedContent = stripGitOutputLines(content);
-  const hasCopilotCode = CLAUDE_CODE_PATTERNS.some(
+  const hasCopilotCode = CLI_AGENT_PATTERNS.some(
     (pattern) => pattern.test(cleanedContent)
   );
   const rateLimitMatches = RATE_LIMIT_PATTERNS.filter(
@@ -31120,7 +31120,7 @@ function formatBlockedPanesSummary(blockedPanes) {
     return "No blocked Copilot CLI sessions detected.";
   }
   const lines = [
-    `Found ${blockedPanes.length} blocked Claude Code session(s):`,
+    `Found ${blockedPanes.length} blocked CLI agent session(s):`,
     ""
   ];
   for (const pane of blockedPanes) {
@@ -31132,7 +31132,7 @@ function formatBlockedPanesSummary(blockedPanes) {
   }
   return lines.join("\n");
 }
-var RATE_LIMIT_PATTERNS, CLAUDE_CODE_PATTERNS, WEEKLY_RATE_LIMIT_PATTERN, GIT_OUTPUT_LINE_PATTERNS, WAITING_PATTERNS;
+var RATE_LIMIT_PATTERNS, CLI_AGENT_PATTERNS, WEEKLY_RATE_LIMIT_PATTERN, GIT_OUTPUT_LINE_PATTERNS, WAITING_PATTERNS;
 var init_tmux_detector = __esm({
   "src/features/rate-limit-wait/tmux-detector.ts"() {
     "use strict";
@@ -31155,7 +31155,7 @@ var init_tmux_detector = __esm({
       // report generation", "update weekly standup notes").
       /\bweekly\s+(?:usage\s+)?(?:limit|quota|cap|allowance|allocation)\b/i
     ];
-    CLAUDE_CODE_PATTERNS = [
+    CLI_AGENT_PATTERNS = [
       /claude/i,
       /copilot/i,
       /anthropic/i,
@@ -90614,7 +90614,7 @@ This command is no longer the authoritative autoresearch workflow.
 Use this flow instead:
   1. /deep-interview --autoresearch "<mission idea>"
      - use deep-interview to generate/setup the mission and evaluator
-  2. /oh-my-claudecode:autoresearch
+  2. /oh-my-copilot:autoresearch
      - run the stateful single-mission autoresearch skill
 
 Key behavior:

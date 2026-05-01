@@ -5,7 +5,7 @@ This command is no longer the authoritative autoresearch workflow.
 Use this flow instead:
   1. /deep-interview --autoresearch "<mission idea>"
      - use deep-interview to generate/setup the mission and evaluator
-  2. /oh-my-claudecode:autoresearch
+  2. /oh-my-copilot:autoresearch
      - run the stateful single-mission autoresearch skill
 
 Key behavior:

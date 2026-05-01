@@ -57,7 +57,7 @@ const SKILL_PROTECTION = {
 };
 
 function getSkillProtection(skillName) {
-  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-(?:claudecode|copilot):/, '');
   return SKILL_PROTECTION[normalized] || 'light';
 }
 
@@ -77,7 +77,7 @@ function writeSkillActiveState(directory, skillName, sessionId) {
 
   const config = PROTECTION_CONFIGS[protection];
   const now = new Date().toISOString();
-  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-(?:claudecode|copilot):/, '');
 
   const state = {
     active: true,

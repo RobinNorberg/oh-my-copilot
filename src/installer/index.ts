@@ -349,7 +349,8 @@ export function isOmcStatusLine(statusLine: unknown): boolean {
 }
 
 /**
- * Known OMC hook script filenames installed into .claude/hooks/.
+ * Known OMC hook script filenames installed into the host CLI's hooks/ directory
+ * (e.g. `~/.claude/hooks/` for Claude Code, `~/.copilot/hooks/` for Copilot CLI).
  * Must be kept in sync with HOOKS_SETTINGS_CONFIG_NODE command entries.
  */
 const OMC_HOOK_FILENAMES = new Set([
@@ -383,8 +384,10 @@ export function isOmcHook(command: string): boolean {
   if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
     return true;
   }
-  // Check for known OMC hook filenames in .claude/hooks/ path.
-  // Handles both Unix (.claude/hooks/) and Windows (.claude\hooks\) paths.
+  // Check for known OMC hook filenames in any host-CLI hooks/ directory
+  // (e.g. ~/.claude/hooks/ for Claude Code, ~/.copilot/hooks/ for Copilot CLI).
+  // The regex below matches `hooks/` or `hooks\` regardless of parent path,
+  // so both Unix and Windows layouts under either CLI are covered.
   const containsHooksDir = /hooks[/\\]/.test(lowerCommand);
   const hookFilenameMatch = lowerCommand.match(/([a-z0-9-]+\.mjs)(?:$|["'\s])/);
   if (containsHooksDir && hookFilenameMatch && OMC_HOOK_FILENAMES.has(hookFilenameMatch[1])) {
