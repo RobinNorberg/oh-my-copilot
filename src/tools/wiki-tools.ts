@@ -7,7 +7,7 @@
 
 import { z } from 'zod';
 import {
-  validateWorkingDirectory,
+  validateWorkingDirectoryOrLinkedWorktree,
 } from '../lib/worktree-paths.js';
 import {
   readPage,
@@ -46,7 +46,7 @@ export const wikiIngestTool: AnyToolDefinition = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectory(args.workingDirectory);
+      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
 
       const result = ingestKnowledge(root, {
         title: args.title,
@@ -91,7 +91,7 @@ export const wikiQueryTool: AnyToolDefinition = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectory(args.workingDirectory);
+      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
       const matches = queryWiki(root, args.query, {
         tags: args.tags,
         category: args.category as WikiCategory | undefined,
@@ -146,7 +146,7 @@ export const wikiLintTool: ToolDefinition<{
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectory(args.workingDirectory);
+      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
       const report = lintWiki(root);
 
       if (report.issues.length === 0) {
@@ -201,7 +201,7 @@ export const wikiAddTool: AnyToolDefinition = {
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectory(args.workingDirectory);
+      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
       const slug = titleToSlug(args.title);
 
       // Guard: reject if page already exists — use wiki_ingest to merge
@@ -255,7 +255,7 @@ export const wikiListTool: ToolDefinition<{
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectory(args.workingDirectory);
+      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
       const index = readIndex(root);
 
       if (!index) {
@@ -310,7 +310,7 @@ export const wikiReadTool: ToolDefinition<{
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectory(args.workingDirectory);
+      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
       const filename = args.page.endsWith('.md') ? args.page : `${args.page}.md`;
       const page = readPage(root, filename);
 
@@ -368,7 +368,7 @@ export const wikiDeleteTool: ToolDefinition<{
   },
   handler: async (args) => {
     try {
-      const root = validateWorkingDirectory(args.workingDirectory);
+      const root = validateWorkingDirectoryOrLinkedWorktree(args.workingDirectory);
       const filename = args.page.endsWith('.md') ? args.page : `${args.page}.md`;
       const deleted = deletePage(root, filename);
 
