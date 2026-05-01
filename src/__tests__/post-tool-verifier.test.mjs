@@ -492,7 +492,7 @@ describe('post-tool hook regression coverage (issue #2615)', () => {
       cwd: process.cwd(),
     });
 
-    expect(isClaudeCodeWriteSuccess('The file has been updated successfully.')).toBe(true);
+    expect(isCopilotCliWriteSuccess('The file has been updated successfully.')).toBe(true);
     expect(out.hookSpecificOutput?.additionalContext).toContain('Code modified.');
     expect(out.hookSpecificOutput?.additionalContext).not.toContain('Edit operation failed');
   });

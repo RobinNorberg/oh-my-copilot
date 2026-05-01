@@ -388,7 +388,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
       toolInput: {
-        subagent_type: 'oh-my-claudecode:executor',
+        subagent_type: 'oh-my-copilot:executor',
         description: 'Implement a fallback',
         prompt: 'Add a workaround if the normal architecture is hard.',
       },
