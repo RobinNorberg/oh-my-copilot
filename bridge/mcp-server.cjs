@@ -31108,7 +31108,7 @@ function getGitCommonDir(cwd) {
       stdio: ["pipe", "pipe", "pipe"],
       timeout: 5e3
     }).trim();
-    return (0, import_fs10.realpathSync)(commonDir);
+    return (0, import_fs9.realpathSync)(commonDir);
   } catch {
     return null;
   }
@@ -31121,7 +31121,7 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   const resolved = (0, import_path11.resolve)(workingDirectory);
   let trustedRootReal;
   try {
-    trustedRootReal = (0, import_fs10.realpathSync)(trustedRoot);
+    trustedRootReal = (0, import_fs9.realpathSync)(trustedRoot);
   } catch {
     trustedRootReal = trustedRoot;
   }
@@ -31129,7 +31129,7 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   if (providedRoot) {
     let providedRootReal;
     try {
-      providedRootReal = (0, import_fs10.realpathSync)(providedRoot);
+      providedRootReal = (0, import_fs9.realpathSync)(providedRoot);
     } catch {
       throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
     }
@@ -31150,7 +31150,7 @@ function validateWorkingDirectoryOrLinkedWorktree(workingDirectory) {
   }
   let resolvedReal;
   try {
-    resolvedReal = (0, import_fs10.realpathSync)(resolved);
+    resolvedReal = (0, import_fs9.realpathSync)(resolved);
   } catch {
     throw new Error(`workingDirectory '${workingDirectory}' does not exist or is not accessible.`);
   }
