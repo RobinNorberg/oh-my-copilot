@@ -2105,14 +2105,41 @@ var init_ssrf_guard = __esm({
 });
 
 // src/config/models.ts
+function readEnvValue(key) {
+  const value = process.env[key]?.trim();
+  return value || void 0;
+}
 function resolveTierModelFromEnv(tier) {
   for (const key of TIER_ENV_KEYS[tier]) {
-    const value = process.env[key]?.trim();
+    const value = readEnvValue(key);
     if (value) {
       return value;
     }
   }
   return void 0;
+}
+function getDirectModelEnvValue() {
+  for (const key of DIRECT_MODEL_ENV_KEYS) {
+    const value = readEnvValue(key);
+    if (value) {
+      return value;
+    }
+  }
+  return void 0;
+}
+function getProviderDetectionModelEnvValues() {
+  const directModel = getDirectModelEnvValue();
+  if (directModel) {
+    return [directModel];
+  }
+  const values = /* @__PURE__ */ new Set();
+  for (const tier of INHERIT_TIER_PRIORITY) {
+    const value = resolveTierModelFromEnv(tier);
+    if (value) {
+      values.add(value);
+    }
+  }
+  return [...values];
 }
 function getDefaultModelHigh() {
   return resolveTierModelFromEnv("HIGH") || BUILTIN_TIER_MODEL_DEFAULTS.HIGH;
@@ -2146,17 +2173,19 @@ function isBedrock() {
   if (modelId && /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) {
     return true;
   }
+  if (modelId && /^arn:aws(-[^:]+)?:bedrock:/i.test(modelId) && /:(inference-profile|application-inference-profile)\//i.test(modelId) && modelId.toLowerCase().includes("claude")) {
+    return true;
+  }
   return false;
 }
 function isVertexAI() {
   if (process.env.CLAUDE_CODE_USE_VERTEX === "1") {
     return true;
   }
-  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || "";
-  if (modelId && modelId.toLowerCase().startsWith("vertex_ai/")) {
-    return true;
-  }
-  return false;
+  return hasVertexModelId(getProviderDetectionModelEnvValues());
+}
+function hasVertexModelId(modelIds) {
+  return modelIds.some((modelId) => modelId.toLowerCase().startsWith("vertex_ai/"));
 }
 function isProviderSpecificModelId(modelId) {
   return isBedrockModelId(modelId) || isVertexModelId(modelId);
@@ -2195,11 +2224,13 @@ function isNonCopilotProvider() {
   }
   return false;
 }
-var TIER_ENV_KEYS, COPILOT_FAMILY_DEFAULTS, BUILTIN_TIER_MODEL_DEFAULTS, COPILOT_FAMILY_HIGH_VARIANTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS;
+var DIRECT_MODEL_ENV_KEYS, INHERIT_TIER_PRIORITY, TIER_ENV_KEYS, COPILOT_FAMILY_DEFAULTS, BUILTIN_TIER_MODEL_DEFAULTS, COPILOT_FAMILY_HIGH_VARIANTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS;
 var init_models = __esm({
   "src/config/models.ts"() {
     "use strict";
     init_ssrf_guard();
+    DIRECT_MODEL_ENV_KEYS = ["CLAUDE_MODEL", "ANTHROPIC_MODEL"];
+    INHERIT_TIER_PRIORITY = ["MEDIUM", "HIGH", "LOW"];
     TIER_ENV_KEYS = {
       LOW: [
         "OMC_MODEL_LOW",
@@ -3192,6 +3223,7 @@ var init_definitions = __esm({
     init_utils();
     init_loader();
     init_strict_mode_guidance();
+    init_models();
     init_architect();
     init_designer();
     init_writer();
@@ -3275,6 +3307,9 @@ var init_definitions = __esm({
 
 // src/features/delegation-enforcer.ts
 function normalizeToCcAlias(model) {
+  if (isProviderSpecificModelId(model)) {
+    return model;
+  }
   const family = resolveClaudeFamily(model);
   return family ? CC_FAMILY_TO_ALIAS[family] ?? model : model;
 }

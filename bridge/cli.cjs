@@ -3245,9 +3245,49 @@ var init_ssrf_guard = __esm({
 });
 
 // src/config/models.ts
+function readEnvValue(key) {
+  const value = process.env[key]?.trim();
+  return value || void 0;
+}
 function resolveTierModelFromEnv(tier) {
   for (const key of TIER_ENV_KEYS[tier]) {
-    const value = process.env[key]?.trim();
+    const value = readEnvValue(key);
+    if (value) {
+      return value;
+    }
+  }
+  return void 0;
+}
+function getDirectModelEnvValue() {
+  for (const key of DIRECT_MODEL_ENV_KEYS) {
+    const value = readEnvValue(key);
+    if (value) {
+      return value;
+    }
+  }
+  return void 0;
+}
+function getProviderDetectionModelEnvValues() {
+  const directModel = getDirectModelEnvValue();
+  if (directModel) {
+    return [directModel];
+  }
+  const values = /* @__PURE__ */ new Set();
+  for (const tier of INHERIT_TIER_PRIORITY) {
+    const value = resolveTierModelFromEnv(tier);
+    if (value) {
+      values.add(value);
+    }
+  }
+  return [...values];
+}
+function resolveInheritedModelFromEnv() {
+  const directModel = getDirectModelEnvValue();
+  if (directModel) {
+    return directModel;
+  }
+  for (const tier of INHERIT_TIER_PRIORITY) {
+    const value = resolveTierModelFromEnv(tier);
     if (value) {
       return value;
     }
@@ -3286,17 +3326,19 @@ function isBedrock() {
   if (modelId && /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) {
     return true;
   }
+  if (modelId && /^arn:aws(-[^:]+)?:bedrock:/i.test(modelId) && /:(inference-profile|application-inference-profile)\//i.test(modelId) && modelId.toLowerCase().includes("claude")) {
+    return true;
+  }
   return false;
 }
 function isVertexAI() {
   if (process.env.CLAUDE_CODE_USE_VERTEX === "1") {
     return true;
   }
-  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || "";
-  if (modelId && modelId.toLowerCase().startsWith("vertex_ai/")) {
-    return true;
-  }
-  return false;
+  return hasVertexModelId(getProviderDetectionModelEnvValues());
+}
+function hasVertexModelId(modelIds) {
+  return modelIds.some((modelId) => modelId.toLowerCase().startsWith("vertex_ai/"));
 }
 function isProviderSpecificModelId(modelId) {
   return isBedrockModelId(modelId) || isVertexModelId(modelId);
@@ -3335,11 +3377,13 @@ function isNonCopilotProvider() {
   }
   return false;
 }
-var TIER_ENV_KEYS, COPILOT_FAMILY_DEFAULTS, BUILTIN_TIER_MODEL_DEFAULTS, COPILOT_FAMILY_HIGH_VARIANTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS;
+var DIRECT_MODEL_ENV_KEYS, INHERIT_TIER_PRIORITY, TIER_ENV_KEYS, COPILOT_FAMILY_DEFAULTS, BUILTIN_TIER_MODEL_DEFAULTS, COPILOT_FAMILY_HIGH_VARIANTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS;
 var init_models = __esm({
   "src/config/models.ts"() {
     "use strict";
     init_ssrf_guard();
+    DIRECT_MODEL_ENV_KEYS = ["CLAUDE_MODEL", "ANTHROPIC_MODEL"];
+    INHERIT_TIER_PRIORITY = ["MEDIUM", "HIGH", "LOW"];
     TIER_ENV_KEYS = {
       LOW: [
         "OMC_MODEL_LOW",
@@ -4762,7 +4806,7 @@ function getAgentDefinitions(options) {
     "document-specialist": documentSpecialistAgent
   };
   const resolvedConfig = options?.config ?? loadConfig();
-  const inheritModel = resolvedConfig.routing?.forceInherit ? process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL : void 0;
+  const inheritModel = resolvedConfig.routing?.forceInherit ? resolveInheritedModelFromEnv() : void 0;
   const result = {};
   for (const [name, agentConfig] of Object.entries(agents)) {
     const override = options?.overrides?.[name];
@@ -4791,6 +4835,7 @@ var init_definitions = __esm({
     init_utils();
     init_loader();
     init_strict_mode_guidance();
+    init_models();
     init_architect();
     init_designer();
     init_writer();
@@ -35056,6 +35101,9 @@ var init_team_name = __esm({
 
 // src/features/delegation-enforcer.ts
 function normalizeToCcAlias(model) {
+  if (isProviderSpecificModelId(model)) {
+    return model;
+  }
   const family = resolveClaudeFamily(model);
   return family ? CC_FAMILY_TO_ALIAS[family] ?? model : model;
 }
@@ -84761,9 +84809,18 @@ Please continue working on these tasks.
 
 [MODEL ROUTING OVERRIDE \u2014 NON-STANDARD PROVIDER DETECTED]
 
-This environment uses a non-standard model provider (AWS Bedrock, Google Vertex AI, or a proxy).
-Do NOT pass the \`model\` parameter on Task/Agent calls. Omit it entirely so agents inherit the parent session's model.
-The CLAUDE.md instruction "Pass model on Task calls: haiku, sonnet, opus" does NOT apply here.
+This environment uses a non-standard model provider (AWS Bedrock, Google Vertex AI, or a proxy such as CC Switch / LiteLLM).
+
+How to pass \`model\` on Task/Agent calls:
+- Prefer a tier alias: \`model: "sonnet"\`, \`model: "opus"\`, or \`model: "haiku"\`. OMC's pre-tool enforcer resolves these to provider-safe IDs when one of these env vars is set: \`ANTHROPIC_DEFAULT_SONNET_MODEL\` (and sibling \`ANTHROPIC_DEFAULT_OPUS_MODEL\` / \`ANTHROPIC_DEFAULT_HAIKU_MODEL\`), \`CLAUDE_CODE_BEDROCK_SONNET_MODEL\` (and sibling \`CLAUDE_CODE_BEDROCK_OPUS_MODEL\` / \`CLAUDE_CODE_BEDROCK_HAIKU_MODEL\`), or \`OMC_SUBAGENT_MODEL\`.
+- If none of those env vars are configured, the enforcer will deny the tier alias with an env-var configuration hint \u2014 set one of them in your \`settings.json\` env or shell profile.
+- The enforcer denies tier aliases it cannot resolve. It also denies provider-specific IDs that carry a \`[1m]\` context-window suffix or otherwise fail subagent-safe validation (sub-agents cannot inherit \`[1m]\`). Valid provider-specific IDs without extended-context suffixes are allowed.
+
+When the session model carries a \`[1m]\` suffix, passing an explicit \`model\` is REQUIRED \u2014 omitting it will be denied (sub-agents cannot inherit the \`[1m]\` suffix). Use a tier alias (requires resolver env vars above); the Agent tool schema does not accept provider-specific IDs, so tier aliases are the only valid option.
+
+When the session model has no \`[1m]\` suffix, omitting \`model\` is safe UNLESS a custom sub-agent definition pins a bare Anthropic model ID (e.g. \`model: claude-sonnet-4-6\` in agent frontmatter). When resolver env vars are configured, the enforcer will deny that call with tier-alias guidance; when they are absent, the call is not denied by the enforcer but will fail at the provider. Either way, custom sub-agents should pin tier aliases (not bare Anthropic IDs) in their frontmatter. Shipped OMC agents already do this and are unaffected.
+
+The CLAUDE.md instruction "Pass model on Task calls: haiku, sonnet, opus" applies here \u2014 subject to the resolution prerequisites above.
 
 </system-reminder>`);
     }
@@ -84881,7 +84938,7 @@ Command blocked: ${command}`
     if (inputModel) {
       const config2 = loadConfig();
       if (config2.routing?.forceInherit) {
-        const denyReason = `[MODEL ROUTING] This environment uses a non-standard provider (Bedrock/Vertex/proxy). Do NOT pass the \`model\` parameter on ${input.toolName} calls \u2014 remove \`model\` and retry so agents inherit the parent session's model. The model "${inputModel}" is not valid for this provider.`;
+        const denyReason = `[MODEL ROUTING] This environment uses a non-standard provider (Bedrock/Vertex/proxy). Omit the \`model\` parameter on ${input.toolName} calls so agents inherit the parent session's model. The model "${inputModel}" was rejected.`;
         return {
           continue: true,
           hookSpecificOutput: {

@@ -14,6 +14,7 @@ export declare const BUILTIN_EXTERNAL_MODEL_DEFAULTS: {
     readonly codexModel: "gpt-5.3-codex";
     readonly geminiModel: "gemini-3.1-pro-preview";
 };
+export declare function resolveInheritedModelFromEnv(): string | undefined;
 export declare function hasTierModelEnvOverrides(): boolean;
 export declare function getDefaultModelHigh(): string;
 export declare function getDefaultModelMedium(): string;
@@ -107,4 +108,11 @@ export declare function isVertexModelId(modelId: string): boolean;
  * - A custom ANTHROPIC_BASE_URL points to a non-Anthropic endpoint
  */
 export declare function isNonCopilotProvider(): boolean;
+/**
+ * Detect whether provider state should globally force Agent/Task calls to
+ * inherit the parent session model. Tier model env overrides intentionally do
+ * not trigger this by themselves: they are configured per-tier defaults for
+ * OMC routing, not proof that every delegated agent should drop its model.
+ */
+export declare function shouldAutoForceInherit(): boolean;
 //# sourceMappingURL=models.d.ts.map

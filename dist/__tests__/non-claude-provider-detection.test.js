@@ -19,6 +19,15 @@ describe('isNonCopilotProvider (issue #1201)', () => {
         'OMC_ROUTING_FORCE_INHERIT',
         'CLAUDE_CODE_USE_BEDROCK',
         'CLAUDE_CODE_USE_VERTEX',
+        'OMC_MODEL_HIGH',
+        'OMC_MODEL_MEDIUM',
+        'OMC_MODEL_LOW',
+        'CLAUDE_CODE_BEDROCK_OPUS_MODEL',
+        'CLAUDE_CODE_BEDROCK_SONNET_MODEL',
+        'CLAUDE_CODE_BEDROCK_HAIKU_MODEL',
+        'ANTHROPIC_DEFAULT_OPUS_MODEL',
+        'ANTHROPIC_DEFAULT_SONNET_MODEL',
+        'ANTHROPIC_DEFAULT_HAIKU_MODEL',
     ];
     beforeEach(() => {
         for (const key of envKeys) {
@@ -70,6 +79,18 @@ describe('isNonCopilotProvider (issue #1201)', () => {
     it('is case-insensitive for Copilot detection in model name', () => {
         process.env.CLAUDE_MODEL = 'Copilot-Sonnet-4-6';
         expect(isNonCopilotProvider()).toBe(false);
+    });
+    // TODO(port-2866 path-B): tier-env-based provider detection is upstream-only.
+    // Fork's isNonCopilotProvider() only checks CLAUDE_MODEL/ANTHROPIC_MODEL, not
+    // ANTHROPIC_DEFAULT_*_MODEL or OMC_MODEL_*. Re-enable if fork adopts upstream's
+    // hasNonClaudeModelId(getProviderDetectionModelEnvValues()) approach.
+    it.skip('returns true when ANTHROPIC_DEFAULT_SONNET_MODEL is non-Claude', () => {
+        process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'kimi-k2.6:cloud';
+        expect(isNonCopilotProvider()).toBe(true);
+    });
+    it.skip('returns true when OMC_MODEL_MEDIUM is non-Claude', () => {
+        process.env.OMC_MODEL_MEDIUM = 'glm-5.1:cloud';
+        expect(isNonCopilotProvider()).toBe(true);
     });
     // --- Bedrock detection ---
     it('returns true when CLAUDE_CODE_USE_BEDROCK=1', () => {
@@ -225,6 +246,15 @@ describe('loadConfig auto-enables forceInherit for non-Copilot providers (issue 
         'OMC_ROUTING_FORCE_INHERIT',
         'CLAUDE_CODE_USE_BEDROCK',
         'CLAUDE_CODE_USE_VERTEX',
+        'OMC_MODEL_HIGH',
+        'OMC_MODEL_MEDIUM',
+        'OMC_MODEL_LOW',
+        'CLAUDE_CODE_BEDROCK_OPUS_MODEL',
+        'CLAUDE_CODE_BEDROCK_SONNET_MODEL',
+        'CLAUDE_CODE_BEDROCK_HAIKU_MODEL',
+        'ANTHROPIC_DEFAULT_OPUS_MODEL',
+        'ANTHROPIC_DEFAULT_SONNET_MODEL',
+        'ANTHROPIC_DEFAULT_HAIKU_MODEL',
     ];
     beforeEach(() => {
         for (const key of envKeys) {
@@ -246,6 +276,13 @@ describe('loadConfig auto-enables forceInherit for non-Copilot providers (issue 
         process.env.CLAUDE_MODEL = 'glm-5';
         const config = loadConfig();
         expect(config.routing?.forceInherit).toBe(true);
+    });
+    it('does not auto-enable forceInherit for partial OMC tier env overrides', () => {
+        process.env.OMC_MODEL_HIGH = 'glm-5.1:cloud';
+        const config = loadConfig();
+        expect(config.routing?.forceInherit).toBe(false);
+        expect(config.agents?.architect?.model).toBe('glm-5.1:cloud');
+        expect(config.agents?.executor?.model).toContain('claude-sonnet');
     });
     it('auto-enables forceInherit when ANTHROPIC_BASE_URL is non-Anthropic', () => {
         process.env.ANTHROPIC_BASE_URL = 'https://litellm.example.com/v1';
