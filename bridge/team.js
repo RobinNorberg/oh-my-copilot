@@ -3486,6 +3486,9 @@ function resolveCliBinaryPath(binary) {
   resolvedPathCache.set(binary, resolvedPath);
   return resolvedPath;
 }
+function shouldUseClaudeBareMode(env = process.env) {
+  return typeof env.ANTHROPIC_API_KEY === "string" && env.ANTHROPIC_API_KEY.trim().length > 0;
+}
 function getContract(agentType) {
   const contract = CONTRACTS[agentType];
   if (!contract) {
@@ -3595,6 +3598,9 @@ var init_model_contract = __esm({
         installInstructions: "Install Claude CLI: https://claude.ai/download",
         buildLaunchArgs(model, extraFlags = []) {
           const args = ["--dangerously-skip-permissions"];
+          if (shouldUseClaudeBareMode() && !extraFlags.includes("--bare")) {
+            args.push("--bare");
+          }
           if (model) {
             const resolved = isProviderSpecificModelId(model) ? model : normalizeToCcAlias(model);
             args.push("--model", resolved);

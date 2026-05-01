@@ -48,6 +48,14 @@ export declare const _testInternals: {
     UNTRUSTED_PATH_PATTERNS: RegExp[];
     getTrustedPrefixes: typeof getTrustedPrefixes;
 };
+/**
+ * Detect parent launch env for Claude Code API-key auth.
+ *
+ * Claude Code's `--dangerously-skip-permissions` only bypasses permission
+ * prompts. When an API key is present, `--bare` is needed to avoid the
+ * interactive OAuth/session login path for team worker panes.
+ */
+export declare function shouldUseClaudeBareMode(env?: NodeJS.ProcessEnv): boolean;
 export declare function getContract(agentType: CliAgentType): CliAgentContract;
 export declare function isCliAvailable(agentType: CliAgentType): boolean;
 export declare function validateCliAvailable(agentType: CliAgentType): void;
