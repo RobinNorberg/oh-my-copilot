@@ -59,8 +59,8 @@ describe('wiki tools workingDirectory', () => {
     });
 
     expect(addResult.isError).toBeUndefined();
-    expect(existsSync(join(linked, '.omc', 'wiki', 'linked-worktree-page.md'))).toBe(true);
-    expect(existsSync(join(primary, '.omc', 'wiki'))).toBe(false);
+    expect(existsSync(join(linked, '.omcp', 'wiki', 'linked-worktree-page.md'))).toBe(true);
+    expect(existsSync(join(primary, '.omcp', 'wiki'))).toBe(false);
 
     const readResult = await wikiReadTool.handler({
       page: 'linked-worktree-page',
@@ -70,6 +70,6 @@ describe('wiki tools workingDirectory', () => {
     expect(readResult.isError).toBeUndefined();
     expect(readResult.content[0].text).toContain('Linked Worktree Page');
     expect(readResult.content[0].text).toContain('This belongs to the linked worktree wiki.');
-    expect(existsSync(join(primary, '.omc', 'wiki'))).toBe(false);
+    expect(existsSync(join(primary, '.omcp', 'wiki'))).toBe(false);
   });
 });
