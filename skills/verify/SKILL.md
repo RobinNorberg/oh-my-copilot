@@ -8,7 +8,7 @@ description: Verify that a change really works before you claim completion
 Use this skill when the user wants confidence that a feature, fix, or refactor actually works.
 
 ## Goal
-Turn vague "it should work" claims into concrete evidence.
+Turn vague “it should work” claims into concrete evidence.
 
 ## Workflow
 1. Identify the exact behavior that must be proven.
@@ -34,3 +34,4 @@ Turn vague "it should work" claims into concrete evidence.
 - Which commands/tests were run
 - What passed
 - What failed or remains unverified
+

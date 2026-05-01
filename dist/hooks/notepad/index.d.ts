@@ -60,7 +60,10 @@ export declare const PRIORITY_HEADER = "## Priority Context";
 export declare const WORKING_MEMORY_HEADER = "## Working Memory";
 export declare const MANUAL_HEADER = "## MANUAL";
 /**
- * Get the path to notepad.md in .omcp subdirectory
+ * Get the path to notepad.md.
+ *
+ * Notepad lives under the cross-plugin shared root (`.omc/notepad.md`)
+ * so it compounds across oh-my-copilot and oh-my-claudecode sessions.
  */
 export declare function getNotepadPath(directory: string): string;
 /**

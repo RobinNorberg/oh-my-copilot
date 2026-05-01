@@ -21,6 +21,44 @@ function removeCodeBlocks(text: string): string {
   return text.replace(CODE_BLOCK_PATTERN, '').replace(INLINE_CODE_PATTERN, '');
 }
 
+const INFORMATIONAL_INTENT_PATTERNS: RegExp[] = [
+  /\b(?:what(?:'s|\s+is)|what\s+are|how\s+(?:to|do\s+i)\s+use|explain|explanation|tell\s+me\s+about|describe)\b/i,
+];
+const INFORMATIONAL_CONTEXT_WINDOW = 80;
+
+function isInformationalKeywordContext(text: string, position: number, keywordLength: number): boolean {
+  const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
+  const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
+  const context = text.slice(start, end);
+  return INFORMATIONAL_INTENT_PATTERNS.some(pattern => pattern.test(context));
+}
+
+/**
+ * Escape regex metacharacters so a string matches literally inside new RegExp().
+ */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasActionableTrigger(text: string, trigger: string): boolean {
+  const pattern = new RegExp(`\\b${escapeRegExp(trigger)}\\b`, 'gi');
+
+  for (const match of text.matchAll(pattern)) {
+    if (match.index === undefined) {
+      continue;
+    }
+
+    if (isInformationalKeywordContext(text, match.index, match[0].length)) {
+      continue;
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+
 /**
  * Ultrawork mode enhancement
  * Activates maximum performance with parallel agent orchestration
@@ -159,7 +197,7 @@ export const builtInMagicKeywords: MagicKeyword[] = [
  * Create a magic keyword processor with custom triggers
  */
 export function createMagicKeywordProcessor(config?: PluginConfig['magicKeywords']): (prompt: string, agentName?: string, modelId?: string) => string {
-  const keywords = [...builtInMagicKeywords];
+  const keywords = builtInMagicKeywords.map(k => ({ ...k, triggers: [...k.triggers] }));
 
   // Override triggers from config
   if (config) {

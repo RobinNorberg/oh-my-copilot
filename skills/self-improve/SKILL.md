@@ -30,9 +30,9 @@ You are the **loop controller** for the self-improvement system. You manage the 
 
 Self-improve artifacts live under a resolved root returned by `scripts/resolve-paths.mjs`.
 
-- New runs default to `.omc/self-improve/topics/default/`.
-- When the user provides a topic or slug, use `.omc/self-improve/topics/{topic_slug}/`.
-- Legacy single-track state at `.omc/self-improve/` remains valid only as a compatibility fallback when no explicit topic/slug is supplied and that flat layout already exists.
+- New runs default to `.omcp/self-improve/topics/default/`.
+- When the user provides a topic or slug, use `.omcp/self-improve/topics/{topic_slug}/`.
+- Legacy single-track state at `.omcp/self-improve/` remains valid only as a compatibility fallback when no explicit topic/slug is supplied and that flat layout already exists.
 
 Treat `<self-improve-root>/` below as that resolved root:
 
@@ -115,7 +115,7 @@ Read these files at startup and at the beginning of each iteration:
 6. If goal not set → read `si-goal-clarifier.md` from this skill directory and run the 4-dimension Socratic interview directly in this context (Objective, Metric, Target, Scope). Write result to `<self-improve-root>/config/goal.md`.
 6. If benchmark not set → read `si-benchmark-builder.md` from this skill directory, spawn a custom Agent(model=opus) with its content as prompt. The agent surveys the repo, creates or wraps a benchmark, validates 3x, and records baseline.
    After benchmark is set, confirm the benchmark command with user:
-   `"Benchmark command: {benchmark_command}. This will be run repeatedly during the loop. Confirm? [yes/no]"`
+      `"Benchmark command: {benchmark_command}. This will be run repeatedly during the loop. Confirm? [yes/no]"`
    If user declines: abort setup and exit.
 7. If harness not set → confirm default harness rules (H001/H002/H003) with user or customize.
 8. **Gate**: All of `si_setting_goal`, `si_setting_benchmark`, `si_setting_harness`, `trust_confirmed` must be true.

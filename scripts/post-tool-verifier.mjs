@@ -747,9 +747,114 @@ function extractTextFromKnownToolResponseField(value, depth = 0) {
   return texts;
 }
 
-function hasStructuredWriteSuccess(rawResponse) {
+function isStructuredEnvelopePayloadField(fieldName) {
+  return new Set([
+    'content',
+    'oldstring',
+    'newstring',
+    'originalfile',
+    'structuredpatch',
+    'patch',
+    'diff',
+    'lines',
+    'line',
+  ]).has(fieldName.toLowerCase());
+}
+
+function isStructuredEnvelopeStatusTextField(fieldName) {
+  return new Set(['message', 'output', 'stdout', 'stderr', 'text', 'result'])
+    .has(fieldName.toLowerCase());
+}
+
+function hasExplicitStructuredFailureIndicator(value, depth = 0, fieldName = '') {
+  if (!value || typeof value === 'string' || depth > 4) return false;
+  if (fieldName && isStructuredEnvelopePayloadField(fieldName)) return false;
+
+  if (Array.isArray(value)) {
+    return value.some(item => hasExplicitStructuredFailureIndicator(item, depth + 1, fieldName));
+  }
+
+  if (typeof value !== 'object') return false;
+
+  for (const [key, fieldValue] of Object.entries(value)) {
+    const normalizedKey = key.toLowerCase();
+    if (
+      typeof fieldValue === 'string' &&
+      isStructuredEnvelopeStatusTextField(key) &&
+      detectWriteFailure(fieldValue)
+    ) {
+      return true;
+    }
+
+    if (
+      (normalizedKey.includes('error') || normalizedKey.includes('fail')) &&
+      fieldValue !== false &&
+      fieldValue !== 0 &&
+      fieldValue !== null &&
+      fieldValue !== undefined &&
+      !(typeof fieldValue === 'string' && fieldValue.trim() === '') &&
+      !(Array.isArray(fieldValue) && fieldValue.length === 0)
+    ) {
+      return true;
+    }
+
+    if (hasExplicitStructuredFailureIndicator(fieldValue, depth + 1, key)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function hasEditEnvelopeSuccess(value, depth = 0) {
+  if (!value || typeof value === 'string' || depth > 4) return false;
+
+  if (Array.isArray(value)) {
+    return value.some(item => hasEditEnvelopeSuccess(item, depth + 1));
+  }
+
+  if (typeof value !== 'object') return false;
+
+  if (hasExplicitStructuredFailureIndicator(value, depth)) return false;
+
+  if (typeof value.filePath === 'string' && Array.isArray(value.structuredPatch)) {
+    return true;
+  }
+
+  return Object.values(value).some(item => hasEditEnvelopeSuccess(item, depth + 1));
+}
+
+function hasWriteEnvelopeSuccess(value, depth = 0) {
+  if (!value || typeof value === 'string' || depth > 4) return false;
+
+  if (Array.isArray(value)) {
+    return value.some(item => hasWriteEnvelopeSuccess(item, depth + 1));
+  }
+
+  if (typeof value !== 'object') return false;
+
+  if (hasExplicitStructuredFailureIndicator(value, depth)) return false;
+
+  if (
+    typeof value.filePath === 'string' &&
+    (value.type === 'create' || value.type === 'update')
+  ) {
+    return true;
+  }
+
+  return Object.values(value).some(item => hasWriteEnvelopeSuccess(item, depth + 1));
+}
+
+function hasStructuredWriteSuccess(rawResponse, toolName = '') {
   if (!rawResponse || typeof rawResponse === 'string') return false;
+  if (toolName === 'Edit' && hasEditEnvelopeSuccess(rawResponse)) return true;
+  if (toolName === 'Write' && hasWriteEnvelopeSuccess(rawResponse)) return true;
   return extractTextFromKnownToolResponseField(rawResponse).some(isCopilotCliWriteSuccess);
+}
+
+function hasStructuredWriteFailure(rawResponse) {
+  if (!rawResponse || typeof rawResponse === 'string') return false;
+  return hasExplicitStructuredFailureIndicator(rawResponse);
 }
 
 // Get agent completion summary from tracking state
@@ -780,7 +885,12 @@ function getAgentCompletionSummary(directory, quietLevel = QUIET_LEVEL) {
 
 // Generate contextual message
 function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, options = {}) {
-  const { wasTruncated = false, rawLength = 0, structuredWriteSuccess = false } = options;
+  const {
+    wasTruncated = false,
+    rawLength = 0,
+    structuredWriteSuccess = false,
+    structuredWriteFailure = false,
+  } = options;
   let message = '';
 
   switch (toolName) {
@@ -831,7 +941,7 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
     }
 
     case 'Edit':
-      if (!structuredWriteSuccess && !isCopilotCliWriteSuccess(toolOutput) && detectWriteFailure(toolOutput)) {
+      if (structuredWriteFailure || (!structuredWriteSuccess && !isCopilotCliWriteSuccess(toolOutput) && detectWriteFailure(toolOutput))) {
         message = 'Edit operation failed. Verify file exists and content matches exactly.';
       } else if (QUIET_LEVEL === 0) {
         message = 'Code modified. Verify changes work as expected before marking complete.';
@@ -839,7 +949,7 @@ function generateMessage(toolName, toolOutput, sessionId, toolCount, directory, 
       break;
 
     case 'Write':
-      if (!structuredWriteSuccess && !isCopilotCliWriteSuccess(toolOutput) && detectWriteFailure(toolOutput)) {
+      if (structuredWriteFailure || (!structuredWriteSuccess && !isCopilotCliWriteSuccess(toolOutput) && detectWriteFailure(toolOutput))) {
         message = 'Write operation failed. Check file permissions and directory existence.';
       } else if (QUIET_LEVEL === 0) {
         message = 'File written. Test the changes to ensure they work correctly.';
@@ -897,7 +1007,9 @@ async function main() {
     const toolName = data.tool_name || data.toolName || '';
     const rawResponse = data.tool_response || data.toolOutput || '';
     const structuredWriteSuccess =
-      (toolName === 'Write' || toolName === 'Edit') && hasStructuredWriteSuccess(rawResponse);
+      (toolName === 'Write' || toolName === 'Edit') && hasStructuredWriteSuccess(rawResponse, toolName);
+    const structuredWriteFailure =
+      (toolName === 'Write' || toolName === 'Edit') && hasStructuredWriteFailure(rawResponse);
     const toolOutput = typeof rawResponse === 'string' ? rawResponse : JSON.stringify(rawResponse);
     const { clipped: clippedToolOutput, wasTruncated } = clipToolOutputForAnalysis(toolName, toolOutput);
     const sessionId = data.session_id || data.sessionId || 'unknown';
@@ -944,6 +1056,7 @@ async function main() {
         wasTruncated,
         rawLength: toolOutput.length,
         structuredWriteSuccess,
+        structuredWriteFailure,
       }),
       maybeBuildPreemptiveCompactionMessage(toolName, data, directory),
     );

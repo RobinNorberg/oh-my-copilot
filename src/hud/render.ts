@@ -5,7 +5,7 @@
  */
 
 import type { HudRenderContext, HudConfig, LayoutConfig } from './types.js';
-import { DEFAULT_HUD_CONFIG, DEFAULT_ELEMENT_ORDER } from './types.js';
+import { DEFAULT_HUD_CONFIG, DEFAULT_ELEMENT_ORDER, DEFAULT_HUD_LABELS } from './types.js';
 import { bold, dim } from './colors.js';
 import { stringWidth, getCharWidth } from '../utils/string-width.js';
 import { renderRalph } from './elements/ralph.js';
@@ -219,6 +219,7 @@ export async function render(
   config: HudConfig,
 ): Promise<string> {
   const { elements: enabledElements } = config;
+  const hudLabels = config.labels ?? DEFAULT_HUD_LABELS;
 
   // ── Render all elements into maps ──────────────────────────────────
   // Each element is rendered independently and stored by name.
@@ -253,7 +254,7 @@ export async function render(
   }
 
   if (enabledElements.gitStatus) {
-    const gitStatusElement = renderGitStatus(context.cwd);
+    const gitStatusElement = renderGitStatus(context.cwd, hudLabels);
     if (gitStatusElement) rendered.set("gitStatus", gitStatusElement);
   }
 
@@ -338,6 +339,7 @@ export async function render(
     const thinking = renderThinking(
       context.thinkingState,
       enabledElements.thinkingFormat,
+      hudLabels,
     );
     if (thinking) rendered.set('thinking', thinking);
   }
@@ -368,6 +370,7 @@ export async function render(
       const tokenUsage = renderTokenUsage(
         context.lastRequestTokenUsage,
         context.sessionTotalTokens,
+        hudLabels,
       );
       if (tokenUsage) rendered.set('tokens', tokenUsage);
     }
@@ -375,12 +378,13 @@ export async function render(
     const tokenUsage = renderTokenUsage(
       context.lastRequestTokenUsage,
       context.sessionTotalTokens,
+      hudLabels,
     );
     if (tokenUsage) rendered.set('tokens', tokenUsage);
   }
 
   if (enabledElements.ralph && context.ralph) {
-    const ralph = renderRalph(context.ralph, config.thresholds);
+    const ralph = renderRalph(context.ralph, config.thresholds, hudLabels);
     if (ralph) rendered.set('ralph', ralph);
   }
 
@@ -415,11 +419,13 @@ export async function render(
           config.thresholds,
           10,
           context.contextDisplayScope,
+          hudLabels,
         )
       : renderContext(
           context.contextPercent,
           config.thresholds,
           context.contextDisplayScope,
+          hudLabels,
         );
     if (ctx) rendered.set('contextBar', ctx);
   }
@@ -444,7 +450,7 @@ export async function render(
   }
 
   if (enabledElements.backgroundTasks) {
-    const bg = renderBackground(context.backgroundTasks);
+    const bg = renderBackground(context.backgroundTasks, hudLabels);
     if (bg) rendered.set('background', bg);
   }
 
@@ -455,6 +461,7 @@ export async function render(
       context.agentCallCount,
       context.skillCallCount,
       enabledElements.callCountsFormat ?? 'auto',
+      hudLabels,
     );
     if (counts) rendered.set('callCounts', counts);
   }

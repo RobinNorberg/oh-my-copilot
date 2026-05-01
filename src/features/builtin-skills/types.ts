@@ -53,6 +53,13 @@ export interface BuiltinSkill {
   argumentHint?: string;
   /** MCP server configuration (optional) */
   mcpConfig?: SkillMcpConfig;
+  /** Pipeline metadata for skill chaining (optional) */
+  pipeline?: {
+    steps: string[];
+    nextSkill?: string;
+    nextSkillArgs?: string;
+    handoff?: string;
+  };
 }
 
 /**

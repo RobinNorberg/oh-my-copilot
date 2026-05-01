@@ -146,6 +146,127 @@ Advanced: ambiguity ≤ 20%
     expect(result.replacementText).not.toContain('"ambiguityThreshold": 0.2,');
   });
 
+  it.skip('renders skill pipeline guidance for slash-loaded skills with handoff metadata', async () => {
+    mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
+    writeFileSync(
+      join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'),
+      `---
+name: deep-interview
+description: Deep interview
+pipeline: [deep-interview, omc-plan, autopilot]
+next-skill: omc-plan
+next-skill-args: --consensus --direct
+handoff: .omcp/specs/deep-interview-{slug}.md
+---
+
+Deep interview body`
+    );
+
+    const { executeSlashCommand } = await loadExecutor();
+    const result = executeSlashCommand({
+      command: 'deep-interview',
+      args: 'improve onboarding',
+      raw: '/deep-interview improve onboarding',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('## Skill Pipeline');
+    expect(result.replacementText).toContain('Pipeline: `deep-interview → omc-plan → autopilot`');
+    expect(result.replacementText).toContain('Next skill arguments: `--consensus --direct`');
+    expect(result.replacementText).toContain('Skill("oh-my-copilot:omc-plan")');
+    expect(result.replacementText).toContain('`.omcp/specs/deep-interview-{slug}.md`');
+  });
+
+  it.skip('discovers project-local compatibility skills from .agents/skills', async () => {
+    mkdirSync(join(tempProjectDir, '.agents', 'skills', 'compat-skill', 'templates'), { recursive: true });
+    writeFileSync(
+      join(tempProjectDir, '.agents', 'skills', 'compat-skill', 'SKILL.md'),
+      `---
+name: compat-skill
+description: Compatibility skill
+---
+
+Compatibility body`
+    );
+    writeFileSync(
+      join(tempProjectDir, '.agents', 'skills', 'compat-skill', 'templates', 'example.txt'),
+      'example'
+    );
+
+    const { findCommand, executeSlashCommand, listAvailableCommands } = await loadExecutor();
+
+    expect(findCommand('compat-skill')?.scope).toBe('skill');
+    expect(listAvailableCommands().some((command) => command.name === 'compat-skill')).toBe(true);
+
+    const result = executeSlashCommand({
+      command: 'compat-skill',
+      args: '',
+      raw: '/compat-skill',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('## Skill Resources');
+    expect(result.replacementText).toContain('.agents/skills/compat-skill');
+    expect(result.replacementText).toContain('`templates/`');
+  });
+
+  it.skip('renders deterministic autoresearch bridge guidance for deep-interview autoresearch mode', async () => {
+    mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
+    writeFileSync(
+      join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'),
+      `---
+name: deep-interview
+description: Deep interview
+pipeline: [deep-interview, omc-plan, autopilot]
+next-skill: omc-plan
+next-skill-args: --consensus --direct
+handoff: .omcp/specs/deep-interview-{slug}.md
+---
+
+Deep interview body`
+    );
+
+    const { executeSlashCommand } = await loadExecutor();
+    const result = executeSlashCommand({
+      command: 'deep-interview',
+      args: '--autoresearch improve startup performance',
+      raw: '/deep-interview --autoresearch improve startup performance',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('## Autoresearch Setup Mode');
+    expect(result.replacementText).toContain('Skill("oh-my-copilot:autoresearch")');
+    expect(result.replacementText).toContain('Mission seed from invocation: `improve startup performance`');
+    expect(result.replacementText).not.toContain('## Skill Pipeline');
+  });
+
+  it.skip('renders plugin-safe autoresearch guidance when omcp is unavailable in slash mode', async () => {
+    process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
+    process.env.PATH = '';
+
+    mkdirSync(join(tempConfigDir, 'skills', 'deep-interview'), { recursive: true });
+    writeFileSync(
+      join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'),
+      `---
+name: deep-interview
+description: Deep interview
+---
+
+Deep interview body`
+    );
+
+    const { executeSlashCommand } = await loadExecutor();
+    const result = executeSlashCommand({
+      command: 'deep-interview',
+      args: '--autoresearch improve startup performance',
+      raw: '/deep-interview --autoresearch improve startup performance',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText)
+      .toContain('Skill("oh-my-copilot:autoresearch")');
+  });
+
   it('routes /cccg advisor asks through the plugin bridge inside an active Claude session when CLAUDE_PLUGIN_ROOT is set', async () => {
     process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
     process.env.PATH = '';

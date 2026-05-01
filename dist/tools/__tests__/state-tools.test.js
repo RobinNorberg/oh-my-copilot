@@ -103,7 +103,7 @@ describe('state-tools', () => {
             expect(existsSync(join(sessionDir, 'ralplan-state.json'))).toBe(false);
         });
         it('should clear only the requested session for every execution mode', async () => {
-            const modes = ['autopilot', 'ralph', 'ultrawork', 'ultraqa', 'team'];
+            const modes = ['autopilot', 'autoresearch', 'ralph', 'ultrawork', 'ultraqa', 'team'];
             const sessionA = 'session-a';
             const sessionB = 'session-b';
             for (const mode of modes) {
@@ -283,6 +283,18 @@ describe('state-tools', () => {
                 workingDirectory: TEST_DIR,
             });
             expect(result.content[0].text).toContain('team');
+        });
+        it('should include autoresearch mode when autoresearch state is active', async () => {
+            await stateWriteTool.handler({
+                mode: 'autoresearch',
+                active: true,
+                state: { phase: 'running' },
+                workingDirectory: TEST_DIR,
+            });
+            const result = await stateListActiveTool.handler({
+                workingDirectory: TEST_DIR,
+            });
+            expect(result.content[0].text).toContain('autoresearch');
         });
         it('should include deep-interview mode when deep-interview state is active', async () => {
             await stateWriteTool.handler({

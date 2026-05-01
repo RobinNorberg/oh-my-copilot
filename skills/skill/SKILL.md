@@ -2,6 +2,7 @@
 name: skill
 description: Manage local skills - list, add, remove, search, edit, setup wizard
 argument-hint: "<command> [args]"
+level: 2
 ---
 
 # Skill Management CLI
@@ -28,7 +29,7 @@ BUILT-IN SKILLS (bundled with oh-my-copilot):
 | visual-verdict    | Structured visual QA verdicts  | built-in |
 | ralph             | Persistence loop               | built-in |
 
-USER SKILLS (~/.copilot/skills/omc-learned/):
+USER SKILLS (~/.claude/skills/omc-learned/):
 | Name              | Triggers           | Quality | Usage | Scope |
 |-------------------|--------------------|---------|-------|-------|
 | error-handler     | fix, error         | 95%     | 42    | user  |
@@ -114,7 +115,7 @@ Triggers (comma-separated): log, logger, logging
 Argument hint (optional): <level> [message]
 Scope (user/project): user
 
-✓ Created skill at ~/.copilot/skills/omc-learned/custom-logger/SKILL.md
+✓ Created skill at ~/.claude/skills/omc-learned/custom-logger/SKILL.md
 → Edit with: /skill edit custom-logger
 ```
 
@@ -126,7 +127,7 @@ Remove a skill by name.
 
 **Behavior:**
 1. **Search for skill** in both scopes:
-   - `~/.copilot/skills/omc-learned/<name>/SKILL.md`
+   - `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/SKILL.md`
    - `.omcp/skills/<name>/SKILL.md`
 2. **If found:**
    - Display skill info (name, description, scope)
@@ -144,7 +145,7 @@ Remove a skill by name.
 User: /skill remove old-logger
 Assistant: Found skill 'old-logger' in user scope:
   Description: Legacy logging utility
-  Scope: user (~/.copilot/skills/omc-learned/)
+  Scope: user (~/.claude/skills/omc-learned/)
 
 Delete 'old-logger' skill? (yes/no)
 
@@ -260,13 +261,13 @@ Show detailed information about a skill.
 
 ```
 Skill: custom-logger
-Scope: user (~/.copilot/skills/omc-learned/custom-logger/)
+Scope: user (~/.claude/skills/omc-learned/custom-logger/)
 Description: Enhanced logging with structured output
 Triggers: log, logger, logging
 Argument Hint: <level> [message]
 Quality: 95% (if available)
 Usage Count: 42 times (if available)
-File Path: /home/user/.copilot/skills/omc-learned/custom-logger/SKILL.md
+File Path: /home/user/.claude/skills/omc-learned/custom-logger/SKILL.md
 
 --- FULL CONTENT ---
 [entire markdown content]
@@ -281,7 +282,7 @@ Assistant: Skill: custom-logger
 Scope: user
 Description: Enhanced logging with structured output
 Triggers: log, logger, logging
-File: ~/.copilot/skills/omc-learned/custom-logger/SKILL.md
+File: ~/.claude/skills/omc-learned/custom-logger/SKILL.md
 
 --- CONTENT ---
 # Custom Logger Skill
@@ -369,7 +370,7 @@ First, check if skill directories exist and create them if needed:
 
 ```bash
 # Check and create user-level skills directory
-USER_SKILLS_DIR="${COPILOT_CONFIG_DIR:-${COPILOT_CONFIG_DIR:-$HOME/.copilot}}/skills/omc-learned"
+USER_SKILLS_DIR="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned"
 if [ -d "$USER_SKILLS_DIR" ]; then
   echo "User skills directory exists: $USER_SKILLS_DIR"
 else
@@ -393,15 +394,15 @@ Scan both directories and show a comprehensive inventory:
 
 ```bash
 # Scan user-level skills
-echo "=== USER-LEVEL SKILLS (~/.copilot/skills/omc-learned/) ==="
+echo "=== USER-LEVEL SKILLS (~/.claude/skills/omc-learned/) ==="
 if [ -d "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned" ]; then
-  USER_COUNT=$(find "${COPILOT_CONFIG_DIR:-${COPILOT_CONFIG_DIR:-$HOME/.copilot}}/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
+  USER_COUNT=$(find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
   echo "Total skills: $USER_COUNT"
 
   if [ $USER_COUNT -gt 0 ]; then
     echo ""
     echo "Skills found:"
-    find "${COPILOT_CONFIG_DIR:-${COPILOT_CONFIG_DIR:-$HOME/.copilot}}/skills/omc-learned" -name "*.md" -type f -exec sh -c '
+    find "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/skills/omc-learned" -name "*.md" -type f -exec sh -c '
       FILE="$1"
       NAME=$(grep -m1 "^name:" "$FILE" 2>/dev/null | sed "s/name: //")
       DESC=$(grep -m1 "^description:" "$FILE" 2>/dev/null | sed "s/description: //")
@@ -467,7 +468,7 @@ Analyze the current conversation context to identify potential skill-worthy patt
 - Codebase-specific workarounds discovered
 - Error patterns that took time to resolve
 
-Report findings and ask if user wants to extract any as skills (invoke `/learner` if yes).
+Report findings and ask if user wants to extract any as skills (invoke `/skillify`; `/learner` is deprecated compatibility).
 
 **Option 4: Import Skill**
 
@@ -476,7 +477,7 @@ Ask user to provide either:
 - **Paste content**: Paste skill markdown content directly
 
 Then ask for scope:
-- **User-level** (~/.copilot/skills/omc-learned/) - Available across all projects
+- **User-level** (~/.claude/skills/omc-learned/) - Available across all projects
 - **Project-level** (.omcp/skills/) - Only for this project
 
 Validate the skill format and save to the chosen location.
@@ -711,7 +712,7 @@ How to work with this integration correctly:
 When invoked with an argument, skip the interactive wizard:
 
 - `/oh-my-copilot:skill list` - Show detailed skill inventory
-- `/oh-my-copilot:skill add` - Start skill creation (invoke learner)
+- `/oh-my-copilot:skill add` - Start skill creation (invoke skillify)
 - `/oh-my-copilot:skill scan` - Scan both skill directories
 
 ### Interactive Mode
@@ -722,13 +723,13 @@ When invoked without arguments, run the full guided wizard.
 
 ## Benefits of Local Skills
 
-**Automatic Application**: Copilot detects triggers and applies skills automatically - no need to remember or search for solutions.
+**Automatic Application**: Claude detects triggers and applies skills automatically - no need to remember or search for solutions.
 
 **Version Control**: Project-level skills (`.omcp/skills/`) are intended to be committed with your code so the whole team benefits. In linked worktrees, uncommitted skills remain local to that worktree and disappear if it is removed.
 
 **Evolving Knowledge**: Skills improve over time as you discover better approaches and refine triggers.
 
-**Reduced Token Usage**: Instead of re-solving the same problems, Copilot applies known patterns efficiently.
+**Reduced Token Usage**: Instead of re-solving the same problems, Claude applies known patterns efficiently.
 
 **Codebase Memory**: Preserves institutional knowledge that would otherwise be lost in conversation history.
 
@@ -758,7 +759,7 @@ Good skills are:
 
 ## Related Skills
 
-- `/oh-my-copilot:learner` - Extract a skill from current conversation
+- `/oh-my-copilot:skillify` - Extract a skill from current conversation (`/oh-my-copilot:learner` is a deprecated alias)
 - `/oh-my-copilot:note` - Save quick notes (less formal than skills)
 - `/oh-my-copilot:deepinit` - Generate AGENTS.md codebase hierarchy
 
@@ -770,7 +771,7 @@ Good skills are:
 > /oh-my-copilot:skill list
 
 Checking skill directories...
-✓ User skills directory exists: ~/.copilot/skills/omc-learned/
+✓ User skills directory exists: ~/.claude/skills/omc-learned/
 ✓ Project skills directory exists: .omcp/skills/
 
 Scanning for skills...
@@ -811,7 +812,7 @@ What would you like to do?
 ## Tips for Users
 
 - Run `/oh-my-copilot:skill list` periodically to review your skill library
-- After solving a tricky bug, immediately run learner to capture it
+- After solving a tricky bug, immediately run skillify to capture it
 - Use project-level skills for codebase-specific knowledge
 - Use user-level skills for general patterns that apply everywhere
 - Review and refine triggers over time to improve matching accuracy
@@ -831,7 +832,7 @@ What would you like to do?
 
 ## Related Skills
 
-- `/oh-my-copilot:learner` - Extract a skill from current conversation
+- `/oh-my-copilot:skillify` - Extract a skill from current conversation (`/oh-my-copilot:learner` is a deprecated alias)
 - `/oh-my-copilot:note` - Save quick notes (less formal than skills)
 - `/oh-my-copilot:deepinit` - Generate AGENTS.md codebase hierarchy
 

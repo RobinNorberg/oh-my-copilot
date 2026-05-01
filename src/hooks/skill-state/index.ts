@@ -135,6 +135,7 @@ const SKILL_PROTECTION: Record<string, SkillProtectionLevel> = {
   review: 'medium',
   'external-context': 'medium',
   sciomc: 'medium',
+  skillify: 'medium',
   learner: 'medium',
   'omc-setup': 'medium',
   'mcp-setup': 'medium',

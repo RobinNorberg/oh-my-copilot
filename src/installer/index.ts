@@ -68,7 +68,6 @@ const SKININTHEGAMEBROS_ONLY_SKILLS = new Set([
   'remember',
   'verify',
   'debug',
-  'skillify',
 ]);
 
 /**
@@ -192,7 +191,12 @@ function quoteShellArg(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
-function buildStatusLineCommand(nodeBin: string, hudScriptPath: string, findNodePath?: string): string {
+function buildStatusLineCommand(
+  nodeBin: string,
+  hudScriptPath: string,
+  findNodePath?: string,
+  cacheWrapperPath?: string,
+): string {
   if (isWindows()) {
     // Windows: write a .cmd wrapper into the HUD dir and invoke that. cmd.exe
     // inherits the parent console so stdout flows back to Copilot CLI; bash/sh
@@ -213,6 +217,16 @@ function buildStatusLineCommand(nodeBin: string, hudScriptPath: string, findNode
     return cmdWrapperPath.replace(/\\/g, '/');
   }
 
+  const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
+
+  if (cacheWrapperPath) {
+    if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
+      return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs';
+    }
+
+    return `sh ${quoteShellArg(cacheWrapperPath.replace(/\\/g, '/'))} ${quoteShellArg(normalizedHudScriptPath)}`;
+  }
+
   if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
     if (findNodePath) {
       return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs';
@@ -221,7 +235,6 @@ function buildStatusLineCommand(nodeBin: string, hudScriptPath: string, findNode
     return 'node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs';
   }
 
-  const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
   if (findNodePath) {
     return `sh ${quoteShellArg(findNodePath.replace(/\\/g, '/'))} ${quoteShellArg(normalizedHudScriptPath)}`;
   }
@@ -336,7 +349,8 @@ export function isOmcStatusLine(statusLine: unknown): boolean {
 }
 
 /**
- * Known OMC hook script filenames installed into .claude/hooks/.
+ * Known OMC hook script filenames installed into the host CLI's hooks/ directory
+ * (e.g. `~/.claude/hooks/` for Claude Code, `~/.copilot/hooks/` for Copilot CLI).
  * Must be kept in sync with HOOKS_SETTINGS_CONFIG_NODE command entries.
  */
 const OMC_HOOK_FILENAMES = new Set([
@@ -370,8 +384,10 @@ export function isOmcHook(command: string): boolean {
   if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
     return true;
   }
-  // Check for known OMC hook filenames in .claude/hooks/ path.
-  // Handles both Unix (.claude/hooks/) and Windows (.claude\hooks\) paths.
+  // Check for known OMC hook filenames in any host-CLI hooks/ directory
+  // (e.g. ~/.claude/hooks/ for Claude Code, ~/.copilot/hooks/ for Copilot CLI).
+  // The regex below matches `hooks/` or `hooks\` regardless of parent path,
+  // so both Unix and Windows layouts under either CLI are covered.
   const containsHooksDir = /hooks[/\\]/.test(lowerCommand);
   const hookFilenameMatch = lowerCommand.match(/([a-z0-9-]+\.mjs)(?:$|["'\s])/);
   if (containsHooksDir && hookFilenameMatch && OMC_HOOK_FILENAMES.has(hookFilenameMatch[1])) {
@@ -538,6 +554,8 @@ function configureInstallerSettings(
       try {
         const findNodeSrc = join(getPackageDir(), 'scripts', 'find-node.sh');
         const findNodeDest = join(HUD_DIR, 'find-node.sh');
+        const cacheWrapperSrc = join(getPackageDir(), 'scripts', 'lib', 'hud-cache-wrapper.sh');
+        const cacheWrapperDest = join(HUD_DIR, 'omcp-hud-cache.sh');
         const configDirHelperSrc = join(getPackageDir(), 'scripts', 'lib', 'config-dir.sh');
         const hudLibDir = join(HUD_DIR, 'lib');
         const configDirHelperDest = join(hudLibDir, 'config-dir.sh');
@@ -545,10 +563,12 @@ function configureInstallerSettings(
           mkdirSync(hudLibDir, { recursive: true });
         }
         copyFileSync(findNodeSrc, findNodeDest);
+        copyFileSync(cacheWrapperSrc, cacheWrapperDest);
         copyFileSync(configDirHelperSrc, configDirHelperDest);
         chmodSync(findNodeDest, 0o755);
+        chmodSync(cacheWrapperDest, 0o755);
         chmodSync(configDirHelperDest, 0o755);
-        statusLineCommand = buildStatusLineCommand(nodeBin, context.hudScriptPath.replace(/\\/g, '/'), findNodeDest);
+        statusLineCommand = buildStatusLineCommand(nodeBin, context.hudScriptPath.replace(/\\/g, '/'), findNodeDest, cacheWrapperDest);
       } catch {
         statusLineCommand = buildStatusLineCommand(nodeBin, context.hudScriptPath.replace(/\\/g, '/'));
       }

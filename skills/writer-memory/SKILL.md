@@ -2,6 +2,7 @@
 name: writer-memory
 description: Agentic memory system for writers - track characters, relationships, scenes, and themes
 argument-hint: "init|char|rel|scene|query|validate|synopsis|status|export [args]"
+level: 7
 ---
 
 # Writer Memory - Agentic Memory System for Writers
@@ -10,7 +11,7 @@ Persistent memory system designed for creative writers, with first-class support
 
 ## Overview
 
-Writer Memory maintains context across Copilot sessions for fiction writers. It tracks:
+Writer Memory maintains context across Claude sessions for fiction writers. It tracks:
 
 - **Characters (캐릭터)**: Emotional arcs (감정궤도), attitudes (태도), dialogue tone (대사톤), speech levels
 - **World (세계관)**: Settings, rules, atmosphere, constraints

@@ -1,8 +1,8 @@
 /**
  * tmux Detector
  *
- * Detects Claude Code sessions running in tmux panes and identifies
- * those that are blocked due to rate limiting.
+ * Detects CLI agent sessions (Claude Code, Copilot CLI) running in tmux
+ * panes and identifies those that are blocked due to rate limiting.
  *
  * Security considerations:
  * - Pane IDs are validated before use in shell commands
@@ -49,8 +49,8 @@ const RATE_LIMIT_PATTERNS = [
   /\bweekly\s+(?:usage\s+)?(?:limit|quota|cap|allowance|allocation)\b/i,
 ];
 
-/** Patterns that indicate Claude Code is running */
-const CLAUDE_CODE_PATTERNS = [
+/** Patterns that indicate a supported CLI agent (Claude Code or Copilot CLI) is running */
+const CLI_AGENT_PATTERNS = [
   /claude/i,
   /copilot/i,
   /anthropic/i,
@@ -238,7 +238,7 @@ export function capturePaneContent(paneId: string, lines = 15): string {
 }
 
 /**
- * Analyze pane content to determine if it shows a rate-limited Claude Code session
+ * Analyze pane content to determine if it shows a rate-limited CLI agent session
  */
 export function analyzePaneContent(content: string): PaneAnalysisResult {
   if (!content.trim()) {
@@ -254,8 +254,8 @@ export function analyzePaneContent(content: string): PaneAnalysisResult {
   // "Update assistant config") cannot produce false-positive keyword matches.
   const cleanedContent = stripGitOutputLines(content);
 
-  // Check for Claude Code indicators
-  const hasCopilotCode = CLAUDE_CODE_PATTERNS.some((pattern) =>
+  // Check for CLI agent indicators (Claude Code or Copilot CLI)
+  const hasCopilotCode = CLI_AGENT_PATTERNS.some((pattern) =>
     pattern.test(cleanedContent)
   );
 
@@ -300,7 +300,7 @@ export function analyzePaneContent(content: string): PaneAnalysisResult {
 }
 
 /**
- * Scan all tmux panes for blocked Claude Code sessions.
+ * Scan all tmux panes for blocked CLI agent sessions (Claude Code or Copilot CLI).
  *
  * @param lines    - Number of lines to capture from each pane
  * @param stateDir - When provided, use cursor-tracked capture (getNewPaneTail) so
@@ -418,7 +418,7 @@ export function formatBlockedPanesSummary(blockedPanes: BlockedPane[]): string {
   }
 
   const lines: string[] = [
-    `Found ${blockedPanes.length} blocked Claude Code session(s):`,
+    `Found ${blockedPanes.length} blocked CLI agent session(s):`,
     '',
   ];
 

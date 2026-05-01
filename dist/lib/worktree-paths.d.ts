@@ -8,17 +8,32 @@
  * When set, state is stored at $OMC_STATE_DIR/{project-identifier}/ instead
  * of {worktree}/.omcp/. This preserves state across worktree deletions.
  */
-/** Standard .omcp subdirectories (formerly .omg) */
+/**
+ * Standard .omcp subdirectories (formerly .omg).
+ *
+ * Two roots are exposed:
+ * - ROOT (`.omcp`): plugin-private state owned by oh-my-copilot. Mode-state
+ *   files, sessions, autoresearch outputs, logs — anything coupled to this
+ *   plugin's runtime stays here so concurrent runs of oh-my-claudecode can't
+ *   corrupt them.
+ * - SHARED_ROOT (`.omc`): cross-plugin content shared with oh-my-claudecode.
+ *   Notepad, project memory, plans, research, plan-scoped notepads. Format-
+ *   stable, runtime-agnostic, and intentionally readable by either plugin.
+ *
+ * See migrateOmcpContentToOmc() for the one-time relocation that moves
+ * pre-existing shared content from `.omcp/` into `.omc/`.
+ */
 export declare const OmgPaths: {
     readonly ROOT: ".omcp";
+    readonly SHARED_ROOT: ".omc";
     readonly STATE: ".omcp/state";
     readonly SESSIONS: ".omcp/state/sessions";
-    readonly PLANS: ".omcp/plans";
-    readonly RESEARCH: ".omcp/research";
-    readonly NOTEPAD: ".omcp/notepad.md";
-    readonly PROJECT_MEMORY: ".omcp/project-memory.json";
+    readonly PLANS: ".omc/plans";
+    readonly RESEARCH: ".omc/research";
+    readonly NOTEPAD: ".omc/notepad.md";
+    readonly PROJECT_MEMORY: ".omc/project-memory.json";
     readonly DRAFTS: ".omcp/drafts";
-    readonly NOTEPADS: ".omcp/notepads";
+    readonly NOTEPADS: ".omc/notepads";
     readonly LOGS: ".omcp/logs";
     readonly SCIENTIST: ".omcp/scientist";
     readonly AUTOPILOT: ".omcp/autopilot";
@@ -78,6 +93,45 @@ export declare function getProjectIdentifier(worktreeRoot?: string): string;
  */
 export declare function getOmcRoot(worktreeRoot?: string): string;
 /**
+ * Get the cross-plugin shared content root.
+ *
+ * This is the directory shared with oh-my-claudecode for content that is
+ * meaningfully runtime-agnostic: notepad, project memory, plans, research,
+ * plan-scoped notepads. Always resolves to `<worktree>/.omc/` (or the
+ * centralized equivalent under `OMC_STATE_DIR`) regardless of which plugin
+ * is calling, so a plan written in one CLI is visible to the other.
+ *
+ * Plugin-private state (mode-state.json, sessions/, autoresearch/, logs/)
+ * stays under getOmcRoot() to avoid cross-plugin runtime contention.
+ *
+ * @param worktreeRoot - Optional worktree root
+ * @returns Absolute path to the shared content root
+ */
+export declare function getSharedOmcRoot(worktreeRoot?: string): string;
+/**
+ * One-time relocation of shared content from `.omcp/` to `.omc/`.
+ *
+ * Mirrors the pattern of migrateOmgToOmcp(). For each item in:
+ *   - notepad.md, project-memory.json
+ *   - plans/, research/, notepads/
+ * if the source exists under `.omcp/` and the corresponding target under
+ * `.omc/` does not, move it. Conflicts (both exist) keep the `.omc/` copy
+ * and warn once. Idempotent — repeated calls are no-ops.
+ *
+ * Skipped when `OMC_STATE_DIR` is set (no `.omcp/` to migrate from in the
+ * centralized layout for this PR; centralized-mode reshuffling will be
+ * handled in a follow-up if needed).
+ *
+ * @param worktreeRoot - The worktree root directory
+ * @returns true if any item was moved, false otherwise
+ */
+export declare function migrateOmcpContentToOmc(worktreeRoot: string): boolean;
+/**
+ * Clear the omcp→omc content migration warning cache (testing only).
+ * @internal
+ */
+export declare function clearOmcpContentWarnings(): void;
+/**
  * Resolve a relative path under .omcp/ to an absolute path.
  * Validates the path is within the omc boundary.
  *
@@ -109,21 +163,37 @@ export declare function resolveStatePath(stateName: string, worktreeRoot?: strin
 export declare function ensureOmcDir(relativePath: string, worktreeRoot?: string): string;
 /**
  * Get the absolute path to the notepad file.
- * NOTE: Named differently from hooks/notepad/getNotepadPath which takes `directory` (required).
- * This version auto-detects worktree root.
+ *
+ * Lives under the cross-plugin shared root (`.omc/`) so the notepad
+ * compounds across oh-my-copilot and oh-my-claudecode sessions in the
+ * same worktree.
+ *
+ * NOTE: Named differently from hooks/notepad/getNotepadPath which takes
+ * `directory` (required). This version auto-detects worktree root.
  */
 export declare function getWorktreeNotepadPath(worktreeRoot?: string): string;
 /**
  * Get the absolute path to the project memory file.
+ *
+ * Lives under the cross-plugin shared root (`.omc/`) so the detected
+ * tech stack and conventions are shared with oh-my-claudecode.
  */
 export declare function getWorktreeProjectMemoryPath(worktreeRoot?: string): string;
 /**
  * Resolve a plan file path.
+ *
+ * Plans live under the cross-plugin shared root (`.omc/plans/`). A plan
+ * authored by either CLI is visible to the other.
+ *
  * @param planName - Plan name (without .md extension)
  */
 export declare function resolvePlanPath(planName: string, worktreeRoot?: string): string;
 /**
  * Resolve a research directory path.
+ *
+ * Research artifacts live under the cross-plugin shared root
+ * (`.omc/research/`).
+ *
  * @param name - Research folder name
  */
 export declare function resolveResearchPath(name: string, worktreeRoot?: string): string;
@@ -133,6 +203,10 @@ export declare function resolveResearchPath(name: string, worktreeRoot?: string)
 export declare function resolveLogsPath(worktreeRoot?: string): string;
 /**
  * Resolve a wisdom/plan-scoped notepad directory path.
+ *
+ * Plan-scoped notepads live under the cross-plugin shared root
+ * (`.omc/notepads/`) alongside the plan they annotate.
+ *
  * @param planName - Plan name for the scoped notepad
  */
 export declare function resolveWisdomPath(planName: string, worktreeRoot?: string): string;
@@ -142,7 +216,11 @@ export declare function resolveWisdomPath(planName: string, worktreeRoot?: strin
  */
 export declare function isPathUnderOmc(absolutePath: string, worktreeRoot?: string): boolean;
 /**
- * Ensure all standard .omc subdirectories exist.
+ * Ensure all standard OMC subdirectories exist.
+ *
+ * Creates entries under both roots:
+ * - Private (`.omcp/`): state, logs, drafts — runtime-coupled
+ * - Shared (`.omc/`): plans, research, notepads — cross-plugin content
  */
 export declare function ensureAllOmcDirs(worktreeRoot?: string): void;
 /**

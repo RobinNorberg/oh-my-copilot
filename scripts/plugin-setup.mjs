@@ -35,6 +35,11 @@ if (!existsSync(HUD_LIB_DIR)) {
   mkdirSync(HUD_LIB_DIR, { recursive: true });
 }
 copyFileSync(join(__dirname, 'lib', 'config-dir.mjs'), join(HUD_LIB_DIR, 'config-dir.mjs'));
+copyFileSync(join(__dirname, 'lib', 'config-dir.sh'), join(HUD_LIB_DIR, 'config-dir.sh'));
+copyFileSync(join(__dirname, 'find-node.sh'), join(HUD_DIR, 'find-node.sh'));
+copyFileSync(join(__dirname, 'lib', 'hud-cache-wrapper.sh'), join(HUD_DIR, 'omcp-hud-cache.sh'));
+try { chmodSync(join(HUD_DIR, 'find-node.sh'), 0o755); } catch { /* Windows doesn't need this */ }
+try { chmodSync(join(HUD_DIR, 'omcp-hud-cache.sh'), 0o755); } catch { /* Windows doesn't need this */ }
 
 // 2. Create HUD wrapper script
 const hudScriptPath = join(HUD_DIR, 'omcp-hud.mjs').replace(/\\/g, '/');
@@ -238,9 +243,13 @@ try {
     settings = JSON.parse(readFileSync(SETTINGS_FILE, 'utf-8'));
   }
 
+  const statusLineCommand = process.platform === 'win32'
+    ? `"${nodeBin}" "${hudScriptPath.replace(/\\/g, "/")}"`
+    : `sh "${join(HUD_DIR, 'omcp-hud-cache.sh').replace(/\\/g, "/")}" "${hudScriptPath.replace(/\\/g, "/")}"`;
+
   settings.statusLine = {
     type: 'command',
-    command: `"${nodeBin}" "${hudScriptPath.replace(/\\/g, "/")}"`
+    command: statusLineCommand
   };
   writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
   console.log('[OMC] Configured HUD statusLine in settings.json');

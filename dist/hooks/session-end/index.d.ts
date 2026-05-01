@@ -64,6 +64,15 @@ export declare function cleanupModeStates(directory: string, sessionId?: string)
     modesCleaned: string[];
 };
 /**
+ * Clean up mission-state.json entries belonging to this session.
+ * Without this, the HUD keeps showing stale mode/mission info after session end.
+ *
+ * When sessionId is provided, only removes missions whose source is 'session'
+ * and whose id contains the sessionId. When sessionId is omitted, removes all
+ * session-sourced missions.
+ */
+export declare function cleanupMissionState(directory: string, sessionId?: string): number;
+/**
  * Export session summary to .omcp/sessions/
  */
 export declare function exportSessionSummary(directory: string, metrics: SessionMetrics): void;

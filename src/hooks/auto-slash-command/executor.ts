@@ -216,6 +216,41 @@ function resolveArguments(content: string, args: string): string {
   return content.replace(/\$ARGUMENTS/g, args || '(no arguments provided)');
 }
 
+function hasInvocationFlag(args: string, flag: string): boolean {
+  const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}(?=\\s|$)`).test(args);
+}
+
+function stripInvocationFlag(args: string, flag: string): string {
+  const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return args
+    .replace(new RegExp(`(^|\\s)${escaped}(?=\\s|$)`, 'g'), ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function renderDeepInterviewAutoresearchGuidance(args: string): string {
+  const missionSeed = stripInvocationFlag(args, '--autoresearch');
+  const lines = [
+    '## Autoresearch Setup Mode',
+    'This deep-interview invocation was launched as the zero-learning-curve setup lane for the stateful `autoresearch` skill.',
+    '',
+    'Required behavior in this mode:',
+    '- If the mission is not already clear, start by asking: "What should autoresearch improve or prove for this repo?"',
+    '- Treat evaluator clarity as a required readiness gate before launch.',
+    '- When the mission and evaluator are ready, write setup artifacts and hand off with:',
+    '  `Skill("oh-my-copilot:autoresearch")`',
+    '- Do **not** hand off to `omc-plan`, `autopilot`, `ralph`, `team`, or the hard-deprecated `omcp autoresearch` CLI in this mode.',
+  ];
+
+  if (missionSeed) {
+    lines.push('', `Mission seed from invocation: \`${missionSeed}\``);
+  }
+
+  return lines.join('\n');
+}
+
+
 /**
  * Format command template with metadata header
  */

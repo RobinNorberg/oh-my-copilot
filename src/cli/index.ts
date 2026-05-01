@@ -1332,6 +1332,9 @@ program
     await teamCommand(args);
   });
 
+/**
+ * Autoresearch command - hard-deprecated shim preserved only for migration messaging
+ */
 program
   .command('autoresearch')
   .description('Hard-deprecated shim that redirects users to deep-interview + autoresearch skill')

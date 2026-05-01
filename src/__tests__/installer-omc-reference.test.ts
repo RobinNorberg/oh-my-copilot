@@ -71,7 +71,7 @@ function writeEnabledPluginSettings(claudeConfigDir: string): void {
 }
 
 function getBundledSkillNames(): string[] {
-  const strictModeOnlySkills = new Set(['remember', 'verify', 'debug', 'skillify']);
+  const strictModeOnlySkills = new Set(['remember', 'verify', 'debug']);
 
   return readdirSync(join(process.cwd(), 'skills'), { withFileTypes: true })
     .filter(entry => entry.isDirectory())

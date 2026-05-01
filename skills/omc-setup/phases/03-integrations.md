@@ -2,27 +2,15 @@
 
 **Skip condition**: If resuming and `lastCompletedStep >= 6`, skip this entire phase.
 
-## Quick Mode Behavior
-
-If `SETUP_MODE=quick`:
-- **Step 3.1 (Verify plugin)**: Run automatically (no prompt)
-- **Step 3.2 (MCP servers)**: **Always offer** — go straight to MCP configuration without asking "would you like to configure MCP servers?" (jump directly to invoking `/oh-my-copilot:mcp-setup`)
-- **Step 3.3 (Team defaults)**: **Skip** — use defaults (3 agents, executor type)
-- **Azure DevOps**: Still auto-detect and recommend if ADO repo detected
-
-Then save progress and continue to Phase 4. The rest of this file documents the **interactive mode** behavior.
-
----
-
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
-grep -q "oh-my-copilot" ~/.copilot/settings.json && echo "Plugin verified" || echo "Plugin NOT found - run: copilot /install-plugin oh-my-copilot"
+grep -q "oh-my-copilot" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-copilot"
 ```
 
 ## Step 3.2: Offer MCP Server Configuration
 
-MCP servers extend Copilot CLI with additional tools (web search, GitHub, etc.).
+MCP servers extend Claude Code with additional tools (web search, GitHub, etc.).
 
 Use AskUserQuestion: "Would you like to configure MCP servers for enhanced capabilities? (Context7, Exa search, GitHub, etc.)"
 
@@ -35,20 +23,86 @@ If no, skip to next step.
 
 ## Step 3.3: Configure Agent Teams (Optional)
 
-Agent teams let you spawn N coordinated agents working on a shared task list with inter-agent messaging. **Teams are enabled by default** in oh-my-copilot — no additional configuration is needed to use them.
+Agent teams are an experimental Claude Code feature that lets you spawn N coordinated agents working on a shared task list with inter-agent messaging. **Teams are disabled by default** and require enabling via `settings.json`.
+
+Reference: https://code.claude.com/docs/en/agent-teams
 
 Use AskUserQuestion:
 
-**Question:** "Would you like to customize team defaults? (e.g., `/team 3:executor 'fix all errors'`)"
+**Question:** "Would you like to enable agent teams? Teams let you spawn coordinated agents (e.g., `/team 3:executor 'fix all errors'`). This is an experimental Claude Code feature."
 
 **Options:**
-1. **Keep defaults (Recommended)** - 3 agents, executor type
-2. **Customize** - Choose agent count and default type
-3. **Skip** - Move on
+1. **Yes, enable teams (Recommended)** - Enable the experimental feature and configure defaults
+2. **No, skip** - Leave teams disabled (can enable later)
 
-### If User Chooses Customize:
+### If User Chooses YES:
 
-#### 3.3.1: Configure Team Defaults in omc-config
+#### 3.3.1: Enable Agent Teams in settings.json
+
+**CRITICAL**: Agent teams require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` to be set in `~/.copilot/settings.json`. This must be done carefully to preserve existing user settings.
+
+First, read the current settings.json:
+
+```bash
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
+
+if [ -f "$SETTINGS_FILE" ]; then
+  echo "Current settings.json found"
+  cat "$SETTINGS_FILE"
+else
+  echo "No settings.json found - will create one"
+fi
+```
+
+Then use the Read tool to read `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
+
+Use jq to safely merge without overwriting existing settings:
+
+```bash
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
+
+if [ -f "$SETTINGS_FILE" ]; then
+  TEMP_FILE=$(mktemp)
+  jq '.env = (.env // {} | . + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})' "$SETTINGS_FILE" > "$TEMP_FILE" && mv "$TEMP_FILE" "$SETTINGS_FILE"
+  echo "Added CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS to existing settings.json"
+else
+  mkdir -p "$(dirname "$SETTINGS_FILE")"
+  cat > "$SETTINGS_FILE" << 'SETTINGS_EOF'
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+SETTINGS_EOF
+  echo "Created settings.json with teams enabled"
+fi
+```
+
+**IMPORTANT**: The Edit tool is preferred for modifying settings.json when possible, since it preserves formatting and comments. The jq approach above is the fallback for when the file needs structural merging.
+
+#### 3.3.2: Configure Teammate Display Mode
+
+Use AskUserQuestion:
+
+**Question:** "How should teammates be displayed?"
+
+**Options:**
+1. **Auto (Recommended)** - Uses split panes if in tmux, otherwise in-process. Best for most users.
+2. **In-process** - All teammates in your main terminal. Use Shift+Up/Down to select. Works everywhere.
+3. **Split panes (tmux)** - Each teammate in its own pane. Requires tmux or iTerm2.
+
+If user chooses anything other than "Auto", add `teammateMode` to settings.json:
+
+```bash
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
+
+# TEAMMATE_MODE is "in-process" or "tmux" based on user choice
+# Skip this if user chose "Auto" (that's the default)
+jq --arg mode "TEAMMATE_MODE" '. + {teammateMode: $mode}' "$SETTINGS_FILE" > "${SETTINGS_FILE}.tmp" && mv "${SETTINGS_FILE}.tmp" "$SETTINGS_FILE"
+echo "Teammate display mode set to: TEAMMATE_MODE"
+```
+
+#### 3.3.3: Configure Team Defaults in omc-config
 
 Use AskUserQuestion with multiple questions:
 
@@ -66,7 +120,7 @@ Use AskUserQuestion with multiple questions:
 2. **codex** - Use Codex CLI workers by default when installed
 3. **gemini** - Use Gemini CLI workers by default when installed
 
-Store the team configuration in `~/.copilot/.omc-config.json`:
+Store the team configuration in `~/.copilot/.omcp-config.json`:
 
 ```bash
 CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
@@ -90,72 +144,49 @@ echo "  Default provider: AGENT_TYPE"
 echo "  Model: teammates inherit your session model"
 ```
 
-#### Verify Configuration
+**Note:** Teammates do not have a separate model default. Each teammate is a full Claude Code session that inherits your configured model. Subagents spawned by teammates can use any model tier.
 
-After modifications, verify the config is valid:
+#### Verify settings.json Integrity
+
+After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/.omc-config.json"
+SETTINGS_FILE="${COPILOT_CONFIG_DIR:-$HOME/.copilot}/settings.json"
 
-if [ -f "$CONFIG_FILE" ]; then
-  echo "Team configuration:"
-  jq '.team' "$CONFIG_FILE"
+if jq empty "$SETTINGS_FILE" 2>/dev/null; then
+  echo "settings.json: valid JSON"
 else
-  echo "Using default team settings (3 agents, executor type)"
+  echo "ERROR: settings.json is invalid JSON! Restoring from backup..."
+  exit 1
 fi
+
+if jq -e '.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS' "$SETTINGS_FILE" > /dev/null 2>&1; then
+  echo "Agent teams: ENABLED"
+else
+  echo "WARNING: Agent teams env var not found in settings.json"
+fi
+
+echo ""
+echo "Final settings.json:"
+jq '.' "$SETTINGS_FILE"
 ```
 
-### If User Chooses Keep Defaults or Skip:
+### If User Chooses NO:
 
-Skip this step. Default team configuration (3 agents, executor type) will be used. User can customize later by running `/oh-my-copilot:omc-setup --force`.
-
-## Azure DevOps Integrations (when ADO repo detected)
-
-If the current repository is hosted on Azure DevOps (detected via git remote URL containing `dev.azure.com` or `visualstudio.com`), recommend the following:
-
-### Azure DevOps MCP Server
-For enhanced ADO integration with MCP tools (work items, repos, pipelines, wiki, test plans):
-
-```bash
-# Install azure-devops-mcp server
-# See: https://github.com/microsoft/azure-devops-mcp
-```
-
-Add to your `.mcp.json` or Copilot CLI MCP configuration:
+Skip this step. Agent teams will remain disabled. User can enable later by adding to `~/.copilot/settings.json`:
 ```json
 {
-  "mcpServers": {
-    "azure-devops": {
-      "command": "npx",
-      "args": ["-y", "@microsoft/azure-devops-mcp"],
-      "env": {
-        "AZURE_DEVOPS_ORG": "https://dev.azure.com/{your-org}",
-        "AZURE_DEVOPS_PROJECT": "{your-project}"
-      }
-    }
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }
 ```
 
-### Azure Skills Plugin (for Azure cloud operations)
-If you work with Azure cloud services beyond DevOps (compute, storage, AI, networking, security, deployment), install the azure-skills plugin:
-
-```bash
-# Install azure-skills plugin for Copilot CLI
-copilot plugin install microsoft/azure-skills
-```
-
-This provides 24 specialized skills for Azure cloud operations. oh-my-copilot handles ADO orchestration; azure-skills handles the Azure cloud layer. They are complementary.
-
-### Run ADO Setup
-After installing the MCP server, configure your project:
-```
-/oh-my-copilot:omc-ado-setup
-```
+Or by running `/oh-my-copilot:omc-setup --force` and choosing to enable teams.
 
 ## Save Progress
 
 ```bash
 CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omcp/state/setup-state.json" 2>/dev/null || echo "unknown")
-bash "${COPILOT_PLUGIN_ROOT}/scripts/setup-progress.sh" save 6 "$CONFIG_TYPE"
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/setup-progress.sh" save 6 "$CONFIG_TYPE"
 ```

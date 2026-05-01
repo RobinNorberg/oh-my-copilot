@@ -149,7 +149,7 @@ I noticed this conversation contains ${typeDescriptions[detection.patternType]} 
 **Confidence:** ${detection.confidence}%
 **Suggested triggers:** ${detection.suggestedTriggers.join(', ') || 'None detected'}
 
-Would you like me to extract this as a learned skill? Type \`/oh-my-copilot:learner\` to save it, or continue with your current task.
+Would you like me to extract this as a learned skill? Type \`/oh-my-copilot:skillify\` to save it (\`/oh-my-copilot:learner\` remains as a deprecated compatibility alias), or continue with your current task.
 `.trim();
 }
 //# sourceMappingURL=detector.js.map

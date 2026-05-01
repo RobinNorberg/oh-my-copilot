@@ -60,6 +60,8 @@ export {
   findPrdPath,
   getPrdPath,
   getOmcPrdPath,
+  getSessionPrdPath,
+  getLegacyStatePrdPath,
 
   // PRD status & operations
   getPrdStatus,

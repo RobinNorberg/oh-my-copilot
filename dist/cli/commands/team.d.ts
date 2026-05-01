@@ -48,6 +48,7 @@ export interface ParsedTeamArgs {
     teamName: string;
     json: boolean;
     newWindow: boolean;
+    autoMerge: boolean;
 }
 /** @internal Exported for testing */
 export declare function parseTeamArgs(tokens: string[], defaultAgentType?: string): ParsedTeamArgs;

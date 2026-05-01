@@ -92,7 +92,9 @@ describe('Skill Detector', () => {
             expect(prompt).toContain('useful technique');
             expect(prompt).toContain('80%');
             expect(prompt).toContain('react, hooks');
+            expect(prompt).toContain('oh-my-copilot:skillify');
             expect(prompt).toContain('oh-my-copilot:learner');
+            expect(prompt).toContain('deprecated compatibility alias');
         });
     });
 });

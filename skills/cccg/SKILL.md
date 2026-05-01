@@ -1,6 +1,7 @@
 ---
 name: cccg
 description: Quadri-model orchestration — Copilot, Claude, Codex, and Gemini each provide independent analysis, then Copilot synthesizes
+level: 5
 ---
 
 # CCCG - Copilot-Claude-Codex-Gemini Orchestration

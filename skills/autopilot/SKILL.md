@@ -28,20 +28,6 @@ Autopilot takes a brief product idea and autonomously handles the full lifecycle
 Most non-trivial software tasks require coordinated phases: understanding requirements, designing a solution, implementing in parallel, testing, and validating quality. Autopilot orchestrates all of these phases automatically so the user can describe what they want and receive working code without managing each step.
 </Why_This_Exists>
 
-<Complexity_Gate>
-Before starting Phase 0, classify the task complexity:
-
-1. **Heuristic check** (zero-cost): The system's complexity classifier runs pattern matching on your prompt
-2. **AI assessment** (if heuristic inconclusive): Spawn an `explore` agent (haiku) to assess complexity
-
-**Routing by complexity:**
-- **SIMPLE** (e.g., "fix typo", "rename variable", "bump version"): Skip Phase 0 and Phase 1 entirely. Jump directly to Phase 2 (Execution) with a minimal plan.
-- **STANDARD** (default): Run the normal autopilot flow (all phases)
-- **COMPLEX** (e.g., auth systems, migrations, distributed architecture): Run all phases AND add Critic review after Phase 0 and Phase 1 for additional quality gates
-
-Complexity result is stored in `.omcp/state/sessions/{sessionId}/complexity.json` for downstream phases to reference.
-</Complexity_Gate>
-
 <Execution_Policy>
 - Each phase must complete before the next begins
 - Parallel execution is used within phases where possible (Phase 2 and Phase 4)
@@ -58,27 +44,23 @@ Complexity result is stored in `.omcp/state/sessions/{sessionId}/complexity.json
    - **If input is vague** (no file paths, function names, or concrete anchors): Offer redirect to `/deep-interview` for Socratic clarification before expanding
    - **Otherwise**: Analyst (Opus) extracts requirements, Architect (Opus) creates technical specification
    - Output: `.omcp/autopilot/spec.md`
-   - **Context capture**: Phase 0 output (spec summary) is captured for injection into Phase 1
 
 2. **Phase 1 - Planning**: Create an implementation plan from the spec
    - **If ralplan consensus plan exists**: Skip — already done in the 3-stage pipeline
    - Architect (Opus): Create plan (direct mode, no interview)
    - Critic (Opus): Validate plan
    - Output: `.omcp/plans/autopilot-impl.md`
-   - **Context capture**: Phase 1 output (plan summary) is captured for injection into Phase 2
 
 3. **Phase 2 - Execution**: Implement the plan using Ralph + Ultrawork
    - Executor (Haiku): Simple tasks
    - Executor (Sonnet): Standard tasks
    - Executor (Opus): Complex tasks
    - Run independent tasks in parallel
-   - **Context capture**: Phase 2 output (implementation summary: files changed, decisions made) is captured for injection into Phase 3
 
 4. **Phase 3 - QA**: Cycle until all tests pass (UltraQA mode)
    - Build, lint, test, fix failures
    - Repeat up to 5 cycles
    - Stop early if the same error repeats 3 times (indicates a fundamental issue)
-   - **Context capture**: Phase 3 output (QA results) is captured for injection into Phase 4
 
 5. **Phase 4 - Validation**: Multi-perspective review in parallel
    - Architect: Functional completeness
@@ -95,7 +77,7 @@ Complexity result is stored in `.omcp/state/sessions/{sessionId}/complexity.json
 - Use `Task(subagent_type="oh-my-copilot:architect", ...)` for Phase 4 architecture validation
 - Use `Task(subagent_type="oh-my-copilot:security-reviewer", ...)` for Phase 4 security review
 - Use `Task(subagent_type="oh-my-copilot:code-reviewer", ...)` for Phase 4 quality review
-- Agents form their own analysis first, then spawn Copilot Task agents for cross-validation
+- Agents form their own analysis first, then spawn Claude Task agents for cross-validation
 - Never block on external tools; proceed with available agents if delegation fails
 </Tool_Usage>
 
@@ -138,15 +120,6 @@ Why bad: This is an exploration/brainstorming request. Respond conversationally 
 </Final_Checklist>
 
 <Advanced>
-## Context Accumulation
-
-Autopilot captures key outputs from each phase and injects them into the next phase's agent prompt as a `<prior-phase-context>` block. This ensures downstream agents have context from earlier phases without needing to re-read files.
-
-- Phase outputs are truncated to 12KB each
-- Context is session-scoped and cleared on `/cancel`
-- Includes: spec summaries, plan summaries, implementation decisions, QA results
-- Stored in `.omcp/state/sessions/{sessionId}/phase-context.json`
-
 ## Configuration
 
 Optional settings in `.copilot/omg.jsonc` (project) or `~/.config/copilot-omg/config.jsonc` (user):

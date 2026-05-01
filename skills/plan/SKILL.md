@@ -2,6 +2,10 @@
 name: omc-plan
 description: Strategic planning with optional interview workflow
 argument-hint: "[--direct|--consensus|--review] [--interactive] [--deliberate] <task description>"
+pipeline: [deep-interview, omc-plan, autopilot]
+next-skill: autopilot
+handoff: .omcp/plans/ralplan-*.md
+level: 4
 ---
 
 <Purpose>
@@ -47,13 +51,6 @@ Jumping into code without understanding requirements leads to rework, scope cree
 | Consensus | `--consensus`, "ralplan" | Planner -> Architect -> Critic loop until agreement with RALPLAN-DR structured deliberation (short by default, `--deliberate` for high-risk); add `--interactive` for user prompts at draft and approval steps |
 | Review | `--review`, "review this plan" | Critic evaluation of existing plan |
 
-### Complexity Classification
-
-All planning modes benefit from complexity awareness:
-- Tasks classified as **SIMPLE** by the heuristic classifier get abbreviated planning (direct mode, single pass)
-- Tasks classified as **COMPLEX** auto-enable `--deliberate` in consensus mode
-- Classification is automatic — no user action needed
-
 ### Interview Mode (broad/vague requests)
 
 1. **Classify the request**: Broad (vague verbs, no specific files, touches 3+ areas) triggers interview mode
@@ -71,6 +68,13 @@ All planning modes benefit from complexity awareness:
 
 ### Consensus Mode (`--consensus` / "ralplan")
 
+**RALPLAN-DR modes**: **Short** (default, bounded structure) and **Deliberate** (for `--deliberate` or explicit high-risk requests). Both modes keep the same Planner -> Architect -> Critic sequence and the same `AskUserQuestion` gates.
+
+**Provider overrides (supported when the provider CLI is installed):**
+- `--architect codex` — replace the Claude Architect pass with `omc ask codex --agent-prompt architect "..."` for implementation-heavy architecture review
+- `--critic codex` — replace the Claude Critic pass with `omc ask codex --agent-prompt critic "..."` for an external review pass before execution
+- If the requested provider is unavailable, briefly note that and continue with the default Claude Architect/Critic step for that stage
+
 **State lifecycle**: The persistent-mode stop hook uses `ralplan-state.json` to enforce continuation during the consensus loop. The skill **MUST** manage this state:
 - **On entry**: Call `state_write(mode="ralplan", active=true, session_id=<current_session_id>)` before step 1
 - **On handoff to execution** (approval → ralph/team): Call `state_write(mode="ralplan", active=false, session_id=<current_session_id>)`. Do NOT use `state_clear` here — `state_clear` writes a 30-second cancel signal that disables stop-hook enforcement for ALL modes, leaving the newly launched execution mode unprotected.
@@ -78,8 +82,6 @@ All planning modes benefit from complexity awareness:
 - Do NOT clear during intermediate steps like Critic approval or max-iteration presentation, as the user may still select "Request changes".
 
 Without cleanup, the stop hook blocks all subsequent stops with `[RALPLAN - CONSENSUS PLANNING]` reinforcement messages even after the consensus workflow has finished. Always pass `session_id` to avoid clearing other concurrent sessions' state.
-
-**RALPLAN-DR modes**: **Short** (default, bounded structure) and **Deliberate** (for `--deliberate` or explicit high-risk requests). Both modes keep the same Planner -> Architect -> Critic sequence and the same `AskUserQuestion` gates.
 
 1. **Planner** creates initial plan and a compact **RALPLAN-DR summary** before any Architect review. The summary **MUST** include:
    - **Principles** (3-5)

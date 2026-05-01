@@ -2,12 +2,6 @@
 
 OMC supports a narrow, prompt-level contract for vendor-owned company context.
 
-This contract is aimed at a specific failure mode from upstream issue #2692:
-purely prompt-directive company-context guidance is still missed in practice
-roughly 5% of the time. Making the lookup an explicit configured tool call
-materially reduces that miss mode at the spec layer without changing OMC
-runtime behavior.
-
 This is **not** a runtime enforcement feature. It gives OMC workflows:
 
 - a consistent tool shape,
@@ -52,8 +46,8 @@ OMC skill clauses should treat the returned markdown the same way `deep-dive` tr
 
 Configure the contract in the standard OMC config surface:
 
-- Project: `.copilot/omg.jsonc`
-- User: `~/.config/copilot-omg/config.jsonc`
+- Project: `.claude/omc.jsonc`
+- User: `~/.config/claude-omc/config.jsonc`
 
 Project config overrides user config.
 
@@ -98,23 +92,18 @@ Each skill should build a `query` that summarizes the current task, current stag
 
 The company-context server itself is still registered through the normal MCP surfaces:
 
-- Copilot CLI MCP configuration / `copilot mcp add ...`
+- Claude MCP configuration / `claude mcp add ...`
 - the unified MCP registry that OMC syncs to Codex
 
 This contract does not change how MCP servers are registered.
 
 For a tiny runnable reference implementation, see:
 
-- [`examples/vendor-mcp-server/README.md`](../examples/vendor-mcp-server/README.md)
+- [`examples/vendor-mcp-server/README.md`](/mnt/offloading/Workspace/oh-my-claudecode.omx-worktrees/issue-2692-company-context-mcp-interface/examples/vendor-mcp-server/README.md)
 
 ## Residual Risk
 
-This interface addresses the observed ~5% prompt-directive miss mode by making
-the company-context lookup explicit, but it still operates at the skill-prompt
-layer. The documented MUST-call clauses should meaningfully reduce that miss
-rate, yet they do **not** guarantee a 0% miss rate or mathematically perfect
-invocation. If you need deterministic invocation, that would require a separate
-runtime enforcement design.
+This interface makes the contract explicit and lowers prompt drift, but it still operates at the skill-prompt layer. If you need guaranteed invocation, that would require a separate runtime enforcement design.
 
 ## Non-Goals
 

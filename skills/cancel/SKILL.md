@@ -39,7 +39,7 @@ Or say: "cancelomc", "stopomc"
 ## Critical: Deferred Tool Handling
 
 The state management tools (`state_clear`, `state_read`, `state_write`, `state_list_active`,
-`state_get_status`) may be registered as **deferred tools** by Copilot CLI. Before calling
+`state_get_status`) may be registered as **deferred tools** by Claude Code. Before calling
 any state tool, you MUST first load all of them via `ToolSearch`:
 
 ```
@@ -115,10 +115,10 @@ Active modes are still cancelled in dependency order:
 5. Swarm (standalone)
 6. Ultrapilot (standalone)
 7. Pipeline (standalone)
-8. Team (Copilot CLI native)
+8. Team (Claude Code native)
 9. OMC Teams (tmux CLI workers)
 10. Plan Consensus (standalone)
-11. Self-Improve (standalone — clear state, clean orphaned worktrees, preserve iteration_state for resume, set status: "user_stopped" in the resolved `<self-improve-root>/state/agent-settings.json`; new runs use `.omc/self-improve/topics/<topic-slug>/`, with flat `.omc/self-improve/` retained only for legacy single-track resumes)
+11. Self-Improve (standalone — clear state, clean orphaned worktrees, preserve iteration_state for resume, set status: "user_stopped" in the resolved `<self-improve-root>/state/agent-settings.json`; new runs use `.omcp/self-improve/topics/<topic-slug>/`, with flat `.omcp/self-improve/` retained only for legacy single-track resumes)
 
 ## Force Clear All
 
@@ -136,7 +136,7 @@ Steps under the hood:
 1. `state_list_active` enumerates `.omcp/state/sessions/{sessionId}/…` to find every known session.
 2. `state_clear` runs once per session to drop that session’s files.
 3. A global `state_clear` without `session_id` removes legacy files under `.omcp/state/*.json`, `.omcp/state/swarm*.db`, and compatibility artifacts (see list).
-4. Team artifacts (`~/.copilot/teams/*/`, `~/.copilot/tasks/*/`, `.omcp/state/team-state.json`) are best-effort cleared as part of the legacy fallback.
+4. Team artifacts (`~/.claude/teams/*/`, `~/.claude/tasks/*/`, `.omcp/state/team-state.json`) are best-effort cleared as part of the legacy fallback.
    - Cancel for native team does NOT affect omc-teams state, and vice versa.
 
 Every `state_clear` command honors the `session_id` argument, so even force mode still uses the session-aware paths first before deleting legacy files.
@@ -196,7 +196,7 @@ Use force mode to clear every session plus legacy artifacts via `state_clear`. D
 
 ### 3B. Smart Cancellation (default)
 
-#### If Team Active (Copilot CLI native)
+#### If Team Active (Claude Code native)
 
 Teams are detected by checking for config files in `${COPILOT_CONFIG_DIR:-~/.copilot}/teams/`:
 
@@ -233,7 +233,7 @@ After graceful pass:
 
 **TeamDelete + Cleanup:**
 ```
-  1. Call TeamDelete() — removes ~/.copilot/teams/{name}/ and ~/.copilot/tasks/{name}/
+  1. Call TeamDelete() — removes ~/.claude/teams/{name}/ and ~/.claude/tasks/{name}/
   2. Clear team state: state_clear(mode="team")
   3. Check for linked ralph: state_read(mode="ralph") — if linked_team is true:
      a. Clear ralph state: state_clear(mode="ralph")
@@ -246,7 +246,7 @@ After graceful pass:
 
 After TeamDelete, verify no agent processes remain:
 ```bash
-node "${PLUGIN_ROOT}/scripts/cleanup-orphans.mjs" --team-name "{team_name}"
+node "${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-orphans.mjs" --team-name "{team_name}"
 ```
 
 The orphan scanner:
@@ -264,7 +264,7 @@ Team "{team_name}" cancelled:
   - Unresponsive: K (list names if any)
   - TeamDelete: success/failed
   - Manual cleanup needed: yes/no
-    Path: ~/.copilot/teams/{name}/ and ~/.copilot/tasks/{name}/
+    Path: ~/.claude/teams/{name}/ and ~/.claude/tasks/{name}/
 ```
 
 **Implementation note:** The cancel skill is executed by the LLM, not as a bash script. When you detect an active team:
@@ -318,7 +318,7 @@ The cancel skill runs as follows:
 2. Use `state_list_active` to enumerate known session ids and `state_get_status` to learn the active mode (`autopilot`, `ralph`, `ultrawork`, etc.) for each session.
 3. When operating in default mode, call `state_clear` with that session_id to remove only the session’s files, then run mode-specific cleanup (autopilot → ralph → …) based on the state tool signals.
 4. In force mode, iterate every active session, call `state_clear` per session, then run a global `state_clear` without `session_id` to drop legacy files (`.omcp/state/*.json`, compatibility artifacts) and report success. Swarm remains a shared SQLite/marker mode outside session scoping.
-5. Team artifacts (`~/.copilot/teams/*/`, `~/.copilot/tasks/*/`, `.omcp/state/team-state.json`) remain best-effort cleanup items invoked during the legacy/global pass.
+5. Team artifacts (`~/.claude/teams/*/`, `~/.claude/tasks/*/`, `.omcp/state/team-state.json`) remain best-effort cleanup items invoked during the legacy/global pass.
 6. **Always** clear skill-active state as the final step, regardless of which mode was active or whether `--force` was used:
    ```
    state_clear(mode="skill-active", session_id)
@@ -364,7 +364,7 @@ Mode-specific subsections below describe what extra cleanup each handler perform
 - **Safe**: Only clears linked Ultrawork, preserves standalone Ultrawork
 - **Local-only**: Clears state files in `.omcp/state/` directory
 - **Resume-friendly**: Autopilot state is preserved for seamless resume
-- **Team-aware**: Detects native Copilot CLI teams and performs graceful shutdown
+- **Team-aware**: Detects native Claude Code teams and performs graceful shutdown
 
 ## MCP Worker Cleanup
 
@@ -372,7 +372,7 @@ When cancelling modes that may have spawned MCP workers (team bridge daemons), t
 
 1. **Check for active MCP workers**: Look for heartbeat files at `.omcp/state/team-bridge/{team}/*.heartbeat.json`
 2. **Send shutdown signals**: Write shutdown signal files for each active worker
-3. **Kill tmux sessions**: Run `tmux kill-session -t omcp-team-{team}-{worker}` for each worker
+3. **Kill tmux sessions**: Run `tmux kill-session -t omc-team-{team}-{worker}` for each worker
 4. **Clean up heartbeat files**: Remove all heartbeat files for the team
 5. **Clean up shadow registry**: Remove `.omcp/state/team-mcp-workers.json`
 
@@ -382,6 +382,6 @@ When `--force` is used, also clean up:
 ```bash
 rm -rf .omcp/state/team-bridge/       # Heartbeat files
 rm -f .omcp/state/team-mcp-workers.json  # Shadow registry
-# Kill all omcp-team-* tmux sessions
-tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^omcp-team-' | while read s; do tmux kill-session -t "$s" 2>/dev/null; done
+# Kill all omc-team-* tmux sessions
+tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^omc-team-' | while read s; do tmux kill-session -t "$s" 2>/dev/null; done
 ```

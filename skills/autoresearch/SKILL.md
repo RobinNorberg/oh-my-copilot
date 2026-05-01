@@ -12,14 +12,14 @@ Autoresearch is a stateful skill for bounded, evaluator-driven iterative improve
 <Use_When>
 - You already have a mission and evaluator from `/deep-interview --autoresearch`
 - You want persistent single-mission improvement with strict evaluation
-- You need durable experiment logs under `.omc/autoresearch/`
+- You need durable experiment logs under `.omcp/autoresearch/`
 - You want a supported path for periodic reruns via Claude Code native cron
 </Use_When>
 
 <Do_Not_Use_When>
 - You need evaluator generation at runtime — use `/deep-interview --autoresearch` first
 - You need multiple missions orchestrated together — v1 forbids that
-- You want the deprecated `omcp autoresearch` CLI flow — it is no longer authoritative
+- You want the deprecated `omc autoresearch` CLI flow — it is no longer authoritative
 </Do_Not_Use_When>
 
 <Contract>
@@ -31,7 +31,7 @@ Autoresearch is a stateful skill for bounded, evaluator-driven iterative improve
 </Contract>
 
 <Required_Artifacts>
-Canonical persistent storage lives under `.omc/autoresearch/<mission-slug>/` and/or `.omc/logs/autoresearch/<run-id>/`.
+Canonical persistent storage lives under `.omcp/autoresearch/<mission-slug>/` and/or `.omcp/logs/autoresearch/<run-id>/`.
 
 Minimum required artifacts:
 - mission spec
@@ -41,7 +41,7 @@ Minimum required artifacts:
 
 Recommended canonical shape:
 ```text
-.omc/autoresearch/<mission-slug>/
+.omcp/autoresearch/<mission-slug>/
   mission.md
   evaluator.json
   runs/<run-id>/
@@ -83,7 +83,7 @@ If cron is used:
 </Cron_Integration>
 
 <Execution_Policy>
-- Do not hand execution back to `omcp autoresearch`
+- Do not hand execution back to `omc autoresearch`
 - Do not create multi-mission orchestration
 - Prefer reusing `src/autoresearch/*` runtime/schema helpers where they already match the stricter contract
 - Keep logs useful to humans, not only machines
