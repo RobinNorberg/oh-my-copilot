@@ -1,8 +1,8 @@
 /**
  * tmux Detector
  *
- * Detects Claude Code sessions running in tmux panes and identifies
- * those that are blocked due to rate limiting.
+ * Detects CLI agent sessions (Claude Code, Copilot CLI) running in tmux
+ * panes and identifies those that are blocked due to rate limiting.
  *
  * Security considerations:
  * - Pane IDs are validated before use in shell commands
@@ -42,11 +42,11 @@ export declare function isPaneAlive(paneId: string): boolean;
  */
 export declare function capturePaneContent(paneId: string, lines?: number): string;
 /**
- * Analyze pane content to determine if it shows a rate-limited Claude Code session
+ * Analyze pane content to determine if it shows a rate-limited CLI agent session
  */
 export declare function analyzePaneContent(content: string): PaneAnalysisResult;
 /**
- * Scan all tmux panes for blocked Claude Code sessions.
+ * Scan all tmux panes for blocked CLI agent sessions (Claude Code or Copilot CLI).
  *
  * @param lines    - Number of lines to capture from each pane
  * @param stateDir - When provided, use cursor-tracked capture (getNewPaneTail) so
