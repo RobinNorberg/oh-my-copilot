@@ -3,6 +3,10 @@ import { validateAnthropicBaseUrl } from '../utils/ssrf-guard.js';
 export type ModelTier = 'LOW' | 'MEDIUM' | 'HIGH';
 export type ClaudeModelFamily = 'HAIKU' | 'SONNET' | 'OPUS';
 
+const DIRECT_MODEL_ENV_KEYS = ['CLAUDE_MODEL', 'ANTHROPIC_MODEL'] as const;
+const INHERIT_TIER_PRIORITY: readonly ModelTier[] = ['MEDIUM', 'HIGH', 'LOW'];
+const CLAUDE_TIER_ALIASES = new Set(['sonnet', 'opus', 'haiku']);
+
 const TIER_ENV_KEYS: Record<ModelTier, readonly string[]> = {
   LOW: [
     'OMC_MODEL_LOW',
@@ -78,9 +82,63 @@ export const BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
  * User/project config overrides are applied later by the config loader
  * via deepMerge, so they take precedence over these defaults.
  */
+function readEnvValue(key: string): string | undefined {
+  const value = process.env[key]?.trim();
+  return value || undefined;
+}
+
 function resolveTierModelFromEnv(tier: ModelTier): string | undefined {
   for (const key of TIER_ENV_KEYS[tier]) {
-    const value = process.env[key]?.trim();
+    const value = readEnvValue(key);
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function getDirectModelEnvValue(): string | undefined {
+  for (const key of DIRECT_MODEL_ENV_KEYS) {
+    const value = readEnvValue(key);
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function getProviderDetectionModelEnvValues(): string[] {
+  const directModel = getDirectModelEnvValue();
+  if (directModel) {
+    return [directModel];
+  }
+
+  const values = new Set<string>();
+  for (const tier of INHERIT_TIER_PRIORITY) {
+    const value = resolveTierModelFromEnv(tier);
+    if (value) {
+      values.add(value);
+    }
+  }
+
+  return [...values];
+}
+
+function getDirectProviderDetectionModelEnvValues(): string[] {
+  const directModel = getDirectModelEnvValue();
+  return directModel ? [directModel] : [];
+}
+
+export function resolveInheritedModelFromEnv(): string | undefined {
+  const directModel = getDirectModelEnvValue();
+  if (directModel) {
+    return directModel;
+  }
+
+  for (const tier of INHERIT_TIER_PRIORITY) {
+    const value = resolveTierModelFromEnv(tier);
     if (value) {
       return value;
     }
@@ -92,8 +150,7 @@ function resolveTierModelFromEnv(tier: ModelTier): string | undefined {
 export function hasTierModelEnvOverrides(): boolean {
   return Object.values(TIER_ENV_KEYS).some((keys) =>
     keys.some((key) => {
-      const value = process.env[key]?.trim();
-      return Boolean(value);
+      return Boolean(readEnvValue(key));
     })
   );
 }
@@ -153,6 +210,24 @@ export function getBuiltinExternalDefaultModel(provider: 'codex' | 'gemini'): st
     : BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
 }
 
+
+function hasBedrockModelId(modelIds: readonly string[]): boolean {
+  for (const modelId of modelIds) {
+    if (/^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) {
+      return true;
+    }
+    if (
+      /^arn:aws(-[^:]+)?:bedrock:/i.test(modelId)
+      && /:(inference-profile|application-inference-profile)\//i.test(modelId)
+      && modelId.toLowerCase().includes('claude')
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /**
  * Detect whether Copilot CLI is running on AWS Bedrock.
  *
@@ -172,10 +247,22 @@ export function isBedrock(): boolean {
     return true;
   }
 
-  // Fallback: detect Bedrock model ID patterns in CLAUDE_MODEL / ANTHROPIC_MODEL
+  // Fallback: detect Bedrock model ID patterns in the active model env value.
+  // Direct session model env vars win over lower-precedence tier defaults, so a
+  // stale tier/default env must not mark a standard Claude session as Bedrock.
   // Covers region prefixes (us, eu, ap), cross-region (global), and bare (anthropic.)
   const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || '';
   if (modelId && /^((us|eu|ap|global)\.anthropic\.|anthropic\.claude)/i.test(modelId)) {
+    return true;
+  }
+
+  // Also recognize Bedrock ARN-based inference profiles (ported from upstream #2866).
+  if (
+    modelId
+    && /^arn:aws(-[^:]+)?:bedrock:/i.test(modelId)
+    && /:(inference-profile|application-inference-profile)\//i.test(modelId)
+    && modelId.toLowerCase().includes('claude')
+  ) {
     return true;
   }
 
@@ -221,10 +308,20 @@ export function isVertexAI(): boolean {
     return true;
   }
 
-  // Fallback: detect vertex_ai/ prefix in model ID
-  const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || '';
-  if (modelId && modelId.toLowerCase().startsWith('vertex_ai/')) {
-    return true;
+  // Fallback: detect vertex_ai/ prefix in the active model env value.
+  return hasVertexModelId(getProviderDetectionModelEnvValues());
+}
+
+function hasVertexModelId(modelIds: readonly string[]): boolean {
+  return modelIds.some((modelId) => modelId.toLowerCase().startsWith('vertex_ai/'));
+}
+
+function hasNonClaudeModelId(modelIds: readonly string[]): boolean {
+  for (const modelId of modelIds) {
+    const lower = modelId.toLowerCase();
+    if (!lower.includes('claude') && !CLAUDE_TIER_ALIASES.has(lower)) {
+      return true;
+    }
   }
 
   return false;
@@ -301,6 +398,49 @@ export function isNonCopilotProvider(): boolean {
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Rejecting ANTHROPIC_BASE_URL: ${validation.reason}`);
       // Treat invalid URLs as non-Copilot to prevent potential SSRF
+      return true;
+    }
+    if (!baseUrl.includes('anthropic.com')) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Detect whether provider state should globally force Agent/Task calls to
+ * inherit the parent session model. Tier model env overrides intentionally do
+ * not trigger this by themselves: they are configured per-tier defaults for
+ * OMC routing, not proof that every delegated agent should drop its model.
+ */
+export function shouldAutoForceInherit(): boolean {
+  if (process.env.OMC_ROUTING_FORCE_INHERIT === 'true') {
+    return true;
+  }
+
+  if (process.env.CLAUDE_CODE_USE_BEDROCK === '1') {
+    return true;
+  }
+
+  if (process.env.CLAUDE_CODE_USE_VERTEX === '1') {
+    return true;
+  }
+
+  const directModelValues = getDirectProviderDetectionModelEnvValues();
+  if (
+    hasBedrockModelId(directModelValues)
+    || hasVertexModelId(directModelValues)
+    || hasNonClaudeModelId(directModelValues)
+  ) {
+    return true;
+  }
+
+  const baseUrl = process.env.ANTHROPIC_BASE_URL || '';
+  if (baseUrl) {
+    const validation = validateAnthropicBaseUrl(baseUrl);
+    if (!validation.allowed) {
+      console.error(`[SSRF Guard] Rejecting ANTHROPIC_BASE_URL: ${validation.reason}`);
       return true;
     }
     if (!baseUrl.includes('anthropic.com')) {
