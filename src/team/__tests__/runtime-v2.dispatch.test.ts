@@ -254,14 +254,14 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     });
 
-    const taskPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
+    const taskPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
     const task = JSON.parse(await readFile(taskPath, 'utf-8')) as { delegation?: { mode?: string; required_parallel_probe?: boolean } };
     expect(task.delegation).toMatchObject({
       mode: 'auto',
       required_parallel_probe: true,
     });
 
-    const inboxPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
+    const inboxPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
     const inbox = await readFile(inboxPath, 'utf-8');
     expect(inbox).toContain('"result"');
     expect(inbox).toContain('Subagent skip reason:');
