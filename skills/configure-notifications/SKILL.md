@@ -239,7 +239,7 @@ Telegram Notifications Configured!
   Format:     Markdown
   Events:     session-end, ask-user-question
 
-Config saved to: ~/.copilot/.omcp-config.json
+Config saved to: ~/.copilot/.omc-config.json
 
 You can also set these via environment variables:
   OMC_TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
@@ -481,7 +481,7 @@ Discord Notifications Configured!
   Events:   session-end, ask-user-question
   Username: OMC
 
-Config saved to: ~/.copilot/.omcp-config.json
+Config saved to: ~/.copilot/.omc-config.json
 
 You can also set these via environment variables:
   OMC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
@@ -728,7 +728,7 @@ Slack Notifications Configured!
   Events:   session-end, ask-user-question
   Username: OMC
 
-Config saved to: ~/.copilot/.omcp-config.json
+Config saved to: ~/.copilot/.omc-config.json
 
 You can also set these via environment variables:
   OMC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
