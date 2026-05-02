@@ -409,6 +409,46 @@ describe('state-tools', () => {
             expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'sessions', currentSessionId, 'cancel-signal-state.json'))).toBe(true);
             expect(existsSync(join(ownerDir, 'cancel-signal-state.json'))).toBe(true);
         });
+        // TODO(port-2897): re-enable when fork ports upstream's clearModeRuntimeArtifacts
+        // (depends on aborted R2 port, see PR review for #2897 conflicts).
+        it.skip('should clear ralph runtime artifacts during broad cancel cleanup', async () => {
+            const sessionId = 'ralph-broad-runtime-cleanup';
+            const stateDir = join(TEST_DIR, '.omcp', 'state');
+            const sessionDir = join(stateDir, 'sessions', sessionId);
+            mkdirSync(sessionDir, { recursive: true });
+            writeFileSync(join(sessionDir, 'ralph-stop-breaker.json'), JSON.stringify({ count: 1 }));
+            writeFileSync(join(stateDir, 'ralph-stop-breaker.json'), JSON.stringify({ count: 1 }));
+            writeFileSync(join(stateDir, 'ralph-last-steer-at'), new Date().toISOString());
+            const result = await stateClearTool.handler({
+                mode: 'ralph',
+                workingDirectory: TEST_DIR,
+            });
+            expect(result.content[0].text).toContain('Locations cleared: 3');
+            expect(existsSync(join(sessionDir, 'ralph-stop-breaker.json'))).toBe(false);
+            expect(existsSync(join(stateDir, 'ralph-stop-breaker.json'))).toBe(false);
+            expect(existsSync(join(stateDir, 'ralph-last-steer-at'))).toBe(false);
+        });
+        // TODO(port-2897): cancel-signal-state.json write-before-delete is part
+        // of #2897 (the broader cancel/runtime cleanup port). Re-enable after that lands.
+        it.skip('should discover and clear session-scoped autopilot state when no session_id is provided', async () => {
+            const sessionId = 'missing-env-autopilot-session';
+            const stateDir = join(TEST_DIR, '.omcp', 'state');
+            const sessionDir = join(stateDir, 'sessions', sessionId);
+            const autopilotPath = join(sessionDir, 'autopilot-state.json');
+            mkdirSync(sessionDir, { recursive: true });
+            writeFileSync(autopilotPath, JSON.stringify({
+                active: true,
+                session_id: sessionId,
+                phase: 'expansion',
+            }));
+            const result = await stateClearTool.handler({
+                mode: 'autopilot',
+                workingDirectory: TEST_DIR,
+            });
+            expect(result.content[0].text).toContain('Cleared state for mode: autopilot');
+            expect(existsSync(autopilotPath)).toBe(false);
+            expect(existsSync(join(sessionDir, 'cancel-signal-state.json'))).toBe(true);
+        });
     });
     describe('session-scoped behavior', () => {
         it('should prevent cross-process state bleeding when session_id provided', async () => {
