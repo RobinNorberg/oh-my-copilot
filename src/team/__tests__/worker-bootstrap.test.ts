@@ -124,6 +124,8 @@ describe('worker-bootstrap', () => {
       expect(overlay).toContain('omcp team api release-task-claim --input');
       expect(overlay).toContain('claim_token');
       expect(overlay).toContain('Delegation compliance evidence');
+      expect(overlay).toContain('\\"result\\":');
+      expect(overlay).toContain('worker protocol forbids nested subagents');
       expect(overlay).toContain('Subagent spawn evidence:');
       expect(overlay).toContain('Subagent skip reason:');
       expect(overlay).toContain('missing_delegation_compliance_evidence');
