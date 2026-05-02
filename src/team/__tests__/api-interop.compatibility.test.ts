@@ -11,7 +11,7 @@ describe('team api compatibility (task + mailbox legacy formats)', () => {
 
   beforeEach(async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-team-api-compat-'));
-    const base = join(cwd, '.omc', 'state', 'team', teamName);
+    const base = join(cwd, '.omcp', 'state', 'team', teamName);
     await mkdir(join(base, 'tasks'), { recursive: true });
     await mkdir(join(base, 'mailbox'), { recursive: true });
     await mkdir(join(base, 'events'), { recursive: true });
@@ -33,7 +33,7 @@ describe('team api compatibility (task + mailbox legacy formats)', () => {
   });
 
   it('reads legacy tasks/1.json and writes canonical task-1.json on claim', async () => {
-    const legacyTaskPath = join(cwd, '.omc', 'state', 'team', teamName, 'tasks', '1.json');
+    const legacyTaskPath = join(cwd, '.omcp', 'state', 'team', teamName, 'tasks', '1.json');
     await writeFile(legacyTaskPath, JSON.stringify({
       id: '1',
       subject: 'Compat task',
@@ -60,12 +60,12 @@ describe('team api compatibility (task + mailbox legacy formats)', () => {
     }, cwd);
     expect(claimResult.ok).toBe(true);
 
-    const canonicalPath = join(cwd, '.omc', 'state', 'team', teamName, 'tasks', 'task-1.json');
+    const canonicalPath = join(cwd, '.omcp', 'state', 'team', teamName, 'tasks', 'task-1.json');
     expect(existsSync(canonicalPath)).toBe(true);
   });
 
   it('reads legacy mailbox JSONL and migrates to canonical JSON on mark-notified', async () => {
-    const legacyMailboxPath = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', 'worker-1.jsonl');
+    const legacyMailboxPath = join(cwd, '.omcp', 'state', 'team', teamName, 'mailbox', 'worker-1.jsonl');
     await writeFile(legacyMailboxPath, `${JSON.stringify({
       id: 'msg-1',
       from: 'leader-fixed',
@@ -91,7 +91,7 @@ describe('team api compatibility (task + mailbox legacy formats)', () => {
     }, cwd);
     expect(markResult.ok).toBe(true);
 
-    const canonicalMailboxPath = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', 'worker-1.json');
+    const canonicalMailboxPath = join(cwd, '.omcp', 'state', 'team', teamName, 'mailbox', 'worker-1.json');
     expect(existsSync(canonicalMailboxPath)).toBe(true);
     const canonicalRaw = await readFile(canonicalMailboxPath, 'utf-8');
     const canonical = JSON.parse(canonicalRaw) as { messages: Array<{ message_id: string; notified_at?: string }> };
@@ -148,7 +148,7 @@ describe('team api compatibility (task + mailbox legacy formats)', () => {
   });
 
   it('rejects broad delegated task completion without spawn evidence or skip reason', async () => {
-    const taskPath = join(cwd, '.omc', 'state', 'team', teamName, 'tasks', 'task-1.json');
+    const taskPath = join(cwd, '.omcp', 'state', 'team', teamName, 'tasks', 'task-1.json');
     await writeFile(taskPath, JSON.stringify({
       id: '1',
       subject: 'Investigate flaky runtime behavior',
@@ -200,7 +200,7 @@ describe('team api compatibility (task + mailbox legacy formats)', () => {
   });
 
   it('records delegation compliance when broad delegated completion includes spawn evidence', async () => {
-    const taskPath = join(cwd, '.omc', 'state', 'team', teamName, 'tasks', 'task-1.json');
+    const taskPath = join(cwd, '.omcp', 'state', 'team', teamName, 'tasks', 'task-1.json');
     await writeFile(taskPath, JSON.stringify({
       id: '1',
       subject: 'Investigate flaky runtime behavior',
@@ -256,7 +256,7 @@ describe('team api compatibility (task + mailbox legacy formats)', () => {
   });
 
   it('accepts documented skip reason when broad delegated task allows skipping', async () => {
-    const taskPath = join(cwd, '.omc', 'state', 'team', teamName, 'tasks', 'task-1.json');
+    const taskPath = join(cwd, '.omcp', 'state', 'team', teamName, 'tasks', 'task-1.json');
     await writeFile(taskPath, JSON.stringify({
       id: '1',
       subject: 'Review focused regression',
