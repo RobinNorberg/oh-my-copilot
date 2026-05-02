@@ -127,6 +127,25 @@ export type WorkerCapability = 'code-edit' | 'code-review' | 'security-review' |
 export interface TeamTaskV2 extends TeamTask {
     version: number;
 }
+export type TeamTaskDelegationMode = 'none' | 'optional' | 'auto' | 'required';
+export type TeamTaskChildModelPolicy = 'standard' | 'fast' | 'inherit' | 'frontier';
+export interface TeamTaskDelegationComplianceEvidence {
+    status: 'spawned' | 'skipped';
+    source: 'terminal_result';
+    detail: string;
+    recorded_at: string;
+}
+export interface TeamTaskDelegationPlan {
+    mode: TeamTaskDelegationMode;
+    max_parallel_subtasks?: number;
+    required_parallel_probe?: boolean;
+    spawn_before_serial_search_threshold?: number;
+    child_model_policy?: TeamTaskChildModelPolicy;
+    child_model?: string;
+    subtask_candidates?: string[];
+    child_report_format?: 'bullets' | 'json';
+    skip_allowed_reason_required?: boolean;
+}
 /** Claim metadata attached to a task */
 export interface TeamTaskClaim {
     owner: string;
@@ -150,6 +169,8 @@ export interface TeamTask {
     claim?: TeamTaskClaim;
     created_at: string;
     completed_at?: string;
+    delegation?: TeamTaskDelegationPlan;
+    delegation_compliance?: TeamTaskDelegationComplianceEvidence;
 }
 /** Team leader identity */
 export interface TeamLeader {
@@ -364,7 +385,7 @@ export type TransitionTaskResult = {
     task: TeamTaskV2;
 } | {
     ok: false;
-    error: 'claim_conflict' | 'invalid_transition' | 'task_not_found' | 'already_terminal' | 'lease_expired';
+    error: 'claim_conflict' | 'invalid_transition' | 'task_not_found' | 'already_terminal' | 'lease_expired' | 'missing_delegation_compliance_evidence';
 };
 /** Result of releasing a task claim */
 export type ReleaseTaskClaimResult = {
