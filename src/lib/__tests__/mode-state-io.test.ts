@@ -77,31 +77,46 @@ describe('mode-state-io', () => {
       expect(mode & 0o777).toBe(0o600);
     });
 
-    it('should not leave temp file after successful write', () => {
+    it('should not leave shared .tmp file after successful write (uses atomic write with unique temp)', () => {
       writeModeState('ralph', { active: true }, tempDir);
 
       const filePath = join(tempDir, '.omcp', 'state', 'ralph-state.json');
       expect(existsSync(filePath)).toBe(true);
+      // atomicWriteJsonSync uses random UUID-based temp files, not shared .tmp suffix
       expect(existsSync(filePath + '.tmp')).toBe(false);
     });
 
-    it('should preserve original file when a leftover .tmp exists from a prior crash', () => {
-      // Simulate: a previous write crashed, leaving a .tmp file
-      writeModeState('ralph', { active: true, iteration: 1 }, tempDir);
+    it('should include sessionId in _meta when sessionId is provided', () => {
+      writeModeState('ralph', { active: true }, tempDir, 'pid-session-42');
+
+      const filePath = join(tempDir, '.omcp', 'state', 'sessions', 'pid-session-42', 'ralph-state.json');
+      expect(existsSync(filePath)).toBe(true);
+
+      const written = JSON.parse(readFileSync(filePath, 'utf-8'));
+      expect(written._meta.sessionId).toBe('pid-session-42');
+    });
+
+    it('should not include sessionId in _meta when sessionId is not provided', () => {
+      writeModeState('ralph', { active: true }, tempDir);
+
       const filePath = join(tempDir, '.omcp', 'state', 'ralph-state.json');
-      writeFileSync(filePath + '.tmp', 'partial-garbage');
+      const written = JSON.parse(readFileSync(filePath, 'utf-8'));
+      expect(written._meta.sessionId).toBeUndefined();
+    });
 
-      // A new write should succeed regardless of the stale .tmp file.
-      // atomicWriteJsonSync uses UUID-suffixed temp files so the pre-existing
-      // .tmp is not touched or removed — only the main state file is updated.
-      writeModeState('ralph', { active: true, iteration: 2 }, tempDir);
+    it('should use atomic write preventing race conditions from shared .tmp path', () => {
+      // Two concurrent writes should not collide on temp file paths
+      // (atomicWriteJsonSync uses crypto.randomUUID() for temp file names)
+      const result1 = writeModeState('ralph', { active: true, iteration: 1 }, tempDir);
+      const result2 = writeModeState('ralph', { active: true, iteration: 2 }, tempDir);
 
+      expect(result1).toBe(true);
+      expect(result2).toBe(true);
+
+      // The last write should win
       const state = readModeState<Record<string, unknown>>('ralph', tempDir);
       expect(state).not.toBeNull();
       expect(state!.iteration).toBe(2);
-      // The manually-placed .tmp leftover is not cleaned up by atomicWriteJsonSync
-      // (it uses a different temp file naming scheme with UUID suffix).
-      expect(existsSync(filePath + '.tmp')).toBe(true);
     });
   });
 
@@ -287,6 +302,19 @@ describe('mode-state-io', () => {
       expect(existsSync(legacyPath)).toBe(false);
     });
 
+    it('should clean up legacy root-level mode files for the matching session', () => {
+      const legacyRootPath = join(tempDir, '.omcp', 'ralph-state.json');
+      mkdirSync(join(tempDir, '.omcp'), { recursive: true });
+      writeFileSync(
+        legacyRootPath,
+        JSON.stringify({ active: true, session_id: 'pid-legacy-root-1' }),
+      );
+
+      const result = clearModeStateFile('ralph', tempDir, 'pid-legacy-root-1');
+      expect(result).toBe(true);
+      expect(existsSync(legacyRootPath)).toBe(false);
+    });
+
     it('should NOT delete legacy file owned by a different session', () => {
       const stateDir = join(tempDir, '.omcp', 'state');
       mkdirSync(stateDir, { recursive: true });
@@ -299,6 +327,67 @@ describe('mode-state-io', () => {
       clearModeStateFile('ralph', tempDir, 'pid-mine-100');
       // Legacy file should survive — it belongs to another session
       expect(existsSync(legacyPath)).toBe(true);
+    });
+
+    it('should NOT delete legacy file owned by a different session via _meta.sessionId', () => {
+      const stateDir = join(tempDir, '.omcp', 'state');
+      mkdirSync(stateDir, { recursive: true });
+      const legacyPath = join(stateDir, 'autopilot-state.json');
+      writeFileSync(
+        legacyPath,
+        JSON.stringify({ active: true, _meta: { sessionId: 'session-other-321' } }),
+      );
+
+      clearModeStateFile('autopilot', tempDir, 'session-mine-123');
+      expect(existsSync(legacyPath)).toBe(true);
+    });
+
+    it('should delete legacy file owned by this session via _meta.sessionId', () => {
+      const stateDir = join(tempDir, '.omcp', 'state');
+      mkdirSync(stateDir, { recursive: true });
+      const legacyPath = join(stateDir, 'autopilot-state.json');
+      writeFileSync(
+        legacyPath,
+        JSON.stringify({ active: true, _meta: { sessionId: 'session-mine-123' } }),
+      );
+
+      clearModeStateFile('autopilot', tempDir, 'session-mine-123');
+      expect(existsSync(legacyPath)).toBe(false);
+    });
+
+    it('should remove all session-scoped files when no session_id is provided', () => {
+      const sessionAPath = join(tempDir, '.omcp', 'state', 'sessions', 'session-a', 'ralph-state.json');
+      const sessionBPath = join(tempDir, '.omcp', 'state', 'sessions', 'session-b', 'ralph-state.json');
+      mkdirSync(join(tempDir, '.omcp', 'state', 'sessions', 'session-a'), { recursive: true });
+      mkdirSync(join(tempDir, '.omcp', 'state', 'sessions', 'session-b'), { recursive: true });
+      writeFileSync(sessionAPath, JSON.stringify({ active: true, session_id: 'session-a' }));
+      writeFileSync(sessionBPath, JSON.stringify({ active: true, session_id: 'session-b' }));
+
+      const result = clearModeStateFile('ralph', tempDir);
+
+      expect(result).toBe(true);
+      expect(existsSync(sessionAPath)).toBe(false);
+      expect(existsSync(sessionBPath)).toBe(false);
+    });
+
+    it('should remove mode runtime artifacts during session-scoped clear', () => {
+      const stateDir = join(tempDir, '.omcp', 'state');
+      const sessionDir = join(stateDir, 'sessions', 'session-runtime-cleanup');
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(join(sessionDir, 'ralph-state.json'), JSON.stringify({ active: true }));
+      writeFileSync(join(sessionDir, 'ralph-stop-breaker.json'), JSON.stringify({ count: 2 }));
+      writeFileSync(join(stateDir, 'ralph-stop-breaker.json'), JSON.stringify({ count: 2 }));
+      writeFileSync(join(stateDir, 'ralph-last-steer-at'), new Date().toISOString());
+      writeFileSync(join(stateDir, 'ralph-continue-steer.lock'), `${process.pid}`);
+
+      const result = clearModeStateFile('ralph', tempDir, 'session-runtime-cleanup');
+
+      expect(result).toBe(true);
+      expect(existsSync(join(sessionDir, 'ralph-state.json'))).toBe(false);
+      expect(existsSync(join(sessionDir, 'ralph-stop-breaker.json'))).toBe(false);
+      expect(existsSync(join(stateDir, 'ralph-stop-breaker.json'))).toBe(false);
+      expect(existsSync(join(stateDir, 'ralph-last-steer-at'))).toBe(false);
+      expect(existsSync(join(stateDir, 'ralph-continue-steer.lock'))).toBe(false);
     });
 
     it('should return true when file does not exist (already absent)', () => {
