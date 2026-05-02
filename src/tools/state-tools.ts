@@ -31,7 +31,7 @@ import {
   getActiveSessionsForMode,
   type ExecutionMode
 } from '../hooks/mode-registry/index.js';
-import { ToolDefinition } from './types.js';
+import { ToolDefinition, AnyToolDefinition } from './types.js';
 
 // Canonical execution modes from mode-registry (deep-interview and self-improve
 // are first-class modes with dedicated MODE_CONFIGS entries; ralplan remains an
@@ -312,11 +312,7 @@ function findSingleOwningSessionForMode(
 // state_read - Read state for a mode
 // ============================================================================
 
-export const stateReadTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateReadTool: AnyToolDefinition = {
   name: 'state_read',
   description: 'Read the current state for a specific mode (ralph, ultrawork, autopilot, etc.). Returns the JSON state data or indicates if no state exists.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -437,21 +433,7 @@ export const stateReadTool: ToolDefinition<{
 // state_write - Write state for a mode
 // ============================================================================
 
-export const stateWriteTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
-  active: z.ZodOptional<z.ZodBoolean>;
-  iteration: z.ZodOptional<z.ZodNumber>;
-  max_iterations: z.ZodOptional<z.ZodNumber>;
-  current_phase: z.ZodOptional<z.ZodString>;
-  task_description: z.ZodOptional<z.ZodString>;
-  plan_path: z.ZodOptional<z.ZodString>;
-  started_at: z.ZodOptional<z.ZodString>;
-  completed_at: z.ZodOptional<z.ZodString>;
-  error: z.ZodOptional<z.ZodString>;
-  state: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateWriteTool: AnyToolDefinition = {
   name: 'state_write',
   description: 'Write/update state for a specific mode. Creates the state file and directories if they do not exist. Common fields (active, iteration, phase, etc.) can be set directly as parameters. Additional custom fields can be passed via the optional `state` parameter. Note: swarm uses SQLite and cannot be written via this tool.',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -578,11 +560,7 @@ export const stateWriteTool: ToolDefinition<{
 // state_clear - Clear state for a mode
 // ============================================================================
 
-export const stateClearTool: ToolDefinition<{
-  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateClearTool: AnyToolDefinition = {
   name: 'state_clear',
   description: 'Clear/delete state for a specific mode. Removes the state file and any associated marker files.',
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -592,7 +570,9 @@ export const stateClearTool: ToolDefinition<{
     session_id: z.string().optional().describe('Session ID for session-scoped state isolation. When provided, the tool operates only within that session. When omitted, the tool aggregates legacy state plus all session-scoped state (may include other sessions).'),
   },
   handler: async (args) => {
-    const { mode, workingDirectory, session_id } = args;
+    const { workingDirectory, session_id } = args;
+    // Zod 4 widens z.enum(tuple) value types; cast back to the runtime-validated mode.
+    const mode = args.mode as StateToolMode;
 
     try {
       const root = validateWorkingDirectory(workingDirectory);
@@ -882,10 +862,7 @@ export const stateClearTool: ToolDefinition<{
 // state_list_active - List all active modes
 // ============================================================================
 
-export const stateListActiveTool: ToolDefinition<{
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateListActiveTool: AnyToolDefinition = {
   name: 'state_list_active',
   description: 'List all currently active modes. Returns which modes have active state files.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -1032,11 +1009,7 @@ export const stateListActiveTool: ToolDefinition<{
 // state_get_status - Get detailed status for a mode
 // ============================================================================
 
-export const stateGetStatusTool: ToolDefinition<{
-  mode: z.ZodOptional<z.ZodEnum<typeof STATE_TOOL_MODES>>;
-  workingDirectory: z.ZodOptional<z.ZodString>;
-  session_id: z.ZodOptional<z.ZodString>;
-}> = {
+export const stateGetStatusTool: AnyToolDefinition = {
   name: 'state_get_status',
   description: 'Get detailed status for a specific mode or all modes. Shows active status, file paths, and state contents.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -1046,7 +1019,9 @@ export const stateGetStatusTool: ToolDefinition<{
     session_id: z.string().optional().describe('Session ID for session-scoped state isolation. When provided, the tool operates only within that session. When omitted, the tool aggregates legacy state plus all session-scoped state (may include other sessions).'),
   },
   handler: async (args) => {
-    const { mode, workingDirectory, session_id } = args;
+    const { workingDirectory, session_id } = args;
+    // Zod 4 widens z.enum(tuple) value types; cast back to the runtime-validated mode.
+    const mode = args.mode as StateToolMode | undefined;
 
     try {
       const root = validateWorkingDirectory(workingDirectory);
