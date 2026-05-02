@@ -6,7 +6,8 @@
  */
 
 import { z } from 'zod';
-import { existsSync, readFileSync, unlinkSync } from 'fs';
+import { existsSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import {
   resolveStatePath,
   ensureOmcDir,
@@ -15,9 +16,11 @@ import {
   ensureSessionStateDir,
   listSessionIds,
   validateSessionId,
+  getOmcRoot,
 } from '../lib/worktree-paths.js';
 import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { validatePayload } from '../lib/payload-limits.js';
+import { canClearStateForSession, findSessionOwnedStateFiles } from '../lib/mode-state-io.js';
 import {
   isModeActive,
   getActiveModes,
@@ -28,7 +31,7 @@ import {
   getActiveSessionsForMode,
   type ExecutionMode
 } from '../hooks/mode-registry/index.js';
-import { ToolDefinition, AnyToolDefinition } from './types.js';
+import { ToolDefinition } from './types.js';
 
 // Canonical execution modes from mode-registry (deep-interview and self-improve
 // are first-class modes with dedicated MODE_CONFIGS entries; ralplan remains an
@@ -48,6 +51,90 @@ const EXTRA_STATE_ONLY_MODES = ['ralplan', 'omc-teams', 'skill-active'] as const
 type StateToolMode = typeof STATE_TOOL_MODES[number];
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 
+function readTeamNamesFromStateFile(statePath: string): string[] {
+  if (!existsSync(statePath)) return [];
+
+  try {
+    const raw = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
+    const teamName = typeof raw.team_name === 'string'
+      ? raw.team_name.trim()
+      : typeof raw.teamName === 'string'
+        ? raw.teamName.trim()
+        : '';
+    return teamName ? [teamName] : [];
+  } catch {
+    return [];
+  }
+}
+
+function pruneMissionBoardTeams(root: string, teamNames?: string[]): number {
+  const missionStatePath = join(getOmcRoot(root), 'state', 'mission-state.json');
+  if (!existsSync(missionStatePath)) return 0;
+
+  try {
+    const parsed = JSON.parse(readFileSync(missionStatePath, 'utf-8')) as {
+      updatedAt?: string;
+      missions?: Array<Record<string, unknown>>;
+    };
+    if (!Array.isArray(parsed.missions)) return 0;
+
+    const shouldRemoveAll = teamNames == null;
+    const teamNameSet = new Set(teamNames ?? []);
+    const remainingMissions = parsed.missions.filter((mission) => {
+      if (mission.source !== 'team') return true;
+      if (shouldRemoveAll) return false;
+      const missionTeamName = typeof mission.teamName === 'string'
+        ? mission.teamName.trim()
+        : typeof mission.name === 'string'
+          ? mission.name.trim()
+          : '';
+      return !missionTeamName || !teamNameSet.has(missionTeamName);
+    });
+
+    const removed = parsed.missions.length - remainingMissions.length;
+    if (removed > 0) {
+      writeFileSync(missionStatePath, JSON.stringify({
+        ...parsed,
+        updatedAt: new Date().toISOString(),
+        missions: remainingMissions,
+      }, null, 2));
+    }
+
+    return removed;
+  } catch {
+    return 0;
+  }
+}
+
+function cleanupTeamRuntimeState(root: string, teamNames?: string[]): number {
+  const teamStateRoot = join(getOmcRoot(root), 'state', 'team');
+  if (!existsSync(teamStateRoot)) return 0;
+
+  const shouldRemoveAll = teamNames == null;
+  let removed = 0;
+
+  if (shouldRemoveAll) {
+    try {
+      rmSync(teamStateRoot, { recursive: true, force: true });
+      return 1;
+    } catch {
+      return 0;
+    }
+  }
+
+  for (const teamName of teamNames ?? []) {
+    if (!teamName) continue;
+    try {
+      rmSync(join(teamStateRoot, teamName), { recursive: true, force: true });
+      removed += 1;
+    } catch {
+      // best effort
+    }
+  }
+
+  return removed;
+}
+
 /**
  * Get the state file path for any mode (including swarm and ralplan).
  *
@@ -62,6 +149,113 @@ function getStatePath(mode: StateToolMode, root: string): string {
   }
   // Fallback for modes not in registry (e.g., ralplan)
   return resolveStatePath(mode, root);
+}
+
+function getLegacyStateFileCandidates(mode: StateToolMode, root: string): string[] {
+  const normalizedName = mode.endsWith('-state') ? mode : `${mode}-state`;
+  const candidates = [
+    getStatePath(mode, root),
+    join(getOmcRoot(root), `${normalizedName}.json`),
+  ];
+
+  return [...new Set(candidates)];
+}
+
+function clearLegacyStateCandidates(
+  mode: StateToolMode,
+  root: string,
+  sessionId?: string,
+): { cleared: number; hadFailure: boolean } {
+  let cleared = 0;
+  let hadFailure = false;
+
+  for (const legacyPath of getLegacyStateFileCandidates(mode, root)) {
+    if (!existsSync(legacyPath)) {
+      continue;
+    }
+
+    try {
+      if (sessionId) {
+        const raw = JSON.parse(readFileSync(legacyPath, 'utf-8')) as Record<string, unknown>;
+        if (!canClearStateForSession(raw, sessionId)) {
+          continue;
+        }
+      }
+
+      unlinkSync(legacyPath);
+      cleared++;
+    } catch {
+      hadFailure = true;
+    }
+  }
+
+  return { cleared, hadFailure };
+}
+
+function clearSessionOwnedStateCandidates(
+  mode: StateToolMode,
+  root: string,
+  sessionId: string,
+): { cleared: number; hadFailure: boolean; paths: string[] } {
+  let cleared = 0;
+  let hadFailure = false;
+  const paths = findSessionOwnedStateFiles(mode, sessionId, root);
+
+  for (const statePath of paths) {
+    try {
+      unlinkSync(statePath);
+      cleared++;
+    } catch {
+      hadFailure = true;
+    }
+  }
+
+  return { cleared, hadFailure, paths };
+}
+
+function getModeRuntimeArtifactNames(mode: StateToolMode): string[] {
+  return [
+    `${mode}-stop-breaker.json`,
+    `${mode}-last-steer-at`,
+    `${mode}-continue-steer.lock`,
+  ];
+}
+
+function clearModeRuntimeArtifacts(
+  mode: StateToolMode,
+  root: string,
+  sessionId?: string,
+): { cleared: number; hadFailure: boolean } {
+  let cleared = 0;
+  let hadFailure = false;
+  const stateRoot = join(getOmcRoot(root), 'state');
+  const candidateDirs = new Set<string>([stateRoot]);
+
+  if (sessionId) {
+    candidateDirs.add(join(stateRoot, 'sessions', sessionId));
+  } else {
+    for (const sid of listSessionIds(root)) {
+      candidateDirs.add(join(stateRoot, 'sessions', sid));
+    }
+  }
+
+  for (const dir of candidateDirs) {
+    for (const artifactName of getModeRuntimeArtifactNames(mode)) {
+      const artifactPath = join(dir, artifactName);
+      if (!existsSync(artifactPath)) {
+        continue;
+      }
+
+      try {
+        unlinkSync(artifactPath);
+        cleared++;
+      } catch {
+        hadFailure = true;
+      }
+    }
+  }
+
+  return { cleared, hadFailure };
 }
 
 function writeSessionCancelSignal(
@@ -102,15 +296,6 @@ function isSessionModeActive(
   }
 }
 
-/**
- * Find a single other session that owns active state for the given mode.
- *
- * Resumed Ralph sessions can leave the only active state under a foreign
- * session directory. When the requester's session has no matching state,
- * this fallback lets `state_clear` reach the unambiguous single owner so
- * the stop-hook enforcement path clears cleanly. Returns undefined if there
- * are zero or multiple candidates — we never broad-clear across sessions.
- */
 function findSingleOwningSessionForMode(
   mode: StateToolMode,
   root: string,
@@ -127,7 +312,11 @@ function findSingleOwningSessionForMode(
 // state_read - Read state for a mode
 // ============================================================================
 
-export const stateReadTool: AnyToolDefinition = {
+export const stateReadTool: ToolDefinition<{
+  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+  session_id: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'state_read',
   description: 'Read the current state for a specific mode (ralph, ultrawork, autopilot, etc.). Returns the JSON state data or indicates if no state exists.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -248,7 +437,21 @@ export const stateReadTool: AnyToolDefinition = {
 // state_write - Write state for a mode
 // ============================================================================
 
-export const stateWriteTool: AnyToolDefinition = {
+export const stateWriteTool: ToolDefinition<{
+  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+  active: z.ZodOptional<z.ZodBoolean>;
+  iteration: z.ZodOptional<z.ZodNumber>;
+  max_iterations: z.ZodOptional<z.ZodNumber>;
+  current_phase: z.ZodOptional<z.ZodString>;
+  task_description: z.ZodOptional<z.ZodString>;
+  plan_path: z.ZodOptional<z.ZodString>;
+  started_at: z.ZodOptional<z.ZodString>;
+  completed_at: z.ZodOptional<z.ZodString>;
+  error: z.ZodOptional<z.ZodString>;
+  state: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+  session_id: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'state_write',
   description: 'Write/update state for a specific mode. Creates the state file and directories if they do not exist. Common fields (active, iteration, phase, etc.) can be set directly as parameters. Additional custom fields can be passed via the optional `state` parameter. Note: swarm uses SQLite and cannot be written via this tool.',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -375,7 +578,11 @@ export const stateWriteTool: AnyToolDefinition = {
 // state_clear - Clear state for a mode
 // ============================================================================
 
-export const stateClearTool: AnyToolDefinition = {
+export const stateClearTool: ToolDefinition<{
+  mode: z.ZodEnum<typeof STATE_TOOL_MODES>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+  session_id: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'state_clear',
   description: 'Clear/delete state for a specific mode. Removes the state file and any associated marker files.',
   annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
@@ -390,144 +597,214 @@ export const stateClearTool: AnyToolDefinition = {
     try {
       const root = validateWorkingDirectory(workingDirectory);
       const sessionId = session_id as string | undefined;
+      const cleanedTeamNames = new Set<string>();
+
+      const collectTeamNamesForCleanup = (statePath: string): void => {
+        if (mode !== 'team') return;
+        for (const teamName of readTeamNamesFromStateFile(statePath)) {
+          cleanedTeamNames.add(teamName);
+        }
+      };
 
       // If session_id provided, clear only session-specific state
       if (sessionId) {
         validateSessionId(sessionId);
+        const requestedSessionOwnedPaths = findSessionOwnedStateFiles(mode, sessionId, root);
+        for (const teamStatePath of findSessionOwnedStateFiles('team', sessionId, root)) {
+          collectTeamNamesForCleanup(teamStatePath);
+        }
+        const runtimeCleanup = clearModeRuntimeArtifacts(mode, root, sessionId);
         writeSessionCancelSignal(root, sessionId, mode);
 
         if (MODE_CONFIGS[mode as ExecutionMode]) {
-          const requesterStatePath = getStateFilePath(root, mode as ExecutionMode, sessionId);
-          const hadRequesterState = existsSync(requesterStatePath);
           const success = clearModeState(mode as ExecutionMode, root, sessionId);
-
-          // Ghost-legacy cleanup: after clearing session file, also remove
-          // any legacy file at .omcp/state/{mode}-state.json if it belongs
-          // to this session (matching _meta.sessionId) or has no _meta block.
-          let ghostCleaned = false;
-          try {
-            const legacyPath = getStateFilePath(root, mode as ExecutionMode);
-            if (existsSync(legacyPath)) {
-              const raw = JSON.parse(readFileSync(legacyPath, 'utf-8')) as Record<string, unknown>;
-              const meta = raw._meta as Record<string, unknown> | undefined;
-              if (!meta || meta.sessionId === sessionId) {
-                unlinkSync(legacyPath);
-                ghostCleaned = true;
-              }
-            }
-          } catch {
-            // Best-effort ghost cleanup — ignore errors
-          }
-
-          // Cross-session fallback: if the requester had no local state and
-          // no ghost legacy file, but exactly one other session owns active
-          // state for this mode (e.g. a resumed Ralph whose state lives
-          // under the original session), clear that owner too. Keep bounded
-          // to the unambiguous single-owner case to avoid broad-clearing.
+          const sessionCleanup = clearSessionOwnedStateCandidates(mode, root, sessionId);
+          const legacyCleanup = clearLegacyStateCandidates(mode, root, sessionId);
           let ownerSessionId: string | undefined;
-          if (!hadRequesterState && !ghostCleaned) {
+          let ownerSessionCleanup = { cleared: 0, hadFailure: false, paths: [] as string[] };
+          let ownerLegacyCleanup = { cleared: 0, hadFailure: false };
+
+          if (requestedSessionOwnedPaths.length === 0 && sessionCleanup.cleared === 0 && legacyCleanup.cleared === 0) {
             ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
             if (ownerSessionId) {
+              if (mode === 'team') {
+                for (const teamStatePath of findSessionOwnedStateFiles('team', ownerSessionId, root)) {
+                  collectTeamNamesForCleanup(teamStatePath);
+                }
+              }
               writeSessionCancelSignal(root, ownerSessionId, mode);
+              const ownerRuntimeCleanup = clearModeRuntimeArtifacts(mode, root, ownerSessionId);
+              runtimeCleanup.cleared += ownerRuntimeCleanup.cleared;
+              runtimeCleanup.hadFailure ||= ownerRuntimeCleanup.hadFailure;
               clearModeState(mode as ExecutionMode, root, ownerSessionId);
+              ownerSessionCleanup = clearSessionOwnedStateCandidates(mode, root, ownerSessionId);
+              ownerLegacyCleanup = clearLegacyStateCandidates(mode, root, ownerSessionId);
             }
           }
 
-          const ghostNote = ghostCleaned ? ' (ghost legacy file also removed)' : '';
-          const ownerNote = ownerSessionId ? ` (cleared owning session: ${ownerSessionId})` : '';
-          if (success || ownerSessionId) {
+          const ghostNoteParts: string[] = [];
+          if (legacyCleanup.cleared > 0) {
+            ghostNoteParts.push('ghost legacy file also removed');
+          }
+          if (sessionCleanup.cleared > 0) {
+            ghostNoteParts.push(`removed ${sessionCleanup.cleared} recovered session file${sessionCleanup.cleared === 1 ? '' : 's'}`);
+          }
+          if (runtimeCleanup.cleared > 0) {
+            ghostNoteParts.push(`removed ${runtimeCleanup.cleared} runtime artifact${runtimeCleanup.cleared === 1 ? '' : 's'}`);
+          }
+          if (ownerSessionId) {
+            ghostNoteParts.push(`cleared owning session: ${ownerSessionId}`);
+          }
+          const ghostNote = ghostNoteParts.length > 0 ? ` (${ghostNoteParts.join(', ')})` : '';
+          const runtimeCleanupNote = (() => {
+            if (mode !== 'team') return '';
+            const teamNames = [...cleanedTeamNames];
+            const removedRoots = cleanupTeamRuntimeState(root, teamNames);
+            const prunedMissions = pruneMissionBoardTeams(root, teamNames);
+            const details: string[] = [];
+            if (removedRoots > 0) details.push(`removed ${removedRoots} team runtime root(s)`);
+            if (prunedMissions > 0) details.push(`pruned ${prunedMissions} HUD mission entry(ies)`);
+            return details.length > 0 ? ` (${details.join(', ')})` : '';
+          })();
+          if (
+            success &&
+            !legacyCleanup.hadFailure &&
+            !sessionCleanup.hadFailure &&
+            !ownerSessionCleanup.hadFailure &&
+            !ownerLegacyCleanup.hadFailure &&
+            !runtimeCleanup.hadFailure
+          ) {
             return {
               content: [{
                 type: 'text' as const,
-                text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}${ownerNote}`
+                text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}${runtimeCleanupNote}`
               }]
             };
           } else {
             return {
               content: [{
                 type: 'text' as const,
-                text: `Warning: Some files could not be removed for mode: ${mode} in session: ${sessionId}${ghostNote}${ownerNote}`
+                text: `Warning: Some files could not be removed for mode: ${mode} in session: ${sessionId}${ghostNote}${runtimeCleanupNote}`
               }]
             };
           }
         }
 
         // Fallback for modes not in registry (e.g., ralplan)
-        const statePath = resolveSessionStatePath(mode, sessionId, root);
-        const hadRequesterState = existsSync(statePath);
-        if (hadRequesterState) {
-          unlinkSync(statePath);
-        }
-
-        // Ghost-legacy cleanup for non-registry modes
-        let ghostCleaned = false;
-        try {
-          const legacyPath = resolveStatePath(mode, root);
-          if (existsSync(legacyPath)) {
-            const raw = JSON.parse(readFileSync(legacyPath, 'utf-8')) as Record<string, unknown>;
-            const meta = raw._meta as Record<string, unknown> | undefined;
-            if (!meta || meta.sessionId === sessionId) {
-              unlinkSync(legacyPath);
-              ghostCleaned = true;
-            }
-          }
-        } catch {
-          // Best-effort ghost cleanup
-        }
-
-        // Same cross-session fallback as the registry branch above.
+        const sessionCleanup = clearSessionOwnedStateCandidates(mode, root, sessionId);
+        const legacyCleanup = clearLegacyStateCandidates(mode, root, sessionId);
         let ownerSessionId: string | undefined;
-        if (!hadRequesterState && !ghostCleaned) {
+        let ownerSessionCleanup = { cleared: 0, hadFailure: false, paths: [] as string[] };
+        let ownerLegacyCleanup = { cleared: 0, hadFailure: false };
+
+        if (requestedSessionOwnedPaths.length === 0 && sessionCleanup.cleared === 0 && legacyCleanup.cleared === 0) {
           ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
           if (ownerSessionId) {
-            writeSessionCancelSignal(root, ownerSessionId, mode);
-            const ownerStatePath = resolveSessionStatePath(mode, ownerSessionId, root);
-            if (existsSync(ownerStatePath)) {
-              try { unlinkSync(ownerStatePath); } catch { /* best-effort */ }
+            if (mode === 'team') {
+              for (const teamStatePath of findSessionOwnedStateFiles('team', ownerSessionId, root)) {
+                collectTeamNamesForCleanup(teamStatePath);
+              }
             }
+            writeSessionCancelSignal(root, ownerSessionId, mode);
+            const ownerRuntimeCleanup = clearModeRuntimeArtifacts(mode, root, ownerSessionId);
+            runtimeCleanup.cleared += ownerRuntimeCleanup.cleared;
+            runtimeCleanup.hadFailure ||= ownerRuntimeCleanup.hadFailure;
+            ownerSessionCleanup = clearSessionOwnedStateCandidates(mode, root, ownerSessionId);
+            ownerLegacyCleanup = clearLegacyStateCandidates(mode, root, ownerSessionId);
           }
         }
 
-        const ghostNote = ghostCleaned ? ' (ghost legacy file also removed)' : '';
-        const ownerNote = ownerSessionId ? ` (cleared owning session: ${ownerSessionId})` : '';
+        const ghostNoteParts: string[] = [];
+        if (legacyCleanup.cleared > 0) {
+          ghostNoteParts.push('ghost legacy file also removed');
+        }
+        if (sessionCleanup.cleared > 0) {
+          ghostNoteParts.push(`removed ${sessionCleanup.cleared} recovered session file${sessionCleanup.cleared === 1 ? '' : 's'}`);
+        }
+        if (runtimeCleanup.cleared > 0) {
+          ghostNoteParts.push(`removed ${runtimeCleanup.cleared} runtime artifact${runtimeCleanup.cleared === 1 ? '' : 's'}`);
+        }
+        if (ownerSessionId) {
+          ghostNoteParts.push(`cleared owning session: ${ownerSessionId}`);
+        }
+        const ghostNote = ghostNoteParts.length > 0 ? ` (${ghostNoteParts.join(', ')})` : '';
+        const runtimeCleanupNote = (() => {
+          if (mode !== 'team') return '';
+          const teamNames = [...cleanedTeamNames];
+          const removedRoots = cleanupTeamRuntimeState(root, teamNames);
+          const prunedMissions = pruneMissionBoardTeams(root, teamNames);
+          const details: string[] = [];
+          if (removedRoots > 0) details.push(`removed ${removedRoots} team runtime root(s)`);
+          if (prunedMissions > 0) details.push(`pruned ${prunedMissions} HUD mission entry(ies)`);
+          return details.length > 0 ? ` (${details.join(', ')})` : '';
+        })();
         return {
           content: [{
             type: 'text' as const,
-            text: `Successfully cleared state for mode: ${mode} in session: ${sessionId}${ghostNote}${ownerNote}`
+            text: `${legacyCleanup.hadFailure || sessionCleanup.hadFailure || ownerSessionCleanup.hadFailure || ownerLegacyCleanup.hadFailure || runtimeCleanup.hadFailure ? 'Warning: Some files could not be removed' : 'Successfully cleared state'} for mode: ${mode} in session: ${sessionId}${ghostNote}${runtimeCleanupNote}`
           }]
         };
       }
 
       // No session_id: clear from all locations (legacy + all sessions)
+      // Write cancel signals FIRST (before deleting files) so the stop hook's
+      // isSessionCancelInProgress check sees the signal during the deletion window.
+      // Mirrors the session_id path at line ~403. (patch: fix missing cancel signal)
+      {
+        const now = Date.now();
+        const cancelSignalPayload = {
+          active: true,
+          requested_at: new Date(now).toISOString(),
+          expires_at: new Date(now + CANCEL_SIGNAL_TTL_MS).toISOString(),
+          mode,
+          source: 'state_clear' as const,
+        };
+        // Write to legacy path (checked by stop hook fallback)
+        const legacySignalPath = join(getOmcRoot(root), 'state', 'cancel-signal-state.json');
+        try { atomicWriteJsonSync(legacySignalPath, cancelSignalPayload); } catch { /* best-effort */ }
+        // Write to each session path (checked by stop hook primary check)
+        for (const sid of listSessionIds(root)) {
+          try {
+            const sessionSignalPath = resolveSessionStatePath('cancel-signal', sid, root);
+            atomicWriteJsonSync(sessionSignalPath, cancelSignalPayload);
+          } catch { /* best-effort */ }
+        }
+      }
+      const runtimeCleanup = clearModeRuntimeArtifacts(mode, root);
       let clearedCount = 0;
       const errors: string[] = [];
+      if (mode === 'team') {
+        collectTeamNamesForCleanup(getStateFilePath(root, 'team'));
+      }
 
       // Clear legacy path
       if (MODE_CONFIGS[mode as ExecutionMode]) {
-        // Only clear if state file exists - avoid false counts for missing files
-        const legacyStatePath = getStateFilePath(root, mode as ExecutionMode);
-        if (existsSync(legacyStatePath)) {
+        const primaryLegacyStatePath = getStateFilePath(root, mode as ExecutionMode);
+        if (existsSync(primaryLegacyStatePath)) {
           if (clearModeState(mode as ExecutionMode, root)) {
             clearedCount++;
           } else {
             errors.push('legacy path');
           }
         }
-      } else {
-        const statePath = getStatePath(mode, root);
-        if (existsSync(statePath)) {
-          try {
-            unlinkSync(statePath);
-            clearedCount++;
-          } catch {
-            errors.push('legacy path');
-          }
-        }
+      }
+
+      const extraLegacyCleanup = clearLegacyStateCandidates(mode, root);
+      clearedCount += extraLegacyCleanup.cleared;
+      if (extraLegacyCleanup.hadFailure) {
+        errors.push('legacy path');
+      }
+      clearedCount += runtimeCleanup.cleared;
+      if (runtimeCleanup.hadFailure) {
+        errors.push('runtime artifacts');
       }
 
       // Clear all session-scoped state files
       const sessionIds = listSessionIds(root);
       for (const sid of sessionIds) {
+        if (mode === 'team') {
+          collectTeamNamesForCleanup(resolveSessionStatePath('team', sid, root));
+        }
         if (MODE_CONFIGS[mode as ExecutionMode]) {
           // Only clear if state file exists - avoid false counts for missing files
           const sessionStatePath = getStateFilePath(root, mode as ExecutionMode, sid);
@@ -551,7 +828,16 @@ export const stateClearTool: AnyToolDefinition = {
         }
       }
 
-      if (clearedCount === 0 && errors.length === 0) {
+      let removedTeamRoots = 0;
+      let prunedMissionEntries = 0;
+      if (mode === 'team') {
+        const teamNames = [...cleanedTeamNames];
+        const removeSelector = teamNames.length > 0 ? teamNames : undefined;
+        removedTeamRoots = cleanupTeamRuntimeState(root, removeSelector);
+        prunedMissionEntries = pruneMissionBoardTeams(root, removeSelector);
+      }
+
+      if (clearedCount === 0 && errors.length === 0 && removedTeamRoots === 0 && prunedMissionEntries === 0) {
         return {
           content: [{
             type: 'text' as const,
@@ -563,6 +849,14 @@ export const stateClearTool: AnyToolDefinition = {
       let message = `Cleared state for mode: ${mode}\n- Locations cleared: ${clearedCount}`;
       if (errors.length > 0) {
         message += `\n- Errors: ${errors.join(', ')}`;
+      }
+      if (mode === 'team') {
+        if (removedTeamRoots > 0) {
+          message += `\n- Team runtime roots removed: ${removedTeamRoots}`;
+        }
+        if (prunedMissionEntries > 0) {
+          message += `\n- HUD mission entries pruned: ${prunedMissionEntries}`;
+        }
       }
       message += '\nWARNING: No session_id provided. Cleared legacy plus all session-scoped state; this is a broad operation that may affect other sessions.';
 
@@ -738,7 +1032,11 @@ export const stateListActiveTool: ToolDefinition<{
 // state_get_status - Get detailed status for a mode
 // ============================================================================
 
-export const stateGetStatusTool: AnyToolDefinition = {
+export const stateGetStatusTool: ToolDefinition<{
+  mode: z.ZodOptional<z.ZodEnum<typeof STATE_TOOL_MODES>>;
+  workingDirectory: z.ZodOptional<z.ZodString>;
+  session_id: z.ZodOptional<z.ZodString>;
+}> = {
   name: 'state_get_status',
   description: 'Get detailed status for a specific mode or all modes. Shows active status, file paths, and state contents.',
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
