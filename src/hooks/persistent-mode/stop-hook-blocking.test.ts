@@ -941,7 +941,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("cleans orphaned unspecified autopilot routing echo state instead of reinforcing in mjs script", () => {
       const sessionId = "autopilot-routing-echo-orphan-mjs";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       const autopilotPath = join(sessionDir, "autopilot-state.json");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
@@ -1277,7 +1277,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("cleans orphaned unspecified autopilot routing echo state instead of reinforcing in cjs script", () => {
       const sessionId = "autopilot-routing-echo-orphan-cjs";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       const autopilotPath = join(sessionDir, "autopilot-state.json");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
