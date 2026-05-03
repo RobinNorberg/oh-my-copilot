@@ -41453,7 +41453,7 @@ function recordSessionMetrics(directory, input) {
   }
   return metrics;
 }
-function cleanupTransientState(directory) {
+function cleanupTransientState(directory, endingSessionId) {
   let filesRemoved = 0;
   const omcDir = getOmcRoot(directory);
   if (!fs11.existsSync(omcDir)) {
@@ -41500,30 +41500,72 @@ function cleanupTransientState(directory) {
     }
   };
   removeTmpFiles(omcDir);
-  const sessionsDir = path16.join(omcDir, "state", "sessions");
-  if (fs11.existsSync(sessionsDir)) {
-    const crossSessionSafePatterns = [
-      /^cancel-signal/,
-      /stop-breaker/
+  const stateDir = path16.join(omcDir, "state");
+  if (fs11.existsSync(stateDir)) {
+    const transientPatterns = [
+      /^agent-replay-.*\.jsonl$/,
+      /^last-tool-error\.json$/,
+      /^hud-state\.json$/,
+      /^hud-stdin-cache\.json$/,
+      /^idle-notif-cooldown\.json$/,
+      /^.*-stop-breaker\.json$/
     ];
     try {
-      for (const sid of fs11.readdirSync(sessionsDir)) {
-        const sessionDir = path16.join(sessionsDir, sid);
-        try {
-          if (!fs11.statSync(sessionDir).isDirectory()) continue;
-          for (const file2 of fs11.readdirSync(sessionDir)) {
-            if (crossSessionSafePatterns.some((p) => p.test(file2))) {
-              try {
-                fs11.unlinkSync(path16.join(sessionDir, file2));
-                filesRemoved++;
-              } catch {
-              }
-            }
+      const stateFiles = fs11.readdirSync(stateDir);
+      for (const file2 of stateFiles) {
+        if (transientPatterns.some((p) => p.test(file2))) {
+          try {
+            fs11.unlinkSync(path16.join(stateDir, file2));
+            filesRemoved++;
+          } catch (_error) {
           }
-        } catch {
         }
       }
-    } catch {
+    } catch (_error) {
+    }
+    const sessionsDir = path16.join(stateDir, "sessions");
+    if (fs11.existsSync(sessionsDir)) {
+      const crossSessionSafePatterns = [
+        /^cancel-signal/,
+        /stop-breaker/
+      ];
+      const endingSessionOnlyPatterns = [
+        // HUD's stdin cache is session-scoped (see `src/hud/stdin.ts`)
+        // and consumed by `omc hud --watch` for the owning session.
+        /^hud-stdin-cache\.json$/
+      ];
+      const isEndingSession = (sid) => typeof endingSessionId === "string" && endingSessionId.length > 0 && sid === endingSessionId;
+      try {
+        const sessionDirs = fs11.readdirSync(sessionsDir);
+        for (const sid of sessionDirs) {
+          const sessionDir = path16.join(sessionsDir, sid);
+          try {
+            const stat2 = fs11.statSync(sessionDir);
+            if (!stat2.isDirectory()) continue;
+            const activePatterns = isEndingSession(sid) ? [...crossSessionSafePatterns, ...endingSessionOnlyPatterns] : crossSessionSafePatterns;
+            const sessionFiles = fs11.readdirSync(sessionDir);
+            for (const file2 of sessionFiles) {
+              if (activePatterns.some((p) => p.test(file2))) {
+                try {
+                  fs11.unlinkSync(path16.join(sessionDir, file2));
+                  filesRemoved++;
+                } catch (_error) {
+                }
+              }
+            }
+            const remaining = fs11.readdirSync(sessionDir);
+            if (remaining.length === 0) {
+              try {
+                fs11.rmdirSync(sessionDir);
+                filesRemoved++;
+              } catch (_error) {
+              }
+            }
+          } catch (_error) {
+          }
+        }
+      } catch (_error) {
+      }
     }
   }
   return filesRemoved;
@@ -41765,7 +41807,7 @@ async function processSessionEnd(input) {
   const metrics = recordSessionMetrics(directory, input);
   exportSessionSummary(directory, metrics);
   await cleanupSessionOwnedTeams(directory, input.session_id);
-  cleanupTransientState(directory);
+  cleanupTransientState(directory, input.session_id);
   cleanupModeStates(directory, input.session_id);
   cleanupMissionState(directory, input.session_id);
   cleanupSessionStartedMarker(directory, input.session_id);
@@ -49526,7 +49568,7 @@ function getStdinCachePath() {
     } catch {
     }
   }
-  return (0, import_path114.join)(root, ".omcp", "state", "hud-stdin-cache.json");
+  return resolveOmcPath("state/hud-stdin-cache.json", root);
 }
 function writeStdinCache(stdin) {
   try {
@@ -49540,12 +49582,53 @@ function writeStdinCache(stdin) {
   }
 }
 function readStdinCache() {
-  try {
-    const cachePath = getStdinCachePath();
-    if (!(0, import_fs98.existsSync)(cachePath)) {
+  const root = getWorktreeRoot() || process.cwd();
+  const scopedPath = getStdinCachePath();
+  const tryRead = (p) => {
+    try {
+      if (!(0, import_fs98.existsSync)(p)) return null;
+      return JSON.parse((0, import_fs98.readFileSync)(p, "utf-8"));
+    } catch {
       return null;
     }
-    return JSON.parse((0, import_fs98.readFileSync)(cachePath, "utf-8"));
+  };
+  const scoped = tryRead(scopedPath);
+  if (scoped) return scoped;
+  const legacyPath = resolveOmcPath("state/hud-stdin-cache.json", root);
+  if (scopedPath !== legacyPath) {
+    return null;
+  }
+  return readMostRecentSessionCache(root);
+}
+function readMostRecentSessionCache(root) {
+  let sessionIds;
+  try {
+    sessionIds = listSessionIds(root);
+  } catch {
+    return null;
+  }
+  let bestPath = null;
+  let bestMtime = -Infinity;
+  for (const sid of sessionIds) {
+    let candidate;
+    try {
+      candidate = (0, import_path114.join)(getSessionStateDir(sid, root), "hud-stdin-cache.json");
+    } catch {
+      continue;
+    }
+    try {
+      const st = (0, import_fs98.statSync)(candidate);
+      if (!st.isFile()) continue;
+      if (st.mtimeMs > bestMtime) {
+        bestMtime = st.mtimeMs;
+        bestPath = candidate;
+      }
+    } catch {
+    }
+  }
+  if (!bestPath) return null;
+  try {
+    return JSON.parse((0, import_fs98.readFileSync)(bestPath, "utf-8"));
   } catch {
     return null;
   }

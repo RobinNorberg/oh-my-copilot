@@ -469,10 +469,7 @@ describe('readStdinCache — env-less reader fallback to most recent session cac
         }
         rmSync(tmpRoot, { recursive: true, force: true });
     });
-    // TODO(port-d799f2578): "fix(hud): restore concurrent-session isolation" not yet ported
-    // to oh-my-copilot. Re-enable when readStdinCache() learns to scan
-    // .omcp/state/sessions/* and pick the most recently updated cache.
-    it.skip('returns the most recently updated session cache when no session env is set', () => {
+    it('returns the most recently updated session cache when no session env is set', () => {
         // Simulate two concurrent sessions' writes by hand.
         const stale = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-old');
         const fresh = join(tmpRoot, '.omcp', 'state', 'sessions', 'session-new');
@@ -507,9 +504,7 @@ describe('readStdinCache — env-less reader fallback to most recent session cac
     it('returns null when nothing has been cached yet', () => {
         expect(readStdinCache()).toBeNull();
     });
-    // TODO(port-d799f2578): same prerequisite as the test above — depends on
-    // readStdinCache() falling back to OMC_STATE_DIR-resolved session caches.
-    it.skip('resolves the fallback directory through the same OMC_STATE_DIR helper as writers', () => {
+    it('resolves the fallback directory through the same OMC_STATE_DIR helper as writers', () => {
         // Regression: the env-less fallback previously assembled the sessions
         // directory from `join(root, '.omcp', 'state', 'sessions')` directly,
         // which bypasses `OMC_STATE_DIR`-backed centralized state and made
