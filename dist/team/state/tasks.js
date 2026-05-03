@@ -62,7 +62,33 @@ export async function claimTask(taskId, workerName, expectedVersion, deps) {
         return { ok: false, error: 'claim_conflict' };
     return lock.value;
 }
-export async function transitionTaskStatus(taskId, from, to, claimToken, deps) {
+function extractDelegationComplianceEvidence(task, terminalData) {
+    const plan = task.delegation;
+    if (!plan || plan.mode === 'none')
+        return null;
+    if (plan.mode === 'optional' && plan.required_parallel_probe !== true)
+        return null;
+    const result = typeof terminalData?.result === 'string' ? terminalData.result : '';
+    const spawnMatch = result.match(/^\s*Subagent spawn evidence:\s*(.+)$/im);
+    if (spawnMatch?.[1]?.trim()) {
+        const detail = spawnMatch[1].trim();
+        if (!/^none\b|^0\b/i.test(detail)) {
+            return { status: 'spawned', source: 'terminal_result', detail, recorded_at: new Date().toISOString() };
+        }
+    }
+    if (plan.skip_allowed_reason_required === true) {
+        const skipMatch = result.match(/^\s*Subagent skip reason:\s*(.+)$/im);
+        if (skipMatch?.[1]?.trim()) {
+            return { status: 'skipped', source: 'terminal_result', detail: skipMatch[1].trim(), recorded_at: new Date().toISOString() };
+        }
+    }
+    return null;
+}
+function requiresDelegationComplianceEvidence(task) {
+    const plan = task.delegation;
+    return !!plan && (plan.mode === 'auto' || plan.mode === 'required' || plan.required_parallel_probe === true);
+}
+export async function transitionTaskStatus(taskId, from, to, claimToken, terminalData, deps) {
     if (!deps.canTransitionTaskStatus(from, to))
         return { ok: false, error: 'invalid_transition' };
     const lock = await deps.withTaskClaimLock(deps.teamName, taskId, deps.cwd, async () => {
@@ -81,10 +107,21 @@ export async function transitionTaskStatus(taskId, from, to, claimToken, deps) {
         }
         if (new Date(v.claim.leased_until) <= new Date())
             return { ok: false, error: 'lease_expired' };
+        const normalizedResult = typeof terminalData?.result === 'string' ? terminalData.result : undefined;
+        const normalizedError = typeof terminalData?.error === 'string' ? terminalData.error : undefined;
+        const delegationCompliance = to === 'completed'
+            ? extractDelegationComplianceEvidence(v, terminalData)
+            : null;
+        if (to === 'completed' && requiresDelegationComplianceEvidence(v) && !delegationCompliance) {
+            return { ok: false, error: 'missing_delegation_compliance_evidence' };
+        }
         const updated = {
             ...v,
             status: to,
             completed_at: to === 'completed' ? new Date().toISOString() : v.completed_at,
+            result: to === 'completed' ? normalizedResult : undefined,
+            error: to === 'failed' ? normalizedError : undefined,
+            delegation_compliance: to === 'completed' ? delegationCompliance ?? v.delegation_compliance : v.delegation_compliance,
             claim: undefined,
             version: v.version + 1,
         };

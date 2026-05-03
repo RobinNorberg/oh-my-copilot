@@ -25,7 +25,10 @@ export declare function teamReadTask(teamName: string, taskId: string, cwd: stri
 export declare function teamListTasks(teamName: string, cwd: string): Promise<TeamTask[]>;
 export declare function teamUpdateTask(teamName: string, taskId: string, updates: Record<string, unknown>, cwd: string): Promise<TeamTask | null>;
 export declare function teamClaimTask(teamName: string, taskId: string, workerName: string, expectedVersion: number | null, cwd: string): Promise<ClaimTaskResult>;
-export declare function teamTransitionTaskStatus(teamName: string, taskId: string, from: TeamTaskStatus, to: TeamTaskStatus, claimToken: string, cwd: string): Promise<TransitionTaskResult>;
+export declare function teamTransitionTaskStatus(teamName: string, taskId: string, from: TeamTaskStatus, to: TeamTaskStatus, claimToken: string, cwd: string, terminalData?: {
+    result?: string;
+    error?: string;
+}): Promise<TransitionTaskResult>;
 export declare function teamReleaseTaskClaim(teamName: string, taskId: string, claimToken: string, workerName: string, cwd: string): Promise<ReleaseTaskClaimResult>;
 export declare function teamSendMessage(teamName: string, fromWorker: string, toWorker: string, body: string, cwd: string): Promise<TeamMailboxMessage>;
 export declare function teamBroadcast(teamName: string, fromWorker: string, body: string, cwd: string): Promise<TeamMailboxMessage[]>;
