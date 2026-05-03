@@ -84081,6 +84081,10 @@ function buildSessionStartAdditionalContext(messages) {
   return selected.join("\n");
 }
 function readLinuxBootId() {
+  if (process.env.NODE_ENV === "test") {
+    const testBootId = process.env.OMC_TEST_LINUX_BOOT_ID?.trim();
+    if (testBootId) return testBootId;
+  }
   try {
     if (!(0, import_fs75.existsSync)(LINUX_BOOT_ID_PATH)) return void 0;
     const bootId = (0, import_fs75.readFileSync)(LINUX_BOOT_ID_PATH, "utf-8").trim();
