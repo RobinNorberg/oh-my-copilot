@@ -1,8 +1,20 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync } from 'child_process';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+const tmuxMocks = vi.hoisted(() => ({
+    tmuxExec: vi.fn(),
+    tmuxSpawn: vi.fn(),
+}));
+vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        tmuxExec: tmuxMocks.tmuxExec,
+        tmuxSpawn: tmuxMocks.tmuxSpawn,
+    };
+});
 import { scaleUp } from '../scaling.js';
 function killTmuxSession(sessionName) {
     try {
@@ -13,6 +25,31 @@ function killTmuxSession(sessionName) {
 describe('scaleUp duplicate worker guard', () => {
     let cwd;
     const tmuxSessions = [];
+    beforeEach(() => {
+        tmuxMocks.tmuxExec.mockReset();
+        tmuxMocks.tmuxSpawn.mockReset();
+        tmuxMocks.tmuxSpawn.mockImplementation((args) => {
+            if (args[0] === 'split-window') {
+                return {
+                    status: 1,
+                    stdout: '',
+                    stderr: 'mocked tmux unavailable',
+                };
+            }
+            if (args[0] === 'display-message') {
+                return {
+                    status: 0,
+                    stdout: '1234\n',
+                    stderr: '',
+                };
+            }
+            return {
+                status: 0,
+                stdout: '',
+                stderr: '',
+            };
+        });
+    });
     afterEach(async () => {
         for (const session of tmuxSessions) {
             killTmuxSession(session);
@@ -51,6 +88,7 @@ describe('scaleUp duplicate worker guard', () => {
         if (!result.ok) {
             expect(result.error).not.toContain('refusing to spawn duplicate worker identity');
         }
+        expect(tmuxMocks.tmuxSpawn).toHaveBeenCalledWith(expect.arrayContaining(['split-window']));
         const config = JSON.parse(await readFile(join(root, 'config.json'), 'utf-8'));
         // next_worker_index must have advanced past the collision
         expect(config.next_worker_index).toBeGreaterThan(1);
