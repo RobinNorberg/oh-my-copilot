@@ -320,21 +320,21 @@ describe('state-tools', () => {
       const orphanSessionIds = ['ended-session-one', 'ended-session-two'];
       const modes = ['ralph', 'ultrawork', 'team'] as const;
 
-      mkdirSync(join(TEST_DIR, '.omc', 'sessions'), { recursive: true });
+      mkdirSync(join(TEST_DIR, '.omcp', 'sessions'), { recursive: true });
 
       for (const orphanSessionId of orphanSessionIds) {
-        mkdirSync(join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId), { recursive: true });
+        mkdirSync(join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId), { recursive: true });
         writeFileSync(
-          join(TEST_DIR, '.omc', 'sessions', `${orphanSessionId}.json`),
+          join(TEST_DIR, '.omcp', 'sessions', `${orphanSessionId}.json`),
           JSON.stringify({ session_id: orphanSessionId, ended_at: '2026-05-04T00:00:00.000Z' }),
         );
       }
-      mkdirSync(join(TEST_DIR, '.omc', 'state', 'sessions', liveSessionId), { recursive: true });
+      mkdirSync(join(TEST_DIR, '.omcp', 'state', 'sessions', liveSessionId), { recursive: true });
 
       for (const mode of modes) {
         for (const orphanSessionId of orphanSessionIds) {
           writeFileSync(
-            join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId, `${mode}-state.json`),
+            join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId, `${mode}-state.json`),
             JSON.stringify({
               active: true,
               session_id: orphanSessionId,
@@ -343,7 +343,7 @@ describe('state-tools', () => {
           );
         }
         writeFileSync(
-          join(TEST_DIR, '.omc', 'state', 'sessions', liveSessionId, `${mode}-state.json`),
+          join(TEST_DIR, '.omcp', 'state', 'sessions', liveSessionId, `${mode}-state.json`),
           JSON.stringify({ active: true, session_id: liveSessionId }),
         );
 
@@ -355,23 +355,23 @@ describe('state-tools', () => {
 
         expect(result.content[0].text).toContain('completed-session orphan');
         for (const orphanSessionId of orphanSessionIds) {
-          expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId, `${mode}-state.json`))).toBe(false);
+          expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId, `${mode}-state.json`))).toBe(false);
         }
-        expect(existsSync(join(TEST_DIR, '.omc', 'state', 'sessions', liveSessionId, `${mode}-state.json`))).toBe(true);
+        expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'sessions', liveSessionId, `${mode}-state.json`))).toBe(true);
       }
     });
 
     it('reports completed-session orphan state on session-scoped read misses', async () => {
       const freshSessionId = 'fresh-read-session';
       const orphanSessionId = 'ended-read-session';
-      mkdirSync(join(TEST_DIR, '.omc', 'sessions'), { recursive: true });
-      mkdirSync(join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId), { recursive: true });
+      mkdirSync(join(TEST_DIR, '.omcp', 'sessions'), { recursive: true });
+      mkdirSync(join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId), { recursive: true });
       writeFileSync(
-        join(TEST_DIR, '.omc', 'sessions', `${orphanSessionId}.json`),
+        join(TEST_DIR, '.omcp', 'sessions', `${orphanSessionId}.json`),
         JSON.stringify({ session_id: orphanSessionId, ended_at: '2026-05-04T00:00:00.000Z' }),
       );
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'sessions', orphanSessionId, 'ralph-state.json'),
+        join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId, 'ralph-state.json'),
         JSON.stringify({ active: true, session_id: orphanSessionId }),
       );
 
@@ -385,12 +385,12 @@ describe('state-tools', () => {
       expect(result.content[0].text).toContain(orphanSessionId);
     });
 
-    it('clears completed-session orphan state through a symlinked .omc directory', async () => {
+    it.skipIf(process.platform === 'win32')('clears completed-session orphan state through a symlinked .omc directory', async () => {
       const symlinkTestDir = mkdtempSync(join(tmpdir(), 'state-tools-symlink-'));
       const realOmcDir = mkdtempSync(join(tmpdir(), 'state-tools-real-omc-'));
       try {
-        rmSync(join(symlinkTestDir, '.omc'), { recursive: true, force: true });
-        symlinkSync(realOmcDir, join(symlinkTestDir, '.omc'), 'dir');
+        rmSync(join(symlinkTestDir, '.omcp'), { recursive: true, force: true });
+        symlinkSync(realOmcDir, join(symlinkTestDir, '.omcp'), 'dir');
         const orphanSessionId = 'ended-symlink-session';
         const freshSessionId = 'fresh-symlink-session';
         mkdirSync(join(realOmcDir, 'sessions'), { recursive: true });
