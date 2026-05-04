@@ -60,8 +60,15 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
         return baseConfigDir;
     }
     const runtimeConfigDir = join(baseConfigDir, OMC_RUNTIME_DIRNAME);
+    const runtimeClaudeJsonPath = join(runtimeConfigDir, '.claude.json');
+    const preservedClaudeJson = existsSync(runtimeClaudeJsonPath)
+        ? readFileSync(runtimeClaudeJsonPath)
+        : null;
     rmSync(runtimeConfigDir, { recursive: true, force: true });
     mkdirSync(runtimeConfigDir, { recursive: true });
+    if (preservedClaudeJson) {
+        writeFileSync(runtimeClaudeJsonPath, preservedClaudeJson);
+    }
     copyFileSync(companionPath, join(runtimeConfigDir, 'copilot-instructions.md'));
     for (const entry of [
         'agents',
