@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -49,13 +49,14 @@ describe('self-improve path scoping helpers', () => {
     });
     itWithJq('validate.sh auto-discovers a single scoped settings file', () => {
         const scopedConfigDir = join(root, '.omc', 'self-improve', 'topics', 'perf-track', 'config');
+        const expectedSettingsPath = join(realpathSync(root), '.omc', 'self-improve', 'topics', 'perf-track', 'config', 'settings.json');
         mkdirSync(scopedConfigDir, { recursive: true });
         writeFileSync(join(scopedConfigDir, 'settings.json'), JSON.stringify({ sealed_files: [] }), 'utf-8');
         const output = execFileSync('bash', [VALIDATE], {
             cwd: root,
             encoding: 'utf-8',
         });
-        expect(output).toContain(`Settings: ${join(scopedConfigDir, 'settings.json')}`);
+        expect(output).toContain(`Settings: ${expectedSettingsPath}`);
         expect(output).toContain('All checks passed');
     });
     itWithJq('validate.sh errors when multiple scoped topics exist without an explicit selector', () => {
