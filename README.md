@@ -47,6 +47,14 @@ autopilot: build a todo-app
 # If you enjoy the output, give the repo att ⭐ and tell a friend
 ```
 
+> **Known npm warning:** `npm i -g oh-my-copilot@latest` may print `deprecated prebuild-install@7.1.3`.
+> This comes from the upstream `better-sqlite3` native-addon dependency
+> (`better-sqlite3 -> prebuild-install`); `prebuild-install@7.1.3` is still the latest
+> published version, so there is no safe repo-side dependency bump or override to remove
+> the warning yet. The warning is tracked upstream in
+> [yeachan-heo/oh-my-claudecode#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
+> and does not by itself mean the install failed.
+
 ### Not Sure Where to Start?
 
 If you're uncertain about requirements, have a vague idea, or want to micromanage the design:
