@@ -227,6 +227,11 @@ function buildSessionStartAdditionalContext(messages: string[]): string {
 }
 
 function readLinuxBootId(): string | undefined {
+  if (process.env.NODE_ENV === "test") {
+    const testBootId = process.env.OMC_TEST_LINUX_BOOT_ID?.trim();
+    if (testBootId) return testBootId;
+  }
+
   try {
     if (!existsSync(LINUX_BOOT_ID_PATH)) return undefined;
     const bootId = readFileSync(LINUX_BOOT_ID_PATH, "utf-8").trim();
