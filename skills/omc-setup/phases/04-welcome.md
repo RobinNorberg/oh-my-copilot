@@ -134,7 +134,7 @@ gh auth status &>/dev/null
 **Before prompting, check if the repository is already starred:**
 
 ```bash
-gh api user/starred/Yeachan-Heo/oh-my-copilot &>/dev/null
+gh api user/starred/RobinNorberg/oh-my-copilot &>/dev/null
 ```
 
 **If already starred (exit code 0):**
@@ -147,15 +147,15 @@ Use AskUserQuestion:
 
 **Question:** "If you're enjoying oh-my-copilot, would you like to support the project by starring it on GitHub?"
 
-**Options:**
-1. **Yes, star it!** - Star the repository
-2. **No thanks** - Skip without further prompts
-3. **Maybe later** - Skip without further prompts
+**Options** (list in this exact order — Copilot CLI preselects the first option):
+1. **Yes, star it! (Recommended)** - Star the repository
+2. **Maybe later** - Skip without further prompts
+3. **No thanks** - Skip without further prompts
 
-If user chooses "Yes, star it!":
+If user chooses "Yes, star it! (Recommended)":
 
 ```bash
-gh api -X PUT /user/starred/Yeachan-Heo/oh-my-copilot 2>/dev/null && echo "Thanks for starring!" || true
+gh api -X PUT /user/starred/RobinNorberg/oh-my-copilot 2>/dev/null && echo "Thanks for starring!" || true
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.
@@ -165,7 +165,7 @@ gh api -X PUT /user/starred/Yeachan-Heo/oh-my-copilot 2>/dev/null && echo "Thank
 ```bash
 echo ""
 echo "If you enjoy oh-my-copilot, consider starring the repo:"
-echo "  https://github.com/Yeachan-Heo/oh-my-copilot"
+echo "  https://github.com/RobinNorberg/oh-my-copilot"
 echo ""
 ```
 

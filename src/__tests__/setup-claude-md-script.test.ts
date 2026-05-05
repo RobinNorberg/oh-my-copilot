@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 const REPO_ROOT = join(__dirname, '..', '..');
 const SETUP_SCRIPT = join(REPO_ROOT, 'scripts', 'setup-claude-md.sh');
@@ -159,6 +159,7 @@ Use the real docs file.
     expect(excludeContents).toContain('.omcp/*');
     expect(excludeContents).toContain('!.omcp/skills/');
     expect(excludeContents).toContain('!.omcp/skills/**');
+    expect(excludeContents).toContain('.omx/');
     expect(excludeContents).toContain('# END OMC local artifacts');
   });
 
@@ -203,6 +204,57 @@ Use the real docs file.
 
     const excludeContents = readFileSync(join(fixture.projectRoot, '.git', 'info', 'exclude'), 'utf-8');
     expect(excludeContents.match(/# BEGIN OMC local artifacts/g)).toHaveLength(1);
+  });
+
+  it('updates an existing local git exclude block to ignore .omx runtime cache', () => {
+    const fixture = createPluginFixture(`<!-- OMC:START -->
+<!-- OMC:VERSION:9.9.9 -->
+
+# Canonical CLAUDE
+Use the real docs file.
+<!-- OMC:END -->
+`);
+
+    const gitInit = spawnSync('git', ['init'], {
+      cwd: fixture.projectRoot,
+      env: {
+        ...process.env,
+        HOME: fixture.homeRoot,
+      },
+      encoding: 'utf-8',
+    });
+    expect(gitInit.status).toBe(0);
+
+    const excludePath = join(fixture.projectRoot, '.git', 'info', 'exclude');
+    mkdirSync(dirname(excludePath), { recursive: true });
+    writeFileSync(
+      excludePath,
+      [
+        '# BEGIN OMC local artifacts',
+        '!.omcp/',
+        '.omcp/*',
+        '!.omcp/skills/',
+        '!.omcp/skills/**',
+        '# END OMC local artifacts',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = spawnSync('bash', [fixture.scriptPath, 'local'], {
+      cwd: fixture.projectRoot,
+      env: {
+        ...process.env,
+        HOME: fixture.homeRoot,
+      },
+      encoding: 'utf-8',
+    });
+    expect(result.status).toBe(0);
+
+    const excludeContents = readFileSync(excludePath, 'utf-8');
+    expect(excludeContents).toContain('# BEGIN OMC local artifacts');
+    expect(excludeContents).toContain('.omcp/*');
+    expect(excludeContents).toContain('.omx/');
   });
 
   it('uses CLAUDE_CONFIG_DIR for global setup targets and plugin verification', () => {

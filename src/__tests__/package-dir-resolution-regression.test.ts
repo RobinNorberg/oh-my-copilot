@@ -59,6 +59,37 @@ describe('package dir resolution regression (#1322, #1324)', () => {
     );
   });
 
+  it('bridge/cli.cjs keeps builtin skills package-dir resolution bridge-aware', () => {
+    const source = readFileSync(join(REPO_ROOT, 'bridge', 'cli.cjs'), 'utf-8');
+    const skillsDirIndex = source.indexOf('var SKILLS_DIR2 =');
+    const helperIndex = source.lastIndexOf('function getPackageDir', skillsDirIndex);
+    const snippet = helperIndex === -1 ? '' : source.slice(helperIndex, helperIndex + 1400);
+
+    expect(snippet).toContain('typeof __dirname !== "undefined"');
+    expect(snippet).toContain('currentDirName === "bridge"');
+    expect(snippet).toContain('fileURLToPath)(importMetaUrl)');
+    expect(snippet.indexOf('typeof __dirname !== "undefined"')).toBeLessThan(
+      snippet.indexOf('fileURLToPath)(importMetaUrl)'),
+    );
+  });
+
+  it('bridge/team.js keeps import.meta package-dir resolution bridge-aware', () => {
+    const source = readFileSync(join(REPO_ROOT, 'bridge', 'team.js'), 'utf-8');
+    const snippet = getSnippetByMarker(source, 'function getPackageDir() {');
+    const importMetaIndex = snippet.indexOf('fileURLToPath(import.meta.url)');
+    const importMetaSnippet = importMetaIndex === -1 ? '' : snippet.slice(importMetaIndex);
+    const importMetaBridgeBranchIndex = importMetaSnippet.indexOf('currentDirName === "bridge"');
+    const importMetaBridgeReturnIndex = importMetaSnippet.search(/return join\d+\(__dirname\d+, "\.\."\)/);
+    const importMetaDefaultReturnIndex = importMetaSnippet.search(/return join\d+\(__dirname\d+, "\.\.", "\.\."\)/);
+
+    expect(snippet).toContain('fileURLToPath(import.meta.url)');
+    expect(snippet).toContain('currentDirName === "bridge"');
+    expect(importMetaSnippet).not.toBe('');
+    expect(importMetaBridgeBranchIndex).toBeGreaterThanOrEqual(0);
+    expect(importMetaBridgeReturnIndex).toBeGreaterThan(importMetaBridgeBranchIndex);
+    expect(importMetaBridgeReturnIndex).toBeLessThan(importMetaDefaultReturnIndex);
+  });
+
   it('loadAgentPrompt resolves prompts even when cwd is unrelated', () => {
     const sandboxDir = mkdtempSync(join(tmpdir(), 'omc-agents-path-resolution-'));
     process.chdir(sandboxDir);

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtemp, rm, mkdir, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { teamCommand, parseTeamArgs } from '../team.js';
+import { teamCommand, parseTeamArgs, buildStartupTasks } from '../team.js';
 /** Helper: capture console.log output during a callback */
 async function captureLog(fn) {
     const logs = [];
@@ -261,6 +261,53 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
     });
     it('throws on total count exceeding maximum', () => {
         expect(() => parseTeamArgs(['15:codex,10:gemini', 'big task'])).toThrow('exceeds maximum');
+    });
+});
+describe('buildStartupTasks', () => {
+    it('adds owner-aware fanout for explicit per-worker roles', () => {
+        const parsed = parseTeamArgs(['1:codex:architect,1:gemini:writer', 'draft launch plan']);
+        expect(buildStartupTasks(parsed)).toEqual([
+            {
+                subject: 'Worker 1 (architect): draft launch plan',
+                description: 'draft launch plan',
+                owner: 'worker-1',
+            },
+            {
+                subject: 'Worker 2 (writer): draft launch plan',
+                description: 'draft launch plan',
+                owner: 'worker-2',
+            },
+        ]);
+    });
+    it('keeps simple fanout unchanged when no explicit roles are provided', () => {
+        const parsed = parseTeamArgs(['2:codex', 'fix tests']);
+        expect(buildStartupTasks(parsed)).toEqual([
+            { subject: 'Worker 1: fix tests', description: 'fix tests' },
+            { subject: 'Worker 2: fix tests', description: 'fix tests' },
+        ]);
+    });
+    it('attaches delegation evidence guard plans for broad startup tasks', () => {
+        const parsed = parseTeamArgs(['2:codex', 'investigate flaky runtime behavior']);
+        expect(buildStartupTasks(parsed)).toEqual([
+            expect.objectContaining({
+                subject: 'Worker 1: investigate flaky runtime behavior',
+                description: 'investigate flaky runtime behavior',
+                delegation: expect.objectContaining({
+                    mode: 'auto',
+                    required_parallel_probe: true,
+                    skip_allowed_reason_required: true,
+                }),
+            }),
+            expect.objectContaining({
+                subject: 'Worker 2: investigate flaky runtime behavior',
+                description: 'investigate flaky runtime behavior',
+                delegation: expect.objectContaining({
+                    mode: 'auto',
+                    required_parallel_probe: true,
+                    skip_allowed_reason_required: true,
+                }),
+            }),
+        ]);
     });
 });
 //# sourceMappingURL=team.test.js.map

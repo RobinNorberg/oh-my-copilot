@@ -55,19 +55,55 @@ describe('loadConfig() — auto-forceInherit for non-standard providers', () => 
     expect(config.routing?.forceInherit).toBe(true);
   });
 
-  it('does not auto-enable forceInherit for Bedrock inference-profile ARN model IDs (use CLAUDE_CODE_USE_BEDROCK=1 instead)', () => {
+  it('auto-enables forceInherit for Bedrock inference-profile ARN model IDs (port-2866)', () => {
     process.env.ANTHROPIC_MODEL =
       'arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-opus-4-6-v1:0';
     const config = loadConfig();
-    // isBedrock() only checks region prefix patterns and CLAUDE_CODE_USE_BEDROCK env var,
-    // not ARN format. ARN model IDs contain 'claude' so non-copilot model check also skips.
-    expect(config.routing?.forceInherit).toBe(false);
+    // isBedrock() now recognizes Bedrock ARN-based inference profiles
+    // (regex: /^arn:aws(-[^:]+)?:bedrock:/i + inference-profile + claude),
+    // ported from upstream #2866 alongside the region-prefix detection.
+    expect(config.routing?.forceInherit).toBe(true);
   });
 
   it('auto-enables forceInherit when CLAUDE_CODE_USE_VERTEX=1', () => {
     process.env.CLAUDE_CODE_USE_VERTEX = '1';
     const config = loadConfig();
     expect(config.routing?.forceInherit).toBe(true);
+  });
+
+  it('does NOT auto-enable forceInherit for non-Claude Anthropic family-default tier env vars', () => {
+    process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'kimi-k2.6:cloud';
+    const config = loadConfig();
+    expect(config.routing?.forceInherit).toBe(false);
+    expect(config.agents?.executor?.model).toBe('kimi-k2.6:cloud');
+  });
+
+  it('does NOT auto-enable forceInherit for non-Claude OMC tier env vars', () => {
+    process.env.OMC_MODEL_MEDIUM = 'glm-5.1:cloud';
+    const config = loadConfig();
+    expect(config.routing?.forceInherit).toBe(false);
+    expect(config.agents?.executor?.model).toBe('glm-5.1:cloud');
+  });
+
+  it('does NOT auto-enable forceInherit when direct Claude CLAUDE_MODEL beats stale ANTHROPIC_MODEL', () => {
+    process.env.CLAUDE_MODEL = 'claude-sonnet-4-6';
+    process.env.ANTHROPIC_MODEL = 'kimi-k2.6:cloud';
+    const config = loadConfig();
+    expect(config.routing?.forceInherit).toBe(false);
+  });
+
+  it('does NOT auto-enable forceInherit when direct Claude CLAUDE_MODEL beats stale OMC tier env vars', () => {
+    process.env.CLAUDE_MODEL = 'claude-sonnet-4-6';
+    process.env.OMC_MODEL_MEDIUM = 'glm-5.1:cloud';
+    const config = loadConfig();
+    expect(config.routing?.forceInherit).toBe(false);
+  });
+
+  it('does NOT auto-enable forceInherit when direct Claude ANTHROPIC_MODEL beats stale OMC tier env vars', () => {
+    process.env.ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+    process.env.OMC_MODEL_MEDIUM = 'glm-5.1:cloud';
+    const config = loadConfig();
+    expect(config.routing?.forceInherit).toBe(false);
   });
 
   it('does NOT auto-enable forceInherit for standard Anthropic API usage', () => {

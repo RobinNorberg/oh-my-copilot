@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync, existsSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
 import { join } from 'path';
 import {
   stateReadTool,
@@ -135,6 +136,32 @@ describe('state-tools', () => {
 
       expect(result.content[0].text).toContain('cleared');
       expect(existsSync(join(sessionDir, 'ralplan-state.json'))).toBe(false);
+    });
+
+    it('should also remove non-session legacy state files during session clear', async () => {
+      const sessionId = 'legacy-cleanup-session';
+      const sessionDir = join(TEST_DIR, '.omcp', 'state', 'sessions', sessionId);
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, 'ralph-state.json'),
+        JSON.stringify({ active: true, session_id: sessionId }),
+      );
+
+      const legacyRootPath = join(TEST_DIR, '.omcp', 'ralph-state.json');
+      writeFileSync(
+        legacyRootPath,
+        JSON.stringify({ active: true, session_id: sessionId }),
+      );
+
+      const result = await stateClearTool.handler({
+        mode: 'ralph',
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('ghost legacy file also removed');
+      expect(existsSync(join(sessionDir, 'ralph-state.json'))).toBe(false);
+      expect(existsSync(legacyRootPath)).toBe(false);
     });
 
     it('should clear only the requested session for every execution mode', async () => {
@@ -287,6 +314,110 @@ describe('state-tools', () => {
       expect(readResult.content[0].text).toContain('No state found');
     });
 
+    it('clears completed-session orphan state when cancel runs from a fresh session id', async () => {
+      const freshSessionId = 'fresh-cancel-session';
+      const liveSessionId = 'live-sibling-session';
+      const orphanSessionIds = ['ended-session-one', 'ended-session-two'];
+      const modes = ['ralph', 'ultrawork', 'team'] as const;
+
+      mkdirSync(join(TEST_DIR, '.omcp', 'sessions'), { recursive: true });
+
+      for (const orphanSessionId of orphanSessionIds) {
+        mkdirSync(join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId), { recursive: true });
+        writeFileSync(
+          join(TEST_DIR, '.omcp', 'sessions', `${orphanSessionId}.json`),
+          JSON.stringify({ session_id: orphanSessionId, ended_at: '2026-05-04T00:00:00.000Z' }),
+        );
+      }
+      mkdirSync(join(TEST_DIR, '.omcp', 'state', 'sessions', liveSessionId), { recursive: true });
+
+      for (const mode of modes) {
+        for (const orphanSessionId of orphanSessionIds) {
+          writeFileSync(
+            join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId, `${mode}-state.json`),
+            JSON.stringify({
+              active: true,
+              session_id: orphanSessionId,
+              ...(mode === 'team' ? { team_name: `team-${orphanSessionId}` } : {}),
+            }),
+          );
+        }
+        writeFileSync(
+          join(TEST_DIR, '.omcp', 'state', 'sessions', liveSessionId, `${mode}-state.json`),
+          JSON.stringify({ active: true, session_id: liveSessionId }),
+        );
+
+        const result = await stateClearTool.handler({
+          mode,
+          session_id: freshSessionId,
+          workingDirectory: TEST_DIR,
+        });
+
+        expect(result.content[0].text).toContain('completed-session orphan');
+        for (const orphanSessionId of orphanSessionIds) {
+          expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId, `${mode}-state.json`))).toBe(false);
+        }
+        expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'sessions', liveSessionId, `${mode}-state.json`))).toBe(true);
+      }
+    });
+
+    it('reports completed-session orphan state on session-scoped read misses', async () => {
+      const freshSessionId = 'fresh-read-session';
+      const orphanSessionId = 'ended-read-session';
+      mkdirSync(join(TEST_DIR, '.omcp', 'sessions'), { recursive: true });
+      mkdirSync(join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId), { recursive: true });
+      writeFileSync(
+        join(TEST_DIR, '.omcp', 'sessions', `${orphanSessionId}.json`),
+        JSON.stringify({ session_id: orphanSessionId, ended_at: '2026-05-04T00:00:00.000Z' }),
+      );
+      writeFileSync(
+        join(TEST_DIR, '.omcp', 'state', 'sessions', orphanSessionId, 'ralph-state.json'),
+        JSON.stringify({ active: true, session_id: orphanSessionId }),
+      );
+
+      const result = await stateReadTool.handler({
+        mode: 'ralph',
+        session_id: freshSessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('completed-session orphan');
+      expect(result.content[0].text).toContain(orphanSessionId);
+    });
+
+    it.skipIf(process.platform === 'win32')('clears completed-session orphan state through a symlinked .omc directory', async () => {
+      const symlinkTestDir = mkdtempSync(join(tmpdir(), 'state-tools-symlink-'));
+      const realOmcDir = mkdtempSync(join(tmpdir(), 'state-tools-real-omc-'));
+      try {
+        rmSync(join(symlinkTestDir, '.omcp'), { recursive: true, force: true });
+        symlinkSync(realOmcDir, join(symlinkTestDir, '.omcp'), 'dir');
+        const orphanSessionId = 'ended-symlink-session';
+        const freshSessionId = 'fresh-symlink-session';
+        mkdirSync(join(realOmcDir, 'sessions'), { recursive: true });
+        mkdirSync(join(realOmcDir, 'state', 'sessions', orphanSessionId), { recursive: true });
+        writeFileSync(
+          join(realOmcDir, 'sessions', `${orphanSessionId}.json`),
+          JSON.stringify({ session_id: orphanSessionId, ended_at: '2026-05-04T00:00:00.000Z' }),
+        );
+        writeFileSync(
+          join(realOmcDir, 'state', 'sessions', orphanSessionId, 'ultrawork-state.json'),
+          JSON.stringify({ active: true, session_id: orphanSessionId }),
+        );
+
+        const result = await stateClearTool.handler({
+          mode: 'ultrawork',
+          session_id: freshSessionId,
+          workingDirectory: symlinkTestDir,
+        });
+
+        expect(result.content[0].text).toContain('completed-session orphan');
+        expect(existsSync(join(realOmcDir, 'state', 'sessions', orphanSessionId, 'ultrawork-state.json'))).toBe(false);
+      } finally {
+        rmSync(symlinkTestDir, { recursive: true, force: true });
+        rmSync(realOmcDir, { recursive: true, force: true });
+      }
+    });
+
     it('should list skill-active as active when state file is present', async () => {
       const sessionId = 'skill-active-list-test';
 
@@ -387,6 +518,21 @@ describe('state-tools', () => {
       expect(result.content[0].text).toContain('deep-interview');
     });
 
+    it('should include self-improve mode when self-improve state is active', async () => {
+      await stateWriteTool.handler({
+        mode: 'self-improve',
+        active: true,
+        state: { tournament_round: 1 },
+        workingDirectory: TEST_DIR,
+      });
+
+      const result = await stateListActiveTool.handler({
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('self-improve');
+    });
+
     it('should include team in status output when team state is active', async () => {
       await stateWriteTool.handler({
         mode: 'team',
@@ -402,6 +548,206 @@ describe('state-tools', () => {
 
       expect(result.content[0].text).toContain('Status: team');
       expect(result.content[0].text).toContain('**Active:** Yes');
+    });
+
+    it('deep-interview and self-improve appear in all-mode status listing', async () => {
+      const result = await stateGetStatusTool.handler({
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('deep-interview');
+      expect(result.content[0].text).toContain('self-improve');
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Registry parity: deep-interview and self-improve as first-class modes
+  // -----------------------------------------------------------------------
+  describe('deep-interview and self-improve registry parity (T1)', () => {
+    it('writes deep-interview state to session-scoped path via MODE_CONFIGS routing', async () => {
+      const sessionId = 'di-registry-write';
+      await stateWriteTool.handler({
+        mode: 'deep-interview',
+        active: true,
+        state: { current_phase: 'questioning', round: 3 },
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      const statePath = join(TEST_DIR, '.omcp', 'state', 'sessions', sessionId, 'deep-interview-state.json');
+      expect(existsSync(statePath)).toBe(true);
+    });
+
+    it('writes self-improve state to session-scoped path via MODE_CONFIGS routing', async () => {
+      const sessionId = 'si-registry-write';
+      await stateWriteTool.handler({
+        mode: 'self-improve',
+        active: true,
+        state: { tournament_round: 1, best_score: 0.85 },
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      const statePath = join(TEST_DIR, '.omcp', 'state', 'sessions', sessionId, 'self-improve-state.json');
+      expect(existsSync(statePath)).toBe(true);
+    });
+
+    it('reads deep-interview state back from session-scoped path', async () => {
+      const sessionId = 'di-registry-read';
+      await stateWriteTool.handler({
+        mode: 'deep-interview',
+        active: true,
+        state: { current_phase: 'questioning', ambiguity_score: 0.34 },
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      const result = await stateReadTool.handler({
+        mode: 'deep-interview',
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('current_phase');
+      expect(result.content[0].text).toContain('ambiguity_score');
+    });
+
+    it('reads self-improve state back from session-scoped path', async () => {
+      const sessionId = 'si-registry-read';
+      await stateWriteTool.handler({
+        mode: 'self-improve',
+        active: true,
+        state: { tournament_round: 2, generation: 5 },
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      const result = await stateReadTool.handler({
+        mode: 'self-improve',
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('tournament_round');
+      expect(result.content[0].text).toContain('generation');
+    });
+
+    it('clears deep-interview state file for given session', async () => {
+      const sessionId = 'di-registry-clear';
+      await stateWriteTool.handler({
+        mode: 'deep-interview',
+        active: true,
+        state: { current_phase: 'analysis' },
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      const clearResult = await stateClearTool.handler({
+        mode: 'deep-interview',
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(clearResult.content[0].text).toMatch(/cleared|Successfully/i);
+      const statePath = join(TEST_DIR, '.omcp', 'state', 'sessions', sessionId, 'deep-interview-state.json');
+      expect(existsSync(statePath)).toBe(false);
+    });
+
+    it('clears self-improve state file for given session', async () => {
+      const sessionId = 'si-registry-clear';
+      await stateWriteTool.handler({
+        mode: 'self-improve',
+        active: true,
+        state: { tournament_round: 3 },
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      const clearResult = await stateClearTool.handler({
+        mode: 'self-improve',
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(clearResult.content[0].text).toMatch(/cleared|Successfully/i);
+      const statePath = join(TEST_DIR, '.omcp', 'state', 'sessions', sessionId, 'self-improve-state.json');
+      expect(existsSync(statePath)).toBe(false);
+    });
+
+    it('state_get_status reports self-improve as active when state file is present', async () => {
+      await stateWriteTool.handler({
+        mode: 'self-improve',
+        active: true,
+        state: { tournament_round: 2 },
+        workingDirectory: TEST_DIR,
+      });
+
+      const result = await stateGetStatusTool.handler({
+        mode: 'self-improve',
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('Status: self-improve');
+      expect(result.content[0].text).toContain('**Active:** Yes');
+    });
+
+    it('state_get_status reports deep-interview as active when state file is present', async () => {
+      await stateWriteTool.handler({
+        mode: 'deep-interview',
+        active: true,
+        state: { current_phase: 'contrarian' },
+        workingDirectory: TEST_DIR,
+      });
+
+      const result = await stateGetStatusTool.handler({
+        mode: 'deep-interview',
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('Status: deep-interview');
+      expect(result.content[0].text).toContain('**Active:** Yes');
+    });
+
+    it('deep-interview session isolation: write to session A does not appear under session B', async () => {
+      const sessionA = 'di-iso-a';
+      const sessionB = 'di-iso-b';
+
+      await stateWriteTool.handler({
+        mode: 'deep-interview',
+        active: true,
+        state: { current_phase: 'questioning' },
+        session_id: sessionA,
+        workingDirectory: TEST_DIR,
+      });
+
+      const resultB = await stateReadTool.handler({
+        mode: 'deep-interview',
+        session_id: sessionB,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(resultB.content[0].text).toContain('No state found');
+    });
+
+    it('self-improve session isolation: write to session A does not appear under session B', async () => {
+      const sessionA = 'si-iso-a';
+      const sessionB = 'si-iso-b';
+
+      await stateWriteTool.handler({
+        mode: 'self-improve',
+        active: true,
+        state: { tournament_round: 1 },
+        session_id: sessionA,
+        workingDirectory: TEST_DIR,
+      });
+
+      const resultB = await stateReadTool.handler({
+        mode: 'self-improve',
+        session_id: sessionB,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(resultB.content[0].text).toContain('No state found');
     });
   });
 
@@ -490,11 +836,54 @@ describe('state-tools', () => {
       expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'ralph-state.json'))).toBe(true);
     });
 
+    it('should clear recovered session-owned state stranded under another session directory', async () => {
+      const sessionId = 'continued-session';
+      const strandedDir = join(TEST_DIR, '.omcp', 'state', 'sessions', 'stale-session-dir');
+      mkdirSync(strandedDir, { recursive: true });
+      writeFileSync(
+        join(strandedDir, 'ralph-state.json'),
+        JSON.stringify({ active: true, session_id: sessionId, source: 'recovered-session-state' })
+      );
+
+      const result = await stateClearTool.handler({
+        mode: 'ralph',
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('recovered session file');
+      expect(existsSync(join(strandedDir, 'ralph-state.json'))).toBe(false);
+    });
+
+    it('should clear ralph stop-hook runtime artifacts with session-scoped cancel cleanup', async () => {
+      const sessionId = 'ralph-stop-artifact-session';
+      const stateDir = join(TEST_DIR, '.omcp', 'state');
+      const sessionDir = join(stateDir, 'sessions', sessionId);
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, 'ralph-state.json'),
+        JSON.stringify({ active: true, session_id: sessionId }),
+      );
+      writeFileSync(join(sessionDir, 'ralph-stop-breaker.json'), JSON.stringify({ count: 3 }));
+      writeFileSync(join(stateDir, 'ralph-stop-breaker.json'), JSON.stringify({ count: 3 }));
+      writeFileSync(join(stateDir, 'ralph-last-steer-at'), new Date().toISOString());
+      writeFileSync(join(stateDir, 'ralph-continue-steer.lock'), `${process.pid}`);
+
+      const result = await stateClearTool.handler({
+        mode: 'ralph',
+        session_id: sessionId,
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('runtime artifact');
+      expect(existsSync(join(sessionDir, 'ralph-state.json'))).toBe(false);
+      expect(existsSync(join(sessionDir, 'ralph-stop-breaker.json'))).toBe(false);
+      expect(existsSync(join(stateDir, 'ralph-stop-breaker.json'))).toBe(false);
+      expect(existsSync(join(stateDir, 'ralph-last-steer-at'))).toBe(false);
+      expect(existsSync(join(stateDir, 'ralph-continue-steer.lock'))).toBe(false);
+    });
+
     it('should clear the owning session when the current session resumed ralph from a different conversation', async () => {
-      // Resumed Ralph sessions can leave the only active state under a foreign
-      // session directory. When the requester's session has no local state and
-      // exactly one other session owns active state, state_clear reaches the
-      // unambiguous owner so stop-hook enforcement clears for both sessions.
       const currentSessionId = 'resume-session-b';
       const ownerSessionId = 'resume-session-a';
       const ownerDir = join(TEST_DIR, '.omcp', 'state', 'sessions', ownerSessionId);
@@ -519,6 +908,26 @@ describe('state-tools', () => {
       expect(existsSync(join(ownerDir, 'ralph-state.json'))).toBe(false);
       expect(existsSync(join(TEST_DIR, '.omcp', 'state', 'sessions', currentSessionId, 'cancel-signal-state.json'))).toBe(true);
       expect(existsSync(join(ownerDir, 'cancel-signal-state.json'))).toBe(true);
+    });
+
+    it('should clear ralph runtime artifacts during broad cancel cleanup', async () => {
+      const sessionId = 'ralph-broad-runtime-cleanup';
+      const stateDir = join(TEST_DIR, '.omcp', 'state');
+      const sessionDir = join(stateDir, 'sessions', sessionId);
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(join(sessionDir, 'ralph-stop-breaker.json'), JSON.stringify({ count: 1 }));
+      writeFileSync(join(stateDir, 'ralph-stop-breaker.json'), JSON.stringify({ count: 1 }));
+      writeFileSync(join(stateDir, 'ralph-last-steer-at'), new Date().toISOString());
+
+      const result = await stateClearTool.handler({
+        mode: 'ralph',
+        workingDirectory: TEST_DIR,
+      });
+
+      expect(result.content[0].text).toContain('Locations cleared: 3');
+      expect(existsSync(join(sessionDir, 'ralph-stop-breaker.json'))).toBe(false);
+      expect(existsSync(join(stateDir, 'ralph-stop-breaker.json'))).toBe(false);
+      expect(existsSync(join(stateDir, 'ralph-last-steer-at'))).toBe(false);
     });
   });
 

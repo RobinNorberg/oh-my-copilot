@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { spawnSync } from 'child_process';
-import { getContract, buildLaunchArgs, buildWorkerArgv, getWorkerEnv, parseCliOutput, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, isCliAvailable, shouldLoadShellRc, resolveCliBinaryPath, clearResolvedPathCache, validateCliBinaryPath, _testInternals, } from '../model-contract.js';
+import { getContract, buildLaunchArgs, buildWorkerArgv, getWorkerEnv, parseCliOutput, isPromptModeAgent, getPromptModeArgs, resolveClaudeWorkerModel, isCliAvailable, shouldLoadShellRc, resolveCliBinaryPath, clearResolvedPathCache, validateCliBinaryPath, shouldUseClaudeBareMode, _testInternals, } from '../model-contract.js';
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
     return {
@@ -14,6 +14,29 @@ function setProcessPlatform(platform) {
     return () => {
         Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
     };
+}
+function withAnthropicApiKey(value, fn) {
+    const original = process.env.ANTHROPIC_API_KEY;
+    if (value === undefined) {
+        delete process.env.ANTHROPIC_API_KEY;
+    }
+    else {
+        process.env.ANTHROPIC_API_KEY = value;
+    }
+    try {
+        fn();
+    }
+    finally {
+        if (original === undefined) {
+            delete process.env.ANTHROPIC_API_KEY;
+        }
+        else {
+            process.env.ANTHROPIC_API_KEY = original;
+        }
+    }
+}
+function countArg(args, expected) {
+    return args.filter(arg => arg === expected).length;
 }
 describe('model-contract', () => {
     describe('backward-compat API shims', () => {
@@ -151,6 +174,36 @@ describe('model-contract', () => {
             const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp' });
             expect(args).toContain('--dangerously-skip-permissions');
         });
+        it('detects Claude bare mode only for non-empty ANTHROPIC_API_KEY', () => {
+            expect(shouldUseClaudeBareMode({ ANTHROPIC_API_KEY: 'sk-test' })).toBe(true);
+            expect(shouldUseClaudeBareMode({ ANTHROPIC_API_KEY: '' })).toBe(false);
+            expect(shouldUseClaudeBareMode({ ANTHROPIC_API_KEY: '   ' })).toBe(false);
+            expect(shouldUseClaudeBareMode({})).toBe(false);
+        });
+        it('claude omits --bare when ANTHROPIC_API_KEY is absent, empty, or whitespace', () => {
+            for (const value of [undefined, '', '   ']) {
+                withAnthropicApiKey(value, () => {
+                    const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp' });
+                    expect(args).toContain('--dangerously-skip-permissions');
+                    expect(args).not.toContain('--bare');
+                });
+            }
+        });
+        it('claude includes --bare with API-key auth and dedupes exact extra flag', () => {
+            withAnthropicApiKey('sk-test', () => {
+                const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp' });
+                expect(args).toContain('--dangerously-skip-permissions');
+                expect(args).toContain('--bare');
+                expect(countArg(args, '--bare')).toBe(1);
+                const deduped = buildLaunchArgs('claude', {
+                    teamName: 't',
+                    workerName: 'w',
+                    cwd: '/tmp',
+                    extraFlags: ['--bare'],
+                });
+                expect(countArg(deduped, '--bare')).toBe(1);
+            });
+        });
         it('codex includes --dangerously-bypass-approvals-and-sandbox', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp' });
             expect(args).not.toContain('exec');
@@ -167,6 +220,38 @@ describe('model-contract', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'gpt-4' });
             expect(args).toContain('--model');
             expect(args).toContain('gpt-4');
+        });
+        it('normalizes full Claude model ID to alias for claude agent (issue #1415)', () => {
+            const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'claude-sonnet-4-6' });
+            expect(args).toContain('--model');
+            expect(args).toContain('sonnet');
+            expect(args).not.toContain('claude-sonnet-4-6');
+        });
+        it('passes Bedrock model ID through without normalization for claude agent (issue #1695)', () => {
+            withAnthropicApiKey('sk-test', () => {
+                const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'us.anthropic.claude-opus-4-6-v1:0' });
+                expect(args).toContain('--bare');
+                expect(countArg(args, '--bare')).toBe(1);
+                expect(args).toContain('--model');
+                expect(args).toContain('us.anthropic.claude-opus-4-6-v1:0');
+                expect(args).not.toContain('opus');
+            });
+        });
+        it('passes Bedrock ARN model ID through without normalization (issue #1695)', () => {
+            const arn = 'arn:aws:bedrock:us-east-2:123456789012:inference-profile/global.anthropic.claude-sonnet-4-6-v1:0';
+            const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp', model: arn });
+            expect(args).toContain('--model');
+            expect(args).toContain(arn);
+        });
+        it('passes Vertex AI model ID through without normalization (issue #1695)', () => {
+            const args = buildLaunchArgs('claude', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'vertex_ai/claude-sonnet-4-6@20250514' });
+            expect(args).toContain('--model');
+            expect(args).toContain('vertex_ai/claude-sonnet-4-6@20250514');
+            expect(args).not.toContain('sonnet');
+        });
+        it('does not normalize non-Claude models for codex/gemini agents', () => {
+            const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'gpt-4o' });
+            expect(args).toContain('gpt-4o');
         });
     });
     describe('getWorkerEnv', () => {
@@ -227,9 +312,14 @@ describe('model-contract', () => {
         it('builds claude interactive worker argv without the exec subcommand', () => {
             const mockSpawnSync = vi.mocked(spawnSync);
             mockSpawnSync.mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null });
-            const argv = buildWorkerArgv('claude', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' });
+            let argv = [];
+            withAnthropicApiKey('sk-test', () => {
+                argv = buildWorkerArgv('claude', { teamName: 'my-team', workerName: 'worker-1', cwd: '/tmp' });
+            });
             expect(argv[0]).toBe('claude');
             expect(argv).toContain('--dangerously-skip-permissions');
+            expect(argv).toContain('--bare');
+            expect(countArg(argv, '--bare')).toBe(1);
             expect(argv).not.toContain('exec');
             expect(mockSpawnSync).toHaveBeenCalledWith('which', ['claude'], { timeout: 5000, encoding: 'utf8' });
             mockSpawnSync.mockRestore();

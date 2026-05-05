@@ -4,9 +4,9 @@
  * Parse stdin JSON from Copilot CLI statusline interface.
  * Based on copilot-hud reference implementation.
  */
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { existsSync, readFileSync, statSync, writeFileSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
-import { getSessionStateDir, getWorktreeRoot } from '../lib/worktree-paths.js';
+import { getSessionStateDir, getWorktreeRoot, listSessionIds, resolveOmcPath, } from '../lib/worktree-paths.js';
 const TRANSIENT_CONTEXT_PERCENT_TOLERANCE = 3;
 // ============================================================================
 // Stdin Cache (for --watch mode)
@@ -57,7 +57,9 @@ function getStdinCachePath() {
             // Invalid session id — try the next candidate.
         }
     }
-    return join(root, '.omcp', 'state', 'hud-stdin-cache.json');
+    // Legacy flat path must also resolve through the shared OMC-root helper so
+    // `OMC_STATE_DIR`-backed deployments land on the same directory as writers.
+    return resolveOmcPath('state/hud-stdin-cache.json', root);
 }
 /**
  * Persist the last successful stdin read to disk.
@@ -78,15 +80,88 @@ export function writeStdinCache(stdin) {
 }
 /**
  * Read the last cached stdin JSON.
+ *
+ * When a session id is available in the environment, the session-scoped
+ * path is authoritative. Otherwise — e.g. `omc hud --watch` running as a
+ * detached CLI/tmux process that never inherited the parent's session
+ * env — we still need a way to surface the active session's cache; we
+ * fall back first to the legacy flat path, and then to the most recently
+ * updated `state/sessions/{id}/hud-stdin-cache.json` so the watch pane
+ * does not stay stuck on an empty/starting view.
+ *
  * Returns null if no cache exists or it is unreadable.
  */
 export function readStdinCache() {
-    try {
-        const cachePath = getStdinCachePath();
-        if (!existsSync(cachePath)) {
+    const root = getWorktreeRoot() || process.cwd();
+    const scopedPath = getStdinCachePath();
+    const tryRead = (p) => {
+        try {
+            if (!existsSync(p))
+                return null;
+            return JSON.parse(readFileSync(p, 'utf-8'));
+        }
+        catch {
             return null;
         }
-        return JSON.parse(readFileSync(cachePath, 'utf-8'));
+    };
+    const scoped = tryRead(scopedPath);
+    if (scoped)
+        return scoped;
+    // If the scoped path already *is* the legacy flat path (no session id
+    // was available), there's no further lookup to try.
+    const legacyPath = resolveOmcPath('state/hud-stdin-cache.json', root);
+    if (scopedPath !== legacyPath) {
+        return null;
+    }
+    // Env-less reader: pick the most recent session-scoped cache as a
+    // best-effort surface of "the active session's HUD".
+    return readMostRecentSessionCache(root);
+}
+/**
+ * Scan `state/sessions/{id}/hud-stdin-cache.json` and return the contents
+ * of the most recently modified one. Only used as a fallback when no
+ * session id is available in the environment (e.g. a tmux-hosted
+ * `omc hud --watch` reader that did not inherit `CLAUDE_SESSION_ID`).
+ *
+ * Uses the same OMC-root helpers as the writers (`listSessionIds` /
+ * `getSessionStateDir`) so this fallback honors `OMC_STATE_DIR` and any
+ * other centralized-state configuration.
+ */
+function readMostRecentSessionCache(root) {
+    let sessionIds;
+    try {
+        sessionIds = listSessionIds(root);
+    }
+    catch {
+        return null;
+    }
+    let bestPath = null;
+    let bestMtime = -Infinity;
+    for (const sid of sessionIds) {
+        let candidate;
+        try {
+            candidate = join(getSessionStateDir(sid, root), 'hud-stdin-cache.json');
+        }
+        catch {
+            continue;
+        }
+        try {
+            const st = statSync(candidate);
+            if (!st.isFile())
+                continue;
+            if (st.mtimeMs > bestMtime) {
+                bestMtime = st.mtimeMs;
+                bestPath = candidate;
+            }
+        }
+        catch {
+            // Skip unreadable entries
+        }
+    }
+    if (!bestPath)
+        return null;
+    try {
+        return JSON.parse(readFileSync(bestPath, 'utf-8'));
     }
     catch {
         return null;
@@ -153,11 +228,22 @@ function parseResetDate(value) {
 function getTotalTokens(stdin) {
     const usage = getCurrentUsage(stdin);
     return ((usage?.input_tokens ?? 0) +
-        (usage?.cache_creation_input_tokens ?? 0));
+        (usage?.cache_creation_input_tokens ?? 0) +
+        (usage?.cache_read_input_tokens ?? 0));
+}
+function getTotalInputTokens(stdin) {
+    return stdin.context_window?.total_input_tokens ?? 0;
 }
 function getRoundedNativeContextPercent(stdin) {
     const nativePercent = stdin?.context_window?.used_percentage;
     if (typeof nativePercent !== 'number' || Number.isNaN(nativePercent)) {
+        return null;
+    }
+    return Math.min(100, Math.max(0, Math.round(nativePercent)));
+}
+function getPositiveNativeContextPercent(stdin) {
+    const nativePercent = stdin?.context_window?.used_percentage;
+    if (typeof nativePercent !== 'number' || Number.isNaN(nativePercent) || nativePercent <= 0) {
         return null;
     }
     return Math.min(100, Math.max(0, Math.round(nativePercent)));
@@ -170,6 +256,21 @@ function getManualContextPercent(stdin) {
     const totalTokens = getTotalTokens(stdin);
     return Math.min(100, Math.round((totalTokens / size) * 100));
 }
+function getPositiveManualContextPercent(stdin) {
+    const manualPercent = getManualContextPercent(stdin);
+    return manualPercent !== null && manualPercent > 0 ? manualPercent : null;
+}
+function getTotalInputContextPercent(stdin) {
+    const size = stdin.context_window?.context_window_size;
+    if (!size || size <= 0) {
+        return null;
+    }
+    const totalInputTokens = getTotalInputTokens(stdin);
+    if (totalInputTokens <= 0) {
+        return null;
+    }
+    return Math.min(100, Math.round((totalInputTokens / size) * 100));
+}
 function isSameContextStream(current, previous) {
     return current.cwd === previous.cwd
         && current.transcript_path === previous.transcript_path
@@ -181,7 +282,7 @@ function isSameContextStream(current, previous) {
  * the same underlying value rather than a real context jump.
  */
 export function stabilizeContextPercent(stdin, previousStdin) {
-    if (getRoundedNativeContextPercent(stdin) !== null) {
+    if (getPositiveNativeContextPercent(stdin) !== null) {
         return stdin;
     }
     if (!previousStdin || !isSameContextStream(stdin, previousStdin)) {
@@ -191,9 +292,12 @@ export function stabilizeContextPercent(stdin, previousStdin) {
     if (previousNativePercent === null) {
         return stdin;
     }
-    const manualPercent = getManualContextPercent(stdin);
-    if (manualPercent !== null
-        && Math.abs(manualPercent - previousNativePercent) > TRANSIENT_CONTEXT_PERCENT_TOLERANCE) {
+    const fallbackPercent = getPositiveManualContextPercent(stdin) ?? getTotalInputContextPercent(stdin);
+    if (fallbackPercent === null && getRoundedNativeContextPercent(stdin) === 0) {
+        return stdin;
+    }
+    if (fallbackPercent !== null
+        && Math.abs(fallbackPercent - previousNativePercent) > TRANSIENT_CONTEXT_PERCENT_TOLERANCE) {
         return stdin;
     }
     return {
@@ -206,14 +310,15 @@ export function stabilizeContextPercent(stdin, previousStdin) {
 }
 /**
  * Get context window usage percentage.
- * Prefers native percentage from Claude Code statusline stdin, falls back to manual calculation.
+ * Prefers a positive native percentage from Claude Code statusline stdin,
+ * then positive current_usage tokens, then positive total_input_tokens for
+ * Anthropic-compatible providers that report zeroed native usage.
  */
 export function getContextPercent(stdin) {
-    const nativePercent = getRoundedNativeContextPercent(stdin);
-    if (nativePercent !== null) {
-        return nativePercent;
-    }
-    return getManualContextPercent(stdin) ?? 0;
+    return (getPositiveNativeContextPercent(stdin)
+        ?? getPositiveManualContextPercent(stdin)
+        ?? getTotalInputContextPercent(stdin)
+        ?? 0);
 }
 /**
  * Convert Claude Code stdin rate_limits into the existing HUD RateLimits shape.

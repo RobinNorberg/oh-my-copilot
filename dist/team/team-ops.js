@@ -315,8 +315,8 @@ export async function teamClaimTask(teamName, taskId, workerName, expectedVersio
         writeAtomic,
     });
 }
-export async function teamTransitionTaskStatus(teamName, taskId, from, to, claimToken, cwd) {
-    return transitionTaskStatusImpl(taskId, from, to, claimToken, {
+export async function teamTransitionTaskStatus(teamName, taskId, from, to, claimToken, cwd, terminalData) {
+    return transitionTaskStatusImpl(taskId, from, to, claimToken, terminalData, {
         teamName,
         cwd,
         readTask: teamReadTask,

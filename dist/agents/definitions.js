@@ -10,6 +10,7 @@
 import { loadAgentPrompt, parseDisallowedTools } from './utils.js';
 import { loadConfig } from '../config/loader.js';
 import { appendStrictModeGuidance } from './strict-mode-guidance.js';
+import { resolveInheritedModelFromEnv } from '../config/models.js';
 // Re-export base agents from individual files (rebranded names)
 export { architectAgent } from './architect.js';
 export { designerAgent } from './designer.js';
@@ -212,7 +213,7 @@ export function getAgentDefinitions(options) {
     };
     const resolvedConfig = options?.config ?? loadConfig();
     const inheritModel = resolvedConfig.routing?.forceInherit
-        ? process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL
+        ? resolveInheritedModelFromEnv()
         : undefined;
     const result = {};
     for (const [name, agentConfig] of Object.entries(agents)) {

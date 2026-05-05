@@ -15,7 +15,7 @@
  * Architecture mirrors runtime.ts: startTeam, monitorTeam, shutdownTeam,
  * assignTask, resumeTeam as discrete operations driven by the caller.
  */
-import type { TeamConfig, TeamTask, WorkerStatus, WorkerHeartbeat } from './types.js';
+import type { TeamConfig, TeamTask, TeamTaskDelegationPlan, WorkerStatus, WorkerHeartbeat } from './types.js';
 import type { TeamPhase } from './phase-controller.js';
 import { type WorkerPaneLiveness } from './tmux-session.js';
 import type { PluginConfig } from '../shared/types.js';
@@ -83,6 +83,7 @@ export interface StartTeamV2Config {
         owner?: string;
         blocked_by?: string[];
         role?: string;
+        delegation?: TeamTaskDelegationPlan;
     }>;
     cwd: string;
     newWindow?: boolean;

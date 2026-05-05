@@ -854,6 +854,37 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
     expect(existsSync(join(runtimeDir, 'rules'))).toBe(true);
   });
 
+  it('preserves runtime .claude.json across runtime config dir rebuilds', () => {
+    const configDir = join(tempRoot!, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    writeFileSync(join(runtimeDir, '.claude.json'), '{"session":"keep-me"}');
+
+    const rebuiltRuntimeDir = prepareOmcLaunchConfigDir(configDir);
+
+    expect(rebuiltRuntimeDir).toBe(runtimeDir);
+    expect(readFileSync(join(rebuiltRuntimeDir, '.claude.json'), 'utf-8')).toBe('{"session":"keep-me"}');
+  });
+
+  it('removes non-mirrored runtime junk across runtime config dir rebuilds', () => {
+    const configDir = join(tempRoot!, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    writeFileSync(join(runtimeDir, 'junk.txt'), 'remove me');
+    mkdirSync(join(runtimeDir, 'junk-dir'), { recursive: true });
+    writeFileSync(join(runtimeDir, 'junk-dir', 'nested.txt'), 'remove me too');
+
+    const rebuiltRuntimeDir = prepareOmcLaunchConfigDir(configDir);
+
+    expect(rebuiltRuntimeDir).toBe(runtimeDir);
+    expect(existsSync(join(rebuiltRuntimeDir, 'junk.txt'))).toBe(false);
+    expect(existsSync(join(rebuiltRuntimeDir, 'junk-dir'))).toBe(false);
+  });
+
   it('leaves COPILOT_CONFIG_DIR unchanged when no preserved companion exists', () => {
     const configDir = join(tempRoot!, '.copilot');
     mkdirSync(configDir, { recursive: true });

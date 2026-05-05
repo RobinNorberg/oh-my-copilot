@@ -229,7 +229,7 @@ function getMissingDependencyIds(task, taskById) {
  */
 function buildV2TaskInstruction(teamName, workerName, task, taskId, cliOutputContract) {
     const claimTaskCommand = formatOmcCliInvocation(`team api claim-task --input '${JSON.stringify({ team_name: teamName, task_id: taskId, worker: workerName })}' --json`, {});
-    const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: 'in_progress', to: 'completed', claim_token: '<claim_token>' })}' --json`);
+    const completeTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: 'in_progress', to: 'completed', claim_token: '<claim_token>', result: 'Summary: <what changed>\\nVerification: <tests/checks run>\\nSubagent skip reason: worker protocol forbids nested subagents; completed focused probe in-session' })}' --json`);
     const failTaskCommand = formatOmcCliInvocation(`team api transition-task-status --input '${JSON.stringify({ team_name: teamName, task_id: taskId, from: 'in_progress', to: 'failed', claim_token: '<claim_token>' })}' --json`);
     return [
         `## REQUIRED: Task Lifecycle Commands`,
@@ -241,6 +241,7 @@ function buildV2TaskInstruction(teamName, workerName, task, taskId, cliOutputCon
         `2. Do the work described below.`,
         `3. On completion (use claim_token from step 1):`,
         `   ${completeTaskCommand}`,
+        `   The result field is required for completion evidence. For broad delegated tasks, include either "Subagent skip reason: <why no nested worker was needed/allowed>" or, only when explicitly allowed by the leader, "Subagent spawn evidence: <child task names/thread ids and integrated findings>".`,
         `4. On failure (use claim_token from step 1):`,
         `   ${failTaskCommand}`,
         `5. ACK/progress replies are not a stop signal. Keep executing your assigned or next feasible work until the task is actually complete or failed, then transition and exit.`,
@@ -636,6 +637,7 @@ export async function startTeamV2(config) {
             status: 'pending',
             owner: null,
             result: null,
+            ...(config.tasks[i].delegation ? { delegation: config.tasks[i].delegation } : {}),
             created_at: new Date().toISOString(),
         }, null, 2), 'utf-8');
     }
