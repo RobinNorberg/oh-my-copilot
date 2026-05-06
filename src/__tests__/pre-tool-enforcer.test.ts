@@ -228,6 +228,51 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent');
   });
 
+  it('suppresses built-in TaskCreate task-list operation chatter', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'TaskCreate',
+      toolInput: {
+        title: 'Inspect hook behavior',
+        status: 'pending',
+      },
+      cwd: tempDir,
+      session_id: 'session-taskcreate-builtin',
+    });
+
+    expect(output).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('suppresses built-in TaskUpdate task-list operation chatter', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'TaskUpdate',
+      toolInput: {
+        id: 'task-1',
+        status: 'in_progress',
+      },
+      cwd: tempDir,
+      session_id: 'session-taskupdate-builtin',
+    });
+
+    expect(output).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('preserves Agent spawn warnings for real subagent delegation', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Agent',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Fix type errors',
+        prompt: 'Fix all type errors in src/auth/',
+      },
+      cwd: tempDir,
+      session_id: 'session-agent-spawn',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent: oh-my-claudecode:executor');
+  });
+
   it('reads team state from legacy path when session_id is absent', () => {
     writeJson(join(tempDir, '.omcp', 'state', 'team-state.json'), {
       active: true,

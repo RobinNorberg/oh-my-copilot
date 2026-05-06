@@ -278,6 +278,14 @@ const MODE_STATE_FILES = [
   'omc-teams-state.json',
 ];
 const QUIET_LEVEL = getQuietLevel();
+const BUILT_IN_TASK_LIST_TOOL_NAMES = new Set([
+  'TaskCreate',
+  'TaskUpdate',
+  'TaskList',
+  'TaskGet',
+  'TaskOutput',
+  'TaskStop',
+]);
 
 function getQuietLevel() {
   const parsed = Number.parseInt(process.env.OMC_QUIET || '0', 10);
@@ -991,7 +999,7 @@ async function main() {
 
     const todoStatus = getTodoStatus(directory);
 
-    if (toolName === 'Task' || toolName === 'TaskCreate' || toolName === 'TaskUpdate') {
+    if (toolName === 'Task' || toolName === 'Agent') {
       const rawTranscriptPath = data.transcript_path || data.transcriptPath || '';
       const transcriptPath = resolveTranscriptPath(rawTranscriptPath, directory);
       const preflightBlock = evaluateAgentHeavyPreflight({
@@ -1006,7 +1014,12 @@ async function main() {
 
     const slopWarning = generateSlopWarning(data, toolName);
     let message;
-    if (toolName === 'Task' || toolName === 'TaskCreate' || toolName === 'TaskUpdate') {
+    if (BUILT_IN_TASK_LIST_TOOL_NAMES.has(toolName)) {
+      console.log(JSON.stringify({ continue: true, suppressOutput: true }));
+      return;
+    }
+
+    if (toolName === 'Task' || toolName === 'Agent') {
       const toolInput = data.toolInput || data.tool_input || null;
       message = generateAgentSpawnMessage(toolInput, stateDir, todoStatus, sessionId);
     } else {
