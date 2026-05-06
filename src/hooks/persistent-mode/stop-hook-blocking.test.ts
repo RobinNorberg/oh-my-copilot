@@ -60,6 +60,60 @@ function writePendingTodo(tempDir: string, content: string): void {
   );
 }
 
+function writeActiveRalphState(tempDir: string, sessionId: string): void {
+  const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(
+    join(sessionDir, "ralph-state.json"),
+    JSON.stringify({
+      active: true,
+      iteration: 1,
+      max_iterations: 50,
+      session_id: sessionId,
+      started_at: new Date().toISOString(),
+      last_checked_at: new Date().toISOString(),
+      prompt: "Test ralph task",
+    }),
+  );
+}
+
+function writeRunningBackgroundTask(tempDir: string, sessionId: string): void {
+  const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(
+    join(sessionDir, "hud-state.json"),
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      sessionId,
+      backgroundTasks: [
+        {
+          id: "bash-bg-1",
+          description: "npm run long-backtest",
+          agentType: "bash",
+          startedAt: new Date().toISOString(),
+          status: "running",
+        },
+      ],
+    }),
+  );
+}
+
+function writePendingScheduledWakeup(tempDir: string, sessionId: string): void {
+  const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
+  mkdirSync(sessionDir, { recursive: true });
+  writeFileSync(
+    join(sessionDir, "scheduled-wakeup-state.json"),
+    JSON.stringify({
+      active: true,
+      pending: true,
+      status: "pending",
+      session_id: sessionId,
+      created_at: new Date().toISOString(),
+      due_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    }),
+  );
+}
+
 function writeLegacyModeState(
   tempDir: string,
   fileName: string,
@@ -626,20 +680,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("blocks stop for active ralph loop", async () => {
       const sessionId = "test-ralph-block";
-      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
-      mkdirSync(sessionDir, { recursive: true });
-      writeFileSync(
-        join(sessionDir, "ralph-state.json"),
-        JSON.stringify({
-          active: true,
-          iteration: 1,
-          max_iterations: 50,
-          session_id: sessionId,
-          started_at: new Date().toISOString(),
-          last_checked_at: new Date().toISOString(),
-          prompt: "Test ralph task",
-        })
-      );
+      writeActiveRalphState(tempDir, sessionId);
 
       const result = await checkPersistentModes(sessionId, tempDir);
       expect(result.shouldBlock).toBe(true);
@@ -648,6 +689,26 @@ describe("Stop Hook Blocking Contract", () => {
       const output = createHookOutput(result);
       expect(output.continue).toBe(false);
       expect(output.message).toContain("RALPH");
+    });
+
+    it("does not reinforce active ralph while an owned background Bash task is pending", async () => {
+      const sessionId = "test-ralph-bg-bash-pending";
+      writeActiveRalphState(tempDir, sessionId);
+      writeRunningBackgroundTask(tempDir, sessionId);
+
+      const result = await checkPersistentModes(sessionId, tempDir);
+      expect(result.shouldBlock).toBe(false);
+      expect(result.mode).toBe("none");
+    });
+
+    it("does not reinforce active ralph while a scheduled wakeup is pending", async () => {
+      const sessionId = "test-ralph-wakeup-pending";
+      writeActiveRalphState(tempDir, sessionId);
+      writePendingScheduledWakeup(tempDir, sessionId);
+
+      const result = await checkPersistentModes(sessionId, tempDir);
+      expect(result.shouldBlock).toBe(false);
+      expect(result.mode).toBe("none");
     });
 
     it("keeps blocking active ralph loop when stop reason is interrupt", async () => {
@@ -786,23 +847,32 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("returns decision: block when ralph is active", () => {
       const sessionId = "ralph-mjs-test";
-      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
-      mkdirSync(sessionDir, { recursive: true });
-      writeFileSync(
-        join(sessionDir, "ralph-state.json"),
-        JSON.stringify({
-          active: true,
-          iteration: 1,
-          max_iterations: 50,
-          session_id: sessionId,
-          started_at: new Date().toISOString(),
-          last_checked_at: new Date().toISOString(),
-          prompt: "Test task",
-        })
-      );
+      writeActiveRalphState(tempDir, sessionId);
 
       const output = runScript({ directory: tempDir, sessionId });
       expect(output.decision).toBe("block");
+    });
+
+    it("returns continue: true for active ralph with pending background Bash task", () => {
+      const sessionId = "ralph-mjs-bg-bash-pending";
+      writeActiveRalphState(tempDir, sessionId);
+      writeRunningBackgroundTask(tempDir, sessionId);
+
+      const output = runScript({ directory: tempDir, sessionId });
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
+      expect(String(output.reason || "")).not.toContain("[RALPH LOOP");
+    });
+
+    it("returns continue: true for active ralph with pending scheduled wakeup", () => {
+      const sessionId = "ralph-mjs-wakeup-pending";
+      writeActiveRalphState(tempDir, sessionId);
+      writePendingScheduledWakeup(tempDir, sessionId);
+
+      const output = runScript({ directory: tempDir, sessionId });
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
+      expect(String(output.reason || "")).not.toContain("[RALPH LOOP");
     });
 
     it("returns continue: true for tombstoned stale ralph state", () => {
@@ -1344,6 +1414,52 @@ describe("Stop Hook Blocking Contract", () => {
         directory: tempDir,
         sessionId,
         stop_reason: "oauth_expired",
+      });
+      expect(output.continue).toBe(true);
+    });
+
+    it("returns continue: true for active ralph with pending background Bash task", () => {
+      const sessionId = "ralph-cjs-bg-bash-pending";
+      writeActiveRalphState(tempDir, sessionId);
+      writeRunningBackgroundTask(tempDir, sessionId);
+
+      const output = runScript({ directory: tempDir, sessionId });
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
+      expect(String(output.reason || "")).not.toContain("[RALPH LOOP");
+    });
+
+    it("returns continue: true for active ralph with pending scheduled wakeup", () => {
+      const sessionId = "ralph-cjs-wakeup-pending";
+      writeActiveRalphState(tempDir, sessionId);
+      writePendingScheduledWakeup(tempDir, sessionId);
+
+      const output = runScript({ directory: tempDir, sessionId });
+      expect(output.continue).toBe(true);
+      expect(output.decision).toBeUndefined();
+      expect(String(output.reason || "")).not.toContain("[RALPH LOOP");
+    });
+
+    it("returns continue: true for ScheduleWakeup-triggered stop", () => {
+      const sessionId = "scheduled-wakeup-cjs";
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
+      mkdirSync(sessionDir, { recursive: true });
+      writeFileSync(
+        join(sessionDir, "ralph-state.json"),
+        JSON.stringify({
+          active: true,
+          iteration: 1,
+          max_iterations: 50,
+          session_id: sessionId,
+          started_at: new Date().toISOString(),
+          last_checked_at: new Date().toISOString(),
+        })
+      );
+
+      const output = runScript({
+        directory: tempDir,
+        sessionId,
+        stop_reason: "ScheduleWakeup",
       });
       expect(output.continue).toBe(true);
     });
