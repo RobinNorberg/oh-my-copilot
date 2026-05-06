@@ -21,6 +21,7 @@ vi.mock('fs', async () => {
     const actual = await vi.importActual('fs');
     return {
         ...actual,
+        cpSync: vi.fn(),
         existsSync: vi.fn(),
         mkdirSync: vi.fn(),
         readFileSync: vi.fn(),
@@ -28,12 +29,13 @@ vi.mock('fs', async () => {
     };
 });
 import { execSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { install, isProjectScopedPlugin, isRunningAsPlugin, checkNodeVersion } from '../installer/index.js';
-import { reconcileUpdateRuntime, performUpdate, } from '../features/auto-update.js';
+import { reconcileUpdateRuntime, performUpdate, fetchLatestRelease, } from '../features/auto-update.js';
 const mockedExecSync = vi.mocked(execSync);
+const mockedCpSync = vi.mocked(cpSync);
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedMkdirSync = vi.mocked(mkdirSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
@@ -42,9 +44,21 @@ const mockedInstall = vi.mocked(install);
 const mockedIsProjectScopedPlugin = vi.mocked(isProjectScopedPlugin);
 const mockedIsRunningAsPlugin = vi.mocked(isRunningAsPlugin);
 const mockedCheckNodeVersion = vi.mocked(checkNodeVersion);
+const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform');
+const originalGhToken = process.env.GH_TOKEN;
+const originalGithubToken = process.env.GITHUB_TOKEN;
+function mockPlatform(platform) {
+    Object.defineProperty(process, 'platform', {
+        configurable: true,
+        value: platform,
+    });
+}
 describe('auto-update reconciliation', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        delete process.env.GH_TOKEN;
+        delete process.env.GITHUB_TOKEN;
+        mockedCpSync.mockImplementation(() => undefined);
         mockedExistsSync.mockReturnValue(true);
         mockedIsProjectScopedPlugin.mockReturnValue(false);
         // Default: running as plugin so forceHooks/refreshHooksInPlugin logic works
@@ -78,6 +92,122 @@ describe('auto-update reconciliation', () => {
     afterEach(() => {
         vi.unstubAllGlobals();
         delete process.env.CLAUDE_PLUGIN_ROOT;
+        if (originalGhToken === undefined) {
+            delete process.env.GH_TOKEN;
+        }
+        else {
+            process.env.GH_TOKEN = originalGhToken;
+        }
+        if (originalGithubToken === undefined) {
+            delete process.env.GITHUB_TOKEN;
+        }
+        else {
+            process.env.GITHUB_TOKEN = originalGithubToken;
+        }
+        if (originalPlatformDescriptor) {
+            Object.defineProperty(process, 'platform', originalPlatformDescriptor);
+        }
+    });
+    it('fetches latest release without Authorization when no GitHub token is configured', async () => {
+        const release = {
+            tag_name: 'v4.1.5',
+            name: '4.1.5',
+            published_at: '2026-02-09T00:00:00.000Z',
+            html_url: 'https://example.com/release',
+            body: 'notes',
+            prerelease: false,
+            draft: false,
+        };
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            json: async () => release,
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        await expect(fetchLatestRelease()).resolves.toEqual(release);
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/releases/latest'), {
+            headers: {
+                'Accept': 'application/vnd.github.v3+json',
+                'User-Agent': 'oh-my-copilot-updater',
+            },
+        });
+    });
+    it('uses GITHUB_TOKEN for latest release requests when GH_TOKEN is absent', async () => {
+        process.env.GITHUB_TOKEN = 'github-token-value';
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            json: async () => ({
+                tag_name: 'v4.1.5',
+                name: '4.1.5',
+                published_at: '2026-02-09T00:00:00.000Z',
+                html_url: 'https://example.com/release',
+                body: 'notes',
+                prerelease: false,
+                draft: false,
+            }),
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        await fetchLatestRelease();
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/releases/latest'), expect.objectContaining({
+            headers: expect.objectContaining({
+                Authorization: 'Bearer github-token-value',
+            }),
+        }));
+    });
+    it('prefers GH_TOKEN over GITHUB_TOKEN for latest release requests', async () => {
+        process.env.GH_TOKEN = 'gh-token-value';
+        process.env.GITHUB_TOKEN = 'github-token-value';
+        const fetchMock = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            json: async () => ({
+                tag_name: 'v4.1.5',
+                name: '4.1.5',
+                published_at: '2026-02-09T00:00:00.000Z',
+                html_url: 'https://example.com/release',
+                body: 'notes',
+                prerelease: false,
+                draft: false,
+            }),
+        });
+        vi.stubGlobal('fetch', fetchMock);
+        await fetchLatestRelease();
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/releases/latest'), expect.objectContaining({
+            headers: expect.objectContaining({
+                Authorization: 'Bearer gh-token-value',
+            }),
+        }));
+    });
+    it('adds a helpful rate-limit hint for unauthenticated 403 release responses', async () => {
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: false,
+            status: 403,
+            statusText: 'Forbidden',
+            headers: new Headers({
+                'x-ratelimit-remaining': '0',
+                'x-ratelimit-reset': '1893456000',
+            }),
+            text: async () => JSON.stringify({ message: 'API rate limit exceeded' }),
+        }));
+        await expect(fetchLatestRelease()).rejects.toThrow(/GitHub API rate limit exceeded.*Set GH_TOKEN or GITHUB_TOKEN.*2030-01-01T00:00:00.000Z/);
+    });
+    it('does not leak a configured token in token-authenticated 403 errors', async () => {
+        process.env.GH_TOKEN = 'super-secret-token';
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+            ok: false,
+            status: 403,
+            statusText: 'Forbidden',
+            headers: new Headers({
+                'x-ratelimit-remaining': '0',
+            }),
+            text: async () => JSON.stringify({ message: 'API rate limit exceeded' }),
+        }));
+        await expect(fetchLatestRelease()).rejects.toThrow(/configured GitHub token appears to be rate limited/);
+        await expect(fetchLatestRelease()).rejects.not.toThrow(/super-secret-token/);
     });
     it('reconciles runtime state without re-injecting settings hooks', () => {
         mockedExistsSync.mockReturnValue(false);

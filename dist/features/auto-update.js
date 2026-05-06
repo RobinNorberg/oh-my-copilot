@@ -259,15 +259,63 @@ export function updateLastCheckTime() {
         saveVersionMetadata(current);
     }
 }
+function getGitHubUpdateToken() {
+    const token = process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
+    return token || null;
+}
+function getGitHubReleaseHeaders() {
+    const headers = {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'oh-my-copilot-updater'
+    };
+    const token = getGitHubUpdateToken();
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+    return headers;
+}
+function getHeader(response, name) {
+    return response.headers?.get(name) ?? response.headers?.get(name.toLowerCase()) ?? null;
+}
+function formatRateLimitReset(resetHeader) {
+    if (!resetHeader) {
+        return null;
+    }
+    const resetSeconds = Number.parseInt(resetHeader, 10);
+    if (!Number.isFinite(resetSeconds) || resetSeconds <= 0) {
+        return null;
+    }
+    return new Date(resetSeconds * 1000).toISOString();
+}
+async function formatGitHubReleaseFetchError(response, usedToken) {
+    let body = '';
+    try {
+        body = await response.text();
+    }
+    catch {
+        body = '';
+    }
+    const remaining = getHeader(response, 'x-ratelimit-remaining');
+    const resetAt = formatRateLimitReset(getHeader(response, 'x-ratelimit-reset'));
+    const bodyLooksRateLimited = /rate limit|api rate limit|secondary rate/i.test(body);
+    const isRateLimited = response.status === 429 ||
+        (response.status === 403 && (remaining === '0' || bodyLooksRateLimited));
+    if (!isRateLimited) {
+        return `Failed to fetch release info: ${response.status} ${response.statusText}`;
+    }
+    const retrySuffix = resetAt ? ` Try again after ${resetAt}.` : '';
+    const authHint = usedToken
+        ? 'The configured GitHub token appears to be rate limited; verify the token or try again later.'
+        : 'Set GH_TOKEN or GITHUB_TOKEN to use authenticated GitHub API requests and increase rate limits.';
+    return `Failed to fetch release info: GitHub API rate limit exceeded (${response.status} ${response.statusText}). ${authHint}${retrySuffix}`;
+}
 /**
  * Fetch the latest release from GitHub
  */
 export async function fetchLatestRelease() {
+    const usedToken = getGitHubUpdateToken() !== null;
     const response = await fetch(`${GITHUB_API_URL}/releases/latest`, {
-        headers: {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'oh-my-copilot-updater'
-        }
+        headers: getGitHubReleaseHeaders()
     });
     if (response.status === 404) {
         // No releases found - try to get version from package.json in repo
@@ -291,7 +339,7 @@ export async function fetchLatestRelease() {
         throw new Error('No releases found and could not fetch package.json');
     }
     if (!response.ok) {
-        throw new Error(`Failed to fetch release info: ${response.status} ${response.statusText}`);
+        throw new Error(await formatGitHubReleaseFetchError(response, usedToken));
     }
     return await response.json();
 }
