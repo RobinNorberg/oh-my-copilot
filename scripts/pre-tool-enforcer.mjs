@@ -173,10 +173,18 @@ const SLOP_FALLBACK_LANGUAGE_PATTERN = /\b(?:fallback|fall\s+back|workaround|wor
 const SLOP_FALLBACK_ACTION_PATTERNS = [
   /\b(?:add|build|create|implement|introduce|make|patch|use|using|write)\s+(?:an?\s+|the\s+)?(?:fallback|workaround)\b/i,
   /\b(?:fallback|workaround)\s+(?:layer|path|handler|shim|patch|implementation|mechanism|mode)\b/i,
+  /\bworkaround\s+(?:it|this|that|the|a|an)\b/i,
   /\b(?:fall\s+back|fallback)\s+(?:to|on|onto)\b/i,
   /\bwork\s+around\s+(?:it|this|that|the|a|an)\b/i,
   /\bwork\s+around\s+(?!(?:it|this|that|the|a|an)\b)(?:[a-z0-9][\w-]*\s+){0,5}[a-z0-9][\w-]*\b/i,
   /(?:^|[\s"'`=:/\\])[\w.-]*(?:fallback|workaround)[\w.-]*\.(?:cjs|js|mjs|py|sh|ts|tsx)\b/i,
+];
+const SLOP_BENIGN_TECHNICAL_PATTERNS = [
+  /\bfail[-\s]?soft\s+fallback(?:\s+(?:value|behavior|behaviour|result|semantics?))?\b/i,
+  /\bfallback\s+(?:value|variable|parameter|argument|option|setting|config(?:uration)?|default)\b/i,
+  /\bfallback\s+to\s+(?:the\s+)?default(?:\s+(?:config(?:uration)?|settings?|value|behavior|behaviour|option))?\b/i,
+  /\b(?:workaround|work\s+around)\s+for\s+(?:commit|change|issue|bug|regression|version|release|pr|pull\s+request|#[0-9]+|[a-f0-9]{7,40}\b)/i,
+  /\b(?:memory|sql|sqlite|mysql|postgres(?:ql)?|typescript|node|browser|runtime)\s+workaround\b/i,
 ];
 const SLOP_DOC_CONTEXT_PATTERN = /(?:^|[/\\])(?:docs?|documentation|guides?|instructions?|prompts?|\.om[ctx])(?:[/\\]|$)|\.(?:md|mdx|txt|rst)$/i;
 const SLOP_SELF_REFERENCE_PATH_PATTERN = /(?:^|[/\\])(?:pre-tool-enforcer(?:\.mjs)?|pre-tool-enforcer\.test\.ts)(?:$|[/\\])/i;
@@ -217,8 +225,37 @@ function collectLikelyPathValues(value, output = [], depth = 0) {
   return output;
 }
 
+function stripSlopQuotedAndCodeContexts(text) {
+  return text
+    .replace(/```[\s\S]*?```/g, '\n')
+    .replace(/`[^`\r\n]*`/g, ' ')
+    .replace(/(["'])(?:\\.|(?!\1)[^\\\r\n])*\1/g, ' ');
+}
+
+function splitSlopInspectionSegments(text) {
+  return text
+    .split(/[\r\n!?;]+/)
+    .map(segment => segment.trim())
+    .filter(Boolean);
+}
+
+function removeBenignTechnicalSlopFallbackSpans(text) {
+  return SLOP_BENIGN_TECHNICAL_PATTERNS.reduce(
+    (result, pattern) => {
+      const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+      return result.replace(new RegExp(pattern.source, flags), ' ');
+    },
+    text,
+  );
+}
+
 function hasSlopFallbackActionShape(text) {
-  return SLOP_FALLBACK_ACTION_PATTERNS.some(pattern => pattern.test(text));
+  const strippedText = stripSlopQuotedAndCodeContexts(text);
+  return splitSlopInspectionSegments(strippedText).some(segment => (
+    SLOP_FALLBACK_ACTION_PATTERNS.some(pattern => (
+      pattern.test(removeBenignTechnicalSlopFallbackSpans(segment))
+    ))
+  ));
 }
 
 function isSelfReferentialSlopContext(toolInput) {
