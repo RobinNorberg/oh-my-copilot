@@ -228,6 +228,51 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent');
   });
 
+  it('suppresses built-in TaskCreate task-list operation chatter', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'TaskCreate',
+      toolInput: {
+        title: 'Inspect hook behavior',
+        status: 'pending',
+      },
+      cwd: tempDir,
+      session_id: 'session-taskcreate-builtin',
+    });
+
+    expect(output).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('suppresses built-in TaskUpdate task-list operation chatter', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'TaskUpdate',
+      toolInput: {
+        id: 'task-1',
+        status: 'in_progress',
+      },
+      cwd: tempDir,
+      session_id: 'session-taskupdate-builtin',
+    });
+
+    expect(output).toEqual({ continue: true, suppressOutput: true });
+  });
+
+  it('preserves Agent spawn warnings for real subagent delegation', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Agent',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Fix type errors',
+        prompt: 'Fix all type errors in src/auth/',
+      },
+      cwd: tempDir,
+      session_id: 'session-agent-spawn',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent: oh-my-claudecode:executor');
+  });
+
   it('reads team state from legacy path when session_id is absent', () => {
     writeJson(join(tempDir, '.omcp', 'state', 'team-state.json'), {
       active: true,
@@ -428,6 +473,156 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(context).not.toContain('Use parallel execution');
   });
 
+  it('does not warn for documentation edits that describe workaround terms as nouns', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Write',
+      toolInput: {
+        file_path: join(tempDir, 'docs', 'troubleshooting.md'),
+        content: [
+          '# Troubleshooting',
+          '',
+          'Document workaround for a specific bug in the troubleshooting guide.',
+          'This section explains when the workaround term appears in instructions.',
+        ].join('\n'),
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-doc-text',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).not.toContain('[SLOP WARNING]');
+  });
+
+  it('does not warn for self-referential pre-tool enforcer edits that document the rule', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Edit',
+      toolInput: {
+        file_path: 'scripts/pre-tool-enforcer.mjs',
+        old_string: 'const SLOP_FALLBACK_LANGUAGE_PATTERN = /fallback|workaround/i;',
+        new_string: [
+          '// The fallback/workaround detector should avoid warning on rule documentation.',
+          'const SLOP_FALLBACK_LANGUAGE_PATTERN = /fallback|workaround/i;',
+        ].join('\n'),
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-self-reference',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).not.toContain('[SLOP WARNING]');
+  });
+
+  it('still warns for action-shaped fallback narration outside documentation contexts', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Implement fallback routing',
+        prompt: 'Please implement a fallback layer for the flaky API.',
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-action-shaped',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+  });
+
+  it('warns for natural work-around phrasing with direct noun objects', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Skip architecture for flaky API failures',
+        prompt: 'Please work around flaky API failures by skipping the normal architecture.',
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-work-around-noun-object',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+  });
+
+  it('warns for fall back on cached responses phrasing', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Add API fallback',
+        prompt: 'If the API fails, fall back on cached responses.',
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-fall-back-on',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+  });
+
+  it('warns for single-word fallback to cached responses phrasing', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Add API fallback',
+        prompt: 'If the API fails, fallback to cached responses.',
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-fallback-to',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+  });
+
+  it('does not treat markdown headings alone as documentation context for Task prompts', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Implement fallback routing',
+        prompt: [
+          '## Implementation',
+          '',
+          'Please implement a fallback layer and explain why.',
+        ].join('\n'),
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-markdown-task',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+  });
+
+  it('does not warn for documentation edits that quote action-shaped work-around wording', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Write',
+      toolInput: {
+        file_path: join(tempDir, 'docs', 'architecture-notes.md'),
+        content: [
+          '# Architecture notes',
+          '',
+          'Explain why the phrase "Please work around flaky API failures" should be reviewed carefully.',
+        ].join('\n'),
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-doc-action-shaped',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).not.toContain('[SLOP WARNING]');
+  });
+
   it('does not warn for read-only search tools that mention fallback as the query', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Grep',
@@ -442,6 +637,96 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(output.continue).toBe(true);
     expect(String(hookSpecificOutput.additionalContext)).not.toContain('[SLOP WARNING]');
     expect(String(hookSpecificOutput.additionalContext)).toContain('Combine searches in parallel');
+  });
+
+  it('does not warn for benign technical fallback descriptions from issue #2939', () => {
+    const benignPrompts = [
+      'Preserve the fail-soft fallback value when LAST_INSERT_ID() returns 0 after a failed INSERT.',
+      'Describe the fallback to default config when the project config file is missing.',
+      'Add a workaround for commit cf9703f so the regression note links to the upstream change.',
+      'Keep the memory workaround note, but do not change runtime behavior.',
+    ];
+
+    for (const [index, prompt] of benignPrompts.entries()) {
+      const output = runPreToolEnforcer({
+        tool_name: 'Task',
+        toolInput: {
+          subagent_type: 'oh-my-claudecode:executor',
+          description: 'Handle benign fallback documentation',
+          prompt,
+        },
+        cwd: tempDir,
+        session_id: `session-slop-benign-${index}`,
+      });
+
+      const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+      expect(output.continue).toBe(true);
+      expect(String(hookSpecificOutput.additionalContext)).not.toContain('[SLOP WARNING]');
+    }
+  });
+
+  it('warns when benign and risky fallback phrasing coexist in one segment', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Preserve benign fallback and reject risky routing fallback',
+        prompt: 'Preserve the fail-soft fallback value, and fallback to weaker model if the preferred agent is unavailable.',
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-mixed-benign-risky',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+  });
+
+  it('does not warn when fallback/workaround phrases only appear in quoted or code contexts', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Review quoted technical phrases',
+        prompt: [
+          'Review the quoted phrase "fallback to default config" in the migration notes.',
+          'The code sample says `workaround the requirement`, but do not implement that behavior.',
+          '```ts',
+          'const message = "fallback to weaker model";',
+          '```',
+        ].join('\n'),
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-quoted-code',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).not.toContain('[SLOP WARNING]');
+  });
+
+  it('still warns for real SLOP intent from issue #2939', () => {
+    const slopPrompts = [
+      'If the preferred agent is unavailable, fallback to weaker model to keep going.',
+      'Please workaround the requirement instead of implementing the requested workflow.',
+    ];
+
+    for (const [index, prompt] of slopPrompts.entries()) {
+      const output = runPreToolEnforcer({
+        tool_name: 'Task',
+        toolInput: {
+          subagent_type: 'oh-my-claudecode:executor',
+          description: 'Implement risky fallback',
+          prompt,
+        },
+        cwd: tempDir,
+        session_id: `session-slop-real-${index}`,
+      });
+
+      const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+      expect(output.continue).toBe(true);
+      expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+    }
   });
 
   it('blocks agent-heavy Task preflight when transcript context budget is exhausted', () => {

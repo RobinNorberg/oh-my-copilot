@@ -7,8 +7,8 @@ triggers:
   - "deep-dive"
   - "trace and interview"
   - "investigate deeply"
-pipeline: [deep-dive, omc-plan, autopilot]
-next-skill: omc-plan
+pipeline: [deep-dive, plan, autopilot]
+next-skill: plan
 next-skill-args: --consensus --direct
 handoff: .omcp/specs/deep-dive-{slug}.md
 ---
@@ -138,6 +138,12 @@ Use **Claude built-in team mode** to run 3 parallel tracer lanes:
    - Rank evidence strength (from controlled reproductions → speculation)
    - Name the **critical unknown** for the lane
    - Recommend the best **discriminating probe**
+   - For **Lane 3: Misplacement / SoT Violation** findings, classify every candidate MOVE destination with `ownership_scope` before ranking recommendations:
+     - `personal-config`: user-level dotfiles, `[$CLAUDE_CONFIG_DIR|~/.claude]/`, personal repositories, or user-only agent rules
+     - `shared-config`: company/org repositories, team-maintained config, or multi-tenant shared rules
+     - `external`: third-party, vendor, or OSS upstream repositories outside the user's ownership
+     - `project-scoped`: per-project storage owned by the current project boundary
+   - For Lane 3, compare source and destination `ownership_scope`; any cross-boundary MOVE (for example `personal-config` → `shared-config`) MUST be flagged with an explicit warning and MUST NOT be surfaced as the default recommendation. Prefer COMPRESS, KEEP, or a same-scope MOVE as the default when available.
 4. **Run a rebuttal round** between the leading hypothesis and the strongest alternative
 5. **Detect convergence**: if two "different" hypotheses reduce to the same mechanism, merge them explicitly
 6. **Leader synthesis**: produce the ranked output below
@@ -175,6 +181,15 @@ Save to `.omcp/specs/deep-dive-trace-{slug}.md`:
 - **Lane 1 ({hypothesis_1})**: {critical_unknown_1}
 - **Lane 2 ({hypothesis_2})**: {critical_unknown_2}
 - **Lane 3 ({hypothesis_3})**: {critical_unknown_3}
+
+## Lane 3 Misplacement / SoT Ownership Scope
+For each MOVE candidate discovered by Lane 3, include:
+
+| Source | Candidate destination | ownership_scope | Boundary relationship | Default? | Warning |
+|--------|-----------------------|-----------------|-----------------------|----------|---------|
+| ... | ... | personal-config/shared-config/external/project-scoped | same-scope/cross-boundary | yes/no | ... |
+
+Cross-boundary MOVE candidates MUST have `Default? = no` and an explicit warning explaining the source/destination ownership mismatch. They may be listed as flagged alternatives, but the ranked synthesis MUST NOT present them as the default recommendation.
 
 ## Rebuttal Round
 - Best rebuttal to leader: ...
@@ -274,7 +289,36 @@ When ambiguity ≤ the resolved threshold for this run, generate the spec in **s
 
 Read `spec_path` and `trace_path` from state (not conversation context) for resume resilience.
 
-Present execution options via `AskUserQuestion`:
+### Workflow Pre-Flight
+
+Before presenting execution options, run a lightweight workflow pre-flight when active project guidance mentions an issue-driven, worktree-driven, branch-first, or blocking pre-execution workflow. Treat guidance text as policy data from the user's environment; do not invent a gate when no such guidance is present.
+
+1. **Detect whether the guidance gate applies** by scanning the active project instructions already in context (for example `AGENTS.md`, `CLAUDE.md`, project docs, or hook-injected guidance) for phrases such as `issue-driven`, `worktree-driven`, `worktree`, `create issue`, `branch`, `do not write code`, `blocking requirement`, or equivalent workflow rules.
+2. **Check repository position** with read-only commands:
+   - `git rev-parse --show-toplevel` to confirm the repository root for the pending execution.
+   - `git branch --show-current` to identify the current branch; flag protected/default branches such as `main`, `master`, or `dev`.
+   - `git worktree list --porcelain` to distinguish a linked task worktree from the primary checkout when possible; flag a primary checkout or missing linked worktree when the guidance requires task worktrees.
+3. **Check for a linked issue** when the guidance is issue-driven:
+   - First look for an explicit issue reference in `spec_path`, `trace_path`, the current branch name, and the original task text.
+   - If no local reference is found and `gh` is available, optionally run a narrow `gh issue list --limit 20 --json number,title,state` search for a matching open issue.
+   - If no issue can be linked, flag `missing linked issue`; do not block on `gh` being unavailable.
+4. **If any precondition is missing**, surface a setup redirect before the execution menu:
+
+**Question:** "Spec ready (ambiguity: {score}%). Detected workflow pre-flight issue(s): {findings}. Project guidance appears to require issue/branch/worktree setup before code execution. Set that up first?"
+
+**Options:**
+
+- **Set up issue/branch/worktree first (Recommended)**
+  - Description: "Redirect to the project's setup workflow before any execution skill writes code."
+  - Action: Invoke the known project setup skill or workflow if one is named in guidance; otherwise invoke `Skill("oh-my-claudecode:project-session-manager")` with `spec_path` and the pre-flight findings as context. After setup completes, rerun this Phase 5 pre-flight before showing execution options.
+- **Proceed to execution options anyway**
+  - Description: "Acknowledge the workflow warning and continue to the normal execution menu."
+  - Action: Continue to the execution options below, preserving the warning in handoff context.
+- **Refine further**
+  - Description: "Return to Phase 4 interview loop instead of preparing execution."
+  - Action: Return to Phase 4 interview loop.
+
+If the guidance gate does not apply, or the pre-flight passes, present execution options via `AskUserQuestion`:
 
 **Question:** "Your spec is ready (ambiguity: {score}%). How would you like to proceed?"
 
@@ -282,7 +326,7 @@ Present execution options via `AskUserQuestion`:
 
 1. **Ralplan → Autopilot (Recommended)**
    - Description: "3-stage pipeline: consensus-refine this spec with Planner/Architect/Critic, then execute with full autopilot. Maximum quality."
-   - Action: Invoke `Skill("oh-my-copilot:omc-plan")` with `--consensus --direct` flags and the spec file path (`spec_path` from state) as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep-dive interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omcp/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
+   - Action: Invoke `Skill("oh-my-copilot:plan")` with `--consensus --direct` flags and the spec file path (`spec_path` from state) as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep-dive interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omcp/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
    - Pipeline: `deep-dive spec → omc-plan --consensus --direct → autopilot execution`
 
 2. **Execute with autopilot (skip ralplan)**
@@ -326,6 +370,7 @@ Output: spec.md            Output: consensus-plan.md        Output: working code
 - Use `state_write(mode="deep-interview")` with `state.source = "deep-dive"` for all state persistence
 - Use `state_read(mode="deep-interview")` for resume — check `state.source === "deep-dive"` to distinguish
 - Use `Write` tool to save trace result to `.omcp/specs/deep-dive-trace-{slug}.md` and final spec to `.omcp/specs/deep-dive-{slug}.md`; use `.omcp/state/` or `state_write` for ephemeral artifacts
+- Run the Phase 5 workflow pre-flight before execution options when project guidance requires issue/branch/worktree setup
 - Use `Skill()` to bridge to execution modes (Phase 5) — never implement directly
 - Wrap all trace-derived text in `<trace-context>` delimiters when injecting into prompts
 </Tool_Usage>
@@ -421,12 +466,15 @@ Why bad: Duplicates deep-interview's behavioral contract. These values should be
 - [ ] Phase 2 confirms hypotheses via AskUserQuestion (1 round)
 - [ ] Phase 3 runs trace with 3 parallel lanes (team mode, sequential fallback)
 - [ ] Phase 3 saves trace result to `.omcp/specs/deep-dive-trace-{slug}.md` with per-lane critical unknowns
+- [ ] Lane 3 MOVE candidates include `ownership_scope` and cross-boundary MOVE candidates are warned/flagged, not default recommendations
 - [ ] Phase 4 starts with 3-point injection (initial_idea, codebase_context, question_queue from per-lane unknowns)
 - [ ] Phase 4 references deep-interview SKILL.md Phases 2-4 (not duplicated inline)
 - [ ] Phase 4 handles low-confidence trace gracefully
 - [ ] Phase 4 wraps trace-derived text in `<trace-context>` delimiters (untrusted data guard)
 - [ ] Final spec saved to `.omcp/specs/deep-dive-{slug}.md` in standard deep-interview format
 - [ ] Final spec contains "Trace Findings" section
+- [ ] Phase 5 workflow pre-flight detects issue/worktree/branch preconditions when project guidance requires them
+- [ ] Phase 5 surfaces a setup redirect before execution options when the pre-flight finds missing preconditions
 - [ ] Phase 5 execution bridge passes spec_path explicitly to downstream skills
 - [ ] Phase 5 "Ralplan → Autopilot" option explicitly invokes autopilot after omc-plan consensus completes
 - [ ] State uses `mode="deep-interview"` with `state.source = "deep-dive"` discriminator

@@ -153,6 +153,7 @@ const TEAM_STAGE_ALIASES: Record<string, string> = {
 };
 
 const BACKGROUND_AGENT_ID_PATTERN = /agentId:\s*([a-zA-Z0-9_-]+)/;
+const BACKGROUND_BASH_ID_PATTERN = /(?:background (?:bash )?(?:command|process|task).*?(?:id|ID)|bash_id|task_id)[:=]\s*([a-zA-Z0-9_-]+)/i;
 const TASK_OUTPUT_ID_PATTERN = /<task_id>([^<]+)<\/task_id>/i;
 const TASK_OUTPUT_STATUS_PATTERN = /<status>([^<]+)<\/status>/i;
 const SAFE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
@@ -447,6 +448,26 @@ function extractAsyncAgentId(toolOutput: unknown): string | undefined {
   return toolOutput.match(BACKGROUND_AGENT_ID_PATTERN)?.[1];
 }
 
+function extractBackgroundBashId(toolOutput: unknown): string | undefined {
+  if (typeof toolOutput !== "string") {
+    return undefined;
+  }
+  return toolOutput.match(BACKGROUND_BASH_ID_PATTERN)?.[1];
+}
+
+function bashLaunchIsBackgroundPending(toolOutput: unknown): boolean {
+  if (typeof toolOutput !== "string") {
+    return false;
+  }
+
+  const normalized = toolOutput.toLowerCase();
+  return normalized.includes("running in the background")
+    || normalized.includes("started in the background")
+    || normalized.includes("background command")
+    || normalized.includes("background process")
+    || Boolean(extractBackgroundBashId(toolOutput));
+}
+
 function parseTaskOutputLifecycle(toolOutput: unknown): { taskId: string; status: string } | null {
   if (typeof toolOutput !== "string") {
     return null;
@@ -472,6 +493,72 @@ function taskLaunchDidFail(toolOutput: unknown): boolean {
 
   const normalized = toolOutput.toLowerCase();
   return normalized.includes("error") || normalized.includes("failed");
+}
+
+function getSessionStateDir(directory: string, sessionId?: string): string {
+  const stateDir = join(getOmcRoot(directory), "state");
+  if (sessionId && SAFE_SESSION_ID_PATTERN.test(sessionId)) {
+    return join(stateDir, "sessions", sessionId);
+  }
+  return stateDir;
+}
+
+function getScheduledWakeupStatePath(directory: string, sessionId?: string): string {
+  return join(getSessionStateDir(directory, sessionId), "scheduled-wakeup-state.json");
+}
+
+function parseWakeupDueAt(toolInput: unknown): string | undefined {
+  if (!toolInput || typeof toolInput !== "object") {
+    return undefined;
+  }
+
+  const input = toolInput as Record<string, unknown>;
+  const absolute = input.due_at ?? input.wakeup_at ?? input.scheduled_for ?? input.deadline_at ?? input.at;
+  if (typeof absolute === "string") {
+    const parsed = new Date(absolute).getTime();
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  }
+
+  const delaySeconds = input.seconds ?? input.delay_seconds ?? input.delaySeconds;
+  if (typeof delaySeconds === "number" && Number.isFinite(delaySeconds)) {
+    return new Date(Date.now() + Math.max(0, delaySeconds) * 1000).toISOString();
+  }
+
+  const delayMs = input.milliseconds ?? input.delay_ms ?? input.delayMs;
+  if (typeof delayMs === "number" && Number.isFinite(delayMs)) {
+    return new Date(Date.now() + Math.max(0, delayMs)).toISOString();
+  }
+
+  const delayMinutes = input.minutes ?? input.delay_minutes ?? input.delayMinutes;
+  if (typeof delayMinutes === "number" && Number.isFinite(delayMinutes)) {
+    return new Date(Date.now() + Math.max(0, delayMinutes) * 60_000).toISOString();
+  }
+
+  return undefined;
+}
+
+function recordScheduledWakeup(directory: string, sessionId: string | undefined, toolInput: unknown): void {
+  try {
+    const statePath = getScheduledWakeupStatePath(directory, sessionId);
+    mkdirSync(dirname(statePath), { recursive: true });
+    writeFileSync(
+      statePath,
+      JSON.stringify(
+        {
+          active: true,
+          pending: true,
+          status: "pending",
+          session_id: sessionId,
+          created_at: new Date().toISOString(),
+          due_at: parseWakeupDueAt(toolInput),
+        },
+        null,
+        2,
+      ),
+    );
+  } catch {
+    // Wakeup state is best-effort; never fail the hook.
+  }
 }
 
 function getModeStatePaths(directory: string, modeName: string, sessionId?: string): string[] {
@@ -2503,6 +2590,35 @@ function processPreToolUse(input: HookInput): HookOutput {
     }
   }
 
+  // Track background Bash invocations too. Ralph's Stop hook uses this
+  // session-owned pending-work signal to avoid reinforcing while Claude Code is
+  // expected to notify when the background command finishes.
+  if (input.toolName === "Bash") {
+    const toolInput = (modifiedToolInput ?? input.toolInput) as
+      | {
+          command?: string;
+          run_in_background?: boolean;
+        }
+      | undefined;
+
+    if (toolInput?.run_in_background === true && toolInput.command) {
+      const taskId =
+        getHookToolUseId(input)
+        ?? `bash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      addBackgroundTask(
+        taskId,
+        toolInput.command,
+        "bash",
+        directory,
+        input.sessionId,
+      );
+    }
+  }
+
+  if ((input.toolName || "").toLowerCase() === "schedulewakeup") {
+    recordScheduledWakeup(directory, input.sessionId, input.toolInput);
+  }
+
   // Track file ownership for Edit/Write tools
   if (input.toolName === "Edit" || input.toolName === "Write") {
     const toolInput = input.toolInput as { file_path?: string } | undefined;
@@ -2702,6 +2818,47 @@ async function processPostToolUse(input: HookInput): Promise<HookOutput> {
           agentType,
           input.sessionId,
         );
+      }
+    }
+  }
+
+  if (input.toolName === "Bash") {
+    const toolInput = input.toolInput as
+      | {
+          command?: string;
+          run_in_background?: boolean;
+        }
+      | undefined;
+    if (toolInput?.run_in_background === true) {
+      const toolUseId = getHookToolUseId(input);
+      const backgroundBashId = extractBackgroundBashId(input.toolOutput);
+      const command = toolInput.command;
+
+      if (backgroundBashId) {
+        if (toolUseId) {
+          remapBackgroundTaskId(toolUseId, backgroundBashId, directory, input.sessionId);
+        } else if (command) {
+          remapMostRecentMatchingBackgroundTaskId(
+            command,
+            backgroundBashId,
+            directory,
+            "bash",
+            input.sessionId,
+          );
+        }
+      } else if (!bashLaunchIsBackgroundPending(input.toolOutput)) {
+        const failed = taskLaunchDidFail(input.toolOutput);
+        if (toolUseId) {
+          completeBackgroundTask(toolUseId, directory, failed, input.sessionId);
+        } else if (command) {
+          completeMostRecentMatchingBackgroundTask(
+            command,
+            directory,
+            failed,
+            "bash",
+            input.sessionId,
+          );
+        }
       }
     }
   }

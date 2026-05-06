@@ -17581,12 +17581,56 @@ function updateLastCheckTime() {
     saveVersionMetadata(current);
   }
 }
+function getGitHubUpdateToken() {
+  const token = process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
+  return token || null;
+}
+function getGitHubReleaseHeaders() {
+  const headers = {
+    "Accept": "application/vnd.github.v3+json",
+    "User-Agent": "oh-my-copilot-updater"
+  };
+  const token = getGitHubUpdateToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+function getHeader(response, name) {
+  return response.headers?.get(name) ?? response.headers?.get(name.toLowerCase()) ?? null;
+}
+function formatRateLimitReset(resetHeader) {
+  if (!resetHeader) {
+    return null;
+  }
+  const resetSeconds = Number.parseInt(resetHeader, 10);
+  if (!Number.isFinite(resetSeconds) || resetSeconds <= 0) {
+    return null;
+  }
+  return new Date(resetSeconds * 1e3).toISOString();
+}
+async function formatGitHubReleaseFetchError(response, usedToken) {
+  let body = "";
+  try {
+    body = await response.text();
+  } catch {
+    body = "";
+  }
+  const remaining = getHeader(response, "x-ratelimit-remaining");
+  const resetAt = formatRateLimitReset(getHeader(response, "x-ratelimit-reset"));
+  const bodyLooksRateLimited = /rate limit|api rate limit|secondary rate/i.test(body);
+  const isRateLimited = response.status === 429 || response.status === 403 && (remaining === "0" || bodyLooksRateLimited);
+  if (!isRateLimited) {
+    return `Failed to fetch release info: ${response.status} ${response.statusText}`;
+  }
+  const retrySuffix = resetAt ? ` Try again after ${resetAt}.` : "";
+  const authHint = usedToken ? "The configured GitHub token appears to be rate limited; verify the token or try again later." : "Set GH_TOKEN or GITHUB_TOKEN to use authenticated GitHub API requests and increase rate limits.";
+  return `Failed to fetch release info: GitHub API rate limit exceeded (${response.status} ${response.statusText}). ${authHint}${retrySuffix}`;
+}
 async function fetchLatestRelease() {
+  const usedToken = getGitHubUpdateToken() !== null;
   const response = await fetch(`${GITHUB_API_URL}/releases/latest`, {
-    headers: {
-      "Accept": "application/vnd.github.v3+json",
-      "User-Agent": "oh-my-copilot-updater"
-    }
+    headers: getGitHubReleaseHeaders()
   });
   if (response.status === 404) {
     const pkgResponse = await fetch(`${GITHUB_RAW_URL}/main/package.json`, {
@@ -17609,7 +17653,7 @@ async function fetchLatestRelease() {
     throw new Error("No releases found and could not fetch package.json");
   }
   if (!response.ok) {
-    throw new Error(`Failed to fetch release info: ${response.status} ${response.statusText}`);
+    throw new Error(await formatGitHubReleaseFetchError(response, usedToken));
   }
   return await response.json();
 }
@@ -24647,6 +24691,7 @@ __export(persistent_mode_exports, {
   createHookOutput: () => createHookOutput,
   getIdleNotificationCooldownSeconds: () => getIdleNotificationCooldownSeconds,
   getToolErrorRetryGuidance: () => getToolErrorRetryGuidance,
+  hasPendingOwnedAsyncWork: () => hasPendingOwnedAsyncWork,
   readLastToolError: () => readLastToolError,
   recordIdleNotificationSent: () => recordIdleNotificationSent,
   resetTodoContinuationAttempts: () => resetTodoContinuationAttempts,
@@ -24701,6 +24746,78 @@ function isStaleState(state) {
     return true;
   }
   return Date.now() - mostRecent > STALE_STATE_THRESHOLD_MS;
+}
+function parseTimestamp(value) {
+  if (typeof value !== "string" || value.length === 0) {
+    return null;
+  }
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+function isFreshTimestamp(value, ttlMs = PENDING_ASYNC_STATE_STALE_MS) {
+  const parsed = parseTimestamp(value);
+  return parsed !== null && Date.now() - parsed <= ttlMs;
+}
+function hasPendingBackgroundTask(directory, sessionId) {
+  try {
+    const stateRoot2 = (0, import_path56.join)(getOmcRoot(directory), "state");
+    const hudPath = sessionId ? (0, import_path56.join)(stateRoot2, "sessions", sessionId, "hud-state.json") : (0, import_path56.join)(stateRoot2, "hud-state.json");
+    if (!(0, import_fs49.existsSync)(hudPath)) return false;
+    const hudState = JSON.parse((0, import_fs49.readFileSync)(hudPath, "utf-8"));
+    return Boolean(hudState?.backgroundTasks?.some((task) => {
+      if (task.status !== "running") return false;
+      return isFreshTimestamp(task.startedAt ?? task.startTime);
+    }));
+  } catch {
+    return false;
+  }
+}
+function readPendingWakeupState(directory, sessionId) {
+  const stateRoot2 = (0, import_path56.join)(getOmcRoot(directory), "state");
+  const dirs = sessionId ? [(0, import_path56.join)(stateRoot2, "sessions", sessionId), stateRoot2] : [stateRoot2];
+  const fileNames = [
+    "scheduled-wakeup-state.json",
+    "schedule-wakeup-state.json",
+    "wakeup-state.json"
+  ];
+  const states = [];
+  for (const dir of dirs) {
+    for (const fileName of fileNames) {
+      const filePath = (0, import_path56.join)(dir, fileName);
+      try {
+        if (!(0, import_fs49.existsSync)(filePath)) continue;
+        const parsed = JSON.parse((0, import_fs49.readFileSync)(filePath, "utf-8"));
+        if (parsed && typeof parsed === "object") {
+          states.push(parsed);
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return states;
+}
+function hasPendingScheduledWakeup(directory, sessionId) {
+  const now = Date.now();
+  return readPendingWakeupState(directory, sessionId).some((state) => {
+    const status = typeof state.status === "string" ? state.status.toLowerCase() : "";
+    if (["completed", "complete", "cancelled", "canceled", "failed", "expired"].includes(status)) {
+      return false;
+    }
+    const dueAt = parseTimestamp(
+      state.due_at ?? state.wakeup_at ?? state.scheduled_for ?? state.deadline_at ?? state.expires_at
+    );
+    if (dueAt !== null) {
+      return dueAt > now;
+    }
+    if (state.active === true || state.pending === true) {
+      return isFreshTimestamp(state.created_at ?? state.updated_at ?? state.started_at);
+    }
+    return false;
+  });
+}
+function hasPendingOwnedAsyncWork(directory, sessionId) {
+  return hasPendingBackgroundTask(directory, sessionId) || hasPendingScheduledWakeup(directory, sessionId);
 }
 function readLastToolError(directory) {
   const stateDir = (0, import_path56.join)(getOmcRoot(directory), "state");
@@ -25717,6 +25834,13 @@ async function checkPersistentModes(sessionId, directory, stopContext) {
   if (skipHooks.includes("persistent-mode") || skipHooks.includes("stop-continuation")) {
     return { shouldBlock: false, message: "", mode: "none" };
   }
+  if (hasPendingOwnedAsyncWork(workingDir, sessionId)) {
+    return {
+      shouldBlock: false,
+      message: "",
+      mode: "none"
+    };
+  }
   try {
     const { readSkillActiveStateNormalized: readSkillActiveStateNormalized2, pruneExpiredWorkflowSkillTombstones: pruneExpiredWorkflowSkillTombstones2, writeSkillActiveStateCopies: writeSkillActiveStateCopies2 } = await Promise.resolve().then(() => (init_skill_state(), skill_state_exports));
     const current = readSkillActiveStateNormalized2(workingDir, sessionId);
@@ -25826,7 +25950,7 @@ function createHookOutput(result) {
     message: result.message || void 0
   };
 }
-var import_fs49, import_path56, CANCEL_SIGNAL_TTL_MS2, STALE_STATE_THRESHOLD_MS, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
+var import_fs49, import_path56, CANCEL_SIGNAL_TTL_MS2, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
 var init_persistent_mode = __esm({
   "src/hooks/persistent-mode/index.ts"() {
     "use strict";
@@ -25850,6 +25974,7 @@ var init_persistent_mode = __esm({
     init_mode_registry();
     CANCEL_SIGNAL_TTL_MS2 = 3e4;
     STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1e3;
+    PENDING_ASYNC_STATE_STALE_MS = 24 * 60 * 60 * 1e3;
     todoContinuationAttempts = /* @__PURE__ */ new Map();
     TRANSCRIPT_TAIL_BYTES = 32 * 1024;
     CRITICAL_CONTEXT_STOP_PERCENT = 95;
@@ -39058,7 +39183,7 @@ async function captureWorkerPane(paneId) {
     return "";
   }
 }
-function isFreshTimestamp(value, maxAgeMs = MONITOR_SIGNAL_STALE_MS) {
+function isFreshTimestamp2(value, maxAgeMs = MONITOR_SIGNAL_STALE_MS) {
   if (!value) return false;
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return false;
@@ -40067,8 +40192,8 @@ async function monitorTeamV2(teamName, cwd) {
       }
     }
     const paneSuggestsIdle = alive && paneLooksReady(paneCapture) && !paneHasActiveTask(paneCapture);
-    const statusFresh = isFreshTimestamp(status.updated_at);
-    const heartbeatFresh = isFreshTimestamp(heartbeat?.last_turn_at);
+    const statusFresh = isFreshTimestamp2(status.updated_at);
+    const heartbeatFresh = isFreshTimestamp2(heartbeat?.last_turn_at);
     const hasWorkStartEvidence = expectedTaskId !== "" && hasWorkerStatusProgress(status, expectedTaskId);
     const missingDependencyIds = outstandingTask ? getMissingDependencyIds(outstandingTask, taskById) : [];
     let stallReason = null;
@@ -84028,6 +84153,7 @@ var TEAM_STAGE_ALIASES = {
   fixing: "team-fix"
 };
 var BACKGROUND_AGENT_ID_PATTERN = /agentId:\s*([a-zA-Z0-9_-]+)/;
+var BACKGROUND_BASH_ID_PATTERN = /(?:background (?:bash )?(?:command|process|task).*?(?:id|ID)|bash_id|task_id)[:=]\s*([a-zA-Z0-9_-]+)/i;
 var TASK_OUTPUT_ID_PATTERN = /<task_id>([^<]+)<\/task_id>/i;
 var TASK_OUTPUT_STATUS_PATTERN = /<status>([^<]+)<\/status>/i;
 var SAFE_SESSION_ID_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
@@ -84236,6 +84362,19 @@ function extractAsyncAgentId(toolOutput) {
   }
   return toolOutput.match(BACKGROUND_AGENT_ID_PATTERN)?.[1];
 }
+function extractBackgroundBashId(toolOutput) {
+  if (typeof toolOutput !== "string") {
+    return void 0;
+  }
+  return toolOutput.match(BACKGROUND_BASH_ID_PATTERN)?.[1];
+}
+function bashLaunchIsBackgroundPending(toolOutput) {
+  if (typeof toolOutput !== "string") {
+    return false;
+  }
+  const normalized = toolOutput.toLowerCase();
+  return normalized.includes("running in the background") || normalized.includes("started in the background") || normalized.includes("background command") || normalized.includes("background process") || Boolean(extractBackgroundBashId(toolOutput));
+}
 function parseTaskOutputLifecycle(toolOutput) {
   if (typeof toolOutput !== "string") {
     return null;
@@ -84256,6 +84395,62 @@ function taskLaunchDidFail(toolOutput) {
   }
   const normalized = toolOutput.toLowerCase();
   return normalized.includes("error") || normalized.includes("failed");
+}
+function getSessionStateDir2(directory, sessionId) {
+  const stateDir = (0, import_path90.join)(getOmcRoot(directory), "state");
+  if (sessionId && SAFE_SESSION_ID_PATTERN.test(sessionId)) {
+    return (0, import_path90.join)(stateDir, "sessions", sessionId);
+  }
+  return stateDir;
+}
+function getScheduledWakeupStatePath(directory, sessionId) {
+  return (0, import_path90.join)(getSessionStateDir2(directory, sessionId), "scheduled-wakeup-state.json");
+}
+function parseWakeupDueAt(toolInput) {
+  if (!toolInput || typeof toolInput !== "object") {
+    return void 0;
+  }
+  const input = toolInput;
+  const absolute = input.due_at ?? input.wakeup_at ?? input.scheduled_for ?? input.deadline_at ?? input.at;
+  if (typeof absolute === "string") {
+    const parsed = new Date(absolute).getTime();
+    if (Number.isFinite(parsed)) return new Date(parsed).toISOString();
+  }
+  const delaySeconds = input.seconds ?? input.delay_seconds ?? input.delaySeconds;
+  if (typeof delaySeconds === "number" && Number.isFinite(delaySeconds)) {
+    return new Date(Date.now() + Math.max(0, delaySeconds) * 1e3).toISOString();
+  }
+  const delayMs = input.milliseconds ?? input.delay_ms ?? input.delayMs;
+  if (typeof delayMs === "number" && Number.isFinite(delayMs)) {
+    return new Date(Date.now() + Math.max(0, delayMs)).toISOString();
+  }
+  const delayMinutes = input.minutes ?? input.delay_minutes ?? input.delayMinutes;
+  if (typeof delayMinutes === "number" && Number.isFinite(delayMinutes)) {
+    return new Date(Date.now() + Math.max(0, delayMinutes) * 6e4).toISOString();
+  }
+  return void 0;
+}
+function recordScheduledWakeup(directory, sessionId, toolInput) {
+  try {
+    const statePath = getScheduledWakeupStatePath(directory, sessionId);
+    (0, import_fs75.mkdirSync)((0, import_path90.dirname)(statePath), { recursive: true });
+    (0, import_fs75.writeFileSync)(
+      statePath,
+      JSON.stringify(
+        {
+          active: true,
+          pending: true,
+          status: "pending",
+          session_id: sessionId,
+          created_at: (/* @__PURE__ */ new Date()).toISOString(),
+          due_at: parseWakeupDueAt(toolInput)
+        },
+        null,
+        2
+      )
+    );
+  } catch {
+  }
 }
 function getModeStatePaths(directory, modeName, sessionId) {
   const stateDir = (0, import_path90.join)(getOmcRoot(directory), "state");
@@ -85586,6 +85781,22 @@ Command blocked: ${command}`
       );
     }
   }
+  if (input.toolName === "Bash") {
+    const toolInput = modifiedToolInput ?? input.toolInput;
+    if (toolInput?.run_in_background === true && toolInput.command) {
+      const taskId = getHookToolUseId(input) ?? `bash-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      addBackgroundTask(
+        taskId,
+        toolInput.command,
+        "bash",
+        directory,
+        input.sessionId
+      );
+    }
+  }
+  if ((input.toolName || "").toLowerCase() === "schedulewakeup") {
+    recordScheduledWakeup(directory, input.sessionId, input.toolInput);
+  }
   if (input.toolName === "Edit" || input.toolName === "Write") {
     const toolInput = input.toolInput;
     if (toolInput?.file_path && input.sessionId) {
@@ -85723,6 +85934,40 @@ async function processPostToolUse(input) {
           agentType,
           input.sessionId
         );
+      }
+    }
+  }
+  if (input.toolName === "Bash") {
+    const toolInput = input.toolInput;
+    if (toolInput?.run_in_background === true) {
+      const toolUseId = getHookToolUseId(input);
+      const backgroundBashId = extractBackgroundBashId(input.toolOutput);
+      const command = toolInput.command;
+      if (backgroundBashId) {
+        if (toolUseId) {
+          remapBackgroundTaskId(toolUseId, backgroundBashId, directory, input.sessionId);
+        } else if (command) {
+          remapMostRecentMatchingBackgroundTaskId(
+            command,
+            backgroundBashId,
+            directory,
+            "bash",
+            input.sessionId
+          );
+        }
+      } else if (!bashLaunchIsBackgroundPending(input.toolOutput)) {
+        const failed = taskLaunchDidFail(input.toolOutput);
+        if (toolUseId) {
+          completeBackgroundTask(toolUseId, directory, failed, input.sessionId);
+        } else if (command) {
+          completeMostRecentMatchingBackgroundTask(
+            command,
+            directory,
+            failed,
+            "bash",
+            input.sessionId
+          );
+        }
       }
     }
   }

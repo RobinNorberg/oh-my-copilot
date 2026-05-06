@@ -40,6 +40,12 @@ export interface PersistentModeResult {
 }
 export declare function shouldWriteStateBack(statePath: string | null | undefined): boolean;
 /**
+ * Pending owned async work (background Bash/Task or an armed wakeup) means the
+ * agent is legitimately waiting for an external notification/resume. In that
+ * window persistent modes should not inject a "stalled" reinforcement.
+ */
+export declare function hasPendingOwnedAsyncWork(directory: string, sessionId?: string): boolean;
+/**
  * Read last tool error from state directory.
  * Returns null if file doesn't exist or error is stale (>60 seconds old).
  */
