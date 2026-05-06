@@ -77,7 +77,10 @@ function zodTypeToJsonSchema(zodType: any): Record<string, unknown> {
 
   if (zodType instanceof z.ZodDefault) {
     const inner = zodTypeToJsonSchema(zodType._def.innerType);
-    inner.default = (zodType._def as any).defaultValue();
+    const def = (zodType._def as any).defaultValue;
+    if (def !== undefined) {
+      inner.default = typeof def === 'function' ? def() : def;
+    }
     return inner;
   }
 
@@ -96,7 +99,8 @@ function zodTypeToJsonSchema(zodType: any): Record<string, unknown> {
     result.type = 'boolean';
   } else if (zodType instanceof z.ZodArray) {
     result.type = 'array';
-    result.items = zodType._def?.type ? zodTypeToJsonSchema(zodType._def.type) : { type: 'string' };
+    const elem = (zodType._def as any)?.element ?? (zodType._def as any)?.type;
+    result.items = elem ? zodTypeToJsonSchema(elem) : { type: 'string' };
   } else if (zodType instanceof z.ZodEnum) {
     result.type = 'string';
     result.enum = (zodType._def as any)?.values;

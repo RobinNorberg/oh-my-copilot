@@ -37873,7 +37873,10 @@ function zodTypeToJsonSchema(zodType) {
   }
   if (zodType instanceof external_exports3.ZodDefault) {
     const inner = zodTypeToJsonSchema(zodType._def.innerType);
-    inner.default = zodType._def.defaultValue();
+    const def = zodType._def.defaultValue;
+    if (def !== void 0) {
+      inner.default = typeof def === "function" ? def() : def;
+    }
     return inner;
   }
   const description = zodType._def?.description;
@@ -37888,7 +37891,8 @@ function zodTypeToJsonSchema(zodType) {
     result.type = "boolean";
   } else if (zodType instanceof external_exports3.ZodArray) {
     result.type = "array";
-    result.items = zodType._def?.type ? zodTypeToJsonSchema(zodType._def.type) : { type: "string" };
+    const elem = zodType._def?.element ?? zodType._def?.type;
+    result.items = elem ? zodTypeToJsonSchema(elem) : { type: "string" };
   } else if (zodType instanceof external_exports3.ZodEnum) {
     result.type = "string";
     result.enum = zodType._def?.values;
