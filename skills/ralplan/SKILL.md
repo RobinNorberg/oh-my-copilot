@@ -7,7 +7,7 @@ level: 4
 
 # Ralplan (Consensus Planning Alias)
 
-Ralplan is a shorthand alias for `/oh-my-copilot:omc-plan --consensus`. It triggers iterative planning with Planner, Architect, and Critic agents until consensus is reached, with **RALPLAN-DR structured deliberation** (short mode by default, deliberate mode for high-risk work).
+Ralplan is a shorthand alias for `/oh-my-copilot:plan --consensus`. It triggers iterative planning with Planner, Architect, and Critic agents until consensus is reached, with **RALPLAN-DR structured deliberation** (short mode by default, deliberate mode for high-risk work).
 
 ## Usage
 
@@ -33,7 +33,7 @@ Ralplan is a shorthand alias for `/oh-my-copilot:omc-plan --consensus`. It trigg
 This skill invokes the Plan skill in consensus mode:
 
 ```
-/oh-my-copilot:omc-plan --consensus <arguments>
+/oh-my-copilot:plan --consensus <arguments>
 ```
 
 The consensus workflow:

@@ -250,8 +250,8 @@ describe('Builtin Skills', () => {
             expect(skill).toBeDefined();
             expect(skill?.name).toBe('deep-dive');
             expect(skill?.pipeline).toEqual({
-                steps: ['deep-dive', 'omc-plan', 'autopilot'],
-                nextSkill: 'omc-plan',
+                steps: ['deep-dive', 'plan', 'autopilot'],
+                nextSkill: 'plan',
                 nextSkillArgs: '--consensus --direct',
                 handoff: '.omcp/specs/deep-dive-{slug}.md',
             });
@@ -289,14 +289,14 @@ describe('Builtin Skills', () => {
         it.skip('should expose pipeline metadata for deep-interview handoff into omc-plan', () => {
             const skill = getBuiltinSkill('deep-interview');
             expect(skill?.pipeline).toEqual({
-                steps: ['deep-interview', 'omc-plan', 'autopilot'],
-                nextSkill: 'omc-plan',
+                steps: ['deep-interview', 'plan', 'autopilot'],
+                nextSkill: 'plan',
                 nextSkillArgs: '--consensus --direct',
                 handoff: '.omcp/specs/deep-interview-{slug}.md',
             });
             expect(skill?.template).toContain('## Skill Pipeline');
-            expect(skill?.template).toContain('Pipeline: `deep-interview → omc-plan → autopilot`');
-            expect(skill?.template).toContain('Skill("oh-my-copilot:omc-plan")');
+            expect(skill?.template).toContain('Pipeline: `deep-interview → plan → autopilot`');
+            expect(skill?.template).toContain('Skill("oh-my-copilot:plan")');
             expect(skill?.template).toContain('`--consensus --direct`');
             expect(skill?.template).toContain('`.omcp/specs/deep-interview-{slug}.md`');
             expect(skill?.template).toContain('Why now: {one_sentence_targeting_rationale}');
@@ -493,7 +493,7 @@ describe('Builtin Skills', () => {
         it.skip('should expose pipeline metadata for omc-plan handoff into autopilot', () => {
             const skill = getBuiltinSkill('omc-plan');
             expect(skill?.pipeline).toEqual({
-                steps: ['deep-interview', 'omc-plan', 'autopilot'],
+                steps: ['deep-interview', 'plan', 'autopilot'],
                 nextSkill: 'autopilot',
                 handoff: '.omcp/plans/ralplan-*.md',
             });

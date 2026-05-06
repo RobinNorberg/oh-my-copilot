@@ -119,8 +119,8 @@ Advanced: ambiguity ≤ 20%
         writeFileSync(join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'), `---
 name: deep-interview
 description: Deep interview
-pipeline: [deep-interview, omc-plan, autopilot]
-next-skill: omc-plan
+pipeline: [deep-interview, plan, autopilot]
+next-skill: plan
 next-skill-args: --consensus --direct
 handoff: .omcp/specs/deep-interview-{slug}.md
 ---
@@ -134,9 +134,9 @@ Deep interview body`);
         });
         expect(result.success).toBe(true);
         expect(result.replacementText).toContain('## Skill Pipeline');
-        expect(result.replacementText).toContain('Pipeline: `deep-interview → omc-plan → autopilot`');
+        expect(result.replacementText).toContain('Pipeline: `deep-interview → plan → autopilot`');
         expect(result.replacementText).toContain('Next skill arguments: `--consensus --direct`');
-        expect(result.replacementText).toContain('Skill("oh-my-copilot:omc-plan")');
+        expect(result.replacementText).toContain('Skill("oh-my-copilot:plan")');
         expect(result.replacementText).toContain('`.omcp/specs/deep-interview-{slug}.md`');
     });
     it.skip('discovers project-local compatibility skills from .agents/skills', async () => {
@@ -166,8 +166,8 @@ Compatibility body`);
         writeFileSync(join(tempConfigDir, 'skills', 'deep-interview', 'SKILL.md'), `---
 name: deep-interview
 description: Deep interview
-pipeline: [deep-interview, omc-plan, autopilot]
-next-skill: omc-plan
+pipeline: [deep-interview, plan, autopilot]
+next-skill: plan
 next-skill-args: --consensus --direct
 handoff: .omcp/specs/deep-interview-{slug}.md
 ---

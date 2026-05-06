@@ -2,7 +2,7 @@
 name: omc-plan
 description: Strategic planning with optional interview workflow
 argument-hint: "[--direct|--consensus|--review] [--interactive] [--deliberate] <task description>"
-pipeline: [deep-interview, omc-plan, autopilot]
+pipeline: [deep-interview, plan, autopilot]
 next-skill: autopilot
 handoff: .omcp/plans/ralplan-*.md
 level: 4

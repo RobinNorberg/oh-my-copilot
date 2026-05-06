@@ -2,8 +2,8 @@
 name: deep-interview
 description: Socratic deep interview with mathematical ambiguity gating before autonomous execution
 argument-hint: "[--quick|--standard|--deep] [--autoresearch] <idea or vague description>"
-pipeline: [deep-interview, omc-plan, autopilot]
-next-skill: omc-plan
+pipeline: [deep-interview, plan, autopilot]
+next-skill: plan
 next-skill-args: --consensus --direct
 handoff: .omcp/specs/deep-interview-{slug}.md
 level: 3
@@ -469,7 +469,7 @@ After the spec is written, present execution options via `AskUserQuestion`:
 
 1. **Ralplan → Autopilot (Recommended)**
    - Description: "3-stage pipeline: consensus-refine this spec with Planner/Architect/Critic, then execute with full autopilot. Maximum quality."
-   - Action: Invoke `Skill("oh-my-copilot:omc-plan")` with `--consensus --direct` flags and the spec file path as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omcp/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
+   - Action: Invoke `Skill("oh-my-copilot:plan")` with `--consensus --direct` flags and the spec file path as context. The `--direct` flag skips the omc-plan skill's interview phase (the deep interview already gathered requirements), while `--consensus` triggers the Planner/Architect/Critic loop. When consensus completes and produces a plan in `.omcp/plans/`, invoke `Skill("oh-my-copilot:autopilot")` with the consensus plan as Phase 0+1 output — autopilot skips both Expansion and Planning, starting directly at Phase 2 (Execution).
    - Pipeline: `deep-interview spec → omc-plan --consensus --direct → autopilot execution`
 
 2. **Execute with autopilot (skip ralplan)**
