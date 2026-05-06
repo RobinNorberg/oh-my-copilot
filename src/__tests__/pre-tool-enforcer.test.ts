@@ -639,6 +639,79 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     expect(String(hookSpecificOutput.additionalContext)).toContain('Combine searches in parallel');
   });
 
+  it('does not warn for benign technical fallback descriptions from issue #2939', () => {
+    const benignPrompts = [
+      'Preserve the fail-soft fallback value when LAST_INSERT_ID() returns 0 after a failed INSERT.',
+      'Describe the fallback to default config when the project config file is missing.',
+      'Add a workaround for commit cf9703f so the regression note links to the upstream change.',
+      'Keep the memory workaround note, but do not change runtime behavior.',
+    ];
+
+    for (const [index, prompt] of benignPrompts.entries()) {
+      const output = runPreToolEnforcer({
+        tool_name: 'Task',
+        toolInput: {
+          subagent_type: 'oh-my-claudecode:executor',
+          description: 'Handle benign fallback documentation',
+          prompt,
+        },
+        cwd: tempDir,
+        session_id: `session-slop-benign-${index}`,
+      });
+
+      const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+      expect(output.continue).toBe(true);
+      expect(String(hookSpecificOutput.additionalContext)).not.toContain('[SLOP WARNING]');
+    }
+  });
+
+  it('does not warn when fallback/workaround phrases only appear in quoted or code contexts', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Review quoted technical phrases',
+        prompt: [
+          'Review the quoted phrase "fallback to default config" in the migration notes.',
+          'The code sample says `workaround the requirement`, but do not implement that behavior.',
+          '```ts',
+          'const message = "fallback to weaker model";',
+          '```',
+        ].join('\n'),
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-quoted-code',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).not.toContain('[SLOP WARNING]');
+  });
+
+  it('still warns for real SLOP intent from issue #2939', () => {
+    const slopPrompts = [
+      'If the preferred agent is unavailable, fallback to weaker model to keep going.',
+      'Please workaround the requirement instead of implementing the requested workflow.',
+    ];
+
+    for (const [index, prompt] of slopPrompts.entries()) {
+      const output = runPreToolEnforcer({
+        tool_name: 'Task',
+        toolInput: {
+          subagent_type: 'oh-my-claudecode:executor',
+          description: 'Implement risky fallback',
+          prompt,
+        },
+        cwd: tempDir,
+        session_id: `session-slop-real-${index}`,
+      });
+
+      const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+      expect(output.continue).toBe(true);
+      expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+    }
+  });
+
   it('blocks agent-heavy Task preflight when transcript context budget is exhausted', () => {
     const transcriptPath = join(tempDir, 'transcript.jsonl');
     writeTranscriptWithContext(transcriptPath, 1000, 800); // 80%
