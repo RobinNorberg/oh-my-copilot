@@ -170,6 +170,16 @@ const SLOP_RISK_TOOL_NAMES = new Set([
   'NotebookEdit',
 ]);
 const SLOP_FALLBACK_LANGUAGE_PATTERN = /\b(?:fallback|fall\s+back|workaround|work\s+around)\b/i;
+const SLOP_FALLBACK_ACTION_PATTERNS = [
+  /\b(?:add|build|create|implement|introduce|make|patch|use|using|write)\s+(?:an?\s+|the\s+)?(?:fallback|workaround)\b/i,
+  /\b(?:fallback|workaround)\s+(?:layer|path|handler|shim|patch|implementation|mechanism|mode)\b/i,
+  /\b(?:fall\s+back|fallback)\s+(?:to|on|onto)\b/i,
+  /\bwork\s+around\s+(?:it|this|that|the|a|an)\b/i,
+  /\bwork\s+around\s+(?!(?:it|this|that|the|a|an)\b)(?:[a-z0-9][\w-]*\s+){0,5}[a-z0-9][\w-]*\b/i,
+  /(?:^|[\s"'`=:/\\])[\w.-]*(?:fallback|workaround)[\w.-]*\.(?:cjs|js|mjs|py|sh|ts|tsx)\b/i,
+];
+const SLOP_DOC_CONTEXT_PATTERN = /(?:^|[/\\])(?:docs?|documentation|guides?|instructions?|prompts?|\.om[ctx])(?:[/\\]|$)|\.(?:md|mdx|txt|rst)$/i;
+const SLOP_SELF_REFERENCE_PATH_PATTERN = /(?:^|[/\\])(?:pre-tool-enforcer(?:\.mjs)?|pre-tool-enforcer\.test\.ts)(?:$|[/\\])/i;
 
 function collectStringValues(value, output = [], depth = 0) {
   if (depth > 5 || output.length > 100) return output;
@@ -191,8 +201,49 @@ function collectStringValues(value, output = [], depth = 0) {
   return output;
 }
 
+function collectLikelyPathValues(value, output = [], depth = 0) {
+  if (depth > 5 || output.length > 100 || !value || typeof value !== 'object') return output;
+  if (Array.isArray(value)) {
+    for (const item of value) collectLikelyPathValues(item, output, depth + 1);
+    return output;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (typeof child === 'string' && /(?:^|_)(?:file_?path|path|filename|target|command)$/i.test(key)) {
+      output.push(child);
+      continue;
+    }
+    collectLikelyPathValues(child, output, depth + 1);
+  }
+  return output;
+}
+
+function hasSlopFallbackActionShape(text) {
+  return SLOP_FALLBACK_ACTION_PATTERNS.some(pattern => pattern.test(text));
+}
+
+function isSelfReferentialSlopContext(toolInput) {
+  return collectLikelyPathValues(toolInput).some(value => SLOP_SELF_REFERENCE_PATH_PATTERN.test(value));
+}
+
+function isDocumentationSlopContext(toolInput) {
+  const pathLikeValues = collectLikelyPathValues(toolInput);
+  return pathLikeValues.some(value => SLOP_DOC_CONTEXT_PATTERN.test(value));
+}
+
+function shouldWarnForSlopFallbackLanguage(data, toolName, inspectedText) {
+  if (!SLOP_RISK_TOOL_NAMES.has(toolName)) return false;
+  if (!SLOP_FALLBACK_LANGUAGE_PATTERN.test(inspectedText)) return false;
+
+  const toolInput = data.toolInput || data.tool_input || {};
+  if (isSelfReferentialSlopContext(toolInput)) return false;
+  if (isDocumentationSlopContext(toolInput)) {
+    return false;
+  }
+
+  return hasSlopFallbackActionShape(inspectedText);
+}
+
 function generateSlopWarning(data, toolName) {
-  if (!SLOP_RISK_TOOL_NAMES.has(toolName)) return '';
   const toolInput = data.toolInput || data.tool_input || {};
   const promptLikeFields = {
     prompt: data.prompt,
@@ -203,7 +254,7 @@ function generateSlopWarning(data, toolName) {
   const inspectedText = collectStringValues(toolInput)
     .concat(collectStringValues(promptLikeFields))
     .join('\n');
-  if (!SLOP_FALLBACK_LANGUAGE_PATTERN.test(inspectedText)) return '';
+  if (!shouldWarnForSlopFallbackLanguage(data, toolName, inspectedText)) return '';
 
   return '[SLOP WARNING] Detected fallback/workaround language in this tool input. ' +
     'Do not make potential slop: avoid ad-hoc fallback layers, workaround shims, or environment-specific patches unless explicitly justified. ' +
