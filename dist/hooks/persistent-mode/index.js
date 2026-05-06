@@ -31,6 +31,7 @@ import { isModeActive } from '../mode-registry/index.js';
 const MAX_TODO_CONTINUATION_ATTEMPTS = 5;
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 const STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+const PENDING_ASYNC_STATE_STALE_MS = 24 * 60 * 60 * 1000;
 /** Track todo-continuation attempts per session to prevent infinite loops */
 const todoContinuationAttempts = new Map();
 export function shouldWriteStateBack(statePath) {
@@ -94,6 +95,91 @@ function isStaleState(state) {
         return true;
     }
     return Date.now() - mostRecent > STALE_STATE_THRESHOLD_MS;
+}
+function parseTimestamp(value) {
+    if (typeof value !== 'string' || value.length === 0) {
+        return null;
+    }
+    const parsed = new Date(value).getTime();
+    return Number.isFinite(parsed) ? parsed : null;
+}
+function isFreshTimestamp(value, ttlMs = PENDING_ASYNC_STATE_STALE_MS) {
+    const parsed = parseTimestamp(value);
+    return parsed !== null && Date.now() - parsed <= ttlMs;
+}
+function hasPendingBackgroundTask(directory, sessionId) {
+    try {
+        const stateRoot = join(getOmcRoot(directory), 'state');
+        const hudPath = sessionId
+            ? join(stateRoot, 'sessions', sessionId, 'hud-state.json')
+            : join(stateRoot, 'hud-state.json');
+        if (!existsSync(hudPath))
+            return false;
+        const hudState = JSON.parse(readFileSync(hudPath, 'utf-8'));
+        return Boolean(hudState?.backgroundTasks?.some((task) => {
+            if (task.status !== 'running')
+                return false;
+            return isFreshTimestamp(task.startedAt ?? task.startTime);
+        }));
+    }
+    catch {
+        return false;
+    }
+}
+function readPendingWakeupState(directory, sessionId) {
+    const stateRoot = join(getOmcRoot(directory), 'state');
+    const dirs = sessionId
+        ? [join(stateRoot, 'sessions', sessionId), stateRoot]
+        : [stateRoot];
+    const fileNames = [
+        'scheduled-wakeup-state.json',
+        'schedule-wakeup-state.json',
+        'wakeup-state.json',
+    ];
+    const states = [];
+    for (const dir of dirs) {
+        for (const fileName of fileNames) {
+            const filePath = join(dir, fileName);
+            try {
+                if (!existsSync(filePath))
+                    continue;
+                const parsed = JSON.parse(readFileSync(filePath, 'utf-8'));
+                if (parsed && typeof parsed === 'object') {
+                    states.push(parsed);
+                }
+            }
+            catch {
+                continue;
+            }
+        }
+    }
+    return states;
+}
+function hasPendingScheduledWakeup(directory, sessionId) {
+    const now = Date.now();
+    return readPendingWakeupState(directory, sessionId).some((state) => {
+        const status = typeof state.status === 'string' ? state.status.toLowerCase() : '';
+        if (['completed', 'complete', 'cancelled', 'canceled', 'failed', 'expired'].includes(status)) {
+            return false;
+        }
+        const dueAt = parseTimestamp(state.due_at ?? state.wakeup_at ?? state.scheduled_for ?? state.deadline_at ?? state.expires_at);
+        if (dueAt !== null) {
+            return dueAt > now;
+        }
+        if (state.active === true || state.pending === true) {
+            return isFreshTimestamp(state.created_at ?? state.updated_at ?? state.started_at);
+        }
+        return false;
+    });
+}
+/**
+ * Pending owned async work (background Bash/Task or an armed wakeup) means the
+ * agent is legitimately waiting for an external notification/resume. In that
+ * window persistent modes should not inject a "stalled" reinforcement.
+ */
+export function hasPendingOwnedAsyncWork(directory, sessionId) {
+    return hasPendingBackgroundTask(directory, sessionId)
+        || hasPendingScheduledWakeup(directory, sessionId);
 }
 /**
  * Read last tool error from state directory.
@@ -1419,6 +1505,16 @@ export async function checkPersistentModes(sessionId, directory, stopContext // 
         .filter(Boolean);
     if (skipHooks.includes('persistent-mode') || skipHooks.includes('stop-continuation')) {
         return { shouldBlock: false, message: '', mode: 'none' };
+    }
+    // If this session owns pending async work, quiescence is intentional: Claude
+    // Code will notify on background completion or resume via ScheduleWakeup.
+    // Do not convert that waiting window into a Ralph/persistent-mode stall loop.
+    if (hasPendingOwnedAsyncWork(workingDir, sessionId)) {
+        return {
+            shouldBlock: false,
+            message: '',
+            mode: 'none'
+        };
     }
     // Best-effort: prune expired tombstones so stale completion markers do not
     // linger past their TTL and mask a fresh invocation.
