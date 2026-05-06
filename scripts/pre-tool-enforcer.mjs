@@ -239,15 +239,22 @@ function splitSlopInspectionSegments(text) {
     .filter(Boolean);
 }
 
-function isBenignTechnicalSlopFallbackDescription(text) {
-  return SLOP_BENIGN_TECHNICAL_PATTERNS.some(pattern => pattern.test(text));
+function removeBenignTechnicalSlopFallbackSpans(text) {
+  return SLOP_BENIGN_TECHNICAL_PATTERNS.reduce(
+    (result, pattern) => {
+      const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+      return result.replace(new RegExp(pattern.source, flags), ' ');
+    },
+    text,
+  );
 }
 
 function hasSlopFallbackActionShape(text) {
   const strippedText = stripSlopQuotedAndCodeContexts(text);
   return splitSlopInspectionSegments(strippedText).some(segment => (
-    !isBenignTechnicalSlopFallbackDescription(segment) &&
-    SLOP_FALLBACK_ACTION_PATTERNS.some(pattern => pattern.test(segment))
+    SLOP_FALLBACK_ACTION_PATTERNS.some(pattern => (
+      pattern.test(removeBenignTechnicalSlopFallbackSpans(segment))
+    ))
   ));
 }
 

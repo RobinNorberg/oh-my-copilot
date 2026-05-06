@@ -665,6 +665,23 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     }
   });
 
+  it('warns when benign and risky fallback phrasing coexist in one segment', () => {
+    const output = runPreToolEnforcer({
+      tool_name: 'Task',
+      toolInput: {
+        subagent_type: 'oh-my-claudecode:executor',
+        description: 'Preserve benign fallback and reject risky routing fallback',
+        prompt: 'Preserve the fail-soft fallback value, and fallback to weaker model if the preferred agent is unavailable.',
+      },
+      cwd: tempDir,
+      session_id: 'session-slop-mixed-benign-risky',
+    });
+
+    const hookSpecificOutput = output.hookSpecificOutput as Record<string, unknown>;
+    expect(output.continue).toBe(true);
+    expect(String(hookSpecificOutput.additionalContext)).toContain('[SLOP WARNING]');
+  });
+
   it('does not warn when fallback/workaround phrases only appear in quoted or code contexts', () => {
     const output = runPreToolEnforcer({
       tool_name: 'Task',
