@@ -322,18 +322,24 @@ describe('Builtin Skills', () => {
 
 
 
-    it.skip('should expose pipeline metadata for deep-interview handoff into omc-plan', () => {
+    it('should expose approval-gated pipeline metadata for deep-interview handoff into omc-plan', () => {
       const skill = getBuiltinSkill('deep-interview');
       expect(skill?.pipeline).toEqual({
-        steps: ['deep-interview', 'plan', 'autopilot'],
-        nextSkill: 'plan',
-        nextSkillArgs: '--consensus --direct',
+        steps: ['deep-interview', 'plan'],
+        nextSkill: undefined,
+        nextSkillArgs: undefined,
         handoff: '.omcp/specs/deep-interview-{slug}.md',
+        handoffRequiresApproval: true,
       });
       expect(skill?.template).toContain('## Skill Pipeline');
-      expect(skill?.template).toContain('Pipeline: `deep-interview → plan → autopilot`');
-      expect(skill?.template).toContain('Skill("oh-my-copilot:plan")');
-      expect(skill?.template).toContain('`--consensus --direct`');
+      expect(skill?.template).toContain('Pipeline: `deep-interview → plan`');
+      expect(skill?.template).toContain('This stage is approval-gated');
+      expect(skill?.template).toContain('unless the user explicitly approves that next step');
+      expect(skill?.template).not.toContain('Pipeline: `deep-interview → plan → autopilot`');
+      expect(skill?.template).not.toContain('Next skill: `plan`');
+      expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-copilot:plan")');
+      expect(skill?.template).toContain('Only after the user selects this option, invoke `Skill("oh-my-copilot:plan")`');
+      expect(skill?.template).toContain('do not automatically invoke autopilot or any other execution skill');
       expect(skill?.template).toContain('`.omcp/specs/deep-interview-{slug}.md`');
       expect(skill?.template).toContain('Why now: {one_sentence_targeting_rationale}');
       expect(skill?.template).toContain('cite the repo evidence');
@@ -564,16 +570,22 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('markdown decision logs');
     });
 
-    it.skip('should expose pipeline metadata for omc-plan handoff into autopilot', () => {
+    it('should expose approval-gated omc-plan metadata without an unconditional autopilot handoff', () => {
       const skill = getBuiltinSkill('omc-plan');
       expect(skill?.pipeline).toEqual({
-        steps: ['deep-interview', 'plan', 'autopilot'],
-        nextSkill: 'autopilot',
+        steps: ['deep-interview'],
+        nextSkill: undefined,
+        nextSkillArgs: undefined,
         handoff: '.omcp/plans/ralplan-*.md',
+        handoffRequiresApproval: true,
       });
       expect(skill?.template).toContain('## Skill Pipeline');
-      expect(skill?.template).toContain('Next skill: `autopilot`');
-      expect(skill?.template).toContain('Skill("oh-my-copilot:autopilot")');
+      expect(skill?.template).toContain('Pipeline: `deep-interview → omc-plan`');
+      expect(skill?.template).toContain('This stage is approval-gated');
+      expect(skill?.template).toContain('unless the user explicitly approves that next step');
+      expect(skill?.template).not.toContain('Next skill: `autopilot`');
+      expect(skill?.template).not.toContain('Skill("oh-my-copilot:autopilot")');
+      expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-copilot:autopilot")');
       expect(skill?.template).toContain('`.omcp/plans/ralplan-*.md`');
     });
 

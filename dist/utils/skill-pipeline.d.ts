@@ -3,6 +3,7 @@ export interface SkillPipelineMetadata {
     nextSkill?: string;
     nextSkillArgs?: string;
     handoff?: string;
+    handoffRequiresApproval?: boolean;
 }
 export declare function parseSkillPipelineMetadata(frontmatter: Record<string, string>): SkillPipelineMetadata | undefined;
 export declare function renderSkillPipelineGuidance(skillName: string, pipeline: SkillPipelineMetadata | undefined): string;
