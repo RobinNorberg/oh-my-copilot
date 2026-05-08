@@ -190,6 +190,8 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(requests).toHaveLength(1);
         expect(requests[0]?.to_worker).toBe('worker-1');
         expect(requests[0]?.status).toBe('notified');
+        expect(requests[0]?.transport_preference).toBe('transport_direct');
+        expect(requests[0]?.fallback_allowed).toBe(true);
         expect(requests[0]?.inbox_correlation_key).toBe('startup:worker-1:1');
         expect(requests[0]?.trigger_message).toContain('.omcp/state/team/dispatch-team/workers/worker-1/inbox.md');
         const inboxPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
@@ -520,6 +522,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         expect(requests).toHaveLength(1);
         expect(requests[0]?.status).toBe('failed');
         expect(requests[0]?.last_reason).toBe('worker_notify_failed');
+        expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
     });
     it('requires Claude startup evidence without resending the startup inbox', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-claude-evidence-missing-'));
