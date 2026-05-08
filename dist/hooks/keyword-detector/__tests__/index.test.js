@@ -1324,5 +1324,37 @@ diff --git a/a b/b
             });
         });
     });
+    describe('Ouroboros CLI invocation skip (issue #2954)', () => {
+        // The bare brand name `ouroboros`/`ooo` at the start of a prompt is a
+        // deterministic upstream CLI command, not a routing request for
+        // deep-interview. The skip predicate defers to the upstream CLI in those
+        // cases. Natural-language mentions where the brand appears mid-sentence
+        // are unaffected.
+        it('should NOT detect "ouroboros auto" as deep-interview (upstream CLI invocation)', () => {
+            const result = detectKeywordsWithType('ouroboros auto "Add /healthz endpoint"');
+            const match = result.find((r) => r.type === 'deep-interview');
+            expect(match).toBeUndefined();
+        });
+        it('should NOT detect "ooo auto" as deep-interview (upstream CLI shortcut)', () => {
+            const result = detectKeywordsWithType('ooo auto "ship the feature"');
+            const match = result.find((r) => r.type === 'deep-interview');
+            expect(match).toBeUndefined();
+        });
+        it('should NOT detect "/ouroboros:auto" as deep-interview (upstream CLI slash form)', () => {
+            const result = detectKeywordsWithType('/ouroboros:auto "Refactor logger"');
+            const match = result.find((r) => r.type === 'deep-interview');
+            expect(match).toBeUndefined();
+        });
+        it('should NOT detect "ouroboros run" as deep-interview', () => {
+            const result = detectKeywordsWithType('ouroboros run');
+            const match = result.find((r) => r.type === 'deep-interview');
+            expect(match).toBeUndefined();
+        });
+        it('should still detect natural-language ouroboros mention as deep-interview', () => {
+            const result = detectKeywordsWithType('please use ouroboros to clarify my requirements');
+            const match = result.find((r) => r.type === 'deep-interview');
+            expect(match).toBeDefined();
+        });
+    });
 });
 //# sourceMappingURL=index.test.js.map
