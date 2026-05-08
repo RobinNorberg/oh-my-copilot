@@ -90215,6 +90215,7 @@ var import_child_process30 = require("child_process");
 var import_fs94 = require("fs");
 var import_os22 = require("os");
 var import_path111 = require("path");
+init_paths3();
 init_config_dir();
 init_tmux_utils();
 var MADMAX_FLAG = "--madmax";

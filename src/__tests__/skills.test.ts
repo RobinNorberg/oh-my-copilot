@@ -270,6 +270,9 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('Ranked Hypotheses');
       expect(skill?.template).toContain('trace_timeline');
       expect(skill?.template).toContain('trace_summary');
+      expect(skill?.template).toContain('multi-entity premise/key-assumption mismatches');
+      expect(skill?.template).toContain('single dimensional key across distinct entities, tenants, streams, or groups');
+      expect(skill?.template).toContain('verification-methodology defect');
     });
     it.skip('should retrieve the deep-dive skill with pipeline metadata and 3-point injection', () => {
       const skill = getBuiltinSkill('deep-dive');
@@ -288,6 +291,10 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('initial question queue injection');
       // Verify per-lane critical unknowns (B3 fix)
       expect(skill?.template).toContain('Per-Lane Critical Unknowns');
+      // Verify Lane 3 multi-entity premise audit guard (#2949)
+      expect(skill?.template).toContain('multi-entity premise/key-assumption mismatches');
+      expect(skill?.template).toContain('single dimensional key across distinct entities, tenants, streams, or groups');
+      expect(skill?.template).toContain('verification-methodology defect');
       // Verify Lane 3 ownership-boundary classification for MOVE recommendations
       expect(skill?.template).toContain('Lane 3 Misplacement / SoT Ownership Scope');
       expect(skill?.template).toContain('ownership_scope');
@@ -583,6 +590,19 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('--review');
       expect(skill?.template).toContain('Writer pass');
       expect(skill?.template).toContain('Reviewer pass');
+    });
+
+    it('should expose UI/design AI-slop review signals', () => {
+      const skill = getBuiltinSkill('ai-slop-cleaner');
+      expect(skill).toBeDefined();
+      expect(skill?.template).toContain('UI/Design Reviewer Checklist');
+      expect(skill?.template).toContain('Korean body copy generally needs at least 14px');
+      expect(skill?.template).toContain('box shadows on every surface');
+      expect(skill?.template).toContain('eyebrow/title/description');
+      expect(skill?.template).toContain('#3B82F6');
+      expect(skill?.template).toContain('3- or 4-column uniform grids');
+      expect(skill?.template).toContain('extreme gradients');
+      expect(skill?.template).toContain('intentional brand');
     });
 
     it('should require explicit tmux prerequisite checks for omc-teams', () => {

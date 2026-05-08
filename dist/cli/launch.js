@@ -6,6 +6,7 @@ import { execFileSync } from 'child_process';
 import { cpSync, copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
 import { homedir } from 'os';
 import { basename, join } from 'path';
+import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isNativeWindowsShell, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, tmuxExec, } from './tmux-utils.js';
 // Flag mapping
@@ -79,7 +80,8 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
         'projects',
         'rules',
         'skills',
-        '.omc-config.json',
+        'themes',
+        OMC_CONFIG_FILE_REL,
         '.omc-version.json',
         '.omc-silent-update.json',
         'keybindings.json',
