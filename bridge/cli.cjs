@@ -18783,22 +18783,6 @@ var init_progress = __esm({
   }
 });
 
-// src/lib/truncate-prompt.ts
-function truncatePromptForEcho(prompt, maxChars = DEFAULT_PROMPT_ECHO_MAX_CHARS) {
-  const trimmed = prompt.trim();
-  if (trimmed.length <= maxChars) {
-    return trimmed;
-  }
-  return trimmed.slice(0, maxChars) + "\u2026";
-}
-var DEFAULT_PROMPT_ECHO_MAX_CHARS;
-var init_truncate_prompt = __esm({
-  "src/lib/truncate-prompt.ts"() {
-    "use strict";
-    DEFAULT_PROMPT_ECHO_MAX_CHARS = 150;
-  }
-});
-
 // src/hooks/ultrawork/index.ts
 var ultrawork_exports = {};
 __export(ultrawork_exports, {
@@ -18811,6 +18795,19 @@ __export(ultrawork_exports, {
   shouldReinforceUltrawork: () => shouldReinforceUltrawork,
   writeUltraworkState: () => writeUltraworkState
 });
+function formatConciseObjective(value) {
+  if (typeof value !== "string") return "";
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (!compact) return "";
+  const chars = [...compact];
+  if (chars.length <= ULTRAWORK_OBJECTIVE_MAX_CHARS) return compact;
+  return `${chars.slice(0, ULTRAWORK_OBJECTIVE_MAX_CHARS).join("").trimEnd()}\u2026`;
+}
+function getLiveUltraworkObjective(state) {
+  return formatConciseObjective(
+    state.current_objective ?? state.task_summary
+  );
+}
 function getStateFilePath2(directory, sessionId) {
   const baseDir = directory || process.cwd();
   if (sessionId) {
@@ -18902,6 +18899,10 @@ function shouldReinforceUltrawork(sessionId, directory) {
   return true;
 }
 function getUltraworkPersistenceMessage(state) {
+  const currentObjective = getLiveUltraworkObjective(state);
+  const objectiveLine = currentObjective ? `
+Current objective: ${currentObjective}
+` : "";
   return `<ultrawork-persistence>
 
 [ULTRAWORK MODE STILL ACTIVE - Reinforcement #${state.reinforcement_count + 1}]
@@ -18916,8 +18917,7 @@ REMEMBER THE ULTRAWORK RULES:
 - **NO Premature Stopping**: ALL TODOs must be complete
 
 Continue working on the next pending task. DO NOT STOP until all tasks are marked complete.
-
-Original task: ${truncatePromptForEcho(state.original_prompt)}
+When all work is complete, run /oh-my-claudecode:cancel to cleanly exit ultrawork mode and clean up state files.${objectiveLine}
 
 </ultrawork-persistence>
 
@@ -18934,14 +18934,14 @@ function createUltraworkStateHook(directory) {
     incrementReinforcement: (sessionId) => incrementReinforcement(directory, sessionId)
   };
 }
-var import_fs35;
+var import_fs35, ULTRAWORK_OBJECTIVE_MAX_CHARS;
 var init_ultrawork2 = __esm({
   "src/hooks/ultrawork/index.ts"() {
     "use strict";
     import_fs35 = require("fs");
     init_mode_state_io();
     init_worktree_paths();
-    init_truncate_prompt();
+    ULTRAWORK_OBJECTIVE_MAX_CHARS = 140;
   }
 });
 
@@ -24680,6 +24680,22 @@ var init_cancel = __esm({
     init_ralph();
     init_ultraqa();
     STALE_STATE_MAX_AGE_MS = 60 * 60 * 1e3;
+  }
+});
+
+// src/lib/truncate-prompt.ts
+function truncatePromptForEcho(prompt, maxChars = DEFAULT_PROMPT_ECHO_MAX_CHARS) {
+  const trimmed = prompt.trim();
+  if (trimmed.length <= maxChars) {
+    return trimmed;
+  }
+  return trimmed.slice(0, maxChars) + "\u2026";
+}
+var DEFAULT_PROMPT_ECHO_MAX_CHARS;
+var init_truncate_prompt = __esm({
+  "src/lib/truncate-prompt.ts"() {
+    "use strict";
+    DEFAULT_PROMPT_ECHO_MAX_CHARS = 150;
   }
 });
 
