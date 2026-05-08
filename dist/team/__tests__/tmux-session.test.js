@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { sanitizeName, sessionName, createSession, killSession, shouldAttemptAdaptiveRetry, getDefaultShell, buildWorkerStartCommand, } from '../tmux-session.js';
+import { sanitizeName, sessionName, createSession, killSession, shouldAttemptAdaptiveRetry, getDefaultShell, buildWorkerStartCommand, paneLooksReady, } from '../tmux-session.js';
 afterEach(() => {
     vi.unstubAllEnvs();
     vi.restoreAllMocks();
@@ -212,6 +212,22 @@ describe('shouldAttemptAdaptiveRetry', () => {
             retriesAttempted: 0,
         })).toBe(false);
         delete process.env.OMC_TEAM_AUTO_INTERRUPT_RETRY;
+    });
+});
+describe('pane readiness startup banners', () => {
+    it('does not treat Claude bypass-permissions startup banner as ready', () => {
+        const capture = [
+            'Read .omc/state/team/example/workers/worker-1/inbox.md, execute now, report concrete progress.',
+            '─────────────────────────────────────────────',
+            '[OMC] Starting...',
+            '⏵⏵ bypass permissions on (shift+tab to cycle)',
+        ].join('\n');
+        expect(paneLooksReady(capture)).toBe(false);
+    });
+    it('still treats actual prompt lines as ready', () => {
+        expect(paneLooksReady('Welcome\n❯ ')).toBe(true);
+        expect(paneLooksReady('Welcome\n> ')).toBe(true);
+        expect(paneLooksReady('⏵⏵ bypass permissions on (shift+tab to cycle)\nReady\n❯ ')).toBe(true);
     });
 });
 describe('sendToWorker implementation guards', () => {

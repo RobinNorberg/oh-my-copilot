@@ -623,7 +623,7 @@ export async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
             }
             await new Promise(r => setTimeout(r, 800));
         }
-        const notified = await notifyPaneWithRetry(runtime.sessionName, paneId, generateTriggerMessage(runtime.teamName, workerNameValue));
+        const notified = await notifyPaneWithRetry(runtime.sessionName, paneId, generateTriggerMessage(runtime.teamName, workerNameValue), 1);
         if (!notified) {
             await killWorkerPane(runtime, workerNameValue, paneId);
             await resetTaskToPending(root, taskId, runtime.teamName, runtime.cwd);

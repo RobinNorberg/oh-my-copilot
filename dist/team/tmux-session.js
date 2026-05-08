@@ -542,7 +542,21 @@ function paneHasTrustPrompt(captured) {
     const hasChoices = tail.some(l => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
     return hasQuestion && hasChoices;
 }
+function paneHasClaudeStartupBanner(captured) {
+    const lines = captured
+        .split('\n')
+        .map((line) => line.replace(/\r/g, '').trim())
+        .filter((line) => line.length > 0)
+        .slice(-20);
+    const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+    const lastStartupBannerIndex = lines.findLastIndex((line) => /bypass\s+permissions\s+on/i.test(line)
+        || /shift\+tab\s+to\s+cycle/i.test(line)
+        || /^⏵⏵\s+/.test(line));
+    return lastStartupBannerIndex >= 0 && lastStartupBannerIndex > lastPromptIndex;
+}
 function paneIsBootstrapping(captured) {
+    if (paneHasClaudeStartupBanner(captured))
+        return true;
     const lines = captured
         .split('\n')
         .map((line) => line.replace(/\r/g, '').trim())
@@ -656,6 +670,9 @@ export async function sendToWorker(_sessionName, paneId, message) {
         }
         // Check for trust prompt and auto-dismiss before sending our text
         const initialCapture = await capturePaneAsync(paneId);
+        if (paneHasClaudeStartupBanner(initialCapture)) {
+            return false;
+        }
         const paneBusy = paneHasActiveTask(initialCapture);
         if (paneHasTrustPrompt(initialCapture)) {
             await sendKey('C-m');
