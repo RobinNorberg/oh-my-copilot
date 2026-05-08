@@ -24,7 +24,11 @@ function pluginSkillDirs() {
         .map((skillPath) => skillPath.replace(/^\.\/skills\//, '').replace(/\/$/, ''))
         .sort();
 }
-describe('plugin skill context budget gate (issue #2943)', () => {
+// Skipped in OMC: upstream's #2944 switched plugin.json from glob `./skills/`
+// to a strict 12-entry allowlist for skill-context-budget reasons. OMC has
+// 50+ skills and intentionally kept the glob form (see PR #136 port adaptation),
+// so these tests assume a shape that does not apply.
+describe.skip('plugin skill context budget gate (issue #2943)', () => {
     it('loads only tier-0/core workflow skills by default through plugin.json', () => {
         const defaultSkillDirs = pluginSkillDirs();
         const allSkillDirs = bundledSkillDirs();

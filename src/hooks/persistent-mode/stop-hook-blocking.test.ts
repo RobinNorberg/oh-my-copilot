@@ -921,7 +921,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("does not echo the cached original prompt as a Task in ultrawork reinforcement", () => {
       const sessionId = "ultrawork-mjs-no-original-task-echo";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       const longOriginalPrompt = "Original prompt should not be echoed. ".repeat(20);
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
@@ -947,7 +947,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("surfaces cancel guidance on the first ultrawork reinforcement", () => {
       const sessionId = "ultrawork-mjs-first-cancel-guidance";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
         join(sessionDir, "ultrawork-state.json"),
@@ -1397,7 +1397,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("does not echo the cached original prompt as a Task in cjs ultrawork reinforcement", () => {
       const sessionId = "ultrawork-cjs-no-original-task-echo";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       const longOriginalPrompt = "Cached original prompt should stay out of stop output. ".repeat(20);
       writePendingTodo(tempDir, "keep cjs ultrawork active");
       mkdirSync(sessionDir, { recursive: true });
@@ -1425,7 +1425,7 @@ describe("Stop Hook Blocking Contract", () => {
 
     it("surfaces cancel guidance on the first cjs ultrawork reinforcement", () => {
       const sessionId = "ultrawork-cjs-first-cancel-guidance";
-      const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+      const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
       writePendingTodo(tempDir, "keep cjs ultrawork active");
       mkdirSync(sessionDir, { recursive: true });
       writeFileSync(
