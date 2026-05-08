@@ -82576,6 +82576,10 @@ var KEYWORD_PATTERNS = {
   codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
   gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i
 };
+var OUROBOROS_BRAND_AT_START = /^\s*\/?(?:ouroboros|ooo)\b/i;
+var KEYWORD_SKIP_PREDICATES = {
+  "deep-interview": (text) => OUROBOROS_BRAND_AT_START.test(text)
+};
 var KEYWORD_PRIORITY = [
   "cancel",
   "ralph",
@@ -82881,6 +82885,10 @@ function detectKeywordsWithType(text, _agentName) {
       continue;
     }
     const pattern = KEYWORD_PATTERNS[type];
+    const skipPredicate = KEYWORD_SKIP_PREDICATES[type];
+    if (skipPredicate && skipPredicate(cleanedText)) {
+      continue;
+    }
     if (type === "ralplan") {
       const ralplanMatch = findActionableRalplanMatch(cleanedText, pattern);
       if (ralplanMatch) {
