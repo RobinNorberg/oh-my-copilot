@@ -1,5 +1,9 @@
 <!-- OMC:START -->
+<<<<<<< HEAD
 <!-- OMC:VERSION:4.13.62 -->
+=======
+<!-- OMC:VERSION:4.13.63 -->
+>>>>>>> cb7f8aeb (chore: bump version v4.13.55 to v4.13.63 + rebuild dist/bridge)
 
 # oh-my-copilot - Intelligent Multi-Agent Orchestration
 

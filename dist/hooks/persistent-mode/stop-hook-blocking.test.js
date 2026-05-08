@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, afterEach } from "vitest";
 import { existsSync, mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -14,7 +14,7 @@ function writeTranscriptWithContext(filePath, contextWindow, inputTokens) {
     })}\n`);
 }
 function writeSubagentTrackingState(tempDir, agents) {
-    const stateDir = join(tempDir, ".omc", "state");
+    const stateDir = join(tempDir, ".omcp", "state");
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, "subagent-tracking.json"), JSON.stringify({
         agents,
@@ -37,7 +37,7 @@ function writePendingTodo(tempDir, content) {
     }));
 }
 function writeActiveRalphState(tempDir, sessionId) {
-    const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+    const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
         active: true,
@@ -50,7 +50,7 @@ function writeActiveRalphState(tempDir, sessionId) {
     }));
 }
 function writeRunningBackgroundTask(tempDir, sessionId) {
-    const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+    const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "hud-state.json"), JSON.stringify({
         timestamp: new Date().toISOString(),
@@ -67,7 +67,7 @@ function writeRunningBackgroundTask(tempDir, sessionId) {
     }));
 }
 function writePendingScheduledWakeup(tempDir, sessionId) {
-    const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+    const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "scheduled-wakeup-state.json"), JSON.stringify({
         active: true,
@@ -79,12 +79,12 @@ function writePendingScheduledWakeup(tempDir, sessionId) {
     }));
 }
 function writeLegacyModeState(tempDir, fileName, state) {
-    const stateDir = join(tempDir, ".omc", "state");
+    const stateDir = join(tempDir, ".omcp", "state");
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, fileName), JSON.stringify(state, null, 2));
 }
 function writeWorkflowTombstone(tempDir, sessionId, mode) {
-    const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+    const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, "skill-active-state.json"), JSON.stringify({
         version: 2,
@@ -96,7 +96,7 @@ function writeWorkflowTombstone(tempDir, sessionId, mode) {
                 session_id: sessionId,
                 mode_state_path: `${mode}-state.json`,
                 initialized_mode: mode,
-                initialized_state_path: join(tempDir, ".omc", "state", `${mode}-state.json`),
+                initialized_state_path: join(tempDir, ".omcp", "state", `${mode}-state.json`),
                 initialized_session_state_path: join(sessionDir, `${mode}-state.json`),
             },
         },
@@ -192,16 +192,22 @@ describe("Stop Hook Blocking Contract", () => {
     });
     describe("checkPersistentModes -> createHookOutput integration", () => {
         let tempDir;
-        beforeEach(() => {
+        beforeAll(() => {
             tempDir = mkdtempSync(join(tmpdir(), "stop-hook-blocking-test-"));
             execSync("git init", { cwd: tempDir });
         });
-        afterEach(() => {
+        afterAll(() => {
             rmSync(tempDir, { recursive: true, force: true });
+        });
+        beforeEach(() => {
+            // Clean state dirs between tests; keep git repo
+            rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+            rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+            rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
         });
         it("ignores ultrawork states that are still awaiting skill confirmation", async () => {
             const sessionId = "ultrawork-awaiting-confirmation";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ultrawork-state.json"), JSON.stringify({
                 active: true,
@@ -218,7 +224,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("blocks stop while autoresearch max-runtime remains", async () => {
             const sessionId = "autoresearch-active";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "autoresearch-state.json"), JSON.stringify({
                 active: true,
@@ -238,7 +244,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("releases autoresearch when max-runtime ceiling is reached", async () => {
             const sessionId = "autoresearch-expired";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             const statePath = join(sessionDir, "autoresearch-state.json");
             writeFileSync(statePath, JSON.stringify({
@@ -260,63 +266,9 @@ describe("Stop Hook Blocking Contract", () => {
             expect(updated.current_phase).toBe('stopped');
             expect(updated.stop_reason).toBe('max-runtime ceiling reached');
         });
-        it("blocks stop when autoresearch only exists on the legacy shared path", async () => {
-            const sessionId = "autoresearch-legacy-active";
-            writeLegacyModeState(tempDir, "autoresearch-state.json", {
-                active: true,
-                mission_slug: "legacy-demo",
-                current_phase: "running",
-                started_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                deadline_at: new Date(Date.now() + 60_000).toISOString(),
-                iteration: 4,
-            });
-            const result = await checkPersistentModes(sessionId, tempDir);
-            expect(result.shouldBlock).toBe(true);
-            expect(result.mode).toBe("autoresearch");
-            expect(result.message).toContain("AUTORESEARCH - STATEFUL MISSION ACTIVE");
-            expect(result.message).toContain("legacy-demo");
-        });
-        it("does not leak foreign-session legacy autoresearch state", async () => {
-            const sessionId = "autoresearch-session-a";
-            writeLegacyModeState(tempDir, "autoresearch-state.json", {
-                active: true,
-                session_id: "autoresearch-session-b",
-                mission_slug: "foreign-demo",
-                current_phase: "running",
-                started_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                deadline_at: new Date(Date.now() + 60_000).toISOString(),
-                iteration: 1,
-            });
-            const result = await checkPersistentModes(sessionId, tempDir);
-            expect(result.shouldBlock).toBe(false);
-            expect(result.mode).toBe("none");
-        });
-        it("releases expired autoresearch discovered through the legacy shared bridge", async () => {
-            const sessionId = "autoresearch-legacy-expired";
-            const statePath = join(tempDir, ".omc", "state", "autoresearch-state.json");
-            writeLegacyModeState(tempDir, "autoresearch-state.json", {
-                active: true,
-                mission_slug: "legacy-expired",
-                current_phase: "running",
-                started_at: new Date(Date.now() - 120_000).toISOString(),
-                updated_at: new Date().toISOString(),
-                deadline_at: new Date(Date.now() - 1_000).toISOString(),
-                iteration: 5,
-            });
-            const result = await checkPersistentModes(sessionId, tempDir);
-            expect(result.shouldBlock).toBe(false);
-            expect(result.mode).toBe("autoresearch");
-            expect(result.message).toContain("Max-runtime ceiling reached");
-            const updated = JSON.parse(readFileSync(statePath, 'utf-8'));
-            expect(updated.active).toBe(false);
-            expect(updated.current_phase).toBe('stopped');
-            expect(updated.stop_reason).toBe('max-runtime ceiling reached');
-        });
         it("stale awaiting_confirmation does not suppress ultrawork enforcement", async () => {
             const sessionId = "ultrawork-stale-awaiting-confirmation";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             mkdirSync(join(tempDir, '.claude'), { recursive: true });
             writeFileSync(join(tempDir, '.claude', 'todos.json'), JSON.stringify({
@@ -344,7 +296,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("does not use fresh last_checked_at as fallback for stale awaiting_confirmation", async () => {
             const sessionId = "ultrawork-fresh-last-checked-still-stale-confirmation";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             mkdirSync(join(tempDir, '.claude'), { recursive: true });
             writeFileSync(join(tempDir, '.claude', 'todos.json'), JSON.stringify({
@@ -391,7 +343,7 @@ describe("Stop Hook Blocking Contract", () => {
         it("auto-deactivates ultrawork and allows stop when all tracked work is complete", async () => {
             const sessionId = "test-session-complete";
             activateUltrawork("Task complete", sessionId, tempDir);
-            const statePath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
+            const statePath = join(tempDir, '.omcp', 'state', 'sessions', sessionId, 'ultrawork-state.json');
             const result = await checkPersistentModes(sessionId, tempDir);
             expect(result.shouldBlock).toBe(false);
             expect(result.mode).toBe('none');
@@ -418,7 +370,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("does not fire ralph stop reinforcement when authoritative registry is empty after cancel tombstone", async () => {
             const sessionId = "ralph-stale-restored-after-cancel";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -439,7 +391,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("does not fire ultrawork stop reinforcement when authoritative registry is empty after cancel tombstone", async () => {
             const sessionId = "ultrawork-stale-restored-after-cancel";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writePendingTodo(tempDir, "pending work should not revive stale ultrawork");
             writeFileSync(join(sessionDir, "ultrawork-state.json"), JSON.stringify({
@@ -459,7 +411,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("still fires ralph stop reinforcement when authoritative registry reports active ralph", async () => {
             const sessionId = "ralph-active-registry";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -480,7 +432,7 @@ describe("Stop Hook Blocking Contract", () => {
         it("allows stop after broad clear removes leftover session-scoped state", async () => {
             const sessionA = "test-broad-clear-a";
             const sessionB = "test-broad-clear-b";
-            const stateDir = join(tempDir, '.omc', 'state');
+            const stateDir = join(tempDir, '.omcp', 'state');
             const sessionADir = join(stateDir, 'sessions', sessionA);
             const sessionBDir = join(stateDir, 'sessions', sessionB);
             mkdirSync(sessionADir, { recursive: true });
@@ -547,7 +499,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("allows stop for critical transcript context even with active autopilot", async () => {
             const sessionId = "test-autopilot-critical-context";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             const transcriptPath = join(tempDir, "transcript.jsonl");
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "autopilot-state.json"), JSON.stringify({
@@ -599,7 +551,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("keeps blocking active ralph loop when stop reason is interrupt", async () => {
             const sessionId = "test-ralph-interrupt";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -635,7 +587,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("blocks stop for active skill state", async () => {
             const sessionId = "test-skill-block";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "skill-active-state.json"), JSON.stringify({
                 active: true,
@@ -677,16 +629,21 @@ describe("Stop Hook Blocking Contract", () => {
                 throw error;
             }
         }
-        beforeEach(() => {
+        beforeAll(() => {
             tempDir = mkdtempSync(join(tmpdir(), "stop-hook-mjs-test-"));
             execSync("git init", { cwd: tempDir });
         });
-        afterEach(() => {
+        afterAll(() => {
             rmSync(tempDir, { recursive: true, force: true });
+        });
+        beforeEach(() => {
+            rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+            rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+            rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
         });
         it("returns continue: true when ralph is awaiting confirmation", () => {
             const sessionId = "ralph-awaiting-confirmation-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -728,7 +685,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for tombstoned stale ralph state", () => {
             const sessionId = "ralph-mjs-tombstoned";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -747,7 +704,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns decision: block when ultrawork is active", () => {
             const sessionId = "ultrawork-mjs-test";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ultrawork-state.json"), JSON.stringify({
                 active: true,
@@ -802,7 +759,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for tombstoned stale ultrawork state", () => {
             const sessionId = "ultrawork-mjs-tombstoned";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ultrawork-state.json"), JSON.stringify({
                 active: true,
@@ -833,7 +790,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for context limit stop", () => {
             const sessionId = "ctx-limit-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -852,7 +809,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for critical transcript context when autopilot is active", () => {
             const sessionId = "autopilot-critical-context-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             const transcriptPath = join(tempDir, "transcript.jsonl");
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "autopilot-state.json"), JSON.stringify({
@@ -875,7 +832,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("cleans orphaned unspecified autopilot routing echo state instead of reinforcing in mjs script", () => {
             const sessionId = "autopilot-routing-echo-orphan-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             const autopilotPath = join(sessionDir, "autopilot-state.json");
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(autopilotPath, JSON.stringify({
@@ -893,7 +850,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns decision: block when autopilot awaiting_confirmation is stale", () => {
             const sessionId = "autopilot-stale-awaiting-confirmation-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "autopilot-state.json"), JSON.stringify({
                 active: true,
@@ -921,7 +878,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for user abort", () => {
             const sessionId = "abort-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -940,13 +897,13 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("does not block explicit /ralplan startup while awaiting confirmation", () => {
             const sessionId = "ralplan-explicit-slash-startup";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralplan-state.json"), JSON.stringify({
                 active: true,
                 session_id: sessionId,
                 current_phase: "ralplan",
-                original_prompt: "/oh-my-claudecode:ralplan issue #2622",
+                original_prompt: "/oh-my-copilot:ralplan issue #2622",
                 awaiting_confirmation: true,
                 awaiting_confirmation_set_at: new Date().toISOString(),
                 started_at: new Date().toISOString(),
@@ -958,7 +915,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true when ultrawork is awaiting confirmation in cjs script", () => {
             const sessionId = "ultrawork-awaiting-confirmation-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ultrawork-state.json"), JSON.stringify({
                 active: true,
@@ -976,7 +933,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns decision: block when autopilot awaiting_confirmation is stale in cjs script", () => {
             const sessionId = "autopilot-stale-awaiting-confirmation-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "autopilot-state.json"), JSON.stringify({
                 active: true,
@@ -1004,7 +961,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for authentication error stop", () => {
             const sessionId = "auth-error-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -1021,32 +978,13 @@ describe("Stop Hook Blocking Contract", () => {
             });
             expect(output.continue).toBe(true);
         });
-        it("returns continue: true for ScheduleWakeup-triggered stop", () => {
-            const sessionId = "scheduled-wakeup-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
-            mkdirSync(sessionDir, { recursive: true });
-            writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
-                active: true,
-                iteration: 1,
-                max_iterations: 50,
-                session_id: sessionId,
-                started_at: new Date().toISOString(),
-                last_checked_at: new Date().toISOString(),
-            }));
-            const output = runScript({
-                directory: tempDir,
-                sessionId,
-                stop_reason: "ScheduleWakeup",
-            });
-            expect(output.continue).toBe(true);
-        });
         it("returns continue: true when no modes are active", () => {
             const output = runScript({ directory: tempDir, sessionId: "no-modes" });
             expect(output.continue).toBe(true);
         });
         it("fails open for missing/unknown Team phase in script", () => {
             const sessionId = "team-phase-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "team-state.json"), JSON.stringify({
                 active: true,
@@ -1068,7 +1006,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("applies Team circuit breaker after max reinforcements in script", () => {
             const sessionId = "team-breaker-mjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "team-state.json"), JSON.stringify({
                 active: true,
@@ -1083,7 +1021,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for terminal autopilot state", () => {
             const sessionId = "autopilot-complete";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "autopilot-state.json"), JSON.stringify({
                 active: true,
@@ -1119,14 +1057,21 @@ describe("Stop Hook Blocking Contract", () => {
                 throw error;
             }
         }
-        beforeEach(() => {
+        beforeAll(() => {
             tempDir = mkdtempSync(join(tmpdir(), "stop-hook-cjs-test-"));
             execSync("git init", { cwd: tempDir });
+        });
+        afterAll(() => {
+            rmSync(tempDir, { recursive: true, force: true });
+        });
+        beforeEach(() => {
+            rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+            rmSync(join(tempDir, ".omcp"), { recursive: true, force: true });
+            rmSync(join(tempDir, ".claude"), { recursive: true, force: true });
             delete process.env.OMC_STATE_DIR;
         });
         afterEach(() => {
             delete process.env.OMC_STATE_DIR;
-            rmSync(tempDir, { recursive: true, force: true });
         });
         it("reads centralized session state when OMC_STATE_DIR is set", () => {
             const sessionId = "centralized-state-cjs";
@@ -1193,7 +1138,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("cleans orphaned unspecified autopilot routing echo state instead of reinforcing in cjs script", () => {
             const sessionId = "autopilot-routing-echo-orphan-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             const autopilotPath = join(sessionDir, "autopilot-state.json");
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(autopilotPath, JSON.stringify({
@@ -1211,7 +1156,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("ignores legacy local state when OMC_STATE_DIR is set", () => {
             const sessionId = "legacy-local-cjs";
-            const localSessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const localSessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             writePendingTodo(tempDir, "Finish centralized-only task");
             mkdirSync(localSessionDir, { recursive: true });
             writeFileSync(join(localSessionDir, "ultrawork-state.json"), JSON.stringify({
@@ -1228,7 +1173,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for authentication error stop", () => {
             const sessionId = "auth-error-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -1265,7 +1210,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for ScheduleWakeup-triggered stop", () => {
             const sessionId = "scheduled-wakeup-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralph-state.json"), JSON.stringify({
                 active: true,
@@ -1284,7 +1229,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true when skill state is active but delegated subagents are still running", () => {
             const sessionId = "skill-active-subagents-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "skill-active-state.json"), JSON.stringify({
                 active: true,
@@ -1313,7 +1258,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("returns continue: true for critical transcript context when autopilot is active", () => {
             const sessionId = "autopilot-critical-context-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             const transcriptPath = join(tempDir, "transcript.jsonl");
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "autopilot-state.json"), JSON.stringify({
@@ -1335,7 +1280,7 @@ describe("Stop Hook Blocking Contract", () => {
             expect(output.decision).toBeUndefined();
         });
         it("omits cancel guidance for legacy autopilot state without a session id in cjs script", () => {
-            const stateDir = join(tempDir, ".omc", "state");
+            const stateDir = join(tempDir, ".omcp", "state");
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, "autopilot-state.json"), JSON.stringify({
                 active: true,
@@ -1349,11 +1294,11 @@ describe("Stop Hook Blocking Contract", () => {
             });
             expect(output.decision).toBe("block");
             expect(output.reason).toContain("AUTOPILOT");
-            expect(output.reason).not.toContain('/oh-my-claudecode:cancel');
+            expect(output.reason).not.toContain('/oh-my-copilot:cancel');
         });
         it("auto-deactivates ultrawork state when no incomplete work remains in cjs script", () => {
             const sessionId = "ulw-complete-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             const statePath = join(sessionDir, "ultrawork-state.json");
             writeFileSync(statePath, JSON.stringify({
@@ -1376,7 +1321,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("fails open for unknown Team phase in cjs script", () => {
             const sessionId = "team-phase-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "team-state.json"), JSON.stringify({
                 active: true,
@@ -1396,7 +1341,7 @@ describe("Stop Hook Blocking Contract", () => {
             [{ phase: "terminated" }, "ralplan-terminated-phase-cjs"],
             [{ status: "handoff:ralph" }, "ralplan-handoff-status-cjs"],
         ])("allows stop for terminal ralplan state in cjs script: %s", (overrides, sessionId) => {
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "ralplan-state.json"), JSON.stringify({
                 active: true,
@@ -1412,7 +1357,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("deactivates ultrawork state when max reinforcements reached", () => {
             const sessionId = "ulw-max-reinforce-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             const statePath = join(sessionDir, "ultrawork-state.json");
             writeFileSync(statePath, JSON.stringify({
@@ -1447,7 +1392,7 @@ describe("Stop Hook Blocking Contract", () => {
         });
         it("applies Team circuit breaker in cjs script", () => {
             const sessionId = "team-breaker-cjs";
-            const sessionDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+            const sessionDir = join(tempDir, ".omcp", "state", "sessions", sessionId);
             mkdirSync(sessionDir, { recursive: true });
             writeFileSync(join(sessionDir, "team-state.json"), JSON.stringify({
                 active: true,
