@@ -24816,6 +24816,45 @@ function hasPendingScheduledWakeup(directory, sessionId) {
     return false;
   });
 }
+function normalizeWorkflowTerminalPhase(state) {
+  const raw = state.current_phase ?? state.phase ?? state.status;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim().toLowerCase() : null;
+}
+function isTerminalWorkflowModeState(state) {
+  if (!state) return false;
+  if (state.active === false) return true;
+  if (typeof state.completed_at === "string" && state.completed_at.length > 0) return true;
+  const phase = normalizeWorkflowTerminalPhase(state);
+  return Boolean(phase && TERMINAL_WORKFLOW_PHASES.has(phase));
+}
+async function reconcileTerminalWorkflowSlots(workingDir, sessionId) {
+  try {
+    const {
+      readSkillActiveStateNormalized: readSkillActiveStateNormalized2,
+      pruneExpiredWorkflowSkillTombstones: pruneExpiredWorkflowSkillTombstones2,
+      markWorkflowSkillCompleted: markWorkflowSkillCompleted2,
+      writeSkillActiveStateCopies: writeSkillActiveStateCopies2
+    } = await Promise.resolve().then(() => (init_skill_state(), skill_state_exports));
+    const original = readSkillActiveStateNormalized2(workingDir, sessionId);
+    let current = pruneExpiredWorkflowSkillTombstones2(original);
+    let changed = current !== original;
+    for (const [slotName, slot] of Object.entries(current.active_skills)) {
+      if (slot.completed_at || !TERMINAL_WORKFLOW_SLOT_MODES.has(slotName)) {
+        continue;
+      }
+      const modeState = readModeState(slotName, workingDir, sessionId);
+      if (!isTerminalWorkflowModeState(modeState)) {
+        continue;
+      }
+      current = markWorkflowSkillCompleted2(current, slotName);
+      changed = true;
+    }
+    if (changed) {
+      writeSkillActiveStateCopies2(workingDir, current, sessionId);
+    }
+  } catch {
+  }
+}
 function hasPendingOwnedAsyncWork(directory, sessionId) {
   return hasPendingBackgroundTask(directory, sessionId) || hasPendingScheduledWakeup(directory, sessionId);
 }
@@ -25834,6 +25873,7 @@ async function checkPersistentModes(sessionId, directory, stopContext) {
   if (skipHooks.includes("persistent-mode") || skipHooks.includes("stop-continuation")) {
     return { shouldBlock: false, message: "", mode: "none" };
   }
+  await reconcileTerminalWorkflowSlots(workingDir, sessionId);
   if (hasPendingOwnedAsyncWork(workingDir, sessionId)) {
     return {
       shouldBlock: false,
@@ -25950,7 +25990,7 @@ function createHookOutput(result) {
     message: result.message || void 0
   };
 }
-var import_fs49, import_path56, CANCEL_SIGNAL_TTL_MS2, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
+var import_fs49, import_path56, CANCEL_SIGNAL_TTL_MS2, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, TERMINAL_WORKFLOW_SLOT_MODES, TERMINAL_WORKFLOW_PHASES, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
 var init_persistent_mode = __esm({
   "src/hooks/persistent-mode/index.ts"() {
     "use strict";
@@ -25975,6 +26015,17 @@ var init_persistent_mode = __esm({
     CANCEL_SIGNAL_TTL_MS2 = 3e4;
     STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1e3;
     PENDING_ASYNC_STATE_STALE_MS = 24 * 60 * 60 * 1e3;
+    TERMINAL_WORKFLOW_SLOT_MODES = /* @__PURE__ */ new Set(["autopilot", "ralph", "ralplan"]);
+    TERMINAL_WORKFLOW_PHASES = /* @__PURE__ */ new Set([
+      "complete",
+      "completed",
+      "failed",
+      "cancelled",
+      "canceled",
+      "cancel",
+      "done",
+      "stopped"
+    ]);
     todoContinuationAttempts = /* @__PURE__ */ new Map();
     TRANSCRIPT_TAIL_BYTES = 32 * 1024;
     CRITICAL_CONTEXT_STOP_PERCENT = 95;
