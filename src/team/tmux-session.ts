@@ -441,14 +441,20 @@ export function listActiveSessions(teamName: string): string[] {
  *
  * Instead of passing JSON via tmux send-keys (brittle quoting), the caller
  * writes config to a temp file and passes --config flag:
- *   node dist/team/bridge-entry.js --config /tmp/omc-bridge-{worker}.json
+ *   <current-js-runtime> dist/team/bridge-entry.js --config /tmp/omc-bridge-{worker}.json
  */
+function quoteBridgeShellArg(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
 export function spawnBridgeInSession(
   tmuxSession: string,
   bridgeScriptPath: string,
   configFilePath: string
 ): void {
-  const cmd = `node "${bridgeScriptPath}" --config "${configFilePath}"`;
+  const cmd = [process.execPath, bridgeScriptPath, '--config', configFilePath]
+    .map(quoteBridgeShellArg)
+    .join(' ');
   tmuxExec(['send-keys', '-t', tmuxSession, cmd, 'Enter'], { stripTmux: true, stdio: 'pipe', timeout: 5000 });
 }
 
@@ -644,7 +650,23 @@ function paneHasTrustPrompt(captured: string): boolean {
   return hasQuestion && hasChoices;
 }
 
+function paneHasClaudeStartupBanner(captured: string): boolean {
+  const lines = captured
+    .split('\n')
+    .map((line) => line.replace(/\r/g, '').trim())
+    .filter((line) => line.length > 0)
+    .slice(-20);
+  const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+  const lastStartupBannerIndex = lines.findLastIndex((line) =>
+    /bypass\s+permissions\s+on/i.test(line)
+    || /shift\+tab\s+to\s+cycle/i.test(line)
+    || /^⏵⏵\s+/.test(line),
+  );
+  return lastStartupBannerIndex >= 0 && lastStartupBannerIndex > lastPromptIndex;
+}
+
 function paneIsBootstrapping(captured: string): boolean {
+  if (paneHasClaudeStartupBanner(captured)) return true;
   const lines = captured
     .split('\n')
     .map((line) => line.replace(/\r/g, '').trim())
@@ -777,6 +799,9 @@ export async function sendToWorker(
 
     // Check for trust prompt and auto-dismiss before sending our text
     const initialCapture = await capturePaneAsync(paneId);
+    if (paneHasClaudeStartupBanner(initialCapture)) {
+      return false;
+    }
     const paneBusy = paneHasActiveTask(initialCapture);
 
     if (paneHasTrustPrompt(initialCapture)) {

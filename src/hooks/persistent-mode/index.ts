@@ -94,6 +94,17 @@ const MAX_TODO_CONTINUATION_ATTEMPTS = 5;
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 const STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 const PENDING_ASYNC_STATE_STALE_MS = 24 * 60 * 60 * 1000;
+const TERMINAL_WORKFLOW_SLOT_MODES = new Set(['autopilot', 'ralph', 'ralplan']);
+const TERMINAL_WORKFLOW_PHASES = new Set([
+  'complete',
+  'completed',
+  'failed',
+  'cancelled',
+  'canceled',
+  'cancel',
+  'done',
+  'stopped',
+]);
 
 /** Track todo-continuation attempts per session to prevent infinite loops */
 const todoContinuationAttempts = new Map<string, number>();
@@ -262,6 +273,60 @@ function hasPendingScheduledWakeup(directory: string, sessionId?: string): boole
 
     return false;
   });
+}
+
+function normalizeWorkflowTerminalPhase(state: Record<string, unknown>): string | null {
+  const raw = state.current_phase ?? state.phase ?? state.status;
+  return typeof raw === 'string' && raw.trim().length > 0
+    ? raw.trim().toLowerCase()
+    : null;
+}
+
+function isTerminalWorkflowModeState(state: Record<string, unknown> | null): boolean {
+  if (!state) return false;
+  if (state.active === false) return true;
+  if (typeof state.completed_at === 'string' && state.completed_at.length > 0) return true;
+  const phase = normalizeWorkflowTerminalPhase(state);
+  return Boolean(phase && TERMINAL_WORKFLOW_PHASES.has(phase));
+}
+
+async function reconcileTerminalWorkflowSlots(
+  workingDir: string,
+  sessionId?: string,
+): Promise<void> {
+  try {
+    const {
+      readSkillActiveStateNormalized,
+      pruneExpiredWorkflowSkillTombstones,
+      markWorkflowSkillCompleted,
+      writeSkillActiveStateCopies,
+    } = await import('../skill-state/index.js');
+
+    const original = readSkillActiveStateNormalized(workingDir, sessionId);
+    let current = pruneExpiredWorkflowSkillTombstones(original);
+    let changed = current !== original;
+
+    for (const [slotName, slot] of Object.entries(current.active_skills)) {
+      if (slot.completed_at || !TERMINAL_WORKFLOW_SLOT_MODES.has(slotName)) {
+        continue;
+      }
+
+      const modeState = readModeState<Record<string, unknown>>(slotName, workingDir, sessionId);
+      if (!isTerminalWorkflowModeState(modeState)) {
+        continue;
+      }
+
+      current = markWorkflowSkillCompleted(current, slotName);
+      changed = true;
+    }
+
+    if (changed) {
+      writeSkillActiveStateCopies(workingDir, current, sessionId);
+    }
+  } catch {
+    // Best-effort reconciliation only. Stop enforcement falls back to the
+    // direct mode-state checks below if the ledger cannot be updated.
+  }
 }
 
 /**
@@ -1901,6 +1966,13 @@ export async function checkPersistentModes(
   if (skipHooks.includes('persistent-mode') || skipHooks.includes('stop-continuation')) {
     return { shouldBlock: false, message: '', mode: 'none' };
   }
+
+  // Best-effort: keep the workflow-slot ledger aligned with terminal mode
+  // state before using it for stop-gating authority. This both prunes old
+  // tombstones and tombstones live slots whose autopilot/Ralph/ralplan mode
+  // state already reached a terminal/inactive state through a path other than
+  // the Skill PostToolUse completion hook.
+  await reconcileTerminalWorkflowSlots(workingDir, sessionId);
 
   // If this session owns pending async work, quiescence is intentional: Claude
   // Code will notify on background completion or resume via ScheduleWakeup.

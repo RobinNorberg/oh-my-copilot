@@ -261,7 +261,10 @@ function buildV2TaskInstruction(teamName, workerName, task, taskId, cliOutputCon
 // V2 worker spawning — direct tmux pane creation, no v1 delegation
 // ---------------------------------------------------------------------------
 async function notifyStartupInbox(sessionName, paneId, message) {
-    const notified = await notifyPaneWithRetry(sessionName, paneId, message);
+    // Startup inbox triggers are only safe to type once after readiness. If the
+    // pane still rejects the send (for example Claude is showing a startup
+    // banner), repeated tmux send-keys calls append duplicate trigger text.
+    const notified = await notifyPaneWithRetry(sessionName, paneId, message, 1);
     return notified
         ? { ok: true, transport: 'tmux_send_keys', reason: 'worker_pane_notified' }
         : { ok: false, transport: 'tmux_send_keys', reason: 'worker_notify_failed' };
@@ -435,7 +438,7 @@ async function spawnV2Worker(opts) {
         triggerMessage: inboxTriggerMessage,
         cwd: opts.cwd,
         transportPreference: usePromptMode ? 'prompt_stdin' : 'transport_direct',
-        fallbackAllowed: false,
+        fallbackAllowed: DEFAULT_TEAM_TRANSPORT_POLICY.dispatch_mode === 'hook_preferred_with_fallback',
         inboxCorrelationKey: `startup:${opts.workerName}:${opts.taskId}`,
         notify: async (_target, triggerMessage) => {
             if (usePromptMode) {

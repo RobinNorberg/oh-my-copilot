@@ -18783,22 +18783,6 @@ var init_progress = __esm({
   }
 });
 
-// src/lib/truncate-prompt.ts
-function truncatePromptForEcho(prompt, maxChars = DEFAULT_PROMPT_ECHO_MAX_CHARS) {
-  const trimmed = prompt.trim();
-  if (trimmed.length <= maxChars) {
-    return trimmed;
-  }
-  return trimmed.slice(0, maxChars) + "\u2026";
-}
-var DEFAULT_PROMPT_ECHO_MAX_CHARS;
-var init_truncate_prompt = __esm({
-  "src/lib/truncate-prompt.ts"() {
-    "use strict";
-    DEFAULT_PROMPT_ECHO_MAX_CHARS = 150;
-  }
-});
-
 // src/hooks/ultrawork/index.ts
 var ultrawork_exports = {};
 __export(ultrawork_exports, {
@@ -18811,6 +18795,19 @@ __export(ultrawork_exports, {
   shouldReinforceUltrawork: () => shouldReinforceUltrawork,
   writeUltraworkState: () => writeUltraworkState
 });
+function formatConciseObjective(value) {
+  if (typeof value !== "string") return "";
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (!compact) return "";
+  const chars = [...compact];
+  if (chars.length <= ULTRAWORK_OBJECTIVE_MAX_CHARS) return compact;
+  return `${chars.slice(0, ULTRAWORK_OBJECTIVE_MAX_CHARS).join("").trimEnd()}\u2026`;
+}
+function getLiveUltraworkObjective(state) {
+  return formatConciseObjective(
+    state.current_objective ?? state.task_summary
+  );
+}
 function getStateFilePath2(directory, sessionId) {
   const baseDir = directory || process.cwd();
   if (sessionId) {
@@ -18902,6 +18899,10 @@ function shouldReinforceUltrawork(sessionId, directory) {
   return true;
 }
 function getUltraworkPersistenceMessage(state) {
+  const currentObjective = getLiveUltraworkObjective(state);
+  const objectiveLine = currentObjective ? `
+Current objective: ${currentObjective}
+` : "";
   return `<ultrawork-persistence>
 
 [ULTRAWORK MODE STILL ACTIVE - Reinforcement #${state.reinforcement_count + 1}]
@@ -18916,8 +18917,7 @@ REMEMBER THE ULTRAWORK RULES:
 - **NO Premature Stopping**: ALL TODOs must be complete
 
 Continue working on the next pending task. DO NOT STOP until all tasks are marked complete.
-
-Original task: ${truncatePromptForEcho(state.original_prompt)}
+When all work is complete, run /oh-my-claudecode:cancel to cleanly exit ultrawork mode and clean up state files.${objectiveLine}
 
 </ultrawork-persistence>
 
@@ -18934,14 +18934,14 @@ function createUltraworkStateHook(directory) {
     incrementReinforcement: (sessionId) => incrementReinforcement(directory, sessionId)
   };
 }
-var import_fs35;
+var import_fs35, ULTRAWORK_OBJECTIVE_MAX_CHARS;
 var init_ultrawork2 = __esm({
   "src/hooks/ultrawork/index.ts"() {
     "use strict";
     import_fs35 = require("fs");
     init_mode_state_io();
     init_worktree_paths();
-    init_truncate_prompt();
+    ULTRAWORK_OBJECTIVE_MAX_CHARS = 140;
   }
 });
 
@@ -24683,6 +24683,22 @@ var init_cancel = __esm({
   }
 });
 
+// src/lib/truncate-prompt.ts
+function truncatePromptForEcho(prompt, maxChars = DEFAULT_PROMPT_ECHO_MAX_CHARS) {
+  const trimmed = prompt.trim();
+  if (trimmed.length <= maxChars) {
+    return trimmed;
+  }
+  return trimmed.slice(0, maxChars) + "\u2026";
+}
+var DEFAULT_PROMPT_ECHO_MAX_CHARS;
+var init_truncate_prompt = __esm({
+  "src/lib/truncate-prompt.ts"() {
+    "use strict";
+    DEFAULT_PROMPT_ECHO_MAX_CHARS = 150;
+  }
+});
+
 // src/hooks/persistent-mode/index.ts
 var persistent_mode_exports = {};
 __export(persistent_mode_exports, {
@@ -24815,6 +24831,45 @@ function hasPendingScheduledWakeup(directory, sessionId) {
     }
     return false;
   });
+}
+function normalizeWorkflowTerminalPhase(state) {
+  const raw = state.current_phase ?? state.phase ?? state.status;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim().toLowerCase() : null;
+}
+function isTerminalWorkflowModeState(state) {
+  if (!state) return false;
+  if (state.active === false) return true;
+  if (typeof state.completed_at === "string" && state.completed_at.length > 0) return true;
+  const phase = normalizeWorkflowTerminalPhase(state);
+  return Boolean(phase && TERMINAL_WORKFLOW_PHASES.has(phase));
+}
+async function reconcileTerminalWorkflowSlots(workingDir, sessionId) {
+  try {
+    const {
+      readSkillActiveStateNormalized: readSkillActiveStateNormalized2,
+      pruneExpiredWorkflowSkillTombstones: pruneExpiredWorkflowSkillTombstones2,
+      markWorkflowSkillCompleted: markWorkflowSkillCompleted2,
+      writeSkillActiveStateCopies: writeSkillActiveStateCopies2
+    } = await Promise.resolve().then(() => (init_skill_state(), skill_state_exports));
+    const original = readSkillActiveStateNormalized2(workingDir, sessionId);
+    let current = pruneExpiredWorkflowSkillTombstones2(original);
+    let changed = current !== original;
+    for (const [slotName, slot] of Object.entries(current.active_skills)) {
+      if (slot.completed_at || !TERMINAL_WORKFLOW_SLOT_MODES.has(slotName)) {
+        continue;
+      }
+      const modeState = readModeState(slotName, workingDir, sessionId);
+      if (!isTerminalWorkflowModeState(modeState)) {
+        continue;
+      }
+      current = markWorkflowSkillCompleted2(current, slotName);
+      changed = true;
+    }
+    if (changed) {
+      writeSkillActiveStateCopies2(workingDir, current, sessionId);
+    }
+  } catch {
+  }
 }
 function hasPendingOwnedAsyncWork(directory, sessionId) {
   return hasPendingBackgroundTask(directory, sessionId) || hasPendingScheduledWakeup(directory, sessionId);
@@ -25834,6 +25889,7 @@ async function checkPersistentModes(sessionId, directory, stopContext) {
   if (skipHooks.includes("persistent-mode") || skipHooks.includes("stop-continuation")) {
     return { shouldBlock: false, message: "", mode: "none" };
   }
+  await reconcileTerminalWorkflowSlots(workingDir, sessionId);
   if (hasPendingOwnedAsyncWork(workingDir, sessionId)) {
     return {
       shouldBlock: false,
@@ -25950,7 +26006,7 @@ function createHookOutput(result) {
     message: result.message || void 0
   };
 }
-var import_fs49, import_path56, CANCEL_SIGNAL_TTL_MS2, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
+var import_fs49, import_path56, CANCEL_SIGNAL_TTL_MS2, STALE_STATE_THRESHOLD_MS, PENDING_ASYNC_STATE_STALE_MS, TERMINAL_WORKFLOW_SLOT_MODES, TERMINAL_WORKFLOW_PHASES, todoContinuationAttempts, TRANSCRIPT_TAIL_BYTES, CRITICAL_CONTEXT_STOP_PERCENT, RALPLAN_TERMINAL_PHASES, REVIEWER_TASK_TOOL_NAMES, REVIEWER_COMMAND_TOOL_NAMES, AWAITING_CONFIRMATION_TTL_MS, TEAM_PIPELINE_STOP_BLOCKER_MAX, TEAM_PIPELINE_STOP_BLOCKER_TTL_MS, RALPLAN_STOP_BLOCKER_MAX, RALPLAN_STOP_BLOCKER_TTL_MS, RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS;
 var init_persistent_mode = __esm({
   "src/hooks/persistent-mode/index.ts"() {
     "use strict";
@@ -25975,6 +26031,17 @@ var init_persistent_mode = __esm({
     CANCEL_SIGNAL_TTL_MS2 = 3e4;
     STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1e3;
     PENDING_ASYNC_STATE_STALE_MS = 24 * 60 * 60 * 1e3;
+    TERMINAL_WORKFLOW_SLOT_MODES = /* @__PURE__ */ new Set(["autopilot", "ralph", "ralplan"]);
+    TERMINAL_WORKFLOW_PHASES = /* @__PURE__ */ new Set([
+      "complete",
+      "completed",
+      "failed",
+      "cancelled",
+      "canceled",
+      "cancel",
+      "done",
+      "stopped"
+    ]);
     todoContinuationAttempts = /* @__PURE__ */ new Map();
     TRANSCRIPT_TAIL_BYTES = 32 * 1024;
     CRITICAL_CONTEXT_STOP_PERCENT = 95;
@@ -27323,7 +27390,7 @@ function fetchApi(url2) {
   const auth = getAuthHeader();
   if (!auth) return null;
   try {
-    const stdout = (0, import_child_process16.execFileSync)(
+    const stdout = (0, import_child_process17.execFileSync)(
       "curl",
       ["-sS", "-H", `Authorization: ${auth}`, url2],
       { encoding: "utf-8", timeout: 1e4 }
@@ -27333,11 +27400,11 @@ function fetchApi(url2) {
     return null;
   }
 }
-var import_child_process16, API_BASE, BitbucketProvider;
+var import_child_process17, API_BASE, BitbucketProvider;
 var init_bitbucket = __esm({
   "src/providers/bitbucket.ts"() {
     "use strict";
-    import_child_process16 = require("child_process");
+    import_child_process17 = require("child_process");
     API_BASE = "https://api.bitbucket.org/2.0/repositories";
     BitbucketProvider = class {
       name = "bitbucket";
@@ -28122,16 +28189,1199 @@ var init_idle_repo_state = __esm({
   }
 });
 
+// src/hooks/codebase-map.ts
+function shouldSkipEntry(name, isDir, ignorePatterns) {
+  if (name.startsWith(".") && isDir && !IMPORTANT_FILES.has(name)) {
+    return true;
+  }
+  if (isDir && SKIP_DIRS.has(name)) {
+    return true;
+  }
+  if (!isDir) {
+    if (SKIP_FILE_SUFFIXES.some((suffix) => name.endsWith(suffix))) {
+      return true;
+    }
+    const ext = (0, import_node_path4.extname)(name);
+    if (!SOURCE_EXTENSIONS.has(ext) && !IMPORTANT_FILES.has(name)) {
+      return true;
+    }
+  }
+  for (const pattern of ignorePatterns) {
+    if (name.includes(pattern)) return true;
+  }
+  return false;
+}
+function buildTree(dir, depth, maxDepth, fileCount, maxFiles, ignorePatterns) {
+  if (depth > maxDepth || fileCount.value >= maxFiles) return [];
+  let entries;
+  try {
+    entries = (0, import_node_fs3.readdirSync)(dir);
+  } catch {
+    return [];
+  }
+  const withMeta = entries.map((name) => {
+    let isDir = false;
+    try {
+      isDir = (0, import_node_fs3.statSync)((0, import_node_path4.join)(dir, name)).isDirectory();
+    } catch {
+    }
+    return { name, isDir };
+  });
+  withMeta.sort((a, b) => {
+    if (a.isDir && !b.isDir) return -1;
+    if (!a.isDir && b.isDir) return 1;
+    return a.name.localeCompare(b.name);
+  });
+  const nodes = [];
+  for (const { name, isDir } of withMeta) {
+    if (fileCount.value >= maxFiles) break;
+    if (shouldSkipEntry(name, isDir, ignorePatterns)) continue;
+    if (isDir) {
+      const children = buildTree(
+        (0, import_node_path4.join)(dir, name),
+        depth + 1,
+        maxDepth,
+        fileCount,
+        maxFiles,
+        ignorePatterns
+      );
+      nodes.push({ name, isDir: true, children });
+    } else {
+      fileCount.value++;
+      nodes.push({ name, isDir: false });
+    }
+  }
+  return nodes;
+}
+function renderTree(nodes, prefix, lines) {
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    const isLast = i === nodes.length - 1;
+    const connector = isLast ? "\u2514\u2500\u2500 " : "\u251C\u2500\u2500 ";
+    const childPrefix = isLast ? "    " : "\u2502   ";
+    lines.push(`${prefix}${connector}${node.name}${node.isDir ? "/" : ""}`);
+    if (node.isDir && node.children && node.children.length > 0) {
+      renderTree(node.children, prefix + childPrefix, lines);
+    }
+  }
+}
+function extractPackageMetadata(directory) {
+  const pkgPath = (0, import_node_path4.join)(directory, "package.json");
+  if (!(0, import_node_fs3.existsSync)(pkgPath)) return "";
+  try {
+    const pkg = JSON.parse((0, import_node_fs3.readFileSync)(pkgPath, "utf-8"));
+    const lines = [];
+    if (pkg.name) lines.push(`Package: ${pkg.name}`);
+    if (pkg.description) lines.push(`Description: ${pkg.description}`);
+    if (pkg.scripts) {
+      const scriptNames = Object.keys(pkg.scripts).slice(0, 8).join(", ");
+      if (scriptNames) lines.push(`Scripts: ${scriptNames}`);
+    }
+    return lines.join("\n");
+  } catch {
+    return "";
+  }
+}
+function generateCodebaseMap(directory, options = {}) {
+  const {
+    maxFiles = 200,
+    maxDepth = 4,
+    ignorePatterns = [],
+    includeMetadata = true
+  } = options;
+  if (!(0, import_node_fs3.existsSync)(directory)) {
+    return { map: "", totalFiles: 0, truncated: false };
+  }
+  const fileCount = { value: 0 };
+  const tree = buildTree(directory, 0, maxDepth, fileCount, maxFiles, ignorePatterns);
+  const treeLines = [];
+  renderTree(tree, "", treeLines);
+  const treeStr = treeLines.join("\n");
+  const parts = [];
+  if (includeMetadata) {
+    const meta3 = extractPackageMetadata(directory);
+    if (meta3) parts.push(meta3);
+  }
+  parts.push(treeStr);
+  const truncated = fileCount.value >= maxFiles;
+  if (truncated) {
+    parts.push(`[Map truncated at ${maxFiles} files \u2014 use Glob/Grep for full search]`);
+  }
+  return {
+    map: parts.join("\n\n"),
+    totalFiles: fileCount.value,
+    truncated
+  };
+}
+var import_node_fs3, import_node_path4, SKIP_DIRS, SOURCE_EXTENSIONS, SKIP_FILE_SUFFIXES, IMPORTANT_FILES;
+var init_codebase_map = __esm({
+  "src/hooks/codebase-map.ts"() {
+    "use strict";
+    import_node_fs3 = require("node:fs");
+    import_node_path4 = require("node:path");
+    SKIP_DIRS = /* @__PURE__ */ new Set([
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      "out",
+      "coverage",
+      ".next",
+      ".nuxt",
+      ".svelte-kit",
+      ".cache",
+      ".turbo",
+      ".parcel-cache",
+      "__pycache__",
+      ".mypy_cache",
+      ".pytest_cache",
+      ".ruff_cache",
+      "target",
+      ".gradle",
+      "vendor",
+      ".venv",
+      "venv",
+      "env",
+      ".omcp",
+      ".copilot",
+      "tmp",
+      "temp"
+    ]);
+    SOURCE_EXTENSIONS = /* @__PURE__ */ new Set([
+      ".ts",
+      ".tsx",
+      ".js",
+      ".jsx",
+      ".mjs",
+      ".cjs",
+      ".py",
+      ".rb",
+      ".go",
+      ".rs",
+      ".java",
+      ".kt",
+      ".swift",
+      ".c",
+      ".cpp",
+      ".h",
+      ".hpp",
+      ".cs",
+      ".fs",
+      ".vue",
+      ".svelte",
+      ".sh",
+      ".bash",
+      ".zsh",
+      ".json",
+      ".jsonc",
+      ".yaml",
+      ".yml",
+      ".toml",
+      ".md",
+      ".mdx",
+      ".css",
+      ".scss",
+      ".sass",
+      ".less",
+      ".html",
+      ".htm"
+    ]);
+    SKIP_FILE_SUFFIXES = ["-lock.json", ".lock", "-lock.yaml", "-lock.toml"];
+    IMPORTANT_FILES = /* @__PURE__ */ new Set([
+      "package.json",
+      "tsconfig.json",
+      "tsconfig.base.json",
+      "pyproject.toml",
+      "Cargo.toml",
+      "go.mod",
+      "go.sum",
+      "copilot-instructions.md",
+      "AGENTS.md",
+      "README.md",
+      "CONTRIBUTING.md",
+      ".eslintrc.json",
+      "vitest.config.ts",
+      "jest.config.ts",
+      "jest.config.js",
+      "Makefile",
+      "Dockerfile",
+      ".gitignore"
+    ]);
+  }
+});
+
+// src/hooks/agents-overlay.ts
+var agents_overlay_exports = {};
+__export(agents_overlay_exports, {
+  buildAgentsOverlay: () => buildAgentsOverlay
+});
+function buildAgentsOverlay(directory, options) {
+  const config2 = loadConfig();
+  const mapConfig = config2.startupCodebaseMap ?? {};
+  if (mapConfig.enabled === false) {
+    return { message: "", hasCodebaseMap: false };
+  }
+  const mergedOptions = {
+    maxFiles: mapConfig.maxFiles ?? options?.maxFiles ?? 200,
+    maxDepth: mapConfig.maxDepth ?? options?.maxDepth ?? 4,
+    ignorePatterns: options?.ignorePatterns ?? [],
+    includeMetadata: options?.includeMetadata ?? true
+  };
+  const result = generateCodebaseMap(directory, mergedOptions);
+  if (!result.map) {
+    return { message: "", hasCodebaseMap: false };
+  }
+  const message = `<session-restore>
+
+[CODEBASE MAP]
+
+Project structure for: ${directory}
+Use this map to navigate efficiently. Prefer Glob/Grep over blind file exploration.
+
+${result.map}
+
+</session-restore>
+
+---
+
+`;
+  return { message, hasCodebaseMap: true };
+}
+var init_agents_overlay = __esm({
+  "src/hooks/agents-overlay.ts"() {
+    "use strict";
+    init_codebase_map();
+    init_loader();
+  }
+});
+
+// src/utils/daemon-module-path.ts
+function resolveDaemonModulePath(currentFilename, distSegments) {
+  const isWindowsStylePath = /^[a-zA-Z]:\\/.test(currentFilename) || currentFilename.includes("\\");
+  const pathApi = isWindowsStylePath ? import_path58.win32 : import_path58.posix;
+  const tsCompiledPath = currentFilename.replace(/\.ts$/, ".js");
+  if (tsCompiledPath !== currentFilename) {
+    return tsCompiledPath;
+  }
+  const currentDir = pathApi.dirname(currentFilename);
+  const inBundledCli = pathApi.basename(currentFilename) === "cli.cjs" && pathApi.basename(currentDir) === "bridge";
+  if (inBundledCli) {
+    return pathApi.join(currentDir, "..", "dist", ...distSegments);
+  }
+  return currentFilename;
+}
+var import_path58;
+var init_daemon_module_path = __esm({
+  "src/utils/daemon-module-path.ts"() {
+    "use strict";
+    import_path58 = require("path");
+  }
+});
+
+// src/cli/tmux-utils.ts
+function tmuxEnv() {
+  const { TMUX: _, ...env2 } = process.env;
+  return env2;
+}
+function resolveEnv(opts) {
+  return opts?.stripTmux ? tmuxEnv() : process.env;
+}
+function isUnixLikeOnWindows() {
+  return process.platform === "win32" && !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
+}
+function isNativeWindowsShell() {
+  return process.platform === "win32" && !isUnixLikeOnWindows();
+}
+function quoteForCmd(arg) {
+  if (arg.length === 0) return '""';
+  if (!/[\s"%^&|<>()]/.test(arg)) return arg;
+  return `"${arg.replace(/(["%])/g, "$1$1")}"`;
+}
+function escapeForCmdSet(value) {
+  return value.replace(/"/g, '""');
+}
+function resolveTmuxInvocation(args) {
+  const resolvedBinary = resolveTmuxBinaryPath();
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(resolvedBinary)) {
+    const comspec = process.env.COMSPEC || "cmd.exe";
+    const commandLine = [quoteForCmd(resolvedBinary), ...args.map(quoteForCmd)].join(" ");
+    return {
+      command: comspec,
+      args: ["/d", "/s", "/c", commandLine]
+    };
+  }
+  return {
+    command: resolvedBinary,
+    args
+  };
+}
+function tmuxExec(args, opts) {
+  const { stripTmux: _, ...execOpts } = opts ?? {};
+  const invocation = resolveTmuxInvocation(args);
+  return (0, import_child_process18.execFileSync)(invocation.command, invocation.args, { encoding: "utf-8", ...execOpts, env: resolveEnv(opts) });
+}
+async function tmuxExecAsync(args, opts) {
+  const { stripTmux: _, timeout, ...rest } = opts ?? {};
+  const invocation = resolveTmuxInvocation(args);
+  return (0, import_util9.promisify)(import_child_process18.execFile)(invocation.command, invocation.args, {
+    encoding: "utf-8",
+    env: resolveEnv(opts),
+    ...timeout !== void 0 ? { timeout } : {},
+    ...rest
+  });
+}
+function tmuxShell(command, opts) {
+  const { stripTmux: _, ...execOpts } = opts ?? {};
+  return (0, import_child_process18.execSync)(`tmux ${command}`, { encoding: "utf-8", ...execOpts, env: resolveEnv(opts) });
+}
+async function tmuxShellAsync(command, opts) {
+  const { stripTmux: _, timeout, ...rest } = opts ?? {};
+  return (0, import_util9.promisify)(import_child_process18.exec)(`tmux ${command}`, {
+    encoding: "utf-8",
+    env: resolveEnv(opts),
+    ...timeout !== void 0 ? { timeout } : {},
+    ...rest
+  });
+}
+function tmuxSpawn(args, opts) {
+  const { stripTmux: _, ...spawnOpts } = opts ?? {};
+  const invocation = resolveTmuxInvocation(args);
+  return (0, import_child_process18.spawnSync)(invocation.command, invocation.args, { encoding: "utf-8", ...spawnOpts, env: resolveEnv(opts) });
+}
+async function tmuxCmdAsync(args, opts) {
+  if (args.some((a) => a.includes("#{"))) {
+    const escaped = args.map((a) => "'" + a.replace(/'/g, "'\\''") + "'").join(" ");
+    return tmuxShellAsync(escaped, opts);
+  }
+  return tmuxExecAsync(args, opts);
+}
+function resolveTmuxBinaryPath() {
+  if (process.platform !== "win32") {
+    return "tmux";
+  }
+  try {
+    const result = (0, import_child_process18.spawnSync)("where", ["tmux"], {
+      timeout: 5e3,
+      encoding: "utf8"
+    });
+    if (result.status !== 0) return "tmux";
+    const candidates = result.stdout?.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) ?? [];
+    const first = candidates[0];
+    if (first && ((0, import_path59.isAbsolute)(first) || import_path59.win32.isAbsolute(first))) {
+      return first;
+    }
+  } catch {
+  }
+  return "tmux";
+}
+function isTmuxAvailable() {
+  try {
+    const resolvedBinary = resolveTmuxBinaryPath();
+    if (process.platform === "win32" && /\.(cmd|bat)$/i.test(resolvedBinary)) {
+      const comspec = process.env.COMSPEC || "cmd.exe";
+      const result = (0, import_child_process18.spawnSync)(comspec, ["/d", "/s", "/c", `"${resolvedBinary}" -V`], { timeout: 5e3 });
+      return result.status === 0;
+    }
+    if (process.platform === "win32") {
+      const result = (0, import_child_process18.spawnSync)(resolvedBinary, ["-V"], { timeout: 5e3, shell: true });
+      return result.status === 0;
+    }
+    tmuxExec(["-V"], { stripTmux: true, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function isCopilotAvailable() {
+  try {
+    (0, import_child_process18.execFileSync)("claude", ["--version"], {
+      stdio: "ignore",
+      shell: process.platform === "win32"
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function resolveLaunchPolicy(env2 = process.env, args = []) {
+  if (args.some((arg) => arg === "--print" || arg === "-p")) {
+    return "direct";
+  }
+  if (env2.TMUX) return "inside-tmux";
+  if (env2.CMUX_SURFACE_ID) return "direct";
+  if (!isTmuxAvailable()) {
+    return "direct";
+  }
+  return "outside-tmux";
+}
+function buildTmuxSessionName(cwd) {
+  const dirToken = sanitizeTmuxToken((0, import_path59.basename)(cwd));
+  let branchToken = "detached";
+  try {
+    const branch = (0, import_child_process18.execFileSync)("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"]
+    }).trim();
+    if (branch) {
+      branchToken = sanitizeTmuxToken(branch);
+    }
+  } catch {
+  }
+  const now = /* @__PURE__ */ new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const utcTimestamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}`;
+  const name = `omc-${dirToken}-${branchToken}-${utcTimestamp}`;
+  return name.length > 120 ? name.slice(0, 120) : name;
+}
+function sanitizeTmuxToken(value) {
+  const cleaned = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  return cleaned || "unknown";
+}
+function buildTmuxShellCommand(command, args) {
+  if (isNativeWindowsShell()) {
+    return [command, ...args].map(quoteForCmd).join(" ");
+  }
+  return [quoteShellArg2(command), ...args.map(quoteShellArg2)].join(" ");
+}
+function buildTmuxShellCommandWithEnv(command, args, envVars) {
+  const envEntries = Object.entries(envVars);
+  if (envEntries.length === 0) {
+    return buildTmuxShellCommand(command, args);
+  }
+  if (isNativeWindowsShell()) {
+    const envPrefix = envEntries.map(([key, value]) => `set "${key}=${escapeForCmdSet(value)}"`).join(" && ");
+    return `${envPrefix} && ${buildTmuxShellCommand(command, args)}`;
+  }
+  return buildTmuxShellCommand(
+    "env",
+    [...envEntries.map(([key, value]) => `${key}=${value}`), command, ...args]
+  );
+}
+function wrapWithLoginShell(command) {
+  if (isNativeWindowsShell()) {
+    const comspec = process.env.COMSPEC || "cmd.exe";
+    return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
+  }
+  const shell = process.env.SHELL || "/bin/sh";
+  const shellName = (0, import_path59.basename)(shell).replace(/\.(exe|cmd|bat)$/i, "");
+  const rcFile = process.env.HOME ? `${process.env.HOME}/.${shellName}rc` : "";
+  const sourcePrefix = rcFile ? `[ -f ${quoteShellArg2(rcFile)} ] && . ${quoteShellArg2(rcFile)}; ` : "";
+  return `exec ${quoteShellArg2(shell)} -lc ${quoteShellArg2(`${sourcePrefix}${command}`)}`;
+}
+function quoteShellArg2(value) {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+var import_child_process18, import_path59, import_util9;
+var init_tmux_utils = __esm({
+  "src/cli/tmux-utils.ts"() {
+    "use strict";
+    import_child_process18 = require("child_process");
+    import_path59 = require("path");
+    import_util9 = require("util");
+  }
+});
+
+// src/features/rate-limit-wait/pane-fresh-capture.ts
+var pane_fresh_capture_exports = {};
+__export(pane_fresh_capture_exports, {
+  getNewPaneTail: () => getNewPaneTail,
+  getPaneHistorySize: () => getPaneHistorySize
+});
+function isValidPaneId(paneId) {
+  return /^%\d+$/.test(paneId);
+}
+function readPaneTailState(stateDir) {
+  const path22 = (0, import_path60.join)(stateDir, STATE_FILE2);
+  try {
+    if ((0, import_fs51.existsSync)(path22)) {
+      const parsed = JSON.parse((0, import_fs51.readFileSync)(path22, "utf-8"));
+      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch {
+  }
+  return {};
+}
+function writePaneTailState(stateDir, state) {
+  try {
+    (0, import_fs51.mkdirSync)(stateDir, { recursive: true });
+    (0, import_fs51.writeFileSync)((0, import_path60.join)(stateDir, STATE_FILE2), JSON.stringify(state), { mode: 384 });
+  } catch {
+  }
+}
+function getPaneHistorySize(paneId) {
+  try {
+    const raw = tmuxExec(
+      ["display-message", "-t", paneId, "-p", "#{pane_dead} #{history_size}"],
+      { stripTmux: true, timeout: 3e3 }
+    ).trim();
+    const parts = raw.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      const [paneDeadRaw, historySizeRaw] = parts;
+      if (paneDeadRaw === "1") {
+        return null;
+      }
+      const n2 = parseInt(historySizeRaw ?? "", 10);
+      return Number.isFinite(n2) && n2 >= 0 ? n2 : null;
+    }
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  } catch {
+    return null;
+  }
+}
+function capturePaneLines(paneId, lines) {
+  try {
+    const safeLines = Math.max(1, Math.min(500, Math.floor(lines)));
+    return tmuxExec(
+      ["capture-pane", "-t", paneId, "-p", "-S", `-${safeLines}`],
+      { stripTmux: true, timeout: 5e3 }
+    );
+  } catch {
+    return "";
+  }
+}
+function getNewPaneTail(paneId, stateDir, maxLines = DEFAULT_MAX_LINES) {
+  if (!isValidPaneId(paneId)) {
+    return "";
+  }
+  const currentSize = getPaneHistorySize(paneId);
+  if (currentSize === null) {
+    return "";
+  }
+  const state = readPaneTailState(stateDir);
+  const lastSize = state[paneId] ?? -1;
+  state[paneId] = currentSize;
+  writePaneTailState(stateDir, state);
+  if (lastSize < 0) {
+    return capturePaneLines(paneId, maxLines);
+  }
+  const newLines = currentSize - lastSize;
+  if (newLines <= 0) {
+    return "";
+  }
+  return capturePaneLines(paneId, Math.min(newLines, maxLines));
+}
+var import_fs51, import_path60, STATE_FILE2, DEFAULT_MAX_LINES;
+var init_pane_fresh_capture = __esm({
+  "src/features/rate-limit-wait/pane-fresh-capture.ts"() {
+    "use strict";
+    import_fs51 = require("fs");
+    import_path60 = require("path");
+    init_tmux_utils();
+    STATE_FILE2 = "pane-tail-positions.json";
+    DEFAULT_MAX_LINES = 15;
+  }
+});
+
+// src/features/rate-limit-wait/tmux-detector.ts
+var tmux_detector_exports = {};
+__export(tmux_detector_exports, {
+  analyzePaneContent: () => analyzePaneContent,
+  capturePaneContent: () => capturePaneContent,
+  formatBlockedPanesSummary: () => formatBlockedPanesSummary,
+  isInsideTmux: () => isInsideTmux,
+  isPaneAlive: () => isPaneAlive,
+  isTmuxAvailable: () => isTmuxAvailable2,
+  listTmuxPanes: () => listTmuxPanes,
+  scanForBlockedPanes: () => scanForBlockedPanes,
+  sendResumeSequence: () => sendResumeSequence,
+  sendToPane: () => sendToPane
+});
+function isValidPaneId2(paneId) {
+  return /^%\d+$/.test(paneId);
+}
+function sanitizeForTmux(text) {
+  return text.replace(/'/g, "'\\''");
+}
+function stripGitOutputLines(content) {
+  return content.split("\n").filter((line) => !GIT_OUTPUT_LINE_PATTERNS.some((p) => p.test(line.trimStart()))).join("\n");
+}
+function isTmuxAvailable2() {
+  try {
+    const result = tmuxSpawn(["-V"], { stripTmux: true, stdio: "pipe", timeout: 3e3 });
+    return result.status === 0;
+  } catch {
+    return false;
+  }
+}
+function isInsideTmux() {
+  return !!process.env.TMUX;
+}
+function listTmuxPanes() {
+  if (!isTmuxAvailable2()) {
+    return [];
+  }
+  try {
+    const format = "#{session_name}:#{window_index}.#{pane_index} #{pane_id} #{pane_active} #{window_name} #{pane_title}";
+    const result = tmuxExec(["list-panes", "-a", "-F", format], {
+      stripTmux: true,
+      timeout: 5e3
+    });
+    const panes = [];
+    for (const line of result.trim().split("\n")) {
+      if (!line.trim()) continue;
+      const parts = line.split(" ");
+      if (parts.length < 4) continue;
+      const [location, paneId, activeStr, windowName, ...titleParts] = parts;
+      const [sessionWindow, paneIndexStr] = location.split(".");
+      const [session, windowIndexStr] = sessionWindow.split(":");
+      panes.push({
+        id: paneId,
+        session,
+        windowIndex: parseInt(windowIndexStr, 10),
+        windowName,
+        paneIndex: parseInt(paneIndexStr, 10),
+        title: titleParts.join(" ") || void 0,
+        isActive: activeStr === "1"
+      });
+    }
+    return panes;
+  } catch (error48) {
+    console.error("[TmuxDetector] Error listing panes:", error48);
+    return [];
+  }
+}
+function isPaneAlive(paneId) {
+  if (!isTmuxAvailable2()) {
+    return false;
+  }
+  if (!isValidPaneId2(paneId)) {
+    return false;
+  }
+  try {
+    const result = tmuxExec(
+      ["display-message", "-t", paneId, "-p", "#{pane_dead}"],
+      { stripTmux: true, stdio: "pipe", timeout: 3e3 }
+    );
+    return result.trim() === "0";
+  } catch {
+    return false;
+  }
+}
+function capturePaneContent(paneId, lines = 15) {
+  if (!isTmuxAvailable2()) {
+    return "";
+  }
+  if (!isValidPaneId2(paneId)) {
+    console.error(`[TmuxDetector] Invalid pane ID format: ${paneId}`);
+    return "";
+  }
+  const safeLines = Math.max(1, Math.min(100, Math.floor(lines)));
+  try {
+    const result = tmuxExec(["capture-pane", "-t", paneId, "-p", "-S", `-${safeLines}`], {
+      stripTmux: true,
+      timeout: 5e3
+    });
+    return result;
+  } catch (error48) {
+    console.error(`[TmuxDetector] Error capturing pane ${paneId}:`, error48);
+    return "";
+  }
+}
+function analyzePaneContent(content) {
+  if (!content.trim()) {
+    return {
+      hasCopilotCode: false,
+      hasRateLimitMessage: false,
+      isBlocked: false,
+      confidence: 0
+    };
+  }
+  const cleanedContent = stripGitOutputLines(content);
+  const hasCopilotCode = CLI_AGENT_PATTERNS.some(
+    (pattern) => pattern.test(cleanedContent)
+  );
+  const rateLimitMatches = RATE_LIMIT_PATTERNS.filter(
+    (pattern) => pattern.test(cleanedContent)
+  );
+  const hasRateLimitMessage = rateLimitMatches.length > 0;
+  const isWaiting = WAITING_PATTERNS.some((pattern) => pattern.test(cleanedContent));
+  let rateLimitType;
+  if (hasRateLimitMessage) {
+    if (/5[- ]?hour/i.test(cleanedContent)) {
+      rateLimitType = "five_hour";
+    } else if (WEEKLY_RATE_LIMIT_PATTERN.test(cleanedContent)) {
+      rateLimitType = "weekly";
+    } else {
+      rateLimitType = "unknown";
+    }
+  }
+  let confidence = 0;
+  if (hasCopilotCode) confidence += 0.4;
+  if (hasRateLimitMessage) confidence += 0.4;
+  if (isWaiting) confidence += 0.2;
+  if (rateLimitMatches.length > 1) confidence += 0.1;
+  const isBlocked = hasCopilotCode && hasRateLimitMessage && confidence >= 0.6;
+  return {
+    hasCopilotCode,
+    hasRateLimitMessage,
+    isBlocked,
+    rateLimitType,
+    confidence: Math.min(1, confidence)
+  };
+}
+function scanForBlockedPanes(lines = 15, stateDir) {
+  const panes = listTmuxPanes();
+  const blocked = [];
+  for (const pane of panes) {
+    let content;
+    if (stateDir) {
+      content = getNewPaneTail(pane.id, stateDir, lines);
+      if (!content) continue;
+    } else {
+      content = capturePaneContent(pane.id, lines);
+    }
+    const analysis = analyzePaneContent(content);
+    if (analysis.isBlocked) {
+      blocked.push({
+        ...pane,
+        analysis,
+        firstDetectedAt: /* @__PURE__ */ new Date(),
+        resumeAttempted: false
+      });
+    }
+  }
+  return blocked;
+}
+function sendResumeSequence(paneId) {
+  if (!isTmuxAvailable2()) {
+    return false;
+  }
+  if (!isValidPaneId2(paneId)) {
+    console.error(`[TmuxDetector] Invalid pane ID format: ${paneId}`);
+    return false;
+  }
+  try {
+    tmuxExec(["send-keys", "-t", paneId, "1", "Enter"], {
+      stripTmux: true,
+      timeout: 2e3
+    });
+    return true;
+  } catch (error48) {
+    console.error(`[TmuxDetector] Error sending resume to pane ${paneId}:`, error48);
+    return false;
+  }
+}
+function sendToPane(paneId, text, pressEnter = true) {
+  if (!isTmuxAvailable2()) {
+    return false;
+  }
+  if (!isValidPaneId2(paneId)) {
+    console.error(`[TmuxDetector] Invalid pane ID format: ${paneId}`);
+    return false;
+  }
+  try {
+    const sanitizedText = sanitizeForTmux(text);
+    tmuxExec(["send-keys", "-t", paneId, "-l", sanitizedText], {
+      stripTmux: true,
+      timeout: 2e3
+    });
+    if (pressEnter) {
+      tmuxExec(["send-keys", "-t", paneId, "Enter"], {
+        stripTmux: true,
+        timeout: 2e3
+      });
+    }
+    return true;
+  } catch (error48) {
+    console.error(`[TmuxDetector] Error sending to pane ${paneId}:`, error48);
+    return false;
+  }
+}
+function formatBlockedPanesSummary(blockedPanes) {
+  if (blockedPanes.length === 0) {
+    return "No blocked Copilot CLI sessions detected.";
+  }
+  const lines = [
+    `Found ${blockedPanes.length} blocked CLI agent session(s):`,
+    ""
+  ];
+  for (const pane of blockedPanes) {
+    const location = `${pane.session}:${pane.windowIndex}.${pane.paneIndex}`;
+    const confidence = Math.round(pane.analysis.confidence * 100);
+    const limitType = pane.analysis.rateLimitType || "unknown";
+    const status = pane.resumeAttempted ? pane.resumeSuccessful ? " [RESUMED]" : " [RESUME FAILED]" : "";
+    lines.push(`  \u2022 ${location} (${pane.id}) - ${limitType} limit, ${confidence}% confidence${status}`);
+  }
+  return lines.join("\n");
+}
+var RATE_LIMIT_PATTERNS, CLI_AGENT_PATTERNS, WEEKLY_RATE_LIMIT_PATTERN, GIT_OUTPUT_LINE_PATTERNS, WAITING_PATTERNS;
+var init_tmux_detector = __esm({
+  "src/features/rate-limit-wait/tmux-detector.ts"() {
+    "use strict";
+    init_tmux_utils();
+    init_pane_fresh_capture();
+    RATE_LIMIT_PATTERNS = [
+      /rate limit/i,
+      /usage limit/i,
+      /quota exceeded/i,
+      /too many requests/i,
+      /please wait/i,
+      /try again later/i,
+      /limit reached/i,
+      /hit your limit/i,
+      /hit .+ limit/i,
+      /resets? .+ at/i,
+      /5[- ]?hour/i,
+      // Require adjacent rate-limit vocabulary to avoid false-positives from git commit
+      // messages or documentation that contain the bare word "weekly" (e.g. "fix weekly
+      // report generation", "update weekly standup notes").
+      /\bweekly\s+(?:usage\s+)?(?:limit|quota|cap|allowance|allocation)\b/i
+    ];
+    CLI_AGENT_PATTERNS = [
+      /claude/i,
+      /copilot/i,
+      /anthropic/i,
+      /\$ claude/,
+      /\$ copilot/,
+      /claude code/i,
+      /copilot cli/i,
+      /conversation/i,
+      /assistant/i
+    ];
+    WEEKLY_RATE_LIMIT_PATTERN = /\bweekly\s+(?:usage\s+)?(?:limit|quota|cap|allowance|allocation)\b/i;
+    GIT_OUTPUT_LINE_PATTERNS = [
+      /^commit\s+[0-9a-f]{6,40}\b/,
+      // git log commit hash
+      /^Author:\s+\S/,
+      // git log author
+      /^Date:\s+\S/,
+      // git log date
+      /^Merge:\s+[0-9a-f]{6,}/,
+      // git log merge line
+      /^diff\s+--git\s+a\//,
+      // git diff header
+      /^(?:---|\+\+\+)\s+[ab]\//,
+      // git diff file paths
+      /^@@\s+-\d+/
+      // git diff hunk header
+    ];
+    WAITING_PATTERNS = [
+      /\[\d+\]/,
+      // Menu selection prompt like [1], [2], [3]
+      /^\s*❯?\s*\d+\.\s/m,
+      // Menu selection prompt like "❯ 1. ..." or "  2. ..."
+      /continue\?/i,
+      // Continue prompt
+      /press enter/i,
+      /waiting for/i,
+      /select an option/i,
+      /choice:/i,
+      /enter to confirm/i
+    ];
+  }
+});
+
+// src/notifications/session-registry.ts
+var session_registry_exports = {};
+__export(session_registry_exports, {
+  loadAllMappings: () => loadAllMappings,
+  lookupByMessageId: () => lookupByMessageId,
+  pruneStale: () => pruneStale,
+  registerMessage: () => registerMessage,
+  removeMessagesByPane: () => removeMessagesByPane,
+  removeSession: () => removeSession
+});
+function getRegistryStateDir() {
+  return process.env["OMC_TEST_REGISTRY_DIR"] ?? (0, import_path61.join)((0, import_os11.homedir)(), ".omcp", "state");
+}
+function getRegistryPath() {
+  return (0, import_path61.join)(getRegistryStateDir(), "reply-session-registry.jsonl");
+}
+function getLockPath() {
+  return (0, import_path61.join)(getRegistryStateDir(), "reply-session-registry.lock");
+}
+function ensureRegistryDir() {
+  const registryDir = (0, import_path61.dirname)(getRegistryPath());
+  if (!(0, import_fs52.existsSync)(registryDir)) {
+    (0, import_fs52.mkdirSync)(registryDir, { recursive: true, mode: 448 });
+  }
+}
+function sleepMs(ms) {
+  try {
+    Atomics.wait(SLEEP_ARRAY, 0, 0, ms);
+  } catch {
+    const waitUntil = Date.now() + ms;
+    while (Date.now() < waitUntil) {
+    }
+  }
+}
+function isPidAlive(pid) {
+  if (!Number.isFinite(pid) || pid <= 0) {
+    return false;
+  }
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error48) {
+    const err = error48;
+    return err.code === "EPERM";
+  }
+}
+function readLockSnapshot() {
+  try {
+    const raw = (0, import_fs52.readFileSync)(getLockPath(), "utf-8");
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return { raw, pid: null, token: null };
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      const pid = typeof parsed.pid === "number" && Number.isFinite(parsed.pid) ? parsed.pid : null;
+      const token = typeof parsed.token === "string" && parsed.token.length > 0 ? parsed.token : null;
+      return { raw, pid, token };
+    } catch {
+      const [pidStr] = trimmed.split(":");
+      const parsedPid = Number.parseInt(pidStr ?? "", 10);
+      return {
+        raw,
+        pid: Number.isFinite(parsedPid) && parsedPid > 0 ? parsedPid : null,
+        token: null
+      };
+    }
+  } catch {
+    return null;
+  }
+}
+function removeLockIfUnchanged(snapshot) {
+  try {
+    const currentRaw = (0, import_fs52.readFileSync)(getLockPath(), "utf-8");
+    if (currentRaw !== snapshot.raw) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  try {
+    (0, import_fs52.unlinkSync)(getLockPath());
+    return true;
+  } catch {
+    return false;
+  }
+}
+function acquireRegistryLock() {
+  ensureRegistryDir();
+  const started = Date.now();
+  while (Date.now() - started < LOCK_TIMEOUT_MS) {
+    try {
+      const token = (0, import_crypto6.randomUUID)();
+      const fd = (0, import_fs52.openSync)(
+        getLockPath(),
+        import_fs52.constants.O_CREAT | import_fs52.constants.O_EXCL | import_fs52.constants.O_WRONLY,
+        SECURE_FILE_MODE
+      );
+      const lockPayload = JSON.stringify({
+        pid: process.pid,
+        acquiredAt: Date.now(),
+        token
+      });
+      (0, import_fs52.writeSync)(fd, lockPayload, null, "utf-8");
+      return { fd, token };
+    } catch (error48) {
+      const err = error48;
+      if (err.code !== "EEXIST") {
+        throw error48;
+      }
+      try {
+        const lockAgeMs = Date.now() - (0, import_fs52.statSync)(getLockPath()).mtimeMs;
+        if (lockAgeMs > LOCK_STALE_MS2) {
+          const snapshot = readLockSnapshot();
+          if (!snapshot) {
+            sleepMs(LOCK_RETRY_MS2);
+            continue;
+          }
+          if (snapshot.pid !== null && isPidAlive(snapshot.pid)) {
+            sleepMs(LOCK_RETRY_MS2);
+            continue;
+          }
+          if (removeLockIfUnchanged(snapshot)) {
+            continue;
+          }
+        }
+      } catch {
+      }
+      sleepMs(LOCK_RETRY_MS2);
+    }
+  }
+  return null;
+}
+function acquireRegistryLockOrWait(maxWaitMs = LOCK_MAX_WAIT_MS) {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    const lock = acquireRegistryLock();
+    if (lock !== null) {
+      return lock;
+    }
+    sleepMs(LOCK_RETRY_MS2);
+  }
+  return null;
+}
+function releaseRegistryLock(lock) {
+  try {
+    (0, import_fs52.closeSync)(lock.fd);
+  } catch {
+  }
+  const snapshot = readLockSnapshot();
+  if (!snapshot || snapshot.token !== lock.token) {
+    return;
+  }
+  removeLockIfUnchanged(snapshot);
+}
+function withRegistryLockOrWait(onLocked) {
+  const lock = acquireRegistryLockOrWait();
+  if (lock === null) {
+    return onLocked();
+  }
+  try {
+    return onLocked();
+  } finally {
+    releaseRegistryLock(lock);
+  }
+}
+function withRegistryLock(onLocked, onLockUnavailable) {
+  const lock = acquireRegistryLock();
+  if (lock === null) {
+    return onLockUnavailable();
+  }
+  try {
+    return onLocked();
+  } finally {
+    releaseRegistryLock(lock);
+  }
+}
+function registerMessage(mapping) {
+  withRegistryLockOrWait(
+    () => {
+      ensureRegistryDir();
+      const line = JSON.stringify(mapping) + "\n";
+      const fd = (0, import_fs52.openSync)(
+        getRegistryPath(),
+        import_fs52.constants.O_WRONLY | import_fs52.constants.O_APPEND | import_fs52.constants.O_CREAT,
+        SECURE_FILE_MODE
+      );
+      try {
+        const buf = Buffer.from(line, "utf-8");
+        (0, import_fs52.writeSync)(fd, buf);
+      } finally {
+        (0, import_fs52.closeSync)(fd);
+      }
+    }
+  );
+}
+function loadAllMappings() {
+  return withRegistryLockOrWait(() => readAllMappingsUnsafe());
+}
+function readAllMappingsUnsafe() {
+  if (!(0, import_fs52.existsSync)(getRegistryPath())) {
+    return [];
+  }
+  try {
+    const content = (0, import_fs52.readFileSync)(getRegistryPath(), "utf-8");
+    return content.split("\n").filter((line) => line.trim()).map((line) => {
+      try {
+        return JSON.parse(line);
+      } catch {
+        return null;
+      }
+    }).filter((m) => m !== null);
+  } catch {
+    return [];
+  }
+}
+function lookupByMessageId(platform, messageId) {
+  const mappings = loadAllMappings();
+  return mappings.findLast((m) => m.platform === platform && m.messageId === messageId) ?? null;
+}
+function removeSession(sessionId) {
+  withRegistryLock(
+    () => {
+      const mappings = readAllMappingsUnsafe();
+      const filtered = mappings.filter((m) => m.sessionId !== sessionId);
+      if (filtered.length === mappings.length) {
+        return;
+      }
+      rewriteRegistryUnsafe(filtered);
+    },
+    () => {
+    }
+  );
+}
+function removeMessagesByPane(paneId) {
+  withRegistryLock(
+    () => {
+      const mappings = readAllMappingsUnsafe();
+      const filtered = mappings.filter((m) => m.tmuxPaneId !== paneId);
+      if (filtered.length === mappings.length) {
+        return;
+      }
+      rewriteRegistryUnsafe(filtered);
+    },
+    () => {
+    }
+  );
+}
+function pruneStale() {
+  withRegistryLock(
+    () => {
+      const now = Date.now();
+      const mappings = readAllMappingsUnsafe();
+      const filtered = mappings.filter((m) => {
+        try {
+          const age = now - new Date(m.createdAt).getTime();
+          return age < MAX_AGE_MS;
+        } catch {
+          return false;
+        }
+      });
+      if (filtered.length === mappings.length) {
+        return;
+      }
+      rewriteRegistryUnsafe(filtered);
+    },
+    () => {
+    }
+  );
+}
+function rewriteRegistryUnsafe(mappings) {
+  ensureRegistryDir();
+  if (mappings.length === 0) {
+    (0, import_fs52.writeFileSync)(getRegistryPath(), "", { mode: SECURE_FILE_MODE });
+    return;
+  }
+  const content = mappings.map((m) => JSON.stringify(m)).join("\n") + "\n";
+  (0, import_fs52.writeFileSync)(getRegistryPath(), content, { mode: SECURE_FILE_MODE });
+}
+var import_fs52, import_path61, import_os11, import_crypto6, SECURE_FILE_MODE, MAX_AGE_MS, LOCK_TIMEOUT_MS, LOCK_RETRY_MS2, LOCK_STALE_MS2, LOCK_MAX_WAIT_MS, SLEEP_ARRAY;
+var init_session_registry = __esm({
+  "src/notifications/session-registry.ts"() {
+    "use strict";
+    import_fs52 = require("fs");
+    import_path61 = require("path");
+    import_os11 = require("os");
+    import_crypto6 = require("crypto");
+    SECURE_FILE_MODE = 384;
+    MAX_AGE_MS = 24 * 60 * 60 * 1e3;
+    LOCK_TIMEOUT_MS = 2e3;
+    LOCK_RETRY_MS2 = 20;
+    LOCK_STALE_MS2 = 1e4;
+    LOCK_MAX_WAIT_MS = 1e4;
+    SLEEP_ARRAY = new Int32Array(new SharedArrayBuffer(4));
+  }
+});
+
 // src/notifications/hook-config.ts
 function getHookConfig() {
   if (cachedConfig2 !== void 0) return cachedConfig2;
   const configPath = process.env.OMC_HOOK_CONFIG || DEFAULT_CONFIG_PATH;
-  if (!(0, import_fs51.existsSync)(configPath)) {
+  if (!(0, import_fs53.existsSync)(configPath)) {
     cachedConfig2 = null;
     return null;
   }
   try {
-    const raw = JSON.parse((0, import_fs51.readFileSync)(configPath, "utf-8"));
+    const raw = JSON.parse((0, import_fs53.readFileSync)(configPath, "utf-8"));
     if (!raw || raw.enabled === false) {
       cachedConfig2 = null;
       return null;
@@ -28142,9 +29392,6 @@ function getHookConfig() {
     cachedConfig2 = null;
     return null;
   }
-}
-function resetHookConfigCache() {
-  cachedConfig2 = void 0;
 }
 function resolveEventTemplate(hookConfig, event, platform) {
   if (!hookConfig) return null;
@@ -28172,14 +29419,14 @@ function mergeHookConfigIntoNotificationConfig(hookConfig, notifConfig) {
   merged.events = events;
   return merged;
 }
-var import_fs51, import_path58, DEFAULT_CONFIG_PATH, cachedConfig2;
+var import_fs53, import_path62, DEFAULT_CONFIG_PATH, cachedConfig2;
 var init_hook_config = __esm({
   "src/notifications/hook-config.ts"() {
     "use strict";
-    import_fs51 = require("fs");
-    import_path58 = require("path");
+    import_fs53 = require("fs");
+    import_path62 = require("path");
     init_config_dir();
-    DEFAULT_CONFIG_PATH = (0, import_path58.join)(getConfigDir(), "omp_config.hook.json");
+    DEFAULT_CONFIG_PATH = (0, import_path62.join)(getConfigDir(), "omp_config.hook.json");
   }
 });
 
@@ -28291,11 +29538,6 @@ function checkDuplicateIds(integrations) {
   }
   return duplicates;
 }
-function sanitizeArgument(arg) {
-  let sanitized = arg.replace(/\0/g, "");
-  sanitized = sanitized.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
-  return sanitized;
-}
 var VALID_HTTP_METHODS, MIN_TIMEOUT, MAX_TIMEOUT, VALID_ID_PATTERN;
 var init_validation2 = __esm({
   "src/notifications/validation.ts"() {
@@ -28330,9 +29572,9 @@ __export(config_exports, {
   validateSlackUsername: () => validateSlackUsername
 });
 function readRawConfig() {
-  if (!(0, import_fs52.existsSync)(CONFIG_FILE2)) return null;
+  if (!(0, import_fs54.existsSync)(CONFIG_FILE2)) return null;
   try {
-    return JSON.parse((0, import_fs52.readFileSync)(CONFIG_FILE2, "utf-8"));
+    return JSON.parse((0, import_fs54.readFileSync)(CONFIG_FILE2, "utf-8"));
   } catch {
     return null;
   }
@@ -28844,16 +30086,16 @@ function hasCustomIntegrationsEnabled(event) {
     (i) => i.enabled && i.events.includes(event)
   );
 }
-var import_fs52, import_path59, CONFIG_FILE2, DEFAULT_TMUX_TAIL_LINES, VALID_VERBOSITY_LEVELS, SESSION_EVENTS, REPLY_PLATFORM_EVENTS;
+var import_fs54, import_path63, CONFIG_FILE2, DEFAULT_TMUX_TAIL_LINES, VALID_VERBOSITY_LEVELS, SESSION_EVENTS, REPLY_PLATFORM_EVENTS;
 var init_config = __esm({
   "src/notifications/config.ts"() {
     "use strict";
-    import_fs52 = require("fs");
-    import_path59 = require("path");
+    import_fs54 = require("fs");
+    import_path63 = require("path");
     init_config_dir();
     init_hook_config();
     init_validation2();
-    CONFIG_FILE2 = (0, import_path59.join)(getConfigDir(), ".omc-config.json");
+    CONFIG_FILE2 = (0, import_path63.join)(getConfigDir(), ".omc-config.json");
     DEFAULT_TMUX_TAIL_LINES = 15;
     VALID_VERBOSITY_LEVELS = /* @__PURE__ */ new Set([
       "verbose",
@@ -28874,6 +30116,1952 @@ var init_config = __esm({
       "session-idle",
       "session-end"
     ];
+  }
+});
+
+// src/notifications/redact.ts
+function redactTokens(input) {
+  return input.replace(/\b(xox[bpae]-)[A-Za-z0-9-]+/g, "$1****").replace(/\b(xapp-)[A-Za-z0-9-]+/g, "$1****").replace(/\/bot(\d+):[A-Za-z0-9_-]+/g, "/bot$1:****").replace(/\b(\d{8,12}):[A-Za-z0-9_-]{20,}\b/g, "$1:****").replace(/(Bearer\s+)\S+/gi, "$1****").replace(/(Bot\s+)\S+/gi, "$1****").replace(/\b(sk-ant-api)[A-Za-z0-9_-]+/g, "$1****").replace(/\b(ghp_)[A-Za-z0-9]+/g, "$1****").replace(/\b(gho_)[A-Za-z0-9]+/g, "$1****").replace(/\b(ghs_)[A-Za-z0-9]+/g, "$1****").replace(/\b(github_pat_)[A-Za-z0-9_]+/g, "$1****").replace(/\b(AKIA)[A-Z0-9]{16}\b/g, "$1****");
+}
+var init_redact = __esm({
+  "src/notifications/redact.ts"() {
+    "use strict";
+  }
+});
+
+// src/notifications/slack-socket.ts
+var slack_socket_exports = {};
+__export(slack_socket_exports, {
+  SlackConnectionStateTracker: () => SlackConnectionStateTracker,
+  SlackSocketClient: () => SlackSocketClient,
+  addSlackReaction: () => addSlackReaction,
+  isTimestampValid: () => isTimestampValid,
+  postSlackBotMessage: () => postSlackBotMessage,
+  replySlackThread: () => replySlackThread,
+  validateSlackEnvelope: () => validateSlackEnvelope,
+  validateSlackMessage: () => validateSlackMessage,
+  verifySlackSignature: () => verifySlackSignature
+});
+function verifySlackSignature(signingSecret, signature, timestamp, body) {
+  if (!signingSecret || !signature || !timestamp) {
+    return false;
+  }
+  if (!isTimestampValid(timestamp)) {
+    return false;
+  }
+  const sigBasestring = `v0:${timestamp}:${body}`;
+  const expectedSignature = "v0=" + (0, import_crypto7.createHmac)("sha256", signingSecret).update(sigBasestring).digest("hex");
+  try {
+    return (0, import_crypto7.timingSafeEqual)(
+      Buffer.from(expectedSignature),
+      Buffer.from(signature)
+    );
+  } catch {
+    return false;
+  }
+}
+function isTimestampValid(timestamp, maxAgeSeconds = MAX_TIMESTAMP_AGE_SECONDS) {
+  const requestTime = parseInt(timestamp, 10);
+  if (isNaN(requestTime)) {
+    return false;
+  }
+  const now = Math.floor(Date.now() / 1e3);
+  return Math.abs(now - requestTime) <= maxAgeSeconds;
+}
+function validateSlackEnvelope(data) {
+  if (typeof data !== "object" || data === null) {
+    return { valid: false, reason: "Message is not an object" };
+  }
+  const envelope = data;
+  if (typeof envelope.envelope_id !== "string" || !envelope.envelope_id.trim()) {
+    return { valid: false, reason: "Missing or empty envelope_id" };
+  }
+  if (typeof envelope.type !== "string" || !envelope.type.trim()) {
+    return { valid: false, reason: "Missing or empty message type" };
+  }
+  if (!VALID_ENVELOPE_TYPES.has(envelope.type)) {
+    return {
+      valid: false,
+      reason: `Unknown envelope type: ${envelope.type}`
+    };
+  }
+  if (envelope.type === "events_api") {
+    if (typeof envelope.payload !== "object" || envelope.payload === null) {
+      return {
+        valid: false,
+        reason: "events_api envelope missing payload"
+      };
+    }
+  }
+  return { valid: true };
+}
+function validateSlackMessage(rawMessage, connectionState, signingSecret, signature, timestamp) {
+  if (!connectionState.canProcessMessages()) {
+    return {
+      valid: false,
+      reason: `Connection not authenticated (state: ${connectionState.getState()})`
+    };
+  }
+  let parsed;
+  try {
+    parsed = JSON.parse(rawMessage);
+  } catch {
+    return { valid: false, reason: "Invalid JSON message" };
+  }
+  const envelopeResult = validateSlackEnvelope(parsed);
+  if (!envelopeResult.valid) {
+    return envelopeResult;
+  }
+  if (signingSecret && signature && timestamp) {
+    if (!verifySlackSignature(signingSecret, signature, timestamp, rawMessage)) {
+      return { valid: false, reason: "Signature verification failed" };
+    }
+  } else if (signingSecret && (!signature || !timestamp)) {
+    return {
+      valid: false,
+      reason: "Signing secret configured but signature/timestamp missing"
+    };
+  }
+  return { valid: true };
+}
+async function postSlackBotMessage(botToken, channel, text) {
+  const resp = await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${botToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ channel, text }),
+    signal: AbortSignal.timeout(API_TIMEOUT_MS)
+  });
+  return await resp.json();
+}
+async function addSlackReaction(botToken, channel, timestamp, emoji3 = "white_check_mark") {
+  await fetch("https://slack.com/api/reactions.add", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${botToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ channel, timestamp, name: emoji3 }),
+    signal: AbortSignal.timeout(REACTION_TIMEOUT_MS)
+  });
+}
+async function replySlackThread(botToken, channel, threadTs, text) {
+  await fetch("https://slack.com/api/chat.postMessage", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${botToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ channel, text, thread_ts: threadTs }),
+    signal: AbortSignal.timeout(REACTION_TIMEOUT_MS)
+  });
+}
+var import_crypto7, MAX_TIMESTAMP_AGE_SECONDS, VALID_ENVELOPE_TYPES, SlackConnectionStateTracker, API_TIMEOUT_MS, REACTION_TIMEOUT_MS, SlackSocketClient;
+var init_slack_socket = __esm({
+  "src/notifications/slack-socket.ts"() {
+    "use strict";
+    import_crypto7 = require("crypto");
+    init_redact();
+    MAX_TIMESTAMP_AGE_SECONDS = 300;
+    VALID_ENVELOPE_TYPES = /* @__PURE__ */ new Set([
+      "events_api",
+      "slash_commands",
+      "interactive",
+      "hello",
+      "disconnect"
+    ]);
+    SlackConnectionStateTracker = class {
+      state = "disconnected";
+      authenticatedAt = null;
+      reconnectCount = 0;
+      maxReconnectAttempts;
+      messageQueue = [];
+      maxQueueSize;
+      constructor(options) {
+        this.maxReconnectAttempts = options?.maxReconnectAttempts ?? 5;
+        this.maxQueueSize = options?.maxQueueSize ?? 100;
+      }
+      getState() {
+        return this.state;
+      }
+      getReconnectCount() {
+        return this.reconnectCount;
+      }
+      getAuthenticatedAt() {
+        return this.authenticatedAt;
+      }
+      /** Transition to connecting state. */
+      onConnecting() {
+        this.state = "connecting";
+      }
+      /**
+       * Transition to authenticated state (received 'hello' message).
+       * Resets reconnect counter on successful authentication.
+       */
+      onAuthenticated() {
+        this.state = "authenticated";
+        this.authenticatedAt = Date.now();
+        this.reconnectCount = 0;
+      }
+      /**
+       * Transition to reconnecting state.
+       * Increments reconnect counter and clears authentication timestamp.
+       */
+      onReconnecting() {
+        this.state = "reconnecting";
+        this.reconnectCount++;
+        this.authenticatedAt = null;
+      }
+      /**
+       * Transition to disconnected state.
+       * Clears message queue to prevent processing stale messages.
+       */
+      onDisconnected() {
+        this.state = "disconnected";
+        this.authenticatedAt = null;
+        this.messageQueue = [];
+      }
+      /** Check if maximum reconnection attempts have been exceeded. */
+      hasExceededMaxReconnects() {
+        return this.reconnectCount >= this.maxReconnectAttempts;
+      }
+      /**
+       * Check if messages can be safely processed in the current state.
+       * Only allows processing when the connection is authenticated.
+       */
+      canProcessMessages() {
+        return this.state === "authenticated";
+      }
+      /**
+       * Queue a message for processing after reconnection.
+       * Drops oldest messages when queue exceeds maxQueueSize to
+       * prevent unbounded memory growth.
+       *
+       * Returns true if queued, false if queue is at capacity (oldest was dropped).
+       */
+      queueMessage(envelope) {
+        const wasFull = this.messageQueue.length >= this.maxQueueSize;
+        if (wasFull) {
+          this.messageQueue.shift();
+        }
+        this.messageQueue.push(envelope);
+        return !wasFull;
+      }
+      /**
+       * Drain the message queue (called after re-authentication).
+       * Returns queued messages and clears the queue.
+       */
+      drainQueue() {
+        const messages = [...this.messageQueue];
+        this.messageQueue = [];
+        return messages;
+      }
+      /** Get current queue size. */
+      getQueueSize() {
+        return this.messageQueue.length;
+      }
+    };
+    API_TIMEOUT_MS = 1e4;
+    REACTION_TIMEOUT_MS = 5e3;
+    SlackSocketClient = class {
+      constructor(config2, onMessage, log3) {
+        this.config = config2;
+        this.onMessage = onMessage;
+        this.log = (msg) => log3(redactTokens(msg));
+      }
+      config;
+      onMessage;
+      ws = null;
+      reconnectAttempts = 0;
+      maxReconnectAttempts = 10;
+      baseReconnectDelayMs = 1e3;
+      maxReconnectDelayMs = 3e4;
+      isShuttingDown = false;
+      reconnectTimer = null;
+      connectionState = new SlackConnectionStateTracker();
+      // Bound listener references for proper removal on cleanup.
+      // Typed as generic handlers for addEventListener/removeEventListener compat.
+      onWsOpen = null;
+      onWsMessage = null;
+      onWsClose = null;
+      onWsError = null;
+      log;
+      /** Get the connection state tracker for external inspection. */
+      getConnectionState() {
+        return this.connectionState;
+      }
+      /**
+       * Start the Socket Mode connection.
+       * Obtains a WebSocket URL from Slack and connects.
+       */
+      async start() {
+        if (typeof WebSocket === "undefined") {
+          this.log("WARN: WebSocket not available, Slack Socket Mode requires Node 20.10+");
+          return;
+        }
+        this.connectionState.onConnecting();
+        await this.connect();
+      }
+      /**
+       * Gracefully shut down the connection.
+       */
+      stop() {
+        this.isShuttingDown = true;
+        this.connectionState.onDisconnected();
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+        this.cleanupWs();
+      }
+      /**
+       * Remove all event listeners from the current WebSocket, close it,
+       * and null the reference. Safe to call multiple times.
+       */
+      cleanupWs() {
+        const ws = this.ws;
+        if (!ws) return;
+        this.ws = null;
+        if (this.onWsOpen) ws.removeEventListener("open", this.onWsOpen);
+        if (this.onWsMessage) ws.removeEventListener("message", this.onWsMessage);
+        if (this.onWsClose) ws.removeEventListener("close", this.onWsClose);
+        if (this.onWsError) ws.removeEventListener("error", this.onWsError);
+        this.onWsOpen = null;
+        this.onWsMessage = null;
+        this.onWsClose = null;
+        this.onWsError = null;
+        try {
+          ws.close();
+        } catch {
+        }
+      }
+      /**
+       * Establish WebSocket connection to Slack Socket Mode.
+       */
+      async connect() {
+        if (this.isShuttingDown) return;
+        this.connectionState.onConnecting();
+        this.cleanupWs();
+        try {
+          const resp = await fetch("https://slack.com/api/apps.connections.open", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${this.config.appToken}`,
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            signal: AbortSignal.timeout(API_TIMEOUT_MS)
+          });
+          const data = await resp.json();
+          if (!data.ok || !data.url) {
+            throw new Error(`apps.connections.open failed: ${data.error || "no url returned"}`);
+          }
+          this.ws = new WebSocket(data.url);
+          this.onWsOpen = () => {
+            this.log("Slack Socket Mode connected");
+            this.reconnectAttempts = 0;
+          };
+          this.onWsMessage = (event) => {
+            const ev = event;
+            this.handleEnvelope(String(ev.data));
+          };
+          this.onWsClose = () => {
+            this.cleanupWs();
+            if (!this.isShuttingDown) {
+              this.connectionState.onReconnecting();
+              this.log("Slack Socket Mode disconnected, scheduling reconnect");
+              this.scheduleReconnect();
+            }
+          };
+          this.onWsError = (e) => {
+            this.log(`Slack Socket Mode WebSocket error: ${e instanceof Error ? e.message : "unknown"}`);
+          };
+          this.ws.addEventListener("open", this.onWsOpen);
+          this.ws.addEventListener("message", this.onWsMessage);
+          this.ws.addEventListener("close", this.onWsClose);
+          this.ws.addEventListener("error", this.onWsError);
+        } catch (error48) {
+          this.log(`Slack Socket Mode connection error: ${error48 instanceof Error ? error48.message : String(error48)}`);
+          if (!this.isShuttingDown) {
+            this.scheduleReconnect();
+          }
+        }
+      }
+      /**
+       * Process a Socket Mode envelope.
+       *
+       * Envelope types:
+       * - hello: connection established
+       * - disconnect: server requesting reconnect
+       * - events_api: contains event payloads (messages, etc.)
+       */
+      handleEnvelope(raw) {
+        try {
+          let parsed;
+          try {
+            parsed = JSON.parse(raw);
+          } catch {
+            this.log("REJECTED Slack message: Invalid JSON");
+            return;
+          }
+          const envelopeValidation = validateSlackEnvelope(parsed);
+          if (!envelopeValidation.valid) {
+            this.log(`REJECTED Slack message: ${envelopeValidation.reason}`);
+            return;
+          }
+          const envelope = parsed;
+          if (envelope.envelope_id && this.ws?.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ envelope_id: envelope.envelope_id }));
+          }
+          if (envelope.type === "hello") {
+            this.connectionState.onAuthenticated();
+            this.log("Slack Socket Mode authenticated (hello received)");
+            const queued = this.connectionState.drainQueue();
+            if (queued.length > 0) {
+              this.log(`Processing ${queued.length} queued messages after re-authentication`);
+              for (const queuedEnvelope of queued) {
+                this.handleEnvelope(JSON.stringify(queuedEnvelope));
+              }
+            }
+            return;
+          }
+          if (envelope.type === "disconnect") {
+            this.connectionState.onReconnecting();
+            this.log(`Slack requested disconnect: ${envelope.reason || "unknown"}`);
+            if (this.ws) {
+              this.ws.close();
+            }
+            return;
+          }
+          if (!this.connectionState.canProcessMessages()) {
+            this.log(`REJECTED Slack message: connection not authenticated (state: ${this.connectionState.getState()})`);
+            this.connectionState.queueMessage(envelope);
+            return;
+          }
+          if (this.config.signingSecret) {
+            const envelopeAny = envelope;
+            const sig = envelopeAny["x_slack_signature"];
+            const ts = envelopeAny["x_slack_request_timestamp"];
+            if (sig && ts) {
+              if (!verifySlackSignature(this.config.signingSecret, sig, ts, raw)) {
+                this.log("REJECTED Slack message: Signature verification failed");
+                return;
+              }
+            }
+          }
+          if (envelope.type === "events_api" && envelope.payload?.event) {
+            const event = envelope.payload.event;
+            if (event.type === "message" && event.channel === this.config.channelId && !event.subtype && event.text) {
+              Promise.resolve(this.onMessage(event)).catch((err) => {
+                this.log(`Slack message handler error: ${err instanceof Error ? err.message : String(err)}`);
+              });
+            }
+          }
+        } catch (error48) {
+          this.log(`Slack envelope parse error: ${error48 instanceof Error ? error48.message : String(error48)}`);
+        }
+      }
+      /**
+       * Schedule a reconnection attempt with exponential backoff.
+       */
+      scheduleReconnect() {
+        if (this.isShuttingDown) return;
+        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+          this.log(`Slack Socket Mode max reconnect attempts (${this.maxReconnectAttempts}) reached`);
+          return;
+        }
+        if (this.reconnectTimer) {
+          clearTimeout(this.reconnectTimer);
+          this.reconnectTimer = null;
+        }
+        const delay = Math.min(
+          this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts),
+          this.maxReconnectDelayMs
+        );
+        this.reconnectAttempts++;
+        this.log(`Slack Socket Mode reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = null;
+          if (!this.isShuttingDown) {
+            this.connect();
+          }
+        }, delay);
+      }
+    };
+  }
+});
+
+// src/notifications/reply-listener.ts
+var reply_listener_exports = {};
+__export(reply_listener_exports, {
+  RateLimiter: () => RateLimiter,
+  SlackConnectionStateTracker: () => SlackConnectionStateTracker,
+  buildDaemonConfig: () => buildDaemonConfig,
+  getReplyListenerStatus: () => getReplyListenerStatus,
+  isDaemonRunning: () => isDaemonRunning,
+  pollLoop: () => pollLoop,
+  processSlackSocketMessage: () => processSlackSocketMessage,
+  sanitizeReplyInput: () => sanitizeReplyInput,
+  startReplyListener: () => startReplyListener,
+  stopReplyListener: () => stopReplyListener
+});
+function createMinimalDaemonEnv() {
+  const env2 = {};
+  for (const key of DAEMON_ENV_ALLOWLIST) {
+    if (process.env[key] !== void 0) {
+      env2[key] = process.env[key];
+    }
+  }
+  for (const key of Object.keys(process.env)) {
+    if (key.startsWith("OMC_")) {
+      env2[key] = process.env[key];
+    }
+  }
+  return env2;
+}
+function ensureStateDir2() {
+  if (!(0, import_fs55.existsSync)(DEFAULT_STATE_DIR)) {
+    (0, import_fs55.mkdirSync)(DEFAULT_STATE_DIR, { recursive: true, mode: 448 });
+  }
+}
+function writeSecureFile(filePath, content) {
+  ensureStateDir2();
+  (0, import_fs55.writeFileSync)(filePath, content, { mode: SECURE_FILE_MODE2 });
+  try {
+    (0, import_fs55.chmodSync)(filePath, SECURE_FILE_MODE2);
+  } catch {
+  }
+}
+function rotateLogIfNeeded(logPath) {
+  try {
+    if (!(0, import_fs55.existsSync)(logPath)) return;
+    const stats = (0, import_fs55.statSync)(logPath);
+    if (stats.size > MAX_LOG_SIZE_BYTES) {
+      const backupPath = `${logPath}.old`;
+      if ((0, import_fs55.existsSync)(backupPath)) {
+        (0, import_fs55.unlinkSync)(backupPath);
+      }
+      (0, import_fs55.renameSync)(logPath, backupPath);
+    }
+  } catch {
+  }
+}
+function log(message) {
+  try {
+    ensureStateDir2();
+    rotateLogIfNeeded(LOG_FILE_PATH);
+    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
+    const logLine = `[${timestamp}] ${redactTokens(message)}
+`;
+    (0, import_fs55.appendFileSync)(LOG_FILE_PATH, logLine, { mode: SECURE_FILE_MODE2 });
+  } catch {
+  }
+}
+function readDaemonState() {
+  try {
+    if (!(0, import_fs55.existsSync)(STATE_FILE_PATH)) {
+      return null;
+    }
+    const content = (0, import_fs55.readFileSync)(STATE_FILE_PATH, "utf-8");
+    const state = JSON.parse(content);
+    return state;
+  } catch {
+    return null;
+  }
+}
+function writeDaemonState(state) {
+  writeSecureFile(STATE_FILE_PATH, JSON.stringify(state, null, 2));
+}
+async function buildDaemonConfig() {
+  try {
+    const { getReplyConfig: getReplyConfig2, getNotificationConfig: getNotificationConfig2, getReplyListenerPlatformConfig: getReplyListenerPlatformConfig2 } = await Promise.resolve().then(() => (init_config(), config_exports));
+    const replyConfig = getReplyConfig2();
+    if (!replyConfig) return null;
+    const notifConfig = getNotificationConfig2();
+    const platformConfig = getReplyListenerPlatformConfig2(notifConfig);
+    return { ...replyConfig, ...platformConfig };
+  } catch {
+    return null;
+  }
+}
+function readPidFile() {
+  try {
+    if (!(0, import_fs55.existsSync)(PID_FILE_PATH)) {
+      return null;
+    }
+    const content = (0, import_fs55.readFileSync)(PID_FILE_PATH, "utf-8");
+    return parseInt(content.trim(), 10);
+  } catch {
+    return null;
+  }
+}
+function writePidFile(pid) {
+  writeSecureFile(PID_FILE_PATH, String(pid));
+}
+function removePidFile() {
+  if ((0, import_fs55.existsSync)(PID_FILE_PATH)) {
+    (0, import_fs55.unlinkSync)(PID_FILE_PATH);
+  }
+}
+function isProcessRunning(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function isDaemonRunning() {
+  const pid = readPidFile();
+  if (pid === null) {
+    return false;
+  }
+  if (!isProcessRunning(pid)) {
+    removePidFile();
+    return false;
+  }
+  return true;
+}
+function sanitizeReplyInput(text) {
+  return text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "").replace(/[\u202a-\u202e\u2066-\u2069]/g, "").replace(/\r?\n/g, " ").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\(/g, "\\$(").replace(/\$\{/g, "\\${").trim();
+}
+function injectReply(paneId, text, platform, config2) {
+  const content = capturePaneContent(paneId, 15);
+  if (!content.trim()) {
+    log(`WARN: Pane ${paneId} appears empty. Skipping injection, removing stale mapping.`);
+    removeMessagesByPane(paneId);
+    return false;
+  }
+  const prefix = config2.includePrefix ? `[reply:${platform}] ` : "";
+  const sanitized = sanitizeReplyInput(prefix + text);
+  const truncated = sanitized.slice(0, config2.maxMessageLength);
+  const success2 = sendToPane(paneId, truncated, true);
+  if (success2) {
+    log(`Injected reply from ${platform} into pane ${paneId}: "${truncated.slice(0, 50)}${truncated.length > 50 ? "..." : ""}"`);
+  } else {
+    log(`ERROR: Failed to inject reply into pane ${paneId}`);
+  }
+  return success2;
+}
+async function pollDiscord(config2, state, rateLimiter) {
+  if (!config2.discordBotToken || !config2.discordChannelId) {
+    return;
+  }
+  if (config2.authorizedDiscordUserIds.length === 0) {
+    return;
+  }
+  if (Date.now() < discordBackoffUntil) {
+    return;
+  }
+  try {
+    const after = state.discordLastMessageId ? `?after=${state.discordLastMessageId}&limit=10` : "?limit=10";
+    const url2 = `https://discord.com/api/v10/channels/${config2.discordChannelId}/messages${after}`;
+    const response = await fetch(url2, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bot ${config2.discordBotToken}`
+      },
+      signal: AbortSignal.timeout(1e4)
+    });
+    const remaining = response.headers.get("x-ratelimit-remaining");
+    const reset = response.headers.get("x-ratelimit-reset");
+    if (remaining !== null && parseInt(remaining, 10) < 2) {
+      const resetTime = reset ? parseFloat(reset) * 1e3 : Date.now() + 1e4;
+      discordBackoffUntil = resetTime;
+      log(`WARN: Discord rate limit low (remaining: ${remaining}), backing off until ${new Date(resetTime).toISOString()}`);
+    }
+    if (!response.ok) {
+      log(`Discord API error: HTTP ${response.status}`);
+      return;
+    }
+    const messages = await response.json();
+    if (!Array.isArray(messages) || messages.length === 0) return;
+    const sorted = [...messages].reverse();
+    for (const msg of sorted) {
+      if (!msg.message_reference?.message_id) {
+        state.discordLastMessageId = msg.id;
+        writeDaemonState(state);
+        continue;
+      }
+      if (!config2.authorizedDiscordUserIds.includes(msg.author.id)) {
+        state.discordLastMessageId = msg.id;
+        writeDaemonState(state);
+        continue;
+      }
+      const mapping = lookupByMessageId("discord-bot", msg.message_reference.message_id);
+      if (!mapping) {
+        state.discordLastMessageId = msg.id;
+        writeDaemonState(state);
+        continue;
+      }
+      if (!rateLimiter.canProceed()) {
+        log(`WARN: Rate limit exceeded, dropping Discord message ${msg.id}`);
+        state.discordLastMessageId = msg.id;
+        writeDaemonState(state);
+        state.errors++;
+        continue;
+      }
+      state.discordLastMessageId = msg.id;
+      writeDaemonState(state);
+      const success2 = injectReply(mapping.tmuxPaneId, msg.content, "discord", config2);
+      if (success2) {
+        state.messagesInjected++;
+        try {
+          await fetch(
+            `https://discord.com/api/v10/channels/${config2.discordChannelId}/messages/${msg.id}/reactions/%E2%9C%85/@me`,
+            {
+              method: "PUT",
+              headers: { "Authorization": `Bot ${config2.discordBotToken}` },
+              signal: AbortSignal.timeout(5e3)
+            }
+          );
+        } catch (e) {
+          log(`WARN: Failed to add confirmation reaction: ${e}`);
+        }
+        try {
+          const mentionPrefix = config2.discordMention ? `${config2.discordMention} ` : "";
+          const feedbackAllowedMentions = config2.discordMention ? parseMentionAllowedMentions(config2.discordMention) : { parse: [] };
+          await fetch(
+            `https://discord.com/api/v10/channels/${config2.discordChannelId}/messages`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bot ${config2.discordBotToken}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({
+                content: `${mentionPrefix}Injected into Copilot CLI session.`,
+                message_reference: { message_id: msg.id },
+                allowed_mentions: feedbackAllowedMentions
+              }),
+              signal: AbortSignal.timeout(5e3)
+            }
+          );
+        } catch (e) {
+          log(`WARN: Failed to send injection channel notification: ${e}`);
+        }
+      } else {
+        state.errors++;
+      }
+    }
+  } catch (error48) {
+    state.errors++;
+    state.lastError = redactTokens(error48 instanceof Error ? error48.message : String(error48));
+    log(`Discord polling error: ${state.lastError}`);
+  }
+}
+async function pollTelegram(config2, state, rateLimiter) {
+  if (!config2.telegramBotToken || !config2.telegramChatId) {
+    return;
+  }
+  try {
+    const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
+    const path22 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
+    const updates = await new Promise((resolve16, reject) => {
+      const req = (0, import_https.request)(
+        {
+          hostname: "api.telegram.org",
+          path: path22,
+          method: "GET",
+          family: 4,
+          // Force IPv4
+          timeout: 1e4
+        },
+        (res) => {
+          const chunks = [];
+          res.on("data", (chunk) => chunks.push(chunk));
+          res.on("end", () => {
+            try {
+              const body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
+              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+                resolve16(body.result || []);
+              } else {
+                reject(new Error(`HTTP ${res.statusCode}`));
+              }
+            } catch (e) {
+              reject(e);
+            }
+          });
+        }
+      );
+      req.on("error", reject);
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("Request timeout"));
+      });
+      req.end();
+    });
+    for (const update of updates) {
+      const msg = update.message;
+      if (!msg) {
+        state.telegramLastUpdateId = update.update_id;
+        writeDaemonState(state);
+        continue;
+      }
+      if (!msg.reply_to_message?.message_id) {
+        state.telegramLastUpdateId = update.update_id;
+        writeDaemonState(state);
+        continue;
+      }
+      if (String(msg.chat.id) !== config2.telegramChatId) {
+        state.telegramLastUpdateId = update.update_id;
+        writeDaemonState(state);
+        continue;
+      }
+      const mapping = lookupByMessageId("telegram", String(msg.reply_to_message.message_id));
+      if (!mapping) {
+        state.telegramLastUpdateId = update.update_id;
+        writeDaemonState(state);
+        continue;
+      }
+      const text = msg.text || "";
+      if (!text) {
+        state.telegramLastUpdateId = update.update_id;
+        writeDaemonState(state);
+        continue;
+      }
+      if (!rateLimiter.canProceed()) {
+        log(`WARN: Rate limit exceeded, dropping Telegram message ${msg.message_id}`);
+        state.telegramLastUpdateId = update.update_id;
+        writeDaemonState(state);
+        state.errors++;
+        continue;
+      }
+      state.telegramLastUpdateId = update.update_id;
+      writeDaemonState(state);
+      const success2 = injectReply(mapping.tmuxPaneId, text, "telegram", config2);
+      if (success2) {
+        state.messagesInjected++;
+        try {
+          const replyBody = JSON.stringify({
+            chat_id: config2.telegramChatId,
+            text: "Injected into Copilot CLI session.",
+            reply_to_message_id: msg.message_id
+          });
+          await new Promise((resolve16) => {
+            const replyReq = (0, import_https.request)(
+              {
+                hostname: "api.telegram.org",
+                path: `/bot${config2.telegramBotToken}/sendMessage`,
+                method: "POST",
+                family: 4,
+                headers: {
+                  "Content-Type": "application/json",
+                  "Content-Length": Buffer.byteLength(replyBody)
+                },
+                timeout: 5e3
+              },
+              (res) => {
+                res.resume();
+                resolve16();
+              }
+            );
+            replyReq.on("error", () => resolve16());
+            replyReq.on("timeout", () => {
+              replyReq.destroy();
+              resolve16();
+            });
+            replyReq.write(replyBody);
+            replyReq.end();
+          });
+        } catch (e) {
+          log(`WARN: Failed to send confirmation reply: ${e}`);
+        }
+      } else {
+        state.errors++;
+      }
+    }
+  } catch (error48) {
+    state.errors++;
+    state.lastError = redactTokens(error48 instanceof Error ? error48.message : String(error48));
+    log(`Telegram polling error: ${state.lastError}`);
+  }
+}
+async function pollLoop() {
+  log("Reply listener daemon starting poll loop");
+  const config2 = await buildDaemonConfig();
+  if (!config2) {
+    log("ERROR: No notification config found for reply listener, exiting");
+    process.exit(1);
+  }
+  const state = readDaemonState() || {
+    isRunning: true,
+    pid: process.pid,
+    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    lastPollAt: null,
+    telegramLastUpdateId: null,
+    discordLastMessageId: null,
+    messagesInjected: 0,
+    errors: 0
+  };
+  state.isRunning = true;
+  state.pid = process.pid;
+  const rateLimiter = new RateLimiter(config2.rateLimitPerMinute);
+  let lastPruneAt = Date.now();
+  let slackSocket = null;
+  if (config2.slackAppToken && config2.slackBotToken && config2.slackChannelId) {
+    if (typeof WebSocket === "undefined") {
+      log("WARN: WebSocket not available (requires Node 20.10+), Slack Socket Mode disabled");
+    } else {
+      try {
+        const { SlackSocketClient: SlackSocketClient2, addSlackReaction: addSlackReaction2 } = await Promise.resolve().then(() => (init_slack_socket(), slack_socket_exports));
+        const slackChannelId = config2.slackChannelId;
+        const slackBotToken = config2.slackBotToken;
+        slackSocket = new SlackSocketClient2(
+          {
+            appToken: config2.slackAppToken,
+            botToken: slackBotToken,
+            channelId: slackChannelId
+          },
+          async (event) => {
+            if (!config2.authorizedSlackUserIds || config2.authorizedSlackUserIds.length === 0) {
+              log("WARN: No authorized Slack user IDs configured, rejecting all messages (fail-closed)");
+              return;
+            }
+            if (!config2.authorizedSlackUserIds.includes(event.user)) {
+              log(`REJECTED Slack message from unauthorized user ${event.user}`);
+              return;
+            }
+            if (!rateLimiter.canProceed()) {
+              log(`WARN: Rate limit exceeded, dropping Slack message ${event.ts}`);
+              state.errors++;
+              return;
+            }
+            let targetPaneId = null;
+            if (event.thread_ts && event.thread_ts !== event.ts) {
+              const mapping = lookupByMessageId("slack-bot", event.thread_ts);
+              if (mapping) {
+                targetPaneId = mapping.tmuxPaneId;
+              }
+            }
+            if (!targetPaneId) {
+              log("WARN: No target pane found for Slack message, skipping");
+              return;
+            }
+            const success2 = injectReply(targetPaneId, event.text, "slack", config2);
+            if (success2) {
+              state.messagesInjected++;
+              writeDaemonState(state);
+              try {
+                await addSlackReaction2(slackBotToken, slackChannelId, event.ts);
+              } catch (e) {
+                log(`WARN: Failed to add Slack reaction: ${e}`);
+              }
+            } else {
+              state.errors++;
+              writeDaemonState(state);
+            }
+          },
+          log
+        );
+        await slackSocket.start();
+        log("Slack Socket Mode listener started");
+      } catch (e) {
+        log(`ERROR: Failed to start Slack Socket Mode: ${e instanceof Error ? e.message : String(e)}`);
+        slackSocket = null;
+      }
+    }
+  }
+  const shutdown = () => {
+    log("Shutdown signal received");
+    state.isRunning = false;
+    if (slackSocket) {
+      slackSocket.stop();
+      slackSocket = null;
+    }
+    writeDaemonState(state);
+    removePidFile();
+    process.exit(0);
+  };
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
+  try {
+    pruneStale();
+    log("Pruned stale registry entries");
+  } catch (e) {
+    log(`WARN: Failed to prune stale entries: ${e}`);
+  }
+  while (state.isRunning) {
+    try {
+      state.lastPollAt = (/* @__PURE__ */ new Date()).toISOString();
+      await pollDiscord(config2, state, rateLimiter);
+      await pollTelegram(config2, state, rateLimiter);
+      if (Date.now() - lastPruneAt > PRUNE_INTERVAL_MS) {
+        try {
+          pruneStale();
+          lastPruneAt = Date.now();
+          log("Pruned stale registry entries");
+        } catch (e) {
+          log(`WARN: Prune failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+      writeDaemonState(state);
+      await new Promise((resolve16) => setTimeout(resolve16, config2.pollIntervalMs));
+    } catch (error48) {
+      state.errors++;
+      state.lastError = redactTokens(error48 instanceof Error ? error48.message : String(error48));
+      log(`Poll error: ${state.lastError}`);
+      writeDaemonState(state);
+      await new Promise((resolve16) => setTimeout(resolve16, config2.pollIntervalMs * 2));
+    }
+  }
+  log("Poll loop ended");
+}
+function startReplyListener(_config) {
+  if (isDaemonRunning()) {
+    const state = readDaemonState();
+    return {
+      success: true,
+      message: "Reply listener daemon is already running",
+      state: state ?? void 0
+    };
+  }
+  if (!isTmuxAvailable2()) {
+    return {
+      success: false,
+      message: "tmux not available - reply injection requires tmux"
+    };
+  }
+  ensureStateDir2();
+  const modulePath = resolveDaemonModulePath(__filename2, ["notifications", "reply-listener.js"]);
+  const daemonScript = `
+    import('${modulePath}').then(({ pollLoop }) => {
+      return pollLoop();
+    }).catch((err) => { console.error('[reply-listener] Fatal:', err instanceof Error ? err.message : 'unknown error'); process.exit(1); });
+  `;
+  try {
+    const child = (0, import_child_process19.spawn)("node", ["-e", daemonScript], {
+      detached: true,
+      stdio: "ignore",
+      cwd: process.cwd(),
+      env: createMinimalDaemonEnv()
+    });
+    child.unref();
+    const pid = child.pid;
+    if (pid) {
+      writePidFile(pid);
+      const state = {
+        isRunning: true,
+        pid,
+        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        lastPollAt: null,
+        telegramLastUpdateId: null,
+        discordLastMessageId: null,
+        messagesInjected: 0,
+        errors: 0
+      };
+      writeDaemonState(state);
+      log(`Reply listener daemon started with PID ${pid}`);
+      return {
+        success: true,
+        message: `Reply listener daemon started with PID ${pid}`,
+        state
+      };
+    }
+    return {
+      success: false,
+      message: "Failed to start daemon process"
+    };
+  } catch (error48) {
+    return {
+      success: false,
+      message: "Failed to start daemon",
+      error: error48 instanceof Error ? error48.message : String(error48)
+    };
+  }
+}
+function stopReplyListener() {
+  const pid = readPidFile();
+  if (pid === null) {
+    return {
+      success: true,
+      message: "Reply listener daemon is not running"
+    };
+  }
+  if (!isProcessRunning(pid)) {
+    removePidFile();
+    return {
+      success: true,
+      message: "Reply listener daemon was not running (cleaned up stale PID file)"
+    };
+  }
+  try {
+    process.kill(pid, "SIGTERM");
+    removePidFile();
+    const state = readDaemonState();
+    if (state) {
+      state.isRunning = false;
+      state.pid = null;
+      writeDaemonState(state);
+    }
+    log(`Reply listener daemon stopped (PID ${pid})`);
+    return {
+      success: true,
+      message: `Reply listener daemon stopped (PID ${pid})`,
+      state: state ?? void 0
+    };
+  } catch (error48) {
+    return {
+      success: false,
+      message: "Failed to stop daemon",
+      error: error48 instanceof Error ? error48.message : String(error48)
+    };
+  }
+}
+function getReplyListenerStatus() {
+  const state = readDaemonState();
+  const running = isDaemonRunning();
+  if (!running && !state) {
+    return {
+      success: true,
+      message: "Reply listener daemon has never been started"
+    };
+  }
+  if (!running && state) {
+    return {
+      success: true,
+      message: "Reply listener daemon is not running",
+      state: { ...state, isRunning: false, pid: null }
+    };
+  }
+  return {
+    success: true,
+    message: "Reply listener daemon is running",
+    state: state ?? void 0
+  };
+}
+function processSlackSocketMessage(rawMessage, connectionState, paneId, config2, state, rateLimiter, signature, timestamp) {
+  const validation = validateSlackMessage(
+    rawMessage,
+    connectionState,
+    config2.slackSigningSecret,
+    signature,
+    timestamp
+  );
+  if (!validation.valid) {
+    log(`REJECTED Slack message: ${validation.reason}`);
+    state.errors++;
+    return { injected: false, validation };
+  }
+  if (!paneId) {
+    log("REJECTED Slack message: no target pane ID");
+    state.errors++;
+    return {
+      injected: false,
+      validation: { valid: false, reason: "No target pane ID" }
+    };
+  }
+  if (!rateLimiter.canProceed()) {
+    log("WARN: Rate limit exceeded, dropping Slack message");
+    state.errors++;
+    return {
+      injected: false,
+      validation: { valid: false, reason: "Rate limit exceeded" }
+    };
+  }
+  let text;
+  try {
+    const parsed = JSON.parse(rawMessage);
+    const payload = parsed.payload;
+    text = payload?.event?.text || payload?.text || "";
+  } catch {
+    log("REJECTED Slack message: failed to extract text from validated message");
+    state.errors++;
+    return {
+      injected: false,
+      validation: { valid: false, reason: "Failed to extract message text" }
+    };
+  }
+  if (!text) {
+    log("REJECTED Slack message: empty message text");
+    return {
+      injected: false,
+      validation: { valid: false, reason: "Empty message text" }
+    };
+  }
+  const success2 = injectReply(paneId, text, "slack", config2);
+  if (success2) {
+    state.messagesInjected++;
+  } else {
+    state.errors++;
+  }
+  return { injected: success2, validation };
+}
+var import_fs55, import_path64, import_url9, import_os12, import_child_process19, import_https, __filename2, SECURE_FILE_MODE2, MAX_LOG_SIZE_BYTES, DAEMON_ENV_ALLOWLIST, DEFAULT_STATE_DIR, PID_FILE_PATH, STATE_FILE_PATH, LOG_FILE_PATH, RateLimiter, discordBackoffUntil, PRUNE_INTERVAL_MS;
+var init_reply_listener = __esm({
+  "src/notifications/reply-listener.ts"() {
+    "use strict";
+    import_fs55 = require("fs");
+    import_path64 = require("path");
+    import_url9 = require("url");
+    import_os12 = require("os");
+    import_child_process19 = require("child_process");
+    import_https = require("https");
+    init_daemon_module_path();
+    init_tmux_detector();
+    init_session_registry();
+    init_config();
+    init_redact();
+    init_slack_socket();
+    init_slack_socket();
+    __filename2 = (0, import_url9.fileURLToPath)(importMetaUrl);
+    SECURE_FILE_MODE2 = 384;
+    MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
+    DAEMON_ENV_ALLOWLIST = [
+      "PATH",
+      "HOME",
+      "USERPROFILE",
+      "USER",
+      "USERNAME",
+      "LOGNAME",
+      "LANG",
+      "LC_ALL",
+      "LC_CTYPE",
+      "TERM",
+      "TMUX",
+      "TMUX_PANE",
+      "TMPDIR",
+      "TMP",
+      "TEMP",
+      "XDG_RUNTIME_DIR",
+      "XDG_DATA_HOME",
+      "XDG_CONFIG_HOME",
+      "SHELL",
+      "NODE_ENV",
+      "NODE_EXTRA_CA_CERTS",
+      "HTTP_PROXY",
+      "HTTPS_PROXY",
+      "http_proxy",
+      "https_proxy",
+      "NO_PROXY",
+      "no_proxy",
+      "SystemRoot",
+      "SYSTEMROOT",
+      "windir",
+      "COMSPEC"
+    ];
+    DEFAULT_STATE_DIR = (0, import_path64.join)((0, import_os12.homedir)(), ".omcp", "state");
+    PID_FILE_PATH = (0, import_path64.join)(DEFAULT_STATE_DIR, "reply-listener.pid");
+    STATE_FILE_PATH = (0, import_path64.join)(DEFAULT_STATE_DIR, "reply-listener-state.json");
+    LOG_FILE_PATH = (0, import_path64.join)(DEFAULT_STATE_DIR, "reply-listener.log");
+    RateLimiter = class {
+      // 1 minute
+      constructor(maxPerMinute) {
+        this.maxPerMinute = maxPerMinute;
+      }
+      maxPerMinute;
+      timestamps = [];
+      windowMs = 60 * 1e3;
+      canProceed() {
+        const now = Date.now();
+        this.timestamps = this.timestamps.filter((t) => now - t < this.windowMs);
+        if (this.timestamps.length >= this.maxPerMinute) {
+          return false;
+        }
+        this.timestamps.push(now);
+        return true;
+      }
+      reset() {
+        this.timestamps = [];
+      }
+    };
+    discordBackoffUntil = 0;
+    PRUNE_INTERVAL_MS = 60 * 60 * 1e3;
+  }
+});
+
+// src/openclaw/config.ts
+function getOpenClawConfig() {
+  if (process.env.OMC_OPENCLAW !== "1") {
+    return null;
+  }
+  if (_cachedConfig !== null) {
+    return _cachedConfig ?? null;
+  }
+  if (!(0, import_fs56.existsSync)(CONFIG_FILE3)) {
+    _cachedConfig = void 0;
+    return null;
+  }
+  try {
+    const raw = JSON.parse((0, import_fs56.readFileSync)(CONFIG_FILE3, "utf-8"));
+    if (!raw.enabled || !raw.gateways || !raw.hooks) {
+      _cachedConfig = void 0;
+      return null;
+    }
+    _cachedConfig = raw;
+    return raw;
+  } catch {
+    _cachedConfig = void 0;
+    return null;
+  }
+}
+function resolveGateway(config2, event) {
+  const mapping = config2.hooks[event];
+  if (!mapping || !mapping.enabled) {
+    return null;
+  }
+  const gateway = config2.gateways[mapping.gateway];
+  if (!gateway) {
+    return null;
+  }
+  if (gateway.type === "command") {
+    if (!gateway.command) return null;
+  } else {
+    if (!("url" in gateway) || !gateway.url) return null;
+  }
+  return { gatewayName: mapping.gateway, gateway, instruction: mapping.instruction };
+}
+function resetOpenClawConfigCache() {
+  _cachedConfig = null;
+}
+var import_fs56, import_path65, CONFIG_FILE3, _cachedConfig;
+var init_config2 = __esm({
+  "src/openclaw/config.ts"() {
+    "use strict";
+    import_fs56 = require("fs");
+    import_path65 = require("path");
+    init_config_dir();
+    CONFIG_FILE3 = process.env.OMC_OPENCLAW_CONFIG || (0, import_path65.join)(getConfigDir(), "omc_config.openclaw.json");
+    _cachedConfig = null;
+  }
+});
+
+// src/openclaw/dispatcher.ts
+function validateGatewayUrl(url2) {
+  try {
+    const parsed = new URL(url2);
+    if (parsed.protocol === "https:") return true;
+    if (parsed.protocol === "http:" && (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1")) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+function interpolateInstruction(template, variables) {
+  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
+    return variables[key] ?? match;
+  });
+}
+function isCommandGateway(config2) {
+  return config2.type === "command";
+}
+function shellEscapeArg(value) {
+  return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+async function wakeGateway(gatewayName, gatewayConfig, payload) {
+  if (!validateGatewayUrl(gatewayConfig.url)) {
+    return {
+      gateway: gatewayName,
+      success: false,
+      error: "Invalid URL (HTTPS required)"
+    };
+  }
+  try {
+    const headers = {
+      "Content-Type": "application/json",
+      ...gatewayConfig.headers
+    };
+    const timeout = gatewayConfig.timeout ?? DEFAULT_TIMEOUT_MS;
+    const response = await fetch(gatewayConfig.url, {
+      method: gatewayConfig.method || "POST",
+      headers,
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(timeout)
+    });
+    if (!response.ok) {
+      return {
+        gateway: gatewayName,
+        success: false,
+        error: `HTTP ${response.status}`,
+        statusCode: response.status
+      };
+    }
+    return { gateway: gatewayName, success: true, statusCode: response.status };
+  } catch (error48) {
+    return {
+      gateway: gatewayName,
+      success: false,
+      error: error48 instanceof Error ? error48.message : "Unknown error"
+    };
+  }
+}
+async function wakeCommandGateway(gatewayName, gatewayConfig, variables, payload) {
+  try {
+    const { execFile: execFile6 } = await import("child_process");
+    const { promisify: promisify7 } = await import("util");
+    const execFileAsync5 = promisify7(execFile6);
+    const command = gatewayConfig.command.replace(
+      /\{\{(\w+)\}\}/g,
+      (match, key) => {
+        const value = variables[key];
+        if (value === void 0) return match;
+        return shellEscapeArg(value);
+      }
+    );
+    const timeout = gatewayConfig.timeout ?? DEFAULT_TIMEOUT_MS;
+    const payloadJson = payload ? JSON.stringify(payload) : variables.payloadJson;
+    await execFileAsync5("sh", ["-c", command], {
+      timeout,
+      env: {
+        ...process.env,
+        ...payloadJson ? { OPENCLAW_PAYLOAD_JSON: payloadJson } : {},
+        ...variables.signalRouteKey ? { OPENCLAW_SIGNAL_ROUTE_KEY: variables.signalRouteKey } : {},
+        ...variables.signalPhase ? { OPENCLAW_SIGNAL_PHASE: variables.signalPhase } : {},
+        ...variables.signalKind ? { OPENCLAW_SIGNAL_KIND: variables.signalKind } : {}
+      }
+    });
+    return { gateway: gatewayName, success: true };
+  } catch (error48) {
+    return {
+      gateway: gatewayName,
+      success: false,
+      error: error48 instanceof Error ? error48.message : "Unknown error"
+    };
+  }
+}
+var DEFAULT_TIMEOUT_MS;
+var init_dispatcher = __esm({
+  "src/openclaw/dispatcher.ts"() {
+    "use strict";
+    DEFAULT_TIMEOUT_MS = 1e4;
+  }
+});
+
+// src/openclaw/signal.ts
+function stripClaudeTempCwdErrors(output) {
+  return output.replace(CLAUDE_TEMP_CWD_PATTERN, "");
+}
+function isNonZeroExitWithOutput(output) {
+  const cleaned = stripClaudeTempCwdErrors(output);
+  if (!CLAUDE_EXIT_CODE_PREFIX.test(cleaned)) return false;
+  CLAUDE_EXIT_CODE_PREFIX.lastIndex = 0;
+  const remaining = cleaned.replace(CLAUDE_EXIT_CODE_PREFIX, "").trim();
+  CLAUDE_EXIT_CODE_PREFIX.lastIndex = 0;
+  if (!remaining) return false;
+  const contentErrorPatterns = [
+    /error:/i,
+    /failed/i,
+    /\bFAIL\b/,
+    /cannot/i,
+    /permission denied/i,
+    /command not found/i,
+    /no such file/i,
+    /fatal:/i,
+    /abort/i
+  ];
+  return !contentErrorPatterns.some((pattern) => pattern.test(remaining));
+}
+function detectBashFailure(output) {
+  const cleaned = stripClaudeTempCwdErrors(output);
+  const errorPatterns = [
+    /error:/i,
+    /failed/i,
+    /\bFAIL\b/,
+    /cannot/i,
+    /permission denied/i,
+    /command not found/i,
+    /no such file/i,
+    /exit code: [1-9]/i,
+    /exit status [1-9]/i,
+    /fatal:/i,
+    /abort/i
+  ];
+  return errorPatterns.some((pattern) => pattern.test(cleaned));
+}
+function detectWriteFailure(output) {
+  const cleaned = stripClaudeTempCwdErrors(output);
+  const errorPatterns = [
+    /\berror:/i,
+    /\bfailed to\b/i,
+    /\bwrite failed\b/i,
+    /\boperation failed\b/i,
+    /permission denied/i,
+    /read-only/i,
+    /\bno such file\b/i,
+    /\bdirectory not found\b/i
+  ];
+  return errorPatterns.some((pattern) => pattern.test(cleaned));
+}
+function getCommand(toolInput) {
+  if (!toolInput || typeof toolInput !== "object") return void 0;
+  const raw = toolInput.command;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : void 0;
+}
+function detectTestRunner(command) {
+  if (!command) return void 0;
+  return TEST_COMMAND_PATTERNS2.find(({ pattern }) => pattern.test(command))?.runner;
+}
+function summarize(value, maxLength = 160) {
+  if (typeof value !== "string") return void 0;
+  const normalized = value.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 4).join(" | ");
+  if (!normalized) return void 0;
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 2)).trimEnd()}\u2026`;
+}
+function getToolPhase(toolName, toolOutput) {
+  if (typeof toolOutput !== "string" || toolOutput.trim().length === 0) {
+    return "finished";
+  }
+  if (toolName === "Bash") {
+    if (isNonZeroExitWithOutput(toolOutput)) return "finished";
+    return detectBashFailure(toolOutput) ? "failed" : "finished";
+  }
+  if (toolName === "Edit" || toolName === "Write") {
+    return detectWriteFailure(toolOutput) ? "failed" : "finished";
+  }
+  return "finished";
+}
+function buildToolSignal(event, context) {
+  const toolName = context.toolName || "unknown";
+  const command = getCommand(context.toolInput);
+  const testRunner = toolName === "Bash" ? detectTestRunner(command) : void 0;
+  const isPrCreate = toolName === "Bash" && !!command && PR_CREATE_PATTERN.test(command);
+  const phase = event === "pre-tool-use" ? "started" : getToolPhase(context.toolName, context.toolOutput);
+  const summary = summarize(context.toolOutput ?? command);
+  if (testRunner) {
+    return {
+      kind: "test",
+      name: "test-run",
+      phase,
+      routeKey: `test.${phase}`,
+      priority: "high",
+      toolName,
+      command,
+      testRunner,
+      summary
+    };
+  }
+  if (isPrCreate) {
+    const output = typeof context.toolOutput === "string" ? context.toolOutput : "";
+    const prUrl = output.match(PR_URL_PATTERN)?.[0];
+    const routeKey = phase === "started" ? "pull-request.started" : phase === "failed" ? "pull-request.failed" : "pull-request.created";
+    return {
+      kind: "pull-request",
+      name: "pull-request-create",
+      phase,
+      routeKey,
+      priority: "high",
+      toolName,
+      command,
+      prUrl,
+      summary: summarize(prUrl ? `${prUrl}${summary ? ` ${summary}` : ""}` : summary)
+    };
+  }
+  return {
+    kind: "tool",
+    name: "tool-use",
+    phase,
+    routeKey: `tool.${phase}`,
+    priority: phase === "failed" ? "high" : "low",
+    toolName,
+    summary
+  };
+}
+function buildOpenClawSignal(event, context) {
+  switch (event) {
+    case "session-start":
+      return {
+        kind: "session",
+        name: "session",
+        phase: "started",
+        routeKey: "session.started",
+        priority: "high"
+      };
+    case "session-end":
+      return {
+        kind: "session",
+        name: "session",
+        phase: "finished",
+        routeKey: "session.finished",
+        priority: "high",
+        summary: summarize(context.reason)
+      };
+    case "stop":
+      return {
+        kind: "session",
+        name: "session-idle",
+        phase: "idle",
+        routeKey: "session.idle",
+        priority: "high"
+      };
+    case "keyword-detector":
+      return {
+        kind: "keyword",
+        name: "keyword-detected",
+        phase: "detected",
+        routeKey: "keyword.detected",
+        priority: "low",
+        summary: summarize(context.prompt)
+      };
+    case "ask-user-question":
+      return {
+        kind: "question",
+        name: "ask-user-question",
+        phase: "requested",
+        routeKey: "question.requested",
+        priority: "high",
+        summary: summarize(context.question)
+      };
+    case "pre-tool-use":
+    case "post-tool-use":
+      return buildToolSignal(event, context);
+    default:
+      return {
+        kind: "tool",
+        name: "tool-use",
+        phase: "finished",
+        routeKey: "tool.finished",
+        priority: "low"
+      };
+  }
+}
+var CLAUDE_TEMP_CWD_PATTERN, CLAUDE_EXIT_CODE_PREFIX, PR_CREATE_PATTERN, PR_URL_PATTERN, TEST_COMMAND_PATTERNS2;
+var init_signal = __esm({
+  "src/openclaw/signal.ts"() {
+    "use strict";
+    CLAUDE_TEMP_CWD_PATTERN = /zsh:\d+: permission denied:.*\/T\/claude-[a-z0-9]+-cwd/gi;
+    CLAUDE_EXIT_CODE_PREFIX = /^Error: Exit code \d+\s*$/gm;
+    PR_CREATE_PATTERN = /\bgh\s+pr\s+create\b/i;
+    PR_URL_PATTERN = /https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/i;
+    TEST_COMMAND_PATTERNS2 = [
+      { pattern: /\b(?:npm|pnpm|yarn|bun)\s+test\b/i, runner: "package-test" },
+      { pattern: /\bnpx\s+vitest\b|\bvitest\b/i, runner: "vitest" },
+      { pattern: /\bnpx\s+jest\b|\bjest\b/i, runner: "jest" },
+      { pattern: /\bpytest\b|\bpython\s+-m\s+pytest\b/i, runner: "pytest" },
+      { pattern: /\bcargo\s+test\b/i, runner: "cargo-test" },
+      { pattern: /\bgo\s+test\b/i, runner: "go-test" },
+      { pattern: /\bmake\s+test\b/i, runner: "make-test" }
+    ];
+  }
+});
+
+// src/openclaw/dedupe.ts
+function sleepMs2(ms) {
+  try {
+    Atomics.wait(SLEEP_ARRAY2, 0, 0, ms);
+  } catch {
+    const deadline = Date.now() + ms;
+    while (Date.now() < deadline) {
+    }
+  }
+}
+function getStateDir3(projectPath) {
+  return (0, import_path66.join)(projectPath, ...STATE_DIR);
+}
+function getStatePath2(projectPath) {
+  return (0, import_path66.join)(getStateDir3(projectPath), STATE_FILE3);
+}
+function getLockPath2(projectPath) {
+  return (0, import_path66.join)(getStateDir3(projectPath), LOCK_FILE);
+}
+function ensureStateDir3(projectPath) {
+  (0, import_fs57.mkdirSync)(getStateDir3(projectPath), { recursive: true, mode: 448 });
+}
+function readState(projectPath) {
+  const statePath = getStatePath2(projectPath);
+  if (!(0, import_fs57.existsSync)(statePath)) {
+    return { updatedAt: (/* @__PURE__ */ new Date(0)).toISOString(), records: {} };
+  }
+  try {
+    const parsed = JSON.parse((0, import_fs57.readFileSync)(statePath, "utf-8"));
+    return {
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : (/* @__PURE__ */ new Date(0)).toISOString(),
+      records: parsed.records && typeof parsed.records === "object" ? parsed.records : {}
+    };
+  } catch {
+    return { updatedAt: (/* @__PURE__ */ new Date(0)).toISOString(), records: {} };
+  }
+}
+function writeState2(projectPath, state) {
+  ensureStateDir3(projectPath);
+  atomicWriteJsonSync(getStatePath2(projectPath), state);
+}
+function readLockSnapshot2(projectPath) {
+  try {
+    const raw = (0, import_fs57.readFileSync)(getLockPath2(projectPath), "utf-8");
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      return { raw, pid: null, token: null };
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      return {
+        raw,
+        pid: typeof parsed.pid === "number" && Number.isFinite(parsed.pid) ? parsed.pid : null,
+        token: typeof parsed.token === "string" && parsed.token.length > 0 ? parsed.token : null
+      };
+    } catch {
+      return { raw, pid: null, token: null };
+    }
+  } catch {
+    return null;
+  }
+}
+function removeLockIfUnchanged2(projectPath, snapshot) {
+  try {
+    const currentRaw = (0, import_fs57.readFileSync)(getLockPath2(projectPath), "utf-8");
+    if (currentRaw !== snapshot.raw) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
+  try {
+    (0, import_fs57.unlinkSync)(getLockPath2(projectPath));
+    return true;
+  } catch {
+    return false;
+  }
+}
+function acquireLock2(projectPath) {
+  ensureStateDir3(projectPath);
+  const started = Date.now();
+  while (Date.now() - started < LOCK_TIMEOUT_MS2) {
+    try {
+      const token = (0, import_crypto8.randomUUID)();
+      const fd = (0, import_fs57.openSync)(
+        getLockPath2(projectPath),
+        import_fs57.constants.O_CREAT | import_fs57.constants.O_EXCL | import_fs57.constants.O_WRONLY,
+        384
+      );
+      (0, import_fs57.writeSync)(fd, JSON.stringify({ pid: process.pid, token, acquiredAt: Date.now() }), null, "utf-8");
+      return { fd, token };
+    } catch (error48) {
+      const err = error48;
+      if (err.code !== "EEXIST") {
+        throw error48;
+      }
+      try {
+        const ageMs = Date.now() - (0, import_fs57.statSync)(getLockPath2(projectPath)).mtimeMs;
+        if (ageMs > LOCK_STALE_MS3) {
+          const snapshot = readLockSnapshot2(projectPath);
+          if (snapshot) {
+            if (snapshot.pid !== null && isProcessAlive(snapshot.pid)) {
+              sleepMs2(LOCK_RETRY_MS3);
+              continue;
+            }
+            if (removeLockIfUnchanged2(projectPath, snapshot)) {
+              continue;
+            }
+          }
+        }
+      } catch {
+      }
+      sleepMs2(LOCK_RETRY_MS3);
+    }
+  }
+  return null;
+}
+function releaseLock2(projectPath, lock) {
+  try {
+    (0, import_fs57.closeSync)(lock.fd);
+  } catch {
+  }
+  const snapshot = readLockSnapshot2(projectPath);
+  if (!snapshot || snapshot.token !== lock.token) {
+    return;
+  }
+  removeLockIfUnchanged2(projectPath, snapshot);
+}
+function withProjectLock(projectPath, callback) {
+  const lock = acquireLock2(projectPath);
+  if (!lock) {
+    return callback();
+  }
+  try {
+    return callback();
+  } finally {
+    releaseLock2(projectPath, lock);
+  }
+}
+function normalizePrompt(prompt) {
+  return prompt.replace(/\s+/g, " ").trim().slice(0, 400);
+}
+function promptHash(prompt) {
+  return (0, import_crypto8.createHash)("sha1").update(prompt).digest("hex").slice(0, 12);
+}
+function buildDescriptor(event, signal, context, tmuxSession, projectPath) {
+  const scope = `${projectPath}::${tmuxSession}`;
+  switch (event) {
+    case "session-start":
+      return {
+        key: `session.started::${scope}`,
+        windowMs: START_WINDOW_MS
+      };
+    case "keyword-detector": {
+      const prompt = typeof context.prompt === "string" ? normalizePrompt(context.prompt) : "";
+      if (!prompt) {
+        return null;
+      }
+      return {
+        key: `session.prompt-submitted::${scope}::${promptHash(prompt)}`,
+        windowMs: PROMPT_WINDOW_MS
+      };
+    }
+    case "stop":
+      return {
+        key: `session.stopped::${scope}`,
+        windowMs: STOP_WINDOW_MS
+      };
+    case "session-end":
+      return {
+        key: `session.finished::${scope}`,
+        windowMs: STOP_WINDOW_MS
+      };
+    default:
+      return null;
+  }
+}
+function pruneState(state, nowMs) {
+  const cutoff = nowMs - STATE_TTL_MS;
+  for (const [key, record2] of Object.entries(state.records)) {
+    const lastSeenMs = Date.parse(record2.lastSeenAt);
+    if (!Number.isFinite(lastSeenMs) || lastSeenMs < cutoff) {
+      delete state.records[key];
+    }
+  }
+}
+function isObsoleteAfterTerminalState(event, state, tmuxSession, projectPath, nowMs) {
+  if (event !== "session-start" && event !== "stop") {
+    return false;
+  }
+  const scope = `${projectPath}::${tmuxSession}`;
+  const keysToCheck = event === "session-start" ? TERMINAL_KEYS : ["session.finished"];
+  return keysToCheck.some((prefix) => {
+    const record2 = state.records[`${prefix}::${scope}`];
+    if (!record2) return false;
+    const lastSeenMs = Date.parse(record2.lastSeenAt);
+    return Number.isFinite(lastSeenMs) && nowMs - lastSeenMs < TERMINAL_STATE_SUPPRESSION_WINDOW_MS;
+  });
+}
+function shouldCollapseOpenClawBurst(event, signal, context, tmuxSession) {
+  const projectPath = context.projectPath;
+  if (!projectPath || !tmuxSession) {
+    return false;
+  }
+  const descriptor = buildDescriptor(event, signal, context, tmuxSession, projectPath);
+  if (!descriptor) {
+    return false;
+  }
+  return withProjectLock(projectPath, () => {
+    const state = readState(projectPath);
+    const nowMs = Date.now();
+    pruneState(state, nowMs);
+    if (isObsoleteAfterTerminalState(event, state, tmuxSession, projectPath, nowMs)) {
+      return true;
+    }
+    const nowIso = new Date(nowMs).toISOString();
+    const existing = state.records[descriptor.key];
+    const lastSeenMs = existing ? Date.parse(existing.lastSeenAt) : Number.NaN;
+    const shouldCollapse = Number.isFinite(lastSeenMs) && nowMs - lastSeenMs < descriptor.windowMs;
+    state.records[descriptor.key] = {
+      event,
+      routeKey: signal.routeKey,
+      tmuxSession,
+      lastSeenAt: nowIso,
+      count: (existing?.count ?? 0) + 1
+    };
+    state.updatedAt = nowIso;
+    writeState2(projectPath, state);
+    return shouldCollapse;
+  });
+}
+var import_fs57, import_crypto8, import_path66, STATE_DIR, STATE_FILE3, LOCK_FILE, START_WINDOW_MS, PROMPT_WINDOW_MS, STOP_WINDOW_MS, STATE_TTL_MS, LOCK_TIMEOUT_MS2, LOCK_RETRY_MS3, LOCK_STALE_MS3, TERMINAL_STATE_SUPPRESSION_WINDOW_MS, SLEEP_ARRAY2, TERMINAL_KEYS;
+var init_dedupe = __esm({
+  "src/openclaw/dedupe.ts"() {
+    "use strict";
+    import_fs57 = require("fs");
+    import_crypto8 = require("crypto");
+    import_path66 = require("path");
+    init_atomic_write();
+    init_platform();
+    STATE_DIR = [".omc", "state"];
+    STATE_FILE3 = "openclaw-event-dedupe.json";
+    LOCK_FILE = "openclaw-event-dedupe.lock";
+    START_WINDOW_MS = 1e4;
+    PROMPT_WINDOW_MS = 4e3;
+    STOP_WINDOW_MS = 12e3;
+    STATE_TTL_MS = 6 * 60 * 60 * 1e3;
+    LOCK_TIMEOUT_MS2 = 2e3;
+    LOCK_RETRY_MS3 = 20;
+    LOCK_STALE_MS3 = 1e4;
+    TERMINAL_STATE_SUPPRESSION_WINDOW_MS = 6e4;
+    SLEEP_ARRAY2 = new Int32Array(new SharedArrayBuffer(4));
+    TERMINAL_KEYS = ["session.stopped", "session.finished"];
+  }
+});
+
+// src/notifications/tmux.ts
+var tmux_exports = {};
+__export(tmux_exports, {
+  formatTmuxInfo: () => formatTmuxInfo,
+  getCurrentTmuxPaneId: () => getCurrentTmuxPaneId,
+  getCurrentTmuxSession: () => getCurrentTmuxSession,
+  getTeamTmuxSessions: () => getTeamTmuxSessions
+});
+function getCurrentTmuxSession() {
+  if (!process.env.TMUX) {
+    return null;
+  }
+  try {
+    const paneId = process.env.TMUX_PANE;
+    if (paneId) {
+      const lines = tmuxShell("list-panes -a -F '#{pane_id} #{session_name}'", {
+        timeout: 3e3,
+        stdio: ["pipe", "pipe", "pipe"]
+      }).split("\n");
+      const match = lines.find((l) => l.startsWith(paneId + " "));
+      if (match) return match.split(" ")[1] ?? null;
+    }
+    const sessionName2 = tmuxShell("display-message -p '#S'", {
+      timeout: 3e3,
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+    return sessionName2 || null;
+  } catch {
+    return null;
+  }
+}
+function getTeamTmuxSessions(teamName) {
+  const sanitized = teamName.replace(/[^a-zA-Z0-9-]/g, "");
+  if (!sanitized) return [];
+  const prefix = `omcp-team-${sanitized}-`;
+  try {
+    const output = tmuxShell("list-sessions -F '#{session_name}'", {
+      timeout: 3e3,
+      stdio: ["pipe", "pipe", "pipe"]
+    });
+    return output.trim().split("\n").filter((s) => s.startsWith(prefix)).map((s) => s.slice(prefix.length));
+  } catch {
+    return [];
+  }
+}
+function formatTmuxInfo() {
+  const session = getCurrentTmuxSession();
+  if (!session) return null;
+  return `tmux: ${session}`;
+}
+function getCurrentTmuxPaneId() {
+  if (!process.env.TMUX) return null;
+  const envPane = process.env.TMUX_PANE;
+  if (envPane && /^%\d+$/.test(envPane)) return envPane;
+  try {
+    const paneId = tmuxShell("display-message -p '#{pane_id}'", {
+      timeout: 3e3,
+      stdio: ["pipe", "pipe", "pipe"]
+    }).trim();
+    return paneId && /^%\d+$/.test(paneId) ? paneId : null;
+  } catch {
+    return null;
+  }
+}
+var init_tmux = __esm({
+  "src/notifications/tmux.ts"() {
+    "use strict";
+    init_tmux_utils();
   }
 });
 
@@ -28905,7 +32093,7 @@ function formatDuration2(ms) {
 }
 function projectDisplay(payload) {
   if (payload.projectName) return payload.projectName;
-  if (payload.projectPath) return (0, import_path60.basename)(payload.projectPath);
+  if (payload.projectPath) return (0, import_path67.basename)(payload.projectPath);
   return "unknown";
 }
 function buildFooter(payload, markdown) {
@@ -29298,11 +32486,11 @@ function formatTeamsAdaptiveCard(payload, tagList) {
   };
   return JSON.stringify(card);
 }
-var import_path60, ANSI_ESCAPE_RE, UI_CHROME_RE, CTRL_O_RE, BOX_DRAWING_RE, OMC_HUD_RE, BYPASS_PERM_RE, BARE_PROMPT_RE, MIN_ALNUM_RATIO, REVIEW_SEED_OUTCOME_PATTERNS, REVIEW_SEED_CUE_RE, REVIEW_SEED_LIST_RE, SOURCE_PATH_LINE_RE, STATIC_CODE_ALERT_RE, HELP_USAGE_LINE_RE, STATIC_HELP_CODE_RE, DIFF_HEADER_LINE_RE, STRUCTURED_ALERT_KEYWORD_RE, SEARCH_COMMAND_RE, QUOTED_OR_REGEX_QUERY_RE, ZERO_ALERT_SUMMARY_RE, ALERT_REGEX_LITERAL_RE, GENERIC_HOOK_FAILURE_PROSE_RE, ISSUE_PROMPT_NOISE_RE, PERMISSION_DENIED_SCAN_LINE_RE, CLEAN_DIAGNOSTIC_QUERY_RE, JSONISH_LINE_RE, REQUEST_RESPONSE_LITERAL_RE, CODE_LITERAL_PREFIX_RE, DEFAULT_MAX_TAIL_LINES;
+var import_path67, ANSI_ESCAPE_RE, UI_CHROME_RE, CTRL_O_RE, BOX_DRAWING_RE, OMC_HUD_RE, BYPASS_PERM_RE, BARE_PROMPT_RE, MIN_ALNUM_RATIO, REVIEW_SEED_OUTCOME_PATTERNS, REVIEW_SEED_CUE_RE, REVIEW_SEED_LIST_RE, SOURCE_PATH_LINE_RE, STATIC_CODE_ALERT_RE, HELP_USAGE_LINE_RE, STATIC_HELP_CODE_RE, DIFF_HEADER_LINE_RE, STRUCTURED_ALERT_KEYWORD_RE, SEARCH_COMMAND_RE, QUOTED_OR_REGEX_QUERY_RE, ZERO_ALERT_SUMMARY_RE, ALERT_REGEX_LITERAL_RE, GENERIC_HOOK_FAILURE_PROSE_RE, ISSUE_PROMPT_NOISE_RE, PERMISSION_DENIED_SCAN_LINE_RE, CLEAN_DIAGNOSTIC_QUERY_RE, JSONISH_LINE_RE, REQUEST_RESPONSE_LITERAL_RE, CODE_LITERAL_PREFIX_RE, DEFAULT_MAX_TAIL_LINES;
 var init_formatter = __esm({
   "src/notifications/formatter.ts"() {
     "use strict";
-    import_path60 = require("path");
+    import_path67 = require("path");
     ANSI_ESCAPE_RE = /\x1b(?:[@-Z\\-_]|\[[0-9;]*[a-zA-Z])/g;
     UI_CHROME_RE = /^[●⎿✻·◼]/;
     CTRL_O_RE = /ctrl\+o to expand/i;
@@ -29343,6 +32531,340 @@ var init_formatter = __esm({
   }
 });
 
+// src/openclaw/index.ts
+var openclaw_exports = {};
+__export(openclaw_exports, {
+  buildOpenClawSignal: () => buildOpenClawSignal,
+  getOpenClawConfig: () => getOpenClawConfig,
+  interpolateInstruction: () => interpolateInstruction,
+  isCommandGateway: () => isCommandGateway,
+  resetOpenClawConfigCache: () => resetOpenClawConfigCache,
+  resolveGateway: () => resolveGateway,
+  shellEscapeArg: () => shellEscapeArg,
+  wakeCommandGateway: () => wakeCommandGateway,
+  wakeGateway: () => wakeGateway,
+  wakeOpenClaw: () => wakeOpenClaw
+});
+function buildWhitelistedContext(context) {
+  const result = {};
+  if (context.sessionId !== void 0) result.sessionId = context.sessionId;
+  if (context.projectPath !== void 0) result.projectPath = context.projectPath;
+  if (context.tmuxSession !== void 0) result.tmuxSession = context.tmuxSession;
+  if (context.toolName !== void 0) result.toolName = context.toolName;
+  if (context.prompt !== void 0) result.prompt = context.prompt;
+  if (context.contextSummary !== void 0) result.contextSummary = context.contextSummary;
+  if (context.reason !== void 0) result.reason = context.reason;
+  if (context.question !== void 0) result.question = context.question;
+  if (context.tmuxTail !== void 0) result.tmuxTail = context.tmuxTail;
+  if (context.replyChannel !== void 0) result.replyChannel = context.replyChannel;
+  if (context.replyTarget !== void 0) result.replyTarget = context.replyTarget;
+  if (context.replyThread !== void 0) result.replyThread = context.replyThread;
+  return result;
+}
+async function wakeOpenClaw(event, context) {
+  try {
+    const config2 = getOpenClawConfig();
+    if (!config2) return null;
+    const resolved = resolveGateway(config2, event);
+    if (!resolved) return null;
+    const { gatewayName, gateway, instruction } = resolved;
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const tmuxSession = context.tmuxSession ?? getCurrentTmuxSession() ?? void 0;
+    const replyChannel = context.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? void 0;
+    const replyTarget = context.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? void 0;
+    const replyThread = context.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? void 0;
+    const enrichedContext = {
+      ...context,
+      ...replyChannel && { replyChannel },
+      ...replyTarget && { replyTarget },
+      ...replyThread && { replyThread }
+    };
+    const signal = buildOpenClawSignal(event, enrichedContext);
+    if (shouldCollapseOpenClawBurst(event, signal, enrichedContext, tmuxSession)) {
+      if (DEBUG) {
+        console.error(`[openclaw] deduped ${event} (${signal.routeKey}) for tmux session ${tmuxSession}`);
+      }
+      return { gateway: gatewayName, success: true, skipped: "deduped" };
+    }
+    let tmuxTail = context.tmuxTail;
+    if (!tmuxTail && (event === "stop" || event === "session-end") && process.env.TMUX) {
+      try {
+        const { getNewPaneTail: getNewPaneTail2 } = await Promise.resolve().then(() => (init_pane_fresh_capture(), pane_fresh_capture_exports));
+        const paneId = process.env.TMUX_PANE;
+        const projectPath = context.projectPath;
+        if (paneId && projectPath) {
+          const stateDir = (0, import_path68.join)(projectPath, ".omc", "state");
+          const fresh = getNewPaneTail2(paneId, stateDir, 15);
+          tmuxTail = fresh || void 0;
+        }
+      } catch {
+      }
+    }
+    if (tmuxTail) {
+      const parsedTmuxTail = parseTmuxTail(tmuxTail, 15);
+      tmuxTail = parsedTmuxTail || void 0;
+    }
+    const variables = {
+      sessionId: context.sessionId,
+      projectPath: context.projectPath,
+      projectName: context.projectPath ? (0, import_path68.basename)(context.projectPath) : void 0,
+      tmuxSession,
+      toolName: context.toolName,
+      prompt: context.prompt,
+      contextSummary: context.contextSummary,
+      reason: context.reason,
+      question: context.question,
+      tmuxTail,
+      event,
+      timestamp: now,
+      replyChannel,
+      replyTarget,
+      replyThread,
+      signalKind: signal.kind,
+      signalName: signal.name,
+      signalPhase: signal.phase,
+      signalRouteKey: signal.routeKey,
+      signalPriority: signal.priority,
+      signalSummary: signal.summary,
+      prUrl: signal.prUrl,
+      testRunner: signal.testRunner,
+      command: signal.command
+    };
+    const interpolatedInstruction = interpolateInstruction(instruction, variables);
+    const payload = {
+      event,
+      instruction: interpolatedInstruction,
+      timestamp: now,
+      sessionId: context.sessionId,
+      projectPath: context.projectPath,
+      projectName: context.projectPath ? (0, import_path68.basename)(context.projectPath) : void 0,
+      tmuxSession,
+      tmuxTail,
+      ...replyChannel && { channel: replyChannel },
+      ...replyTarget && { to: replyTarget },
+      ...replyThread && { threadId: replyThread },
+      signal,
+      context: buildWhitelistedContext(enrichedContext)
+    };
+    variables.instruction = interpolatedInstruction;
+    variables.payloadJson = JSON.stringify(payload);
+    let result;
+    if (isCommandGateway(gateway)) {
+      result = await wakeCommandGateway(gatewayName, gateway, variables, payload);
+    } else {
+      result = await wakeGateway(gatewayName, gateway, payload);
+    }
+    if (DEBUG) {
+      console.error(`[openclaw] wake ${event} -> ${gatewayName}: ${result.success ? "ok" : result.error}`);
+    }
+    return result;
+  } catch (error48) {
+    if (DEBUG) {
+      console.error(`[openclaw] wakeOpenClaw error:`, error48 instanceof Error ? error48.message : error48);
+    }
+    return null;
+  }
+}
+var import_path68, DEBUG;
+var init_openclaw = __esm({
+  "src/openclaw/index.ts"() {
+    "use strict";
+    init_config2();
+    init_dispatcher();
+    init_signal();
+    init_config2();
+    init_dispatcher();
+    init_signal();
+    init_dedupe();
+    import_path68 = require("path");
+    init_tmux();
+    init_formatter();
+    DEBUG = process.env.OMC_OPENCLAW_DEBUG === "1";
+  }
+});
+
+// src/hooks/session-end/callbacks.ts
+function formatSessionSummary(metrics, format = "markdown") {
+  if (format === "json") {
+    return JSON.stringify(metrics, null, 2);
+  }
+  const duration3 = metrics.duration_ms ? `${Math.floor(metrics.duration_ms / 1e3 / 60)}m ${Math.floor(metrics.duration_ms / 1e3 % 60)}s` : "unknown";
+  return `# Session Ended
+
+**Session ID:** \`${metrics.session_id}\`
+**Duration:** ${duration3}
+**Reason:** ${metrics.reason}
+**Agents Spawned:** ${metrics.agents_spawned}
+**Agents Completed:** ${metrics.agents_completed}
+**Modes Used:** ${metrics.modes_used.length > 0 ? metrics.modes_used.join(", ") : "none"}
+**Started At:** ${metrics.started_at || "unknown"}
+**Ended At:** ${metrics.ended_at}
+`.trim();
+}
+function normalizeDiscordTagList(tagList) {
+  if (!tagList || tagList.length === 0) {
+    return [];
+  }
+  return tagList.map((tag) => tag.trim()).filter((tag) => tag.length > 0).map((tag) => {
+    if (tag === "@here" || tag === "@everyone") {
+      return tag;
+    }
+    const roleMatch = tag.match(/^role:(\d+)$/);
+    if (roleMatch) {
+      return `<@&${roleMatch[1]}>`;
+    }
+    if (/^\d+$/.test(tag)) {
+      return `<@${tag}>`;
+    }
+    return tag;
+  });
+}
+function normalizeTelegramTagList(tagList) {
+  if (!tagList || tagList.length === 0) {
+    return [];
+  }
+  return tagList.map((tag) => tag.trim()).filter((tag) => tag.length > 0).map((tag) => tag.startsWith("@") ? tag : `@${tag}`);
+}
+function prefixMessageWithTags(message, tags) {
+  if (tags.length === 0) {
+    return message;
+  }
+  return `${tags.join(" ")}
+${message}`;
+}
+function interpolatePath(pathTemplate, sessionId) {
+  const now = /* @__PURE__ */ new Date();
+  const date5 = now.toISOString().split("T")[0];
+  const time3 = now.toISOString().split("T")[1].split(".")[0].replace(/:/g, "-");
+  const safeSessionId = sessionId.replace(/[/\\..]/g, "_");
+  const interpolated = pathTemplate.replace(/~/g, (0, import_os13.homedir)()).replace(/\{session_id\}/g, safeSessionId).replace(/\{date\}/g, date5).replace(/\{time\}/g, time3);
+  return interpolated.replace(/\\/g, "/");
+}
+async function writeToFile(config2, content, sessionId) {
+  try {
+    const resolvedPath = interpolatePath(config2.path, sessionId);
+    const dir = (0, import_path69.dirname)(resolvedPath);
+    (0, import_fs58.mkdirSync)(dir, { recursive: true });
+    (0, import_fs58.writeFileSync)(resolvedPath, content, { encoding: "utf-8", mode: 384 });
+    console.log(`[stop-callback] Session summary written to ${resolvedPath}`);
+  } catch (error48) {
+    console.error("[stop-callback] File write failed:", error48);
+  }
+}
+async function sendTelegram(config2, message) {
+  if (!config2.botToken || !config2.chatId) {
+    console.error("[stop-callback] Telegram: missing botToken or chatId");
+    return;
+  }
+  if (!/^[0-9]+:[A-Za-z0-9_-]+$/.test(config2.botToken)) {
+    console.error("[stop-callback] Telegram: invalid bot token format");
+    return;
+  }
+  try {
+    const url2 = `https://api.telegram.org/bot${config2.botToken}/sendMessage`;
+    const response = await fetch(url2, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: config2.chatId,
+        text: message,
+        parse_mode: "Markdown"
+      }),
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!response.ok) {
+      throw new Error(`Telegram API error: ${response.status} - ${response.statusText}`);
+    }
+    console.log("[stop-callback] Telegram notification sent");
+  } catch (error48) {
+    console.error("[stop-callback] Telegram send failed:", error48 instanceof Error ? error48.message : "Unknown error");
+  }
+}
+async function sendDiscord(config2, message) {
+  if (!config2.webhookUrl) {
+    console.error("[stop-callback] Discord: missing webhookUrl");
+    return;
+  }
+  try {
+    const url2 = new URL(config2.webhookUrl);
+    const allowedHosts = ["discord.com", "discordapp.com"];
+    if (!allowedHosts.some((host) => url2.hostname === host || url2.hostname.endsWith(`.${host}`))) {
+      console.error("[stop-callback] Discord: webhook URL must be from discord.com or discordapp.com");
+      return;
+    }
+    if (url2.protocol !== "https:") {
+      console.error("[stop-callback] Discord: webhook URL must use HTTPS");
+      return;
+    }
+  } catch {
+    console.error("[stop-callback] Discord: invalid webhook URL");
+    return;
+  }
+  try {
+    const response = await fetch(config2.webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: message
+      }),
+      signal: AbortSignal.timeout(1e4)
+    });
+    if (!response.ok) {
+      throw new Error(`Discord webhook error: ${response.status} - ${response.statusText}`);
+    }
+    console.log("[stop-callback] Discord notification sent");
+  } catch (error48) {
+    console.error("[stop-callback] Discord send failed:", error48 instanceof Error ? error48.message : "Unknown error");
+  }
+}
+async function triggerStopCallbacks(metrics, _input, options = {}) {
+  const config2 = getOMCConfig();
+  const callbacks = config2.stopHookCallbacks;
+  const skipPlatforms = new Set(options.skipPlatforms ?? []);
+  if (!callbacks) {
+    return;
+  }
+  const promises = [];
+  if (!skipPlatforms.has("file") && callbacks.file?.enabled && callbacks.file.path) {
+    const format = callbacks.file.format || "markdown";
+    const summary = formatSessionSummary(metrics, format);
+    promises.push(writeToFile(callbacks.file, summary, metrics.session_id));
+  }
+  if (!skipPlatforms.has("telegram") && callbacks.telegram?.enabled) {
+    const summary = formatSessionSummary(metrics, "markdown");
+    const tags = normalizeTelegramTagList(callbacks.telegram.tagList);
+    const message = prefixMessageWithTags(summary, tags);
+    promises.push(sendTelegram(callbacks.telegram, message));
+  }
+  if (!skipPlatforms.has("discord") && callbacks.discord?.enabled) {
+    const summary = formatSessionSummary(metrics, "markdown");
+    const tags = normalizeDiscordTagList(callbacks.discord.tagList);
+    const message = prefixMessageWithTags(summary, tags);
+    promises.push(sendDiscord(callbacks.discord, message));
+  }
+  if (promises.length === 0) {
+    return;
+  }
+  try {
+    await Promise.race([
+      Promise.allSettled(promises),
+      new Promise((resolve16) => setTimeout(resolve16, 5e3))
+    ]);
+  } catch (error48) {
+    console.error("[stop-callback] Callback execution error:", error48);
+  }
+}
+var import_fs58, import_path69, import_os13;
+var init_callbacks = __esm({
+  "src/hooks/session-end/callbacks.ts"() {
+    "use strict";
+    import_fs58 = require("fs");
+    import_path69 = require("path");
+    import_os13 = require("os");
+    init_auto_update();
+  }
+});
+
 // src/notifications/template-engine.ts
 function formatDuration3(ms) {
   if (!ms) return "unknown";
@@ -29359,7 +32881,7 @@ function formatDuration3(ms) {
 }
 function getProjectDisplay(payload) {
   if (payload.projectName) return payload.projectName;
-  if (payload.projectPath) return (0, import_path61.basename)(payload.projectPath);
+  if (payload.projectPath) return (0, import_path70.basename)(payload.projectPath);
   return "unknown";
 }
 function buildFooterText(payload) {
@@ -29444,75 +32966,12 @@ function interpolateTemplate(template, payload) {
   result = postProcess(result);
   return result;
 }
-function validateTemplate(template) {
-  const unknownVars = [];
-  for (const m of template.matchAll(/\{\{#if\s+(\w+)\}\}/g)) {
-    if (!KNOWN_VARIABLES.has(m[1]) && !unknownVars.includes(m[1])) {
-      unknownVars.push(m[1]);
-    }
-  }
-  for (const m of template.matchAll(/\{\{(?!#if\s|\/if)(\w+)\}\}/g)) {
-    if (!KNOWN_VARIABLES.has(m[1]) && !unknownVars.includes(m[1])) {
-      unknownVars.push(m[1]);
-    }
-  }
-  return { valid: unknownVars.length === 0, unknownVars };
-}
-function getDefaultTemplate(event) {
-  return DEFAULT_TEMPLATES[event] || `Event: {{event}}`;
-}
-var import_path61, KNOWN_VARIABLES, DEFAULT_TEMPLATES;
+var import_path70;
 var init_template_engine = __esm({
   "src/notifications/template-engine.ts"() {
     "use strict";
     init_formatter();
-    import_path61 = require("path");
-    KNOWN_VARIABLES = /* @__PURE__ */ new Set([
-      // Raw payload fields
-      "event",
-      "sessionId",
-      "message",
-      "timestamp",
-      "tmuxSession",
-      "projectPath",
-      "projectName",
-      "modesUsed",
-      "contextSummary",
-      "durationMs",
-      "agentsSpawned",
-      "agentsCompleted",
-      "reason",
-      "activeMode",
-      "iteration",
-      "maxIterations",
-      "question",
-      "incompleteTasks",
-      "agentName",
-      "agentType",
-      "tmuxTail",
-      "tmuxPaneId",
-      "replyChannel",
-      "replyTarget",
-      "replyThread",
-      // Computed variables
-      "duration",
-      "time",
-      "modesDisplay",
-      "iterationDisplay",
-      "agentDisplay",
-      "projectDisplay",
-      "footer",
-      "tmuxTailBlock",
-      "reasonDisplay"
-    ]);
-    DEFAULT_TEMPLATES = {
-      "session-start": "# Session Started\n\n**Session:** `{{sessionId}}`\n**Project:** `{{projectDisplay}}`\n**Time:** {{time}}{{#if tmuxSession}}\n**tmux:** `{{tmuxSession}}`{{/if}}",
-      "session-stop": "# Session Continuing\n{{#if activeMode}}\n**Mode:** {{activeMode}}{{/if}}{{#if iterationDisplay}}\n**Iteration:** {{iterationDisplay}}{{/if}}{{#if incompleteTasks}}\n**Incomplete tasks:** {{incompleteTasks}}{{/if}}\n\n{{footer}}",
-      "session-end": "# Session Ended\n\n**Session:** `{{sessionId}}`\n**Duration:** {{duration}}\n**Reason:** {{reasonDisplay}}{{#if agentDisplay}}\n**Agents:** {{agentDisplay}}{{/if}}{{#if modesDisplay}}\n**Modes:** {{modesDisplay}}{{/if}}{{#if contextSummary}}\n\n**Summary:** {{contextSummary}}{{/if}}{{tmuxTailBlock}}\n\n{{footer}}",
-      "session-idle": "# Session Idle\n\nCopilot has finished and is waiting for input.\n{{#if reason}}\n**Reason:** {{reason}}{{/if}}{{#if modesDisplay}}\n**Modes:** {{modesDisplay}}{{/if}}{{tmuxTailBlock}}\n\n{{footer}}",
-      "ask-user-question": "# Input Needed\n{{#if question}}\n**Question:** {{question}}\n{{/if}}\nCopilot is waiting for your response.\n\n{{footer}}",
-      "agent-call": "# Agent Spawned\n{{#if agentName}}\n**Agent:** `{{agentName}}`{{/if}}{{#if agentType}}\n**Type:** `{{agentType}}`{{/if}}\n\n{{footer}}"
-    };
+    import_path70 = require("path");
   }
 });
 
@@ -29583,7 +33042,7 @@ function validateTeamsUrl(webhookUrl) {
     return false;
   }
 }
-async function sendDiscord(config2, payload) {
+async function sendDiscord2(config2, payload) {
   if (!config2.enabled || !config2.webhookUrl) {
     return { platform: "discord", success: false, error: "Not configured" };
   }
@@ -29675,7 +33134,7 @@ async function sendDiscordBot(config2, payload) {
     };
   }
 }
-async function sendTelegram(config2, payload) {
+async function sendTelegram2(config2, payload) {
   if (!config2.enabled || !config2.botToken || !config2.chatId) {
     return { platform: "telegram", success: false, error: "Not configured" };
   }
@@ -29693,7 +33152,7 @@ async function sendTelegram(config2, payload) {
       parse_mode: config2.parseMode || "Markdown"
     });
     const result = await new Promise((resolve16) => {
-      const req = (0, import_https.request)(
+      const req = (0, import_https2.request)(
         {
           hostname: "api.telegram.org",
           path: `/bot${config2.botToken}/sendMessage`,
@@ -29960,7 +33419,7 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
     event
   );
   if (discordConfig?.enabled) {
-    promises.push(sendDiscord(discordConfig, payloadFor("discord")));
+    promises.push(sendDiscord2(discordConfig, payloadFor("discord")));
   }
   const telegramConfig = getEffectivePlatformConfig(
     "telegram",
@@ -29968,7 +33427,7 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
     event
   );
   if (telegramConfig?.enabled) {
-    promises.push(sendTelegram(telegramConfig, payloadFor("telegram")));
+    promises.push(sendTelegram2(telegramConfig, payloadFor("telegram")));
   }
   const slackConfig = getEffectivePlatformConfig(
     "slack",
@@ -30059,868 +33518,24 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
     if (timer) clearTimeout(timer);
   }
 }
-async function sendCustomWebhook(integration, payload) {
-  const config2 = integration.config;
-  try {
-    const url2 = interpolateTemplate(config2.url, payload);
-    const body = interpolateTemplate(config2.bodyTemplate, payload);
-    const headers = {};
-    for (const [key, value] of Object.entries(config2.headers)) {
-      headers[key] = interpolateTemplate(value, payload);
-    }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), config2.timeout);
-    try {
-      const response = await fetch(url2, {
-        method: config2.method,
-        headers,
-        body: config2.method !== "GET" ? body : void 0,
-        signal: controller.signal
-      });
-      if (!response.ok) {
-        return {
-          platform: "webhook",
-          success: false,
-          error: `HTTP ${response.status}: ${response.statusText}`
-        };
-      }
-      return {
-        platform: "webhook",
-        success: true
-      };
-    } finally {
-      clearTimeout(timeout);
-    }
-  } catch (error48) {
-    return {
-      platform: "webhook",
-      success: false,
-      error: error48 instanceof Error ? error48.message : String(error48)
-    };
-  }
-}
-async function sendCustomCli(integration, payload) {
-  const config2 = integration.config;
-  try {
-    const args = config2.args.map((arg) => interpolateTemplate(arg, payload));
-    await execFileAsync4(config2.command, args, {
-      timeout: config2.timeout,
-      killSignal: "SIGTERM"
-    });
-    return {
-      platform: "webhook",
-      // Group with webhooks in results
-      success: true
-    };
-  } catch (error48) {
-    return {
-      platform: "webhook",
-      success: false,
-      error: error48 instanceof Error ? error48.message : String(error48)
-    };
-  }
-}
-async function dispatchCustomIntegrations(event, payload) {
-  const integrations = getCustomIntegrationsForEvent(event);
-  if (integrations.length === 0) return [];
-  const results = [];
-  for (const integration of integrations) {
-    let result;
-    if (integration.type === "webhook") {
-      result = await sendCustomWebhook(integration, payload);
-    } else if (integration.type === "cli") {
-      result = await sendCustomCli(integration, payload);
-    } else {
-      result = {
-        platform: "webhook",
-        success: false,
-        error: `Unknown integration type: ${integration.type}`
-      };
-    }
-    results.push(result);
-  }
-  return results;
-}
-var import_https, import_child_process17, import_util9, SEND_TIMEOUT_MS, DISPATCH_TIMEOUT_MS, DISCORD_MAX_CONTENT_LENGTH, execFileAsync4;
-var init_dispatcher = __esm({
+var import_https2, import_child_process20, import_util10, SEND_TIMEOUT_MS, DISPATCH_TIMEOUT_MS, DISCORD_MAX_CONTENT_LENGTH, execFileAsync4;
+var init_dispatcher2 = __esm({
   "src/notifications/dispatcher.ts"() {
     "use strict";
-    import_https = require("https");
+    import_https2 = require("https");
     init_config();
-    import_child_process17 = require("child_process");
-    import_util9 = require("util");
+    import_child_process20 = require("child_process");
+    import_util10 = require("util");
     init_template_engine();
     init_config();
     SEND_TIMEOUT_MS = 1e4;
     DISPATCH_TIMEOUT_MS = 15e3;
     DISCORD_MAX_CONTENT_LENGTH = 2e3;
-    execFileAsync4 = (0, import_util9.promisify)(import_child_process17.execFile);
-  }
-});
-
-// src/cli/tmux-utils.ts
-function tmuxEnv() {
-  const { TMUX: _, ...env2 } = process.env;
-  return env2;
-}
-function resolveEnv(opts) {
-  return opts?.stripTmux ? tmuxEnv() : process.env;
-}
-function isUnixLikeOnWindows() {
-  return process.platform === "win32" && !!(process.env.MSYSTEM || process.env.MINGW_PREFIX);
-}
-function isNativeWindowsShell() {
-  return process.platform === "win32" && !isUnixLikeOnWindows();
-}
-function quoteForCmd(arg) {
-  if (arg.length === 0) return '""';
-  if (!/[\s"%^&|<>()]/.test(arg)) return arg;
-  return `"${arg.replace(/(["%])/g, "$1$1")}"`;
-}
-function escapeForCmdSet(value) {
-  return value.replace(/"/g, '""');
-}
-function resolveTmuxInvocation(args) {
-  const resolvedBinary = resolveTmuxBinaryPath();
-  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(resolvedBinary)) {
-    const comspec = process.env.COMSPEC || "cmd.exe";
-    const commandLine = [quoteForCmd(resolvedBinary), ...args.map(quoteForCmd)].join(" ");
-    return {
-      command: comspec,
-      args: ["/d", "/s", "/c", commandLine]
-    };
-  }
-  return {
-    command: resolvedBinary,
-    args
-  };
-}
-function tmuxExec(args, opts) {
-  const { stripTmux: _, ...execOpts } = opts ?? {};
-  const invocation = resolveTmuxInvocation(args);
-  return (0, import_child_process18.execFileSync)(invocation.command, invocation.args, { encoding: "utf-8", ...execOpts, env: resolveEnv(opts) });
-}
-async function tmuxExecAsync(args, opts) {
-  const { stripTmux: _, timeout, ...rest } = opts ?? {};
-  const invocation = resolveTmuxInvocation(args);
-  return (0, import_util10.promisify)(import_child_process18.execFile)(invocation.command, invocation.args, {
-    encoding: "utf-8",
-    env: resolveEnv(opts),
-    ...timeout !== void 0 ? { timeout } : {},
-    ...rest
-  });
-}
-function tmuxShell(command, opts) {
-  const { stripTmux: _, ...execOpts } = opts ?? {};
-  return (0, import_child_process18.execSync)(`tmux ${command}`, { encoding: "utf-8", ...execOpts, env: resolveEnv(opts) });
-}
-async function tmuxShellAsync(command, opts) {
-  const { stripTmux: _, timeout, ...rest } = opts ?? {};
-  return (0, import_util10.promisify)(import_child_process18.exec)(`tmux ${command}`, {
-    encoding: "utf-8",
-    env: resolveEnv(opts),
-    ...timeout !== void 0 ? { timeout } : {},
-    ...rest
-  });
-}
-function tmuxSpawn(args, opts) {
-  const { stripTmux: _, ...spawnOpts } = opts ?? {};
-  const invocation = resolveTmuxInvocation(args);
-  return (0, import_child_process18.spawnSync)(invocation.command, invocation.args, { encoding: "utf-8", ...spawnOpts, env: resolveEnv(opts) });
-}
-async function tmuxCmdAsync(args, opts) {
-  if (args.some((a) => a.includes("#{"))) {
-    const escaped = args.map((a) => "'" + a.replace(/'/g, "'\\''") + "'").join(" ");
-    return tmuxShellAsync(escaped, opts);
-  }
-  return tmuxExecAsync(args, opts);
-}
-function resolveTmuxBinaryPath() {
-  if (process.platform !== "win32") {
-    return "tmux";
-  }
-  try {
-    const result = (0, import_child_process18.spawnSync)("where", ["tmux"], {
-      timeout: 5e3,
-      encoding: "utf8"
-    });
-    if (result.status !== 0) return "tmux";
-    const candidates = result.stdout?.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) ?? [];
-    const first = candidates[0];
-    if (first && ((0, import_path62.isAbsolute)(first) || import_path62.win32.isAbsolute(first))) {
-      return first;
-    }
-  } catch {
-  }
-  return "tmux";
-}
-function isTmuxAvailable() {
-  try {
-    const resolvedBinary = resolveTmuxBinaryPath();
-    if (process.platform === "win32" && /\.(cmd|bat)$/i.test(resolvedBinary)) {
-      const comspec = process.env.COMSPEC || "cmd.exe";
-      const result = (0, import_child_process18.spawnSync)(comspec, ["/d", "/s", "/c", `"${resolvedBinary}" -V`], { timeout: 5e3 });
-      return result.status === 0;
-    }
-    if (process.platform === "win32") {
-      const result = (0, import_child_process18.spawnSync)(resolvedBinary, ["-V"], { timeout: 5e3, shell: true });
-      return result.status === 0;
-    }
-    tmuxExec(["-V"], { stripTmux: true, stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function isCopilotAvailable() {
-  try {
-    (0, import_child_process18.execFileSync)("claude", ["--version"], {
-      stdio: "ignore",
-      shell: process.platform === "win32"
-    });
-    return true;
-  } catch {
-    return false;
-  }
-}
-function resolveLaunchPolicy(env2 = process.env, args = []) {
-  if (args.some((arg) => arg === "--print" || arg === "-p")) {
-    return "direct";
-  }
-  if (env2.TMUX) return "inside-tmux";
-  if (env2.CMUX_SURFACE_ID) return "direct";
-  if (!isTmuxAvailable()) {
-    return "direct";
-  }
-  return "outside-tmux";
-}
-function buildTmuxSessionName(cwd) {
-  const dirToken = sanitizeTmuxToken((0, import_path62.basename)(cwd));
-  let branchToken = "detached";
-  try {
-    const branch = (0, import_child_process18.execFileSync)("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
-      cwd,
-      encoding: "utf-8",
-      stdio: ["ignore", "pipe", "ignore"]
-    }).trim();
-    if (branch) {
-      branchToken = sanitizeTmuxToken(branch);
-    }
-  } catch {
-  }
-  const now = /* @__PURE__ */ new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  const utcTimestamp = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}`;
-  const name = `omc-${dirToken}-${branchToken}-${utcTimestamp}`;
-  return name.length > 120 ? name.slice(0, 120) : name;
-}
-function sanitizeTmuxToken(value) {
-  const cleaned = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-  return cleaned || "unknown";
-}
-function buildTmuxShellCommand(command, args) {
-  if (isNativeWindowsShell()) {
-    return [command, ...args].map(quoteForCmd).join(" ");
-  }
-  return [quoteShellArg2(command), ...args.map(quoteShellArg2)].join(" ");
-}
-function buildTmuxShellCommandWithEnv(command, args, envVars) {
-  const envEntries = Object.entries(envVars);
-  if (envEntries.length === 0) {
-    return buildTmuxShellCommand(command, args);
-  }
-  if (isNativeWindowsShell()) {
-    const envPrefix = envEntries.map(([key, value]) => `set "${key}=${escapeForCmdSet(value)}"`).join(" && ");
-    return `${envPrefix} && ${buildTmuxShellCommand(command, args)}`;
-  }
-  return buildTmuxShellCommand(
-    "env",
-    [...envEntries.map(([key, value]) => `${key}=${value}`), command, ...args]
-  );
-}
-function wrapWithLoginShell(command) {
-  if (isNativeWindowsShell()) {
-    const comspec = process.env.COMSPEC || "cmd.exe";
-    return `${quoteForCmd(comspec)} /d /s /c ${quoteForCmd(command)}`;
-  }
-  const shell = process.env.SHELL || "/bin/sh";
-  const shellName = (0, import_path62.basename)(shell).replace(/\.(exe|cmd|bat)$/i, "");
-  const rcFile = process.env.HOME ? `${process.env.HOME}/.${shellName}rc` : "";
-  const sourcePrefix = rcFile ? `[ -f ${quoteShellArg2(rcFile)} ] && . ${quoteShellArg2(rcFile)}; ` : "";
-  return `exec ${quoteShellArg2(shell)} -lc ${quoteShellArg2(`${sourcePrefix}${command}`)}`;
-}
-function quoteShellArg2(value) {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-var import_child_process18, import_path62, import_util10;
-var init_tmux_utils = __esm({
-  "src/cli/tmux-utils.ts"() {
-    "use strict";
-    import_child_process18 = require("child_process");
-    import_path62 = require("path");
-    import_util10 = require("util");
-  }
-});
-
-// src/notifications/tmux.ts
-var tmux_exports = {};
-__export(tmux_exports, {
-  formatTmuxInfo: () => formatTmuxInfo,
-  getCurrentTmuxPaneId: () => getCurrentTmuxPaneId,
-  getCurrentTmuxSession: () => getCurrentTmuxSession,
-  getTeamTmuxSessions: () => getTeamTmuxSessions
-});
-function getCurrentTmuxSession() {
-  if (!process.env.TMUX) {
-    return null;
-  }
-  try {
-    const paneId = process.env.TMUX_PANE;
-    if (paneId) {
-      const lines = tmuxShell("list-panes -a -F '#{pane_id} #{session_name}'", {
-        timeout: 3e3,
-        stdio: ["pipe", "pipe", "pipe"]
-      }).split("\n");
-      const match = lines.find((l) => l.startsWith(paneId + " "));
-      if (match) return match.split(" ")[1] ?? null;
-    }
-    const sessionName2 = tmuxShell("display-message -p '#S'", {
-      timeout: 3e3,
-      stdio: ["pipe", "pipe", "pipe"]
-    }).trim();
-    return sessionName2 || null;
-  } catch {
-    return null;
-  }
-}
-function getTeamTmuxSessions(teamName) {
-  const sanitized = teamName.replace(/[^a-zA-Z0-9-]/g, "");
-  if (!sanitized) return [];
-  const prefix = `omcp-team-${sanitized}-`;
-  try {
-    const output = tmuxShell("list-sessions -F '#{session_name}'", {
-      timeout: 3e3,
-      stdio: ["pipe", "pipe", "pipe"]
-    });
-    return output.trim().split("\n").filter((s) => s.startsWith(prefix)).map((s) => s.slice(prefix.length));
-  } catch {
-    return [];
-  }
-}
-function formatTmuxInfo() {
-  const session = getCurrentTmuxSession();
-  if (!session) return null;
-  return `tmux: ${session}`;
-}
-function getCurrentTmuxPaneId() {
-  if (!process.env.TMUX) return null;
-  const envPane = process.env.TMUX_PANE;
-  if (envPane && /^%\d+$/.test(envPane)) return envPane;
-  try {
-    const paneId = tmuxShell("display-message -p '#{pane_id}'", {
-      timeout: 3e3,
-      stdio: ["pipe", "pipe", "pipe"]
-    }).trim();
-    return paneId && /^%\d+$/.test(paneId) ? paneId : null;
-  } catch {
-    return null;
-  }
-}
-var init_tmux = __esm({
-  "src/notifications/tmux.ts"() {
-    "use strict";
-    init_tmux_utils();
-  }
-});
-
-// src/notifications/redact.ts
-function redactTokens(input) {
-  return input.replace(/\b(xox[bpae]-)[A-Za-z0-9-]+/g, "$1****").replace(/\b(xapp-)[A-Za-z0-9-]+/g, "$1****").replace(/\/bot(\d+):[A-Za-z0-9_-]+/g, "/bot$1:****").replace(/\b(\d{8,12}):[A-Za-z0-9_-]{20,}\b/g, "$1:****").replace(/(Bearer\s+)\S+/gi, "$1****").replace(/(Bot\s+)\S+/gi, "$1****").replace(/\b(sk-ant-api)[A-Za-z0-9_-]+/g, "$1****").replace(/\b(ghp_)[A-Za-z0-9]+/g, "$1****").replace(/\b(gho_)[A-Za-z0-9]+/g, "$1****").replace(/\b(ghs_)[A-Za-z0-9]+/g, "$1****").replace(/\b(github_pat_)[A-Za-z0-9_]+/g, "$1****").replace(/\b(AKIA)[A-Z0-9]{16}\b/g, "$1****");
-}
-var init_redact = __esm({
-  "src/notifications/redact.ts"() {
-    "use strict";
-  }
-});
-
-// src/notifications/slack-socket.ts
-var slack_socket_exports = {};
-__export(slack_socket_exports, {
-  SlackConnectionStateTracker: () => SlackConnectionStateTracker,
-  SlackSocketClient: () => SlackSocketClient,
-  addSlackReaction: () => addSlackReaction,
-  isTimestampValid: () => isTimestampValid,
-  postSlackBotMessage: () => postSlackBotMessage,
-  replySlackThread: () => replySlackThread,
-  validateSlackEnvelope: () => validateSlackEnvelope,
-  validateSlackMessage: () => validateSlackMessage,
-  verifySlackSignature: () => verifySlackSignature
-});
-function verifySlackSignature(signingSecret, signature, timestamp, body) {
-  if (!signingSecret || !signature || !timestamp) {
-    return false;
-  }
-  if (!isTimestampValid(timestamp)) {
-    return false;
-  }
-  const sigBasestring = `v0:${timestamp}:${body}`;
-  const expectedSignature = "v0=" + (0, import_crypto6.createHmac)("sha256", signingSecret).update(sigBasestring).digest("hex");
-  try {
-    return (0, import_crypto6.timingSafeEqual)(
-      Buffer.from(expectedSignature),
-      Buffer.from(signature)
-    );
-  } catch {
-    return false;
-  }
-}
-function isTimestampValid(timestamp, maxAgeSeconds = MAX_TIMESTAMP_AGE_SECONDS) {
-  const requestTime = parseInt(timestamp, 10);
-  if (isNaN(requestTime)) {
-    return false;
-  }
-  const now = Math.floor(Date.now() / 1e3);
-  return Math.abs(now - requestTime) <= maxAgeSeconds;
-}
-function validateSlackEnvelope(data) {
-  if (typeof data !== "object" || data === null) {
-    return { valid: false, reason: "Message is not an object" };
-  }
-  const envelope = data;
-  if (typeof envelope.envelope_id !== "string" || !envelope.envelope_id.trim()) {
-    return { valid: false, reason: "Missing or empty envelope_id" };
-  }
-  if (typeof envelope.type !== "string" || !envelope.type.trim()) {
-    return { valid: false, reason: "Missing or empty message type" };
-  }
-  if (!VALID_ENVELOPE_TYPES.has(envelope.type)) {
-    return {
-      valid: false,
-      reason: `Unknown envelope type: ${envelope.type}`
-    };
-  }
-  if (envelope.type === "events_api") {
-    if (typeof envelope.payload !== "object" || envelope.payload === null) {
-      return {
-        valid: false,
-        reason: "events_api envelope missing payload"
-      };
-    }
-  }
-  return { valid: true };
-}
-function validateSlackMessage(rawMessage, connectionState, signingSecret, signature, timestamp) {
-  if (!connectionState.canProcessMessages()) {
-    return {
-      valid: false,
-      reason: `Connection not authenticated (state: ${connectionState.getState()})`
-    };
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(rawMessage);
-  } catch {
-    return { valid: false, reason: "Invalid JSON message" };
-  }
-  const envelopeResult = validateSlackEnvelope(parsed);
-  if (!envelopeResult.valid) {
-    return envelopeResult;
-  }
-  if (signingSecret && signature && timestamp) {
-    if (!verifySlackSignature(signingSecret, signature, timestamp, rawMessage)) {
-      return { valid: false, reason: "Signature verification failed" };
-    }
-  } else if (signingSecret && (!signature || !timestamp)) {
-    return {
-      valid: false,
-      reason: "Signing secret configured but signature/timestamp missing"
-    };
-  }
-  return { valid: true };
-}
-async function postSlackBotMessage(botToken, channel, text) {
-  const resp = await fetch("https://slack.com/api/chat.postMessage", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${botToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ channel, text }),
-    signal: AbortSignal.timeout(API_TIMEOUT_MS)
-  });
-  return await resp.json();
-}
-async function addSlackReaction(botToken, channel, timestamp, emoji3 = "white_check_mark") {
-  await fetch("https://slack.com/api/reactions.add", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${botToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ channel, timestamp, name: emoji3 }),
-    signal: AbortSignal.timeout(REACTION_TIMEOUT_MS)
-  });
-}
-async function replySlackThread(botToken, channel, threadTs, text) {
-  await fetch("https://slack.com/api/chat.postMessage", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${botToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ channel, text, thread_ts: threadTs }),
-    signal: AbortSignal.timeout(REACTION_TIMEOUT_MS)
-  });
-}
-var import_crypto6, MAX_TIMESTAMP_AGE_SECONDS, VALID_ENVELOPE_TYPES, SlackConnectionStateTracker, API_TIMEOUT_MS, REACTION_TIMEOUT_MS, SlackSocketClient;
-var init_slack_socket = __esm({
-  "src/notifications/slack-socket.ts"() {
-    "use strict";
-    import_crypto6 = require("crypto");
-    init_redact();
-    MAX_TIMESTAMP_AGE_SECONDS = 300;
-    VALID_ENVELOPE_TYPES = /* @__PURE__ */ new Set([
-      "events_api",
-      "slash_commands",
-      "interactive",
-      "hello",
-      "disconnect"
-    ]);
-    SlackConnectionStateTracker = class {
-      state = "disconnected";
-      authenticatedAt = null;
-      reconnectCount = 0;
-      maxReconnectAttempts;
-      messageQueue = [];
-      maxQueueSize;
-      constructor(options) {
-        this.maxReconnectAttempts = options?.maxReconnectAttempts ?? 5;
-        this.maxQueueSize = options?.maxQueueSize ?? 100;
-      }
-      getState() {
-        return this.state;
-      }
-      getReconnectCount() {
-        return this.reconnectCount;
-      }
-      getAuthenticatedAt() {
-        return this.authenticatedAt;
-      }
-      /** Transition to connecting state. */
-      onConnecting() {
-        this.state = "connecting";
-      }
-      /**
-       * Transition to authenticated state (received 'hello' message).
-       * Resets reconnect counter on successful authentication.
-       */
-      onAuthenticated() {
-        this.state = "authenticated";
-        this.authenticatedAt = Date.now();
-        this.reconnectCount = 0;
-      }
-      /**
-       * Transition to reconnecting state.
-       * Increments reconnect counter and clears authentication timestamp.
-       */
-      onReconnecting() {
-        this.state = "reconnecting";
-        this.reconnectCount++;
-        this.authenticatedAt = null;
-      }
-      /**
-       * Transition to disconnected state.
-       * Clears message queue to prevent processing stale messages.
-       */
-      onDisconnected() {
-        this.state = "disconnected";
-        this.authenticatedAt = null;
-        this.messageQueue = [];
-      }
-      /** Check if maximum reconnection attempts have been exceeded. */
-      hasExceededMaxReconnects() {
-        return this.reconnectCount >= this.maxReconnectAttempts;
-      }
-      /**
-       * Check if messages can be safely processed in the current state.
-       * Only allows processing when the connection is authenticated.
-       */
-      canProcessMessages() {
-        return this.state === "authenticated";
-      }
-      /**
-       * Queue a message for processing after reconnection.
-       * Drops oldest messages when queue exceeds maxQueueSize to
-       * prevent unbounded memory growth.
-       *
-       * Returns true if queued, false if queue is at capacity (oldest was dropped).
-       */
-      queueMessage(envelope) {
-        const wasFull = this.messageQueue.length >= this.maxQueueSize;
-        if (wasFull) {
-          this.messageQueue.shift();
-        }
-        this.messageQueue.push(envelope);
-        return !wasFull;
-      }
-      /**
-       * Drain the message queue (called after re-authentication).
-       * Returns queued messages and clears the queue.
-       */
-      drainQueue() {
-        const messages = [...this.messageQueue];
-        this.messageQueue = [];
-        return messages;
-      }
-      /** Get current queue size. */
-      getQueueSize() {
-        return this.messageQueue.length;
-      }
-    };
-    API_TIMEOUT_MS = 1e4;
-    REACTION_TIMEOUT_MS = 5e3;
-    SlackSocketClient = class {
-      constructor(config2, onMessage, log3) {
-        this.config = config2;
-        this.onMessage = onMessage;
-        this.log = (msg) => log3(redactTokens(msg));
-      }
-      config;
-      onMessage;
-      ws = null;
-      reconnectAttempts = 0;
-      maxReconnectAttempts = 10;
-      baseReconnectDelayMs = 1e3;
-      maxReconnectDelayMs = 3e4;
-      isShuttingDown = false;
-      reconnectTimer = null;
-      connectionState = new SlackConnectionStateTracker();
-      // Bound listener references for proper removal on cleanup.
-      // Typed as generic handlers for addEventListener/removeEventListener compat.
-      onWsOpen = null;
-      onWsMessage = null;
-      onWsClose = null;
-      onWsError = null;
-      log;
-      /** Get the connection state tracker for external inspection. */
-      getConnectionState() {
-        return this.connectionState;
-      }
-      /**
-       * Start the Socket Mode connection.
-       * Obtains a WebSocket URL from Slack and connects.
-       */
-      async start() {
-        if (typeof WebSocket === "undefined") {
-          this.log("WARN: WebSocket not available, Slack Socket Mode requires Node 20.10+");
-          return;
-        }
-        this.connectionState.onConnecting();
-        await this.connect();
-      }
-      /**
-       * Gracefully shut down the connection.
-       */
-      stop() {
-        this.isShuttingDown = true;
-        this.connectionState.onDisconnected();
-        if (this.reconnectTimer) {
-          clearTimeout(this.reconnectTimer);
-          this.reconnectTimer = null;
-        }
-        this.cleanupWs();
-      }
-      /**
-       * Remove all event listeners from the current WebSocket, close it,
-       * and null the reference. Safe to call multiple times.
-       */
-      cleanupWs() {
-        const ws = this.ws;
-        if (!ws) return;
-        this.ws = null;
-        if (this.onWsOpen) ws.removeEventListener("open", this.onWsOpen);
-        if (this.onWsMessage) ws.removeEventListener("message", this.onWsMessage);
-        if (this.onWsClose) ws.removeEventListener("close", this.onWsClose);
-        if (this.onWsError) ws.removeEventListener("error", this.onWsError);
-        this.onWsOpen = null;
-        this.onWsMessage = null;
-        this.onWsClose = null;
-        this.onWsError = null;
-        try {
-          ws.close();
-        } catch {
-        }
-      }
-      /**
-       * Establish WebSocket connection to Slack Socket Mode.
-       */
-      async connect() {
-        if (this.isShuttingDown) return;
-        this.connectionState.onConnecting();
-        this.cleanupWs();
-        try {
-          const resp = await fetch("https://slack.com/api/apps.connections.open", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${this.config.appToken}`,
-              "Content-Type": "application/x-www-form-urlencoded"
-            },
-            signal: AbortSignal.timeout(API_TIMEOUT_MS)
-          });
-          const data = await resp.json();
-          if (!data.ok || !data.url) {
-            throw new Error(`apps.connections.open failed: ${data.error || "no url returned"}`);
-          }
-          this.ws = new WebSocket(data.url);
-          this.onWsOpen = () => {
-            this.log("Slack Socket Mode connected");
-            this.reconnectAttempts = 0;
-          };
-          this.onWsMessage = (event) => {
-            const ev = event;
-            this.handleEnvelope(String(ev.data));
-          };
-          this.onWsClose = () => {
-            this.cleanupWs();
-            if (!this.isShuttingDown) {
-              this.connectionState.onReconnecting();
-              this.log("Slack Socket Mode disconnected, scheduling reconnect");
-              this.scheduleReconnect();
-            }
-          };
-          this.onWsError = (e) => {
-            this.log(`Slack Socket Mode WebSocket error: ${e instanceof Error ? e.message : "unknown"}`);
-          };
-          this.ws.addEventListener("open", this.onWsOpen);
-          this.ws.addEventListener("message", this.onWsMessage);
-          this.ws.addEventListener("close", this.onWsClose);
-          this.ws.addEventListener("error", this.onWsError);
-        } catch (error48) {
-          this.log(`Slack Socket Mode connection error: ${error48 instanceof Error ? error48.message : String(error48)}`);
-          if (!this.isShuttingDown) {
-            this.scheduleReconnect();
-          }
-        }
-      }
-      /**
-       * Process a Socket Mode envelope.
-       *
-       * Envelope types:
-       * - hello: connection established
-       * - disconnect: server requesting reconnect
-       * - events_api: contains event payloads (messages, etc.)
-       */
-      handleEnvelope(raw) {
-        try {
-          let parsed;
-          try {
-            parsed = JSON.parse(raw);
-          } catch {
-            this.log("REJECTED Slack message: Invalid JSON");
-            return;
-          }
-          const envelopeValidation = validateSlackEnvelope(parsed);
-          if (!envelopeValidation.valid) {
-            this.log(`REJECTED Slack message: ${envelopeValidation.reason}`);
-            return;
-          }
-          const envelope = parsed;
-          if (envelope.envelope_id && this.ws?.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify({ envelope_id: envelope.envelope_id }));
-          }
-          if (envelope.type === "hello") {
-            this.connectionState.onAuthenticated();
-            this.log("Slack Socket Mode authenticated (hello received)");
-            const queued = this.connectionState.drainQueue();
-            if (queued.length > 0) {
-              this.log(`Processing ${queued.length} queued messages after re-authentication`);
-              for (const queuedEnvelope of queued) {
-                this.handleEnvelope(JSON.stringify(queuedEnvelope));
-              }
-            }
-            return;
-          }
-          if (envelope.type === "disconnect") {
-            this.connectionState.onReconnecting();
-            this.log(`Slack requested disconnect: ${envelope.reason || "unknown"}`);
-            if (this.ws) {
-              this.ws.close();
-            }
-            return;
-          }
-          if (!this.connectionState.canProcessMessages()) {
-            this.log(`REJECTED Slack message: connection not authenticated (state: ${this.connectionState.getState()})`);
-            this.connectionState.queueMessage(envelope);
-            return;
-          }
-          if (this.config.signingSecret) {
-            const envelopeAny = envelope;
-            const sig = envelopeAny["x_slack_signature"];
-            const ts = envelopeAny["x_slack_request_timestamp"];
-            if (sig && ts) {
-              if (!verifySlackSignature(this.config.signingSecret, sig, ts, raw)) {
-                this.log("REJECTED Slack message: Signature verification failed");
-                return;
-              }
-            }
-          }
-          if (envelope.type === "events_api" && envelope.payload?.event) {
-            const event = envelope.payload.event;
-            if (event.type === "message" && event.channel === this.config.channelId && !event.subtype && event.text) {
-              Promise.resolve(this.onMessage(event)).catch((err) => {
-                this.log(`Slack message handler error: ${err instanceof Error ? err.message : String(err)}`);
-              });
-            }
-          }
-        } catch (error48) {
-          this.log(`Slack envelope parse error: ${error48 instanceof Error ? error48.message : String(error48)}`);
-        }
-      }
-      /**
-       * Schedule a reconnection attempt with exponential backoff.
-       */
-      scheduleReconnect() {
-        if (this.isShuttingDown) return;
-        if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-          this.log(`Slack Socket Mode max reconnect attempts (${this.maxReconnectAttempts}) reached`);
-          return;
-        }
-        if (this.reconnectTimer) {
-          clearTimeout(this.reconnectTimer);
-          this.reconnectTimer = null;
-        }
-        const delay = Math.min(
-          this.baseReconnectDelayMs * Math.pow(2, this.reconnectAttempts),
-          this.maxReconnectDelayMs
-        );
-        this.reconnectAttempts++;
-        this.log(`Slack Socket Mode reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
-        this.reconnectTimer = setTimeout(() => {
-          this.reconnectTimer = null;
-          if (!this.isShuttingDown) {
-            this.connect();
-          }
-        }, delay);
-      }
-    };
+    execFileAsync4 = (0, import_util10.promisify)(import_child_process20.execFile);
   }
 });
 
 // src/notifications/presets.ts
-function getPresetList() {
-  return Object.entries(CUSTOM_INTEGRATION_PRESETS).map(([id, preset]) => ({
-    id,
-    name: preset.name,
-    description: preset.description,
-    type: preset.type
-  }));
-}
-function getPreset(id) {
-  return CUSTOM_INTEGRATION_PRESETS[id];
-}
-function isValidPreset(id) {
-  return id in CUSTOM_INTEGRATION_PRESETS;
-}
 var CUSTOM_INTEGRATION_PRESETS;
 var init_presets = __esm({
   "src/notifications/presets.ts"() {
@@ -30997,884 +33612,13 @@ var init_presets = __esm({
 });
 
 // src/notifications/template-variables.ts
-function getVariablesForEvent(event) {
-  return Object.entries(TEMPLATE_VARIABLES).filter(
-    ([_, variable]) => variable.availableIn.includes("*") || variable.availableIn.includes(event)
-  ).map(([name, _]) => name);
-}
-function getVariableDocumentation() {
-  const lines = ["Available Template Variables:", ""];
-  for (const [name, variable] of Object.entries(TEMPLATE_VARIABLES)) {
-    const events = variable.availableIn.includes("*") ? "all events" : variable.availableIn.join(", ");
-    lines.push(`  {{${name}}}`);
-    lines.push(`    ${variable.description}`);
-    lines.push(`    Example: ${variable.example}`);
-    lines.push(`    Available in: ${events}`);
-    lines.push("");
-  }
-  return lines.join("\n");
-}
-var TEMPLATE_VARIABLES;
 var init_template_variables = __esm({
   "src/notifications/template-variables.ts"() {
     "use strict";
-    TEMPLATE_VARIABLES = {
-      // Core session info
-      sessionId: {
-        description: "Unique session identifier",
-        example: "sess_abc123def456",
-        availableIn: ["session-start", "session-end", "session-stop", "session-idle", "ask-user-question"]
-      },
-      projectPath: {
-        description: "Full path to project directory",
-        example: "/home/user/projects/my-app",
-        availableIn: ["*"]
-      },
-      projectName: {
-        description: "Project directory name (basename)",
-        example: "my-app",
-        availableIn: ["*"]
-      },
-      timestamp: {
-        description: "ISO 8601 timestamp",
-        example: "2026-03-05T14:30:00Z",
-        availableIn: ["*"]
-      },
-      event: {
-        description: "Hook event name",
-        example: "session-end",
-        availableIn: ["*"]
-      },
-      // Session metrics (session-end only)
-      durationMs: {
-        description: "Session duration in milliseconds",
-        example: "45000",
-        availableIn: ["session-end"]
-      },
-      duration: {
-        description: "Human-readable duration",
-        example: "45s",
-        availableIn: ["session-end"]
-      },
-      agentsSpawned: {
-        description: "Number of agents spawned",
-        example: "5",
-        availableIn: ["session-end"]
-      },
-      agentsCompleted: {
-        description: "Number of agents completed",
-        example: "4",
-        availableIn: ["session-end"]
-      },
-      reason: {
-        description: "Session end reason",
-        example: "completed",
-        availableIn: ["session-end", "session-stop"]
-      },
-      // Context info
-      contextSummary: {
-        description: "Summary of session context",
-        example: "Task completed successfully",
-        availableIn: ["session-end"]
-      },
-      tmuxSession: {
-        description: "tmux session name",
-        example: "copilot:my-project",
-        availableIn: ["*"]
-      },
-      tmuxPaneId: {
-        description: "tmux pane identifier",
-        example: "%42",
-        availableIn: ["*"]
-      },
-      // Ask user question
-      question: {
-        description: "Question text when input is needed",
-        example: "Which file should I edit?",
-        availableIn: ["ask-user-question"]
-      },
-      // Mode info
-      activeMode: {
-        description: "Currently active OMC mode",
-        example: "ralph",
-        availableIn: ["*"]
-      },
-      modesUsed: {
-        description: "Comma-separated list of modes used",
-        example: "autopilot,ultrawork",
-        availableIn: ["session-end"]
-      },
-      // Computed/display helpers
-      time: {
-        description: "Locale time string",
-        example: "2:30 PM",
-        availableIn: ["*"]
-      },
-      footer: {
-        description: "tmux + project info line",
-        example: "tmux:my-session | project:my-app",
-        availableIn: ["*"]
-      },
-      projectDisplay: {
-        description: "Project name with fallbacks",
-        example: "my-app (~/projects)",
-        availableIn: ["*"]
-      }
-    };
-  }
-});
-
-// src/features/rate-limit-wait/pane-fresh-capture.ts
-var pane_fresh_capture_exports = {};
-__export(pane_fresh_capture_exports, {
-  getNewPaneTail: () => getNewPaneTail,
-  getPaneHistorySize: () => getPaneHistorySize
-});
-function isValidPaneId(paneId) {
-  return /^%\d+$/.test(paneId);
-}
-function readPaneTailState(stateDir) {
-  const path22 = (0, import_path63.join)(stateDir, STATE_FILE2);
-  try {
-    if ((0, import_fs53.existsSync)(path22)) {
-      const parsed = JSON.parse((0, import_fs53.readFileSync)(path22, "utf-8"));
-      if (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)) {
-        return parsed;
-      }
-    }
-  } catch {
-  }
-  return {};
-}
-function writePaneTailState(stateDir, state) {
-  try {
-    (0, import_fs53.mkdirSync)(stateDir, { recursive: true });
-    (0, import_fs53.writeFileSync)((0, import_path63.join)(stateDir, STATE_FILE2), JSON.stringify(state), { mode: 384 });
-  } catch {
-  }
-}
-function getPaneHistorySize(paneId) {
-  try {
-    const raw = tmuxExec(
-      ["display-message", "-t", paneId, "-p", "#{pane_dead} #{history_size}"],
-      { stripTmux: true, timeout: 3e3 }
-    ).trim();
-    const parts = raw.split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      const [paneDeadRaw, historySizeRaw] = parts;
-      if (paneDeadRaw === "1") {
-        return null;
-      }
-      const n2 = parseInt(historySizeRaw ?? "", 10);
-      return Number.isFinite(n2) && n2 >= 0 ? n2 : null;
-    }
-    const n = parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  } catch {
-    return null;
-  }
-}
-function capturePaneLines(paneId, lines) {
-  try {
-    const safeLines = Math.max(1, Math.min(500, Math.floor(lines)));
-    return tmuxExec(
-      ["capture-pane", "-t", paneId, "-p", "-S", `-${safeLines}`],
-      { stripTmux: true, timeout: 5e3 }
-    );
-  } catch {
-    return "";
-  }
-}
-function getNewPaneTail(paneId, stateDir, maxLines = DEFAULT_MAX_LINES) {
-  if (!isValidPaneId(paneId)) {
-    return "";
-  }
-  const currentSize = getPaneHistorySize(paneId);
-  if (currentSize === null) {
-    return "";
-  }
-  const state = readPaneTailState(stateDir);
-  const lastSize = state[paneId] ?? -1;
-  state[paneId] = currentSize;
-  writePaneTailState(stateDir, state);
-  if (lastSize < 0) {
-    return capturePaneLines(paneId, maxLines);
-  }
-  const newLines = currentSize - lastSize;
-  if (newLines <= 0) {
-    return "";
-  }
-  return capturePaneLines(paneId, Math.min(newLines, maxLines));
-}
-var import_fs53, import_path63, STATE_FILE2, DEFAULT_MAX_LINES;
-var init_pane_fresh_capture = __esm({
-  "src/features/rate-limit-wait/pane-fresh-capture.ts"() {
-    "use strict";
-    import_fs53 = require("fs");
-    import_path63 = require("path");
-    init_tmux_utils();
-    STATE_FILE2 = "pane-tail-positions.json";
-    DEFAULT_MAX_LINES = 15;
-  }
-});
-
-// src/features/rate-limit-wait/tmux-detector.ts
-var tmux_detector_exports = {};
-__export(tmux_detector_exports, {
-  analyzePaneContent: () => analyzePaneContent,
-  capturePaneContent: () => capturePaneContent,
-  formatBlockedPanesSummary: () => formatBlockedPanesSummary,
-  isInsideTmux: () => isInsideTmux,
-  isPaneAlive: () => isPaneAlive,
-  isTmuxAvailable: () => isTmuxAvailable2,
-  listTmuxPanes: () => listTmuxPanes,
-  scanForBlockedPanes: () => scanForBlockedPanes,
-  sendResumeSequence: () => sendResumeSequence,
-  sendToPane: () => sendToPane
-});
-function isValidPaneId2(paneId) {
-  return /^%\d+$/.test(paneId);
-}
-function sanitizeForTmux(text) {
-  return text.replace(/'/g, "'\\''");
-}
-function stripGitOutputLines(content) {
-  return content.split("\n").filter((line) => !GIT_OUTPUT_LINE_PATTERNS.some((p) => p.test(line.trimStart()))).join("\n");
-}
-function isTmuxAvailable2() {
-  try {
-    const result = tmuxSpawn(["-V"], { stripTmux: true, stdio: "pipe", timeout: 3e3 });
-    return result.status === 0;
-  } catch {
-    return false;
-  }
-}
-function isInsideTmux() {
-  return !!process.env.TMUX;
-}
-function listTmuxPanes() {
-  if (!isTmuxAvailable2()) {
-    return [];
-  }
-  try {
-    const format = "#{session_name}:#{window_index}.#{pane_index} #{pane_id} #{pane_active} #{window_name} #{pane_title}";
-    const result = tmuxExec(["list-panes", "-a", "-F", format], {
-      stripTmux: true,
-      timeout: 5e3
-    });
-    const panes = [];
-    for (const line of result.trim().split("\n")) {
-      if (!line.trim()) continue;
-      const parts = line.split(" ");
-      if (parts.length < 4) continue;
-      const [location, paneId, activeStr, windowName, ...titleParts] = parts;
-      const [sessionWindow, paneIndexStr] = location.split(".");
-      const [session, windowIndexStr] = sessionWindow.split(":");
-      panes.push({
-        id: paneId,
-        session,
-        windowIndex: parseInt(windowIndexStr, 10),
-        windowName,
-        paneIndex: parseInt(paneIndexStr, 10),
-        title: titleParts.join(" ") || void 0,
-        isActive: activeStr === "1"
-      });
-    }
-    return panes;
-  } catch (error48) {
-    console.error("[TmuxDetector] Error listing panes:", error48);
-    return [];
-  }
-}
-function isPaneAlive(paneId) {
-  if (!isTmuxAvailable2()) {
-    return false;
-  }
-  if (!isValidPaneId2(paneId)) {
-    return false;
-  }
-  try {
-    const result = tmuxExec(
-      ["display-message", "-t", paneId, "-p", "#{pane_dead}"],
-      { stripTmux: true, stdio: "pipe", timeout: 3e3 }
-    );
-    return result.trim() === "0";
-  } catch {
-    return false;
-  }
-}
-function capturePaneContent(paneId, lines = 15) {
-  if (!isTmuxAvailable2()) {
-    return "";
-  }
-  if (!isValidPaneId2(paneId)) {
-    console.error(`[TmuxDetector] Invalid pane ID format: ${paneId}`);
-    return "";
-  }
-  const safeLines = Math.max(1, Math.min(100, Math.floor(lines)));
-  try {
-    const result = tmuxExec(["capture-pane", "-t", paneId, "-p", "-S", `-${safeLines}`], {
-      stripTmux: true,
-      timeout: 5e3
-    });
-    return result;
-  } catch (error48) {
-    console.error(`[TmuxDetector] Error capturing pane ${paneId}:`, error48);
-    return "";
-  }
-}
-function analyzePaneContent(content) {
-  if (!content.trim()) {
-    return {
-      hasCopilotCode: false,
-      hasRateLimitMessage: false,
-      isBlocked: false,
-      confidence: 0
-    };
-  }
-  const cleanedContent = stripGitOutputLines(content);
-  const hasCopilotCode = CLI_AGENT_PATTERNS.some(
-    (pattern) => pattern.test(cleanedContent)
-  );
-  const rateLimitMatches = RATE_LIMIT_PATTERNS.filter(
-    (pattern) => pattern.test(cleanedContent)
-  );
-  const hasRateLimitMessage = rateLimitMatches.length > 0;
-  const isWaiting = WAITING_PATTERNS.some((pattern) => pattern.test(cleanedContent));
-  let rateLimitType;
-  if (hasRateLimitMessage) {
-    if (/5[- ]?hour/i.test(cleanedContent)) {
-      rateLimitType = "five_hour";
-    } else if (WEEKLY_RATE_LIMIT_PATTERN.test(cleanedContent)) {
-      rateLimitType = "weekly";
-    } else {
-      rateLimitType = "unknown";
-    }
-  }
-  let confidence = 0;
-  if (hasCopilotCode) confidence += 0.4;
-  if (hasRateLimitMessage) confidence += 0.4;
-  if (isWaiting) confidence += 0.2;
-  if (rateLimitMatches.length > 1) confidence += 0.1;
-  const isBlocked = hasCopilotCode && hasRateLimitMessage && confidence >= 0.6;
-  return {
-    hasCopilotCode,
-    hasRateLimitMessage,
-    isBlocked,
-    rateLimitType,
-    confidence: Math.min(1, confidence)
-  };
-}
-function scanForBlockedPanes(lines = 15, stateDir) {
-  const panes = listTmuxPanes();
-  const blocked = [];
-  for (const pane of panes) {
-    let content;
-    if (stateDir) {
-      content = getNewPaneTail(pane.id, stateDir, lines);
-      if (!content) continue;
-    } else {
-      content = capturePaneContent(pane.id, lines);
-    }
-    const analysis = analyzePaneContent(content);
-    if (analysis.isBlocked) {
-      blocked.push({
-        ...pane,
-        analysis,
-        firstDetectedAt: /* @__PURE__ */ new Date(),
-        resumeAttempted: false
-      });
-    }
-  }
-  return blocked;
-}
-function sendResumeSequence(paneId) {
-  if (!isTmuxAvailable2()) {
-    return false;
-  }
-  if (!isValidPaneId2(paneId)) {
-    console.error(`[TmuxDetector] Invalid pane ID format: ${paneId}`);
-    return false;
-  }
-  try {
-    tmuxExec(["send-keys", "-t", paneId, "1", "Enter"], {
-      stripTmux: true,
-      timeout: 2e3
-    });
-    return true;
-  } catch (error48) {
-    console.error(`[TmuxDetector] Error sending resume to pane ${paneId}:`, error48);
-    return false;
-  }
-}
-function sendToPane(paneId, text, pressEnter = true) {
-  if (!isTmuxAvailable2()) {
-    return false;
-  }
-  if (!isValidPaneId2(paneId)) {
-    console.error(`[TmuxDetector] Invalid pane ID format: ${paneId}`);
-    return false;
-  }
-  try {
-    const sanitizedText = sanitizeForTmux(text);
-    tmuxExec(["send-keys", "-t", paneId, "-l", sanitizedText], {
-      stripTmux: true,
-      timeout: 2e3
-    });
-    if (pressEnter) {
-      tmuxExec(["send-keys", "-t", paneId, "Enter"], {
-        stripTmux: true,
-        timeout: 2e3
-      });
-    }
-    return true;
-  } catch (error48) {
-    console.error(`[TmuxDetector] Error sending to pane ${paneId}:`, error48);
-    return false;
-  }
-}
-function formatBlockedPanesSummary(blockedPanes) {
-  if (blockedPanes.length === 0) {
-    return "No blocked Copilot CLI sessions detected.";
-  }
-  const lines = [
-    `Found ${blockedPanes.length} blocked CLI agent session(s):`,
-    ""
-  ];
-  for (const pane of blockedPanes) {
-    const location = `${pane.session}:${pane.windowIndex}.${pane.paneIndex}`;
-    const confidence = Math.round(pane.analysis.confidence * 100);
-    const limitType = pane.analysis.rateLimitType || "unknown";
-    const status = pane.resumeAttempted ? pane.resumeSuccessful ? " [RESUMED]" : " [RESUME FAILED]" : "";
-    lines.push(`  \u2022 ${location} (${pane.id}) - ${limitType} limit, ${confidence}% confidence${status}`);
-  }
-  return lines.join("\n");
-}
-var RATE_LIMIT_PATTERNS, CLI_AGENT_PATTERNS, WEEKLY_RATE_LIMIT_PATTERN, GIT_OUTPUT_LINE_PATTERNS, WAITING_PATTERNS;
-var init_tmux_detector = __esm({
-  "src/features/rate-limit-wait/tmux-detector.ts"() {
-    "use strict";
-    init_tmux_utils();
-    init_pane_fresh_capture();
-    RATE_LIMIT_PATTERNS = [
-      /rate limit/i,
-      /usage limit/i,
-      /quota exceeded/i,
-      /too many requests/i,
-      /please wait/i,
-      /try again later/i,
-      /limit reached/i,
-      /hit your limit/i,
-      /hit .+ limit/i,
-      /resets? .+ at/i,
-      /5[- ]?hour/i,
-      // Require adjacent rate-limit vocabulary to avoid false-positives from git commit
-      // messages or documentation that contain the bare word "weekly" (e.g. "fix weekly
-      // report generation", "update weekly standup notes").
-      /\bweekly\s+(?:usage\s+)?(?:limit|quota|cap|allowance|allocation)\b/i
-    ];
-    CLI_AGENT_PATTERNS = [
-      /claude/i,
-      /copilot/i,
-      /anthropic/i,
-      /\$ claude/,
-      /\$ copilot/,
-      /claude code/i,
-      /copilot cli/i,
-      /conversation/i,
-      /assistant/i
-    ];
-    WEEKLY_RATE_LIMIT_PATTERN = /\bweekly\s+(?:usage\s+)?(?:limit|quota|cap|allowance|allocation)\b/i;
-    GIT_OUTPUT_LINE_PATTERNS = [
-      /^commit\s+[0-9a-f]{6,40}\b/,
-      // git log commit hash
-      /^Author:\s+\S/,
-      // git log author
-      /^Date:\s+\S/,
-      // git log date
-      /^Merge:\s+[0-9a-f]{6,}/,
-      // git log merge line
-      /^diff\s+--git\s+a\//,
-      // git diff header
-      /^(?:---|\+\+\+)\s+[ab]\//,
-      // git diff file paths
-      /^@@\s+-\d+/
-      // git diff hunk header
-    ];
-    WAITING_PATTERNS = [
-      /\[\d+\]/,
-      // Menu selection prompt like [1], [2], [3]
-      /^\s*❯?\s*\d+\.\s/m,
-      // Menu selection prompt like "❯ 1. ..." or "  2. ..."
-      /continue\?/i,
-      // Continue prompt
-      /press enter/i,
-      /waiting for/i,
-      /select an option/i,
-      /choice:/i,
-      /enter to confirm/i
-    ];
-  }
-});
-
-// src/notifications/session-registry.ts
-var session_registry_exports = {};
-__export(session_registry_exports, {
-  loadAllMappings: () => loadAllMappings,
-  lookupByMessageId: () => lookupByMessageId,
-  pruneStale: () => pruneStale,
-  registerMessage: () => registerMessage,
-  removeMessagesByPane: () => removeMessagesByPane,
-  removeSession: () => removeSession
-});
-function getRegistryStateDir() {
-  return process.env["OMC_TEST_REGISTRY_DIR"] ?? (0, import_path64.join)((0, import_os11.homedir)(), ".omcp", "state");
-}
-function getRegistryPath() {
-  return (0, import_path64.join)(getRegistryStateDir(), "reply-session-registry.jsonl");
-}
-function getLockPath() {
-  return (0, import_path64.join)(getRegistryStateDir(), "reply-session-registry.lock");
-}
-function ensureRegistryDir() {
-  const registryDir = (0, import_path64.dirname)(getRegistryPath());
-  if (!(0, import_fs54.existsSync)(registryDir)) {
-    (0, import_fs54.mkdirSync)(registryDir, { recursive: true, mode: 448 });
-  }
-}
-function sleepMs(ms) {
-  try {
-    Atomics.wait(SLEEP_ARRAY, 0, 0, ms);
-  } catch {
-    const waitUntil = Date.now() + ms;
-    while (Date.now() < waitUntil) {
-    }
-  }
-}
-function isPidAlive(pid) {
-  if (!Number.isFinite(pid) || pid <= 0) {
-    return false;
-  }
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error48) {
-    const err = error48;
-    return err.code === "EPERM";
-  }
-}
-function readLockSnapshot() {
-  try {
-    const raw = (0, import_fs54.readFileSync)(getLockPath(), "utf-8");
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      return { raw, pid: null, token: null };
-    }
-    try {
-      const parsed = JSON.parse(trimmed);
-      const pid = typeof parsed.pid === "number" && Number.isFinite(parsed.pid) ? parsed.pid : null;
-      const token = typeof parsed.token === "string" && parsed.token.length > 0 ? parsed.token : null;
-      return { raw, pid, token };
-    } catch {
-      const [pidStr] = trimmed.split(":");
-      const parsedPid = Number.parseInt(pidStr ?? "", 10);
-      return {
-        raw,
-        pid: Number.isFinite(parsedPid) && parsedPid > 0 ? parsedPid : null,
-        token: null
-      };
-    }
-  } catch {
-    return null;
-  }
-}
-function removeLockIfUnchanged(snapshot) {
-  try {
-    const currentRaw = (0, import_fs54.readFileSync)(getLockPath(), "utf-8");
-    if (currentRaw !== snapshot.raw) {
-      return false;
-    }
-  } catch {
-    return false;
-  }
-  try {
-    (0, import_fs54.unlinkSync)(getLockPath());
-    return true;
-  } catch {
-    return false;
-  }
-}
-function acquireRegistryLock() {
-  ensureRegistryDir();
-  const started = Date.now();
-  while (Date.now() - started < LOCK_TIMEOUT_MS) {
-    try {
-      const token = (0, import_crypto7.randomUUID)();
-      const fd = (0, import_fs54.openSync)(
-        getLockPath(),
-        import_fs54.constants.O_CREAT | import_fs54.constants.O_EXCL | import_fs54.constants.O_WRONLY,
-        SECURE_FILE_MODE
-      );
-      const lockPayload = JSON.stringify({
-        pid: process.pid,
-        acquiredAt: Date.now(),
-        token
-      });
-      (0, import_fs54.writeSync)(fd, lockPayload, null, "utf-8");
-      return { fd, token };
-    } catch (error48) {
-      const err = error48;
-      if (err.code !== "EEXIST") {
-        throw error48;
-      }
-      try {
-        const lockAgeMs = Date.now() - (0, import_fs54.statSync)(getLockPath()).mtimeMs;
-        if (lockAgeMs > LOCK_STALE_MS2) {
-          const snapshot = readLockSnapshot();
-          if (!snapshot) {
-            sleepMs(LOCK_RETRY_MS2);
-            continue;
-          }
-          if (snapshot.pid !== null && isPidAlive(snapshot.pid)) {
-            sleepMs(LOCK_RETRY_MS2);
-            continue;
-          }
-          if (removeLockIfUnchanged(snapshot)) {
-            continue;
-          }
-        }
-      } catch {
-      }
-      sleepMs(LOCK_RETRY_MS2);
-    }
-  }
-  return null;
-}
-function acquireRegistryLockOrWait(maxWaitMs = LOCK_MAX_WAIT_MS) {
-  const deadline = Date.now() + maxWaitMs;
-  while (Date.now() < deadline) {
-    const lock = acquireRegistryLock();
-    if (lock !== null) {
-      return lock;
-    }
-    sleepMs(LOCK_RETRY_MS2);
-  }
-  return null;
-}
-function releaseRegistryLock(lock) {
-  try {
-    (0, import_fs54.closeSync)(lock.fd);
-  } catch {
-  }
-  const snapshot = readLockSnapshot();
-  if (!snapshot || snapshot.token !== lock.token) {
-    return;
-  }
-  removeLockIfUnchanged(snapshot);
-}
-function withRegistryLockOrWait(onLocked) {
-  const lock = acquireRegistryLockOrWait();
-  if (lock === null) {
-    return onLocked();
-  }
-  try {
-    return onLocked();
-  } finally {
-    releaseRegistryLock(lock);
-  }
-}
-function withRegistryLock(onLocked, onLockUnavailable) {
-  const lock = acquireRegistryLock();
-  if (lock === null) {
-    return onLockUnavailable();
-  }
-  try {
-    return onLocked();
-  } finally {
-    releaseRegistryLock(lock);
-  }
-}
-function registerMessage(mapping) {
-  withRegistryLockOrWait(
-    () => {
-      ensureRegistryDir();
-      const line = JSON.stringify(mapping) + "\n";
-      const fd = (0, import_fs54.openSync)(
-        getRegistryPath(),
-        import_fs54.constants.O_WRONLY | import_fs54.constants.O_APPEND | import_fs54.constants.O_CREAT,
-        SECURE_FILE_MODE
-      );
-      try {
-        const buf = Buffer.from(line, "utf-8");
-        (0, import_fs54.writeSync)(fd, buf);
-      } finally {
-        (0, import_fs54.closeSync)(fd);
-      }
-    }
-  );
-}
-function loadAllMappings() {
-  return withRegistryLockOrWait(() => readAllMappingsUnsafe());
-}
-function readAllMappingsUnsafe() {
-  if (!(0, import_fs54.existsSync)(getRegistryPath())) {
-    return [];
-  }
-  try {
-    const content = (0, import_fs54.readFileSync)(getRegistryPath(), "utf-8");
-    return content.split("\n").filter((line) => line.trim()).map((line) => {
-      try {
-        return JSON.parse(line);
-      } catch {
-        return null;
-      }
-    }).filter((m) => m !== null);
-  } catch {
-    return [];
-  }
-}
-function lookupByMessageId(platform, messageId) {
-  const mappings = loadAllMappings();
-  return mappings.findLast((m) => m.platform === platform && m.messageId === messageId) ?? null;
-}
-function removeSession(sessionId) {
-  withRegistryLock(
-    () => {
-      const mappings = readAllMappingsUnsafe();
-      const filtered = mappings.filter((m) => m.sessionId !== sessionId);
-      if (filtered.length === mappings.length) {
-        return;
-      }
-      rewriteRegistryUnsafe(filtered);
-    },
-    () => {
-    }
-  );
-}
-function removeMessagesByPane(paneId) {
-  withRegistryLock(
-    () => {
-      const mappings = readAllMappingsUnsafe();
-      const filtered = mappings.filter((m) => m.tmuxPaneId !== paneId);
-      if (filtered.length === mappings.length) {
-        return;
-      }
-      rewriteRegistryUnsafe(filtered);
-    },
-    () => {
-    }
-  );
-}
-function pruneStale() {
-  withRegistryLock(
-    () => {
-      const now = Date.now();
-      const mappings = readAllMappingsUnsafe();
-      const filtered = mappings.filter((m) => {
-        try {
-          const age = now - new Date(m.createdAt).getTime();
-          return age < MAX_AGE_MS;
-        } catch {
-          return false;
-        }
-      });
-      if (filtered.length === mappings.length) {
-        return;
-      }
-      rewriteRegistryUnsafe(filtered);
-    },
-    () => {
-    }
-  );
-}
-function rewriteRegistryUnsafe(mappings) {
-  ensureRegistryDir();
-  if (mappings.length === 0) {
-    (0, import_fs54.writeFileSync)(getRegistryPath(), "", { mode: SECURE_FILE_MODE });
-    return;
-  }
-  const content = mappings.map((m) => JSON.stringify(m)).join("\n") + "\n";
-  (0, import_fs54.writeFileSync)(getRegistryPath(), content, { mode: SECURE_FILE_MODE });
-}
-var import_fs54, import_path64, import_os11, import_crypto7, SECURE_FILE_MODE, MAX_AGE_MS, LOCK_TIMEOUT_MS, LOCK_RETRY_MS2, LOCK_STALE_MS2, LOCK_MAX_WAIT_MS, SLEEP_ARRAY;
-var init_session_registry = __esm({
-  "src/notifications/session-registry.ts"() {
-    "use strict";
-    import_fs54 = require("fs");
-    import_path64 = require("path");
-    import_os11 = require("os");
-    import_crypto7 = require("crypto");
-    SECURE_FILE_MODE = 384;
-    MAX_AGE_MS = 24 * 60 * 60 * 1e3;
-    LOCK_TIMEOUT_MS = 2e3;
-    LOCK_RETRY_MS2 = 20;
-    LOCK_STALE_MS2 = 1e4;
-    LOCK_MAX_WAIT_MS = 1e4;
-    SLEEP_ARRAY = new Int32Array(new SharedArrayBuffer(4));
   }
 });
 
 // src/notifications/index.ts
-var notifications_exports = {};
-__export(notifications_exports, {
-  CUSTOM_INTEGRATION_PRESETS: () => CUSTOM_INTEGRATION_PRESETS,
-  SlackConnectionStateTracker: () => SlackConnectionStateTracker,
-  TEMPLATE_VARIABLES: () => TEMPLATE_VARIABLES,
-  checkDuplicateIds: () => checkDuplicateIds,
-  computeTemplateVariables: () => computeTemplateVariables,
-  dispatchCustomIntegrations: () => dispatchCustomIntegrations,
-  dispatchNotifications: () => dispatchNotifications,
-  formatAgentCall: () => formatAgentCall,
-  formatAskUserQuestion: () => formatAskUserQuestion,
-  formatNotification: () => formatNotification,
-  formatSessionEnd: () => formatSessionEnd,
-  formatSessionIdle: () => formatSessionIdle,
-  formatSessionStart: () => formatSessionStart,
-  formatSessionStop: () => formatSessionStop,
-  formatTmuxInfo: () => formatTmuxInfo,
-  getCurrentTmuxPaneId: () => getCurrentTmuxPaneId,
-  getCurrentTmuxSession: () => getCurrentTmuxSession,
-  getCustomIntegrationsConfig: () => getCustomIntegrationsConfig,
-  getCustomIntegrationsForEvent: () => getCustomIntegrationsForEvent,
-  getDefaultTemplate: () => getDefaultTemplate,
-  getEnabledPlatforms: () => getEnabledPlatforms,
-  getHookConfig: () => getHookConfig,
-  getNotificationConfig: () => getNotificationConfig,
-  getPreset: () => getPreset,
-  getPresetList: () => getPresetList,
-  getTeamTmuxSessions: () => getTeamTmuxSessions,
-  getTmuxTailLines: () => getTmuxTailLines,
-  getVariableDocumentation: () => getVariableDocumentation,
-  getVariablesForEvent: () => getVariablesForEvent,
-  getVerbosity: () => getVerbosity,
-  hasCustomIntegrationsEnabled: () => hasCustomIntegrationsEnabled,
-  interpolateTemplate: () => interpolateTemplate,
-  isEventAllowedByVerbosity: () => isEventAllowedByVerbosity,
-  isEventEnabled: () => isEventEnabled,
-  isTimestampValid: () => isTimestampValid,
-  isValidPreset: () => isValidPreset,
-  mergeHookConfigIntoNotificationConfig: () => mergeHookConfigIntoNotificationConfig,
-  notify: () => notify,
-  redactTokens: () => redactTokens,
-  resetHookConfigCache: () => resetHookConfigCache,
-  resolveEventTemplate: () => resolveEventTemplate,
-  sanitizeArgument: () => sanitizeArgument,
-  sendCustomCli: () => sendCustomCli,
-  sendCustomWebhook: () => sendCustomWebhook,
-  sendDiscord: () => sendDiscord,
-  sendDiscordBot: () => sendDiscordBot,
-  sendSlack: () => sendSlack,
-  sendSlackBot: () => sendSlackBot,
-  sendTeams: () => sendTeams,
-  sendTelegram: () => sendTelegram,
-  sendWebhook: () => sendWebhook,
-  shouldIncludeTmuxTail: () => shouldIncludeTmuxTail,
-  validateCustomIntegration: () => validateCustomIntegration,
-  validateSlackEnvelope: () => validateSlackEnvelope,
-  validateSlackMessage: () => validateSlackMessage,
-  validateTemplate: () => validateTemplate,
-  verifySlackSignature: () => verifySlackSignature
-});
 async function notify(event, data) {
   if (process.env.OMC_NOTIFY === "0") {
     return null;
@@ -31898,7 +33642,7 @@ async function notify(event, data) {
       tmuxSession: data.tmuxSession ?? getCurrentTmuxSession() ?? void 0,
       tmuxPaneId: data.tmuxPaneId ?? getCurrentTmuxPaneId2() ?? void 0,
       projectPath: data.projectPath,
-      projectName: data.projectName || (data.projectPath ? (0, import_path65.basename)(data.projectPath) : void 0),
+      projectName: data.projectName || (data.projectPath ? (0, import_path71.basename)(data.projectPath) : void 0),
       modesUsed: data.modesUsed,
       contextSummary: data.contextSummary,
       durationMs: data.durationMs,
@@ -31993,11 +33737,11 @@ async function notify(event, data) {
     return null;
   }
 }
-var import_path65;
+var import_path71;
 var init_notifications = __esm({
   "src/notifications/index.ts"() {
     "use strict";
-    init_dispatcher();
+    init_dispatcher2();
     init_formatter();
     init_tmux();
     init_config();
@@ -32007,2041 +33751,16 @@ var init_notifications = __esm({
     init_redact();
     init_config();
     init_formatter();
-    init_dispatcher();
+    init_dispatcher2();
     init_tmux();
     init_hook_config();
     init_template_engine();
-    import_path65 = require("path");
-    init_dispatcher();
+    import_path71 = require("path");
+    init_dispatcher2();
     init_config();
     init_presets();
     init_template_variables();
     init_validation2();
-  }
-});
-
-// src/hooks/codebase-map.ts
-function shouldSkipEntry(name, isDir, ignorePatterns) {
-  if (name.startsWith(".") && isDir && !IMPORTANT_FILES.has(name)) {
-    return true;
-  }
-  if (isDir && SKIP_DIRS.has(name)) {
-    return true;
-  }
-  if (!isDir) {
-    if (SKIP_FILE_SUFFIXES.some((suffix) => name.endsWith(suffix))) {
-      return true;
-    }
-    const ext = (0, import_node_path4.extname)(name);
-    if (!SOURCE_EXTENSIONS.has(ext) && !IMPORTANT_FILES.has(name)) {
-      return true;
-    }
-  }
-  for (const pattern of ignorePatterns) {
-    if (name.includes(pattern)) return true;
-  }
-  return false;
-}
-function buildTree(dir, depth, maxDepth, fileCount, maxFiles, ignorePatterns) {
-  if (depth > maxDepth || fileCount.value >= maxFiles) return [];
-  let entries;
-  try {
-    entries = (0, import_node_fs3.readdirSync)(dir);
-  } catch {
-    return [];
-  }
-  const withMeta = entries.map((name) => {
-    let isDir = false;
-    try {
-      isDir = (0, import_node_fs3.statSync)((0, import_node_path4.join)(dir, name)).isDirectory();
-    } catch {
-    }
-    return { name, isDir };
-  });
-  withMeta.sort((a, b) => {
-    if (a.isDir && !b.isDir) return -1;
-    if (!a.isDir && b.isDir) return 1;
-    return a.name.localeCompare(b.name);
-  });
-  const nodes = [];
-  for (const { name, isDir } of withMeta) {
-    if (fileCount.value >= maxFiles) break;
-    if (shouldSkipEntry(name, isDir, ignorePatterns)) continue;
-    if (isDir) {
-      const children = buildTree(
-        (0, import_node_path4.join)(dir, name),
-        depth + 1,
-        maxDepth,
-        fileCount,
-        maxFiles,
-        ignorePatterns
-      );
-      nodes.push({ name, isDir: true, children });
-    } else {
-      fileCount.value++;
-      nodes.push({ name, isDir: false });
-    }
-  }
-  return nodes;
-}
-function renderTree(nodes, prefix, lines) {
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    const isLast = i === nodes.length - 1;
-    const connector = isLast ? "\u2514\u2500\u2500 " : "\u251C\u2500\u2500 ";
-    const childPrefix = isLast ? "    " : "\u2502   ";
-    lines.push(`${prefix}${connector}${node.name}${node.isDir ? "/" : ""}`);
-    if (node.isDir && node.children && node.children.length > 0) {
-      renderTree(node.children, prefix + childPrefix, lines);
-    }
-  }
-}
-function extractPackageMetadata(directory) {
-  const pkgPath = (0, import_node_path4.join)(directory, "package.json");
-  if (!(0, import_node_fs3.existsSync)(pkgPath)) return "";
-  try {
-    const pkg = JSON.parse((0, import_node_fs3.readFileSync)(pkgPath, "utf-8"));
-    const lines = [];
-    if (pkg.name) lines.push(`Package: ${pkg.name}`);
-    if (pkg.description) lines.push(`Description: ${pkg.description}`);
-    if (pkg.scripts) {
-      const scriptNames = Object.keys(pkg.scripts).slice(0, 8).join(", ");
-      if (scriptNames) lines.push(`Scripts: ${scriptNames}`);
-    }
-    return lines.join("\n");
-  } catch {
-    return "";
-  }
-}
-function generateCodebaseMap(directory, options = {}) {
-  const {
-    maxFiles = 200,
-    maxDepth = 4,
-    ignorePatterns = [],
-    includeMetadata = true
-  } = options;
-  if (!(0, import_node_fs3.existsSync)(directory)) {
-    return { map: "", totalFiles: 0, truncated: false };
-  }
-  const fileCount = { value: 0 };
-  const tree = buildTree(directory, 0, maxDepth, fileCount, maxFiles, ignorePatterns);
-  const treeLines = [];
-  renderTree(tree, "", treeLines);
-  const treeStr = treeLines.join("\n");
-  const parts = [];
-  if (includeMetadata) {
-    const meta3 = extractPackageMetadata(directory);
-    if (meta3) parts.push(meta3);
-  }
-  parts.push(treeStr);
-  const truncated = fileCount.value >= maxFiles;
-  if (truncated) {
-    parts.push(`[Map truncated at ${maxFiles} files \u2014 use Glob/Grep for full search]`);
-  }
-  return {
-    map: parts.join("\n\n"),
-    totalFiles: fileCount.value,
-    truncated
-  };
-}
-var import_node_fs3, import_node_path4, SKIP_DIRS, SOURCE_EXTENSIONS, SKIP_FILE_SUFFIXES, IMPORTANT_FILES;
-var init_codebase_map = __esm({
-  "src/hooks/codebase-map.ts"() {
-    "use strict";
-    import_node_fs3 = require("node:fs");
-    import_node_path4 = require("node:path");
-    SKIP_DIRS = /* @__PURE__ */ new Set([
-      "node_modules",
-      ".git",
-      "dist",
-      "build",
-      "out",
-      "coverage",
-      ".next",
-      ".nuxt",
-      ".svelte-kit",
-      ".cache",
-      ".turbo",
-      ".parcel-cache",
-      "__pycache__",
-      ".mypy_cache",
-      ".pytest_cache",
-      ".ruff_cache",
-      "target",
-      ".gradle",
-      "vendor",
-      ".venv",
-      "venv",
-      "env",
-      ".omcp",
-      ".copilot",
-      "tmp",
-      "temp"
-    ]);
-    SOURCE_EXTENSIONS = /* @__PURE__ */ new Set([
-      ".ts",
-      ".tsx",
-      ".js",
-      ".jsx",
-      ".mjs",
-      ".cjs",
-      ".py",
-      ".rb",
-      ".go",
-      ".rs",
-      ".java",
-      ".kt",
-      ".swift",
-      ".c",
-      ".cpp",
-      ".h",
-      ".hpp",
-      ".cs",
-      ".fs",
-      ".vue",
-      ".svelte",
-      ".sh",
-      ".bash",
-      ".zsh",
-      ".json",
-      ".jsonc",
-      ".yaml",
-      ".yml",
-      ".toml",
-      ".md",
-      ".mdx",
-      ".css",
-      ".scss",
-      ".sass",
-      ".less",
-      ".html",
-      ".htm"
-    ]);
-    SKIP_FILE_SUFFIXES = ["-lock.json", ".lock", "-lock.yaml", "-lock.toml"];
-    IMPORTANT_FILES = /* @__PURE__ */ new Set([
-      "package.json",
-      "tsconfig.json",
-      "tsconfig.base.json",
-      "pyproject.toml",
-      "Cargo.toml",
-      "go.mod",
-      "go.sum",
-      "copilot-instructions.md",
-      "AGENTS.md",
-      "README.md",
-      "CONTRIBUTING.md",
-      ".eslintrc.json",
-      "vitest.config.ts",
-      "jest.config.ts",
-      "jest.config.js",
-      "Makefile",
-      "Dockerfile",
-      ".gitignore"
-    ]);
-  }
-});
-
-// src/hooks/agents-overlay.ts
-var agents_overlay_exports = {};
-__export(agents_overlay_exports, {
-  buildAgentsOverlay: () => buildAgentsOverlay
-});
-function buildAgentsOverlay(directory, options) {
-  const config2 = loadConfig();
-  const mapConfig = config2.startupCodebaseMap ?? {};
-  if (mapConfig.enabled === false) {
-    return { message: "", hasCodebaseMap: false };
-  }
-  const mergedOptions = {
-    maxFiles: mapConfig.maxFiles ?? options?.maxFiles ?? 200,
-    maxDepth: mapConfig.maxDepth ?? options?.maxDepth ?? 4,
-    ignorePatterns: options?.ignorePatterns ?? [],
-    includeMetadata: options?.includeMetadata ?? true
-  };
-  const result = generateCodebaseMap(directory, mergedOptions);
-  if (!result.map) {
-    return { message: "", hasCodebaseMap: false };
-  }
-  const message = `<session-restore>
-
-[CODEBASE MAP]
-
-Project structure for: ${directory}
-Use this map to navigate efficiently. Prefer Glob/Grep over blind file exploration.
-
-${result.map}
-
-</session-restore>
-
----
-
-`;
-  return { message, hasCodebaseMap: true };
-}
-var init_agents_overlay = __esm({
-  "src/hooks/agents-overlay.ts"() {
-    "use strict";
-    init_codebase_map();
-    init_loader();
-  }
-});
-
-// src/utils/daemon-module-path.ts
-function resolveDaemonModulePath(currentFilename, distSegments) {
-  const isWindowsStylePath = /^[a-zA-Z]:\\/.test(currentFilename) || currentFilename.includes("\\");
-  const pathApi = isWindowsStylePath ? import_path66.win32 : import_path66.posix;
-  const tsCompiledPath = currentFilename.replace(/\.ts$/, ".js");
-  if (tsCompiledPath !== currentFilename) {
-    return tsCompiledPath;
-  }
-  const currentDir = pathApi.dirname(currentFilename);
-  const inBundledCli = pathApi.basename(currentFilename) === "cli.cjs" && pathApi.basename(currentDir) === "bridge";
-  if (inBundledCli) {
-    return pathApi.join(currentDir, "..", "dist", ...distSegments);
-  }
-  return currentFilename;
-}
-var import_path66;
-var init_daemon_module_path = __esm({
-  "src/utils/daemon-module-path.ts"() {
-    "use strict";
-    import_path66 = require("path");
-  }
-});
-
-// src/notifications/reply-listener.ts
-var reply_listener_exports = {};
-__export(reply_listener_exports, {
-  RateLimiter: () => RateLimiter,
-  SlackConnectionStateTracker: () => SlackConnectionStateTracker,
-  buildDaemonConfig: () => buildDaemonConfig,
-  getReplyListenerStatus: () => getReplyListenerStatus,
-  isDaemonRunning: () => isDaemonRunning,
-  pollLoop: () => pollLoop,
-  processSlackSocketMessage: () => processSlackSocketMessage,
-  sanitizeReplyInput: () => sanitizeReplyInput,
-  startReplyListener: () => startReplyListener,
-  stopReplyListener: () => stopReplyListener
-});
-function createMinimalDaemonEnv() {
-  const env2 = {};
-  for (const key of DAEMON_ENV_ALLOWLIST) {
-    if (process.env[key] !== void 0) {
-      env2[key] = process.env[key];
-    }
-  }
-  for (const key of Object.keys(process.env)) {
-    if (key.startsWith("OMC_")) {
-      env2[key] = process.env[key];
-    }
-  }
-  return env2;
-}
-function ensureStateDir2() {
-  if (!(0, import_fs55.existsSync)(DEFAULT_STATE_DIR)) {
-    (0, import_fs55.mkdirSync)(DEFAULT_STATE_DIR, { recursive: true, mode: 448 });
-  }
-}
-function writeSecureFile(filePath, content) {
-  ensureStateDir2();
-  (0, import_fs55.writeFileSync)(filePath, content, { mode: SECURE_FILE_MODE2 });
-  try {
-    (0, import_fs55.chmodSync)(filePath, SECURE_FILE_MODE2);
-  } catch {
-  }
-}
-function rotateLogIfNeeded(logPath) {
-  try {
-    if (!(0, import_fs55.existsSync)(logPath)) return;
-    const stats = (0, import_fs55.statSync)(logPath);
-    if (stats.size > MAX_LOG_SIZE_BYTES) {
-      const backupPath = `${logPath}.old`;
-      if ((0, import_fs55.existsSync)(backupPath)) {
-        (0, import_fs55.unlinkSync)(backupPath);
-      }
-      (0, import_fs55.renameSync)(logPath, backupPath);
-    }
-  } catch {
-  }
-}
-function log(message) {
-  try {
-    ensureStateDir2();
-    rotateLogIfNeeded(LOG_FILE_PATH);
-    const timestamp = (/* @__PURE__ */ new Date()).toISOString();
-    const logLine = `[${timestamp}] ${redactTokens(message)}
-`;
-    (0, import_fs55.appendFileSync)(LOG_FILE_PATH, logLine, { mode: SECURE_FILE_MODE2 });
-  } catch {
-  }
-}
-function readDaemonState() {
-  try {
-    if (!(0, import_fs55.existsSync)(STATE_FILE_PATH)) {
-      return null;
-    }
-    const content = (0, import_fs55.readFileSync)(STATE_FILE_PATH, "utf-8");
-    const state = JSON.parse(content);
-    return state;
-  } catch {
-    return null;
-  }
-}
-function writeDaemonState(state) {
-  writeSecureFile(STATE_FILE_PATH, JSON.stringify(state, null, 2));
-}
-async function buildDaemonConfig() {
-  try {
-    const { getReplyConfig: getReplyConfig2, getNotificationConfig: getNotificationConfig2, getReplyListenerPlatformConfig: getReplyListenerPlatformConfig2 } = await Promise.resolve().then(() => (init_config(), config_exports));
-    const replyConfig = getReplyConfig2();
-    if (!replyConfig) return null;
-    const notifConfig = getNotificationConfig2();
-    const platformConfig = getReplyListenerPlatformConfig2(notifConfig);
-    return { ...replyConfig, ...platformConfig };
-  } catch {
-    return null;
-  }
-}
-function readPidFile() {
-  try {
-    if (!(0, import_fs55.existsSync)(PID_FILE_PATH)) {
-      return null;
-    }
-    const content = (0, import_fs55.readFileSync)(PID_FILE_PATH, "utf-8");
-    return parseInt(content.trim(), 10);
-  } catch {
-    return null;
-  }
-}
-function writePidFile(pid) {
-  writeSecureFile(PID_FILE_PATH, String(pid));
-}
-function removePidFile() {
-  if ((0, import_fs55.existsSync)(PID_FILE_PATH)) {
-    (0, import_fs55.unlinkSync)(PID_FILE_PATH);
-  }
-}
-function isProcessRunning(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-function isDaemonRunning() {
-  const pid = readPidFile();
-  if (pid === null) {
-    return false;
-  }
-  if (!isProcessRunning(pid)) {
-    removePidFile();
-    return false;
-  }
-  return true;
-}
-function sanitizeReplyInput(text) {
-  return text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "").replace(/[\u202a-\u202e\u2066-\u2069]/g, "").replace(/\r?\n/g, " ").replace(/\\/g, "\\\\").replace(/`/g, "\\`").replace(/\$\(/g, "\\$(").replace(/\$\{/g, "\\${").trim();
-}
-function injectReply(paneId, text, platform, config2) {
-  const content = capturePaneContent(paneId, 15);
-  if (!content.trim()) {
-    log(`WARN: Pane ${paneId} appears empty. Skipping injection, removing stale mapping.`);
-    removeMessagesByPane(paneId);
-    return false;
-  }
-  const prefix = config2.includePrefix ? `[reply:${platform}] ` : "";
-  const sanitized = sanitizeReplyInput(prefix + text);
-  const truncated = sanitized.slice(0, config2.maxMessageLength);
-  const success2 = sendToPane(paneId, truncated, true);
-  if (success2) {
-    log(`Injected reply from ${platform} into pane ${paneId}: "${truncated.slice(0, 50)}${truncated.length > 50 ? "..." : ""}"`);
-  } else {
-    log(`ERROR: Failed to inject reply into pane ${paneId}`);
-  }
-  return success2;
-}
-async function pollDiscord(config2, state, rateLimiter) {
-  if (!config2.discordBotToken || !config2.discordChannelId) {
-    return;
-  }
-  if (config2.authorizedDiscordUserIds.length === 0) {
-    return;
-  }
-  if (Date.now() < discordBackoffUntil) {
-    return;
-  }
-  try {
-    const after = state.discordLastMessageId ? `?after=${state.discordLastMessageId}&limit=10` : "?limit=10";
-    const url2 = `https://discord.com/api/v10/channels/${config2.discordChannelId}/messages${after}`;
-    const response = await fetch(url2, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bot ${config2.discordBotToken}`
-      },
-      signal: AbortSignal.timeout(1e4)
-    });
-    const remaining = response.headers.get("x-ratelimit-remaining");
-    const reset = response.headers.get("x-ratelimit-reset");
-    if (remaining !== null && parseInt(remaining, 10) < 2) {
-      const resetTime = reset ? parseFloat(reset) * 1e3 : Date.now() + 1e4;
-      discordBackoffUntil = resetTime;
-      log(`WARN: Discord rate limit low (remaining: ${remaining}), backing off until ${new Date(resetTime).toISOString()}`);
-    }
-    if (!response.ok) {
-      log(`Discord API error: HTTP ${response.status}`);
-      return;
-    }
-    const messages = await response.json();
-    if (!Array.isArray(messages) || messages.length === 0) return;
-    const sorted = [...messages].reverse();
-    for (const msg of sorted) {
-      if (!msg.message_reference?.message_id) {
-        state.discordLastMessageId = msg.id;
-        writeDaemonState(state);
-        continue;
-      }
-      if (!config2.authorizedDiscordUserIds.includes(msg.author.id)) {
-        state.discordLastMessageId = msg.id;
-        writeDaemonState(state);
-        continue;
-      }
-      const mapping = lookupByMessageId("discord-bot", msg.message_reference.message_id);
-      if (!mapping) {
-        state.discordLastMessageId = msg.id;
-        writeDaemonState(state);
-        continue;
-      }
-      if (!rateLimiter.canProceed()) {
-        log(`WARN: Rate limit exceeded, dropping Discord message ${msg.id}`);
-        state.discordLastMessageId = msg.id;
-        writeDaemonState(state);
-        state.errors++;
-        continue;
-      }
-      state.discordLastMessageId = msg.id;
-      writeDaemonState(state);
-      const success2 = injectReply(mapping.tmuxPaneId, msg.content, "discord", config2);
-      if (success2) {
-        state.messagesInjected++;
-        try {
-          await fetch(
-            `https://discord.com/api/v10/channels/${config2.discordChannelId}/messages/${msg.id}/reactions/%E2%9C%85/@me`,
-            {
-              method: "PUT",
-              headers: { "Authorization": `Bot ${config2.discordBotToken}` },
-              signal: AbortSignal.timeout(5e3)
-            }
-          );
-        } catch (e) {
-          log(`WARN: Failed to add confirmation reaction: ${e}`);
-        }
-        try {
-          const mentionPrefix = config2.discordMention ? `${config2.discordMention} ` : "";
-          const feedbackAllowedMentions = config2.discordMention ? parseMentionAllowedMentions(config2.discordMention) : { parse: [] };
-          await fetch(
-            `https://discord.com/api/v10/channels/${config2.discordChannelId}/messages`,
-            {
-              method: "POST",
-              headers: {
-                "Authorization": `Bot ${config2.discordBotToken}`,
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({
-                content: `${mentionPrefix}Injected into Copilot CLI session.`,
-                message_reference: { message_id: msg.id },
-                allowed_mentions: feedbackAllowedMentions
-              }),
-              signal: AbortSignal.timeout(5e3)
-            }
-          );
-        } catch (e) {
-          log(`WARN: Failed to send injection channel notification: ${e}`);
-        }
-      } else {
-        state.errors++;
-      }
-    }
-  } catch (error48) {
-    state.errors++;
-    state.lastError = redactTokens(error48 instanceof Error ? error48.message : String(error48));
-    log(`Discord polling error: ${state.lastError}`);
-  }
-}
-async function pollTelegram(config2, state, rateLimiter) {
-  if (!config2.telegramBotToken || !config2.telegramChatId) {
-    return;
-  }
-  try {
-    const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
-    const path22 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
-    const updates = await new Promise((resolve16, reject) => {
-      const req = (0, import_https2.request)(
-        {
-          hostname: "api.telegram.org",
-          path: path22,
-          method: "GET",
-          family: 4,
-          // Force IPv4
-          timeout: 1e4
-        },
-        (res) => {
-          const chunks = [];
-          res.on("data", (chunk) => chunks.push(chunk));
-          res.on("end", () => {
-            try {
-              const body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
-              if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve16(body.result || []);
-              } else {
-                reject(new Error(`HTTP ${res.statusCode}`));
-              }
-            } catch (e) {
-              reject(e);
-            }
-          });
-        }
-      );
-      req.on("error", reject);
-      req.on("timeout", () => {
-        req.destroy();
-        reject(new Error("Request timeout"));
-      });
-      req.end();
-    });
-    for (const update of updates) {
-      const msg = update.message;
-      if (!msg) {
-        state.telegramLastUpdateId = update.update_id;
-        writeDaemonState(state);
-        continue;
-      }
-      if (!msg.reply_to_message?.message_id) {
-        state.telegramLastUpdateId = update.update_id;
-        writeDaemonState(state);
-        continue;
-      }
-      if (String(msg.chat.id) !== config2.telegramChatId) {
-        state.telegramLastUpdateId = update.update_id;
-        writeDaemonState(state);
-        continue;
-      }
-      const mapping = lookupByMessageId("telegram", String(msg.reply_to_message.message_id));
-      if (!mapping) {
-        state.telegramLastUpdateId = update.update_id;
-        writeDaemonState(state);
-        continue;
-      }
-      const text = msg.text || "";
-      if (!text) {
-        state.telegramLastUpdateId = update.update_id;
-        writeDaemonState(state);
-        continue;
-      }
-      if (!rateLimiter.canProceed()) {
-        log(`WARN: Rate limit exceeded, dropping Telegram message ${msg.message_id}`);
-        state.telegramLastUpdateId = update.update_id;
-        writeDaemonState(state);
-        state.errors++;
-        continue;
-      }
-      state.telegramLastUpdateId = update.update_id;
-      writeDaemonState(state);
-      const success2 = injectReply(mapping.tmuxPaneId, text, "telegram", config2);
-      if (success2) {
-        state.messagesInjected++;
-        try {
-          const replyBody = JSON.stringify({
-            chat_id: config2.telegramChatId,
-            text: "Injected into Copilot CLI session.",
-            reply_to_message_id: msg.message_id
-          });
-          await new Promise((resolve16) => {
-            const replyReq = (0, import_https2.request)(
-              {
-                hostname: "api.telegram.org",
-                path: `/bot${config2.telegramBotToken}/sendMessage`,
-                method: "POST",
-                family: 4,
-                headers: {
-                  "Content-Type": "application/json",
-                  "Content-Length": Buffer.byteLength(replyBody)
-                },
-                timeout: 5e3
-              },
-              (res) => {
-                res.resume();
-                resolve16();
-              }
-            );
-            replyReq.on("error", () => resolve16());
-            replyReq.on("timeout", () => {
-              replyReq.destroy();
-              resolve16();
-            });
-            replyReq.write(replyBody);
-            replyReq.end();
-          });
-        } catch (e) {
-          log(`WARN: Failed to send confirmation reply: ${e}`);
-        }
-      } else {
-        state.errors++;
-      }
-    }
-  } catch (error48) {
-    state.errors++;
-    state.lastError = redactTokens(error48 instanceof Error ? error48.message : String(error48));
-    log(`Telegram polling error: ${state.lastError}`);
-  }
-}
-async function pollLoop() {
-  log("Reply listener daemon starting poll loop");
-  const config2 = await buildDaemonConfig();
-  if (!config2) {
-    log("ERROR: No notification config found for reply listener, exiting");
-    process.exit(1);
-  }
-  const state = readDaemonState() || {
-    isRunning: true,
-    pid: process.pid,
-    startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-    lastPollAt: null,
-    telegramLastUpdateId: null,
-    discordLastMessageId: null,
-    messagesInjected: 0,
-    errors: 0
-  };
-  state.isRunning = true;
-  state.pid = process.pid;
-  const rateLimiter = new RateLimiter(config2.rateLimitPerMinute);
-  let lastPruneAt = Date.now();
-  let slackSocket = null;
-  if (config2.slackAppToken && config2.slackBotToken && config2.slackChannelId) {
-    if (typeof WebSocket === "undefined") {
-      log("WARN: WebSocket not available (requires Node 20.10+), Slack Socket Mode disabled");
-    } else {
-      try {
-        const { SlackSocketClient: SlackSocketClient2, addSlackReaction: addSlackReaction2 } = await Promise.resolve().then(() => (init_slack_socket(), slack_socket_exports));
-        const slackChannelId = config2.slackChannelId;
-        const slackBotToken = config2.slackBotToken;
-        slackSocket = new SlackSocketClient2(
-          {
-            appToken: config2.slackAppToken,
-            botToken: slackBotToken,
-            channelId: slackChannelId
-          },
-          async (event) => {
-            if (!config2.authorizedSlackUserIds || config2.authorizedSlackUserIds.length === 0) {
-              log("WARN: No authorized Slack user IDs configured, rejecting all messages (fail-closed)");
-              return;
-            }
-            if (!config2.authorizedSlackUserIds.includes(event.user)) {
-              log(`REJECTED Slack message from unauthorized user ${event.user}`);
-              return;
-            }
-            if (!rateLimiter.canProceed()) {
-              log(`WARN: Rate limit exceeded, dropping Slack message ${event.ts}`);
-              state.errors++;
-              return;
-            }
-            let targetPaneId = null;
-            if (event.thread_ts && event.thread_ts !== event.ts) {
-              const mapping = lookupByMessageId("slack-bot", event.thread_ts);
-              if (mapping) {
-                targetPaneId = mapping.tmuxPaneId;
-              }
-            }
-            if (!targetPaneId) {
-              log("WARN: No target pane found for Slack message, skipping");
-              return;
-            }
-            const success2 = injectReply(targetPaneId, event.text, "slack", config2);
-            if (success2) {
-              state.messagesInjected++;
-              writeDaemonState(state);
-              try {
-                await addSlackReaction2(slackBotToken, slackChannelId, event.ts);
-              } catch (e) {
-                log(`WARN: Failed to add Slack reaction: ${e}`);
-              }
-            } else {
-              state.errors++;
-              writeDaemonState(state);
-            }
-          },
-          log
-        );
-        await slackSocket.start();
-        log("Slack Socket Mode listener started");
-      } catch (e) {
-        log(`ERROR: Failed to start Slack Socket Mode: ${e instanceof Error ? e.message : String(e)}`);
-        slackSocket = null;
-      }
-    }
-  }
-  const shutdown = () => {
-    log("Shutdown signal received");
-    state.isRunning = false;
-    if (slackSocket) {
-      slackSocket.stop();
-      slackSocket = null;
-    }
-    writeDaemonState(state);
-    removePidFile();
-    process.exit(0);
-  };
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
-  try {
-    pruneStale();
-    log("Pruned stale registry entries");
-  } catch (e) {
-    log(`WARN: Failed to prune stale entries: ${e}`);
-  }
-  while (state.isRunning) {
-    try {
-      state.lastPollAt = (/* @__PURE__ */ new Date()).toISOString();
-      await pollDiscord(config2, state, rateLimiter);
-      await pollTelegram(config2, state, rateLimiter);
-      if (Date.now() - lastPruneAt > PRUNE_INTERVAL_MS) {
-        try {
-          pruneStale();
-          lastPruneAt = Date.now();
-          log("Pruned stale registry entries");
-        } catch (e) {
-          log(`WARN: Prune failed: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-      writeDaemonState(state);
-      await new Promise((resolve16) => setTimeout(resolve16, config2.pollIntervalMs));
-    } catch (error48) {
-      state.errors++;
-      state.lastError = redactTokens(error48 instanceof Error ? error48.message : String(error48));
-      log(`Poll error: ${state.lastError}`);
-      writeDaemonState(state);
-      await new Promise((resolve16) => setTimeout(resolve16, config2.pollIntervalMs * 2));
-    }
-  }
-  log("Poll loop ended");
-}
-function startReplyListener(_config) {
-  if (isDaemonRunning()) {
-    const state = readDaemonState();
-    return {
-      success: true,
-      message: "Reply listener daemon is already running",
-      state: state ?? void 0
-    };
-  }
-  if (!isTmuxAvailable2()) {
-    return {
-      success: false,
-      message: "tmux not available - reply injection requires tmux"
-    };
-  }
-  ensureStateDir2();
-  const modulePath = resolveDaemonModulePath(__filename2, ["notifications", "reply-listener.js"]);
-  const daemonScript = `
-    import('${modulePath}').then(({ pollLoop }) => {
-      return pollLoop();
-    }).catch((err) => { console.error('[reply-listener] Fatal:', err instanceof Error ? err.message : 'unknown error'); process.exit(1); });
-  `;
-  try {
-    const child = (0, import_child_process19.spawn)("node", ["-e", daemonScript], {
-      detached: true,
-      stdio: "ignore",
-      cwd: process.cwd(),
-      env: createMinimalDaemonEnv()
-    });
-    child.unref();
-    const pid = child.pid;
-    if (pid) {
-      writePidFile(pid);
-      const state = {
-        isRunning: true,
-        pid,
-        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-        lastPollAt: null,
-        telegramLastUpdateId: null,
-        discordLastMessageId: null,
-        messagesInjected: 0,
-        errors: 0
-      };
-      writeDaemonState(state);
-      log(`Reply listener daemon started with PID ${pid}`);
-      return {
-        success: true,
-        message: `Reply listener daemon started with PID ${pid}`,
-        state
-      };
-    }
-    return {
-      success: false,
-      message: "Failed to start daemon process"
-    };
-  } catch (error48) {
-    return {
-      success: false,
-      message: "Failed to start daemon",
-      error: error48 instanceof Error ? error48.message : String(error48)
-    };
-  }
-}
-function stopReplyListener() {
-  const pid = readPidFile();
-  if (pid === null) {
-    return {
-      success: true,
-      message: "Reply listener daemon is not running"
-    };
-  }
-  if (!isProcessRunning(pid)) {
-    removePidFile();
-    return {
-      success: true,
-      message: "Reply listener daemon was not running (cleaned up stale PID file)"
-    };
-  }
-  try {
-    process.kill(pid, "SIGTERM");
-    removePidFile();
-    const state = readDaemonState();
-    if (state) {
-      state.isRunning = false;
-      state.pid = null;
-      writeDaemonState(state);
-    }
-    log(`Reply listener daemon stopped (PID ${pid})`);
-    return {
-      success: true,
-      message: `Reply listener daemon stopped (PID ${pid})`,
-      state: state ?? void 0
-    };
-  } catch (error48) {
-    return {
-      success: false,
-      message: "Failed to stop daemon",
-      error: error48 instanceof Error ? error48.message : String(error48)
-    };
-  }
-}
-function getReplyListenerStatus() {
-  const state = readDaemonState();
-  const running = isDaemonRunning();
-  if (!running && !state) {
-    return {
-      success: true,
-      message: "Reply listener daemon has never been started"
-    };
-  }
-  if (!running && state) {
-    return {
-      success: true,
-      message: "Reply listener daemon is not running",
-      state: { ...state, isRunning: false, pid: null }
-    };
-  }
-  return {
-    success: true,
-    message: "Reply listener daemon is running",
-    state: state ?? void 0
-  };
-}
-function processSlackSocketMessage(rawMessage, connectionState, paneId, config2, state, rateLimiter, signature, timestamp) {
-  const validation = validateSlackMessage(
-    rawMessage,
-    connectionState,
-    config2.slackSigningSecret,
-    signature,
-    timestamp
-  );
-  if (!validation.valid) {
-    log(`REJECTED Slack message: ${validation.reason}`);
-    state.errors++;
-    return { injected: false, validation };
-  }
-  if (!paneId) {
-    log("REJECTED Slack message: no target pane ID");
-    state.errors++;
-    return {
-      injected: false,
-      validation: { valid: false, reason: "No target pane ID" }
-    };
-  }
-  if (!rateLimiter.canProceed()) {
-    log("WARN: Rate limit exceeded, dropping Slack message");
-    state.errors++;
-    return {
-      injected: false,
-      validation: { valid: false, reason: "Rate limit exceeded" }
-    };
-  }
-  let text;
-  try {
-    const parsed = JSON.parse(rawMessage);
-    const payload = parsed.payload;
-    text = payload?.event?.text || payload?.text || "";
-  } catch {
-    log("REJECTED Slack message: failed to extract text from validated message");
-    state.errors++;
-    return {
-      injected: false,
-      validation: { valid: false, reason: "Failed to extract message text" }
-    };
-  }
-  if (!text) {
-    log("REJECTED Slack message: empty message text");
-    return {
-      injected: false,
-      validation: { valid: false, reason: "Empty message text" }
-    };
-  }
-  const success2 = injectReply(paneId, text, "slack", config2);
-  if (success2) {
-    state.messagesInjected++;
-  } else {
-    state.errors++;
-  }
-  return { injected: success2, validation };
-}
-var import_fs55, import_path67, import_url9, import_os12, import_child_process19, import_https2, __filename2, SECURE_FILE_MODE2, MAX_LOG_SIZE_BYTES, DAEMON_ENV_ALLOWLIST, DEFAULT_STATE_DIR, PID_FILE_PATH, STATE_FILE_PATH, LOG_FILE_PATH, RateLimiter, discordBackoffUntil, PRUNE_INTERVAL_MS;
-var init_reply_listener = __esm({
-  "src/notifications/reply-listener.ts"() {
-    "use strict";
-    import_fs55 = require("fs");
-    import_path67 = require("path");
-    import_url9 = require("url");
-    import_os12 = require("os");
-    import_child_process19 = require("child_process");
-    import_https2 = require("https");
-    init_daemon_module_path();
-    init_tmux_detector();
-    init_session_registry();
-    init_config();
-    init_redact();
-    init_slack_socket();
-    init_slack_socket();
-    __filename2 = (0, import_url9.fileURLToPath)(importMetaUrl);
-    SECURE_FILE_MODE2 = 384;
-    MAX_LOG_SIZE_BYTES = 1 * 1024 * 1024;
-    DAEMON_ENV_ALLOWLIST = [
-      "PATH",
-      "HOME",
-      "USERPROFILE",
-      "USER",
-      "USERNAME",
-      "LOGNAME",
-      "LANG",
-      "LC_ALL",
-      "LC_CTYPE",
-      "TERM",
-      "TMUX",
-      "TMUX_PANE",
-      "TMPDIR",
-      "TMP",
-      "TEMP",
-      "XDG_RUNTIME_DIR",
-      "XDG_DATA_HOME",
-      "XDG_CONFIG_HOME",
-      "SHELL",
-      "NODE_ENV",
-      "NODE_EXTRA_CA_CERTS",
-      "HTTP_PROXY",
-      "HTTPS_PROXY",
-      "http_proxy",
-      "https_proxy",
-      "NO_PROXY",
-      "no_proxy",
-      "SystemRoot",
-      "SYSTEMROOT",
-      "windir",
-      "COMSPEC"
-    ];
-    DEFAULT_STATE_DIR = (0, import_path67.join)((0, import_os12.homedir)(), ".omcp", "state");
-    PID_FILE_PATH = (0, import_path67.join)(DEFAULT_STATE_DIR, "reply-listener.pid");
-    STATE_FILE_PATH = (0, import_path67.join)(DEFAULT_STATE_DIR, "reply-listener-state.json");
-    LOG_FILE_PATH = (0, import_path67.join)(DEFAULT_STATE_DIR, "reply-listener.log");
-    RateLimiter = class {
-      // 1 minute
-      constructor(maxPerMinute) {
-        this.maxPerMinute = maxPerMinute;
-      }
-      maxPerMinute;
-      timestamps = [];
-      windowMs = 60 * 1e3;
-      canProceed() {
-        const now = Date.now();
-        this.timestamps = this.timestamps.filter((t) => now - t < this.windowMs);
-        if (this.timestamps.length >= this.maxPerMinute) {
-          return false;
-        }
-        this.timestamps.push(now);
-        return true;
-      }
-      reset() {
-        this.timestamps = [];
-      }
-    };
-    discordBackoffUntil = 0;
-    PRUNE_INTERVAL_MS = 60 * 60 * 1e3;
-  }
-});
-
-// src/openclaw/config.ts
-function getOpenClawConfig() {
-  if (process.env.OMC_OPENCLAW !== "1") {
-    return null;
-  }
-  if (_cachedConfig !== null) {
-    return _cachedConfig ?? null;
-  }
-  if (!(0, import_fs56.existsSync)(CONFIG_FILE3)) {
-    _cachedConfig = void 0;
-    return null;
-  }
-  try {
-    const raw = JSON.parse((0, import_fs56.readFileSync)(CONFIG_FILE3, "utf-8"));
-    if (!raw.enabled || !raw.gateways || !raw.hooks) {
-      _cachedConfig = void 0;
-      return null;
-    }
-    _cachedConfig = raw;
-    return raw;
-  } catch {
-    _cachedConfig = void 0;
-    return null;
-  }
-}
-function resolveGateway(config2, event) {
-  const mapping = config2.hooks[event];
-  if (!mapping || !mapping.enabled) {
-    return null;
-  }
-  const gateway = config2.gateways[mapping.gateway];
-  if (!gateway) {
-    return null;
-  }
-  if (gateway.type === "command") {
-    if (!gateway.command) return null;
-  } else {
-    if (!("url" in gateway) || !gateway.url) return null;
-  }
-  return { gatewayName: mapping.gateway, gateway, instruction: mapping.instruction };
-}
-function resetOpenClawConfigCache() {
-  _cachedConfig = null;
-}
-var import_fs56, import_path68, CONFIG_FILE3, _cachedConfig;
-var init_config2 = __esm({
-  "src/openclaw/config.ts"() {
-    "use strict";
-    import_fs56 = require("fs");
-    import_path68 = require("path");
-    init_config_dir();
-    CONFIG_FILE3 = process.env.OMC_OPENCLAW_CONFIG || (0, import_path68.join)(getConfigDir(), "omc_config.openclaw.json");
-    _cachedConfig = null;
-  }
-});
-
-// src/openclaw/dispatcher.ts
-function validateGatewayUrl(url2) {
-  try {
-    const parsed = new URL(url2);
-    if (parsed.protocol === "https:") return true;
-    if (parsed.protocol === "http:" && (parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1" || parsed.hostname === "::1")) {
-      return true;
-    }
-    return false;
-  } catch {
-    return false;
-  }
-}
-function interpolateInstruction(template, variables) {
-  return template.replace(/\{\{(\w+)\}\}/g, (match, key) => {
-    return variables[key] ?? match;
-  });
-}
-function isCommandGateway(config2) {
-  return config2.type === "command";
-}
-function shellEscapeArg(value) {
-  return "'" + value.replace(/'/g, "'\\''") + "'";
-}
-async function wakeGateway(gatewayName, gatewayConfig, payload) {
-  if (!validateGatewayUrl(gatewayConfig.url)) {
-    return {
-      gateway: gatewayName,
-      success: false,
-      error: "Invalid URL (HTTPS required)"
-    };
-  }
-  try {
-    const headers = {
-      "Content-Type": "application/json",
-      ...gatewayConfig.headers
-    };
-    const timeout = gatewayConfig.timeout ?? DEFAULT_TIMEOUT_MS;
-    const response = await fetch(gatewayConfig.url, {
-      method: gatewayConfig.method || "POST",
-      headers,
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(timeout)
-    });
-    if (!response.ok) {
-      return {
-        gateway: gatewayName,
-        success: false,
-        error: `HTTP ${response.status}`,
-        statusCode: response.status
-      };
-    }
-    return { gateway: gatewayName, success: true, statusCode: response.status };
-  } catch (error48) {
-    return {
-      gateway: gatewayName,
-      success: false,
-      error: error48 instanceof Error ? error48.message : "Unknown error"
-    };
-  }
-}
-async function wakeCommandGateway(gatewayName, gatewayConfig, variables, payload) {
-  try {
-    const { execFile: execFile6 } = await import("child_process");
-    const { promisify: promisify7 } = await import("util");
-    const execFileAsync5 = promisify7(execFile6);
-    const command = gatewayConfig.command.replace(
-      /\{\{(\w+)\}\}/g,
-      (match, key) => {
-        const value = variables[key];
-        if (value === void 0) return match;
-        return shellEscapeArg(value);
-      }
-    );
-    const timeout = gatewayConfig.timeout ?? DEFAULT_TIMEOUT_MS;
-    const payloadJson = payload ? JSON.stringify(payload) : variables.payloadJson;
-    await execFileAsync5("sh", ["-c", command], {
-      timeout,
-      env: {
-        ...process.env,
-        ...payloadJson ? { OPENCLAW_PAYLOAD_JSON: payloadJson } : {},
-        ...variables.signalRouteKey ? { OPENCLAW_SIGNAL_ROUTE_KEY: variables.signalRouteKey } : {},
-        ...variables.signalPhase ? { OPENCLAW_SIGNAL_PHASE: variables.signalPhase } : {},
-        ...variables.signalKind ? { OPENCLAW_SIGNAL_KIND: variables.signalKind } : {}
-      }
-    });
-    return { gateway: gatewayName, success: true };
-  } catch (error48) {
-    return {
-      gateway: gatewayName,
-      success: false,
-      error: error48 instanceof Error ? error48.message : "Unknown error"
-    };
-  }
-}
-var DEFAULT_TIMEOUT_MS;
-var init_dispatcher2 = __esm({
-  "src/openclaw/dispatcher.ts"() {
-    "use strict";
-    DEFAULT_TIMEOUT_MS = 1e4;
-  }
-});
-
-// src/openclaw/signal.ts
-function stripClaudeTempCwdErrors(output) {
-  return output.replace(CLAUDE_TEMP_CWD_PATTERN, "");
-}
-function isNonZeroExitWithOutput(output) {
-  const cleaned = stripClaudeTempCwdErrors(output);
-  if (!CLAUDE_EXIT_CODE_PREFIX.test(cleaned)) return false;
-  CLAUDE_EXIT_CODE_PREFIX.lastIndex = 0;
-  const remaining = cleaned.replace(CLAUDE_EXIT_CODE_PREFIX, "").trim();
-  CLAUDE_EXIT_CODE_PREFIX.lastIndex = 0;
-  if (!remaining) return false;
-  const contentErrorPatterns = [
-    /error:/i,
-    /failed/i,
-    /\bFAIL\b/,
-    /cannot/i,
-    /permission denied/i,
-    /command not found/i,
-    /no such file/i,
-    /fatal:/i,
-    /abort/i
-  ];
-  return !contentErrorPatterns.some((pattern) => pattern.test(remaining));
-}
-function detectBashFailure(output) {
-  const cleaned = stripClaudeTempCwdErrors(output);
-  const errorPatterns = [
-    /error:/i,
-    /failed/i,
-    /\bFAIL\b/,
-    /cannot/i,
-    /permission denied/i,
-    /command not found/i,
-    /no such file/i,
-    /exit code: [1-9]/i,
-    /exit status [1-9]/i,
-    /fatal:/i,
-    /abort/i
-  ];
-  return errorPatterns.some((pattern) => pattern.test(cleaned));
-}
-function detectWriteFailure(output) {
-  const cleaned = stripClaudeTempCwdErrors(output);
-  const errorPatterns = [
-    /\berror:/i,
-    /\bfailed to\b/i,
-    /\bwrite failed\b/i,
-    /\boperation failed\b/i,
-    /permission denied/i,
-    /read-only/i,
-    /\bno such file\b/i,
-    /\bdirectory not found\b/i
-  ];
-  return errorPatterns.some((pattern) => pattern.test(cleaned));
-}
-function getCommand(toolInput) {
-  if (!toolInput || typeof toolInput !== "object") return void 0;
-  const raw = toolInput.command;
-  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : void 0;
-}
-function detectTestRunner(command) {
-  if (!command) return void 0;
-  return TEST_COMMAND_PATTERNS2.find(({ pattern }) => pattern.test(command))?.runner;
-}
-function summarize(value, maxLength = 160) {
-  if (typeof value !== "string") return void 0;
-  const normalized = value.replace(/\r/g, "").split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 4).join(" | ");
-  if (!normalized) return void 0;
-  if (normalized.length <= maxLength) return normalized;
-  return `${normalized.slice(0, Math.max(0, maxLength - 2)).trimEnd()}\u2026`;
-}
-function getToolPhase(toolName, toolOutput) {
-  if (typeof toolOutput !== "string" || toolOutput.trim().length === 0) {
-    return "finished";
-  }
-  if (toolName === "Bash") {
-    if (isNonZeroExitWithOutput(toolOutput)) return "finished";
-    return detectBashFailure(toolOutput) ? "failed" : "finished";
-  }
-  if (toolName === "Edit" || toolName === "Write") {
-    return detectWriteFailure(toolOutput) ? "failed" : "finished";
-  }
-  return "finished";
-}
-function buildToolSignal(event, context) {
-  const toolName = context.toolName || "unknown";
-  const command = getCommand(context.toolInput);
-  const testRunner = toolName === "Bash" ? detectTestRunner(command) : void 0;
-  const isPrCreate = toolName === "Bash" && !!command && PR_CREATE_PATTERN.test(command);
-  const phase = event === "pre-tool-use" ? "started" : getToolPhase(context.toolName, context.toolOutput);
-  const summary = summarize(context.toolOutput ?? command);
-  if (testRunner) {
-    return {
-      kind: "test",
-      name: "test-run",
-      phase,
-      routeKey: `test.${phase}`,
-      priority: "high",
-      toolName,
-      command,
-      testRunner,
-      summary
-    };
-  }
-  if (isPrCreate) {
-    const output = typeof context.toolOutput === "string" ? context.toolOutput : "";
-    const prUrl = output.match(PR_URL_PATTERN)?.[0];
-    const routeKey = phase === "started" ? "pull-request.started" : phase === "failed" ? "pull-request.failed" : "pull-request.created";
-    return {
-      kind: "pull-request",
-      name: "pull-request-create",
-      phase,
-      routeKey,
-      priority: "high",
-      toolName,
-      command,
-      prUrl,
-      summary: summarize(prUrl ? `${prUrl}${summary ? ` ${summary}` : ""}` : summary)
-    };
-  }
-  return {
-    kind: "tool",
-    name: "tool-use",
-    phase,
-    routeKey: `tool.${phase}`,
-    priority: phase === "failed" ? "high" : "low",
-    toolName,
-    summary
-  };
-}
-function buildOpenClawSignal(event, context) {
-  switch (event) {
-    case "session-start":
-      return {
-        kind: "session",
-        name: "session",
-        phase: "started",
-        routeKey: "session.started",
-        priority: "high"
-      };
-    case "session-end":
-      return {
-        kind: "session",
-        name: "session",
-        phase: "finished",
-        routeKey: "session.finished",
-        priority: "high",
-        summary: summarize(context.reason)
-      };
-    case "stop":
-      return {
-        kind: "session",
-        name: "session-idle",
-        phase: "idle",
-        routeKey: "session.idle",
-        priority: "high"
-      };
-    case "keyword-detector":
-      return {
-        kind: "keyword",
-        name: "keyword-detected",
-        phase: "detected",
-        routeKey: "keyword.detected",
-        priority: "low",
-        summary: summarize(context.prompt)
-      };
-    case "ask-user-question":
-      return {
-        kind: "question",
-        name: "ask-user-question",
-        phase: "requested",
-        routeKey: "question.requested",
-        priority: "high",
-        summary: summarize(context.question)
-      };
-    case "pre-tool-use":
-    case "post-tool-use":
-      return buildToolSignal(event, context);
-    default:
-      return {
-        kind: "tool",
-        name: "tool-use",
-        phase: "finished",
-        routeKey: "tool.finished",
-        priority: "low"
-      };
-  }
-}
-var CLAUDE_TEMP_CWD_PATTERN, CLAUDE_EXIT_CODE_PREFIX, PR_CREATE_PATTERN, PR_URL_PATTERN, TEST_COMMAND_PATTERNS2;
-var init_signal = __esm({
-  "src/openclaw/signal.ts"() {
-    "use strict";
-    CLAUDE_TEMP_CWD_PATTERN = /zsh:\d+: permission denied:.*\/T\/claude-[a-z0-9]+-cwd/gi;
-    CLAUDE_EXIT_CODE_PREFIX = /^Error: Exit code \d+\s*$/gm;
-    PR_CREATE_PATTERN = /\bgh\s+pr\s+create\b/i;
-    PR_URL_PATTERN = /https:\/\/github\.com\/[^\s/]+\/[^\s/]+\/pull\/\d+/i;
-    TEST_COMMAND_PATTERNS2 = [
-      { pattern: /\b(?:npm|pnpm|yarn|bun)\s+test\b/i, runner: "package-test" },
-      { pattern: /\bnpx\s+vitest\b|\bvitest\b/i, runner: "vitest" },
-      { pattern: /\bnpx\s+jest\b|\bjest\b/i, runner: "jest" },
-      { pattern: /\bpytest\b|\bpython\s+-m\s+pytest\b/i, runner: "pytest" },
-      { pattern: /\bcargo\s+test\b/i, runner: "cargo-test" },
-      { pattern: /\bgo\s+test\b/i, runner: "go-test" },
-      { pattern: /\bmake\s+test\b/i, runner: "make-test" }
-    ];
-  }
-});
-
-// src/openclaw/dedupe.ts
-function sleepMs2(ms) {
-  try {
-    Atomics.wait(SLEEP_ARRAY2, 0, 0, ms);
-  } catch {
-    const deadline = Date.now() + ms;
-    while (Date.now() < deadline) {
-    }
-  }
-}
-function getStateDir3(projectPath) {
-  return (0, import_path69.join)(projectPath, ...STATE_DIR);
-}
-function getStatePath2(projectPath) {
-  return (0, import_path69.join)(getStateDir3(projectPath), STATE_FILE3);
-}
-function getLockPath2(projectPath) {
-  return (0, import_path69.join)(getStateDir3(projectPath), LOCK_FILE);
-}
-function ensureStateDir3(projectPath) {
-  (0, import_fs57.mkdirSync)(getStateDir3(projectPath), { recursive: true, mode: 448 });
-}
-function readState(projectPath) {
-  const statePath = getStatePath2(projectPath);
-  if (!(0, import_fs57.existsSync)(statePath)) {
-    return { updatedAt: (/* @__PURE__ */ new Date(0)).toISOString(), records: {} };
-  }
-  try {
-    const parsed = JSON.parse((0, import_fs57.readFileSync)(statePath, "utf-8"));
-    return {
-      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : (/* @__PURE__ */ new Date(0)).toISOString(),
-      records: parsed.records && typeof parsed.records === "object" ? parsed.records : {}
-    };
-  } catch {
-    return { updatedAt: (/* @__PURE__ */ new Date(0)).toISOString(), records: {} };
-  }
-}
-function writeState2(projectPath, state) {
-  ensureStateDir3(projectPath);
-  atomicWriteJsonSync(getStatePath2(projectPath), state);
-}
-function readLockSnapshot2(projectPath) {
-  try {
-    const raw = (0, import_fs57.readFileSync)(getLockPath2(projectPath), "utf-8");
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      return { raw, pid: null, token: null };
-    }
-    try {
-      const parsed = JSON.parse(trimmed);
-      return {
-        raw,
-        pid: typeof parsed.pid === "number" && Number.isFinite(parsed.pid) ? parsed.pid : null,
-        token: typeof parsed.token === "string" && parsed.token.length > 0 ? parsed.token : null
-      };
-    } catch {
-      return { raw, pid: null, token: null };
-    }
-  } catch {
-    return null;
-  }
-}
-function removeLockIfUnchanged2(projectPath, snapshot) {
-  try {
-    const currentRaw = (0, import_fs57.readFileSync)(getLockPath2(projectPath), "utf-8");
-    if (currentRaw !== snapshot.raw) {
-      return false;
-    }
-  } catch {
-    return false;
-  }
-  try {
-    (0, import_fs57.unlinkSync)(getLockPath2(projectPath));
-    return true;
-  } catch {
-    return false;
-  }
-}
-function acquireLock2(projectPath) {
-  ensureStateDir3(projectPath);
-  const started = Date.now();
-  while (Date.now() - started < LOCK_TIMEOUT_MS2) {
-    try {
-      const token = (0, import_crypto8.randomUUID)();
-      const fd = (0, import_fs57.openSync)(
-        getLockPath2(projectPath),
-        import_fs57.constants.O_CREAT | import_fs57.constants.O_EXCL | import_fs57.constants.O_WRONLY,
-        384
-      );
-      (0, import_fs57.writeSync)(fd, JSON.stringify({ pid: process.pid, token, acquiredAt: Date.now() }), null, "utf-8");
-      return { fd, token };
-    } catch (error48) {
-      const err = error48;
-      if (err.code !== "EEXIST") {
-        throw error48;
-      }
-      try {
-        const ageMs = Date.now() - (0, import_fs57.statSync)(getLockPath2(projectPath)).mtimeMs;
-        if (ageMs > LOCK_STALE_MS3) {
-          const snapshot = readLockSnapshot2(projectPath);
-          if (snapshot) {
-            if (snapshot.pid !== null && isProcessAlive(snapshot.pid)) {
-              sleepMs2(LOCK_RETRY_MS3);
-              continue;
-            }
-            if (removeLockIfUnchanged2(projectPath, snapshot)) {
-              continue;
-            }
-          }
-        }
-      } catch {
-      }
-      sleepMs2(LOCK_RETRY_MS3);
-    }
-  }
-  return null;
-}
-function releaseLock2(projectPath, lock) {
-  try {
-    (0, import_fs57.closeSync)(lock.fd);
-  } catch {
-  }
-  const snapshot = readLockSnapshot2(projectPath);
-  if (!snapshot || snapshot.token !== lock.token) {
-    return;
-  }
-  removeLockIfUnchanged2(projectPath, snapshot);
-}
-function withProjectLock(projectPath, callback) {
-  const lock = acquireLock2(projectPath);
-  if (!lock) {
-    return callback();
-  }
-  try {
-    return callback();
-  } finally {
-    releaseLock2(projectPath, lock);
-  }
-}
-function normalizePrompt(prompt) {
-  return prompt.replace(/\s+/g, " ").trim().slice(0, 400);
-}
-function promptHash(prompt) {
-  return (0, import_crypto8.createHash)("sha1").update(prompt).digest("hex").slice(0, 12);
-}
-function buildDescriptor(event, signal, context, tmuxSession, projectPath) {
-  const scope = `${projectPath}::${tmuxSession}`;
-  switch (event) {
-    case "session-start":
-      return {
-        key: `session.started::${scope}`,
-        windowMs: START_WINDOW_MS
-      };
-    case "keyword-detector": {
-      const prompt = typeof context.prompt === "string" ? normalizePrompt(context.prompt) : "";
-      if (!prompt) {
-        return null;
-      }
-      return {
-        key: `session.prompt-submitted::${scope}::${promptHash(prompt)}`,
-        windowMs: PROMPT_WINDOW_MS
-      };
-    }
-    case "stop":
-      return {
-        key: `session.stopped::${scope}`,
-        windowMs: STOP_WINDOW_MS
-      };
-    case "session-end":
-      return {
-        key: `session.finished::${scope}`,
-        windowMs: STOP_WINDOW_MS
-      };
-    default:
-      return null;
-  }
-}
-function pruneState(state, nowMs) {
-  const cutoff = nowMs - STATE_TTL_MS;
-  for (const [key, record2] of Object.entries(state.records)) {
-    const lastSeenMs = Date.parse(record2.lastSeenAt);
-    if (!Number.isFinite(lastSeenMs) || lastSeenMs < cutoff) {
-      delete state.records[key];
-    }
-  }
-}
-function isObsoleteAfterTerminalState(event, state, tmuxSession, projectPath, nowMs) {
-  if (event !== "session-start" && event !== "stop") {
-    return false;
-  }
-  const scope = `${projectPath}::${tmuxSession}`;
-  const keysToCheck = event === "session-start" ? TERMINAL_KEYS : ["session.finished"];
-  return keysToCheck.some((prefix) => {
-    const record2 = state.records[`${prefix}::${scope}`];
-    if (!record2) return false;
-    const lastSeenMs = Date.parse(record2.lastSeenAt);
-    return Number.isFinite(lastSeenMs) && nowMs - lastSeenMs < TERMINAL_STATE_SUPPRESSION_WINDOW_MS;
-  });
-}
-function shouldCollapseOpenClawBurst(event, signal, context, tmuxSession) {
-  const projectPath = context.projectPath;
-  if (!projectPath || !tmuxSession) {
-    return false;
-  }
-  const descriptor = buildDescriptor(event, signal, context, tmuxSession, projectPath);
-  if (!descriptor) {
-    return false;
-  }
-  return withProjectLock(projectPath, () => {
-    const state = readState(projectPath);
-    const nowMs = Date.now();
-    pruneState(state, nowMs);
-    if (isObsoleteAfterTerminalState(event, state, tmuxSession, projectPath, nowMs)) {
-      return true;
-    }
-    const nowIso = new Date(nowMs).toISOString();
-    const existing = state.records[descriptor.key];
-    const lastSeenMs = existing ? Date.parse(existing.lastSeenAt) : Number.NaN;
-    const shouldCollapse = Number.isFinite(lastSeenMs) && nowMs - lastSeenMs < descriptor.windowMs;
-    state.records[descriptor.key] = {
-      event,
-      routeKey: signal.routeKey,
-      tmuxSession,
-      lastSeenAt: nowIso,
-      count: (existing?.count ?? 0) + 1
-    };
-    state.updatedAt = nowIso;
-    writeState2(projectPath, state);
-    return shouldCollapse;
-  });
-}
-var import_fs57, import_crypto8, import_path69, STATE_DIR, STATE_FILE3, LOCK_FILE, START_WINDOW_MS, PROMPT_WINDOW_MS, STOP_WINDOW_MS, STATE_TTL_MS, LOCK_TIMEOUT_MS2, LOCK_RETRY_MS3, LOCK_STALE_MS3, TERMINAL_STATE_SUPPRESSION_WINDOW_MS, SLEEP_ARRAY2, TERMINAL_KEYS;
-var init_dedupe = __esm({
-  "src/openclaw/dedupe.ts"() {
-    "use strict";
-    import_fs57 = require("fs");
-    import_crypto8 = require("crypto");
-    import_path69 = require("path");
-    init_atomic_write();
-    init_platform();
-    STATE_DIR = [".omc", "state"];
-    STATE_FILE3 = "openclaw-event-dedupe.json";
-    LOCK_FILE = "openclaw-event-dedupe.lock";
-    START_WINDOW_MS = 1e4;
-    PROMPT_WINDOW_MS = 4e3;
-    STOP_WINDOW_MS = 12e3;
-    STATE_TTL_MS = 6 * 60 * 60 * 1e3;
-    LOCK_TIMEOUT_MS2 = 2e3;
-    LOCK_RETRY_MS3 = 20;
-    LOCK_STALE_MS3 = 1e4;
-    TERMINAL_STATE_SUPPRESSION_WINDOW_MS = 6e4;
-    SLEEP_ARRAY2 = new Int32Array(new SharedArrayBuffer(4));
-    TERMINAL_KEYS = ["session.stopped", "session.finished"];
-  }
-});
-
-// src/openclaw/index.ts
-var openclaw_exports = {};
-__export(openclaw_exports, {
-  buildOpenClawSignal: () => buildOpenClawSignal,
-  getOpenClawConfig: () => getOpenClawConfig,
-  interpolateInstruction: () => interpolateInstruction,
-  isCommandGateway: () => isCommandGateway,
-  resetOpenClawConfigCache: () => resetOpenClawConfigCache,
-  resolveGateway: () => resolveGateway,
-  shellEscapeArg: () => shellEscapeArg,
-  wakeCommandGateway: () => wakeCommandGateway,
-  wakeGateway: () => wakeGateway,
-  wakeOpenClaw: () => wakeOpenClaw
-});
-function buildWhitelistedContext(context) {
-  const result = {};
-  if (context.sessionId !== void 0) result.sessionId = context.sessionId;
-  if (context.projectPath !== void 0) result.projectPath = context.projectPath;
-  if (context.tmuxSession !== void 0) result.tmuxSession = context.tmuxSession;
-  if (context.toolName !== void 0) result.toolName = context.toolName;
-  if (context.prompt !== void 0) result.prompt = context.prompt;
-  if (context.contextSummary !== void 0) result.contextSummary = context.contextSummary;
-  if (context.reason !== void 0) result.reason = context.reason;
-  if (context.question !== void 0) result.question = context.question;
-  if (context.tmuxTail !== void 0) result.tmuxTail = context.tmuxTail;
-  if (context.replyChannel !== void 0) result.replyChannel = context.replyChannel;
-  if (context.replyTarget !== void 0) result.replyTarget = context.replyTarget;
-  if (context.replyThread !== void 0) result.replyThread = context.replyThread;
-  return result;
-}
-async function wakeOpenClaw(event, context) {
-  try {
-    const config2 = getOpenClawConfig();
-    if (!config2) return null;
-    const resolved = resolveGateway(config2, event);
-    if (!resolved) return null;
-    const { gatewayName, gateway, instruction } = resolved;
-    const now = (/* @__PURE__ */ new Date()).toISOString();
-    const tmuxSession = context.tmuxSession ?? getCurrentTmuxSession() ?? void 0;
-    const replyChannel = context.replyChannel ?? process.env.OPENCLAW_REPLY_CHANNEL ?? void 0;
-    const replyTarget = context.replyTarget ?? process.env.OPENCLAW_REPLY_TARGET ?? void 0;
-    const replyThread = context.replyThread ?? process.env.OPENCLAW_REPLY_THREAD ?? void 0;
-    const enrichedContext = {
-      ...context,
-      ...replyChannel && { replyChannel },
-      ...replyTarget && { replyTarget },
-      ...replyThread && { replyThread }
-    };
-    const signal = buildOpenClawSignal(event, enrichedContext);
-    if (shouldCollapseOpenClawBurst(event, signal, enrichedContext, tmuxSession)) {
-      if (DEBUG) {
-        console.error(`[openclaw] deduped ${event} (${signal.routeKey}) for tmux session ${tmuxSession}`);
-      }
-      return { gateway: gatewayName, success: true, skipped: "deduped" };
-    }
-    let tmuxTail = context.tmuxTail;
-    if (!tmuxTail && (event === "stop" || event === "session-end") && process.env.TMUX) {
-      try {
-        const { getNewPaneTail: getNewPaneTail2 } = await Promise.resolve().then(() => (init_pane_fresh_capture(), pane_fresh_capture_exports));
-        const paneId = process.env.TMUX_PANE;
-        const projectPath = context.projectPath;
-        if (paneId && projectPath) {
-          const stateDir = (0, import_path70.join)(projectPath, ".omc", "state");
-          const fresh = getNewPaneTail2(paneId, stateDir, 15);
-          tmuxTail = fresh || void 0;
-        }
-      } catch {
-      }
-    }
-    if (tmuxTail) {
-      const parsedTmuxTail = parseTmuxTail(tmuxTail, 15);
-      tmuxTail = parsedTmuxTail || void 0;
-    }
-    const variables = {
-      sessionId: context.sessionId,
-      projectPath: context.projectPath,
-      projectName: context.projectPath ? (0, import_path70.basename)(context.projectPath) : void 0,
-      tmuxSession,
-      toolName: context.toolName,
-      prompt: context.prompt,
-      contextSummary: context.contextSummary,
-      reason: context.reason,
-      question: context.question,
-      tmuxTail,
-      event,
-      timestamp: now,
-      replyChannel,
-      replyTarget,
-      replyThread,
-      signalKind: signal.kind,
-      signalName: signal.name,
-      signalPhase: signal.phase,
-      signalRouteKey: signal.routeKey,
-      signalPriority: signal.priority,
-      signalSummary: signal.summary,
-      prUrl: signal.prUrl,
-      testRunner: signal.testRunner,
-      command: signal.command
-    };
-    const interpolatedInstruction = interpolateInstruction(instruction, variables);
-    const payload = {
-      event,
-      instruction: interpolatedInstruction,
-      timestamp: now,
-      sessionId: context.sessionId,
-      projectPath: context.projectPath,
-      projectName: context.projectPath ? (0, import_path70.basename)(context.projectPath) : void 0,
-      tmuxSession,
-      tmuxTail,
-      ...replyChannel && { channel: replyChannel },
-      ...replyTarget && { to: replyTarget },
-      ...replyThread && { threadId: replyThread },
-      signal,
-      context: buildWhitelistedContext(enrichedContext)
-    };
-    variables.instruction = interpolatedInstruction;
-    variables.payloadJson = JSON.stringify(payload);
-    let result;
-    if (isCommandGateway(gateway)) {
-      result = await wakeCommandGateway(gatewayName, gateway, variables, payload);
-    } else {
-      result = await wakeGateway(gatewayName, gateway, payload);
-    }
-    if (DEBUG) {
-      console.error(`[openclaw] wake ${event} -> ${gatewayName}: ${result.success ? "ok" : result.error}`);
-    }
-    return result;
-  } catch (error48) {
-    if (DEBUG) {
-      console.error(`[openclaw] wakeOpenClaw error:`, error48 instanceof Error ? error48.message : error48);
-    }
-    return null;
-  }
-}
-var import_path70, DEBUG;
-var init_openclaw = __esm({
-  "src/openclaw/index.ts"() {
-    "use strict";
-    init_config2();
-    init_dispatcher2();
-    init_signal();
-    init_config2();
-    init_dispatcher2();
-    init_signal();
-    init_dedupe();
-    import_path70 = require("path");
-    init_tmux();
-    init_formatter();
-    DEBUG = process.env.OMC_OPENCLAW_DEBUG === "1";
-  }
-});
-
-// src/hooks/session-end/callbacks.ts
-function formatSessionSummary(metrics, format = "markdown") {
-  if (format === "json") {
-    return JSON.stringify(metrics, null, 2);
-  }
-  const duration3 = metrics.duration_ms ? `${Math.floor(metrics.duration_ms / 1e3 / 60)}m ${Math.floor(metrics.duration_ms / 1e3 % 60)}s` : "unknown";
-  return `# Session Ended
-
-**Session ID:** \`${metrics.session_id}\`
-**Duration:** ${duration3}
-**Reason:** ${metrics.reason}
-**Agents Spawned:** ${metrics.agents_spawned}
-**Agents Completed:** ${metrics.agents_completed}
-**Modes Used:** ${metrics.modes_used.length > 0 ? metrics.modes_used.join(", ") : "none"}
-**Started At:** ${metrics.started_at || "unknown"}
-**Ended At:** ${metrics.ended_at}
-`.trim();
-}
-function normalizeDiscordTagList(tagList) {
-  if (!tagList || tagList.length === 0) {
-    return [];
-  }
-  return tagList.map((tag) => tag.trim()).filter((tag) => tag.length > 0).map((tag) => {
-    if (tag === "@here" || tag === "@everyone") {
-      return tag;
-    }
-    const roleMatch = tag.match(/^role:(\d+)$/);
-    if (roleMatch) {
-      return `<@&${roleMatch[1]}>`;
-    }
-    if (/^\d+$/.test(tag)) {
-      return `<@${tag}>`;
-    }
-    return tag;
-  });
-}
-function normalizeTelegramTagList(tagList) {
-  if (!tagList || tagList.length === 0) {
-    return [];
-  }
-  return tagList.map((tag) => tag.trim()).filter((tag) => tag.length > 0).map((tag) => tag.startsWith("@") ? tag : `@${tag}`);
-}
-function prefixMessageWithTags(message, tags) {
-  if (tags.length === 0) {
-    return message;
-  }
-  return `${tags.join(" ")}
-${message}`;
-}
-function interpolatePath(pathTemplate, sessionId) {
-  const now = /* @__PURE__ */ new Date();
-  const date5 = now.toISOString().split("T")[0];
-  const time3 = now.toISOString().split("T")[1].split(".")[0].replace(/:/g, "-");
-  const safeSessionId = sessionId.replace(/[/\\..]/g, "_");
-  const interpolated = pathTemplate.replace(/~/g, (0, import_os13.homedir)()).replace(/\{session_id\}/g, safeSessionId).replace(/\{date\}/g, date5).replace(/\{time\}/g, time3);
-  return interpolated.replace(/\\/g, "/");
-}
-async function writeToFile(config2, content, sessionId) {
-  try {
-    const resolvedPath = interpolatePath(config2.path, sessionId);
-    const dir = (0, import_path71.dirname)(resolvedPath);
-    (0, import_fs58.mkdirSync)(dir, { recursive: true });
-    (0, import_fs58.writeFileSync)(resolvedPath, content, { encoding: "utf-8", mode: 384 });
-    console.log(`[stop-callback] Session summary written to ${resolvedPath}`);
-  } catch (error48) {
-    console.error("[stop-callback] File write failed:", error48);
-  }
-}
-async function sendTelegram2(config2, message) {
-  if (!config2.botToken || !config2.chatId) {
-    console.error("[stop-callback] Telegram: missing botToken or chatId");
-    return;
-  }
-  if (!/^[0-9]+:[A-Za-z0-9_-]+$/.test(config2.botToken)) {
-    console.error("[stop-callback] Telegram: invalid bot token format");
-    return;
-  }
-  try {
-    const url2 = `https://api.telegram.org/bot${config2.botToken}/sendMessage`;
-    const response = await fetch(url2, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: config2.chatId,
-        text: message,
-        parse_mode: "Markdown"
-      }),
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (!response.ok) {
-      throw new Error(`Telegram API error: ${response.status} - ${response.statusText}`);
-    }
-    console.log("[stop-callback] Telegram notification sent");
-  } catch (error48) {
-    console.error("[stop-callback] Telegram send failed:", error48 instanceof Error ? error48.message : "Unknown error");
-  }
-}
-async function sendDiscord2(config2, message) {
-  if (!config2.webhookUrl) {
-    console.error("[stop-callback] Discord: missing webhookUrl");
-    return;
-  }
-  try {
-    const url2 = new URL(config2.webhookUrl);
-    const allowedHosts = ["discord.com", "discordapp.com"];
-    if (!allowedHosts.some((host) => url2.hostname === host || url2.hostname.endsWith(`.${host}`))) {
-      console.error("[stop-callback] Discord: webhook URL must be from discord.com or discordapp.com");
-      return;
-    }
-    if (url2.protocol !== "https:") {
-      console.error("[stop-callback] Discord: webhook URL must use HTTPS");
-      return;
-    }
-  } catch {
-    console.error("[stop-callback] Discord: invalid webhook URL");
-    return;
-  }
-  try {
-    const response = await fetch(config2.webhookUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        content: message
-      }),
-      signal: AbortSignal.timeout(1e4)
-    });
-    if (!response.ok) {
-      throw new Error(`Discord webhook error: ${response.status} - ${response.statusText}`);
-    }
-    console.log("[stop-callback] Discord notification sent");
-  } catch (error48) {
-    console.error("[stop-callback] Discord send failed:", error48 instanceof Error ? error48.message : "Unknown error");
-  }
-}
-async function triggerStopCallbacks(metrics, _input, options = {}) {
-  const config2 = getOMCConfig();
-  const callbacks = config2.stopHookCallbacks;
-  const skipPlatforms = new Set(options.skipPlatforms ?? []);
-  if (!callbacks) {
-    return;
-  }
-  const promises = [];
-  if (!skipPlatforms.has("file") && callbacks.file?.enabled && callbacks.file.path) {
-    const format = callbacks.file.format || "markdown";
-    const summary = formatSessionSummary(metrics, format);
-    promises.push(writeToFile(callbacks.file, summary, metrics.session_id));
-  }
-  if (!skipPlatforms.has("telegram") && callbacks.telegram?.enabled) {
-    const summary = formatSessionSummary(metrics, "markdown");
-    const tags = normalizeTelegramTagList(callbacks.telegram.tagList);
-    const message = prefixMessageWithTags(summary, tags);
-    promises.push(sendTelegram2(callbacks.telegram, message));
-  }
-  if (!skipPlatforms.has("discord") && callbacks.discord?.enabled) {
-    const summary = formatSessionSummary(metrics, "markdown");
-    const tags = normalizeDiscordTagList(callbacks.discord.tagList);
-    const message = prefixMessageWithTags(summary, tags);
-    promises.push(sendDiscord2(callbacks.discord, message));
-  }
-  if (promises.length === 0) {
-    return;
-  }
-  try {
-    await Promise.race([
-      Promise.allSettled(promises),
-      new Promise((resolve16) => setTimeout(resolve16, 5e3))
-    ]);
-  } catch (error48) {
-    console.error("[stop-callback] Callback execution error:", error48);
-  }
-}
-var import_fs58, import_path71, import_os13;
-var init_callbacks = __esm({
-  "src/hooks/session-end/callbacks.ts"() {
-    "use strict";
-    import_fs58 = require("fs");
-    import_path71 = require("path");
-    import_os13 = require("os");
-    init_auto_update();
   }
 });
 
@@ -35400,7 +35119,7 @@ function resolveCliBinaryPath(binary) {
   const cached2 = resolvedPathCache.get(binary);
   if (cached2) return cached2;
   const finder = process.platform === "win32" ? "where" : "which";
-  const result = (0, import_child_process20.spawnSync)(finder, [binary], {
+  const result = (0, import_child_process21.spawnSync)(finder, [binary], {
     timeout: 5e3,
     env: process.env
   });
@@ -35450,7 +35169,7 @@ function resolveBinaryPath(binary) {
   if ((0, import_path76.isAbsolute)(binary)) return binary;
   try {
     const resolver = process.platform === "win32" ? "where" : "which";
-    const result = (0, import_child_process20.spawnSync)(resolver, [binary], { timeout: 5e3, encoding: "utf8" });
+    const result = (0, import_child_process21.spawnSync)(resolver, [binary], { timeout: 5e3, encoding: "utf8" });
     if (result.status !== 0) return binary;
     const lines = result.stdout?.split(/\r?\n/).map((line) => line.trim()).filter(Boolean) ?? [];
     const firstPath = lines[0];
@@ -35516,11 +35235,11 @@ function getPromptModeArgs(agentType, instruction) {
   }
   return [instruction];
 }
-var import_child_process20, import_path76, resolvedPathCache, UNTRUSTED_PATH_PATTERNS, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST;
+var import_child_process21, import_path76, resolvedPathCache, UNTRUSTED_PATH_PATTERNS, CONTRACTS, WORKER_MODEL_ENV_ALLOWLIST;
 var init_model_contract = __esm({
   "src/team/model-contract.ts"() {
     "use strict";
-    import_child_process20 = require("child_process");
+    import_child_process21 = require("child_process");
     import_path76 = require("path");
     init_team_name();
     init_delegation_enforcer();
@@ -35941,8 +35660,11 @@ function listActiveSessions(teamName) {
     return [];
   }
 }
+function quoteBridgeShellArg(value) {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
 function spawnBridgeInSession(tmuxSession, bridgeScriptPath, configFilePath) {
-  const cmd = `node "${bridgeScriptPath}" --config "${configFilePath}"`;
+  const cmd = [process.execPath, bridgeScriptPath, "--config", configFilePath].map(quoteBridgeShellArg).join(" ");
   tmuxExec(["send-keys", "-t", tmuxSession, cmd, "Enter"], { stripTmux: true, stdio: "pipe", timeout: 5e3 });
 }
 async function createTeamSession(teamName, workerCount, cwd, options = {}) {
@@ -36113,7 +35835,16 @@ function paneHasTrustPrompt(captured) {
   const hasChoices = tail.some((l) => /Yes,\s*continue|No,\s*quit|Press enter to continue/i.test(l));
   return hasQuestion && hasChoices;
 }
+function paneHasClaudeStartupBanner(captured) {
+  const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0).slice(-20);
+  const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+  const lastStartupBannerIndex = lines.findLastIndex(
+    (line) => /bypass\s+permissions\s+on/i.test(line) || /shift\+tab\s+to\s+cycle/i.test(line) || /^⏵⏵\s+/.test(line)
+  );
+  return lastStartupBannerIndex >= 0 && lastStartupBannerIndex > lastPromptIndex;
+}
 function paneIsBootstrapping(captured) {
+  if (paneHasClaudeStartupBanner(captured)) return true;
   const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0);
   return lines.some(
     (line) => /\b(loading|initializing|starting up)\b/i.test(line) || /\bmodel:\s*loading\b/i.test(line) || /\bconnecting\s+to\b/i.test(line)
@@ -36192,6 +35923,9 @@ async function sendToWorker(_sessionName, paneId, message) {
       return false;
     }
     const initialCapture = await capturePaneAsync(paneId);
+    if (paneHasClaudeStartupBanner(initialCapture)) {
+      return false;
+    }
     const paneBusy = paneHasActiveTask(initialCapture);
     if (paneHasTrustPrompt(initialCapture)) {
       await sendKey("C-m");
@@ -38386,7 +38120,7 @@ function startFallbackPoller(worktreePath, workerName2, opts) {
     if (stopped) return;
     if (isHookPaused(worktreePath)) return;
     const cmd = buildHookCommand2(workerName2);
-    (0, import_child_process21.exec)(cmd, { cwd: worktreePath }, (_err) => {
+    (0, import_child_process22.exec)(cmd, { cwd: worktreePath }, (_err) => {
     });
   };
   const scheduleDebounce = () => {
@@ -38445,14 +38179,14 @@ async function uninstallCommitCadence(ctx) {
   } catch {
   }
 }
-var import_fs66, import_promises12, import_path82, import_child_process21, SENTINEL_FILENAME, HOOK_MATCHER, DEFAULT_POLL_DEBOUNCE_MS, WORKER_NAME_RE;
+var import_fs66, import_promises12, import_path82, import_child_process22, SENTINEL_FILENAME, HOOK_MATCHER, DEFAULT_POLL_DEBOUNCE_MS, WORKER_NAME_RE;
 var init_worker_commit_cadence = __esm({
   "src/team/worker-commit-cadence.ts"() {
     "use strict";
     import_fs66 = require("fs");
     import_promises12 = require("fs/promises");
     import_path82 = require("path");
-    import_child_process21 = require("child_process");
+    import_child_process22 = require("child_process");
     SENTINEL_FILENAME = ".hook-paused";
     HOOK_MATCHER = "Write|Edit|MultiEdit";
     DEFAULT_POLL_DEBOUNCE_MS = 3e3;
@@ -39245,7 +38979,7 @@ function buildV2TaskInstruction(teamName, workerName2, task, taskId, cliOutputCo
   ].join("\n");
 }
 async function notifyStartupInbox(sessionName2, paneId, message) {
-  const notified = await notifyPaneWithRetry(sessionName2, paneId, message);
+  const notified = await notifyPaneWithRetry(sessionName2, paneId, message, 1);
   return notified ? { ok: true, transport: "tmux_send_keys", reason: "worker_pane_notified" } : { ok: false, transport: "tmux_send_keys", reason: "worker_notify_failed" };
 }
 async function notifyPaneWithRetry(sessionName2, paneId, message, maxAttempts = 6, retryDelayMs = 350) {
@@ -39405,7 +39139,7 @@ async function spawnV2Worker(opts) {
     triggerMessage: inboxTriggerMessage,
     cwd: opts.cwd,
     transportPreference: usePromptMode ? "prompt_stdin" : "transport_direct",
-    fallbackAllowed: false,
+    fallbackAllowed: DEFAULT_TEAM_TRANSPORT_POLICY.dispatch_mode === "hook_preferred_with_fallback",
     inboxCorrelationKey: `startup:${opts.workerName}:${opts.taskId}`,
     notify: async (_target, triggerMessage) => {
       if (usePromptMode) {
@@ -41299,7 +41033,8 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     const notified = await notifyPaneWithRetry2(
       runtime.sessionName,
       paneId,
-      generateTriggerMessage(runtime.teamName, workerNameValue)
+      generateTriggerMessage(runtime.teamName, workerNameValue),
+      1
     );
     if (!notified) {
       await killWorkerPane(runtime, workerNameValue, paneId);
@@ -43030,7 +42765,7 @@ function isCodeSimplifierEnabled() {
 }
 function getModifiedFiles(cwd, extensions = DEFAULT_EXTENSIONS, maxFiles = DEFAULT_MAX_FILES) {
   try {
-    const output = (0, import_child_process22.execSync)("git diff HEAD --name-only", {
+    const output = (0, import_child_process23.execSync)("git diff HEAD --name-only", {
       cwd,
       encoding: "utf-8",
       stdio: ["ignore", "pipe", "ignore"],
@@ -43092,13 +42827,13 @@ function processCodeSimplifier(cwd, stateDir) {
     message: buildSimplifierMessage(files)
   };
 }
-var import_fs74, import_path89, import_child_process22, DEFAULT_EXTENSIONS, DEFAULT_MAX_FILES, TRIGGER_MARKER_FILENAME;
+var import_fs74, import_path89, import_child_process23, DEFAULT_EXTENSIONS, DEFAULT_MAX_FILES, TRIGGER_MARKER_FILENAME;
 var init_code_simplifier = __esm({
   "src/hooks/code-simplifier/index.ts"() {
     "use strict";
     import_fs74 = require("fs");
     import_path89 = require("path");
-    import_child_process22 = require("child_process");
+    import_child_process23 = require("child_process");
     init_config_dir();
     DEFAULT_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx", ".py", ".go", ".rs"];
     DEFAULT_MAX_FILES = 10;
@@ -49017,7 +48752,7 @@ function isCredentialExpired(creds) {
 function readKeychainCredential(serviceName, account) {
   try {
     const args = account ? ["find-generic-password", "-s", serviceName, "-a", account, "-w"] : ["find-generic-password", "-s", serviceName, "-w"];
-    const result = (0, import_child_process26.execFileSync)("/usr/bin/security", args, {
+    const result = (0, import_child_process27.execFileSync)("/usr/bin/security", args, {
       encoding: "utf-8",
       timeout: 2e3,
       stdio: ["pipe", "pipe", "pipe"]
@@ -49653,14 +49388,14 @@ async function getUsage() {
     return { rateLimits: null, error: "network" };
   }
 }
-var import_fs90, import_path107, import_child_process26, import_crypto14, import_os19, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, DEFAULT_OAUTH_CLIENT_ID, ZAI_UNIT_WEEK;
+var import_fs90, import_path107, import_child_process27, import_crypto14, import_os19, import_https3, CACHE_TTL_FAILURE_MS, CACHE_TTL_TRANSIENT_NETWORK_MS, MAX_RATE_LIMITED_BACKOFF_MS, API_TIMEOUT_MS2, MAX_STALE_DATA_MS, TOKEN_REFRESH_URL_HOSTNAME, USAGE_CACHE_LOCK_OPTS, TOKEN_REFRESH_URL_PATH, DEFAULT_OAUTH_CLIENT_ID, ZAI_UNIT_WEEK;
 var init_usage_api = __esm({
   "src/hud/usage-api.ts"() {
     "use strict";
     import_fs90 = require("fs");
     init_config_dir();
     import_path107 = require("path");
-    import_child_process26 = require("child_process");
+    import_child_process27 = require("child_process");
     import_crypto14 = require("crypto");
     import_os19 = require("os");
     import_https3 = __toESM(require("https"), 1);
@@ -50576,7 +50311,7 @@ function isCacheValid2(cache) {
 function spawnWithTimeout(cmd, timeoutMs) {
   return new Promise((resolve16, reject) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
-    const child = (0, import_child_process32.spawn)(executable, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = (0, import_child_process33.spawn)(executable, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -50664,11 +50399,11 @@ async function executeCustomProvider(config2) {
     return { buckets: [], stale: false, error: "command failed" };
   }
 }
-var import_child_process32, import_fs101, import_path117, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS2;
+var import_child_process33, import_fs101, import_path117, CACHE_TTL_MS2, DEFAULT_TIMEOUT_MS2;
 var init_custom_rate_provider = __esm({
   "src/hud/custom-rate-provider.ts"() {
     "use strict";
-    import_child_process32 = require("child_process");
+    import_child_process33 = require("child_process");
     import_fs101 = require("fs");
     import_path117 = require("path");
     init_config_dir();
@@ -82563,6 +82298,10 @@ var KEYWORD_PATTERNS = {
   codex: /\b(ask|use|delegate\s+to)\s+(codex|gpt)\b/i,
   gemini: /\b(ask|use|delegate\s+to)\s+gemini\b/i
 };
+var OUROBOROS_BRAND_AT_START = /^\s*\/?(?:ouroboros|ooo)\b/i;
+var KEYWORD_SKIP_PREDICATES = {
+  "deep-interview": (text) => OUROBOROS_BRAND_AT_START.test(text)
+};
 var KEYWORD_PRIORITY = [
   "cancel",
   "ralph",
@@ -82868,6 +82607,10 @@ function detectKeywordsWithType(text, _agentName) {
       continue;
     }
     const pattern = KEYWORD_PATTERNS[type];
+    const skipPredicate = KEYWORD_SKIP_PREDICATES[type];
+    if (skipPredicate && skipPredicate(cleanedText)) {
+      continue;
+    }
     if (type === "ralplan") {
       const ralplanMatch = findActionableRalplanMatch(cleanedText, pattern);
       if (ralplanMatch) {
@@ -83018,11 +82761,47 @@ init_mode_state_io();
 init_mode_names();
 init_omc_cli_rendering();
 init_swallowed_error();
+
+// src/hooks/background-notifications.ts
+var import_child_process15 = require("child_process");
+function dispatchNotificationInBackground(event, data) {
+  if (process.env.OMC_NOTIFY === "0") return;
+  let serializedEvent;
+  let serializedData;
+  try {
+    serializedEvent = JSON.stringify(event);
+    serializedData = JSON.stringify(data);
+  } catch {
+    return;
+  }
+  const notificationsModuleUrl = new URL(
+    "../notifications/index.js",
+    importMetaUrl
+  ).href;
+  const childSource = `import(${JSON.stringify(notificationsModuleUrl)})
+  .then(({ notify }) => notify(${serializedEvent}, ${serializedData}))
+  .catch(() => {});`;
+  try {
+    const child = (0, import_child_process15.spawn)(process.execPath, ["--input-type=module", "-e", childSource], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true,
+      env: {
+        ...process.env,
+        OMC_HOOK_BACKGROUND_CHILD: "1"
+      }
+    });
+    child.unref();
+  } catch {
+  }
+}
+
+// src/hooks/bridge.ts
 init_team_canonical_state();
 
 // src/hooks/omc-orchestrator/index.ts
 var path14 = __toESM(require("path"), 1);
-var import_child_process15 = require("child_process");
+var import_child_process16 = require("child_process");
 init_worktree_paths();
 init_config_dir();
 init_paths();
@@ -83307,13 +83086,13 @@ function isDelegationToolName(toolName) {
 }
 function getGitDiffStats(directory) {
   try {
-    const output = (0, import_child_process15.execSync)("git diff --numstat HEAD", {
+    const output = (0, import_child_process16.execSync)("git diff --numstat HEAD", {
       cwd: directory,
       encoding: "utf-8",
       timeout: 5e3
     }).trim();
     if (!output) return [];
-    const statusOutput = (0, import_child_process15.execSync)("git status --porcelain", {
+    const statusOutput = (0, import_child_process16.execSync)("git status --porcelain", {
       cwd: directory,
       encoding: "utf-8",
       timeout: 5e3
@@ -85249,16 +85028,11 @@ async function processPersistentMode(input) {
         }
         if (shouldSendIdleNotification2(stateDir, sessionId, idleRepoState)) {
           recordIdleNotificationSent2(stateDir, sessionId, idleRepoState);
-          const logSessionIdleNotifyFailure = createSwallowedErrorLogger(
-            "hooks.bridge session-idle notification failed"
-          );
-          Promise.resolve().then(() => (init_notifications(), notifications_exports)).then(
-            ({ notify: notify2 }) => notify2("session-idle", {
-              sessionId,
-              projectPath: directory,
-              profileName: process.env.OMC_NOTIFY_PROFILE
-            }).catch(logSessionIdleNotifyFailure)
-          ).catch(logSessionIdleNotifyFailure);
+          dispatchNotificationInBackground("session-idle", {
+            sessionId,
+            projectPath: directory,
+            profileName: process.env.OMC_NOTIFY_PROFILE
+          });
         }
       }
     }
@@ -85319,16 +85093,11 @@ async function processSessionStart(input) {
   const { buildAgentsOverlay: buildAgentsOverlay2 } = await Promise.resolve().then(() => (init_agents_overlay(), agents_overlay_exports));
   initSilentAutoUpdate2();
   if (sessionId) {
-    const logSessionStartNotifyFailure = createSwallowedErrorLogger(
-      "hooks.bridge session-start notification failed"
-    );
-    Promise.resolve().then(() => (init_notifications(), notifications_exports)).then(
-      ({ notify: notify2 }) => notify2("session-start", {
-        sessionId,
-        projectPath: directory,
-        profileName: process.env.OMC_NOTIFY_PROFILE
-      }).catch(logSessionStartNotifyFailure)
-    ).catch(logSessionStartNotifyFailure);
+    dispatchNotificationInBackground("session-start", {
+      sessionId,
+      projectPath: directory,
+      profileName: process.env.OMC_NOTIFY_PROFILE
+    });
     _openclaw.wake("session-start", { sessionId, projectPath: directory });
   }
   if (sessionId) {
@@ -85537,17 +85306,12 @@ function dispatchAskUserQuestionNotification(sessionId, directory, toolInput) {
   const input = toolInput;
   const questions = input?.questions || [];
   const questionText = questions.map((q) => q.question || "").filter(Boolean).join("; ") || "User input requested";
-  const logAskUserQuestionNotifyFailure = createSwallowedErrorLogger(
-    "hooks.bridge ask-user-question notification failed"
-  );
-  Promise.resolve().then(() => (init_notifications(), notifications_exports)).then(
-    ({ notify: notify2 }) => notify2("ask-user-question", {
-      sessionId,
-      projectPath: directory,
-      question: questionText,
-      profileName: process.env.OMC_NOTIFY_PROFILE
-    }).catch(logAskUserQuestionNotifyFailure)
-  ).catch(logAskUserQuestionNotifyFailure);
+  dispatchNotificationInBackground("ask-user-question", {
+    sessionId,
+    projectPath: directory,
+    question: questionText,
+    profileName: process.env.OMC_NOTIFY_PROFILE
+  });
 }
 var _notify = {
   askUserQuestion: dispatchAskUserQuestionNotification
@@ -85724,18 +85488,13 @@ Command blocked: ${command}`
     const taskInput = input.toolInput;
     const agentType = taskInput?.subagent_type;
     const agentName = agentType?.includes(":") ? agentType.split(":").pop() : agentType;
-    const logAgentCallNotifyFailure = createSwallowedErrorLogger(
-      "hooks.bridge agent-call notification failed"
-    );
-    Promise.resolve().then(() => (init_notifications(), notifications_exports)).then(
-      ({ notify: notify2 }) => notify2("agent-call", {
-        sessionId: input.sessionId,
-        projectPath: directory,
-        agentName,
-        agentType,
-        profileName: process.env.OMC_NOTIFY_PROFILE
-      }).catch(logAgentCallNotifyFailure)
-    ).catch(logAgentCallNotifyFailure);
+    dispatchNotificationInBackground("agent-call", {
+      sessionId: input.sessionId,
+      projectPath: directory,
+      agentName,
+      agentType,
+      profileName: process.env.OMC_NOTIFY_PROFILE
+    });
   }
   if (input.toolName === "Bash") {
     const effectiveBashInput = modifiedToolInput ?? input.toolInput;
@@ -86305,7 +86064,7 @@ var import_path97 = require("path");
 init_config_dir();
 
 // src/hooks/auto-slash-command/live-data.ts
-var import_child_process23 = require("child_process");
+var import_child_process24 = require("child_process");
 var import_fs78 = require("fs");
 var import_path94 = require("path");
 init_worktree_paths();
@@ -86718,7 +86477,7 @@ init_persistent_mode();
 // src/hooks/plugin-patterns/index.ts
 var import_fs84 = require("fs");
 var import_path101 = require("path");
-var import_child_process24 = require("child_process");
+var import_child_process25 = require("child_process");
 
 // src/hooks/index.ts
 init_ultraqa();
@@ -86804,9 +86563,9 @@ var GLOBAL_STATE_DIR = path21.join(os5.homedir(), ".omcp", "state");
 var MAX_STATE_AGE_MS = 4 * 60 * 60 * 1e3;
 
 // src/features/verification/index.ts
-var import_child_process25 = require("child_process");
+var import_child_process26 = require("child_process");
 var import_util11 = require("util");
-var execAsync = (0, import_util11.promisify)(import_child_process25.exec);
+var execAsync = (0, import_util11.promisify)(import_child_process26.exec);
 
 // src/agents/index.ts
 init_utils();
@@ -87063,7 +86822,7 @@ var import_fs91 = require("fs");
 var import_path108 = require("path");
 var import_url12 = require("url");
 var import_os20 = require("os");
-var import_child_process27 = require("child_process");
+var import_child_process28 = require("child_process");
 init_daemon_module_path();
 init_platform();
 init_tmux_detector();
@@ -87397,7 +87156,7 @@ function startDaemon(config2) {
       ...createMinimalDaemonEnv2(),
       OMC_DAEMON_CONFIG_FILE: configPath
     };
-    const child = (0, import_child_process27.spawn)("node", ["-e", daemonScript], {
+    const child = (0, import_child_process28.spawn)("node", ["-e", daemonScript], {
       detached: true,
       stdio: "ignore",
       cwd: process.cwd(),
@@ -88050,7 +87809,7 @@ async function doctorConflictsCommand(options) {
 }
 
 // src/cli/commands/doctor-team-routing.ts
-var import_child_process28 = require("child_process");
+var import_child_process29 = require("child_process");
 init_formatting();
 init_loader();
 var PROVIDER_BINARY = {
@@ -88062,12 +87821,12 @@ function probeProvider(provider) {
   const binary = PROVIDER_BINARY[provider];
   const probe = { provider, binary, found: false };
   try {
-    const resolved = (0, import_child_process28.execSync)(`command -v ${binary}`, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const resolved = (0, import_child_process29.execSync)(`command -v ${binary}`, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
     if (resolved) {
       probe.found = true;
       probe.path = resolved;
       try {
-        const version3 = (0, import_child_process28.execSync)(`${binary} --version`, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 3e3 }).trim().split("\n")[0];
+        const version3 = (0, import_child_process29.execSync)(`${binary} --version`, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 3e3 }).trim().split("\n")[0];
         if (version3) probe.version = version3;
       } catch {
       }
@@ -89647,7 +89406,7 @@ async function teamCommand(args) {
 }
 
 // src/cli/commands/teleport.ts
-var import_child_process29 = require("child_process");
+var import_child_process30 = require("child_process");
 var import_fs93 = require("fs");
 var import_os21 = require("os");
 var import_path110 = require("path");
@@ -89702,7 +89461,7 @@ function installDependencies(worktreePath, packageManager) {
     pnpm: ["install"],
     yarn: ["install"]
   };
-  (0, import_child_process29.execFileSync)(packageManager, argsByManager[packageManager], {
+  (0, import_child_process30.execFileSync)(packageManager, argsByManager[packageManager], {
     cwd: worktreePath,
     stdio: "inherit"
   });
@@ -89880,8 +89639,8 @@ function sanitize(str, maxLen = 30) {
 }
 function getCurrentRepo() {
   try {
-    const root = (0, import_child_process29.execSync)("git rev-parse --show-toplevel", { encoding: "utf-8", timeout: 5e3 }).trim();
-    const remoteUrl = (0, import_child_process29.execSync)("git remote get-url origin", { encoding: "utf-8", timeout: 5e3 }).trim();
+    const root = (0, import_child_process30.execSync)("git rev-parse --show-toplevel", { encoding: "utf-8", timeout: 5e3 }).trim();
+    const remoteUrl = (0, import_child_process30.execSync)("git remote get-url origin", { encoding: "utf-8", timeout: 5e3 }).trim();
     const parsed = parseRemoteUrl(remoteUrl);
     if (parsed) {
       return { owner: parsed.owner, repo: parsed.repo, root, provider: parsed.provider };
@@ -89907,18 +89666,18 @@ function createWorktree(repoRoot, worktreePath, branchName, baseBranch) {
     if ((0, import_fs93.existsSync)(worktreePath)) {
       return { success: false, error: `Worktree already exists at ${worktreePath}` };
     }
-    (0, import_child_process29.execFileSync)("git", ["fetch", "origin", baseBranch], {
+    (0, import_child_process30.execFileSync)("git", ["fetch", "origin", baseBranch], {
       cwd: repoRoot,
       stdio: "pipe"
     });
     try {
-      (0, import_child_process29.execFileSync)("git", ["branch", branchName, `origin/${baseBranch}`], {
+      (0, import_child_process30.execFileSync)("git", ["branch", branchName, `origin/${baseBranch}`], {
         cwd: repoRoot,
         stdio: "pipe"
       });
     } catch {
     }
-    (0, import_child_process29.execFileSync)("git", ["worktree", "add", worktreePath, branchName], {
+    (0, import_child_process30.execFileSync)("git", ["worktree", "add", worktreePath, branchName], {
       cwd: repoRoot,
       stdio: "pipe"
     });
@@ -89997,7 +89756,7 @@ async function teleportCommand(ref, options) {
       if (provider.prRefspec) {
         try {
           const refspec = provider.prRefspec.replace("{number}", String(parsed.number)).replace("{branch}", branchName);
-          (0, import_child_process29.execFileSync)(
+          (0, import_child_process30.execFileSync)(
             "git",
             ["fetch", "origin", refspec],
             { cwd: repoRoot, stdio: ["pipe", "pipe", "pipe"], timeout: 3e4 }
@@ -90006,7 +89765,7 @@ async function teleportCommand(ref, options) {
         }
       } else if (info.branch) {
         try {
-          (0, import_child_process29.execFileSync)(
+          (0, import_child_process30.execFileSync)(
             "git",
             ["fetch", "origin", `${info.branch}:${branchName}`],
             { cwd: repoRoot, stdio: ["pipe", "pipe", "pipe"], timeout: 3e4 }
@@ -90109,7 +89868,7 @@ async function teleportListCommand(options) {
     const relativePath = (0, import_path110.relative)(worktreeRoot, worktreePath);
     let branch = "unknown";
     try {
-      branch = (0, import_child_process29.execSync)("git branch --show-current", {
+      branch = (0, import_child_process30.execSync)("git branch --show-current", {
         cwd: worktreePath,
         encoding: "utf-8"
       }).trim();
@@ -90161,7 +89920,7 @@ async function teleportRemoveCommand(pathOrName, options) {
   }
   try {
     if (!options.force) {
-      const status = (0, import_child_process29.execSync)("git status --porcelain", {
+      const status = (0, import_child_process30.execSync)("git status --porcelain", {
         cwd: worktreePath,
         encoding: "utf-8"
       });
@@ -90175,7 +89934,7 @@ async function teleportRemoveCommand(pathOrName, options) {
         return 1;
       }
     }
-    const gitDir = (0, import_child_process29.execSync)("git rev-parse --git-dir", {
+    const gitDir = (0, import_child_process30.execSync)("git rev-parse --git-dir", {
       cwd: worktreePath,
       encoding: "utf-8"
     }).trim();
@@ -90183,7 +89942,7 @@ async function teleportRemoveCommand(pathOrName, options) {
     const mainRepo = mainRepoMatch ? mainRepoMatch[1] : null;
     if (mainRepo) {
       const args = options.force ? ["worktree", "remove", "--force", worktreePath] : ["worktree", "remove", worktreePath];
-      (0, import_child_process29.execFileSync)("git", args, {
+      (0, import_child_process30.execFileSync)("git", args, {
         cwd: mainRepo,
         stdio: "pipe"
       });
@@ -90211,10 +89970,11 @@ async function teleportRemoveCommand(pathOrName, options) {
 init_version();
 
 // src/cli/launch.ts
-var import_child_process30 = require("child_process");
+var import_child_process31 = require("child_process");
 var import_fs94 = require("fs");
 var import_os22 = require("os");
 var import_path111 = require("path");
+init_paths3();
 init_config_dir();
 init_tmux_utils();
 var MADMAX_FLAG = "--madmax";
@@ -90398,7 +90158,7 @@ function runCopilotInsideTmux(cwd, args) {
   } catch {
   }
   try {
-    (0, import_child_process30.execFileSync)("copilot", args, {
+    (0, import_child_process31.execFileSync)("copilot", args, {
       cwd,
       stdio: "inherit",
       shell: process.platform === "win32"
@@ -90464,7 +90224,7 @@ function runCopilotOutsideTmux(cwd, args, _sessionId) {
 }
 function runCopilotDirect(cwd, args) {
   try {
-    (0, import_child_process30.execFileSync)("copilot", args, {
+    (0, import_child_process31.execFileSync)("copilot", args, {
       cwd,
       stdio: "inherit",
       shell: process.platform === "win32"
@@ -90546,7 +90306,7 @@ async function launchCommand(args) {
 }
 
 // src/cli/ask.ts
-var import_child_process31 = require("child_process");
+var import_child_process32 = require("child_process");
 var import_fs95 = require("fs");
 var import_promises16 = require("fs/promises");
 var import_os23 = require("os");
@@ -90748,7 +90508,7 @@ ${parsed.prompt}`;
   const promptFile = (0, import_path112.join)(promptTmpDir, `prompt-${Date.now()}-${process.pid}.txt`);
   (0, import_fs95.writeFileSync)(promptFile, finalPrompt, "utf-8");
   try {
-    const child = (0, import_child_process31.spawnSync)(
+    const child = (0, import_child_process32.spawnSync)(
       process.execPath,
       [advisorScriptPath, parsed.provider],
       {

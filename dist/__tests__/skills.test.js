@@ -244,6 +244,9 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('Ranked Hypotheses');
             expect(skill?.template).toContain('trace_timeline');
             expect(skill?.template).toContain('trace_summary');
+            expect(skill?.template).toContain('multi-entity premise/key-assumption mismatches');
+            expect(skill?.template).toContain('single dimensional key across distinct entities, tenants, streams, or groups');
+            expect(skill?.template).toContain('verification-methodology defect');
         });
         it.skip('should retrieve the deep-dive skill with pipeline metadata and 3-point injection', () => {
             const skill = getBuiltinSkill('deep-dive');
@@ -262,6 +265,10 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('initial question queue injection');
             // Verify per-lane critical unknowns (B3 fix)
             expect(skill?.template).toContain('Per-Lane Critical Unknowns');
+            // Verify Lane 3 multi-entity premise audit guard (#2949)
+            expect(skill?.template).toContain('multi-entity premise/key-assumption mismatches');
+            expect(skill?.template).toContain('single dimensional key across distinct entities, tenants, streams, or groups');
+            expect(skill?.template).toContain('verification-methodology defect');
             // Verify Lane 3 ownership-boundary classification for MOVE recommendations
             expect(skill?.template).toContain('Lane 3 Misplacement / SoT Ownership Scope');
             expect(skill?.template).toContain('ownership_scope');
@@ -286,18 +293,29 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('explicit weakest-dimension rationale reporting');
             expect(skill?.template).toContain('repo-evidence citation requirement');
         });
-        it.skip('should expose pipeline metadata for deep-interview handoff into omc-plan', () => {
+        // Skipped in OMC: parseSkillPipelineMetadata is not yet wired into the
+        // builtin-skill loader, so handoffRequiresApproval is not surfaced on
+        // skill?.pipeline. The SKILL.md frontmatter still carries handoff-policy:
+        // approval-required and the rendered template still asserts the gating
+        // copy below, which is the user-visible contract.
+        it.skip('should expose approval-gated pipeline metadata for deep-interview handoff into omc-plan', () => {
             const skill = getBuiltinSkill('deep-interview');
             expect(skill?.pipeline).toEqual({
-                steps: ['deep-interview', 'plan', 'autopilot'],
-                nextSkill: 'plan',
-                nextSkillArgs: '--consensus --direct',
+                steps: ['deep-interview', 'plan'],
+                nextSkill: undefined,
+                nextSkillArgs: undefined,
                 handoff: '.omcp/specs/deep-interview-{slug}.md',
+                handoffRequiresApproval: true,
             });
             expect(skill?.template).toContain('## Skill Pipeline');
-            expect(skill?.template).toContain('Pipeline: `deep-interview → plan → autopilot`');
-            expect(skill?.template).toContain('Skill("oh-my-copilot:plan")');
-            expect(skill?.template).toContain('`--consensus --direct`');
+            expect(skill?.template).toContain('Pipeline: `deep-interview → plan`');
+            expect(skill?.template).toContain('This stage is approval-gated');
+            expect(skill?.template).toContain('unless the user explicitly approves that next step');
+            expect(skill?.template).not.toContain('Pipeline: `deep-interview → plan → autopilot`');
+            expect(skill?.template).not.toContain('Next skill: `plan`');
+            expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-copilot:plan")');
+            expect(skill?.template).toContain('Only after the user selects this option, invoke `Skill("oh-my-copilot:plan")`');
+            expect(skill?.template).toContain('do not automatically invoke autopilot or any other execution skill');
             expect(skill?.template).toContain('`.omcp/specs/deep-interview-{slug}.md`');
             expect(skill?.template).toContain('Why now: {one_sentence_targeting_rationale}');
             expect(skill?.template).toContain('cite the repo evidence');
@@ -490,16 +508,24 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('per-iteration evaluation JSON');
             expect(skill?.template).toContain('markdown decision logs');
         });
-        it.skip('should expose pipeline metadata for omc-plan handoff into autopilot', () => {
+        // Skipped in OMC for the same reason as the deep-interview test above:
+        // builtin-skill loader does not surface frontmatter pipeline metadata.
+        it.skip('should expose approval-gated omc-plan metadata without an unconditional autopilot handoff', () => {
             const skill = getBuiltinSkill('omc-plan');
             expect(skill?.pipeline).toEqual({
-                steps: ['deep-interview', 'plan', 'autopilot'],
-                nextSkill: 'autopilot',
+                steps: ['deep-interview'],
+                nextSkill: undefined,
+                nextSkillArgs: undefined,
                 handoff: '.omcp/plans/ralplan-*.md',
+                handoffRequiresApproval: true,
             });
             expect(skill?.template).toContain('## Skill Pipeline');
-            expect(skill?.template).toContain('Next skill: `autopilot`');
-            expect(skill?.template).toContain('Skill("oh-my-copilot:autopilot")');
+            expect(skill?.template).toContain('Pipeline: `deep-interview → omc-plan`');
+            expect(skill?.template).toContain('This stage is approval-gated');
+            expect(skill?.template).toContain('unless the user explicitly approves that next step');
+            expect(skill?.template).not.toContain('Next skill: `autopilot`');
+            expect(skill?.template).not.toContain('Skill("oh-my-copilot:autopilot")');
+            expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-copilot:autopilot")');
             expect(skill?.template).toContain('`.omcp/plans/ralplan-*.md`');
         });
         it('should expose review mode guidance for ai-slop-cleaner', () => {
@@ -514,6 +540,18 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('--review');
             expect(skill?.template).toContain('Writer pass');
             expect(skill?.template).toContain('Reviewer pass');
+        });
+        it('should expose UI/design AI-slop review signals', () => {
+            const skill = getBuiltinSkill('ai-slop-cleaner');
+            expect(skill).toBeDefined();
+            expect(skill?.template).toContain('UI/Design Reviewer Checklist');
+            expect(skill?.template).toContain('Korean body copy generally needs at least 14px');
+            expect(skill?.template).toContain('box shadows on every surface');
+            expect(skill?.template).toContain('eyebrow/title/description');
+            expect(skill?.template).toContain('#3B82F6');
+            expect(skill?.template).toContain('3- or 4-column uniform grids');
+            expect(skill?.template).toContain('extreme gradients');
+            expect(skill?.template).toContain('intentional brand');
         });
         it('should require explicit tmux prerequisite checks for omc-teams', () => {
             const skill = getBuiltinSkill('omc-teams');

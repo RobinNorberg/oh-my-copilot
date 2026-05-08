@@ -2,8 +2,8 @@
 name: omc-plan
 description: Strategic planning with optional interview workflow
 argument-hint: "[--direct|--consensus|--review] [--interactive] [--deliberate] <task description>"
-pipeline: [deep-interview, plan, autopilot]
-next-skill: autopilot
+pipeline: [deep-interview]
+handoff-policy: approval-required
 handoff: .omcp/plans/ralplan-*.md
 level: 4
 ---
@@ -24,7 +24,7 @@ Plan creates comprehensive, actionable work plans through intelligent interactio
 - User wants autonomous end-to-end execution -- use `autopilot` instead
 - User wants to start coding immediately with a clear task -- use `ralph` or delegate to executor
 - User asks a simple question that can be answered directly -- just answer it
-- Task is a single focused fix with obvious scope -- skip planning, just do it
+- Task is a single focused fix with obvious scope -- use an execution skill instead of running it from this planning module
 </Do_Not_Use_When>
 
 <Why_This_Exists>
@@ -38,6 +38,7 @@ Jumping into code without understanding requirements leads to rework, scope cree
 - Plans must meet quality standards: 80%+ claims cite file/line, 90%+ criteria are testable
 - Consensus mode runs fully automated by default; add `--interactive` to enable user prompts at draft review and final approval steps
 - Consensus mode uses RALPLAN-DR short mode by default; switch to deliberate mode with `--deliberate` or when the request explicitly signals high risk (auth/security, data migration, destructive/irreversible changes, production incident, compliance/PII, public API breakage)
+- **Planning/execution boundary:** planning modes inspect context and produce plans/specs/proposals only. They MUST mark artifacts as `pending approval` unless the user has explicitly opted into execution in the current turn or via the structured approval UI. Before explicit execution approval, planning modes MUST NOT run mutation-oriented shell commands, edit source files, commit, push, open PRs, invoke execution skills, or delegate implementation tasks.
 </Execution_Policy>
 
 <Steps>
@@ -108,18 +109,18 @@ Without cleanup, the stop hook blocks all subsequent stops with `[RALPLAN - CONS
    b. Deduplicate and categorize the suggestions
    c. Update the plan file in `.omcp/plans/` with the accepted improvements (add missing details, refine steps, strengthen acceptance criteria, ADR updates, etc.)
    d. Note which improvements were applied in a brief changelog section at the end of the plan
-7. On Critic approval (with improvements applied): *(--interactive only)* If running with `--interactive`, use `AskUserQuestion` to present the plan with these options:
-   - **Approve and implement via team** (Recommended) — proceed to implementation via coordinated parallel team agents (`/team`). Team is the canonical orchestration surface since v4.1.7.
-   - **Approve and execute via ralph** — proceed to implementation via ralph+ultrawork (sequential execution with verification)
-   - **Clear context and implement** — compact the context window first (recommended when context is large after planning), then start fresh implementation via ralph with the saved plan file
+7. On Critic approval (with improvements applied): mark the plan status as `pending approval` unless explicit execution approval has already been captured. *(--interactive only)* If running with `--interactive`, use `AskUserQuestion` to present the plan with these options:
+   - **Approve execution via team** (Recommended) — explicit opt-in to proceed via coordinated parallel team agents (`/team`). Team is the canonical orchestration surface since v4.1.7.
+   - **Approve execution via ralph** — explicit opt-in to proceed via ralph+ultrawork (sequential execution with verification)
+   - **Approve execution after clearing context** — explicit opt-in to compact the context window first (recommended when context is large after planning), then start fresh implementation via ralph with the saved plan file
    - **Request changes** — return to step 1 with user feedback
    - **Reject** — discard the plan entirely
-   If NOT running with `--interactive`, output the final approved plan, call `state_clear(mode="ralplan", session_id=<current_session_id>)`, and stop. Do NOT auto-execute.
+   If NOT running with `--interactive`, output the final plan marked `pending approval`, call `state_clear(mode="ralplan", session_id=<current_session_id>)`, and stop. Do NOT auto-execute.
 8. *(--interactive only)* User chooses via the structured `AskUserQuestion` UI (never ask for approval in plain text). If user selects **Reject**, call `state_clear(mode="ralplan", session_id=<current_session_id>)` and stop.
 9. On user approval (--interactive only): Call `state_write(mode="ralplan", active=false, session_id=<current_session_id>)` **before** invoking the execution skill (ralph/team), so the stop hook does not interfere with the execution mode's own enforcement. Do NOT use `state_clear` here — it writes a cancel signal that disables enforcement for the newly launched mode.
-   - **Approve and implement via team**: **MUST** invoke `Skill("oh-my-copilot:team")` with the approved plan path from `.omcp/plans/` as context. Do NOT implement directly. The team skill coordinates parallel agents across the staged pipeline for faster execution on large tasks. This is the recommended default execution path.
-   - **Approve and execute via ralph**: **MUST** invoke `Skill("oh-my-copilot:ralph")` with the approved plan path from `.omcp/plans/` as context. Do NOT implement directly. Do NOT edit source code files in the planning agent. The ralph skill handles execution via ultrawork parallel agents.
-   - **Clear context and implement**: First invoke `Skill("compact")` to compress the context window (reduces token usage accumulated during planning), then invoke `Skill("oh-my-copilot:ralph")` with the approved plan path from `.omcp/plans/`. This path is recommended when the context window is 50%+ full after the planning session.
+   - **Approve execution via team**: **MUST** invoke `Skill("oh-my-copilot:team")` with the approved plan path from `.omcp/plans/` as context. Do NOT implement directly. The team skill coordinates parallel agents across the staged pipeline for faster execution on large tasks. This is the recommended default execution path.
+   - **Approve execution via ralph**: **MUST** invoke `Skill("oh-my-copilot:ralph")` with the approved plan path from `.omcp/plans/` as context. Do NOT implement directly. Do NOT edit source code files in the planning agent. The ralph skill handles execution via ultrawork parallel agents.
+   - **Approve execution after clearing context**: First invoke `Skill("compact")` to compress the context window (reduces token usage accumulated during planning), then invoke `Skill("oh-my-copilot:ralph")` with the approved plan path from `.omcp/plans/`. This path is recommended when the context window is 50%+ full after the planning session.
 
 ### Review Mode (`--review`)
 
@@ -151,9 +152,10 @@ Plans are saved to `.omcp/plans/`. Drafts go to `.omcp/drafts/`.
 - Use `Task(subagent_type="oh-my-copilot:critic", ...)` for plan review in consensus and review modes
 - **CRITICAL — Consensus mode agent calls MUST be sequential, never parallel.** Always await the Architect Task result before issuing the Critic Task.
 - In consensus mode, default to RALPLAN-DR short mode; enable deliberate mode on `--deliberate` or explicit high-risk signals (auth/security, migrations, destructive changes, production incidents, compliance/PII, public API breakage)
-- In consensus mode with `--interactive`: use `AskUserQuestion` for the user feedback step (step 2) and the final approval step (step 7) -- never ask for approval in plain text. Without `--interactive`, skip both prompts and output the final plan.
-- In consensus mode with `--interactive`, on user approval **MUST** invoke `Skill("oh-my-copilot:ralph")` for execution (step 9) -- never implement directly in the planning agent
-- When user selects "Clear context and implement" in step 7 (--interactive only): call `state_write(mode="ralplan", active=false, session_id=<current_session_id>)` first, then invoke `Skill("compact")` to compress the accumulated planning context, then immediately invoke `Skill("oh-my-copilot:ralph")` with the plan path -- the compact step is critical to free up context before the implementation loop begins
+- In consensus mode with `--interactive`: use `AskUserQuestion` for the user feedback step (step 2) and the final approval step (step 7) -- never ask for approval in plain text. Without `--interactive`, skip both prompts, mark the plan `pending approval`, output the final plan, and stop.
+- In consensus mode with `--interactive`, on explicit user approval **MUST** invoke `Skill("oh-my-copilot:ralph")` or `Skill("oh-my-copilot:team")` for execution (step 9) -- never implement directly in the planning agent
+- Before explicit execution approval, planning mode MUST NOT run mutation-oriented shell commands, edit files, commit, push, open PRs, invoke execution skills, or delegate implementation tasks; it may only inspect context and draft/update plan/spec/proposal artifacts.
+- When user selects "Approve execution after clearing context" in step 7 (--interactive only): call `state_write(mode="ralplan", active=false, session_id=<current_session_id>)` first, then invoke `Skill("compact")` to compress the accumulated planning context, then immediately invoke `Skill("oh-my-copilot:ralph")` with the plan path -- the compact step is critical to free up context before the implementation loop begins
 - **CRITICAL — Consensus mode state lifecycle**: Always deactivate ralplan state before stopping or handing off to execution. Use `state_write(active=false)` for handoff paths (approval → ralph/team) and `state_clear` for true terminal exits (rejection, error). Never use `state_clear` before launching an execution mode — its cancel signal disables stop-hook enforcement for 30 seconds.
 </Tool_Usage>
 
@@ -210,8 +212,8 @@ Why bad: Decision fatigue. Present one option with trade-offs, get reaction, the
 <Escalation_And_Stop_Conditions>
 - Stop interviewing when requirements are clear enough to plan -- do not over-interview
 - In consensus mode, stop after 5 Planner/Architect/Critic iterations and present the best version. Do NOT clear ralplan state here — the user may still select "Request changes" in the subsequent step. State is cleared only on the user's final choice (approval/rejection) or when outputting the plan in non-interactive mode.
-- Consensus mode without `--interactive` outputs the final plan and stops; with `--interactive`, requires explicit user approval before any implementation begins. **Always** call `state_clear(mode="ralplan", session_id=<current_session_id>)` before stopping.
-- If the user says "just do it" or "skip planning", call `state_write(mode="ralplan", active=false, session_id=<current_session_id>)` then **MUST** invoke `Skill("oh-my-copilot:ralph")` to transition to execution mode. Do NOT implement directly in the planning agent.
+- Consensus mode without `--interactive` outputs the final plan marked `pending approval` and stops; with `--interactive`, requires explicit user approval before any implementation begins. **Always** call `state_clear(mode="ralplan", session_id=<current_session_id>)` before stopping.
+- If the user says "just do it" or "skip planning" without explicitly naming an execution path, treat it as a request to end planning: output the current plan/spec/proposal as `pending approval` and ask for explicit execution approval via the structured approval UI. Do NOT invoke `Skill("oh-my-copilot:ralph")`, mutate files, delegate implementation, commit, push, or open a PR from the planning module until that approval exists.
 - Escalate to the user when there are irreconcilable trade-offs that require a business decision
 </Escalation_And_Stop_Conditions>
 
@@ -224,7 +226,7 @@ Why bad: Decision fatigue. Present one option with trade-offs, get reaction, the
 - [ ] In consensus mode: RALPLAN-DR summary includes 3-5 principles, top 3 drivers, and >=2 viable options (or explicit invalidation rationale)
 - [ ] In consensus mode final output: ADR section included (Decision / Drivers / Alternatives considered / Why chosen / Consequences / Follow-ups)
 - [ ] In deliberate consensus mode: pre-mortem (3 scenarios) + expanded test plan (unit/integration/e2e/observability) included
-- [ ] In consensus mode with `--interactive`: user explicitly approved before any execution; without `--interactive`: plan output only, no auto-execution
+- [ ] In consensus mode with `--interactive`: user explicitly approved before any execution; without `--interactive`: plan output marked `pending approval` only, no auto-execution
 - [ ] In consensus mode: ralplan state deactivated on every exit path — `state_write(active=false)` for handoff to execution, `state_clear` for terminal exits (rejection, error, non-interactive stop)
 </Final_Checklist>
 

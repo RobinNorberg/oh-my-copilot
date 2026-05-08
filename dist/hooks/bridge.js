@@ -20,6 +20,7 @@ import { readModeState, writeModeState } from "../lib/mode-state-io.js";
 import { SESSION_END_MODE_STATE_FILES } from "../lib/mode-names.js";
 import { formatOmcCliInvocation } from "../utils/omc-cli-rendering.js";
 import { createSwallowedErrorLogger } from "../lib/swallowed-error.js";
+import { dispatchNotificationInBackground } from "./background-notifications.js";
 import { readCanonicalTeamStateCandidate } from "./team-canonical-state.js";
 // Hot-path imports: needed on every/most hook invocations (keyword-detector, pre/post-tool-use)
 import { removeCodeBlocks, getAllKeywordsWithSizeCheck, applyRalplanGate, sanitizeForKeywordDetection, NON_LATIN_SCRIPT_PATTERN, } from "./keyword-detector/index.js";
@@ -1315,14 +1316,11 @@ async function processPersistentMode(input) {
                 }
                 if (shouldSendIdleNotification(stateDir, sessionId, idleRepoState)) {
                     recordIdleNotificationSent(stateDir, sessionId, idleRepoState);
-                    const logSessionIdleNotifyFailure = createSwallowedErrorLogger('hooks.bridge session-idle notification failed');
-                    import("../notifications/index.js")
-                        .then(({ notify }) => notify("session-idle", {
+                    dispatchNotificationInBackground("session-idle", {
                         sessionId,
                         projectPath: directory,
                         profileName: process.env.OMC_NOTIFY_PROFILE,
-                    }).catch(logSessionIdleNotifyFailure))
-                        .catch(logSessionIdleNotifyFailure);
+                    });
                 }
             }
             // IMPORTANT: Do NOT clean up reply-listener/session-registry on Stop hooks.
@@ -1397,14 +1395,11 @@ async function processSessionStart(input) {
     initSilentAutoUpdate();
     // Send session-start notification (non-blocking, swallows errors)
     if (sessionId) {
-        const logSessionStartNotifyFailure = createSwallowedErrorLogger('hooks.bridge session-start notification failed');
-        import("../notifications/index.js")
-            .then(({ notify }) => notify("session-start", {
+        dispatchNotificationInBackground("session-start", {
             sessionId,
             projectPath: directory,
             profileName: process.env.OMC_NOTIFY_PROFILE,
-        }).catch(logSessionStartNotifyFailure))
-            .catch(logSessionStartNotifyFailure);
+        });
         // Wake OpenClaw gateway for session-start (non-blocking)
         _openclaw.wake("session-start", { sessionId, projectPath: directory });
     }
@@ -1637,15 +1632,12 @@ export function dispatchAskUserQuestionNotification(sessionId, directory, toolIn
         .map((q) => q.question || "")
         .filter(Boolean)
         .join("; ") || "User input requested";
-    const logAskUserQuestionNotifyFailure = createSwallowedErrorLogger('hooks.bridge ask-user-question notification failed');
-    import("../notifications/index.js")
-        .then(({ notify }) => notify("ask-user-question", {
+    dispatchNotificationInBackground("ask-user-question", {
         sessionId,
         projectPath: directory,
         question: questionText,
         profileName: process.env.OMC_NOTIFY_PROFILE,
-    }).catch(logAskUserQuestionNotifyFailure))
-        .catch(logAskUserQuestionNotifyFailure);
+    });
 }
 /** @internal Object wrapper so tests can spy on the dispatch call. */
 export const _notify = {
@@ -1872,16 +1864,13 @@ function processPreToolUse(input) {
         const agentName = agentType?.includes(":")
             ? agentType.split(":").pop()
             : agentType;
-        const logAgentCallNotifyFailure = createSwallowedErrorLogger('hooks.bridge agent-call notification failed');
-        import("../notifications/index.js")
-            .then(({ notify }) => notify("agent-call", {
+        dispatchNotificationInBackground("agent-call", {
             sessionId: input.sessionId,
             projectPath: directory,
             agentName,
             agentType,
             profileName: process.env.OMC_NOTIFY_PROFILE,
-        }).catch(logAgentCallNotifyFailure))
-            .catch(logAgentCallNotifyFailure);
+        });
     }
     // Warn about pkill -f self-termination risk (issue #210)
     // Matches: pkill -f, pkill -9 -f, pkill --full, etc.

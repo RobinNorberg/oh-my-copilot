@@ -10,6 +10,7 @@ import {
   getDefaultShell,
   buildWorkerStartCommand,
   isUnixLikeOnWindows,
+  paneLooksReady,
 } from '../tmux-session.js';
 
 afterEach(() => {
@@ -254,6 +255,25 @@ describe('shouldAttemptAdaptiveRetry', () => {
       retriesAttempted: 0,
     })).toBe(false);
     delete process.env.OMC_TEAM_AUTO_INTERRUPT_RETRY;
+  });
+});
+
+describe('pane readiness startup banners', () => {
+  it('does not treat Claude bypass-permissions startup banner as ready', () => {
+    const capture = [
+      'Read .omc/state/team/example/workers/worker-1/inbox.md, execute now, report concrete progress.',
+      '─────────────────────────────────────────────',
+      '[OMC] Starting...',
+      '⏵⏵ bypass permissions on (shift+tab to cycle)',
+    ].join('\n');
+
+    expect(paneLooksReady(capture)).toBe(false);
+  });
+
+  it('still treats actual prompt lines as ready', () => {
+    expect(paneLooksReady('Welcome\n❯ ')).toBe(true);
+    expect(paneLooksReady('Welcome\n> ')).toBe(true);
+    expect(paneLooksReady('⏵⏵ bypass permissions on (shift+tab to cycle)\nReady\n❯ ')).toBe(true);
   });
 });
 
