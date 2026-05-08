@@ -30,6 +30,7 @@ import { readModeState, writeModeState } from "../lib/mode-state-io.js";
 import { SESSION_END_MODE_STATE_FILES } from "../lib/mode-names.js";
 import { formatOmcCliInvocation } from "../utils/omc-cli-rendering.js";
 import { createSwallowedErrorLogger } from "../lib/swallowed-error.js";
+import { dispatchNotificationInBackground } from "./background-notifications.js";
 import { readCanonicalTeamStateCandidate } from "./team-canonical-state.js";
 
 // Hot-path imports: needed on every/most hook invocations (keyword-detector, pre/post-tool-use)
@@ -1815,18 +1816,11 @@ async function processPersistentMode(input: HookInput): Promise<HookOutput> {
         }
         if (shouldSendIdleNotification(stateDir, sessionId, idleRepoState)) {
           recordIdleNotificationSent(stateDir, sessionId, idleRepoState);
-          const logSessionIdleNotifyFailure = createSwallowedErrorLogger(
-            'hooks.bridge session-idle notification failed',
-          );
-          import("../notifications/index.js")
-            .then(({ notify }) =>
-              notify("session-idle", {
-                sessionId,
-                projectPath: directory,
-                profileName: process.env.OMC_NOTIFY_PROFILE,
-              }).catch(logSessionIdleNotifyFailure),
-            )
-            .catch(logSessionIdleNotifyFailure);
+          dispatchNotificationInBackground("session-idle", {
+            sessionId,
+            projectPath: directory,
+            profileName: process.env.OMC_NOTIFY_PROFILE,
+          });
         }
       }
 
@@ -1913,18 +1907,11 @@ async function processSessionStart(input: HookInput): Promise<HookOutput> {
 
   // Send session-start notification (non-blocking, swallows errors)
   if (sessionId) {
-    const logSessionStartNotifyFailure = createSwallowedErrorLogger(
-      'hooks.bridge session-start notification failed',
-    );
-    import("../notifications/index.js")
-      .then(({ notify }) =>
-        notify("session-start", {
-          sessionId,
-          projectPath: directory,
-          profileName: process.env.OMC_NOTIFY_PROFILE,
-        }).catch(logSessionStartNotifyFailure),
-      )
-      .catch(logSessionStartNotifyFailure);
+    dispatchNotificationInBackground("session-start", {
+      sessionId,
+      projectPath: directory,
+      profileName: process.env.OMC_NOTIFY_PROFILE,
+    });
     // Wake OpenClaw gateway for session-start (non-blocking)
     _openclaw.wake("session-start", { sessionId, projectPath: directory });
   }
@@ -2191,20 +2178,12 @@ export function dispatchAskUserQuestionNotification(
       .filter(Boolean)
       .join("; ") || "User input requested";
 
-  const logAskUserQuestionNotifyFailure = createSwallowedErrorLogger(
-    'hooks.bridge ask-user-question notification failed',
-  );
-
-  import("../notifications/index.js")
-    .then(({ notify }) =>
-      notify("ask-user-question", {
-        sessionId,
-        projectPath: directory,
-        question: questionText,
-        profileName: process.env.OMC_NOTIFY_PROFILE,
-      }).catch(logAskUserQuestionNotifyFailure),
-    )
-    .catch(logAskUserQuestionNotifyFailure);
+  dispatchNotificationInBackground("ask-user-question", {
+    sessionId,
+    projectPath: directory,
+    question: questionText,
+    profileName: process.env.OMC_NOTIFY_PROFILE,
+  });
 }
 
 /** @internal Object wrapper so tests can spy on the dispatch call. */
@@ -2496,20 +2475,13 @@ function processPreToolUse(input: HookInput): HookOutput {
     const agentName = agentType?.includes(":")
       ? agentType.split(":").pop()
       : agentType;
-    const logAgentCallNotifyFailure = createSwallowedErrorLogger(
-      'hooks.bridge agent-call notification failed',
-    );
-    import("../notifications/index.js")
-      .then(({ notify }) =>
-        notify("agent-call", {
-          sessionId: input.sessionId!,
-          projectPath: directory,
-          agentName,
-          agentType,
-          profileName: process.env.OMC_NOTIFY_PROFILE,
-        }).catch(logAgentCallNotifyFailure),
-      )
-      .catch(logAgentCallNotifyFailure);
+    dispatchNotificationInBackground("agent-call", {
+      sessionId: input.sessionId!,
+      projectPath: directory,
+      agentName,
+      agentType,
+      profileName: process.env.OMC_NOTIFY_PROFILE,
+    });
   }
 
   // Warn about pkill -f self-termination risk (issue #210)
