@@ -2,7 +2,15 @@ import { describe, it, expect, afterEach } from 'vitest';
 
 const isWindows = process.platform === 'win32';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -53,5 +61,42 @@ describe.skipIf(isWindows)('setup-progress.sh', () => {
 
     expect(config.setupVersion).toBe('v9.9.9');
     expect(config.setupCompleted).toBeTruthy();
+  });
+
+  it('fails without jq and preserves existing setup config', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omc-setup-progress-no-jq-'));
+    tempRoots.push(root);
+
+    const projectRoot = join(root, 'project');
+    const homeRoot = join(root, 'home');
+    const configDir = join(root, 'custom-claude');
+    const binDir = join(root, 'bin-no-jq');
+    mkdirSync(projectRoot, { recursive: true });
+    mkdirSync(homeRoot, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    mkdirSync(binDir, { recursive: true });
+
+    for (const command of ['dirname', 'pwd']) {
+      symlinkSync(`/usr/bin/${command}`, join(binDir, command));
+    }
+
+    const configPath = join(configDir, '.omc-config.json');
+    const originalConfig = '{\n  "existing": true\n}\n';
+    writeFileSync(configPath, originalConfig);
+
+    const result = spawnSync('/usr/bin/bash', [SCRIPT_PATH, 'complete', 'v9.9.9'], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        HOME: homeRoot,
+        CLAUDE_CONFIG_DIR: configDir,
+        PATH: binDir,
+      },
+      encoding: 'utf-8',
+    });
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('jq is required');
+    expect(readFileSync(configPath, 'utf-8')).toBe(originalConfig);
   });
 });
