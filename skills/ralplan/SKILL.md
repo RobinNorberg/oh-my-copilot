@@ -17,7 +17,7 @@ Ralplan is a shorthand alias for `/oh-my-copilot:plan --consensus`. It triggers 
 
 ## Flags
 
-- `--interactive`: Enables user prompts at key decision points (draft review in step 2 and final approval in step 6). Without this flag the workflow runs fully automated — Planner → Architect → Critic loop — and outputs the final plan without asking for confirmation.
+- `--interactive`: Enables user prompts at key decision points (draft review in step 2 and final approval in step 6). Without this flag the workflow runs fully automated — Planner → Architect → Critic loop — marks the final plan `pending approval`, outputs it, and stops without asking for confirmation or executing changes.
 - `--deliberate`: Forces deliberate mode for high-risk work. Adds pre-mortem (3 scenarios) and expanded test planning (unit/integration/e2e/observability). Without this flag, deliberate mode can still auto-enable when the request explicitly signals high risk (auth/security, migrations, destructive changes, production incidents, compliance/PII, public API breakage).
 - `--architect codex`: Use Codex for the Architect pass when Codex CLI is available. Otherwise, briefly note the fallback and keep the default Claude Architect review.
 - `--critic codex`: Use Codex for the Critic pass when Codex CLI is available. Otherwise, briefly note the fallback and keep the default Claude Critic review.
@@ -29,6 +29,10 @@ Ralplan is a shorthand alias for `/oh-my-copilot:plan --consensus`. It triggers 
 ```
 
 ## Behavior
+
+## Planning/Execution Boundary
+
+Ralplan is a planning module. It may inspect context and draft or update plan/spec/proposal artifacts, but it MUST mark those artifacts as `pending approval` unless the user has explicitly opted into execution in the current turn or via the structured approval UI. Before explicit execution approval, it MUST NOT run mutation-oriented shell commands, edit source files, commit, push, open PRs, invoke execution skills, or delegate implementation tasks.
 
 This skill invokes the Plan skill in consensus mode:
 
@@ -54,7 +58,7 @@ The consensus workflow:
    d. Return to Critic evaluation
    e. Repeat this loop until Critic returns `APPROVE` or 5 iterations are reached
    f. If 5 iterations are reached without `APPROVE`, present the best version to the user
-6. On Critic approval *(--interactive only)*: If `--interactive` is set, use `AskUserQuestion` to present the plan with approval options (Approve and implement via team (Recommended) / Approve and execute via ralph / Clear context and implement / Request changes / Reject). Final plan must include ADR (Decision, Drivers, Alternatives considered, Why chosen, Consequences, Follow-ups). Otherwise, output the final plan and stop.
+6. On Critic approval, mark the plan `pending approval` unless explicit execution approval has already been captured. *(--interactive only)* If `--interactive` is set, use `AskUserQuestion` to present the plan with approval options (Approve execution via team (Recommended) / Approve execution via ralph / Approve execution after clearing context / Request changes / Reject). Final plan must include ADR (Decision, Drivers, Alternatives considered, Why chosen, Consequences, Follow-ups). Otherwise, output the final plan and stop before any mutation or delegation.
 7. *(--interactive only)* User chooses: Approve (team or ralph), Request changes, or Reject
 8. *(--interactive only)* On approval: invoke `Skill("oh-my-copilot:team")` for parallel team execution (recommended) or `Skill("oh-my-copilot:ralph")` for sequential execution -- never implement directly
 
@@ -133,4 +137,4 @@ The gate auto-passes when it detects **any** concrete signal. You do not need al
 | Gate fires on a well-specified prompt | Add a file reference, function name, or issue number to anchor the request |
 | Want to bypass the gate | Prefix with `force:` or `!` (e.g., `force: ralph fix it`) |
 | Gate does not fire on a vague prompt | The gate only catches prompts with <=15 effective words and no concrete anchors; add more detail or use `/ralplan` explicitly |
-| Redirected to ralplan but want to skip planning | In the ralplan workflow, say "just do it" or "skip planning" to transition directly to execution |
+| Redirected to ralplan but want execution | Use the structured approval option or explicitly say which execution skill should proceed; `just do it` / `skip planning` alone only ends planning with a `pending approval` artifact |

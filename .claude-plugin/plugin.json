@@ -1,6 +1,6 @@
 {
   "name": "oh-my-copilot",
-  "version": "4.13.64",
+  "version": "4.13.65",
   "description": "Multi-agent orchestration system for Copilot CLI",
   "author": {
     "name": "Robin Norberg and oh-my-copilot contributors"
@@ -17,6 +17,5 @@
   ],
   "agents": "./agents/",
   "skills": "./skills/",
-  "commands": "./commands/",
   "mcpServers": "./.mcp.json"
 }
