@@ -192,4 +192,51 @@ describe('Issue #595: Consensus mode execution handoff', () => {
         });
     });
 });
+describe('Issue #2945: planning modules require explicit execution consent', () => {
+    beforeEach(() => {
+        clearSkillsCache();
+    });
+    it('plan consensus mode marks non-interactive output pending approval and forbids mutation before approval', () => {
+        const skill = getBuiltinSkill('omc-plan');
+        expect(skill).toBeDefined();
+        expect(skill.template).toContain('Planning/execution boundary');
+        expect(skill.template).toContain('pending approval');
+        expect(skill.template).toMatch(/MUST NOT run mutation-oriented shell commands/i);
+        expect(skill.template).toMatch(/edit (source )?files/i);
+        expect(skill.template).toMatch(/commit, push, open PRs/i);
+        expect(skill.template).toMatch(/delegate implementation tasks/i);
+        expect(skill.template).toContain('Without `--interactive`, skip both prompts, mark the plan `pending approval`, output the final plan, and stop.');
+    });
+    it('plan no longer treats just-do-it wording as implicit approval to invoke ralph', () => {
+        const skill = getBuiltinSkill('omc-plan');
+        expect(skill).toBeDefined();
+        const escalation = extractTagContent(skill.template, 'Escalation_And_Stop_Conditions');
+        expect(escalation).toBeDefined();
+        expect(escalation).toContain('without explicitly naming an execution path');
+        expect(escalation).toContain('pending approval');
+        expect(escalation).toContain('Do NOT invoke `Skill("oh-my-claudecode:ralph")`');
+        expect(escalation).not.toMatch(/skip planning[\s\S]{0,120}MUST[\s\S]{0,80}Skill\("oh-my-claudecode:ralph"\)/i);
+    });
+    it('ralplan documents the same planning/execution boundary', () => {
+        const skill = getBuiltinSkill('ralplan');
+        expect(skill).toBeDefined();
+        expect(skill.template).toContain('Planning/Execution Boundary');
+        expect(skill.template).toContain('pending approval');
+        expect(skill.template).toMatch(/MUST NOT run mutation-oriented shell commands/i);
+        expect(skill.template).toMatch(/commit, push, open PRs/i);
+        expect(skill.template).toContain('stop before any mutation or delegation');
+        expect(skill.template).toContain('`just do it` / `skip planning` alone only ends planning with a `pending approval` artifact');
+    });
+    it('deep-interview writes pending-approval specs and stops before execution without explicit selection', () => {
+        const skill = getBuiltinSkill('deep-interview');
+        expect(skill).toBeDefined();
+        expect(skill.template).toContain('pending approval → explicitly approved execution');
+        expect(skill.template).toContain('mark it `pending approval`');
+        expect(skill.template).toMatch(/MUST NOT run mutation-oriented shell commands/i);
+        expect(skill.template).toMatch(/open PRs, invoke execution skills, or delegate implementation tasks/i);
+        expect(skill.template).toContain('do not automatically invoke autopilot or any other execution skill');
+        expect(skill.template).toContain('Without explicit execution selection, stop with the spec marked `pending approval`.');
+        expect(skill.template).not.toContain('autopilot with consensus plan');
+    });
+});
 //# sourceMappingURL=consensus-execution-handoff.test.js.map
