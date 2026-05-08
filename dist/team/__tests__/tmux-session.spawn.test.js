@@ -6,13 +6,17 @@ vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
     const actual = await importOriginal();
     return {
         ...actual,
+        tmuxExec: vi.fn((args) => {
+            mockedCalls.tmuxArgs.push(args);
+            return '';
+        }),
         tmuxExecAsync: vi.fn(async (args) => {
             mockedCalls.tmuxArgs.push(args);
             return { stdout: '', stderr: '' };
         }),
     };
 });
-import { spawnWorkerInPane } from '../tmux-session.js';
+import { spawnBridgeInSession, spawnWorkerInPane } from '../tmux-session.js';
 describe('spawnWorkerInPane', () => {
     beforeEach(() => {
         mockedCalls.tmuxArgs = [];
@@ -36,6 +40,16 @@ describe('spawnWorkerInPane', () => {
         expect(launchLine).toContain("'--'");
         expect(launchLine).toContain("'gpt-5;touch /tmp/pwn'");
         expect(launchLine).not.toContain('exec codex --full-auto');
+    });
+    it('uses current JS runtime when launching bridge-entry helpers', () => {
+        spawnBridgeInSession('session:0', '/tmp/bridge-entry.js', '/tmp/bridge-config.json');
+        const sendKeys = mockedCalls.tmuxArgs.find((args) => args[0] === 'send-keys');
+        expect(sendKeys).toBeDefined();
+        const launchLine = sendKeys?.[3] ?? '';
+        expect(launchLine).toContain(process.execPath);
+        expect(launchLine).toContain('/tmp/bridge-entry.js');
+        expect(launchLine).toContain('--config');
+        expect(launchLine).not.toMatch(/^node\s/);
     });
     it('rejects invalid team names before command construction', async () => {
         await expect(spawnWorkerInPane('session:0', '%2', {

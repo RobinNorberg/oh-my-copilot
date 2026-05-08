@@ -1231,8 +1231,11 @@ function listActiveSessions(teamName) {
     return [];
   }
 }
+function quoteBridgeShellArg(value) {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
 function spawnBridgeInSession(tmuxSession, bridgeScriptPath, configFilePath) {
-  const cmd = `node "${bridgeScriptPath}" --config "${configFilePath}"`;
+  const cmd = [process.execPath, bridgeScriptPath, "--config", configFilePath].map(quoteBridgeShellArg).join(" ");
   tmuxExec(["send-keys", "-t", tmuxSession, cmd, "Enter"], { stripTmux: true, stdio: "pipe", timeout: 5e3 });
 }
 async function createTeamSession(teamName, workerCount, cwd, options = {}) {
@@ -10277,7 +10280,7 @@ async function startTeamJob(input) {
     teamName: input.teamName,
     cwd: input.cwd
   };
-  const child = spawn("node", [runtimeCliPath], {
+  const child = spawn(process.execPath, [runtimeCliPath], {
     env: {
       ...process.env,
       OMC_JOB_ID: jobId,

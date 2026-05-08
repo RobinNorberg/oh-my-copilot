@@ -105,7 +105,7 @@ describe('team cli', () => {
         expect(result.status).toBe('running');
         expect(result.jobId).toMatch(/^omc-[a-z0-9]{1,20}$/);
         expect(result.pid).toBe(4242);
-        expect(mocks.spawn).toHaveBeenCalledWith('node', ['/tmp/runtime-cli.cjs'], expect.objectContaining({
+        expect(mocks.spawn).toHaveBeenCalledWith(process.execPath, ['/tmp/runtime-cli.cjs'], expect.objectContaining({
             detached: true,
             stdio: ['pipe', 'ignore', 'ignore'],
         }));
@@ -115,6 +115,26 @@ describe('team cli', () => {
         const savedJob = JSON.parse(readFileSync(join(jobsDir, `${result.jobId}.json`), 'utf-8'));
         expect(savedJob.status).toBe('running');
         expect(savedJob.pid).toBe(4242);
+    });
+    it('startTeamJob uses the current JS runtime instead of PATH node for runtime-cli', async () => {
+        const write = vi.fn();
+        const end = vi.fn();
+        const unref = vi.fn();
+        mocks.spawn.mockReturnValue({
+            pid: 5151,
+            stdin: { write, end },
+            unref,
+        });
+        const { startTeamJob } = await import('../team.js');
+        await startTeamJob({
+            teamName: 'runtime-team',
+            agentTypes: ['codex'],
+            tasks: [{ subject: 'one', description: 'desc' }],
+            cwd: '/tmp/project',
+        });
+        expect(mocks.spawn).toHaveBeenCalledTimes(1);
+        expect(mocks.spawn.mock.calls[0][0]).toBe(process.execPath);
+        expect(mocks.spawn.mock.calls[0][0]).not.toBe('node');
     });
     it('teamCommand start --json outputs valid JSON envelope', async () => {
         const write = vi.fn();
