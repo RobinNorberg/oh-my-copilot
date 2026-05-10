@@ -20,3 +20,14 @@ describe('omc-doctor skill (issue #2254)', () => {
     expect(content).toContain('If `copilot-instructions.md OMC version` != `Latest cached plugin version`: WARN - version drift detected');
   });
 });
+
+describe('omc-doctor skill package version diagnostic (issue #2981)', () => {
+  it('checks the canonical published npm package for latest version', () => {
+    const skillPath = join(process.cwd(), 'skills', 'omc-doctor', 'SKILL.md');
+    const content = readFileSync(skillPath, 'utf8');
+
+    // OMC publishes as `oh-my-copilot` (not upstream's `oh-my-claude-sisyphus`).
+    expect(content).toContain('npm view oh-my-copilot version');
+    expect(content).not.toContain('npm view oh-my-claudecode version');
+  });
+});
