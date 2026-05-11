@@ -4,7 +4,7 @@
  * Unified handler for persistent work modes: ultrawork, ralph, and todo-continuation.
  * This hook intercepts Stop events and enforces work continuation based on:
  * 1. Active ultrawork mode with pending todos
- * 2. Active ralph loop (until cancelled via /oh-my-copilot:cancel)
+ * 2. Active ralph loop (until cancelled via /oh-my-claudecode:cancel)
  * 3. Any pending todos (general enforcement)
  *
  * Priority order: Ralph > Ultrawork > Todo Continuation
