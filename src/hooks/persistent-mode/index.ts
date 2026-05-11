@@ -4,7 +4,7 @@
  * Unified handler for persistent work modes: ultrawork, ralph, and todo-continuation.
  * This hook intercepts Stop events and enforces work continuation based on:
  * 1. Active ultrawork mode with pending todos
- * 2. Active ralph loop (until cancelled via /oh-my-copilot:cancel)
+ * 2. Active ralph loop (until cancelled via /oh-my-claudecode:cancel)
  * 3. Any pending todos (general enforcement)
  *
  * Priority order: Ralph > Ultrawork > Todo Continuation
@@ -14,7 +14,7 @@ import { existsSync, readFileSync, unlinkSync, statSync, openSync, readSync, clo
 import { atomicWriteJsonSync } from '../../lib/atomic-write.js';
 import { join } from 'path';
 import { getHardMaxIterations } from '../../lib/security-config.js';
-import { getCopilotConfigDir } from '../../utils/config-dir.js';
+import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import { getGlobalOmcConfigCandidates } from '../../utils/paths.js';
 import {
   readUltraworkState,
@@ -47,7 +47,7 @@ import {
   clearVerificationState,
   type VerificationState,
 } from '../ralph/index.js';
-import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop } from '../todo-continuation/index.js';
+import { checkIncompleteTodos, getNextPendingTodo, StopContext, isUserAbort, isContextLimitStop, isRateLimitStop, isExplicitCancelCommand, isAuthenticationError, isScheduledWakeupStop, isOversizeToolResultRedirectStop } from '../todo-continuation/index.js';
 import { TODO_CONTINUATION_PROMPT } from '../../installer/hooks.js';
 import {
   isAutopilotActive
@@ -94,6 +94,8 @@ const MAX_TODO_CONTINUATION_ATTEMPTS = 5;
 const CANCEL_SIGNAL_TTL_MS = 30_000;
 const STALE_STATE_THRESHOLD_MS = 2 * 60 * 60 * 1000;
 const PENDING_ASYNC_STATE_STALE_MS = 24 * 60 * 60 * 1000;
+const OVERSIZE_TOOL_RESULT_REDIRECT_STOP_MAX = 3;
+const OVERSIZE_TOOL_RESULT_REDIRECT_STOP_TTL_MS = 5 * 60 * 1000;
 const TERMINAL_WORKFLOW_SLOT_MODES = new Set(['autopilot', 'ralph', 'ralplan']);
 const TERMINAL_WORKFLOW_PHASES = new Set([
   'complete',
@@ -865,7 +867,7 @@ function checkArchitectApprovalInTranscript(
   sessionId: string,
   verificationState?: Pick<VerificationState, 'request_id' | 'story_id' | 'critic_mode'>
 ): boolean {
-  const claudeDir = getCopilotConfigDir();
+  const claudeDir = getClaudeConfigDir();
   const possiblePaths = [join(claudeDir, 'sessions', sessionId, 'messages.json')];
 
   for (const transcriptPath of possiblePaths) {
@@ -889,7 +891,7 @@ function checkArchitectApprovalInTranscript(
  * Check for architect rejection in session transcript
  */
 function checkArchitectRejectionInTranscript(sessionId: string): { rejected: boolean; feedback: string } {
-  const claudeDir = getCopilotConfigDir();
+  const claudeDir = getClaudeConfigDir();
   const possiblePaths = [
     join(claudeDir, 'sessions', sessionId, 'transcript.md'),
     join(claudeDir, 'sessions', sessionId, 'messages.json'),
@@ -1167,7 +1169,7 @@ async function checkRalphLoop(
     writeRalphState(workingDir, state, sessionId);
     return {
       shouldBlock: true,
-      message: `[RALPH - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-copilot:ralph if needed.`,
+      message: `[RALPH - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-claudecode:ralph if needed.`,
       mode: 'ralph',
       metadata: { iteration: state.iteration, maxIterations: state.max_iterations }
     };
@@ -1214,7 +1216,7 @@ CRITICAL INSTRUCTIONS:
 1. Review your progress and the original task
 ${prdInstruction}
 3. Continue from where you left off
-4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files. If cancel fails, retry with \`/oh-my-copilot:cancel --force\`.
+4. When FULLY complete (after ${state.critic_mode === 'codex' ? 'Codex critic' : state.critic_mode === 'critic' ? 'Critic' : 'Architect'} verification), run \`/oh-my-claudecode:cancel\` to cleanly exit and clean up state files. If cancel fails, retry with \`/oh-my-claudecode:cancel --force\`.
 5. Do NOT stop until the task is truly done
 
 ${newState.prompt ? `Original task: ${truncatePromptForEcho(newState.prompt)}` : ''}
@@ -1404,7 +1406,7 @@ async function checkTeamPipeline(
 
 The team pipeline is active in phase "${phase}". Continue working on the team workflow.
 Do not stop until the pipeline reaches a terminal state (complete/failed/cancelled).
-When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
+When done, run \`/oh-my-claudecode:cancel\` to cleanly exit.
 
 </team-pipeline-continuation>
 
@@ -1427,7 +1429,6 @@ When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 const RALPLAN_STOP_BLOCKER_MAX = 30;
 const RALPLAN_STOP_BLOCKER_TTL_MS = 45 * 60 * 1000; // 45 min
 const RALPLAN_ACTIVE_AGENT_RECENCY_WINDOW_MS = 5_000;
-
 
 interface RalplanState {
   active: boolean;
@@ -1696,7 +1697,7 @@ async function checkRalplan(
 
 The ralplan consensus workflow is active. Continue the Planner/Architect/Critic loop.
 Do not stop until consensus is reached or the workflow completes.
-When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
+When done, run \`/oh-my-claudecode:cancel\` to cleanly exit.
 
 </ralplan-continuation>
 
@@ -1762,7 +1763,7 @@ async function checkUltrawork(
     deactivateUltrawork(workingDir, sessionId);
     return {
       shouldBlock: true,
-      message: '[ULTRAWORK - HARD LIMIT] Reached hard max iterations (' + hardMax + '). Mode auto-disabled. Restart with /oh-my-copilot:ultrawork if needed.',
+      message: '[ULTRAWORK - HARD LIMIT] Reached hard max iterations (' + hardMax + '). Mode auto-disabled. Restart with /oh-my-claudecode:ultrawork if needed.',
       mode: 'ultrawork',
       metadata: { reinforcementCount: state.reinforcement_count }
     };
@@ -1868,9 +1869,35 @@ export async function checkPersistentModes(
 ): Promise<PersistentModeResult> {
   const workingDir = resolveToWorktreeRoot(directory);
 
+  // Hard bypass invariants: never enforce stop continuation under any of these
+  // environment-level kill switches. bridge.ts also guards DISABLE_OMC and
+  // OMC_SKIP_HOOKS at hook-entry, but we re-check here so direct callers and
+  // nested helpers (team workers, tests) observe the same contract.
+  if (
+    process.env.DISABLE_OMC === '1' ||
+    process.env.DISABLE_OMC === 'true' ||
+    process.env.OMC_TEAM_WORKER
+  ) {
+    return { shouldBlock: false, message: '', mode: 'none' };
+  }
+  const skipHooks = (process.env.OMC_SKIP_HOOKS ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (skipHooks.includes('persistent-mode') || skipHooks.includes('stop-continuation')) {
+    return { shouldBlock: false, message: '', mode: 'none' };
+  }
+
+  // Best-effort: keep the workflow-slot ledger aligned with terminal mode
+  // state before using it for stop-gating authority. This both prunes old
+  // tombstones and tombstones live slots whose autopilot/Ralph/ralplan mode
+  // state already reached a terminal/inactive state through a path other than
+  // the Skill PostToolUse completion hook.
+  await reconcileTerminalWorkflowSlots(workingDir, sessionId);
+
   // CRITICAL: Never block context-limit/critical-context stops.
   // Blocking these causes a deadlock where Claude Code cannot compact or exit.
-  // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
+  // See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/213
   if (isCriticalContextStop(stopContext)) {
     return {
       shouldBlock: false,
@@ -1914,7 +1941,7 @@ export async function checkPersistentModes(
   // When the API returns 429 / quota-exhausted, Claude Code stops the session.
   // Blocking these stops creates an infinite retry loop: the hook injects a
   // continuation prompt → Claude hits the rate limit again → stops again → loops.
-  // Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
+  // Fix for: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/777
   if (isRateLimitStop(stopContext)) {
     return {
       shouldBlock: false,
@@ -1948,31 +1975,32 @@ export async function checkPersistentModes(
     };
   }
 
-  // Hard bypass invariants: never enforce stop continuation under any of these
-  // environment-level kill switches. bridge.ts also guards DISABLE_OMC and
-  // OMC_SKIP_HOOKS at hook-entry, but we re-check here so direct callers and
-  // nested helpers (team workers, tests) observe the same contract.
-  if (
-    process.env.DISABLE_OMC === '1' ||
-    process.env.DISABLE_OMC === 'true' ||
-    process.env.OMC_TEAM_WORKER
-  ) {
-    return { shouldBlock: false, message: '', mode: 'none' };
-  }
-  const skipHooks = (process.env.OMC_SKIP_HOOKS ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (skipHooks.includes('persistent-mode') || skipHooks.includes('stop-continuation')) {
-    return { shouldBlock: false, message: '', mode: 'none' };
-  }
+  // Oversized tool outputs can cause Claude Code to end the current turn after
+  // redirecting the payload to a `tool-results/*.txt` file pointer. That stop is
+  // not a real idle/stall signal: injecting a visible Ralph/Ultrawork/todo
+  // continuation banner immediately after the redirect spams the transcript
+  // while the agent is still mid-task. Suppress only a small consecutive window
+  // of such redirects; if redirects keep repeating, fall through to the normal
+  // persistence checks so genuine stalls still get re-enforced.
+  if (isOversizeToolResultRedirectStop(stopContext)) {
+    const redirectStopCount = readStopBreaker(
+      workingDir,
+      'oversize-tool-result-redirect',
+      sessionId,
+      OVERSIZE_TOOL_RESULT_REDIRECT_STOP_TTL_MS,
+    ) + 1;
+    writeStopBreaker(workingDir, 'oversize-tool-result-redirect', redirectStopCount, sessionId);
 
-  // Best-effort: keep the workflow-slot ledger aligned with terminal mode
-  // state before using it for stop-gating authority. This both prunes old
-  // tombstones and tombstones live slots whose autopilot/Ralph/ralplan mode
-  // state already reached a terminal/inactive state through a path other than
-  // the Skill PostToolUse completion hook.
-  await reconcileTerminalWorkflowSlots(workingDir, sessionId);
+    if (redirectStopCount <= OVERSIZE_TOOL_RESULT_REDIRECT_STOP_MAX) {
+      return {
+        shouldBlock: false,
+        message: '',
+        mode: 'none'
+      };
+    }
+  } else {
+    writeStopBreaker(workingDir, 'oversize-tool-result-redirect', 0, sessionId);
+  }
 
   // If this session owns pending async work, quiescence is intentional: Claude
   // Code will notify on background completion or resume via ScheduleWakeup.
@@ -1985,21 +2013,6 @@ export async function checkPersistentModes(
     };
   }
 
-  // Best-effort: prune expired tombstones so stale completion markers do not
-  // linger past their TTL and mask a fresh invocation.
-  try {
-    const { readSkillActiveStateNormalized, pruneExpiredWorkflowSkillTombstones, writeSkillActiveStateCopies } =
-      await import('../skill-state/index.js');
-    const current = readSkillActiveStateNormalized(workingDir, sessionId);
-    const pruned = pruneExpiredWorkflowSkillTombstones(current);
-    if (pruned !== current) {
-      writeSkillActiveStateCopies(workingDir, pruned, sessionId);
-    }
-  } catch {
-    // Skill-state module unavailable or ledger unreadable — continue with
-    // legacy priority enforcement.
-  }
-
   // First, check for incomplete todos (we need this info for ultrawork)
   // Note: stopContext already checked above, but pass it for consistency
   const todoResult = await checkIncompleteTodos(sessionId, workingDir, stopContext);
@@ -2009,6 +2022,8 @@ export async function checkPersistentModes(
   // `resolveAuthoritativeWorkflowSkill()` returns the root of the live chain
   // (autopilot in `autopilot → ralph`), so stop enforcement bubbles up to the
   // live parent rather than the child currently executing beneath it.
+  // Tombstoned slots are tracked separately so stale mode files from crashed
+  // sessions don't re-arm priority checks until TTL prune or fresh activation.
   const tombstonedWorkflowModes = new Set<string>();
   let workflowAuthority: string | null = null;
   try {
@@ -2025,9 +2040,12 @@ export async function checkPersistentModes(
   }
 
   // Authority-first ordering for nested workflow runs.
+  //
+  // `resolveAuthoritativeWorkflowSkill()` returns the root of the live chain.
   // In `autopilot → ralph`, autopilot is the authoritative parent while ralph
   // runs beneath it — stop enforcement must resolve to the live parent so its
-  // iteration accounting keeps advancing.
+  // iteration accounting keeps advancing. The legacy ordering (ralph > autopilot)
+  // still applies whenever the ledger is silent or authority already is ralph.
   const autopilotPriorityFirst = workflowAuthority === 'autopilot';
 
   const runAutopilotPriority = async (): Promise<PersistentModeResult | null> => {
@@ -2082,6 +2100,9 @@ export async function checkPersistentModes(
   }
 
   // Priority 1.7: Ralplan (standalone consensus planning)
+  // Ralplan consensus loops (Planner/Architect/Critic) need hard-blocking.
+  // When ralplan runs under ralph, checkRalphLoop() handles it (Priority 1).
+  // Return ANY non-null result (including circuit breaker shouldBlock=false with message).
   // Suppressed when the ralplan slot is tombstoned so noisy re-handoff stops
   // on completion until the tombstone TTL expires or a fresh slot reopens.
   if (!tombstonedWorkflowModes.has('ralplan')) {
@@ -2092,6 +2113,9 @@ export async function checkPersistentModes(
   }
 
   // Priority 1.8: Team Pipeline (standalone team mode)
+  // When team runs without ralph, this provides stop-hook blocking.
+  // When team runs with ralph, checkRalphLoop() handles it (Priority 1).
+  // Return ANY non-null result (including circuit breaker shouldBlock=false with message).
   if (!tombstonedWorkflowModes.has('team')) {
     const teamResult = await checkTeamPipeline(sessionId, workingDir, cancelInProgress);
     if (teamResult) {
