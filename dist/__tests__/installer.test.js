@@ -136,7 +136,12 @@ describe('Installer Constants', () => {
             expect(filenames.length).toBe(uniqueFilenames.size);
         });
     });
-    describe('Commands directory removed (#582)', () => {
+    // Superseded by upstream #2944 port (PR #136): commands/ directory was
+    // re-introduced as the slash-command wrapper surface for non-default skills.
+    // OMC kept skills as a glob (vs upstream's allowlist), so commands/ exists
+    // here as additive routing. The original #582 concern (self-referential
+    // stubs) is still enforced by the next describe block below.
+    describe.skip('Commands directory removed (#582)', () => {
         it('should NOT have a commands/ directory in the package root', () => {
             const commandsDir = join(getPackageDir(), 'commands');
             expect(existsSync(commandsDir)).toBe(false);

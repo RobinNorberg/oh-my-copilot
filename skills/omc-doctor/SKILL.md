@@ -74,7 +74,25 @@ grep -o "copilot-[^ )]*\.md" "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/copilot-inst
 - If `OMC:VERSION` marker is missing from deterministic copilot-instructions source scan (base + referenced companion): WARN - cannot verify copilot-instructions.md freshness
 - If `copilot-instructions.md OMC version` != `Latest cached plugin version`: WARN - version drift detected (run `omcp update` or `omcp setup`)
 
-### Step 5: Check for Stale Plugin Cache
+### Step 5: Check Ralph Ruby Dependency
+
+Ralph workflows require Ruby. Check for Ruby explicitly so fresh installations get actionable guidance instead of a later opaque Ralph failure.
+
+```bash
+if command -v ruby >/dev/null 2>&1; then
+  echo "Ruby for Ralph: $(ruby --version 2>/dev/null | head -1)"
+else
+  echo "Ruby for Ralph: MISSING"
+  echo "Install Ruby before using Ralph. Ubuntu/Debian: sudo apt update && sudo apt install ruby-full"
+  echo "macOS: brew install ruby"
+fi
+```
+
+**Diagnosis**:
+- If Ruby is found: OK - Ralph dependency present
+- If Ruby is missing: WARN - Ralph workflows may fail until Ruby is installed
+
+### Step 6: Check for Stale Plugin Cache
 
 ```bash
 # Count versions in cache (cross-platform)
@@ -84,7 +102,7 @@ node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=pro
 **Diagnosis**:
 - If > 1 version: WARN - multiple cached versions (cleanup recommended)
 
-### Step 6: Check for Legacy Curl-Installed Content
+### Step 7: Check for Legacy Curl-Installed Content
 
 Check for legacy agents, commands, and skills installed via curl (before plugin system).
 **Important**: Only flag files whose names match actual plugin-provided names. Do NOT flag user's custom agents/commands/skills that are unrelated to OMC.
@@ -168,6 +186,7 @@ After running all checks, output a report:
 | Legacy Hooks (settings.json) | OK/CRITICAL | ... |
 | Legacy Scripts (~/.copilot/hooks/) | OK/WARN | ... |
 | copilot-instructions.md | OK/WARN/CRITICAL | ... |
+| Ralph Ruby Dependency | OK/WARN | ... |
 | Plugin Cache | OK/WARN | ... |
 | Legacy Agents (~/.copilot/agents/) | OK/WARN | ... |
 | Legacy Commands (~/.copilot/commands/) | OK/WARN | ... |
