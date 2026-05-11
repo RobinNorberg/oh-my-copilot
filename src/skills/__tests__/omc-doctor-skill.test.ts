@@ -20,3 +20,28 @@ describe('omc-doctor skill (issue #2254)', () => {
     expect(content).toContain('If `copilot-instructions.md OMC version` != `Latest cached plugin version`: WARN - version drift detected');
   });
 });
+
+describe('omc-doctor skill package version diagnostic (issue #2981)', () => {
+  it('checks the canonical published npm package for latest version', () => {
+    const skillPath = join(process.cwd(), 'skills', 'omc-doctor', 'SKILL.md');
+    const content = readFileSync(skillPath, 'utf8');
+
+    // OMC publishes as `oh-my-copilot` (not upstream's `oh-my-claude-sisyphus`).
+    expect(content).toContain('npm view oh-my-copilot version');
+    expect(content).not.toContain('npm view oh-my-claudecode version');
+  });
+});
+
+
+describe('omc-doctor skill Ralph Ruby dependency check (issue #2969)', () => {
+  it('documents a narrow Ruby check with actionable Ralph guidance', () => {
+    const skillPath = join(process.cwd(), 'skills', 'omc-doctor', 'SKILL.md');
+    const content = readFileSync(skillPath, 'utf8');
+
+    expect(content).toContain('Check Ralph Ruby Dependency');
+    expect(content).toContain('Ruby for Ralph: MISSING');
+    expect(content).toContain('Ralph workflows require Ruby');
+    expect(content).toContain('sudo apt update && sudo apt install ruby-full');
+    expect(content).toContain('Ralph Ruby Dependency');
+  });
+});

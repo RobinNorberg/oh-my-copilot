@@ -214,8 +214,8 @@ describe('Issue #2945: planning modules require explicit execution consent', () 
         expect(escalation).toBeDefined();
         expect(escalation).toContain('without explicitly naming an execution path');
         expect(escalation).toContain('pending approval');
-        expect(escalation).toContain('Do NOT invoke `Skill("oh-my-claudecode:ralph")`');
-        expect(escalation).not.toMatch(/skip planning[\s\S]{0,120}MUST[\s\S]{0,80}Skill\("oh-my-claudecode:ralph"\)/i);
+        expect(escalation).toContain('Do NOT invoke `Skill("oh-my-copilot:ralph")`');
+        expect(escalation).not.toMatch(/skip planning[\s\S]{0,120}MUST[\s\S]{0,80}Skill\("oh-my-copilot:ralph"\)/i);
     });
     it('ralplan documents the same planning/execution boundary', () => {
         const skill = getBuiltinSkill('ralplan');

@@ -37,9 +37,10 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (53 canonical skills)', () => {
+    it('should return correct number of skills (54 canonical + aliases)', () => {
       const skills = createBuiltinSkills();
-      expect(skills).toHaveLength(53);
+      // 54 entries: 53 canonical OMC skills + 1 cancel-ralph alias added in #2967
+      expect(skills).toHaveLength(54);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -94,6 +95,7 @@ describe('Builtin Skills', () => {
         'autoresearch',
         'autopilot',
         'cancel',
+        'cancel-ralph',
         'cccg',
         'configure-notifications',
         'critique',
@@ -154,6 +156,23 @@ describe('Builtin Skills', () => {
       const skillNames = skills.map((s) => s.name);
       const uniqueNames = new Set(skillNames);
       expect(uniqueNames.size).toBe(skillNames.length);
+    });
+
+    it('exposes cancel-ralph as a deprecated alias for canonical cancel', () => {
+      const cancel = getBuiltinSkill('cancel');
+      const cancelRalph = getBuiltinSkill('cancel-ralph');
+
+      expect(cancel).toBeDefined();
+      expect(cancel!.aliasOf).toBeUndefined();
+      expect(cancel!.aliases).toContain('cancel-ralph');
+      expect(cancelRalph).toBeDefined();
+      expect(cancelRalph!.aliasOf).toBe('cancel');
+      expect(cancelRalph!.deprecatedAlias).toBe(true);
+      expect(cancelRalph!.deprecationMessage).toContain('Use "cancel" instead');
+      expect(cancelRalph!.template).toBe(cancel!.template);
+      expect(listBuiltinSkillNames()).toContain('cancel');
+      expect(listBuiltinSkillNames()).not.toContain('cancel-ralph');
+      expect(listBuiltinSkillNames({ includeAliases: true })).toContain('cancel-ralph');
     });
 
     it('exposes learner as a deprecated alias for canonical skillify', () => {
@@ -701,8 +720,8 @@ describe('Builtin Skills', () => {
     it('should include aliases when explicitly requested', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
-      // swarm alias removed in #1131, psm alias restored in v4.11.6
-      expect(names).toHaveLength(53);
+      // swarm alias removed in #1131; cancel-ralph (upstream #2967), psm, and learner aliases still exist
+      expect(names).toHaveLength(54);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');
@@ -710,6 +729,7 @@ describe('Builtin Skills', () => {
       expect(names).toContain('visual-verdict');
       expect(names).toContain('wiki');
       expect(names).not.toContain('swarm');
+      expect(names).toContain('cancel-ralph');
       expect(names).toContain('psm');
       expect(names).toContain('learner');
     });
