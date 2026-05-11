@@ -693,15 +693,15 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         expect(existsSync(join(runtimeDir, 'themes'))).toBe(true);
         expect(readFileSync(join(runtimeDir, 'themes', 'custom-theme.json'), 'utf-8')).toBe('{"name":"custom"}');
     });
-    it('mirrors Linux credential file as a symlink without copying credential content', () => {
-        const configDir = join(tempRoot, '.claude');
+    it.skipIf(process.platform === 'win32')('mirrors Linux credential file as a symlink without copying credential content', () => {
+        const configDir = join(tempRoot, '.copilot-cred');
         mkdirSync(configDir, { recursive: true });
         const credentialsPath = join(configDir, '.credentials.json');
         const credentialContent = '{"accessToken":"test-only-token"}';
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
         const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+        writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
         writeFileSync(credentialsPath, credentialContent);
         try {
             const runtimeDir = prepareOmcLaunchConfigDir(configDir);
@@ -718,7 +718,7 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
             errorSpy.mockRestore();
         }
     });
-    it('does not copy credential content when credential symlink creation fails', async () => {
+    it.skipIf(process.platform === 'win32')('does not copy credential content when credential symlink creation fails', async () => {
         vi.resetModules();
         const actualFs = await vi.importActual('node:fs');
         const copyFileSyncSpy = vi.fn(actualFs.copyFileSync);
@@ -731,10 +731,10 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
         }));
         try {
             const { prepareOmcLaunchConfigDir: prepareWithFailedSymlink } = await import('../launch.js');
-            const configDir = join(tempRoot, '.claude');
+            const configDir = join(tempRoot, '.copilot-cred-symlink');
             mkdirSync(configDir, { recursive: true });
             const credentialsPath = join(configDir, '.credentials.json');
-            writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+            writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
             writeFileSync(credentialsPath, '{"accessToken":"test-only-token"}');
             const runtimeDir = prepareWithFailedSymlink(configDir);
             const runtimeCredentialsPath = join(runtimeDir, '.credentials.json');
