@@ -86397,6 +86397,9 @@ function listBuiltinSkillNames(options) {
   }
   return skills.filter((s) => !s.aliasOf).map((s) => s.name);
 }
+function getSkillsDir() {
+  return SKILLS_DIR2;
+}
 
 // src/hooks/auto-slash-command/executor.ts
 var COPILOT_CONFIG_DIR3 = getConfigDir();
@@ -87723,6 +87726,101 @@ function checkEnvFlags() {
   }
   return { disableOmc, skipHooks };
 }
+var SETUP_FALLBACK_SKILL_NAMES = /* @__PURE__ */ new Set(["omc-reference"]);
+function parseSemverLikeVersion(version3) {
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version3)) {
+    return null;
+  }
+  return version3.split(/[+-]/, 1)[0].split(".").map((part) => Number.parseInt(part, 10));
+}
+function compareSemverLikeVersions(a, b) {
+  const parsedA = parseSemverLikeVersion(a);
+  const parsedB = parseSemverLikeVersion(b);
+  if (!parsedA || !parsedB) {
+    return 0;
+  }
+  for (let index = 0; index < 3; index += 1) {
+    const delta = parsedA[index] - parsedB[index];
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+  return 0;
+}
+function isValidSetupPluginRoot(pluginRoot) {
+  return (0, import_fs92.existsSync)((0, import_path109.join)(pluginRoot, "docs", "CLAUDE.md"));
+}
+function readInstalledPluginRoots() {
+  const installedPluginsPath = (0, import_path109.join)(getConfigDir(), "plugins", "installed_plugins.json");
+  if (!(0, import_fs92.existsSync)(installedPluginsPath)) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse((0, import_fs92.readFileSync)(installedPluginsPath, "utf-8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return [];
+    }
+    const plugins = "plugins" in parsed && parsed.plugins && typeof parsed.plugins === "object" && !Array.isArray(parsed.plugins) ? parsed.plugins : parsed;
+    return Object.entries(plugins).filter(([key]) => key.startsWith("oh-my-copilot")).flatMap(([, value]) => Array.isArray(value) ? value : []).map((entry) => entry && typeof entry === "object" && "installPath" in entry ? entry.installPath : null).filter((installPath) => typeof installPath === "string" && installPath.length > 0);
+  } catch {
+    return [];
+  }
+}
+function findLatestSiblingPluginRoot(pluginRoot) {
+  const cacheBase = (0, import_path109.dirname)(pluginRoot);
+  if (!(0, import_fs92.existsSync)(cacheBase)) {
+    return null;
+  }
+  try {
+    return (0, import_fs92.readdirSync)(cacheBase).filter((entry) => parseSemverLikeVersion(entry)).map((entry) => (0, import_path109.join)(cacheBase, entry)).filter(isValidSetupPluginRoot).sort((a, b) => compareSemverLikeVersions((0, import_path109.basename)(b), (0, import_path109.basename)(a)))[0] || null;
+  } catch {
+    return null;
+  }
+}
+function getSetupFallbackCanonicalSkillPaths(baseName) {
+  const currentSkillsDir = getSkillsDir();
+  const currentPluginRoot = (0, import_path109.dirname)(currentSkillsDir);
+  const roots = [
+    currentPluginRoot,
+    process.env.CLAUDE_PLUGIN_ROOT,
+    ...readInstalledPluginRoots()
+  ].filter((root) => typeof root === "string" && root.length > 0);
+  for (const root of [...roots]) {
+    const latestSibling = findLatestSiblingPluginRoot(root);
+    if (latestSibling) {
+      roots.push(latestSibling);
+    }
+  }
+  const seen = /* @__PURE__ */ new Set();
+  return [
+    (0, import_path109.join)(currentSkillsDir, baseName, "SKILL.md"),
+    ...roots.flatMap((root) => [(0, import_path109.join)(root, "skills", baseName, "SKILL.md")])
+  ].filter((path22) => {
+    if (seen.has(path22)) {
+      return false;
+    }
+    seen.add(path22);
+    return true;
+  });
+}
+function isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName) {
+  if (!SETUP_FALLBACK_SKILL_NAMES.has(baseName)) {
+    return false;
+  }
+  if (entry.toLowerCase() !== baseName) {
+    return false;
+  }
+  const installedSkillPath = (0, import_path109.join)(legacySkillsDir, entry, "SKILL.md");
+  if (!(0, import_fs92.existsSync)(installedSkillPath)) {
+    return false;
+  }
+  try {
+    const installedContent = (0, import_fs92.readFileSync)(installedSkillPath, "utf-8");
+    return getSetupFallbackCanonicalSkillPaths(baseName).some((canonicalSkillPath) => (0, import_fs92.existsSync)(canonicalSkillPath) && installedContent === (0, import_fs92.readFileSync)(canonicalSkillPath, "utf-8"));
+  } catch {
+    return false;
+  }
+}
 function checkLegacySkills() {
   const legacySkillsDir = (0, import_path109.join)(getConfigDir(), "skills");
   if (!(0, import_fs92.existsSync)(legacySkillsDir)) return [];
@@ -87735,6 +87833,9 @@ function checkLegacySkills() {
     for (const entry of entries) {
       const baseName = entry.replace(/\.md$/i, "").toLowerCase();
       if (pluginSkillNames.has(baseName)) {
+        if (isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName)) {
+          continue;
+        }
         collisions.push({ name: baseName, path: (0, import_path109.join)(legacySkillsDir, entry) });
       }
     }

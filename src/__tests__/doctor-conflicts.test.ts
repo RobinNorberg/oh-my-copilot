@@ -13,6 +13,7 @@ import { homedir } from 'os';
 const TEST_CLAUDE_DIR = join(homedir(), '.copilot-test-doctor-conflicts');
 const TEST_PROJECT_DIR = join(homedir(), '.copilot-test-doctor-project');
 const TEST_PROJECT_CLAUDE_DIR = join(TEST_PROJECT_DIR, '.copilot');
+const TEST_BUILTIN_SKILLS_DIR = join(TEST_PROJECT_DIR, 'builtin-skills');
 
 // Mock getCopilotConfigDir/getClaudeConfigDir before importing the module under test
 // Note: vi.mock is hoisted, so we can't reference TEST_CLAUDE_DIR directly.
@@ -28,13 +29,33 @@ vi.mock('../utils/config-dir.js', async () => {
   };
 });
 
+// Holds the builtin skills dir path used by the mocked getSkillsDir. Tests that
+// need to simulate an upgraded plugin cache layout override this before calling
+// the legacy skills check.
+const builtinSkillsState = { dir: TEST_BUILTIN_SKILLS_DIR };
+
 // Mock builtin skills to return a known list for testing
 vi.mock('../features/builtin-skills/skills.js', () => ({
+  getSkillsDir: () => builtinSkillsState.dir,
   listBuiltinSkillNames: ({ includeAliases }: { includeAliases?: boolean } = {}) => {
-    const names = ['autopilot', 'ralph', 'ultrawork', 'plan', 'team', 'cancel', 'note'];
+    const names = ['autopilot', 'ralph', 'ultrawork', 'plan', 'team', 'cancel', 'note', 'omc-reference'];
     return names;
   },
 }));
+
+function writeCanonicalOmcReferenceSkill(content = '# Canonical omc-reference skill\n'): string {
+  const skillPath = join(builtinSkillsState.dir, 'omc-reference', 'SKILL.md');
+  mkdirSync(join(builtinSkillsState.dir, 'omc-reference'), { recursive: true });
+  writeFileSync(skillPath, content);
+  return content;
+}
+
+function writePluginRoot(root: string, content: string): void {
+  mkdirSync(join(root, 'docs'), { recursive: true });
+  mkdirSync(join(root, 'skills', 'omc-reference'), { recursive: true });
+  writeFileSync(join(root, 'docs', 'CLAUDE.md'), '<!-- OMG:START -->\n# OMC\n<!-- OMG:END -->\n');
+  writeFileSync(join(root, 'skills', 'omc-reference', 'SKILL.md'), content);
+}
 
 // Import after mock setup
 import { checkHookConflicts, checkCopilotMdStatus, checkLegacySkills, runConflictCheck } from '../cli/commands/doctor-conflicts.js';
@@ -360,11 +381,13 @@ describe('doctor-conflicts: legacy skills collision check (issue #1101)', () => 
     }
     mkdirSync(TEST_CLAUDE_DIR, { recursive: true });
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
+    builtinSkillsState.dir = TEST_BUILTIN_SKILLS_DIR;
     cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(TEST_PROJECT_DIR);
   });
 
   afterEach(() => {
     cwdSpy.mockRestore();
+    delete process.env.CLAUDE_PLUGIN_ROOT;
     for (const dir of [TEST_CLAUDE_DIR, TEST_PROJECT_DIR]) {
       if (existsSync(dir)) {
         rmSync(dir, { recursive: true, force: true });
@@ -418,6 +441,86 @@ describe('doctor-conflicts: legacy skills collision check (issue #1101)', () => 
     const collisions = checkLegacySkills();
     expect(collisions).toHaveLength(1);
     expect(collisions[0].name).toBe('team');
+  });
+
+  it('does NOT flag setup-installed omc-reference fallback when it matches the bundled skill (issue #2992)', () => {
+    const canonicalContent = writeCanonicalOmcReferenceSkill();
+    const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
+    mkdirSync(join(skillsDir, 'omc-reference'), { recursive: true });
+    writeFileSync(join(skillsDir, 'omc-reference', 'SKILL.md'), canonicalContent);
+
+    const collisions = checkLegacySkills();
+    expect(collisions).toHaveLength(0);
+  });
+
+  it('does NOT flag setup-installed omc-reference fallback when setup resolved a newer active cache root (issue #2992)', () => {
+    const oldContent = '# Old omc-reference skill\n';
+    const newerContent = '# Newer setup-installed omc-reference skill\n';
+    const cacheBase = join(TEST_PROJECT_DIR, 'plugin-cache', 'oh-my-copilot');
+    const oldPluginRoot = join(cacheBase, '4.8.2');
+    const newerPluginRoot = join(cacheBase, '4.9.0');
+    builtinSkillsState.dir = join(oldPluginRoot, 'skills');
+    writePluginRoot(oldPluginRoot, oldContent);
+    writePluginRoot(newerPluginRoot, newerContent);
+    mkdirSync(join(TEST_CLAUDE_DIR, 'plugins'), { recursive: true });
+    writeFileSync(join(TEST_CLAUDE_DIR, 'plugins', 'installed_plugins.json'), JSON.stringify({
+      'oh-my-copilot@omcp': [{ installPath: oldPluginRoot, version: '4.8.2' }],
+    }));
+    const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
+    mkdirSync(join(skillsDir, 'omc-reference'), { recursive: true });
+    writeFileSync(join(skillsDir, 'omc-reference', 'SKILL.md'), newerContent);
+
+    const collisions = checkLegacySkills();
+    expect(collisions).toHaveLength(0);
+  });
+
+  it('does NOT flag setup-installed omc-reference fallback when it matches CLAUDE_PLUGIN_ROOT (issue #2992)', () => {
+    const currentContent = '# Current omc-reference skill\n';
+    const sessionContent = '# Session root omc-reference skill\n';
+    const sessionPluginRoot = join(TEST_PROJECT_DIR, 'session-plugin-root');
+    writeCanonicalOmcReferenceSkill(currentContent);
+    writePluginRoot(sessionPluginRoot, sessionContent);
+    process.env.CLAUDE_PLUGIN_ROOT = sessionPluginRoot;
+    const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
+    mkdirSync(join(skillsDir, 'omc-reference'), { recursive: true });
+    writeFileSync(join(skillsDir, 'omc-reference', 'SKILL.md'), sessionContent);
+
+    const collisions = checkLegacySkills();
+    expect(collisions).toHaveLength(0);
+  });
+
+  it('flags user-modified omc-reference fallback content as a real collision (issue #2992)', () => {
+    writeCanonicalOmcReferenceSkill('# Canonical omc-reference skill\n');
+    const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
+    mkdirSync(join(skillsDir, 'omc-reference'), { recursive: true });
+    writeFileSync(join(skillsDir, 'omc-reference', 'SKILL.md'), '# Modified omc-reference skill\n');
+
+    const collisions = checkLegacySkills();
+    expect(collisions).toHaveLength(1);
+    expect(collisions[0].name).toBe('omc-reference');
+  });
+
+  it('still flags non-contract omc-reference.md legacy files (issue #2992)', () => {
+    writeCanonicalOmcReferenceSkill();
+    const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
+    mkdirSync(skillsDir, { recursive: true });
+    writeFileSync(join(skillsDir, 'omc-reference.md'), '# Legacy omc-reference markdown file\n');
+
+    const collisions = checkLegacySkills();
+    expect(collisions).toHaveLength(1);
+    expect(collisions[0].name).toBe('omc-reference');
+  });
+
+  it('reports no conflicts for the setup-installed omc-reference fallback (issue #2992)', () => {
+    const canonicalContent = writeCanonicalOmcReferenceSkill();
+    const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
+    mkdirSync(join(skillsDir, 'omc-reference'), { recursive: true });
+    writeFileSync(join(skillsDir, 'omc-reference', 'SKILL.md'), canonicalContent);
+    writeFileSync(join(TEST_CLAUDE_DIR, 'copilot-instructions.md'), '<!-- OMG:START -->\n# OMC\n<!-- OMG:END -->\n');
+
+    const report = runConflictCheck();
+    expect(report.legacySkills).toHaveLength(0);
+    expect(report.hasConflicts).toBe(false);
   });
 
   it('reports hasConflicts when legacy skills collide (issue #1101)', () => {
