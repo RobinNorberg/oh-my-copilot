@@ -5,6 +5,7 @@ vi.mock('child_process', async (importOriginal) => {
   return {
     ...actual,
     execSync: vi.fn(),
+    execFileSync: vi.fn(),
   };
 });
 
@@ -32,7 +33,7 @@ vi.mock('fs', async () => {
   };
 });
 
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
@@ -46,6 +47,7 @@ import {
 } from '../features/auto-update.js';
 
 const mockedExecSync = vi.mocked(execSync);
+const mockedExecFileSync = vi.mocked(execFileSync);
 const mockedCpSync = vi.mocked(cpSync);
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedMkdirSync = vi.mocked(mkdirSync);
@@ -298,6 +300,362 @@ describe('auto-update reconciliation', () => {
       forceHooks: false,
       refreshHooksInPlugin: false,
     });
+  });
+
+  it('restores global Copilot CLI when npm removes an existing global install during update', async () => {
+    mockPlatform('linux');
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    process.env.OMC_UPDATE_RECONCILE = '1';
+    const savedEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+    delete process.env.CLAUDE_CODE_ENTRYPOINT;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v4.1.5',
+        name: '4.1.5',
+        published_at: '2026-02-09T00:00:00.000Z',
+        html_url: 'https://example.com/release',
+        body: 'notes',
+        prerelease: false,
+        draft: false,
+      }),
+    }));
+
+    let copilotCliPackageCheckCount = 0;
+    mockedExistsSync.mockImplementation((path: Parameters<typeof existsSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized === '/usr/lib/node_modules/@github/copilot/package.json') {
+        copilotCliPackageCheckCount += 1;
+        return copilotCliPackageCheckCount === 1 || copilotCliPackageCheckCount === 3;
+      }
+      if (normalized.endsWith('/plugins/marketplaces/omg')) {
+        return false;
+      }
+      if (normalized.endsWith('/plugins/cache/omc/oh-my-copilot')) {
+        return false;
+      }
+      return true;
+    });
+
+    mockedReadFileSync.mockImplementation((path: Parameters<typeof readFileSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized === '/usr/lib/node_modules/@github/copilot/package.json') {
+        return JSON.stringify({ version: '1.2.3' });
+      }
+      if (normalized.includes('.omc-version.json')) {
+        return JSON.stringify({
+          version: '4.1.5',
+          installedAt: '2026-02-09T00:00:00.000Z',
+          installMethod: 'npm',
+        });
+      }
+      return '';
+    });
+
+    mockedExecSync.mockImplementation((command: string) => {
+      if (command === 'npm root -g') {
+        return '/usr/lib/node_modules\n';
+      }
+      if (command === 'npm install -g oh-my-copilot@latest') {
+        return '';
+      }
+      throw new Error(`Unexpected execSync command: ${command}`);
+    });
+
+    mockedExecFileSync.mockImplementation((command: string, args?: readonly string[]) => {
+      if (command === 'npm' && args?.join(' ') === 'install -g @github/copilot@1.2.3') {
+        return '';
+      }
+      throw new Error(`Unexpected execFileSync command: ${command} ${args?.join(' ') ?? ''}`);
+    });
+
+    try {
+      const result = await performUpdate({ verbose: true });
+
+      expect(result.success).toBe(true);
+      expect(mockedExecFileSync).toHaveBeenCalledWith('npm', ['install', '-g', '@github/copilot@1.2.3'], expect.any(Object));
+      expect(consoleLogSpy).toHaveBeenCalledWith('[omc update] Restoring global @github/copilot@1.2.3 after npm update...');
+      expect(consoleLogSpy).toHaveBeenCalledWith('[omc update] Restored global @github/copilot');
+    } finally {
+      consoleLogSpy.mockRestore();
+      delete process.env.OMC_UPDATE_RECONCILE;
+      if (savedEntrypoint !== undefined) process.env.CLAUDE_CODE_ENTRYPOINT = savedEntrypoint;
+      else delete process.env.CLAUDE_CODE_ENTRYPOINT;
+    }
+  });
+
+  it('does not install global Copilot CLI when it was absent before update', async () => {
+    mockPlatform('linux');
+    process.env.OMC_UPDATE_RECONCILE = '1';
+    const savedEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+    delete process.env.CLAUDE_CODE_ENTRYPOINT;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v4.1.5',
+        name: '4.1.5',
+        published_at: '2026-02-09T00:00:00.000Z',
+        html_url: 'https://example.com/release',
+        body: 'notes',
+        prerelease: false,
+        draft: false,
+      }),
+    }));
+
+    mockedExistsSync.mockImplementation((path: Parameters<typeof existsSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized === '/usr/lib/node_modules/@github/copilot/package.json') {
+        return false;
+      }
+      if (normalized.endsWith('/plugins/marketplaces/omg')) {
+        return false;
+      }
+      if (normalized.endsWith('/plugins/cache/omc/oh-my-copilot')) {
+        return false;
+      }
+      return true;
+    });
+
+    mockedExecSync.mockImplementation((command: string) => {
+      if (command === 'npm root -g') {
+        return '/usr/lib/node_modules\n';
+      }
+      if (command === 'npm install -g oh-my-copilot@latest') {
+        return '';
+      }
+      throw new Error(`Unexpected execSync command: ${command}`);
+    });
+
+    try {
+      const result = await performUpdate({ verbose: false });
+
+      expect(result.success).toBe(true);
+      expect(mockedExecSync).not.toHaveBeenCalledWith('npm install -g @github/copilot@latest', expect.any(Object));
+      expect(mockedExecFileSync).not.toHaveBeenCalledWith('npm', ['install', '-g', expect.stringContaining('@github/copilot@')], expect.any(Object));
+    } finally {
+      delete process.env.OMC_UPDATE_RECONCILE;
+      if (savedEntrypoint !== undefined) process.env.CLAUDE_CODE_ENTRYPOINT = savedEntrypoint;
+      else delete process.env.CLAUDE_CODE_ENTRYPOINT;
+    }
+  });
+
+  it('does not install global Copilot CLI when pre-update detection is unknown', async () => {
+    mockPlatform('linux');
+    process.env.OMC_UPDATE_RECONCILE = '1';
+    const savedEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+    delete process.env.CLAUDE_CODE_ENTRYPOINT;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v4.1.5',
+        name: '4.1.5',
+        published_at: '2026-02-09T00:00:00.000Z',
+        html_url: 'https://example.com/release',
+        body: 'notes',
+        prerelease: false,
+        draft: false,
+      }),
+    }));
+
+    mockedExistsSync.mockImplementation((path: Parameters<typeof existsSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized.endsWith('/plugins/marketplaces/omg')) {
+        return false;
+      }
+      if (normalized.endsWith('/plugins/cache/omc/oh-my-copilot')) {
+        return false;
+      }
+      return true;
+    });
+
+    let npmRootCalls = 0;
+    mockedExecSync.mockImplementation((command: string) => {
+      if (command === 'npm root -g') {
+        npmRootCalls += 1;
+        if (npmRootCalls === 1) {
+          throw new Error('cannot inspect global root');
+        }
+        return '/usr/lib/node_modules\n';
+      }
+      if (command === 'npm install -g oh-my-copilot@latest') {
+        return '';
+      }
+      throw new Error(`Unexpected execSync command: ${command}`);
+    });
+
+    try {
+      const result = await performUpdate({ verbose: false });
+
+      expect(result.success).toBe(true);
+      expect(mockedExecFileSync).not.toHaveBeenCalledWith('npm', ['install', '-g', expect.stringContaining('@github/copilot@')], expect.any(Object));
+    } finally {
+      delete process.env.OMC_UPDATE_RECONCILE;
+      if (savedEntrypoint !== undefined) process.env.CLAUDE_CODE_ENTRYPOINT = savedEntrypoint;
+      else delete process.env.CLAUDE_CODE_ENTRYPOINT;
+    }
+  });
+
+  it('restores global Copilot CLI when post-update detection is unknown after a known pre-update install', async () => {
+    mockPlatform('linux');
+    process.env.OMC_UPDATE_RECONCILE = '1';
+    const savedEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+    delete process.env.CLAUDE_CODE_ENTRYPOINT;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v4.1.5',
+        name: '4.1.5',
+        published_at: '2026-02-09T00:00:00.000Z',
+        html_url: 'https://example.com/release',
+        body: 'notes',
+        prerelease: false,
+        draft: false,
+      }),
+    }));
+
+    mockedExistsSync.mockImplementation((path: Parameters<typeof existsSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized === '/usr/lib/node_modules/@github/copilot/package.json') {
+        return true;
+      }
+      if (normalized.endsWith('/plugins/marketplaces/omg')) {
+        return false;
+      }
+      if (normalized.endsWith('/plugins/cache/omc/oh-my-copilot')) {
+        return false;
+      }
+      return true;
+    });
+
+    let copilotCliReadCount = 0;
+    mockedReadFileSync.mockImplementation((path: Parameters<typeof readFileSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized === '/usr/lib/node_modules/@github/copilot/package.json') {
+        copilotCliReadCount += 1;
+        if (copilotCliReadCount === 2) {
+          throw new Error('cannot read package after update');
+        }
+        return JSON.stringify({ version: '1.2.3' });
+      }
+      if (normalized.includes('.omc-version.json')) {
+        return JSON.stringify({
+          version: '4.1.5',
+          installedAt: '2026-02-09T00:00:00.000Z',
+          installMethod: 'npm',
+        });
+      }
+      return '';
+    });
+
+    mockedExecSync.mockImplementation((command: string) => {
+      if (command === 'npm root -g') {
+        return '/usr/lib/node_modules\n';
+      }
+      if (command === 'npm install -g oh-my-copilot@latest') {
+        return '';
+      }
+      throw new Error(`Unexpected execSync command: ${command}`);
+    });
+
+    mockedExecFileSync.mockImplementation((command: string, args?: readonly string[]) => {
+      if (command === 'npm' && args?.join(' ') === 'install -g @github/copilot@1.2.3') {
+        return '';
+      }
+      throw new Error(`Unexpected execFileSync command: ${command} ${args?.join(' ') ?? ''}`);
+    });
+
+    try {
+      const result = await performUpdate({ verbose: false });
+
+      expect(result.success).toBe(true);
+      expect(mockedExecFileSync).toHaveBeenCalledWith('npm', ['install', '-g', '@github/copilot@1.2.3'], expect.any(Object));
+    } finally {
+      delete process.env.OMC_UPDATE_RECONCILE;
+      if (savedEntrypoint !== undefined) process.env.CLAUDE_CODE_ENTRYPOINT = savedEntrypoint;
+      else delete process.env.CLAUDE_CODE_ENTRYPOINT;
+    }
+  });
+
+  it('uses Windows-safe npm options when restoring global Copilot CLI', async () => {
+    mockPlatform('win32');
+    process.env.OMC_UPDATE_RECONCILE = '1';
+    const savedEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+    delete process.env.CLAUDE_CODE_ENTRYPOINT;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v4.1.5',
+        name: '4.1.5',
+        published_at: '2026-02-09T00:00:00.000Z',
+        html_url: 'https://example.com/release',
+        body: 'notes',
+        prerelease: false,
+        draft: false,
+      }),
+    }));
+
+    let copilotCliPackageCheckCount = 0;
+    mockedExistsSync.mockImplementation((path: Parameters<typeof existsSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized === 'C:/Users/test/AppData/Roaming/npm/node_modules/@github/copilot/package.json') {
+        copilotCliPackageCheckCount += 1;
+        return copilotCliPackageCheckCount === 1 || copilotCliPackageCheckCount === 3;
+      }
+      if (normalized.endsWith('/plugins/marketplaces/omg')) {
+        return false;
+      }
+      if (normalized.endsWith('/plugins/cache/omc/oh-my-copilot')) {
+        return false;
+      }
+      return true;
+    });
+
+    mockedReadFileSync.mockImplementation((path: Parameters<typeof readFileSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized === 'C:/Users/test/AppData/Roaming/npm/node_modules/@github/copilot/package.json') {
+        return JSON.stringify({ version: '1.2.3' });
+      }
+      if (normalized.includes('.omc-version.json')) {
+        return JSON.stringify({
+          version: '4.1.5',
+          installedAt: '2026-02-09T00:00:00.000Z',
+          installMethod: 'npm',
+        });
+      }
+      return '';
+    });
+
+    mockedExecSync.mockImplementation((command: string) => {
+      if (command === 'npm root -g') {
+        return 'C:\\Users\\test\\AppData\\Roaming\\npm\\node_modules\r\n';
+      }
+      if (command === 'npm install -g oh-my-copilot@latest') {
+        return '';
+      }
+      if (command === 'npm install -g @github/copilot@1.2.3') {
+        return '';
+      }
+      throw new Error(`Unexpected execSync command: ${command}`);
+    });
+
+    try {
+      const result = await performUpdate({ verbose: false });
+
+      expect(result.success).toBe(true);
+      expect(mockedExecSync).toHaveBeenCalledWith('npm install -g @github/copilot@1.2.3', expect.objectContaining({
+        windowsHide: true,
+      }));
+      expect(mockedExecFileSync).not.toHaveBeenCalledWith('npm', ['install', '-g', '@github/copilot@1.2.3'], expect.any(Object));
+    } finally {
+      delete process.env.OMC_UPDATE_RECONCILE;
+      if (savedEntrypoint !== undefined) process.env.CLAUDE_CODE_ENTRYPOINT = savedEntrypoint;
+      else delete process.env.CLAUDE_CODE_ENTRYPOINT;
+    }
   });
 
   it('runs reconciliation as part of performUpdate without plugin hook reinjection', async () => {
