@@ -1,6 +1,6 @@
 {
   "name": "oh-my-copilot",
-  "version": "4.13.68",
+  "version": "4.13.71",
   "description": "Multi-agent orchestration system for Copilot CLI - Inspired by oh-my-opencode",
   "type": "module",
   "main": "dist/index.js",
