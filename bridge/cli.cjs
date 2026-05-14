@@ -33,6 +33,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
   isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
   mod
 ));
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // node_modules/commander/lib/error.js
 var require_error = __commonJS({
@@ -8004,7 +8005,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve16.call(this, root, ref);
+      let _sch = resolve17.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a2 = root.localRefs) === null || _a2 === void 0 ? void 0 : _a2[ref];
         const { schemaId } = this.opts;
@@ -8031,7 +8032,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve16(root, ref) {
+    function resolve17(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -8606,55 +8607,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve16(baseURI, relativeURI, options) {
+    function resolve17(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse7(baseURI, schemelessOptions), parse7(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative14, options, skipNormalization) {
+    function resolveComponent(base, relative15, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse7(serialize(base, options), options);
-        relative14 = parse7(serialize(relative14, options), options);
+        relative15 = parse7(serialize(relative15, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative14.scheme) {
-        target.scheme = relative14.scheme;
-        target.userinfo = relative14.userinfo;
-        target.host = relative14.host;
-        target.port = relative14.port;
-        target.path = removeDotSegments(relative14.path || "");
-        target.query = relative14.query;
+      if (!options.tolerant && relative15.scheme) {
+        target.scheme = relative15.scheme;
+        target.userinfo = relative15.userinfo;
+        target.host = relative15.host;
+        target.port = relative15.port;
+        target.path = removeDotSegments(relative15.path || "");
+        target.query = relative15.query;
       } else {
-        if (relative14.userinfo !== void 0 || relative14.host !== void 0 || relative14.port !== void 0) {
-          target.userinfo = relative14.userinfo;
-          target.host = relative14.host;
-          target.port = relative14.port;
-          target.path = removeDotSegments(relative14.path || "");
-          target.query = relative14.query;
+        if (relative15.userinfo !== void 0 || relative15.host !== void 0 || relative15.port !== void 0) {
+          target.userinfo = relative15.userinfo;
+          target.host = relative15.host;
+          target.port = relative15.port;
+          target.path = removeDotSegments(relative15.path || "");
+          target.query = relative15.query;
         } else {
-          if (!relative14.path) {
+          if (!relative15.path) {
             target.path = base.path;
-            if (relative14.query !== void 0) {
-              target.query = relative14.query;
+            if (relative15.query !== void 0) {
+              target.query = relative15.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative14.path[0] === "/") {
-              target.path = removeDotSegments(relative14.path);
+            if (relative15.path[0] === "/") {
+              target.path = removeDotSegments(relative15.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative14.path;
+                target.path = "/" + relative15.path;
               } else if (!base.path) {
-                target.path = relative14.path;
+                target.path = relative15.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative14.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative15.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative14.query;
+            target.query = relative15.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -8662,7 +8663,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative14.fragment;
+      target.fragment = relative15.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -8833,7 +8834,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize11,
-      resolve: resolve16,
+      resolve: resolve17,
       resolveComponent,
       equal,
       serialize,
@@ -13415,7 +13416,7 @@ async function removeFileIfExists(filePath) {
   }
 }
 function sleep2(ms) {
-  return new Promise((resolve16) => setTimeout(resolve16, ms));
+  return new Promise((resolve17) => setTimeout(resolve17, ms));
 }
 var import_child_process8, fs4, fsPromises2, path5, import_url4, import_child_process9, import_util8, execFileAsync3, BRIDGE_SPAWN_TIMEOUT_MS, DEFAULT_GRACE_PERIOD_MS, SIGTERM_GRACE_MS, ownedBridgeSessionIds, USE_TCP_FALLBACK;
 var init_bridge_manager = __esm({
@@ -14438,7 +14439,7 @@ function withFileLockSync(lockPath, fn, opts) {
   }
 }
 function sleep3(ms) {
-  return new Promise((resolve16) => setTimeout(resolve16, ms));
+  return new Promise((resolve17) => setTimeout(resolve17, ms));
 }
 async function acquireFileLock(lockPath, opts) {
   const staleLockMs = opts?.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -31036,7 +31037,7 @@ async function pollTelegram(config2, state, rateLimiter) {
   try {
     const offset = state.telegramLastUpdateId ? state.telegramLastUpdateId + 1 : 0;
     const path22 = `/bot${config2.telegramBotToken}/getUpdates?offset=${offset}&timeout=0`;
-    const updates = await new Promise((resolve16, reject) => {
+    const updates = await new Promise((resolve17, reject) => {
       const req = (0, import_https.request)(
         {
           hostname: "api.telegram.org",
@@ -31053,7 +31054,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             try {
               const body = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
               if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
-                resolve16(body.result || []);
+                resolve17(body.result || []);
               } else {
                 reject(new Error(`HTTP ${res.statusCode}`));
               }
@@ -31117,7 +31118,7 @@ async function pollTelegram(config2, state, rateLimiter) {
             text: "Injected into Copilot CLI session.",
             reply_to_message_id: msg.message_id
           });
-          await new Promise((resolve16) => {
+          await new Promise((resolve17) => {
             const replyReq = (0, import_https.request)(
               {
                 hostname: "api.telegram.org",
@@ -31132,13 +31133,13 @@ async function pollTelegram(config2, state, rateLimiter) {
               },
               (res) => {
                 res.resume();
-                resolve16();
+                resolve17();
               }
             );
-            replyReq.on("error", () => resolve16());
+            replyReq.on("error", () => resolve17());
             replyReq.on("timeout", () => {
               replyReq.destroy();
-              resolve16();
+              resolve17();
             });
             replyReq.write(replyBody);
             replyReq.end();
@@ -31275,13 +31276,13 @@ async function pollLoop() {
         }
       }
       writeDaemonState(state);
-      await new Promise((resolve16) => setTimeout(resolve16, config2.pollIntervalMs));
+      await new Promise((resolve17) => setTimeout(resolve17, config2.pollIntervalMs));
     } catch (error48) {
       state.errors++;
       state.lastError = redactTokens(error48 instanceof Error ? error48.message : String(error48));
       log(`Poll error: ${state.lastError}`);
       writeDaemonState(state);
-      await new Promise((resolve16) => setTimeout(resolve16, config2.pollIntervalMs * 2));
+      await new Promise((resolve17) => setTimeout(resolve17, config2.pollIntervalMs * 2));
     }
   }
   log("Poll loop ended");
@@ -33026,7 +33027,7 @@ async function triggerStopCallbacks(metrics, _input, options = {}) {
   try {
     await Promise.race([
       Promise.allSettled(promises),
-      new Promise((resolve16) => setTimeout(resolve16, 5e3))
+      new Promise((resolve17) => setTimeout(resolve17, 5e3))
     ]);
   } catch (error48) {
     console.error("[stop-callback] Callback execution error:", error48);
@@ -33329,7 +33330,7 @@ async function sendTelegram2(config2, payload) {
       text: payload.message,
       parse_mode: config2.parseMode || "Markdown"
     });
-    const result = await new Promise((resolve16) => {
+    const result = await new Promise((resolve17) => {
       const req = (0, import_https2.request)(
         {
           hostname: "api.telegram.org",
@@ -33356,9 +33357,9 @@ async function sendTelegram2(config2, payload) {
                 }
               } catch {
               }
-              resolve16({ platform: "telegram", success: true, messageId });
+              resolve17({ platform: "telegram", success: true, messageId });
             } else {
-              resolve16({
+              resolve17({
                 platform: "telegram",
                 success: false,
                 error: `HTTP ${res.statusCode}`
@@ -33368,11 +33369,11 @@ async function sendTelegram2(config2, payload) {
         }
       );
       req.on("error", (e) => {
-        resolve16({ platform: "telegram", success: false, error: e.message });
+        resolve17({ platform: "telegram", success: false, error: e.message });
       });
       req.on("timeout", () => {
         req.destroy();
-        resolve16({
+        resolve17({
           platform: "telegram",
           success: false,
           error: "Request timeout"
@@ -33662,9 +33663,9 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
           }
         )
       ),
-      new Promise((resolve16) => {
+      new Promise((resolve17) => {
         timer = setTimeout(
-          () => resolve16([
+          () => resolve17([
             {
               platform: "unknown",
               success: false,
@@ -34412,7 +34413,7 @@ async function withMailboxLock(teamName, workerName2, cwd, fn) {
   while (Date.now() < deadline) {
     const result = await withLock(lockDir, fn);
     if (result.ok) return result.value;
-    await new Promise((resolve16) => setTimeout(resolve16, delayMs));
+    await new Promise((resolve17) => setTimeout(resolve17, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire mailbox lock for ${workerName2} after ${timeoutMs}ms`);
@@ -34518,7 +34519,7 @@ async function teamCreateTask(teamName, task, cwd) {
       return created;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve16) => setTimeout(resolve16, delayMs));
+    await new Promise((resolve17) => setTimeout(resolve17, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task creation lock for team ${teamName} after ${timeoutMs}ms`);
@@ -34558,7 +34559,7 @@ async function teamUpdateTask(teamName, taskId, updates, cwd) {
       return merged;
     });
     if (result.ok) return result.value;
-    await new Promise((resolve16) => setTimeout(resolve16, delayMs));
+    await new Promise((resolve17) => setTimeout(resolve17, delayMs));
     delayMs = Math.min(delayMs * 2, 200);
   }
   throw new Error(`Failed to acquire task update lock for task ${taskId} in team ${teamName} after ${timeoutMs}ms`);
@@ -34933,10 +34934,10 @@ async function readJsonSafe4(filePath) {
   }
 }
 async function writeAtomic2(filePath, data) {
-  const { writeFile: writeFile8 } = await import("fs/promises");
+  const { writeFile: writeFile9 } = await import("fs/promises");
   await (0, import_promises6.mkdir)((0, import_path74.dirname)(filePath), { recursive: true });
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
-  await writeFile8(tmpPath, data, "utf-8");
+  await writeFile9(tmpPath, data, "utf-8");
   const { rename: rename3 } = await import("fs/promises");
   await rename3(tmpPath, filePath);
 }
@@ -36679,7 +36680,7 @@ async function withDispatchLock(teamName, cwd, fn) {
         );
       }
       const jitter = 0.5 + Math.random() * 0.5;
-      await new Promise((resolve16) => setTimeout(resolve16, Math.floor(pollMs * jitter)));
+      await new Promise((resolve17) => setTimeout(resolve17, Math.floor(pollMs * jitter)));
       pollMs = Math.min(pollMs * 2, DISPATCH_LOCK_MAX_POLL_MS);
     }
   }
@@ -38857,8 +38858,8 @@ ${dirtyFiles.map((f) => `- \`${f}\``).join("\n")}`;
               return false;
             }
           })(),
-          new Promise((resolve16) => {
-            const t = setTimeout(() => resolve16(false), remaining);
+          new Promise((resolve17) => {
+            const t = setTimeout(() => resolve17(false), remaining);
             if (typeof t.unref === "function") t.unref();
           })
         ]);
@@ -39197,7 +39198,7 @@ async function waitForWorkerStartupEvidence(teamName, workerName2, taskId, cwd, 
       return true;
     }
     if (attempt < attempts) {
-      await new Promise((resolve16) => setTimeout(resolve16, delayMs));
+      await new Promise((resolve17) => setTimeout(resolve17, delayMs));
     }
   }
   return false;
@@ -39847,7 +39848,7 @@ async function startTeamV2(config2) {
   };
 }
 async function writeWatchdogFailedMarker(teamName, cwd, reason) {
-  const { writeFile: writeFile8 } = await import("fs/promises");
+  const { writeFile: writeFile9 } = await import("fs/promises");
   const marker = {
     failedAt: Date.now(),
     reason,
@@ -39856,7 +39857,7 @@ async function writeWatchdogFailedMarker(teamName, cwd, reason) {
   const root = absPath(cwd, TeamPaths.root(sanitizeTeamName(teamName)));
   const markerPath = (0, import_path83.join)(root, "watchdog-failed.json");
   await (0, import_promises14.mkdir)(root, { recursive: true });
-  await writeFile8(markerPath, JSON.stringify(marker, null, 2), "utf-8");
+  await writeFile9(markerPath, JSON.stringify(marker, null, 2), "utf-8");
 }
 async function requeueDeadWorkerTasks(teamName, deadWorkerNames, cwd) {
   const logEventFailure = createSwallowedErrorLogger(
@@ -39876,9 +39877,9 @@ async function requeueDeadWorkerTasks(teamName, deadWorkerNames, cwd) {
       retryCount: 0,
       lastFailedAt: (/* @__PURE__ */ new Date()).toISOString()
     };
-    const { writeFile: writeFile8 } = await import("fs/promises");
+    const { writeFile: writeFile9 } = await import("fs/promises");
     await (0, import_promises14.mkdir)(absPath(cwd, TeamPaths.tasks(sanitized)), { recursive: true });
-    await writeFile8(sidecarPath, JSON.stringify(sidecar, null, 2), "utf-8");
+    await writeFile9(sidecarPath, JSON.stringify(sidecar, null, 2), "utf-8");
     const taskPath2 = absPath(cwd, TeamPaths.taskFile(sanitized, task.id));
     try {
       const { readFileSync: readFileSync87, writeFileSync: writeFileSync38 } = await import("fs");
@@ -40707,7 +40708,7 @@ async function readJsonSafe5(filePath) {
         return null;
       }
     }
-    await new Promise((resolve16) => setTimeout(resolve16, 25));
+    await new Promise((resolve17) => setTimeout(resolve17, 25));
   }
   return null;
 }
@@ -40825,7 +40826,7 @@ async function nextPendingTaskIndex(runtime) {
     let task = await readTask(root, taskId);
     if (!task) {
       for (let attempt = 1; attempt < transientReadRetryAttempts; attempt++) {
-        await new Promise((resolve16) => setTimeout(resolve16, transientReadRetryDelayMs));
+        await new Promise((resolve17) => setTimeout(resolve17, transientReadRetryDelayMs));
         task = await readTask(root, taskId);
         if (task) break;
       }
@@ -41266,8 +41267,8 @@ async function assignTask(teamName, taskId, targetWorkerName, paneId, sessionNam
 Task ID: ${taskId}
 Claim and execute task from: .omcp/state/team/${teamName}/tasks/${taskId}.json
 `;
-  const { appendFile: appendFile6 } = await import("fs/promises");
-  await appendFile6(inboxPath, msg, "utf-8");
+  const { appendFile: appendFile7 } = await import("fs/promises");
+  await appendFile7(inboxPath, msg, "utf-8");
   const notified = await notifyPaneWithRetry2(sessionName2, paneId, `new-task:${taskId}`);
   if (!notified) {
     if (lockedTask && previousTaskState) {
@@ -49016,7 +49017,7 @@ function validateCredentials(creds) {
   return !isCredentialExpired(creds);
 }
 function refreshAccessToken(refreshToken) {
-  return new Promise((resolve16) => {
+  return new Promise((resolve17) => {
     const clientId = process.env.CLAUDE_CODE_OAUTH_CLIENT_ID || DEFAULT_OAUTH_CLIENT_ID;
     const body = new URLSearchParams({
       grant_type: "refresh_token",
@@ -49044,7 +49045,7 @@ function refreshAccessToken(refreshToken) {
             try {
               const parsed = JSON.parse(data);
               if (parsed.access_token) {
-                resolve16({
+                resolve17({
                   accessToken: parsed.access_token,
                   refreshToken: parsed.refresh_token || refreshToken,
                   expiresAt: parsed.expires_in ? Date.now() + parsed.expires_in * 1e3 : parsed.expires_at
@@ -49057,20 +49058,20 @@ function refreshAccessToken(refreshToken) {
           if (process.env.OMC_DEBUG) {
             console.error(`[usage-api] Token refresh failed: HTTP ${res.statusCode}`);
           }
-          resolve16(null);
+          resolve17(null);
         });
       }
     );
-    req.on("error", () => resolve16(null));
+    req.on("error", () => resolve17(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve16(null);
+      resolve17(null);
     });
     req.end(body);
   });
 }
 function fetchUsageFromApi(accessToken) {
-  return new Promise((resolve16) => {
+  return new Promise((resolve17) => {
     const req = import_https3.default.request(
       {
         hostname: "api.anthropic.com",
@@ -49091,41 +49092,41 @@ function fetchUsageFromApi(accessToken) {
         res.on("end", () => {
           if (res.statusCode === 200) {
             try {
-              resolve16({ data: JSON.parse(data) });
+              resolve17({ data: JSON.parse(data) });
             } catch {
-              resolve16({ data: null });
+              resolve17({ data: null });
             }
           } else if (res.statusCode === 429) {
             if (process.env.OMC_DEBUG) {
               console.error(`[usage-api] Anthropic API returned 429 (rate limited)`);
             }
-            resolve16({ data: null, rateLimited: true });
+            resolve17({ data: null, rateLimited: true });
           } else {
-            resolve16({ data: null });
+            resolve17({ data: null });
           }
         });
       }
     );
-    req.on("error", () => resolve16({ data: null }));
+    req.on("error", () => resolve17({ data: null }));
     req.on("timeout", () => {
       req.destroy();
-      resolve16({ data: null });
+      resolve17({ data: null });
     });
     req.end();
   });
 }
 function fetchUsageFromZai() {
-  return new Promise((resolve16) => {
+  return new Promise((resolve17) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     const authToken = process.env.ANTHROPIC_AUTH_TOKEN;
     if (!baseUrl || !authToken) {
-      resolve16({ data: null });
+      resolve17({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve16({ data: null });
+      resolve17({ data: null });
       return;
     }
     try {
@@ -49153,29 +49154,29 @@ function fetchUsageFromZai() {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve16({ data: JSON.parse(data) });
+                resolve17({ data: JSON.parse(data) });
               } catch {
-                resolve16({ data: null });
+                resolve17({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] z.ai API returned 429 (rate limited)`);
               }
-              resolve16({ data: null, rateLimited: true });
+              resolve17({ data: null, rateLimited: true });
             } else {
-              resolve16({ data: null });
+              resolve17({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve16({ data: null }));
+      req.on("error", () => resolve17({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve16({ data: null });
+        resolve17({ data: null });
       });
       req.end();
     } catch {
-      resolve16({ data: null });
+      resolve17({ data: null });
     }
   });
 }
@@ -49342,16 +49343,16 @@ function parseZaiResponse(response) {
   return result;
 }
 function fetchUsageFromMinimax(apiKey) {
-  return new Promise((resolve16) => {
+  return new Promise((resolve17) => {
     const baseUrl = process.env.ANTHROPIC_BASE_URL;
     if (!baseUrl) {
-      resolve16({ data: null });
+      resolve17({ data: null });
       return;
     }
     const validation = validateAnthropicBaseUrl(baseUrl);
     if (!validation.allowed) {
       console.error(`[SSRF Guard] Blocking usage API call: ${validation.reason}`);
-      resolve16({ data: null });
+      resolve17({ data: null });
       return;
     }
     try {
@@ -49378,29 +49379,29 @@ function fetchUsageFromMinimax(apiKey) {
           res.on("end", () => {
             if (res.statusCode === 200) {
               try {
-                resolve16({ data: JSON.parse(data) });
+                resolve17({ data: JSON.parse(data) });
               } catch {
-                resolve16({ data: null });
+                resolve17({ data: null });
               }
             } else if (res.statusCode === 429) {
               if (process.env.OMC_DEBUG) {
                 console.error(`[usage-api] MiniMax API returned 429 (rate limited)`);
               }
-              resolve16({ data: null, rateLimited: true });
+              resolve17({ data: null, rateLimited: true });
             } else {
-              resolve16({ data: null });
+              resolve17({ data: null });
             }
           });
         }
       );
-      req.on("error", () => resolve16({ data: null }));
+      req.on("error", () => resolve17({ data: null }));
       req.on("timeout", () => {
         req.destroy();
-        resolve16({ data: null });
+        resolve17({ data: null });
       });
       req.end();
     } catch {
-      resolve16({ data: null });
+      resolve17({ data: null });
     }
   });
 }
@@ -49698,7 +49699,7 @@ function readMostRecentSessionCache(root) {
     return null;
   }
 }
-async function readStdin() {
+async function readStdin2() {
   if (process.stdin.isTTY) {
     return null;
   }
@@ -50487,7 +50488,7 @@ function isCacheValid2(cache) {
   return Date.now() - cache.timestamp < CACHE_TTL_MS2;
 }
 function spawnWithTimeout(cmd, timeoutMs) {
-  return new Promise((resolve16, reject) => {
+  return new Promise((resolve17, reject) => {
     const [executable, ...args] = Array.isArray(cmd) ? cmd : ["sh", "-c", cmd];
     const child = (0, import_child_process33.spawn)(executable, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
@@ -50510,7 +50511,7 @@ function spawnWithTimeout(cmd, timeoutMs) {
       clearTimeout(timer);
       if (!timedOut) {
         if (code === 0) {
-          resolve16(stdout);
+          resolve17(stdout);
         } else {
           reject(new Error(`Command exited with code ${code}`));
         }
@@ -51710,9 +51711,9 @@ function renderCwd(cwd, format = "relative", useHyperlinks = false) {
       displayPath = cwd;
       break;
     case "folder": {
-      const parent = (0, import_node_path11.basename)((0, import_node_path11.dirname)(cwd));
-      const folder = (0, import_node_path11.basename)(cwd);
-      displayPath = parent ? (0, import_node_path11.join)(parent, folder) : folder;
+      const parent = (0, import_node_path13.basename)((0, import_node_path13.dirname)(cwd));
+      const folder = (0, import_node_path13.basename)(cwd);
+      displayPath = parent ? (0, import_node_path13.join)(parent, folder) : folder;
       break;
     }
     default:
@@ -51725,12 +51726,12 @@ function renderCwd(cwd, format = "relative", useHyperlinks = false) {
   }
   return rendered;
 }
-var import_node_os4, import_node_path11;
+var import_node_os4, import_node_path13;
 var init_cwd = __esm({
   "src/hud/elements/cwd.ts"() {
     "use strict";
     import_node_os4 = require("node:os");
-    import_node_path11 = require("node:path");
+    import_node_path13 = require("node:path");
     init_colors();
   }
 });
@@ -51754,7 +51755,7 @@ var init_hostname = __esm({
 
 // src/hud/elements/git.ts
 function getGitRepoName(cwd) {
-  const key = cwd ? (0, import_node_path12.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path14.resolve)(cwd) : process.cwd();
   const cached2 = repoCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -51781,7 +51782,7 @@ function getGitRepoName(cwd) {
   return result;
 }
 function getGitBranch(cwd) {
-  const key = cwd ? (0, import_node_path12.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path14.resolve)(cwd) : process.cwd();
   const cached2 = branchCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -51803,7 +51804,7 @@ function getGitBranch(cwd) {
   return result;
 }
 function getWorktreeInfo(cwd) {
-  const key = cwd ? (0, import_node_path12.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path14.resolve)(cwd) : process.cwd();
   const cached2 = worktreeCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -51819,18 +51820,18 @@ function getWorktreeInfo(cwd) {
   try {
     const gitDir = (0, import_node_child_process10.execSync)("git rev-parse --git-dir", execOpts).trim();
     const gitCommonDir = (0, import_node_child_process10.execSync)("git rev-parse --git-common-dir", execOpts).trim();
-    let resolvedGitDir = (0, import_node_path12.resolve)(key, gitDir);
-    let resolvedCommonDir = (0, import_node_path12.resolve)(key, gitCommonDir);
+    let resolvedGitDir = (0, import_node_path14.resolve)(key, gitDir);
+    let resolvedCommonDir = (0, import_node_path14.resolve)(key, gitCommonDir);
     try {
-      resolvedGitDir = (0, import_node_fs8.realpathSync)(resolvedGitDir);
+      resolvedGitDir = (0, import_node_fs10.realpathSync)(resolvedGitDir);
     } catch {
     }
     try {
-      resolvedCommonDir = (0, import_node_fs8.realpathSync)(resolvedCommonDir);
+      resolvedCommonDir = (0, import_node_fs10.realpathSync)(resolvedCommonDir);
     } catch {
     }
     if (resolvedGitDir !== resolvedCommonDir) {
-      result = { isWorktree: true, worktreeName: (0, import_node_path12.basename)(resolvedGitDir) };
+      result = { isWorktree: true, worktreeName: (0, import_node_path14.basename)(resolvedGitDir) };
     }
   } catch {
   }
@@ -51852,7 +51853,7 @@ function renderGitBranch(cwd) {
   return `${dim("branch:")}${cyan(branch)}`;
 }
 function getGitStatusCounts(cwd) {
-  const key = cwd ? (0, import_node_path12.resolve)(cwd) : process.cwd();
+  const key = cwd ? (0, import_node_path14.resolve)(cwd) : process.cwd();
   const cached2 = statusCache.get(key);
   if (cached2 && Date.now() < cached2.expiresAt) {
     return cached2.value;
@@ -51909,13 +51910,13 @@ function renderGitStatus(cwd, labels = DEFAULT_HUD_LABELS) {
   if (behind > 0) parts.push(`${red(labels.behind)}${behind}`);
   return parts.join(" ");
 }
-var import_node_child_process10, import_node_fs8, import_node_path12, CACHE_TTL_MS3, repoCache, branchCache, worktreeCache, statusCache;
+var import_node_child_process10, import_node_fs10, import_node_path14, CACHE_TTL_MS3, repoCache, branchCache, worktreeCache, statusCache;
 var init_git = __esm({
   "src/hud/elements/git.ts"() {
     "use strict";
     import_node_child_process10 = require("node:child_process");
-    import_node_fs8 = require("node:fs");
-    import_node_path12 = require("node:path");
+    import_node_fs10 = require("node:fs");
+    import_node_path14 = require("node:path");
     init_colors();
     init_types4();
     CACHE_TTL_MS3 = 3e4;
@@ -52670,7 +52671,7 @@ function showDiagnostic() {
 async function main2(watchMode = false, skipInit = false) {
   try {
     const previousStdinCache = readStdinCache();
-    let stdin = await readStdin();
+    let stdin = await readStdin2();
     if (stdin) {
       stdin = stabilizeContextPercent(stdin, previousStdinCache);
       writeStdinCache(stdin);
@@ -52739,8 +52740,8 @@ async function main2(watchMode = false, skipInit = false) {
     }
     try {
       const updateCacheFile = (0, import_path119.join)((0, import_os24.homedir)(), ".omcp", "update-check.json");
-      await (0, import_promises17.access)(updateCacheFile);
-      const content = await (0, import_promises17.readFile)(updateCacheFile, "utf-8");
+      await (0, import_promises20.access)(updateCacheFile);
+      const content = await (0, import_promises20.readFile)(updateCacheFile, "utf-8");
       const cached2 = JSON.parse(content);
       if (cached2?.latestVersion && omcVersion && compareVersions2(omcVersion, cached2.latestVersion) < 0) {
         updateAvailable = cached2.latestVersion;
@@ -52840,7 +52841,7 @@ async function main2(watchMode = false, skipInit = false) {
     }
   }
 }
-var import_fs103, import_promises17, import_path119, import_os24, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs103, import_promises20, import_path119, import_os24, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -52858,7 +52859,7 @@ var init_hud = __esm({
     init_auto_update();
     init_worktree_paths();
     import_fs103 = require("fs");
-    import_promises17 = require("fs/promises");
+    import_promises20 = require("fs/promises");
     import_path119 = require("path");
     import_os24 = require("os");
     init_worktree_paths();
@@ -52868,6 +52869,13 @@ var init_hud = __esm({
     main2();
   }
 });
+
+// src/cli/index.ts
+var index_exports = {};
+__export(index_exports, {
+  buildProgram: () => buildProgram
+});
+module.exports = __toCommonJS(index_exports);
 
 // node_modules/commander/esm.mjs
 var import_index = __toESM(require_commander(), 1);
@@ -73198,7 +73206,7 @@ var Protocol = class {
           return;
         }
         const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-        await new Promise((resolve16) => setTimeout(resolve16, pollInterval));
+        await new Promise((resolve17) => setTimeout(resolve17, pollInterval));
         options?.signal?.throwIfAborted();
       }
     } catch (error48) {
@@ -73215,7 +73223,7 @@ var Protocol = class {
    */
   request(request, resultSchema, options) {
     const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-    return new Promise((resolve16, reject) => {
+    return new Promise((resolve17, reject) => {
       const earlyReject = (error48) => {
         reject(error48);
       };
@@ -73293,7 +73301,7 @@ var Protocol = class {
           if (!parseResult.success) {
             reject(parseResult.error);
           } else {
-            resolve16(parseResult.data);
+            resolve17(parseResult.data);
           }
         } catch (error48) {
           reject(error48);
@@ -73554,12 +73562,12 @@ var Protocol = class {
       }
     } catch {
     }
-    return new Promise((resolve16, reject) => {
+    return new Promise((resolve17, reject) => {
       if (signal.aborted) {
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
         return;
       }
-      const timeoutId = setTimeout(resolve16, interval);
+      const timeoutId = setTimeout(resolve17, interval);
       signal.addEventListener("abort", () => {
         clearTimeout(timeoutId);
         reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -74824,7 +74832,7 @@ var LspClient = class {
 Install with: ${this.serverConfig.installHint}`
       );
     }
-    return new Promise((resolve16, reject) => {
+    return new Promise((resolve17, reject) => {
       const command = this.devContainerContext ? "docker" : this.serverConfig.command;
       const args = this.devContainerContext ? ["exec", "-i", "-w", this.devContainerContext.containerWorkspaceRoot, this.devContainerContext.containerId, this.serverConfig.command, ...this.serverConfig.args] : this.serverConfig.args;
       this.process = (0, import_child_process3.spawn)(command, args, {
@@ -74853,7 +74861,7 @@ Install with: ${this.serverConfig.installHint}`
       });
       this.initialize().then(() => {
         this.initialized = true;
-        resolve16();
+        resolve17();
       }).catch(reject);
     });
   }
@@ -74988,13 +74996,13 @@ Install with: ${this.serverConfig.installHint}`
     const message = `Content-Length: ${Buffer.byteLength(content)}\r
 \r
 ${content}`;
-    return new Promise((resolve16, reject) => {
+    return new Promise((resolve17, reject) => {
       const timeoutHandle = setTimeout(() => {
         this.pendingRequests.delete(id);
         reject(new Error(`LSP request '${method}' timed out after ${effectiveTimeout}ms`));
       }, effectiveTimeout);
       this.pendingRequests.set(id, {
-        resolve: resolve16,
+        resolve: resolve17,
         reject,
         timeout: timeoutHandle
       });
@@ -75070,7 +75078,7 @@ ${content}`;
       }
     });
     this.openDocuments.add(hostUri);
-    await new Promise((resolve16) => setTimeout(resolve16, 100));
+    await new Promise((resolve17) => setTimeout(resolve17, 100));
   }
   /**
    * Close a document
@@ -75231,13 +75239,13 @@ ${content}`;
     if (this.diagnostics.has(uri)) {
       return Promise.resolve();
     }
-    return new Promise((resolve16) => {
+    return new Promise((resolve17) => {
       let resolved = false;
       const timer = setTimeout(() => {
         if (!resolved) {
           resolved = true;
           this.diagnosticWaiters.delete(uri);
-          resolve16();
+          resolve17();
         }
       }, timeoutMs);
       const existing = this.diagnosticWaiters.get(uri) || [];
@@ -75245,7 +75253,7 @@ ${content}`;
         if (!resolved) {
           resolved = true;
           clearTimeout(timer);
-          resolve16();
+          resolve17();
         }
       });
       this.diagnosticWaiters.set(uri, existing);
@@ -77091,7 +77099,7 @@ var SessionLock = class {
   }
 };
 function sleep(ms) {
-  return new Promise((resolve16) => setTimeout(resolve16, ms));
+  return new Promise((resolve17) => setTimeout(resolve17, ms));
 }
 
 // src/tools/python-repl/socket-client.ts
@@ -77126,7 +77134,7 @@ var JsonRpcError = class extends Error {
   data;
 };
 async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
-  return new Promise((resolve16, reject) => {
+  return new Promise((resolve17, reject) => {
     const id = (0, import_crypto2.randomUUID)();
     const request = {
       jsonrpc: "2.0",
@@ -77200,7 +77208,7 @@ async function sendSocketRequest(socketPath, method, params, timeout = 6e4) {
             ));
             return;
           }
-          resolve16(response.result);
+          resolve17(response.result);
         } catch (e) {
           reject(new Error(
             `Failed to parse JSON-RPC response: ${e.message}`
@@ -79748,7 +79756,7 @@ function mergeArrays(fieldName, base, incoming) {
       return mergeScalarArray(base, incoming);
   }
 }
-function mergeByKey(base, incoming, keyFn, resolve16) {
+function mergeByKey(base, incoming, keyFn, resolve17) {
   const seen = /* @__PURE__ */ new Map();
   for (const item of base) {
     seen.set(keyFn(item), item);
@@ -79757,7 +79765,7 @@ function mergeByKey(base, incoming, keyFn, resolve16) {
     const key = keyFn(item);
     const existing = seen.get(key);
     if (existing) {
-      seen.set(key, resolve16(existing, item));
+      seen.set(key, resolve17(existing, item));
     } else {
       seen.set(key, item);
     }
@@ -87347,7 +87355,7 @@ async function pollLoop2(config2) {
       log2(`Poll error: ${state.lastError}`, config2);
       writeDaemonState2(state, config2);
     }
-    await new Promise((resolve16) => setTimeout(resolve16, config2.pollIntervalMs));
+    await new Promise((resolve17) => setTimeout(resolve17, config2.pollIntervalMs));
   }
 }
 function startDaemon(config2) {
@@ -89729,6 +89737,885 @@ async function teamCommand(args) {
   }
 }
 
+// src/cli/commands/ultragoal.ts
+var import_promises18 = require("node:fs/promises");
+
+// src/goal-workflows/claude-goal-snapshot.ts
+var import_node_fs8 = require("node:fs");
+var import_promises16 = require("node:fs/promises");
+var import_node_path11 = require("node:path");
+var ClaudeGoalSnapshotError = class extends Error {
+};
+function safeObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function safeString2(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function safeNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : void 0;
+}
+function normalizeStatus(value) {
+  const status = safeString2(value).toLowerCase();
+  if (status === "complete" || status === "completed" || status === "done") return "complete";
+  if (status === "cancelled" || status === "canceled" || status === "cleared") return "cancelled";
+  if (status === "failed" || status === "failure") return "failed";
+  if (status === "active" || status === "in_progress" || status === "pending" || status === "running") return "active";
+  return "unknown";
+}
+function normalizeObjective(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+function parseClaudeGoalSnapshot(value) {
+  const root = safeObject(value);
+  const goalValue = Object.hasOwn(root, "goal") ? root.goal : value;
+  if (goalValue === null || goalValue === void 0 || goalValue === false) {
+    return { available: false, raw: value };
+  }
+  const goal = safeObject(goalValue);
+  const objective = safeString2(
+    goal.objective ?? goal.condition ?? goal.goal ?? goal.description ?? root.objective ?? root.condition
+  );
+  const status = normalizeStatus(goal.status ?? root.status);
+  const tokenBudget = safeNumber(
+    goal.token_budget ?? goal.tokenBudget ?? root.token_budget ?? root.tokenBudget
+  );
+  const remainingTokens = safeNumber(root.remainingTokens ?? root.remaining_tokens);
+  return {
+    available: Boolean(objective || status !== "unknown"),
+    ...objective ? { objective } : {},
+    status,
+    ...tokenBudget !== void 0 ? { tokenBudget } : {},
+    remainingTokens: remainingTokens ?? null,
+    raw: value
+  };
+}
+async function readClaudeGoalSnapshotInput(raw, cwd = process.cwd()) {
+  if (!raw?.trim()) return null;
+  const trimmed = raw.trim();
+  try {
+    return parseClaudeGoalSnapshot(JSON.parse(trimmed));
+  } catch {
+    const path22 = (0, import_node_path11.resolve)(cwd, trimmed);
+    if (!(0, import_node_fs8.existsSync)(path22)) {
+      throw new ClaudeGoalSnapshotError(`Claude goal snapshot is neither valid JSON nor a readable path: ${trimmed}`);
+    }
+    try {
+      return parseClaudeGoalSnapshot(JSON.parse(await (0, import_promises16.readFile)(path22, "utf-8")));
+    } catch (error48) {
+      throw new ClaudeGoalSnapshotError(`Claude goal snapshot path does not contain valid JSON: ${trimmed}${error48 instanceof Error ? ` (${error48.message})` : ""}`);
+    }
+  }
+}
+function reconcileClaudeGoalSnapshot(snapshot, options) {
+  const effectiveSnapshot = snapshot ?? { available: false, raw: null };
+  const errors = [];
+  const warnings = [];
+  if (!effectiveSnapshot.available) {
+    const message = "Claude goal snapshot is absent or reports no active goal; ask the active Claude agent to share the current /goal condition and pass its JSON with --claude-goal-json.";
+    if (options.requireSnapshot) errors.push(message);
+    else warnings.push(message);
+    return { ok: errors.length === 0, snapshot: effectiveSnapshot, warnings, errors };
+  }
+  const expected = normalizeObjective(options.expectedObjective);
+  const actual = normalizeObjective(effectiveSnapshot.objective ?? "");
+  if (!actual) {
+    errors.push("Claude goal snapshot is missing objective text.");
+  } else if (actual !== expected) {
+    errors.push(`Claude goal objective mismatch: expected "${expected}", got "${actual}".`);
+  }
+  const allowed = options.allowedStatuses ?? (options.requireComplete ? ["complete"] : ["active", "complete"]);
+  const actualStatus = effectiveSnapshot.status ?? "unknown";
+  if (!allowed.includes(actualStatus)) {
+    errors.push(`Claude goal status mismatch: expected ${allowed.join(" or ")}, got ${actualStatus}.`);
+  }
+  if (options.requireComplete && actualStatus !== "complete") {
+    errors.push(`Claude goal is not complete; only after the active condition is genuinely satisfied (the /goal hook auto-clears, or you run /goal clear), share the fresh snapshot.`);
+  }
+  return { ok: errors.length === 0, snapshot: effectiveSnapshot, warnings, errors };
+}
+function formatClaudeGoalReconciliation(reconciliation) {
+  const parts = [...reconciliation.errors, ...reconciliation.warnings];
+  return parts.join(" ");
+}
+
+// src/ultragoal/artifacts.ts
+var import_node_fs9 = require("node:fs");
+var import_promises17 = require("node:fs/promises");
+var import_node_path12 = require("node:path");
+var ULTRAGOAL_DIR = ".omcp/ultragoal";
+var ULTRAGOAL_BRIEF = "brief.md";
+var ULTRAGOAL_GOALS = "goals.json";
+var ULTRAGOAL_LEDGER = "ledger.jsonl";
+var UltragoalError = class extends Error {
+};
+function iso(now = /* @__PURE__ */ new Date()) {
+  return now.toISOString();
+}
+function ultragoalDir(cwd) {
+  return (0, import_node_path12.join)(cwd, ULTRAGOAL_DIR);
+}
+function ultragoalBriefPath(cwd) {
+  return (0, import_node_path12.join)(ultragoalDir(cwd), ULTRAGOAL_BRIEF);
+}
+function ultragoalGoalsPath(cwd) {
+  return (0, import_node_path12.join)(ultragoalDir(cwd), ULTRAGOAL_GOALS);
+}
+function ultragoalLedgerPath(cwd) {
+  return (0, import_node_path12.join)(ultragoalDir(cwd), ULTRAGOAL_LEDGER);
+}
+function repoRelative(cwd, path22) {
+  return (0, import_node_path12.relative)(cwd, path22).split("\\").join("/");
+}
+function cleanLine(line) {
+  return line.replace(/^\s*(?:[-*+]\s+|\d+[.)]\s+)/, "").trim();
+}
+function normalizeObjective2(value) {
+  return value.replace(/\s+/g, " ").trim();
+}
+function textMentionsUltragoalPlanArtifact(value) {
+  const normalized = (value ?? "").toLowerCase();
+  return normalized.includes(ULTRAGOAL_DIR.toLowerCase()) || normalized.includes(ULTRAGOAL_GOALS.toLowerCase()) || normalized.includes(ULTRAGOAL_LEDGER.toLowerCase());
+}
+function textMentionsGoalId(value, goalId) {
+  return (value ?? "").toLowerCase().includes(goalId.toLowerCase());
+}
+function textHasCompletionValidationEvidence(value) {
+  const normalized = (value ?? "").toLowerCase();
+  const hasImplementationCompletion = /\b(?:planned work|implementation|deliverables?|scope|task|work)\b/.test(normalized) && /\b(?:done|complete|completed|finished|shipped)\b/.test(normalized);
+  const hasValidation = /\b(?:validation|verification|tests?|build|lint|review|quality gate|code-review)\b/.test(normalized) && /\b(?:passed|complete|completed|clean|green|approve|approved|clear)\b/.test(normalized);
+  return hasImplementationCompletion && hasValidation;
+}
+async function snapshotObjectiveMapsToUltragoalPlan(cwd, snapshotObjective) {
+  const actual = normalizeObjective2(snapshotObjective).toLowerCase();
+  if (textMentionsUltragoalPlanArtifact(actual)) return true;
+  if (actual.length < 24) return false;
+  try {
+    const brief = normalizeObjective2(await (0, import_promises17.readFile)(ultragoalBriefPath(cwd), "utf-8")).toLowerCase();
+    if (!brief || brief.length < 24) return false;
+    return brief.includes(actual) || actual.includes(brief);
+  } catch {
+    return false;
+  }
+}
+async function canReconcileCompletedTaskScopedAggregateSnapshot(cwd, plan, goal, snapshotObjective, evidence) {
+  if (claudeGoalMode(plan) !== "aggregate") return false;
+  if (goal.status !== "in_progress" || plan.activeGoalId !== goal.id) return false;
+  if (!textMentionsUltragoalPlanArtifact(evidence)) return false;
+  if (!textMentionsGoalId(evidence, goal.id)) return false;
+  if (!textHasCompletionValidationEvidence(evidence)) return false;
+  return snapshotObjectiveMapsToUltragoalPlan(cwd, snapshotObjective);
+}
+function assertActiveInProgressCheckpoint(plan, goal, checkpointKind) {
+  if (goal.status !== "in_progress" || plan.activeGoalId !== goal.id) {
+    throw new UltragoalError(`Cannot record a ${checkpointKind} checkpoint for ${goal.id} while it is ${goal.status}; start or resume the active ultragoal before checkpointing it.`);
+  }
+}
+function buildCompletedLegacyGoalRemediation(goal) {
+  return [
+    "If the active /goal condition is a different completed legacy goal, do not repeat --status complete in this session.",
+    `Record a non-terminal blocker with: omcp ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks setting a new /goal in this session>" --claude-goal-json "<different completed goal snapshot JSON or path>".`,
+    "Then continue this ultragoal in a fresh Claude Code session in the same repo/worktree and set the intended /goal there."
+  ].join(" ");
+}
+function claudeGoalMode(plan) {
+  return plan.claudeGoalMode ?? "per_story";
+}
+function isResolvedStatus(status) {
+  return status === "complete" || status === "review_blocked";
+}
+function aggregateClaudeObjective(goals) {
+  const prefix = `Complete all ultragoal stories in ${ULTRAGOAL_DIR}/${ULTRAGOAL_GOALS}: `;
+  const suffix = goals.map((goal) => `${goal.id} ${goal.title}`).join("; ");
+  const full = `${prefix}${suffix}`;
+  if (full.length <= 4e3) return full;
+  const fallback = `Complete all ultragoal stories listed in ${ULTRAGOAL_DIR}/${ULTRAGOAL_GOALS}. Use ${ULTRAGOAL_DIR}/${ULTRAGOAL_LEDGER} as the durable audit trail.`;
+  if (fallback.length <= 4e3) return fallback;
+  throw new UltragoalError("Generated aggregate Claude /goal objective exceeds the 4,000 character limit.");
+}
+function expectedClaudeObjective(plan, goal) {
+  return claudeGoalMode(plan) === "aggregate" ? plan.claudeObjective ?? aggregateClaudeObjective(plan.goals) : goal.objective;
+}
+function isFinalRunCompletionCandidate(plan, goal) {
+  return plan.goals.every((candidate) => candidate.id === goal.id || isResolvedStatus(candidate.status));
+}
+function isUltragoalDone(plan) {
+  if (plan.aggregateCompletion?.status === "complete") return true;
+  if (plan.goals.length === 0) return true;
+  if (plan.goals.some((goal) => goal.status === "pending" || goal.status === "in_progress" || goal.status === "failed")) return false;
+  if (!plan.goals.every((goal) => isResolvedStatus(goal.status))) return false;
+  const latestNonReviewBlocked = [...plan.goals].reverse().find((goal) => goal.status !== "review_blocked");
+  return latestNonReviewBlocked?.status === "complete";
+}
+function titleFromObjective(objective, fallback) {
+  const firstLine = objective.split(/\r?\n/).map((line) => line.trim()).find(Boolean) ?? fallback;
+  return firstLine.length > 72 ? `${firstLine.slice(0, 69).trimEnd()}...` : firstLine;
+}
+function deriveGoalCandidates(brief) {
+  const lines = brief.split(/\r?\n/);
+  const bulletGoals = lines.map((line) => ({ original: line, cleaned: cleanLine(line) })).filter(({ cleaned }) => cleaned.length > 0 && cleaned.length <= 1200).filter(({ original, cleaned }, index, all) => /^\s*(?:[-*+]\s+|\d+[.)]\s+)/.test(original) && all.findIndex((candidate) => candidate.cleaned === cleaned) === index).map(({ cleaned }) => cleaned);
+  const objectives = bulletGoals.length > 0 ? bulletGoals : brief.split(/\n\s*\n/).map((paragraph) => paragraph.trim()).filter((paragraph) => paragraph.length > 0 && !paragraph.startsWith("#"));
+  const selected = objectives.length > 0 ? objectives : [brief.trim() || "Complete the requested project objective."];
+  return selected.map((objective, index) => ({
+    title: titleFromObjective(objective, `Goal ${index + 1}`),
+    objective
+  }));
+}
+function normalizeGoalId(title, index) {
+  const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 36).replace(/-+$/g, "");
+  return `G${String(index + 1).padStart(3, "0")}${slug ? `-${slug}` : ""}`;
+}
+async function appendLedger(cwd, entry) {
+  await (0, import_promises17.mkdir)(ultragoalDir(cwd), { recursive: true });
+  const path22 = ultragoalLedgerPath(cwd);
+  await (0, import_promises17.appendFile)(path22, `${JSON.stringify(entry)}
+`);
+}
+async function readUltragoalPlan(cwd) {
+  const path22 = ultragoalGoalsPath(cwd);
+  let raw;
+  try {
+    raw = await (0, import_promises17.readFile)(path22, "utf-8");
+  } catch {
+    throw new UltragoalError(`No ultragoal plan found at ${repoRelative(cwd, path22)}. Run \`omcp ultragoal create-goals ...\` first.`);
+  }
+  const parsed = JSON.parse(raw);
+  if (parsed.version !== 1 || !Array.isArray(parsed.goals)) {
+    throw new UltragoalError(`Invalid ultragoal plan at ${repoRelative(cwd, path22)}.`);
+  }
+  return parsed;
+}
+async function writePlan(cwd, plan) {
+  await (0, import_promises17.mkdir)(ultragoalDir(cwd), { recursive: true });
+  await (0, import_promises17.writeFile)(ultragoalGoalsPath(cwd), `${JSON.stringify(plan, null, 2)}
+`);
+}
+async function createUltragoalPlan(cwd, options) {
+  if (!options.force && (0, import_node_fs9.existsSync)(ultragoalGoalsPath(cwd))) {
+    throw new UltragoalError(`Refusing to overwrite existing ${ULTRAGOAL_DIR}/${ULTRAGOAL_GOALS}; pass --force to recreate it.`);
+  }
+  const now = iso(options.now);
+  const sourceGoals = options.goals?.length ? options.goals : deriveGoalCandidates(options.brief);
+  const candidates = sourceGoals.map((goal, index) => ({
+    id: normalizeGoalId(goal.title ?? titleFromObjective(goal.objective, `Goal ${index + 1}`), index),
+    title: goal.title ?? titleFromObjective(goal.objective, `Goal ${index + 1}`),
+    objective: goal.objective.trim(),
+    status: "pending",
+    tokenBudget: goal.tokenBudget,
+    attempt: 0,
+    createdAt: now,
+    updatedAt: now
+  }));
+  const plan = {
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    briefPath: `${ULTRAGOAL_DIR}/${ULTRAGOAL_BRIEF}`,
+    goalsPath: `${ULTRAGOAL_DIR}/${ULTRAGOAL_GOALS}`,
+    ledgerPath: `${ULTRAGOAL_DIR}/${ULTRAGOAL_LEDGER}`,
+    claudeGoalMode: options.claudeGoalMode ?? "aggregate",
+    goals: candidates
+  };
+  if (plan.claudeGoalMode === "aggregate") plan.claudeObjective = aggregateClaudeObjective(candidates);
+  await (0, import_promises17.mkdir)(ultragoalDir(cwd), { recursive: true });
+  await (0, import_promises17.writeFile)(ultragoalBriefPath(cwd), options.brief.endsWith("\n") ? options.brief : `${options.brief}
+`);
+  await writePlan(cwd, plan);
+  await (0, import_promises17.writeFile)(ultragoalLedgerPath(cwd), "");
+  await appendLedger(cwd, { ts: now, event: "plan_created", message: `${candidates.length} goal(s) created` });
+  return plan;
+}
+function summarizeUltragoalPlan(plan) {
+  return {
+    total: plan.goals.length,
+    pending: plan.goals.filter((goal) => goal.status === "pending").length,
+    inProgress: plan.goals.filter((goal) => goal.status === "in_progress").length,
+    complete: plan.goals.filter((goal) => goal.status === "complete").length,
+    failed: plan.goals.filter((goal) => goal.status === "failed").length,
+    reviewBlocked: plan.goals.filter((goal) => goal.status === "review_blocked").length,
+    aggregateComplete: plan.aggregateCompletion?.status === "complete",
+    activeGoalId: plan.activeGoalId
+  };
+}
+function assertNonEmpty(value, label) {
+  const trimmed = value?.trim();
+  if (!trimmed) throw new UltragoalError(`Missing ${label}.`);
+  return trimmed;
+}
+function appendGoalToPlan(plan, options, now) {
+  const title = assertNonEmpty(options.title, "--title");
+  const objective = assertNonEmpty(options.objective, "--objective");
+  const goal = {
+    id: normalizeGoalId(title, plan.goals.length),
+    title,
+    objective,
+    status: "pending",
+    attempt: 0,
+    createdAt: now,
+    updatedAt: now,
+    evidence: options.evidence
+  };
+  plan.goals.push(goal);
+  plan.updatedAt = now;
+  return goal;
+}
+async function addUltragoalGoal(cwd, options) {
+  const plan = await readUltragoalPlan(cwd);
+  const now = iso(options.now);
+  const goal = appendGoalToPlan(plan, options, now);
+  await writePlan(cwd, plan);
+  await appendLedger(cwd, {
+    ts: now,
+    event: "goal_added",
+    goalId: goal.id,
+    status: goal.status,
+    evidence: options.evidence,
+    message: goal.title
+  });
+  return { plan, goal };
+}
+function validateQualityGate(value) {
+  if (!value || typeof value !== "object") {
+    throw new UltragoalError("Final ultragoal completion requires --quality-gate-json with ai-slop-cleaner, verification, and code-review evidence.");
+  }
+  const gate = value;
+  const cleaner = gate.aiSlopCleaner;
+  const verification = gate.verification;
+  const review = gate.codeReview;
+  if (!cleaner || typeof cleaner !== "object") throw new UltragoalError("Final quality gate is missing aiSlopCleaner evidence.");
+  if (cleaner.status !== "passed") {
+    throw new UltragoalError('Final quality gate requires aiSlopCleaner.status="passed"; run ai-slop-cleaner even when it is a no-op.');
+  }
+  assertNonEmpty(cleaner.evidence, "aiSlopCleaner.evidence");
+  if (!verification || typeof verification !== "object") throw new UltragoalError("Final quality gate is missing verification evidence.");
+  if (verification.status !== "passed") throw new UltragoalError('Final quality gate requires verification.status="passed".');
+  if (!Array.isArray(verification.commands) || verification.commands.length === 0 || verification.commands.some((command) => typeof command !== "string" || command.trim() === "")) {
+    throw new UltragoalError("Final quality gate requires non-empty verification.commands.");
+  }
+  assertNonEmpty(verification.evidence, "verification.evidence");
+  if (!review || typeof review !== "object") throw new UltragoalError("Final quality gate is missing codeReview evidence.");
+  if (review.recommendation !== "APPROVE") {
+    throw new UltragoalError("Final code-review must be clean: codeReview.recommendation must be APPROVE; use record-review-blockers for COMMENT or REQUEST CHANGES.");
+  }
+  if (review.architectStatus !== "CLEAR") {
+    throw new UltragoalError("Final code-review must be clean: codeReview.architectStatus must be CLEAR; use record-review-blockers for WATCH or BLOCK.");
+  }
+  assertNonEmpty(review.evidence, "codeReview.evidence");
+  return gate;
+}
+async function startNextUltragoal(cwd, options = {}) {
+  const plan = await readUltragoalPlan(cwd);
+  const now = iso(options.now);
+  if (plan.aggregateCompletion?.status === "complete") return { plan, goal: null, resumed: false, done: true };
+  const existing = plan.goals.find((goal) => goal.status === "in_progress");
+  if (existing) {
+    await appendLedger(cwd, { ts: now, event: "goal_resumed", goalId: existing.id, status: existing.status, message: "Resuming active ultragoal" });
+    return { plan, goal: existing, resumed: true, done: false };
+  }
+  let next = plan.goals.find((goal) => goal.status === "pending");
+  if (!next && options.retryFailed) {
+    next = plan.goals.find((goal) => goal.status === "failed");
+    if (next) await appendLedger(cwd, { ts: now, event: "goal_retried", goalId: next.id, status: "pending", message: next.failureReason });
+  }
+  if (!next) return { plan, goal: null, resumed: false, done: isUltragoalDone(plan) };
+  next.status = "in_progress";
+  next.attempt += 1;
+  next.startedAt = now;
+  next.failedAt = void 0;
+  next.failureReason = void 0;
+  next.updatedAt = now;
+  plan.activeGoalId = next.id;
+  plan.updatedAt = now;
+  await writePlan(cwd, plan);
+  await appendLedger(cwd, { ts: now, event: "goal_started", goalId: next.id, status: next.status, message: `Attempt ${next.attempt}` });
+  return { plan, goal: next, resumed: false, done: false };
+}
+async function checkpointUltragoal(cwd, options) {
+  const plan = await readUltragoalPlan(cwd);
+  const goal = plan.goals.find((candidate) => candidate.id === options.goalId);
+  if (!goal) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
+  const now = iso(options.now);
+  if (options.status === "blocked") {
+    assertActiveInProgressCheckpoint(plan, goal, "blocked");
+    const snapshot = options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal);
+    if (!snapshot?.available) {
+      throw new UltragoalError("Blocked ultragoal checkpoints require a Claude /goal snapshot for the completed legacy goal that blocked a new /goal directive; pass --claude-goal-json.");
+    }
+    if (snapshot.status !== "complete") {
+      throw new UltragoalError(`Cannot record a blocked ultragoal checkpoint while the existing Claude /goal is ${snapshot.status ?? "unknown"}; strict objective mismatch protection remains required for active or incomplete goals.`);
+    }
+    if (!snapshot.objective) {
+      throw new UltragoalError("Blocked ultragoal checkpoint Claude snapshot is missing objective text.");
+    }
+    if (normalizeObjective2(snapshot.objective) === normalizeObjective2(expectedClaudeObjective(plan, goal))) {
+      throw new UltragoalError("Blocked ultragoal checkpoint is only for a different completed legacy Claude goal; complete this ultragoal with --status complete after its audit passes.");
+    }
+    goal.updatedAt = now;
+    plan.activeGoalId = goal.id;
+    plan.updatedAt = now;
+    await writePlan(cwd, plan);
+    await appendLedger(cwd, {
+      ts: now,
+      event: "goal_blocked",
+      goalId: goal.id,
+      status: goal.status,
+      evidence: options.evidence,
+      claudeGoal: options.claudeGoal
+    });
+    return plan;
+  }
+  if (options.status === "failed") {
+    assertActiveInProgressCheckpoint(plan, goal, "failed");
+  }
+  let aggregateCompletion;
+  if (options.status === "complete") {
+    assertActiveInProgressCheckpoint(plan, goal, "complete");
+    const expectedObjective = expectedClaudeObjective(plan, goal);
+    const aggregateMode = claudeGoalMode(plan) === "aggregate";
+    const finalRunCheckpoint = isFinalRunCompletionCandidate(plan, goal);
+    const snapshot = options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal);
+    const reconciliation = reconcileClaudeGoalSnapshot(
+      snapshot,
+      {
+        expectedObjective,
+        allowedStatuses: aggregateMode ? finalRunCheckpoint && !options.allowActiveFinalClaudeGoal ? ["complete"] : ["active"] : ["complete"],
+        requireSnapshot: true,
+        requireComplete: !aggregateMode || finalRunCheckpoint && !options.allowActiveFinalClaudeGoal
+      }
+    );
+    if (!reconciliation.ok) {
+      const completedTaskScopedAggregateSnapshot = snapshot?.available && snapshot.status === "complete" && Boolean(snapshot.objective) && normalizeObjective2(snapshot.objective ?? "") !== normalizeObjective2(expectedObjective) && await canReconcileCompletedTaskScopedAggregateSnapshot(cwd, plan, goal, snapshot.objective ?? "", options.evidence);
+      if (completedTaskScopedAggregateSnapshot) {
+        aggregateCompletion = {
+          status: "complete",
+          completedAt: now,
+          evidence: assertNonEmpty(options.evidence, "--evidence"),
+          claudeGoal: options.claudeGoal
+        };
+      } else {
+        const taskScopedRequirement = aggregateMode && snapshot?.status === "complete" && Boolean(snapshot.objective) ? " Completed task-scoped aggregate reconciliation requires the checkpoint goal to be the active in-progress OMC goal, evidence that names that active OMC goal id, names .omcp/ultragoal/goals.json or ledger.jsonl, includes completed implementation plus validation/review evidence, and a Claude /goal objective that maps to the ultragoal brief/artifact." : "";
+        const remediation = reconciliation.snapshot.available && reconciliation.snapshot.status === "complete" && Boolean(reconciliation.snapshot.objective) && normalizeObjective2(reconciliation.snapshot.objective ?? "") !== normalizeObjective2(expectedObjective) ? ` ${buildCompletedLegacyGoalRemediation(goal)}` : "";
+        throw new UltragoalError(`${formatClaudeGoalReconciliation(reconciliation)}${taskScopedRequirement}${remediation}`);
+      }
+    }
+    if (finalRunCheckpoint && !options.allowActiveFinalClaudeGoal) goal.evidence = options.evidence;
+  }
+  const qualityGate = options.status === "complete" && (aggregateCompletion !== void 0 || isFinalRunCompletionCandidate(plan, goal) && !options.allowActiveFinalClaudeGoal) ? validateQualityGate(options.qualityGate) : void 0;
+  if (aggregateCompletion) {
+    plan.aggregateCompletion = aggregateCompletion;
+    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
+    plan.updatedAt = now;
+    await writePlan(cwd, plan);
+    await appendLedger(cwd, {
+      ts: now,
+      event: "aggregate_completed",
+      goalId: goal.id,
+      status: goal.status,
+      evidence: options.evidence,
+      claudeGoal: options.claudeGoal,
+      qualityGate,
+      message: "Aggregate ultragoal plan completed via task-scoped Claude /goal snapshot; microgoal ledger progress remains independent."
+    });
+    return plan;
+  }
+  goal.status = options.status;
+  goal.updatedAt = now;
+  if (options.status === "complete") {
+    goal.completedAt = now;
+    goal.evidence = options.evidence;
+    goal.failureReason = void 0;
+    goal.failedAt = void 0;
+    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
+  } else {
+    goal.failedAt = now;
+    goal.failureReason = options.evidence;
+    if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
+  }
+  plan.updatedAt = now;
+  await writePlan(cwd, plan);
+  await appendLedger(cwd, {
+    ts: now,
+    event: options.status === "complete" ? "goal_completed" : "goal_failed",
+    goalId: goal.id,
+    status: goal.status,
+    evidence: options.evidence,
+    claudeGoal: options.claudeGoal,
+    qualityGate
+  });
+  return plan;
+}
+async function recordFinalReviewBlockers(cwd, options) {
+  const plan = await readUltragoalPlan(cwd);
+  const goal = plan.goals.find((candidate) => candidate.id === options.goalId);
+  if (!goal) throw new UltragoalError(`Unknown ultragoal id: ${options.goalId}`);
+  assertNonEmpty(options.evidence, "--evidence");
+  if (goal.status !== "in_progress") {
+    throw new UltragoalError(`Cannot record final review blockers for ${goal.id} while it is ${goal.status}; start or resume the ultragoal first.`);
+  }
+  if (!isFinalRunCompletionCandidate(plan, goal)) {
+    throw new UltragoalError(`Cannot record final review blockers for ${goal.id}; it is not the only unresolved ultragoal story.`);
+  }
+  const now = iso(options.now);
+  const expectedObjective = expectedClaudeObjective(plan, goal);
+  const aggregateMode = claudeGoalMode(plan) === "aggregate";
+  const reconciliation = reconcileClaudeGoalSnapshot(
+    options.claudeGoal === void 0 ? null : parseClaudeGoalSnapshot(options.claudeGoal),
+    {
+      expectedObjective,
+      allowedStatuses: ["active"],
+      requireSnapshot: true,
+      requireComplete: false
+    }
+  );
+  if (!reconciliation.ok) {
+    throw new UltragoalError(formatClaudeGoalReconciliation(reconciliation));
+  }
+  const addedGoal = appendGoalToPlan(plan, options, now);
+  goal.status = "review_blocked";
+  goal.reviewBlockedAt = now;
+  goal.updatedAt = now;
+  goal.completedAt = void 0;
+  goal.failedAt = void 0;
+  goal.failureReason = void 0;
+  goal.evidence = options.evidence;
+  if (plan.activeGoalId === goal.id) delete plan.activeGoalId;
+  plan.updatedAt = now;
+  await writePlan(cwd, plan);
+  await appendLedger(cwd, {
+    ts: now,
+    event: "final_review_failed",
+    goalId: goal.id,
+    status: goal.status,
+    evidence: options.evidence,
+    claudeGoal: options.claudeGoal,
+    message: aggregateMode ? "Final aggregate code-review was not clean; blocker story was appended while Claude /goal remains active." : "Final per-story code-review was not clean; blocker story was appended and may require a fresh/available Claude /goal context."
+  });
+  await appendLedger(cwd, {
+    ts: now,
+    event: "goal_added",
+    goalId: addedGoal.id,
+    status: addedGoal.status,
+    evidence: options.evidence,
+    message: addedGoal.title
+  });
+  await appendLedger(cwd, {
+    ts: now,
+    event: "goal_review_blocked",
+    goalId: goal.id,
+    status: goal.status,
+    evidence: options.evidence,
+    claudeGoal: options.claudeGoal
+  });
+  return { plan, blockedGoal: goal, addedGoal };
+}
+function buildClaudeGoalInstruction(goal, plan) {
+  if (claudeGoalMode(plan) === "aggregate") return buildAggregateClaudeGoalInstruction(goal, plan);
+  return buildPerStoryClaudeGoalInstruction(goal, plan);
+}
+function buildPerStoryClaudeGoalInstruction(goal, plan) {
+  const createPayload = {
+    condition: goal.objective,
+    ...goal.tokenBudget ? { token_budget: goal.tokenBudget } : {}
+  };
+  const finalStory = isFinalRunCompletionCandidate(plan, goal);
+  return [
+    "Ultragoal active-goal handoff",
+    `Plan: ${plan.goalsPath}`,
+    `Ledger: ${plan.ledgerPath}`,
+    `Goal: ${goal.id} \u2014 ${goal.title}`,
+    "",
+    "Claude /goal integration constraints (model-facing \u2014 OMC cannot mutate Claude /goal state from a shell):",
+    "- First confirm the active Claude /goal condition for this session. If none is active, invoke /goal <condition> with the payload below.",
+    "- If a different active Claude /goal exists, finish or clear that /goal before starting this ultragoal.",
+    "- If the active /goal is a different completed legacy goal and the Claude session refuses to set a new /goal, continue this ultragoal in a fresh Claude Code session (same repo/worktree) and invoke /goal there.",
+    `- To preserve the durable ledger before switching sessions, record the non-terminal blocker without failing this goal: omcp ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks new /goal in this session>" --claude-goal-json "<goal snapshot JSON or path>"`,
+    "- Work only this goal until its completion audit passes.",
+    finalStory ? "- Final mandatory quality gate: run ai-slop-cleaner on changed files even when it is a no-op, rerun verification, then run $code-review." : "- This is not the final ultragoal story; do not run the final ai-slop-cleaner/$code-review gate yet.",
+    finalStory ? "- If final $code-review is not APPROVE with architect status CLEAR, do not clear the /goal. Record blockers with:" : "- After the goal is actually complete, clear or update the active /goal (run /goal clear once the auto-clear has not already fired), then share a fresh /goal snapshot and checkpoint the ledger with:",
+    finalStory ? `  omcp ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : `  omcp ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
+    finalStory ? "- In legacy per-story mode, the blocker story may require a fresh/available Claude /goal context because this story remains an active incomplete /goal; do not claim it is complete." : null,
+    finalStory ? "- If final $code-review is clean (APPROVE + CLEAR), clear the /goal (or wait for the auto-clear), then checkpoint with --quality-gate-json:" : null,
+    finalStory ? `  omcp ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : null,
+    "- If blocked or failed, checkpoint with --status failed and the failure evidence; rerun complete-goals --retry-failed to resume.",
+    "",
+    "Suggested /goal payload (model-facing \u2014 invoke /goal yourself in-session):",
+    JSON.stringify(createPayload, null, 2),
+    "",
+    "Objective (use as the /goal condition):",
+    goal.objective
+  ].filter((line) => line !== null).join("\n");
+}
+function buildAggregateClaudeGoalInstruction(goal, plan) {
+  const objective = plan.claudeObjective ?? aggregateClaudeObjective(plan.goals);
+  const finalStory = isFinalRunCompletionCandidate(plan, goal);
+  const createPayload = { condition: objective };
+  const checkpointStatus = finalStory ? "complete" : "active";
+  return [
+    "Ultragoal aggregate-goal handoff",
+    `Plan: ${plan.goalsPath}`,
+    `Ledger: ${plan.ledgerPath}`,
+    `Goal: ${goal.id} \u2014 ${goal.title}`,
+    "",
+    "Claude /goal integration constraints (model-facing \u2014 OMC cannot mutate Claude /goal state from a shell):",
+    "- Claude /goal = the whole ultragoal run; OMC G001/G002/etc. = ledger stories.",
+    "- First confirm the active Claude /goal condition for this session. If none is active, invoke /goal <condition> with the aggregate payload below.",
+    "- If the active /goal already reports the same aggregate objective as active, continue this OMC story without setting a new /goal.",
+    "- If a different active or incomplete Claude /goal exists, finish or clear that /goal before starting this ultragoal; do not claim a shell command can replace Claude /goal state.",
+    finalStory ? "- This is the final pending story: run the mandatory final ai-slop-cleaner pass, rerun verification, and run $code-review before any /goal clear." : "- This is not the final story: do not clear the /goal yet; the aggregate Claude /goal must remain active while later OMC stories remain.",
+    finalStory ? "- If final $code-review is not APPROVE with architect status CLEAR, do not clear the /goal. Record durable blocker work first:" : null,
+    finalStory ? `  omcp ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : null,
+    finalStory ? "- If final $code-review is clean (APPROVE + CLEAR), clear the /goal (or let the auto-clear fire when the condition holds), share a fresh complete /goal snapshot, then checkpoint with --quality-gate-json." : null,
+    `- Checkpoint this OMC story with a fresh /goal snapshot whose objective matches the aggregate payload and whose status is ${checkpointStatus}:`,
+    finalStory ? `  omcp ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : `  omcp ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
+    "- If blocked or failed, checkpoint with --status failed and the failure evidence; rerun complete-goals --retry-failed to resume.",
+    "",
+    "Suggested /goal payload (model-facing \u2014 invoke /goal yourself in-session):",
+    JSON.stringify(createPayload, null, 2),
+    "",
+    "Aggregate /goal condition:",
+    objective,
+    "",
+    "Current OMC story objective:",
+    goal.objective
+  ].filter((line) => line !== null).join("\n");
+}
+
+// src/cli/commands/ultragoal.ts
+var ULTRAGOAL_HELP = `omcp ultragoal - Durable repo-native multi-goal workflow with Claude Code /goal handoff
+
+Usage:
+  omcp ultragoal create-goals [--brief <text> | --brief-file <path> | --from-stdin] [--goal <title::objective>] [--claude-goal-mode <aggregate|per-story>] [--force] [--json]
+  omcp ultragoal complete-goals [--retry-failed] [--json]
+  omcp ultragoal add-goal --title <title> --objective <text> [--evidence <text>] [--json]
+  omcp ultragoal record-review-blockers --goal-id <id> --title <title> --objective <text> --evidence <review-findings> --claude-goal-json <active-json-or-path> [--json]
+  omcp ultragoal checkpoint --goal-id <id> --status <complete|failed|blocked> [--evidence <text>] [--claude-goal-json <json-or-path>] [--quality-gate-json <json-or-path>] [--json]
+  omcp ultragoal status [--claude-goal-json <json-or-path>] [--json]
+
+Aliases:
+  create -> create-goals, complete|next|start-next -> complete-goals
+
+Artifacts:
+  .omcp/ultragoal/brief.md
+  .omcp/ultragoal/goals.json
+  .omcp/ultragoal/ledger.jsonl
+
+Claude /goal integration:
+  This command cannot directly invoke the Claude Code /goal slash command from a shell;
+  /goal is a model-facing in-session directive that registers a session-scoped Stop hook
+  until its condition holds (auto-clears on success). complete-goals writes durable state
+  and prints a model-facing handoff that tells the active Claude agent when to invoke
+  /goal <condition>, when to clear it, and what snapshot JSON to share back.
+  New plans default to aggregate mode: one Claude /goal covers the whole ultragoal run
+  while OMC checkpoints G001/G002 stories in the durable ledger.
+  Final completion is mandatory-gated: run ai-slop-cleaner, rerun verification,
+  run $code-review, and pass --quality-gate-json with APPROVE + CLEAR evidence.
+  Non-clean final review must use record-review-blockers before clearing the /goal.
+`;
+function hasFlag2(args, flag) {
+  return args.includes(flag);
+}
+function readValue(args, flag) {
+  const index = args.indexOf(flag);
+  if (index >= 0) return args[index + 1];
+  const prefix = `${flag}=`;
+  return args.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
+}
+function readRepeated(args, flag) {
+  const values = [];
+  const prefix = `${flag}=`;
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === flag && args[index + 1]) {
+      values.push(args[index + 1]);
+      index += 1;
+    } else if (arg.startsWith(prefix)) {
+      values.push(arg.slice(prefix.length));
+    }
+  }
+  return values;
+}
+function parseGoalArg(raw) {
+  const [title, ...rest] = raw.split("::");
+  if (rest.length === 0) return { objective: raw.trim() };
+  return { title: title.trim(), objective: rest.join("::").trim() };
+}
+async function readStdin() {
+  const chunks = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf-8");
+}
+function positionalText(args) {
+  const valueTaking = /* @__PURE__ */ new Set(["--brief", "--brief-file", "--goal", "--goal-id", "--status", "--evidence", "--claude-goal-json", "--claude-goal-mode", "--title", "--objective", "--quality-gate-json"]);
+  const words = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (valueTaking.has(arg)) {
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) continue;
+    words.push(arg);
+  }
+  return words.join(" ").trim();
+}
+function printJson(value) {
+  console.log(JSON.stringify(value, null, 2));
+}
+function normalizeClaudeGoalMode(raw) {
+  if (!raw) return void 0;
+  if (raw === "aggregate") return "aggregate";
+  if (raw === "per-story" || raw === "per_story") return "per_story";
+  throw new UltragoalError("Invalid --claude-goal-mode; expected aggregate or per-story.");
+}
+function printStatus(plan) {
+  const summary = summarizeUltragoalPlan(plan);
+  if (summary.aggregateComplete) {
+    console.log("ultragoal aggregate product: complete");
+    console.log(`microgoal ledger bookkeeping (progress-only): ${summary.complete}/${summary.total} complete, ${summary.pending} pending, ${summary.inProgress} in progress, ${summary.failed} failed, ${summary.reviewBlocked} review-blocked`);
+  } else {
+    console.log(`ultragoal: ${summary.complete}/${summary.total} complete, ${summary.pending} pending, ${summary.inProgress} in progress, ${summary.failed} failed, ${summary.reviewBlocked} review-blocked`);
+  }
+  for (const goal of plan.goals) {
+    const marker = goal.id === plan.activeGoalId ? "*" : "-";
+    console.log(`${marker} ${goal.id} [${goal.status}] ${goal.title}`);
+  }
+}
+async function parseClaudeGoalJson(raw) {
+  if (!raw) return void 0;
+  return readClaudeGoalSnapshotInput(raw, process.cwd());
+}
+async function readJsonInput(raw) {
+  if (!raw) return void 0;
+  try {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("{") || trimmed.startsWith("[")) return JSON.parse(trimmed);
+    return JSON.parse(await (0, import_promises18.readFile)(trimmed, "utf-8"));
+  } catch (error48) {
+    const message = error48 instanceof Error ? error48.message : String(error48);
+    throw new UltragoalError(`Invalid --quality-gate-json: ${message}`);
+  }
+}
+async function ultragoalCommand(args) {
+  const command = args[0] ?? "help";
+  const rest = args.slice(1);
+  const json2 = hasFlag2(rest, "--json");
+  const cwd = process.cwd();
+  try {
+    if (command === "help" || command === "--help" || command === "-h") {
+      console.log(ULTRAGOAL_HELP);
+      return;
+    }
+    if (command === "create" || command === "create-goals") {
+      const briefFile = readValue(rest, "--brief-file");
+      const brief = readValue(rest, "--brief") ?? (briefFile ? await (0, import_promises18.readFile)(briefFile, "utf-8") : void 0) ?? (hasFlag2(rest, "--from-stdin") ? await readStdin() : void 0) ?? positionalText(rest);
+      if (!brief.trim()) throw new UltragoalError("Missing brief text. Pass --brief, --brief-file, --from-stdin, or positional text.");
+      const goals = readRepeated(rest, "--goal").map(parseGoalArg);
+      const plan = await createUltragoalPlan(cwd, {
+        brief,
+        goals,
+        claudeGoalMode: normalizeClaudeGoalMode(readValue(rest, "--claude-goal-mode")),
+        force: hasFlag2(rest, "--force")
+      });
+      if (json2) printJson({ ok: true, plan, summary: summarizeUltragoalPlan(plan) });
+      else {
+        console.log(`ultragoal plan created: ${plan.goals.length} goal(s)`);
+        console.log(`brief: ${plan.briefPath}`);
+        console.log(`goals: ${plan.goalsPath}`);
+        console.log(`ledger: ${plan.ledgerPath}`);
+      }
+      return;
+    }
+    if (command === "status") {
+      const plan = await readUltragoalPlan(cwd);
+      const snapshot = await readClaudeGoalSnapshotInput(readValue(rest, "--claude-goal-json"), cwd);
+      const activeGoal = plan.goals.find((goal) => goal.id === plan.activeGoalId || goal.status === "in_progress");
+      const expectedObjective = plan.claudeGoalMode === "aggregate" ? plan.claudeObjective : activeGoal?.objective;
+      const reconciliation = activeGoal ? reconcileClaudeGoalSnapshot(snapshot, {
+        expectedObjective: expectedObjective ?? activeGoal.objective,
+        allowedStatuses: plan.claudeGoalMode === "aggregate" ? ["active"] : ["active", "complete"],
+        requireSnapshot: false
+      }) : null;
+      if (json2) printJson({ plan, summary: summarizeUltragoalPlan(plan), reconciliation });
+      else {
+        printStatus(plan);
+        if (reconciliation && !reconciliation.ok) console.log(`claude goal warning: ${formatClaudeGoalReconciliation(reconciliation)}`);
+        else if (reconciliation?.warnings.length) console.log(`claude goal warning: ${formatClaudeGoalReconciliation(reconciliation)}`);
+      }
+      return;
+    }
+    if (command === "add-goal") {
+      const title = readValue(rest, "--title");
+      const objective = readValue(rest, "--objective");
+      if (!title?.trim()) throw new UltragoalError("Missing --title.");
+      if (!objective?.trim()) throw new UltragoalError("Missing --objective.");
+      const result = await addUltragoalGoal(cwd, { title, objective, evidence: readValue(rest, "--evidence") });
+      if (json2) printJson({ ok: true, plan: result.plan, addedGoal: result.goal, summary: summarizeUltragoalPlan(result.plan) });
+      else {
+        console.log(`ultragoal added goal: ${result.goal.id}`);
+        printStatus(result.plan);
+      }
+      return;
+    }
+    if (command === "record-review-blockers") {
+      const goalId = readValue(rest, "--goal-id");
+      const title = readValue(rest, "--title");
+      const objective = readValue(rest, "--objective");
+      const evidence = readValue(rest, "--evidence");
+      if (!goalId) throw new UltragoalError("Missing --goal-id.");
+      if (!title?.trim()) throw new UltragoalError("Missing --title.");
+      if (!objective?.trim()) throw new UltragoalError("Missing --objective.");
+      if (!evidence?.trim()) throw new UltragoalError("Missing --evidence.");
+      const claudeGoal = await parseClaudeGoalJson(readValue(rest, "--claude-goal-json"));
+      const result = await recordFinalReviewBlockers(cwd, { goalId, title, objective, evidence, claudeGoal });
+      if (json2) printJson({ ok: true, plan: result.plan, blockedGoal: result.blockedGoal, addedGoal: result.addedGoal, summary: summarizeUltragoalPlan(result.plan) });
+      else {
+        console.log(`ultragoal final review blockers recorded: ${result.blockedGoal.id} -> review_blocked; added ${result.addedGoal.id}`);
+        printStatus(result.plan);
+      }
+      return;
+    }
+    if (command === "complete" || command === "complete-goals" || command === "next" || command === "start-next") {
+      const result = await startNextUltragoal(cwd, { retryFailed: hasFlag2(rest, "--retry-failed") });
+      if (!result.goal) {
+        if (json2) printJson({ ok: true, done: result.done, summary: summarizeUltragoalPlan(result.plan) });
+        else console.log(result.done ? "ultragoal: all goals complete" : "ultragoal: no pending goals (use --retry-failed to retry failed goals)");
+        return;
+      }
+      const instruction = buildClaudeGoalInstruction(result.goal, result.plan);
+      if (json2) printJson({ ok: true, resumed: result.resumed, goal: result.goal, instruction });
+      else console.log(instruction);
+      return;
+    }
+    if (command === "checkpoint") {
+      const goalId = readValue(rest, "--goal-id");
+      const status = readValue(rest, "--status");
+      if (!goalId) throw new UltragoalError("Missing --goal-id.");
+      if (status !== "complete" && status !== "failed" && status !== "blocked") throw new UltragoalError("Missing or invalid --status; expected complete, failed, or blocked.");
+      const evidence = readValue(rest, "--evidence");
+      const claudeGoal = await parseClaudeGoalJson(readValue(rest, "--claude-goal-json"));
+      const qualityGate = await readJsonInput(readValue(rest, "--quality-gate-json"));
+      const plan = await checkpointUltragoal(cwd, { goalId, status, evidence, claudeGoal, qualityGate });
+      if (json2) printJson({ ok: true, plan, summary: summarizeUltragoalPlan(plan) });
+      else {
+        const goal = plan.goals.find((candidate) => candidate.id === goalId);
+        console.log(`ultragoal checkpoint: ${goalId} -> ${goal?.status ?? status}`);
+        printStatus(plan);
+      }
+      return;
+    }
+    throw new UltragoalError(`Unknown ultragoal command: ${command}
+
+${ULTRAGOAL_HELP}`);
+  } catch (error48) {
+    if (error48 instanceof UltragoalError || error48 instanceof ClaudeGoalSnapshotError) {
+      console.error(`[ultragoal] ${error48.message}`);
+      process.exitCode = 1;
+      return;
+    }
+    throw error48;
+  }
+}
+
 // src/cli/commands/teleport.ts
 var import_child_process30 = require("child_process");
 var import_fs93 = require("fs");
@@ -90632,7 +91519,7 @@ async function launchCommand(args) {
 // src/cli/ask.ts
 var import_child_process32 = require("child_process");
 var import_fs95 = require("fs");
-var import_promises16 = require("fs/promises");
+var import_promises19 = require("fs/promises");
 var import_os23 = require("os");
 var import_path112 = require("path");
 var import_url13 = require("url");
@@ -90702,12 +91589,12 @@ async function resolveAgentPromptContent(role, promptsDir) {
   }
   const promptPath = (0, import_path112.join)(promptsDir, `${normalizedRole}.md`);
   if (!(0, import_fs95.existsSync)(promptPath)) {
-    const files = await (0, import_promises16.readdir)(promptsDir).catch(() => []);
+    const files = await (0, import_promises19.readdir)(promptsDir).catch(() => []);
     const availableRoles = files.filter((file2) => file2.endsWith(".md")).map((file2) => file2.slice(0, -3)).sort();
     const availableSuffix = availableRoles.length > 0 ? ` Available roles: ${availableRoles.join(", ")}.` : "";
     throw new Error(`[ask] --agent-prompt role "${normalizedRole}" not found in ${promptsDir}.${availableSuffix}`);
   }
-  const content = (await (0, import_promises16.readFile)(promptPath, "utf-8")).trim();
+  const content = (await (0, import_promises19.readFile)(promptPath, "utf-8")).trim();
   if (!content) {
     throw new Error(`[ask] --agent-prompt role "${normalizedRole}" is empty: ${promptPath}`);
   }
@@ -91696,7 +92583,7 @@ async function ralphthonCommand(args) {
   console.log(source_default.gray("Orchestrator running. Press Ctrl+C to stop."));
 }
 function sleep5(ms) {
-  return new Promise((resolve16) => setTimeout(resolve16, ms));
+  return new Promise((resolve17) => setTimeout(resolve17, ms));
 }
 
 // src/cli/autoresearch.ts
@@ -91804,15 +92691,15 @@ async function runHudWatchLoop(options) {
     if (shouldStop) {
       break;
     }
-    await new Promise((resolve16) => {
+    await new Promise((resolve17) => {
       const timer = setTimeout(() => {
         wakeSleep = null;
-        resolve16();
+        resolve17();
       }, options.intervalMs);
       wakeSleep = () => {
         clearTimeout(timer);
         wakeSleep = null;
-        resolve16();
+        resolve17();
       };
       timer.unref?.();
     });
@@ -92709,4 +93596,17 @@ program2.command("autoresearch").description("Hard-deprecated shim that redirect
 program2.command("ralphthon").description("Autonomous hackathon lifecycle mode").helpOption(false).allowUnknownOption(true).allowExcessArguments(true).argument("[args...]", "ralphthon arguments").action(async (args) => {
   await ralphthonCommand(args);
 });
-program2.parse();
+program2.command("ultragoal").description("Durable repo-native multi-goal workflow with Copilot CLI /goal handoff (see omcp ultragoal help)").helpOption(false).allowUnknownOption(true).allowExcessArguments(true).argument("[args...]", "ultragoal subcommand arguments").addHelpText("after", `
+${ULTRAGOAL_HELP}`).action(async (args) => {
+  await ultragoalCommand(args);
+});
+function buildProgram() {
+  return program2;
+}
+if (!process.env.OMC_CLI_SKIP_PARSE) {
+  program2.parse();
+}
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
+  buildProgram
+});
