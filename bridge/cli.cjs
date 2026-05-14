@@ -17399,6 +17399,76 @@ __export(auto_update_exports, {
   syncPluginCache: () => syncPluginCache,
   updateLastCheckTime: () => updateLastCheckTime
 });
+function npmExecOptions(verbose = false) {
+  return {
+    encoding: "utf-8",
+    stdio: verbose ? "inherit" : "pipe",
+    timeout: 12e4,
+    ...process.platform === "win32" ? { windowsHide: true } : {}
+  };
+}
+function assertSafeNpmPackageSpec(packageSpec) {
+  if (!/^[A-Za-z0-9@._~+/-]+$/.test(packageSpec)) {
+    throw new Error(`Unsafe npm package spec: ${packageSpec}`);
+  }
+}
+function npmInstallGlobalPackage(packageSpec, verbose = false) {
+  assertSafeNpmPackageSpec(packageSpec);
+  if (process.platform === "win32") {
+    (0, import_child_process12.execSync)(`npm install -g ${packageSpec}`, npmExecOptions(verbose));
+    return;
+  }
+  (0, import_child_process12.execFileSync)("npm", ["install", "-g", packageSpec], npmExecOptions(verbose));
+}
+function detectGlobalCopilotCliInstall() {
+  try {
+    const npmRoot = String((0, import_child_process12.execSync)("npm root -g", {
+      encoding: "utf-8",
+      stdio: "pipe",
+      timeout: 1e4,
+      ...process.platform === "win32" ? { windowsHide: true } : {}
+    }) ?? "").trim();
+    if (!npmRoot) {
+      return { status: "unknown", error: "npm root -g returned an empty path" };
+    }
+    const packageJsonPath = (0, import_path41.join)(npmRoot, "@github", "copilot", "package.json");
+    if (!(0, import_fs31.existsSync)(packageJsonPath)) {
+      return { status: "absent" };
+    }
+    const packageJson = JSON.parse(String((0, import_fs31.readFileSync)(packageJsonPath, "utf-8") ?? ""));
+    return {
+      status: "present",
+      version: typeof packageJson.version === "string" && packageJson.version.trim() ? packageJson.version.trim() : void 0
+    };
+  } catch (error48) {
+    return {
+      status: "unknown",
+      error: error48 instanceof Error ? error48.message : String(error48)
+    };
+  }
+}
+function restoreGlobalCopilotCliIfNeeded(beforeUpdate, verbose = false) {
+  if (beforeUpdate.status !== "present") {
+    return { restored: false };
+  }
+  if (detectGlobalCopilotCliInstall().status === "present") {
+    return { restored: false };
+  }
+  const versionSuffix = beforeUpdate.version ? `@${beforeUpdate.version}` : "@latest";
+  const packageSpec = `${COPILOT_CLI_NPM_PACKAGE}${versionSuffix}`;
+  if (verbose) {
+    console.log(`[omc update] Restoring global ${packageSpec} after npm update...`);
+  }
+  npmInstallGlobalPackage(packageSpec, verbose);
+  const afterRestore = detectGlobalCopilotCliInstall();
+  if (afterRestore.status !== "present") {
+    throw new Error(`Global ${COPILOT_CLI_NPM_PACKAGE} was present before update but is still missing after restore`);
+  }
+  if (verbose) {
+    console.log(`[omc update] Restored global ${COPILOT_CLI_NPM_PACKAGE}`);
+  }
+  return { restored: true };
+}
 function syncMarketplaceClone(verbose = false) {
   const marketplacePath = (0, import_path41.join)(getConfigDir(), "plugins", "marketplaces", "omg");
   if (!(0, import_fs31.existsSync)(marketplacePath)) {
@@ -17766,14 +17836,20 @@ async function performUpdate(options) {
     }
     const release = await fetchLatestRelease();
     const newVersion = release.tag_name.replace(/^v/, "");
+    const copilotCliBeforeUpdate = detectGlobalCopilotCliInstall();
     try {
-      (0, import_child_process12.execSync)("npm install -g oh-my-copilot@latest", {
-        encoding: "utf-8",
-        stdio: options?.verbose ? "inherit" : "pipe",
-        timeout: 12e4,
-        // 2 minute timeout for npm
-        ...process.platform === "win32" ? { windowsHide: true } : {}
-      });
+      (0, import_child_process12.execSync)("npm install -g oh-my-copilot@latest", npmExecOptions(options?.verbose ?? false));
+      try {
+        restoreGlobalCopilotCliIfNeeded(copilotCliBeforeUpdate, options?.verbose ?? false);
+      } catch (restoreError) {
+        return {
+          success: false,
+          previousVersion,
+          newVersion,
+          message: `Updated to ${newVersion}, but failed to restore global ${COPILOT_CLI_NPM_PACKAGE}`,
+          errors: [restoreError instanceof Error ? restoreError.message : String(restoreError)]
+        };
+      }
       const marketplaceSync = syncMarketplaceClone(options?.verbose ?? false);
       if (!marketplaceSync.ok && options?.verbose) {
         console.warn(`[omc update] ${marketplaceSync.message}`);
@@ -18053,7 +18129,7 @@ function initSilentAutoUpdate(config2 = {}) {
   silentAutoUpdate(config2).catch(() => {
   });
 }
-var import_fs31, import_path41, import_child_process12, REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, COPILOT_CONFIG_DIR2, VERSION_FILE2, CONFIG_FILE, SILENT_UPDATE_STATE_FILE;
+var import_fs31, import_path41, import_child_process12, REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, COPILOT_CLI_NPM_PACKAGE, COPILOT_CONFIG_DIR2, VERSION_FILE2, CONFIG_FILE, SILENT_UPDATE_STATE_FILE;
 var init_auto_update = __esm({
   "src/features/auto-update.ts"() {
     "use strict";
@@ -18068,6 +18144,7 @@ var init_auto_update = __esm({
     REPO_NAME = "oh-my-copilot";
     GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
     GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
+    COPILOT_CLI_NPM_PACKAGE = "@github/copilot";
     COPILOT_CONFIG_DIR2 = getConfigDir();
     VERSION_FILE2 = (0, import_path41.join)(COPILOT_CONFIG_DIR2, ".omc-version.json");
     CONFIG_FILE = (0, import_path41.join)(COPILOT_CONFIG_DIR2, ".omc-config.json");
@@ -86450,6 +86527,9 @@ function listBuiltinSkillNames(options) {
   }
   return skills.filter((s) => !s.aliasOf).map((s) => s.name);
 }
+function getSkillsDir() {
+  return SKILLS_DIR2;
+}
 
 // src/hooks/auto-slash-command/executor.ts
 var COPILOT_CONFIG_DIR3 = getConfigDir();
@@ -87776,6 +87856,101 @@ function checkEnvFlags() {
   }
   return { disableOmc, skipHooks };
 }
+var SETUP_FALLBACK_SKILL_NAMES = /* @__PURE__ */ new Set(["omc-reference"]);
+function parseSemverLikeVersion(version3) {
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version3)) {
+    return null;
+  }
+  return version3.split(/[+-]/, 1)[0].split(".").map((part) => Number.parseInt(part, 10));
+}
+function compareSemverLikeVersions(a, b) {
+  const parsedA = parseSemverLikeVersion(a);
+  const parsedB = parseSemverLikeVersion(b);
+  if (!parsedA || !parsedB) {
+    return 0;
+  }
+  for (let index = 0; index < 3; index += 1) {
+    const delta = parsedA[index] - parsedB[index];
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+  return 0;
+}
+function isValidSetupPluginRoot(pluginRoot) {
+  return (0, import_fs92.existsSync)((0, import_path109.join)(pluginRoot, "docs", "CLAUDE.md"));
+}
+function readInstalledPluginRoots() {
+  const installedPluginsPath = (0, import_path109.join)(getConfigDir(), "plugins", "installed_plugins.json");
+  if (!(0, import_fs92.existsSync)(installedPluginsPath)) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse((0, import_fs92.readFileSync)(installedPluginsPath, "utf-8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return [];
+    }
+    const plugins = "plugins" in parsed && parsed.plugins && typeof parsed.plugins === "object" && !Array.isArray(parsed.plugins) ? parsed.plugins : parsed;
+    return Object.entries(plugins).filter(([key]) => key.startsWith("oh-my-copilot")).flatMap(([, value]) => Array.isArray(value) ? value : []).map((entry) => entry && typeof entry === "object" && "installPath" in entry ? entry.installPath : null).filter((installPath) => typeof installPath === "string" && installPath.length > 0);
+  } catch {
+    return [];
+  }
+}
+function findLatestSiblingPluginRoot(pluginRoot) {
+  const cacheBase = (0, import_path109.dirname)(pluginRoot);
+  if (!(0, import_fs92.existsSync)(cacheBase)) {
+    return null;
+  }
+  try {
+    return (0, import_fs92.readdirSync)(cacheBase).filter((entry) => parseSemverLikeVersion(entry)).map((entry) => (0, import_path109.join)(cacheBase, entry)).filter(isValidSetupPluginRoot).sort((a, b) => compareSemverLikeVersions((0, import_path109.basename)(b), (0, import_path109.basename)(a)))[0] || null;
+  } catch {
+    return null;
+  }
+}
+function getSetupFallbackCanonicalSkillPaths(baseName) {
+  const currentSkillsDir = getSkillsDir();
+  const currentPluginRoot = (0, import_path109.dirname)(currentSkillsDir);
+  const roots = [
+    currentPluginRoot,
+    process.env.CLAUDE_PLUGIN_ROOT,
+    ...readInstalledPluginRoots()
+  ].filter((root) => typeof root === "string" && root.length > 0);
+  for (const root of [...roots]) {
+    const latestSibling = findLatestSiblingPluginRoot(root);
+    if (latestSibling) {
+      roots.push(latestSibling);
+    }
+  }
+  const seen = /* @__PURE__ */ new Set();
+  return [
+    (0, import_path109.join)(currentSkillsDir, baseName, "SKILL.md"),
+    ...roots.flatMap((root) => [(0, import_path109.join)(root, "skills", baseName, "SKILL.md")])
+  ].filter((path22) => {
+    if (seen.has(path22)) {
+      return false;
+    }
+    seen.add(path22);
+    return true;
+  });
+}
+function isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName) {
+  if (!SETUP_FALLBACK_SKILL_NAMES.has(baseName)) {
+    return false;
+  }
+  if (entry.toLowerCase() !== baseName) {
+    return false;
+  }
+  const installedSkillPath = (0, import_path109.join)(legacySkillsDir, entry, "SKILL.md");
+  if (!(0, import_fs92.existsSync)(installedSkillPath)) {
+    return false;
+  }
+  try {
+    const installedContent = (0, import_fs92.readFileSync)(installedSkillPath, "utf-8");
+    return getSetupFallbackCanonicalSkillPaths(baseName).some((canonicalSkillPath) => (0, import_fs92.existsSync)(canonicalSkillPath) && installedContent === (0, import_fs92.readFileSync)(canonicalSkillPath, "utf-8"));
+  } catch {
+    return false;
+  }
+}
 function checkLegacySkills() {
   const legacySkillsDir = (0, import_path109.join)(getConfigDir(), "skills");
   if (!(0, import_fs92.existsSync)(legacySkillsDir)) return [];
@@ -87788,6 +87963,9 @@ function checkLegacySkills() {
     for (const entry of entries) {
       const baseName = entry.replace(/\.md$/i, "").toLowerCase();
       if (pluginSkillNames.has(baseName)) {
+        if (isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName)) {
+          continue;
+        }
         collisions.push({ name: baseName, path: (0, import_path109.join)(legacySkillsDir, entry) });
       }
     }
