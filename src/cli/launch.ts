@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from 'fs';
 import { homedir } from 'os';
-import { basename, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 import { resolvePluginDirArg } from '../lib/plugin-dir.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
@@ -89,6 +89,31 @@ function ensureMirroredPath(
   }
 }
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readJsonObject(path: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+    return isJsonObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function refreshRuntimeClaudeJsonMcpServers(baseConfigDir: string, runtimeClaudeJsonPath: string): void {
+  const sourceClaudeJsonPath = join(dirname(baseConfigDir), '.claude.json');
+  const sourceClaudeJson = readJsonObject(sourceClaudeJsonPath);
+  if (!sourceClaudeJson || !isJsonObject(sourceClaudeJson.mcpServers)) {
+    return;
+  }
+
+  const runtimeClaudeJson = readJsonObject(runtimeClaudeJsonPath) ?? {};
+  runtimeClaudeJson.mcpServers = sourceClaudeJson.mcpServers;
+  writeFileSync(runtimeClaudeJsonPath, JSON.stringify(runtimeClaudeJson, null, 2));
+}
+
 export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()): string {
   const companionPath = join(baseConfigDir, 'copilot-instructions-omc.md');
   if (!hasOmcMarkers(companionPath)) {
@@ -106,6 +131,7 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
   if (preservedClaudeJson) {
     writeFileSync(runtimeClaudeJsonPath, preservedClaudeJson);
   }
+  refreshRuntimeClaudeJsonMcpServers(baseConfigDir, runtimeClaudeJsonPath);
   copyFileSync(companionPath, join(runtimeConfigDir, 'copilot-instructions.md'));
 
   for (const entry of [
