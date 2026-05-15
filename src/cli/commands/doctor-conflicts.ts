@@ -4,11 +4,11 @@
  */
 
 import { readFileSync, existsSync, readdirSync } from 'fs';
-import { join } from 'path';
+import { basename, dirname, join } from 'path';
 import { getClaudeConfigDir } from '../../utils/config-dir.js';
 import { isOmcHook } from '../../installer/index.js';
 import { colors } from '../utils/formatting.js';
-import { listBuiltinSkillNames } from '../../features/builtin-skills/skills.js';
+import { getSkillsDir, listBuiltinSkillNames } from '../../features/builtin-skills/skills.js';
 
 export interface ConflictReport {
   hookConflicts: { event: string; command: string; isOmc: boolean }[];
@@ -213,6 +213,144 @@ export function checkEnvFlags(): ConflictReport['envFlags'] {
   return { disableOmc, skipHooks };
 }
 
+const SETUP_FALLBACK_SKILL_NAMES = new Set(['omc-reference']);
+
+function parseSemverLikeVersion(version: string): number[] | null {
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+    return null;
+  }
+
+  return version.split(/[+-]/, 1)[0].split('.').map(part => Number.parseInt(part, 10));
+}
+
+function compareSemverLikeVersions(a: string, b: string): number {
+  const parsedA = parseSemverLikeVersion(a);
+  const parsedB = parseSemverLikeVersion(b);
+  if (!parsedA || !parsedB) {
+    return 0;
+  }
+
+  for (let index = 0; index < 3; index += 1) {
+    const delta = parsedA[index] - parsedB[index];
+    if (delta !== 0) {
+      return delta;
+    }
+  }
+
+  return 0;
+}
+
+function isValidSetupPluginRoot(pluginRoot: string): boolean {
+  return existsSync(join(pluginRoot, 'docs', 'CLAUDE.md'));
+}
+
+function readInstalledPluginRoots(): string[] {
+  const installedPluginsPath = join(getClaudeConfigDir(), 'plugins', 'installed_plugins.json');
+  if (!existsSync(installedPluginsPath)) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(readFileSync(installedPluginsPath, 'utf-8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return [];
+    }
+
+    const plugins = 'plugins' in parsed
+      && parsed.plugins
+      && typeof parsed.plugins === 'object'
+      && !Array.isArray(parsed.plugins)
+      ? parsed.plugins as Record<string, unknown>
+      : parsed as Record<string, unknown>;
+
+    return Object.entries(plugins)
+      .filter(([key]) => key.startsWith('oh-my-copilot'))
+      .flatMap(([, value]) => Array.isArray(value) ? value : [])
+      .map(entry => entry && typeof entry === 'object' && 'installPath' in entry
+        ? (entry as { installPath?: unknown }).installPath
+        : null)
+      .filter((installPath): installPath is string => typeof installPath === 'string' && installPath.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+function findLatestSiblingPluginRoot(pluginRoot: string): string | null {
+  const cacheBase = dirname(pluginRoot);
+  if (!existsSync(cacheBase)) {
+    return null;
+  }
+
+  try {
+    return readdirSync(cacheBase)
+      .filter(entry => parseSemverLikeVersion(entry))
+      .map(entry => join(cacheBase, entry))
+      .filter(isValidSetupPluginRoot)
+      .sort((a, b) => compareSemverLikeVersions(basename(b), basename(a)))[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+function getSetupFallbackCanonicalSkillPaths(baseName: string): string[] {
+  const currentSkillsDir = getSkillsDir();
+  const currentPluginRoot = dirname(currentSkillsDir);
+  const roots = [
+    currentPluginRoot,
+    process.env.CLAUDE_PLUGIN_ROOT,
+    ...readInstalledPluginRoots(),
+  ].filter((root): root is string => typeof root === 'string' && root.length > 0);
+
+  for (const root of [...roots]) {
+    const latestSibling = findLatestSiblingPluginRoot(root);
+    if (latestSibling) {
+      roots.push(latestSibling);
+    }
+  }
+
+  const seen = new Set<string>();
+  return [
+    join(currentSkillsDir, baseName, 'SKILL.md'),
+    ...roots.flatMap(root => [join(root, 'skills', baseName, 'SKILL.md')]),
+  ]
+    .filter(path => {
+      if (seen.has(path)) {
+        return false;
+      }
+      seen.add(path);
+      return true;
+    });
+}
+
+function isSupportedSetupFallbackSkill(legacySkillsDir: string, entry: string, baseName: string): boolean {
+  if (!SETUP_FALLBACK_SKILL_NAMES.has(baseName)) {
+    return false;
+  }
+
+  // scripts/setup-claude-md.sh intentionally syncs the raw bundled
+  // skills/omc-reference/SKILL.md file into ~/.copilot/skills/omc-reference/SKILL.md
+  // as a Copilot CLI fallback. Suppress only that exact, unmodified sync so real
+  // legacy collisions and user-edited omc-reference copies still surface.
+  if (entry.toLowerCase() !== baseName) {
+    return false;
+  }
+
+  const installedSkillPath = join(legacySkillsDir, entry, 'SKILL.md');
+  if (!existsSync(installedSkillPath)) {
+    return false;
+  }
+
+  try {
+    const installedContent = readFileSync(installedSkillPath, 'utf-8');
+    return getSetupFallbackCanonicalSkillPaths(baseName).some(canonicalSkillPath => (
+      existsSync(canonicalSkillPath)
+      && installedContent === readFileSync(canonicalSkillPath, 'utf-8')
+    ));
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Check for legacy curl-installed skills that collide with plugin skill names.
  * Only flags skills whose names match actual installed plugin skills, avoiding
@@ -232,6 +370,9 @@ export function checkLegacySkills(): ConflictReport['legacySkills'] {
       // Match .md files or directories whose name collides with a plugin skill
       const baseName = entry.replace(/\.md$/i, '').toLowerCase();
       if (pluginSkillNames.has(baseName)) {
+        if (isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName)) {
+          continue;
+        }
         collisions.push({ name: baseName, path: join(legacySkillsDir, entry) });
       }
     }

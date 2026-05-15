@@ -37,10 +37,10 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (54 canonical + aliases)', () => {
+    it('should return correct number of skills (55 canonical + aliases)', () => {
       const skills = createBuiltinSkills();
-      // 54 entries: 53 canonical OMC skills + 1 cancel-ralph alias added in #2967
-      expect(skills).toHaveLength(54);
+      // 55 entries: 54 canonical OMC skills (incl. ultragoal port #2995) + 1 cancel-ralph alias added in #2967
+      expect(skills).toHaveLength(55);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -140,6 +140,7 @@ describe('Builtin Skills', () => {
         'trace',
         'ultraqa',
         'ultrawork',
+        'ultragoal',
         'verify',
         'visual-verdict',
         'wiki',
@@ -691,7 +692,7 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toHaveLength(51);
+      expect(names).toHaveLength(52);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('ask');
       expect(names).toContain('autopilot');
@@ -700,6 +701,7 @@ describe('Builtin Skills', () => {
       expect(names).toContain('configure-notifications');
       expect(names).toContain('ralph');
       expect(names).toContain('ultrawork');
+      expect(names).toContain('ultragoal');
       expect(names).toContain('omc-plan');
       expect(names).toContain('deepinit');
       expect(names).toContain('release');
@@ -721,11 +723,12 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131; cancel-ralph (upstream #2967), psm, and learner aliases still exist
-      expect(names).toHaveLength(54);
+      expect(names).toHaveLength(55);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');
       expect(names).toContain('trace');
+      expect(names).toContain('ultragoal');
       expect(names).toContain('visual-verdict');
       expect(names).toContain('wiki');
       expect(names).not.toContain('swarm');

@@ -46,6 +46,7 @@ import {
 import { doctorConflictsCommand } from './commands/doctor-conflicts.js';
 import { doctorTeamRoutingCommand } from './commands/doctor-team-routing.js';
 import { teamCommand } from './commands/team.js';
+import { ultragoalCommand, ULTRAGOAL_HELP } from './commands/ultragoal.js';
 import {
   teleportCommand,
   teleportListCommand,
@@ -1357,5 +1358,45 @@ program
     await ralphthonCommand(args);
   });
 
-// Parse arguments
-program.parse();
+/**
+ * Ultragoal command - Durable repo-native multi-goal workflow with Copilot /goal handoff
+ *
+ * Writes plan/ledger artifacts under .omcp/ultragoal/ and prints model-facing
+ * handoff text that tells the active Copilot agent when to invoke /goal,
+ * checkpoint progress, and gate final completion behind ai-slop-cleaner +
+ * verification + $code-review evidence. The shell cannot mutate the Copilot
+ * session /goal directive; this command only persists durable state.
+ */
+program
+  .command('ultragoal')
+  .description('Durable repo-native multi-goal workflow with Copilot CLI /goal handoff (see omcp ultragoal help)')
+  .helpOption(false)
+  .allowUnknownOption(true)
+  .allowExcessArguments(true)
+  .argument('[args...]', 'ultragoal subcommand arguments')
+  .addHelpText('after', `\n${ULTRAGOAL_HELP}`)
+  .action(async (args: string[]) => {
+    await ultragoalCommand(args);
+  });
+
+/**
+ * Returns the fully-configured commander program.
+ *
+ * Exported so tests can drive the real CLI pipeline (e.g.
+ * `await buildProgram().parseAsync(['node','omc','setup','--plugin-dir-mode'], { from: 'user' })`)
+ * without spawning a subprocess. The program is built once at module load
+ * (commander does not support re-registration), so this just returns the
+ * singleton.
+ */
+export function buildProgram(): Command {
+  return program;
+}
+
+// Parse arguments — skipped only when an importing test explicitly opts out
+// via OMC_CLI_SKIP_PARSE. We do NOT key off process.env.VITEST because the
+// CLI is also spawned as a child process from tests (e.g. cli-boot.test.ts),
+// and child processes inherit VITEST from the parent vitest worker, which
+// would cause the CLI to silently exit with no output.
+if (!process.env.OMC_CLI_SKIP_PARSE) {
+  program.parse();
+}
