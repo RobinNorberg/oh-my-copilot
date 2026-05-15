@@ -778,13 +778,34 @@ async function spawnV2Worker(opts: SpawnV2WorkerOptions): Promise<SpawnV2WorkerR
   }
 
   if (opts.agentType === 'claude') {
-    const settled = await waitForWorkerStartupEvidence(
+    let settled = await waitForWorkerStartupEvidence(
       opts.teamName,
       opts.workerName,
       opts.taskId,
       opts.cwd,
       6,
     );
+    // Claude Code v2.1.x sometimes swallows the Enter key sent immediately
+    // after a fresh pane reports ready — the TUI is still binding input
+    // handlers, so the dispatch message lands in the input buffer but is
+    // never submitted. By the time the evidence wait above finishes, the
+    // TUI is reliably accepting input. Resubmit Enter directly (the prompt
+    // is still sitting in the input buffer) and re-check evidence. Bounded
+    // retries so a truly hung worker still fails fast.
+    for (let attempt = 1; !settled && attempt <= 4; attempt++) {
+      try {
+        await tmuxExecAsync(['send-keys', '-t', paneId, 'Enter']);
+      } catch {
+        break;
+      }
+      settled = await waitForWorkerStartupEvidence(
+        opts.teamName,
+        opts.workerName,
+        opts.taskId,
+        opts.cwd,
+        12,
+      );
+    }
     if (!settled) {
       return {
         paneId,

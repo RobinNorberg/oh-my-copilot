@@ -565,10 +565,17 @@ function paneHasClaudeStartupBanner(captured) {
         .filter((line) => line.length > 0)
         .slice(-20);
     const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+    // Claude Code v2.1.x renders the permission-mode indicator
+    // ("⏵⏵ bypass permissions on (shift+tab to cycle)") *below* the prompt
+    // as a persistent idle-state UI element. If a prompt is present anywhere
+    // in the tail, the pane has finished bootstrapping and the banner is an
+    // idle mode indicator, not a startup signal.
+    if (lastPromptIndex >= 0)
+        return false;
     const lastStartupBannerIndex = lines.findLastIndex((line) => /bypass\s+permissions\s+on/i.test(line)
         || /shift\+tab\s+to\s+cycle/i.test(line)
         || /^⏵⏵\s+/.test(line));
-    return lastStartupBannerIndex >= 0 && lastStartupBannerIndex > lastPromptIndex;
+    return lastStartupBannerIndex >= 0;
 }
 function paneIsBootstrapping(captured) {
     if (paneHasClaudeStartupBanner(captured))
