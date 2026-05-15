@@ -244,7 +244,14 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
         expect(tmuxCall).toBeDefined();
         const tmuxArgs = tmuxCall[0];
         // Must use -t <sessionName> targeting, not -g (global)
-        const setOptionIdx = tmuxArgs.indexOf('set-option');
+        // Find the set-option specifically for mouse (clipboard set-options were added later)
+        let setOptionIdx = -1;
+        for (let i = 0; i < tmuxArgs.length - 4; i++) {
+            if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'mouse') {
+                setOptionIdx = i;
+                break;
+            }
+        }
         expect(setOptionIdx).toBeGreaterThanOrEqual(0);
         expect(tmuxArgs[setOptionIdx + 1]).toBe('-t');
         expect(tmuxArgs[setOptionIdx + 2]).toBe('test-session');
@@ -273,6 +280,40 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
         expect(mouseIdx).toBeGreaterThanOrEqual(0);
         expect(attachIdx).toBeGreaterThanOrEqual(0);
         expect(mouseIdx).toBeLessThan(attachIdx);
+    });
+    it('applies session-scoped OSC 52 clipboard options before attach-session', () => {
+        runCopilot('/tmp', [], 'sid');
+        const tmuxCall = vi.mocked(tmuxExec).mock.calls[0];
+        expect(tmuxCall).toBeDefined();
+        const tmuxArgs = tmuxCall[0];
+        // Find the set-clipboard set-option (must target -t test-session, not -g)
+        let clipboardIdx = -1;
+        for (let i = 0; i < tmuxArgs.length - 4; i++) {
+            if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'set-clipboard') {
+                clipboardIdx = i;
+                break;
+            }
+        }
+        expect(clipboardIdx).toBeGreaterThanOrEqual(0);
+        expect(tmuxArgs[clipboardIdx + 1]).toBe('-t');
+        expect(tmuxArgs[clipboardIdx + 2]).toBe('test-session');
+        expect(tmuxArgs[clipboardIdx + 3]).toBe('set-clipboard');
+        expect(tmuxArgs[clipboardIdx + 4]).toBe('on');
+        // Universal clipboard terminal-features append
+        let featuresIdx = -1;
+        for (let i = 0; i < tmuxArgs.length - 4; i++) {
+            if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'terminal-features') {
+                featuresIdx = i;
+                break;
+            }
+        }
+        expect(featuresIdx).toBeGreaterThanOrEqual(0);
+        expect(tmuxArgs[featuresIdx + 1]).toBe('-at');
+        expect(tmuxArgs[featuresIdx + 2]).toBe('test-session');
+        expect(tmuxArgs[featuresIdx + 4]).toBe(',*:clipboard');
+        const attachIdx = tmuxArgs.indexOf('attach-session');
+        expect(clipboardIdx).toBeLessThan(attachIdx);
+        expect(featuresIdx).toBeLessThan(attachIdx);
     });
     it('preserves a valid detached session when attach-session is interrupted', () => {
         vi.mocked(tmuxExec).mockImplementation((args) => {
@@ -322,10 +363,13 @@ describe('runCopilot inside-tmux — mouse configuration (issue #890)', () => {
     });
     it('enables mouse mode before launching copilot', () => {
         runCopilot('/tmp', [], 'sid');
-        // tmuxExec should be called first with mouse set-option
+        // tmuxExec should have at least one mouse set-option call (clipboard config now precedes it)
         const tmuxExecCalls = vi.mocked(tmuxExec).mock.calls;
         expect(tmuxExecCalls.length).toBeGreaterThanOrEqual(1);
-        expect(tmuxExecCalls[0][0]).toEqual(['set-option', 'mouse', 'on']);
+        const mouseCall = tmuxExecCalls.find(([args]) => Array.isArray(args)
+            && args[0] === 'set-option'
+            && args.includes('mouse'));
+        expect(mouseCall?.[0]).toEqual(['set-option', 'mouse', 'on']);
         // execFileSync should be called with copilot
         const execFileSyncCalls = vi.mocked(execFileSync).mock.calls;
         expect(execFileSyncCalls.length).toBeGreaterThanOrEqual(1);

@@ -139,6 +139,44 @@ var init_team_name = __esm({
   }
 });
 
+// src/cli/tmux-clipboard.ts
+function hasUniversalClipboardTerminalFeature(features) {
+  return features.split(/\r?\n|,/).map((feature) => feature.trim()).some((feature) => feature === UNIVERSAL_CLIPBOARD_FEATURE || feature.startsWith(`${UNIVERSAL_CLIPBOARD_FEATURE}:`));
+}
+function configureTmuxClipboardForSession(sessionName2, opts) {
+  tmuxExec(["set-option", "-t", sessionName2, "set-clipboard", "on"], opts);
+  let terminalFeatures = "";
+  try {
+    terminalFeatures = String(tmuxExec(["show-options", "-t", sessionName2, "-v", "terminal-features"], opts) ?? "");
+  } catch {
+    terminalFeatures = "";
+  }
+  if (!hasUniversalClipboardTerminalFeature(terminalFeatures)) {
+    tmuxExec(["set-option", "-at", sessionName2, "terminal-features", `,${UNIVERSAL_CLIPBOARD_FEATURE}`], opts);
+  }
+}
+async function configureTmuxClipboardForSessionAsync(sessionName2, opts) {
+  await tmuxExecAsync(["set-option", "-t", sessionName2, "set-clipboard", "on"], opts);
+  let terminalFeatures = "";
+  try {
+    const result = await tmuxExecAsync(["show-options", "-t", sessionName2, "-v", "terminal-features"], opts);
+    terminalFeatures = String(result.stdout ?? "");
+  } catch {
+    terminalFeatures = "";
+  }
+  if (!hasUniversalClipboardTerminalFeature(terminalFeatures)) {
+    await tmuxExecAsync(["set-option", "-at", sessionName2, "terminal-features", `,${UNIVERSAL_CLIPBOARD_FEATURE}`], opts);
+  }
+}
+var UNIVERSAL_CLIPBOARD_FEATURE;
+var init_tmux_clipboard = __esm({
+  "src/cli/tmux-clipboard.ts"() {
+    "use strict";
+    init_tmux_utils();
+    UNIVERSAL_CLIPBOARD_FEATURE = "*:clipboard";
+  }
+});
+
 // src/team/tmux-session.ts
 var tmux_session_exports = {};
 __export(tmux_session_exports, {
@@ -400,6 +438,10 @@ function createSession(teamName, workerName2, workingDirectory) {
     args.push("-c", workingDirectory);
   }
   tmuxExec(args, { stripTmux: true, stdio: "pipe", timeout: 5e3 });
+  try {
+    configureTmuxClipboardForSession(name, { stripTmux: true, stdio: "pipe", timeout: 5e3 });
+  } catch {
+  }
   return name;
 }
 function killSession(teamName, workerName2) {
@@ -526,6 +568,10 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
   }
   const teamTarget = sessionAndWindow;
   const resolvedSessionName = teamTarget.split(":")[0];
+  try {
+    await configureTmuxClipboardForSessionAsync(resolvedSessionName);
+  } catch {
+  }
   const workerPaneIds = [];
   if (workerCount <= 0) {
     try {
@@ -897,6 +943,7 @@ var init_tmux_session = __esm({
     import_promises = __toESM(require("fs/promises"), 1);
     init_team_name();
     init_tmux_utils();
+    init_tmux_clipboard();
     sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     TMUX_SESSION_PREFIX = "omcp-team";
     SUPPORTED_POSIX_SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "fish", "ksh"]);

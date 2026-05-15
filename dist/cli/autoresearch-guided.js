@@ -10,6 +10,7 @@ import { AUTORESEARCH_SETUP_CONFIDENCE_THRESHOLD, } from '../autoresearch/setup-
 import { buildMissionContent, buildSandboxContent, isLaunchReadyEvaluatorCommand, writeAutoresearchDeepInterviewArtifacts, } from './autoresearch-intake.js';
 import { runAutoresearchSetupSession, } from './autoresearch-setup-session.js';
 import { buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isTmuxAvailable, quoteShellArg, tmuxExec, wrapWithLoginShell } from './tmux-utils.js';
+import { configureTmuxClipboardForSession } from './tmux-clipboard.js';
 const CLAUDE_BYPASS_FLAG = '--dangerously-skip-permissions';
 const AUTORESEARCH_SETUP_SLASH_COMMAND = '/deep-interview --autoresearch';
 function createQuestionIO() {
@@ -254,6 +255,10 @@ export function spawnAutoresearchTmux(missionDir, slug) {
     const command = buildTmuxShellCommand(process.execPath, [omcPath, 'autoresearch', missionDir]);
     const wrappedCommand = wrapWithLoginShell(command);
     tmuxExec(['new-session', '-d', '-s', sessionName, '-c', repoRoot, wrappedCommand], { stripTmux: true, stdio: 'ignore' });
+    try {
+        configureTmuxClipboardForSession(sessionName, { stripTmux: true, stdio: 'ignore' });
+    }
+    catch { /* non-fatal — older tmux builds may not support these options */ }
     assertTmuxSessionAvailable(sessionName);
     console.log('\nAutoresearch launched in background tmux session.');
     console.log(`  Session:  ${sessionName}`);
@@ -299,6 +304,10 @@ export function spawnAutoresearchSetupTmux(repoRoot) {
     const cliCommand = buildTmuxShellCommandWithEnv(hostBinary, [CLAUDE_BYPASS_FLAG], { CODEX_HOME: codexHome });
     const wrappedCliCommand = wrapWithLoginShell(cliCommand);
     const paneId = tmuxExec(['new-session', '-d', '-P', '-F', '#{pane_id}', '-s', sessionName, '-c', repoRoot, wrappedCliCommand], { stripTmux: true }).trim();
+    try {
+        configureTmuxClipboardForSession(sessionName, { stripTmux: true, stdio: 'ignore' });
+    }
+    catch { /* non-fatal — older tmux builds may not support these options */ }
     assertTmuxSessionAvailable(sessionName);
     if (paneId) {
         tmuxExec(['send-keys', '-t', paneId, '-l', buildAutoresearchSetupSlashCommand()], { stripTmux: true, stdio: 'ignore' });

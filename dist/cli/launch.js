@@ -9,6 +9,7 @@ import { basename, dirname, join } from 'path';
 import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { resolveLaunchPolicy, buildTmuxSessionName, buildTmuxShellCommand, buildTmuxShellCommandWithEnv, isNativeWindowsShell, wrapWithLoginShell, isCopilotAvailable, quoteShellArg, tmuxExec, } from './tmux-utils.js';
+import { configureTmuxClipboardForCurrentSession } from './tmux-clipboard.js';
 // Flag mapping
 const MADMAX_FLAG = '--madmax';
 const YOLO_FLAG = '--yolo';
@@ -395,6 +396,11 @@ export function runCopilot(cwd, args, sessionId) {
  * Launches Copilot in current pane
  */
 function runCopilotInsideTmux(cwd, args) {
+    // Enable OSC 52 clipboard forwarding in the current tmux session (non-fatal if unsupported).
+    try {
+        configureTmuxClipboardForCurrentSession({ stdio: 'ignore' });
+    }
+    catch { /* non-fatal — user's tmux may not support these options */ }
     // Enable mouse scrolling in the current tmux session (non-fatal if it fails)
     try {
         tmuxExec(['set-option', 'mouse', 'on'], { stdio: 'ignore' });
@@ -474,6 +480,9 @@ function runCopilotOutsideTmux(cwd, args, _sessionId) {
         'new-session', '-d', '-s', sessionName, '-c', cwd,
         copilotCmd,
         ';', 'set-option', '-t', sessionName, 'mouse', 'on',
+        // Enable OSC 52 clipboard forwarding so terminal-side copy-on-select keeps working.
+        ';', 'set-option', '-t', sessionName, 'set-clipboard', 'on',
+        ';', 'set-option', '-at', sessionName, 'terminal-features', ',*:clipboard',
     ];
     // Attach to session
     tmuxArgs.push(';', 'attach-session', '-t', sessionName);
