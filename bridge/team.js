@@ -239,7 +239,7 @@ function canonicalizeTeamConfigWorkers(config) {
   return {
     ...config,
     workers,
-    worker_count: workers.length
+    worker_count: workers.length > 0 ? workers.length : config.worker_count ?? 0
   };
 }
 var init_worker_canonicalization = __esm({
@@ -6978,6 +6978,7 @@ async function startTeamV2(config) {
       status: "pending",
       owner: null,
       result: null,
+      ...config.tasks[i].role ? { role: config.tasks[i].role } : {},
       ...config.tasks[i].delegation ? { delegation: config.tasks[i].delegation } : {},
       created_at: (/* @__PURE__ */ new Date()).toISOString()
     }, null, 2), "utf-8");
@@ -7013,7 +7014,8 @@ async function startTeamV2(config) {
     const allocationTasks = unownedTaskIndices.map((idx) => ({
       id: String(idx),
       subject: config.tasks[idx].subject,
-      description: config.tasks[idx].description
+      description: config.tasks[idx].description,
+      ...config.tasks[idx].role ? { role: config.tasks[idx].role } : {}
     }));
     const allocationWorkers = workerNames.map((name, i) => ({
       name,
@@ -8263,6 +8265,7 @@ function isTeamTask(value) {
 }
 async function withLock(lockDir, fn) {
   const STALE_MS = 3e4;
+  await mkdir(dirname(lockDir), { recursive: true });
   try {
     await mkdir(lockDir, { recursive: false });
   } catch (err) {
@@ -8474,7 +8477,22 @@ async function teamClaimTask(teamName, taskId, workerName, expectedVersion, cwd)
     teamName,
     cwd,
     readTask: teamReadTask,
-    readTeamConfig: teamReadConfig,
+    readTeamConfig: (async (tn, c) => {
+      const cfg = await teamReadConfig(tn, c);
+      if (!cfg) return null;
+      if (cfg.workers.length > 0) return cfg;
+      const match = /^worker-(\d+)$/.exec(workerName);
+      const workerIndex = match ? Number.parseInt(match[1], 10) : 0;
+      if (workerIndex >= 1 && workerIndex <= (cfg.worker_count ?? 0)) {
+        return {
+          ...cfg,
+          workers: Array.from({ length: cfg.worker_count ?? 0 }, (_, index) => ({
+            name: `worker-${index + 1}`
+          }))
+        };
+      }
+      return cfg;
+    }),
     withTaskClaimLock,
     normalizeTask,
     isTerminalTaskStatus: isTerminalTeamTaskStatus,

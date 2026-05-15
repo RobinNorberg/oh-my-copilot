@@ -992,6 +992,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
       status: 'pending',
       owner: null,
       result: null,
+      ...(config.tasks[i].role ? { role: config.tasks[i].role } : {}),
       ...(config.tasks[i].delegation ? { delegation: config.tasks[i].delegation } : {}),
       created_at: new Date().toISOString(),
     }, null, 2), 'utf-8');
@@ -1033,6 +1034,7 @@ export async function startTeamV2(config: StartTeamV2Config): Promise<TeamRuntim
       id: String(idx),
       subject: config.tasks[idx].subject,
       description: config.tasks[idx].description,
+      ...(config.tasks[idx].role ? { role: config.tasks[idx].role } : {}),
     }));
     const allocationWorkers: WorkerAllocationInput[] = workerNames.map((name, i) => ({
       name,
