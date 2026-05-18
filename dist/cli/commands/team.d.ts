@@ -25,7 +25,7 @@ export declare function hasAtomicParallelizationSignals(task: string, _size: str
  * Resolve the effective worker count fanout limit for decomposed tasks.
  * Caps worker count to the number of discovered subtasks when decomposition produces fewer items.
  */
-export declare function resolveTeamFanoutLimit(requestedWorkerCount: number, _explicitAgentType: string | undefined, _explicitWorkerCount: number | undefined, plan: DecompositionPlan): number;
+export declare function resolveTeamFanoutLimit(requestedWorkerCount: number, _explicitAgentType: string | undefined, explicitWorkerCount: number | undefined, plan: DecompositionPlan, noDecompose?: boolean): number;
 /**
  * Decompose a task string into a structured plan.
  *
@@ -36,6 +36,7 @@ export declare function resolveTeamFanoutLimit(requestedWorkerCount: number, _ex
  * - Atomic: single task, no decomposition
  */
 export declare function splitTaskString(task: string): DecompositionPlan;
+export declare function resolveAvailableTeamName(baseName: string, cwd: string): string;
 export interface ParsedWorkerSpec {
     agentType: string;
     role?: string;
@@ -50,6 +51,8 @@ export interface ParsedTeamArgs {
     json: boolean;
     newWindow: boolean;
     autoMerge: boolean;
+    explicitWorkerSpec: boolean;
+    noDecompose: boolean;
 }
 /** @internal Exported for testing */
 export declare function parseTeamArgs(tokens: string[], defaultAgentType?: string): ParsedTeamArgs;
@@ -59,6 +62,14 @@ export declare function buildStartupTasks(parsed: ParsedTeamArgs): Array<{
     owner?: string;
     delegation?: TeamTaskDelegationPlan;
 }>;
+export interface TeamLaunchTask {
+    subject: string;
+    description: string;
+    owner?: string;
+    role?: string;
+    delegation?: TeamTaskDelegationPlan;
+}
+export declare function buildTeamLaunchTasks(parsed: ParsedTeamArgs, decomposition: DecompositionPlan, effectiveWorkerCount: number): TeamLaunchTask[];
 /**
  * Main team subcommand handler.
  * Routes:

@@ -64,8 +64,8 @@ describe('teamCommand role-only shorthand', () => {
       roleName: 'executor',
       rolePrompt: 'prompt:executor',
       tasks: [
-        { subject: 'Worker 1: fix the bug', description: 'fix the bug', owner: 'worker-1' },
-        { subject: 'Worker 2: fix the bug', description: 'fix the bug', owner: 'worker-2' },
+        { subject: 'Worker 1 (executor): fix the bug', description: 'fix the bug', owner: 'worker-1', role: 'executor' },
+        { subject: 'Worker 2 (executor): fix the bug', description: 'fix the bug', owner: 'worker-2', role: 'executor' },
       ],
     }));
   });

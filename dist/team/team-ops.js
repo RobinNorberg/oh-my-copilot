@@ -71,6 +71,7 @@ function isTeamTask(value) {
 // Simple file-based lock (best-effort, non-blocking)
 async function withLock(lockDir, fn) {
     const STALE_MS = 30_000;
+    await mkdir(dirname(lockDir), { recursive: true });
     try {
         await mkdir(lockDir, { recursive: false });
     }
@@ -307,7 +308,24 @@ export async function teamClaimTask(teamName, taskId, workerName, expectedVersio
         teamName,
         cwd,
         readTask: teamReadTask,
-        readTeamConfig: teamReadConfig,
+        readTeamConfig: (async (tn, c) => {
+            const cfg = await teamReadConfig(tn, c);
+            if (!cfg)
+                return null;
+            if (cfg.workers.length > 0)
+                return cfg;
+            const match = /^worker-(\d+)$/.exec(workerName);
+            const workerIndex = match ? Number.parseInt(match[1], 10) : 0;
+            if (workerIndex >= 1 && workerIndex <= (cfg.worker_count ?? 0)) {
+                return {
+                    ...cfg,
+                    workers: Array.from({ length: cfg.worker_count ?? 0 }, (_, index) => ({
+                        name: `worker-${index + 1}`,
+                    })),
+                };
+            }
+            return cfg;
+        }),
         withTaskClaimLock,
         normalizeTask,
         isTerminalTaskStatus: isTerminalTeamTaskStatus,
