@@ -537,6 +537,34 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(spawnedWorkers).toEqual(['dispatch-team/worker-2', 'dispatch-team/worker-1']);
   });
 
+  it('uses explicit unowned task roles during startup allocation', async () => {
+    cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-unowned-role-'));
+    const { startTeamV2 } = await import('../runtime-v2.js');
+
+    const runtime = await startTeamV2({
+      teamName: 'dispatch-team',
+      workerCount: 2,
+      agentTypes: ['codex', 'codex'],
+      workerRoles: ['executor', 'test-engineer'],
+      tasks: [
+        { subject: 'Validate parser behavior', description: 'run focused tests', role: 'test-engineer' },
+      ],
+      cwd,
+    });
+
+    expect(runtime.config.workers.map((worker) => worker.role)).toEqual(['executor', 'test-engineer']);
+
+    const requests = await listDispatchRequests('dispatch-team', cwd, { kind: 'inbox' });
+    expect(requests.map((request) => request.to_worker)).toEqual(['worker-2']);
+
+    const spawnedWorkers = mocks.spawnWorkerInPane.mock.calls.map((call) => call[2]?.envVars?.OMC_TEAM_WORKER);
+    expect(spawnedWorkers).toEqual(['dispatch-team/worker-2']);
+
+    const taskPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
+    const persistedTask = JSON.parse(await readFile(taskPath, 'utf-8'));
+    expect(persistedTask.role).toBe('test-engineer');
+  });
+
   it('preserves explicit worker roles in runtime config during startup fanout', async () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-worker-roles-'));
     const { startTeamV2 } = await import('../runtime-v2.js');
@@ -547,13 +575,17 @@ describe('runtime v2 startup inbox dispatch', () => {
       agentTypes: ['codex', 'gemini'],
       workerRoles: ['architect', 'writer'],
       tasks: [
-        { subject: 'Worker 1 (architect): draft launch plan', description: 'draft launch plan', owner: 'worker-1' },
-        { subject: 'Worker 2 (writer): draft launch plan', description: 'draft launch plan', owner: 'worker-2' },
+        { subject: 'Worker 1 (architect): draft launch plan', description: 'draft launch plan', owner: 'worker-1', role: 'architect' },
+        { subject: 'Worker 2 (writer): draft launch plan', description: 'draft launch plan', owner: 'worker-2', role: 'writer' },
       ],
       cwd,
     });
 
     expect(runtime.config.workers.map((worker) => worker.role)).toEqual(['architect', 'writer']);
+
+    const taskPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
+    const persistedTask = JSON.parse(await readFile(taskPath, 'utf-8'));
+    expect(persistedTask.role).toBe('architect');
 
     const configPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json');
     const persisted = JSON.parse(await readFile(configPath, 'utf-8'));

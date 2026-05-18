@@ -322,7 +322,14 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
 
     const tmuxArgs = tmuxCall![0] as string[];
     // Must use -t <sessionName> targeting, not -g (global)
-    const setOptionIdx = tmuxArgs.indexOf('set-option');
+    // Find the set-option specifically for mouse (clipboard set-options were added later)
+    let setOptionIdx = -1;
+    for (let i = 0; i < tmuxArgs.length - 4; i++) {
+      if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'mouse') {
+        setOptionIdx = i;
+        break;
+      }
+    }
     expect(setOptionIdx).toBeGreaterThanOrEqual(0);
     expect(tmuxArgs[setOptionIdx + 1]).toBe('-t');
     expect(tmuxArgs[setOptionIdx + 2]).toBe('test-session');
@@ -357,6 +364,45 @@ describe('runCopilot outside-tmux — mouse scrolling (issue #890)', () => {
     expect(mouseIdx).toBeGreaterThanOrEqual(0);
     expect(attachIdx).toBeGreaterThanOrEqual(0);
     expect(mouseIdx).toBeLessThan(attachIdx);
+  });
+
+  it('applies session-scoped OSC 52 clipboard options before attach-session', () => {
+    runCopilot('/tmp', [], 'sid');
+
+    const tmuxCall = vi.mocked(tmuxExec).mock.calls[0];
+    expect(tmuxCall).toBeDefined();
+    const tmuxArgs = tmuxCall[0] as string[];
+
+    // Find the set-clipboard set-option (must target -t test-session, not -g)
+    let clipboardIdx = -1;
+    for (let i = 0; i < tmuxArgs.length - 4; i++) {
+      if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'set-clipboard') {
+        clipboardIdx = i;
+        break;
+      }
+    }
+    expect(clipboardIdx).toBeGreaterThanOrEqual(0);
+    expect(tmuxArgs[clipboardIdx + 1]).toBe('-t');
+    expect(tmuxArgs[clipboardIdx + 2]).toBe('test-session');
+    expect(tmuxArgs[clipboardIdx + 3]).toBe('set-clipboard');
+    expect(tmuxArgs[clipboardIdx + 4]).toBe('on');
+
+    // Universal clipboard terminal-features append
+    let featuresIdx = -1;
+    for (let i = 0; i < tmuxArgs.length - 4; i++) {
+      if (tmuxArgs[i] === 'set-option' && tmuxArgs[i + 3] === 'terminal-features') {
+        featuresIdx = i;
+        break;
+      }
+    }
+    expect(featuresIdx).toBeGreaterThanOrEqual(0);
+    expect(tmuxArgs[featuresIdx + 1]).toBe('-at');
+    expect(tmuxArgs[featuresIdx + 2]).toBe('test-session');
+    expect(tmuxArgs[featuresIdx + 4]).toBe(',*:clipboard');
+
+    const attachIdx = tmuxArgs.indexOf('attach-session');
+    expect(clipboardIdx).toBeLessThan(attachIdx);
+    expect(featuresIdx).toBeLessThan(attachIdx);
   });
 
   it('preserves a valid detached session when attach-session is interrupted', () => {
@@ -418,10 +464,13 @@ describe('runCopilot inside-tmux — mouse configuration (issue #890)', () => {
   it('enables mouse mode before launching copilot', () => {
     runCopilot('/tmp', [], 'sid');
 
-    // tmuxExec should be called first with mouse set-option
+    // tmuxExec should have at least one mouse set-option call (clipboard config now precedes it)
     const tmuxExecCalls = vi.mocked(tmuxExec).mock.calls;
     expect(tmuxExecCalls.length).toBeGreaterThanOrEqual(1);
-    expect(tmuxExecCalls[0][0]).toEqual(['set-option', 'mouse', 'on']);
+    const mouseCall = tmuxExecCalls.find(([args]) => Array.isArray(args)
+      && (args as string[])[0] === 'set-option'
+      && (args as string[]).includes('mouse'));
+    expect(mouseCall?.[0]).toEqual(['set-option', 'mouse', 'on']);
 
     // execFileSync should be called with copilot
     const execFileSyncCalls = vi.mocked(execFileSync).mock.calls;
@@ -928,6 +977,89 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
 
     expect(rebuiltRuntimeDir).toBe(runtimeDir);
     expect(readFileSync(join(rebuiltRuntimeDir, '.claude.json'), 'utf-8')).toBe('{"session":"keep-me"}');
+  });
+
+  it('seeds missing runtime .claude.json mcpServers from source .claude.json', () => {
+    const configDir = join(tempRoot!, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+    writeFileSync(join(tempRoot!, '.claude.json'), JSON.stringify({
+      mcpServers: {
+        github: { command: 'node', args: ['github-mcp.js'] },
+      },
+      sourceOnly: true,
+    }, null, 2));
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    const runtimeClaudeJson = JSON.parse(readFileSync(join(runtimeDir, '.claude.json'), 'utf-8')) as Record<string, unknown>;
+
+    expect(runtimeClaudeJson).toEqual({
+      mcpServers: {
+        github: { command: 'node', args: ['github-mcp.js'] },
+      },
+    });
+  });
+
+  it('refreshes runtime mcpServers from source while preserving runtime metadata', () => {
+    const configDir = join(tempRoot!, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+    writeFileSync(join(tempRoot!, '.claude.json'), JSON.stringify({
+      mcpServers: {
+        exa: { command: 'node', args: ['old-exa.js'] },
+      },
+    }, null, 2));
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+      session: 'keep-me',
+      projects: { '/repo': { history: ['keep'] } },
+      mcpServers: {
+        exa: { command: 'node', args: ['stale-exa.js'] },
+      },
+    }, null, 2));
+    writeFileSync(join(tempRoot!, '.claude.json'), JSON.stringify({
+      mcpServers: {
+        exa: { command: 'node', args: ['new-exa.js'] },
+        playwright: { command: 'npx', args: ['@playwright/mcp'] },
+      },
+      sourceOnly: 'not copied',
+    }, null, 2));
+
+    const rebuiltRuntimeDir = prepareOmcLaunchConfigDir(configDir);
+    const runtimeClaudeJson = JSON.parse(readFileSync(join(rebuiltRuntimeDir, '.claude.json'), 'utf-8')) as Record<string, unknown>;
+
+    expect(runtimeClaudeJson).toEqual({
+      session: 'keep-me',
+      projects: { '/repo': { history: ['keep'] } },
+      mcpServers: {
+        exa: { command: 'node', args: ['new-exa.js'] },
+        playwright: { command: 'npx', args: ['@playwright/mcp'] },
+      },
+    });
+  });
+
+  it('preserves runtime .claude.json when source .claude.json is absent, invalid, or has no mcpServers', () => {
+    const configDir = join(tempRoot!, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    const runtimeClaudeJsonPath = join(runtimeDir, '.claude.json');
+    writeFileSync(runtimeClaudeJsonPath, '{"session":"keep-absent"}');
+
+    prepareOmcLaunchConfigDir(configDir);
+    expect(readFileSync(runtimeClaudeJsonPath, 'utf-8')).toBe('{"session":"keep-absent"}');
+
+    writeFileSync(join(tempRoot!, '.claude.json'), '{not json');
+    writeFileSync(runtimeClaudeJsonPath, '{"session":"keep-invalid"}');
+    prepareOmcLaunchConfigDir(configDir);
+    expect(readFileSync(runtimeClaudeJsonPath, 'utf-8')).toBe('{"session":"keep-invalid"}');
+
+    writeFileSync(join(tempRoot!, '.claude.json'), JSON.stringify({ projects: {} }, null, 2));
+    writeFileSync(runtimeClaudeJsonPath, '{"session":"keep-no-mcp"}');
+    prepareOmcLaunchConfigDir(configDir);
+    expect(readFileSync(runtimeClaudeJsonPath, 'utf-8')).toBe('{"session":"keep-no-mcp"}');
   });
 
   it('removes non-mirrored runtime junk across runtime config dir rebuilds', () => {

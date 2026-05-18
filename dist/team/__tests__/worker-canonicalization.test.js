@@ -46,5 +46,16 @@ describe('canonicalizeWorkers', () => {
         expect(result.workers).toHaveLength(2);
         expect(result.worker_count).toBe(2);
     });
+    it('preserves transient worker_count while launch workers are not written yet', () => {
+        const config = {
+            name: 'test-team',
+            task: 'demo',
+            worker_count: 3,
+            workers: [],
+        };
+        const result = canonicalizeTeamConfigWorkers(config);
+        expect(result.workers).toEqual([]);
+        expect(result.worker_count).toBe(3);
+    });
 });
 //# sourceMappingURL=worker-canonicalization.test.js.map

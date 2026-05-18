@@ -83,6 +83,8 @@ describe('createTeamSession context resolution', () => {
         const session = await createTeamSession('race-team', 0, '/tmp');
         const detachedCreateCall = mockedCalls.execFileArgs.find((args) => args[0] === 'new-session' && args.includes('-d') && args.includes('-P'));
         expect(detachedCreateCall).toBeDefined();
+        expect(mockedCalls.execFileArgs).toContainEqual(['set-option', '-t', 'omcp-team-race-team-detached', 'set-clipboard', 'on']);
+        expect(mockedCalls.execFileArgs).toContainEqual(['set-option', '-at', 'omcp-team-race-team-detached', 'terminal-features', ',*:clipboard']);
         expect(session.leaderPaneId).toBe('%91');
         expect(session.sessionName).toBe('omcp-team-race-team-detached:0');
         expect(session.workerPaneIds).toEqual([]);
@@ -102,6 +104,8 @@ describe('createTeamSession context resolution', () => {
         expect(targetedContextCall).toBeDefined();
         const fallbackContextCall = mockedCalls.execFileArgs.find((args) => args[0] === 'display-message' && args.includes('#S:#I #{pane_id}'));
         expect(fallbackContextCall).toBeUndefined();
+        expect(mockedCalls.execFileArgs).toContainEqual(['set-option', '-t', 'omx', 'set-clipboard', 'on']);
+        expect(mockedCalls.execFileArgs).toContainEqual(['set-option', '-at', 'omx', 'terminal-features', ',*:clipboard']);
         const firstSplitCall = mockedCalls.execFileArgs.find((args) => args[0] === 'split-window');
         expect(firstSplitCall).toEqual(expect.arrayContaining(['split-window', '-h', '-t', '%732']));
         expect(session.leaderPaneId).toBe('%732');

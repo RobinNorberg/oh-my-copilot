@@ -10,6 +10,7 @@ import { join, basename, isAbsolute, win32 } from 'path';
 import fs from 'fs/promises';
 import { validateTeamName } from './team-name.js';
 import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync } from '../cli/tmux-utils.js';
+import { configureTmuxClipboardForSession, configureTmuxClipboardForSessionAsync } from '../cli/tmux-clipboard.js';
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const TMUX_SESSION_PREFIX = 'omcp-team';
 export function detectTeamMultiplexerContext(env = process.env) {
@@ -320,6 +321,10 @@ export function createSession(teamName, workerName, workingDirectory) {
         args.push('-c', workingDirectory);
     }
     tmuxExec(args, { stripTmux: true, stdio: 'pipe', timeout: 5000 });
+    try {
+        configureTmuxClipboardForSession(name, { stripTmux: true, stdio: 'pipe', timeout: 5000 });
+    }
+    catch { /* non-fatal — older tmux builds may not support these options */ }
     return name;
 }
 /** @deprecated Use killTeamSession() instead */
@@ -471,6 +476,12 @@ export async function createTeamSession(teamName, workerCount, cwd, options = {}
     }
     const teamTarget = sessionAndWindow; // "session:window" form
     const resolvedSessionName = teamTarget.split(':')[0];
+    try {
+        await configureTmuxClipboardForSessionAsync(resolvedSessionName);
+    }
+    catch {
+        // Clipboard setup is best-effort so older tmux builds do not block team launch.
+    }
     const workerPaneIds = [];
     if (workerCount <= 0) {
         try {
@@ -554,10 +565,17 @@ function paneHasClaudeStartupBanner(captured) {
         .filter((line) => line.length > 0)
         .slice(-20);
     const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+    // Claude Code v2.1.x renders the permission-mode indicator
+    // ("⏵⏵ bypass permissions on (shift+tab to cycle)") *below* the prompt
+    // as a persistent idle-state UI element. If a prompt is present anywhere
+    // in the tail, the pane has finished bootstrapping and the banner is an
+    // idle mode indicator, not a startup signal.
+    if (lastPromptIndex >= 0)
+        return false;
     const lastStartupBannerIndex = lines.findLastIndex((line) => /bypass\s+permissions\s+on/i.test(line)
         || /shift\+tab\s+to\s+cycle/i.test(line)
         || /^⏵⏵\s+/.test(line));
-    return lastStartupBannerIndex >= 0 && lastStartupBannerIndex > lastPromptIndex;
+    return lastStartupBannerIndex >= 0;
 }
 function paneIsBootstrapping(captured) {
     if (paneHasClaudeStartupBanner(captured))

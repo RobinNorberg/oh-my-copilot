@@ -80,6 +80,37 @@ jobs:
       # Note: syncMarketplaceClone() is best-effort and skips gracefully when
       # the marketplace clone (~/.copilot/plugins/marketplaces/omcp/) doesn't exist,
       # so CI runners with a fresh home directory are handled correctly.
+      #
+      # dev can legitimately carry a package/release-notes version bump before
+      # that version is published to npm. In that window the old baseline updater
+      # still tries `npm install -g ...@latest`, which fails with ETARGET before
+      # any current update/reconcile code can run. Keep the real `omcp update`
+      # path when the current package version exists on npm; otherwise install
+      # the just-built local package tarball and run the same post-update
+      # reconciliation command directly. This preserves deterministic coverage
+      # for OMC-owned install, reconcile, and SessionStart artifacts without
+      # requiring release publishing from CI.
+
+      - name: Build current package for deterministic fallback
+        run: npm run build
+
+      - name: Prepare local package tarball
+        run: |
+          set -euo pipefail
+          CURRENT_PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          TARBALL_NAME="$(npm pack --pack-destination "$RUNNER_TEMP" --silent)"
+          {
+            echo "OMC_UPGRADE_TEST_EXPECTED_VERSION=$CURRENT_PACKAGE_VERSION"
+            echo "OMC_UPGRADE_TEST_TARBALL=$RUNNER_TEMP/$TARBALL_NAME"
+          } >> "$GITHUB_ENV"
+
+          if npm view "oh-my-copilot@$CURRENT_PACKAGE_VERSION" version >/dev/null 2>&1; then
+            echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=false" >> "$GITHUB_ENV"
+            echo "Package $CURRENT_PACKAGE_VERSION is published; testing the live omcp update path."
+          else
+            echo "OMC_UPGRADE_TEST_USE_LOCAL_TARBALL=true" >> "$GITHUB_ENV"
+            echo "Package $CURRENT_PACKAGE_VERSION is not published; testing local tarball + update-reconcile."
+          fi
 
       - name: Run omcp update
         id: omcp-update
@@ -89,11 +120,20 @@ jobs:
         run: |
           set -o pipefail
 
-          # Capture exit code of omcp update itself (PIPESTATUS[0])
-          # npm install may emit deprecation warnings to stderr — those are not
-          # omcp errors. Filter those out and fail on everything else.
+          # Capture exit code of omcp update itself (or the deterministic
+          # unpublished-version fallback). npm install may emit deprecation
+          # warnings to stderr — those are not omcp errors. Filter those out and
+          # fail on everything else.
           set +e
-          omcp update 1>"$RUNNER_TEMP/omcp-update.stdout.log" 2>"$RUNNER_TEMP/omcp-update.stderr.log"
+          if [ "$OMC_UPGRADE_TEST_USE_LOCAL_TARBALL" = "true" ]; then
+            {
+              echo "Using local package tarball because $OMC_UPGRADE_TEST_EXPECTED_VERSION is not published to npm."
+              npm install -g "$OMC_UPGRADE_TEST_TARBALL"
+              omcp update-reconcile
+            } 1>"$RUNNER_TEMP/omcp-update.stdout.log" 2>"$RUNNER_TEMP/omcp-update.stderr.log"
+          else
+            omcp update 1>"$RUNNER_TEMP/omcp-update.stdout.log" 2>"$RUNNER_TEMP/omcp-update.stderr.log"
+          fi
           UPDATE_EXIT=$?
           set -e
 
@@ -117,7 +157,11 @@ jobs:
             exit 1
           fi
 
-          echo "PASS: omcp update succeeded"
+          if [ "$OMC_UPGRADE_TEST_USE_LOCAL_TARBALL" = "true" ]; then
+            echo "PASS: local tarball install + update-reconcile succeeded"
+          else
+            echo "PASS: omcp update succeeded"
+          fi
 
       # ── 4b. Run omcp install to ensure hooks are created ────────────────────
       # Workaround: published omcp@4.11.x has a binary name mismatch (looks for
@@ -147,6 +191,10 @@ jobs:
           echo "Updated omcp version: $UPDATED_VERSION"
           if [ -z "$UPDATED_VERSION" ]; then
             echo "FAIL: omcp --version returned empty"
+            exit 1
+          fi
+          if [ "$OMC_UPGRADE_TEST_USE_LOCAL_TARBALL" = "true" ] && [ "$UPDATED_VERSION" != "$OMC_UPGRADE_TEST_EXPECTED_VERSION" ]; then
+            echo "FAIL: local tarball fallback installed $UPDATED_VERSION, expected $OMC_UPGRADE_TEST_EXPECTED_VERSION"
             exit 1
           fi
           echo "PASS: omcp version after update: $UPDATED_VERSION"

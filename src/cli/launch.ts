@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from 'fs';
 import { homedir } from 'os';
-import { basename, join } from 'path';
+import { basename, dirname, join } from 'path';
 import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 import { resolvePluginDirArg } from '../lib/plugin-dir.js';
 import { getCopilotConfigDir } from '../utils/config-dir.js';
@@ -31,6 +31,7 @@ import {
   quoteShellArg,
   tmuxExec,
 } from './tmux-utils.js';
+import { configureTmuxClipboardForCurrentSession } from './tmux-clipboard.js';
 
 // Flag mapping
 const MADMAX_FLAG = '--madmax';
@@ -89,6 +90,31 @@ function ensureMirroredPath(
   }
 }
 
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readJsonObject(path: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf-8')) as unknown;
+    return isJsonObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function refreshRuntimeClaudeJsonMcpServers(baseConfigDir: string, runtimeClaudeJsonPath: string): void {
+  const sourceClaudeJsonPath = join(dirname(baseConfigDir), '.claude.json');
+  const sourceClaudeJson = readJsonObject(sourceClaudeJsonPath);
+  if (!sourceClaudeJson || !isJsonObject(sourceClaudeJson.mcpServers)) {
+    return;
+  }
+
+  const runtimeClaudeJson = readJsonObject(runtimeClaudeJsonPath) ?? {};
+  runtimeClaudeJson.mcpServers = sourceClaudeJson.mcpServers;
+  writeFileSync(runtimeClaudeJsonPath, JSON.stringify(runtimeClaudeJson, null, 2));
+}
+
 export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()): string {
   const companionPath = join(baseConfigDir, 'copilot-instructions-omc.md');
   if (!hasOmcMarkers(companionPath)) {
@@ -106,6 +132,7 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
   if (preservedClaudeJson) {
     writeFileSync(runtimeClaudeJsonPath, preservedClaudeJson);
   }
+  refreshRuntimeClaudeJsonMcpServers(baseConfigDir, runtimeClaudeJsonPath);
   copyFileSync(companionPath, join(runtimeConfigDir, 'copilot-instructions.md'));
 
   for (const entry of [
@@ -423,6 +450,11 @@ export function runCopilot(cwd: string, args: string[], sessionId: string): void
  * Launches Copilot in current pane
  */
 function runCopilotInsideTmux(cwd: string, args: string[]): void {
+  // Enable OSC 52 clipboard forwarding in the current tmux session (non-fatal if unsupported).
+  try {
+    configureTmuxClipboardForCurrentSession({ stdio: 'ignore' });
+  } catch { /* non-fatal — user's tmux may not support these options */ }
+
   // Enable mouse scrolling in the current tmux session (non-fatal if it fails)
   try {
     tmuxExec(['set-option', 'mouse', 'on'], { stdio: 'ignore' });
@@ -507,6 +539,9 @@ function runCopilotOutsideTmux(cwd: string, args: string[], _sessionId: string):
     'new-session', '-d', '-s', sessionName, '-c', cwd,
     copilotCmd,
     ';', 'set-option', '-t', sessionName, 'mouse', 'on',
+    // Enable OSC 52 clipboard forwarding so terminal-side copy-on-select keeps working.
+    ';', 'set-option', '-t', sessionName, 'set-clipboard', 'on',
+    ';', 'set-option', '-at', sessionName, 'terminal-features', ',*:clipboard',
   ];
 
   // Attach to session

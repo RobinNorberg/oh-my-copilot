@@ -239,7 +239,7 @@ function canonicalizeTeamConfigWorkers(config) {
   return {
     ...config,
     workers,
-    worker_count: workers.length
+    worker_count: workers.length > 0 ? workers.length : config.worker_count ?? 0
   };
 }
 var init_worker_canonicalization = __esm({
@@ -937,6 +937,44 @@ var init_tmux_utils = __esm({
   }
 });
 
+// src/cli/tmux-clipboard.ts
+function hasUniversalClipboardTerminalFeature(features) {
+  return features.split(/\r?\n|,/).map((feature) => feature.trim()).some((feature) => feature === UNIVERSAL_CLIPBOARD_FEATURE || feature.startsWith(`${UNIVERSAL_CLIPBOARD_FEATURE}:`));
+}
+function configureTmuxClipboardForSession(sessionName2, opts) {
+  tmuxExec(["set-option", "-t", sessionName2, "set-clipboard", "on"], opts);
+  let terminalFeatures = "";
+  try {
+    terminalFeatures = String(tmuxExec(["show-options", "-t", sessionName2, "-v", "terminal-features"], opts) ?? "");
+  } catch {
+    terminalFeatures = "";
+  }
+  if (!hasUniversalClipboardTerminalFeature(terminalFeatures)) {
+    tmuxExec(["set-option", "-at", sessionName2, "terminal-features", `,${UNIVERSAL_CLIPBOARD_FEATURE}`], opts);
+  }
+}
+async function configureTmuxClipboardForSessionAsync(sessionName2, opts) {
+  await tmuxExecAsync(["set-option", "-t", sessionName2, "set-clipboard", "on"], opts);
+  let terminalFeatures = "";
+  try {
+    const result = await tmuxExecAsync(["show-options", "-t", sessionName2, "-v", "terminal-features"], opts);
+    terminalFeatures = String(result.stdout ?? "");
+  } catch {
+    terminalFeatures = "";
+  }
+  if (!hasUniversalClipboardTerminalFeature(terminalFeatures)) {
+    await tmuxExecAsync(["set-option", "-at", sessionName2, "terminal-features", `,${UNIVERSAL_CLIPBOARD_FEATURE}`], opts);
+  }
+}
+var UNIVERSAL_CLIPBOARD_FEATURE;
+var init_tmux_clipboard = __esm({
+  "src/cli/tmux-clipboard.ts"() {
+    "use strict";
+    init_tmux_utils();
+    UNIVERSAL_CLIPBOARD_FEATURE = "*:clipboard";
+  }
+});
+
 // src/team/tmux-session.ts
 var tmux_session_exports = {};
 __export(tmux_session_exports, {
@@ -1201,6 +1239,10 @@ function createSession(teamName, workerName, workingDirectory) {
     args.push("-c", workingDirectory);
   }
   tmuxExec(args, { stripTmux: true, stdio: "pipe", timeout: 5e3 });
+  try {
+    configureTmuxClipboardForSession(name, { stripTmux: true, stdio: "pipe", timeout: 5e3 });
+  } catch {
+  }
   return name;
 }
 function killSession(teamName, workerName) {
@@ -1327,6 +1369,10 @@ async function createTeamSession(teamName, workerCount, cwd, options = {}) {
   }
   const teamTarget = sessionAndWindow;
   const resolvedSessionName = teamTarget.split(":")[0];
+  try {
+    await configureTmuxClipboardForSessionAsync(resolvedSessionName);
+  } catch {
+  }
   const workerPaneIds = [];
   if (workerCount <= 0) {
     try {
@@ -1409,10 +1455,11 @@ function paneHasTrustPrompt(captured) {
 function paneHasClaudeStartupBanner(captured) {
   const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0).slice(-20);
   const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+  if (lastPromptIndex >= 0) return false;
   const lastStartupBannerIndex = lines.findLastIndex(
     (line) => /bypass\s+permissions\s+on/i.test(line) || /shift\+tab\s+to\s+cycle/i.test(line) || /^⏵⏵\s+/.test(line)
   );
-  return lastStartupBannerIndex >= 0 && lastStartupBannerIndex > lastPromptIndex;
+  return lastStartupBannerIndex >= 0;
 }
 function paneIsBootstrapping(captured) {
   if (paneHasClaudeStartupBanner(captured)) return true;
@@ -1695,6 +1742,7 @@ var init_tmux_session = __esm({
     "use strict";
     init_team_name();
     init_tmux_utils();
+    init_tmux_clipboard();
     sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     TMUX_SESSION_PREFIX = "omcp-team";
     SUPPORTED_POSIX_SHELLS = /* @__PURE__ */ new Set(["sh", "bash", "zsh", "fish", "ksh"]);
@@ -6818,13 +6866,27 @@ async function spawnV2Worker(opts) {
     };
   }
   if (opts.agentType === "claude") {
-    const settled = await waitForWorkerStartupEvidence(
+    let settled = await waitForWorkerStartupEvidence(
       opts.teamName,
       opts.workerName,
       opts.taskId,
       opts.cwd,
       6
     );
+    for (let attempt = 1; !settled && attempt <= 4; attempt++) {
+      try {
+        await tmuxExecAsync(["send-keys", "-t", paneId, "Enter"]);
+      } catch {
+        break;
+      }
+      settled = await waitForWorkerStartupEvidence(
+        opts.teamName,
+        opts.workerName,
+        opts.taskId,
+        opts.cwd,
+        12
+      );
+    }
     if (!settled) {
       return {
         paneId,
@@ -6978,6 +7040,7 @@ async function startTeamV2(config) {
       status: "pending",
       owner: null,
       result: null,
+      ...config.tasks[i].role ? { role: config.tasks[i].role } : {},
       ...config.tasks[i].delegation ? { delegation: config.tasks[i].delegation } : {},
       created_at: (/* @__PURE__ */ new Date()).toISOString()
     }, null, 2), "utf-8");
@@ -7013,7 +7076,8 @@ async function startTeamV2(config) {
     const allocationTasks = unownedTaskIndices.map((idx) => ({
       id: String(idx),
       subject: config.tasks[idx].subject,
-      description: config.tasks[idx].description
+      description: config.tasks[idx].description,
+      ...config.tasks[idx].role ? { role: config.tasks[idx].role } : {}
     }));
     const allocationWorkers = workerNames.map((name, i) => ({
       name,
@@ -8263,6 +8327,7 @@ function isTeamTask(value) {
 }
 async function withLock(lockDir, fn) {
   const STALE_MS = 3e4;
+  await mkdir(dirname(lockDir), { recursive: true });
   try {
     await mkdir(lockDir, { recursive: false });
   } catch (err) {
@@ -8474,7 +8539,22 @@ async function teamClaimTask(teamName, taskId, workerName, expectedVersion, cwd)
     teamName,
     cwd,
     readTask: teamReadTask,
-    readTeamConfig: teamReadConfig,
+    readTeamConfig: (async (tn, c) => {
+      const cfg = await teamReadConfig(tn, c);
+      if (!cfg) return null;
+      if (cfg.workers.length > 0) return cfg;
+      const match = /^worker-(\d+)$/.exec(workerName);
+      const workerIndex = match ? Number.parseInt(match[1], 10) : 0;
+      if (workerIndex >= 1 && workerIndex <= (cfg.worker_count ?? 0)) {
+        return {
+          ...cfg,
+          workers: Array.from({ length: cfg.worker_count ?? 0 }, (_, index) => ({
+            name: `worker-${index + 1}`
+          }))
+        };
+      }
+      return cfg;
+    }),
     withTaskClaimLock,
     normalizeTask,
     isTerminalTaskStatus: isTerminalTeamTaskStatus,

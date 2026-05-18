@@ -107,27 +107,17 @@ if [ -s "$INPUT_TMP" ]; then
 fi
 rm -f "$INPUT_TMP" 2>/dev/null || :
 
-# Hot path: return immediately from the last successful render for this session.
-if [ -s "$OUTPUT_FILE" ]; then
-  cat "$OUTPUT_FILE" 2>/dev/null || printf '[OMC] Starting...\n'
-else
-  printf '[OMC] Starting...\n'
-fi
-
-# Avoid spawning a Node renderer on every statusLine render. mkdir is atomic.
-if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  # Recover from stale locks left by crashes.
-  if [ -d "$LOCK_DIR" ]; then
-    if is_stale_path "$LOCK_DIR"; then
-      rm -rf "$LOCK_DIR" 2>/dev/null || :
-      mkdir "$LOCK_DIR" 2>/dev/null || exit 0
-    else
-      exit 0
-    fi
-  else
-    exit 0
+try_acquire_lock() {
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    return 0
   fi
-fi
+  if [ ! -d "$LOCK_DIR" ]; then
+    return 1
+  fi
+  is_stale_path "$LOCK_DIR" || return 1
+  rm -rf "$LOCK_DIR" 2>/dev/null || :
+  mkdir "$LOCK_DIR" 2>/dev/null
+}
 
 refresh_cache() {
   cleanup_refresh_artifacts() {
@@ -162,10 +152,30 @@ refresh_cache() {
   trap - EXIT HUP INT TERM
 }
 
-if [ "${OMC_HUD_SYNC_REFRESH:-0}" = "1" ]; then
-  refresh_cache
-else
-  ( refresh_cache ) >/dev/null 2>&1 &
+# Hot path: return immediately from the last successful render for this session.
+if [ -s "$OUTPUT_FILE" ]; then
+  cat "$OUTPUT_FILE" 2>/dev/null || printf '[OMC] Starting...\n'
+  # Refresh in background for the next frame.
+  if try_acquire_lock; then
+    if [ "${OMC_HUD_SYNC_REFRESH:-0}" = "1" ]; then
+      refresh_cache
+    else
+      ( refresh_cache ) >/dev/null 2>&1 &
+    fi
+  fi
+  exit 0
 fi
 
+# First render for this session: do a synchronous refresh so the user
+# sees the real HUD from the first frame. Claude Code v2.1.x does not
+# re-poll the statusLine until user interaction, so an async background
+# refresh leaves the pane stuck on "[OMC] Starting..." until they type.
+if [ -s "$INPUT_FILE" ] && try_acquire_lock; then
+  refresh_cache
+  if [ -s "$OUTPUT_FILE" ]; then
+    cat "$OUTPUT_FILE" 2>/dev/null && exit 0
+  fi
+fi
+
+printf '[OMC] Starting...\n'
 exit 0
