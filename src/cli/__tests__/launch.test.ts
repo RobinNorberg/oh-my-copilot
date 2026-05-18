@@ -930,6 +930,89 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
     expect(readFileSync(join(rebuiltRuntimeDir, '.claude.json'), 'utf-8')).toBe('{"session":"keep-me"}');
   });
 
+  it('seeds missing runtime .claude.json mcpServers from source .claude.json', () => {
+    const configDir = join(tempRoot!, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+    writeFileSync(join(tempRoot!, '.claude.json'), JSON.stringify({
+      mcpServers: {
+        github: { command: 'node', args: ['github-mcp.js'] },
+      },
+      sourceOnly: true,
+    }, null, 2));
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    const runtimeClaudeJson = JSON.parse(readFileSync(join(runtimeDir, '.claude.json'), 'utf-8')) as Record<string, unknown>;
+
+    expect(runtimeClaudeJson).toEqual({
+      mcpServers: {
+        github: { command: 'node', args: ['github-mcp.js'] },
+      },
+    });
+  });
+
+  it('refreshes runtime mcpServers from source while preserving runtime metadata', () => {
+    const configDir = join(tempRoot!, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+    writeFileSync(join(tempRoot!, '.claude.json'), JSON.stringify({
+      mcpServers: {
+        exa: { command: 'node', args: ['old-exa.js'] },
+      },
+    }, null, 2));
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    writeFileSync(join(runtimeDir, '.claude.json'), JSON.stringify({
+      session: 'keep-me',
+      projects: { '/repo': { history: ['keep'] } },
+      mcpServers: {
+        exa: { command: 'node', args: ['stale-exa.js'] },
+      },
+    }, null, 2));
+    writeFileSync(join(tempRoot!, '.claude.json'), JSON.stringify({
+      mcpServers: {
+        exa: { command: 'node', args: ['new-exa.js'] },
+        playwright: { command: 'npx', args: ['@playwright/mcp'] },
+      },
+      sourceOnly: 'not copied',
+    }, null, 2));
+
+    const rebuiltRuntimeDir = prepareOmcLaunchConfigDir(configDir);
+    const runtimeClaudeJson = JSON.parse(readFileSync(join(rebuiltRuntimeDir, '.claude.json'), 'utf-8')) as Record<string, unknown>;
+
+    expect(runtimeClaudeJson).toEqual({
+      session: 'keep-me',
+      projects: { '/repo': { history: ['keep'] } },
+      mcpServers: {
+        exa: { command: 'node', args: ['new-exa.js'] },
+        playwright: { command: 'npx', args: ['@playwright/mcp'] },
+      },
+    });
+  });
+
+  it('preserves runtime .claude.json when source .claude.json is absent, invalid, or has no mcpServers', () => {
+    const configDir = join(tempRoot!, '.copilot');
+    mkdirSync(configDir, { recursive: true });
+    writeFileSync(join(configDir, 'copilot-instructions-omc.md'), '<!-- OMC:START -->\n# OMC\n<!-- OMC:END -->\n');
+
+    const runtimeDir = prepareOmcLaunchConfigDir(configDir);
+    const runtimeClaudeJsonPath = join(runtimeDir, '.claude.json');
+    writeFileSync(runtimeClaudeJsonPath, '{"session":"keep-absent"}');
+
+    prepareOmcLaunchConfigDir(configDir);
+    expect(readFileSync(runtimeClaudeJsonPath, 'utf-8')).toBe('{"session":"keep-absent"}');
+
+    writeFileSync(join(tempRoot!, '.claude.json'), '{not json');
+    writeFileSync(runtimeClaudeJsonPath, '{"session":"keep-invalid"}');
+    prepareOmcLaunchConfigDir(configDir);
+    expect(readFileSync(runtimeClaudeJsonPath, 'utf-8')).toBe('{"session":"keep-invalid"}');
+
+    writeFileSync(join(tempRoot!, '.claude.json'), JSON.stringify({ projects: {} }, null, 2));
+    writeFileSync(runtimeClaudeJsonPath, '{"session":"keep-no-mcp"}');
+    prepareOmcLaunchConfigDir(configDir);
+    expect(readFileSync(runtimeClaudeJsonPath, 'utf-8')).toBe('{"session":"keep-no-mcp"}');
+  });
+
   it('removes non-mirrored runtime junk across runtime config dir rebuilds', () => {
     const configDir = join(tempRoot!, '.copilot');
     mkdirSync(configDir, { recursive: true });
