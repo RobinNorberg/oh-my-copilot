@@ -12,6 +12,7 @@ import { join, basename, isAbsolute, win32 } from 'path';
 import fs from 'fs/promises';
 import { validateTeamName } from './team-name.js';
 import { tmuxExec, tmuxExecAsync, tmuxShell, tmuxCmdAsync } from '../cli/tmux-utils.js';
+import { configureTmuxClipboardForSession, configureTmuxClipboardForSessionAsync } from '../cli/tmux-clipboard.js';
 
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
@@ -393,6 +394,9 @@ export function createSession(teamName: string, workerName: string, workingDirec
     args.push('-c', workingDirectory);
   }
   tmuxExec(args, { stripTmux: true, stdio: 'pipe', timeout: 5000 });
+  try {
+    configureTmuxClipboardForSession(name, { stripTmux: true, stdio: 'pipe', timeout: 5000 });
+  } catch { /* non-fatal — older tmux builds may not support these options */ }
 
   return name;
 }
@@ -563,6 +567,13 @@ export async function createTeamSession(
 
   const teamTarget = sessionAndWindow; // "session:window" form
   const resolvedSessionName = teamTarget.split(':')[0];
+
+  try {
+    await configureTmuxClipboardForSessionAsync(resolvedSessionName);
+  } catch {
+    // Clipboard setup is best-effort so older tmux builds do not block team launch.
+  }
+
   const workerPaneIds: string[] = [];
 
   if (workerCount <= 0) {
