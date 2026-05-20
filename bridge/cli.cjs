@@ -15639,12 +15639,14 @@ function normalizeRegistryEntry(value) {
   }
   const args = Array.isArray(raw.args) && raw.args.every((item) => typeof item === "string") ? [...raw.args] : [];
   const env2 = isStringRecord(raw.env) ? { ...raw.env } : void 0;
+  const headers = isStringRecord(raw.headers) ? { ...raw.headers } : void 0;
   const timeout = typeof raw.timeout === "number" && Number.isFinite(raw.timeout) && raw.timeout > 0 ? raw.timeout : void 0;
   const effectiveTimeout = timeout ?? (command && isLauncherBackedMcpCommand(command, args) ? DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC : void 0);
   return {
     ...command ? { command } : {},
     ...args.length > 0 ? { args } : {},
     ...env2 && Object.keys(env2).length > 0 ? { env: env2 } : {},
+    ...headers && Object.keys(headers).length > 0 ? { headers } : {},
     ...url2 ? { url: url2 } : {},
     ...type ? { type } : {},
     ...effectiveTimeout ? { timeout: effectiveTimeout } : {}
@@ -15770,9 +15772,15 @@ function renderTomlString(value) {
 function renderTomlStringArray(values) {
   return `[${values.map(renderTomlString).join(", ")}]`;
 }
-function renderTomlEnvTable(env2) {
-  const entries = Object.entries(env2).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${key} = ${renderTomlString(value)}`);
+function renderTomlBareKey(key) {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : renderTomlString(key);
+}
+function renderTomlStringMapInline(values) {
+  const entries = Object.entries(values).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${renderTomlBareKey(key)} = ${renderTomlString(value)}`);
   return `{ ${entries.join(", ")} }`;
+}
+function renderTomlEnvTable(env2) {
+  return renderTomlStringMapInline(env2);
 }
 function renderCodexServerBlock(name, entry) {
   const lines = [`[mcp_servers.${name}]`];
@@ -15793,6 +15801,12 @@ function renderCodexServerBlock(name, entry) {
   }
   if (entry.timeout) {
     lines.push(`startup_timeout_sec = ${entry.timeout}`);
+  }
+  if (entry.headers && Object.keys(entry.headers).length > 0) {
+    lines.push("", `[mcp_servers.${name}.headers]`);
+    for (const [key, value] of Object.entries(entry.headers).sort(([left], [right]) => left.localeCompare(right))) {
+      lines.push(`${renderTomlBareKey(key)} = ${renderTomlString(value)}`);
+    }
   }
   return lines.join("\n");
 }
@@ -33808,7 +33822,8 @@ async function notify(event, data) {
       return null;
     }
     const verbosity = getVerbosity(config2);
-    if (!isEventAllowedByVerbosity(verbosity, event)) {
+    const isExplicitAskUserQuestionEvent = event === "ask-user-question" && config2.events?.["ask-user-question"]?.enabled === true;
+    if (!isExplicitAskUserQuestionEvent && !isEventAllowedByVerbosity(verbosity, event)) {
       return null;
     }
     const { getCurrentTmuxPaneId: getCurrentTmuxPaneId2 } = await Promise.resolve().then(() => (init_tmux(), tmux_exports));
@@ -36084,7 +36099,7 @@ function paneHasTrustPrompt(captured) {
 }
 function paneHasClaudeStartupBanner(captured) {
   const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0).slice(-20);
-  const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+  const lastPromptIndex = lines.findLastIndex(paneLineLooksLikeIdlePrompt);
   if (lastPromptIndex >= 0) return false;
   const lastStartupBannerIndex = lines.findLastIndex(
     (line) => /bypass\s+permissions\s+on/i.test(line) || /shift\+tab\s+to\s+cycle/i.test(line) || /^⏵⏵\s+/.test(line)
@@ -36107,6 +36122,9 @@ function paneHasActiveTask(captured) {
   if (tail.some((l) => /^[·✻]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})$/u.test(l))) return true;
   return false;
 }
+function paneLineLooksLikeIdlePrompt(line) {
+  return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
+}
 function paneLooksReady(captured) {
   const content = captured.trimEnd();
   if (content === "") return false;
@@ -36114,10 +36132,8 @@ function paneLooksReady(captured) {
   if (lines.length === 0) return false;
   if (paneIsBootstrapping(content)) return false;
   const lastLine = lines[lines.length - 1];
-  if (/^\s*[›>❯]\s*/u.test(lastLine)) return true;
-  const hasCodexPromptLine = lines.some((line) => /^\s*›\s*/u.test(line));
-  const hasClaudePromptLine = lines.some((line) => /^\s*❯\s*/u.test(line));
-  return hasCodexPromptLine || hasClaudePromptLine;
+  if (paneLineLooksLikeIdlePrompt(lastLine)) return true;
+  return lines.some(paneLineLooksLikeIdlePrompt);
 }
 async function waitForPaneReady(paneId, opts = {}) {
   const envTimeout = Number.parseInt(process.env.OMC_SHELL_READY_TIMEOUT_MS ?? "", 10);
@@ -74778,6 +74794,13 @@ var LSP_SERVERS = {
     extensions: [".css", ".scss", ".less"],
     installHint: "npm install -g vscode-langservers-extracted"
   },
+  vue: {
+    name: "Vue Language Server (Volar)",
+    command: "vue-language-server",
+    args: ["--stdio"],
+    extensions: [".vue"],
+    installHint: "npm install -g @vue/language-server"
+  },
   yaml: {
     name: "YAML Language Server",
     command: "yaml-language-server",
@@ -75913,7 +75936,13 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
   const files = findFiles(directory, extensions, ["node_modules", "dist", "build", ".git"]);
   const allDiagnostics = [];
   let filesChecked = 0;
+  const skippedFiles = [];
+  const installHintSet = /* @__PURE__ */ new Set();
   for (const file2 of files) {
+    if (!getServerForFile(file2)) {
+      skippedFiles.push({ file: file2, reason: "no language server registered for extension" });
+      continue;
+    }
     try {
       await lspClientManager.runWithClientLease(file2, async (client) => {
         await client.openDocument(file2);
@@ -75927,18 +75956,29 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
         }
         filesChecked++;
       });
-    } catch (_error) {
-      continue;
+    } catch (error48) {
+      const message = error48 instanceof Error ? error48.message : String(error48);
+      const match = message.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
+      if (match) {
+        installHintSet.add(match[2].trim());
+        skippedFiles.push({ file: file2, reason: `missing language server: ${match[1]}` });
+      } else {
+        skippedFiles.push({ file: file2, reason: message });
+      }
     }
   }
   const errorCount = allDiagnostics.filter((d) => d.diagnostic.severity === 1).length;
   const warningCount = allDiagnostics.filter((d) => d.diagnostic.severity === 2).length;
+  const installHints = Array.from(installHintSet);
+  const allFilesSkipped = filesChecked === 0 && files.length > 0;
   return {
-    success: errorCount === 0,
+    success: errorCount === 0 && !allFilesSkipped,
     diagnostics: allDiagnostics,
     errorCount,
     warningCount,
-    filesChecked
+    filesChecked,
+    skippedFiles,
+    installHints
   };
 }
 
@@ -75998,25 +76038,41 @@ function formatTscResult(result) {
 function formatLspResult(result) {
   let diagnostics = "";
   let summary = "";
-  if (result.diagnostics.length === 0) {
+  if (result.diagnostics.length === 0 && result.installHints.length === 0 && result.skippedFiles.length === 0) {
     diagnostics = `Checked ${result.filesChecked} files. No diagnostics found!`;
     summary = `LSP check passed: 0 errors, 0 warnings (${result.filesChecked} files)`;
   } else {
-    const byFile = /* @__PURE__ */ new Map();
-    for (const item of result.diagnostics) {
-      if (!byFile.has(item.file)) {
-        byFile.set(item.file, []);
+    const hasSkips = result.skippedFiles.length > 0;
+    const parts = [];
+    if (result.installHints.length > 0) {
+      const hintLines = result.installHints.map((h) => `  - ${h}`).join("\n");
+      parts.push(
+        `\u26A0 Missing language servers detected:
+${hintLines}
+Install the language server(s) above and re-run, or these files cannot be checked.`
+      );
+    }
+    if (result.diagnostics.length > 0) {
+      const byFile = /* @__PURE__ */ new Map();
+      for (const item of result.diagnostics) {
+        if (!byFile.has(item.file)) {
+          byFile.set(item.file, []);
+        }
+        byFile.get(item.file).push(item);
       }
-      byFile.get(item.file).push(item);
-    }
-    const fileOutputs = [];
-    for (const [file2, items] of byFile) {
-      const diags = items.map((i) => i.diagnostic);
-      fileOutputs.push(`${file2}:
+      const fileOutputs = [];
+      for (const [file2, items] of byFile) {
+        const diags = items.map((i) => i.diagnostic);
+        fileOutputs.push(`${file2}:
 ${formatDiagnostics(diags, file2)}`);
+      }
+      parts.push(fileOutputs.join("\n\n"));
     }
-    diagnostics = fileOutputs.join("\n\n");
-    summary = `LSP check ${result.success ? "passed" : "failed"}: ${result.errorCount} errors, ${result.warningCount} warnings (${result.filesChecked} files)`;
+    if (hasSkips) {
+      parts.push(`Skipped ${result.skippedFiles.length} file(s) due to missing or unregistered language servers.`);
+    }
+    diagnostics = parts.join("\n\n");
+    summary = hasSkips ? `LSP check incomplete: ${result.errorCount} errors, ${result.warningCount} warnings (${result.filesChecked}/${result.filesChecked + result.skippedFiles.length} files checked)` : `LSP check ${result.success ? "passed" : "failed"}: ${result.errorCount} errors, ${result.warningCount} warnings (${result.filesChecked} files)`;
   }
   return {
     strategy: "lsp",
@@ -78090,6 +78146,60 @@ function getLegacyStateFileCandidates(mode, root) {
   ];
   return [...new Set(candidates)];
 }
+function getWorkingDirectoryLocalOmcRoot(root) {
+  return (0, import_path22.join)(root, ".omc");
+}
+function shouldCheckWorkingDirectoryLocalState(root) {
+  return getWorkingDirectoryLocalOmcRoot(root) !== getOmcRoot(root);
+}
+function getWorkingDirectoryLocalSessionStatePath(mode, root, sessionId) {
+  const normalizedName = mode.endsWith("-state") ? mode : `${mode}-state`;
+  return (0, import_path22.join)(getWorkingDirectoryLocalOmcRoot(root), "state", "sessions", sessionId, `${normalizedName}.json`);
+}
+function getWorkingDirectoryLocalLegacyStateFileCandidates(mode, root) {
+  const normalizedName = mode.endsWith("-state") ? mode : `${mode}-state`;
+  return [
+    (0, import_path22.join)(getWorkingDirectoryLocalOmcRoot(root), "state", `${normalizedName}.json`),
+    (0, import_path22.join)(getWorkingDirectoryLocalOmcRoot(root), `${normalizedName}.json`)
+  ];
+}
+function getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId) {
+  if (!shouldCheckWorkingDirectoryLocalState(root)) {
+    return [];
+  }
+  const paths = /* @__PURE__ */ new Set();
+  if (sessionId) {
+    paths.add(getWorkingDirectoryLocalSessionStatePath(mode, root, sessionId));
+  }
+  for (const legacyPath of getWorkingDirectoryLocalLegacyStateFileCandidates(mode, root)) {
+    paths.add(legacyPath);
+  }
+  return [...paths];
+}
+function clearWorkingDirectoryLocalStateCandidates(mode, root, sessionId) {
+  let cleared = 0;
+  let hadFailure = false;
+  const paths = getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId);
+  const localLegacyPaths = new Set(getWorkingDirectoryLocalLegacyStateFileCandidates(mode, root));
+  for (const statePath of paths) {
+    if (!(0, import_fs18.existsSync)(statePath)) {
+      continue;
+    }
+    try {
+      if (sessionId && localLegacyPaths.has(statePath)) {
+        const raw = JSON.parse((0, import_fs18.readFileSync)(statePath, "utf-8"));
+        if (!canClearStateForSession(raw, sessionId)) {
+          continue;
+        }
+      }
+      (0, import_fs18.unlinkSync)(statePath);
+      cleared++;
+    } catch {
+      hadFailure = true;
+    }
+  }
+  return { cleared, hadFailure, paths };
+}
 function clearLegacyStateCandidates(mode, root, sessionId) {
   let cleared = 0;
   let hadFailure = false;
@@ -78149,6 +78259,9 @@ function getStateClearCheckedPaths(mode, root, sessionId) {
   }
   for (const legacyPath of getLegacyStateFileCandidates(mode, root)) {
     paths.add(legacyPath);
+  }
+  for (const localPath of getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId)) {
+    paths.add(localPath);
   }
   const sessionIds = sessionId ? [sessionId, ...listSessionIds(root)] : listSessionIds(root);
   for (const sid of new Set(sessionIds)) {
@@ -78534,10 +78647,12 @@ var stateClearTool = {
           const success2 = clearModeState(mode, root, sessionId);
           const sessionCleanup2 = clearSessionOwnedStateCandidates(mode, root, sessionId);
           const legacyCleanup2 = clearLegacyStateCandidates(mode, root, sessionId);
+          const shouldUseLocalFallback2 = requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup2.cleared === 0 && legacyCleanup2.cleared === 0;
+          const workingDirectoryLocalCleanup2 = shouldUseLocalFallback2 ? clearWorkingDirectoryLocalStateCandidates(mode, root, sessionId) : { cleared: 0, hadFailure: false, paths: [] };
           let ownerSessionId2;
           let ownerSessionCleanup2 = { cleared: 0, hadFailure: false, paths: [] };
           let ownerLegacyCleanup2 = { cleared: 0, hadFailure: false };
-          if (OWNER_SESSION_FALLBACK_MODES.has(mode) && requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup2.cleared === 0 && legacyCleanup2.cleared === 0) {
+          if (OWNER_SESSION_FALLBACK_MODES.has(mode) && requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup2.cleared === 0 && legacyCleanup2.cleared === 0 && workingDirectoryLocalCleanup2.cleared === 0) {
             ownerSessionId2 = findSingleOwningSessionForMode(mode, root, sessionId);
             if (ownerSessionId2) {
               if (mode === "team") {
@@ -78564,6 +78679,9 @@ var stateClearTool = {
           if (sessionCleanup2.cleared > 0) {
             ghostNoteParts2.push(`removed ${sessionCleanup2.cleared} recovered session file${sessionCleanup2.cleared === 1 ? "" : "s"}`);
           }
+          if (workingDirectoryLocalCleanup2.cleared > 0) {
+            ghostNoteParts2.push(`removed ${workingDirectoryLocalCleanup2.cleared} workingDirectory-local state file${workingDirectoryLocalCleanup2.cleared === 1 ? "" : "s"}`);
+          }
           if (runtimeCleanup2.cleared > 0) {
             ghostNoteParts2.push(`removed ${runtimeCleanup2.cleared} runtime artifact${runtimeCleanup2.cleared === 1 ? "" : "s"}`);
           }
@@ -78581,8 +78699,8 @@ var stateClearTool = {
             if (prunedMissions > 0) details.push(`pruned ${prunedMissions} HUD mission entry(ies)`);
             return details.length > 0 ? ` (${details.join(", ")})` : "";
           })();
-          const clearedStateOrArtifacts2 = requestedSessionOwnedPaths.length + completedSessionCleanup.cleared + sessionCleanup2.cleared + legacyCleanup2.cleared + ownerSessionCleanup2.cleared + ownerLegacyCleanup2.cleared + runtimeCleanup2.cleared;
-          if (!ownerSessionId2 && clearedStateOrArtifacts2 === 0 && success2 && !legacyCleanup2.hadFailure && !sessionCleanup2.hadFailure && !completedSessionCleanup.hadFailure && !ownerSessionCleanup2.hadFailure && !ownerLegacyCleanup2.hadFailure && !runtimeCleanup2.hadFailure) {
+          const clearedStateOrArtifacts2 = requestedSessionOwnedPaths.length + completedSessionCleanup.cleared + sessionCleanup2.cleared + legacyCleanup2.cleared + workingDirectoryLocalCleanup2.cleared + ownerSessionCleanup2.cleared + ownerLegacyCleanup2.cleared + runtimeCleanup2.cleared;
+          if (!ownerSessionId2 && clearedStateOrArtifacts2 === 0 && success2 && !legacyCleanup2.hadFailure && !sessionCleanup2.hadFailure && !workingDirectoryLocalCleanup2.hadFailure && !completedSessionCleanup.hadFailure && !ownerSessionCleanup2.hadFailure && !ownerLegacyCleanup2.hadFailure && !runtimeCleanup2.hadFailure) {
             return {
               content: [{
                 type: "text",
@@ -78590,7 +78708,7 @@ var stateClearTool = {
               }]
             };
           }
-          if (success2 && !legacyCleanup2.hadFailure && !sessionCleanup2.hadFailure && !completedSessionCleanup.hadFailure && !ownerSessionCleanup2.hadFailure && !ownerLegacyCleanup2.hadFailure && !runtimeCleanup2.hadFailure) {
+          if (success2 && !legacyCleanup2.hadFailure && !sessionCleanup2.hadFailure && !workingDirectoryLocalCleanup2.hadFailure && !completedSessionCleanup.hadFailure && !ownerSessionCleanup2.hadFailure && !ownerLegacyCleanup2.hadFailure && !runtimeCleanup2.hadFailure) {
             return {
               content: [{
                 type: "text",
@@ -78608,10 +78726,12 @@ var stateClearTool = {
         }
         const sessionCleanup = clearSessionOwnedStateCandidates(mode, root, sessionId);
         const legacyCleanup = clearLegacyStateCandidates(mode, root, sessionId);
+        const shouldUseLocalFallback = requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup.cleared === 0 && legacyCleanup.cleared === 0;
+        const workingDirectoryLocalCleanup = shouldUseLocalFallback ? clearWorkingDirectoryLocalStateCandidates(mode, root, sessionId) : { cleared: 0, hadFailure: false, paths: [] };
         let ownerSessionId;
         let ownerSessionCleanup = { cleared: 0, hadFailure: false, paths: [] };
         let ownerLegacyCleanup = { cleared: 0, hadFailure: false };
-        if (OWNER_SESSION_FALLBACK_MODES.has(mode) && requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup.cleared === 0 && legacyCleanup.cleared === 0) {
+        if (OWNER_SESSION_FALLBACK_MODES.has(mode) && requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup.cleared === 0 && legacyCleanup.cleared === 0 && workingDirectoryLocalCleanup.cleared === 0) {
           ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
           if (ownerSessionId) {
             if (mode === "team") {
@@ -78637,6 +78757,9 @@ var stateClearTool = {
         if (sessionCleanup.cleared > 0) {
           ghostNoteParts.push(`removed ${sessionCleanup.cleared} recovered session file${sessionCleanup.cleared === 1 ? "" : "s"}`);
         }
+        if (workingDirectoryLocalCleanup.cleared > 0) {
+          ghostNoteParts.push(`removed ${workingDirectoryLocalCleanup.cleared} workingDirectory-local state file${workingDirectoryLocalCleanup.cleared === 1 ? "" : "s"}`);
+        }
         if (runtimeCleanup2.cleared > 0) {
           ghostNoteParts.push(`removed ${runtimeCleanup2.cleared} runtime artifact${runtimeCleanup2.cleared === 1 ? "" : "s"}`);
         }
@@ -78654,8 +78777,8 @@ var stateClearTool = {
           if (prunedMissions > 0) details.push(`pruned ${prunedMissions} HUD mission entry(ies)`);
           return details.length > 0 ? ` (${details.join(", ")})` : "";
         })();
-        const clearedStateOrArtifacts = requestedSessionOwnedPaths.length + completedSessionCleanup.cleared + sessionCleanup.cleared + legacyCleanup.cleared + ownerSessionCleanup.cleared + ownerLegacyCleanup.cleared + runtimeCleanup2.cleared;
-        const hadFailure = legacyCleanup.hadFailure || sessionCleanup.hadFailure || completedSessionCleanup.hadFailure || ownerSessionCleanup.hadFailure || ownerLegacyCleanup.hadFailure || runtimeCleanup2.hadFailure;
+        const clearedStateOrArtifacts = requestedSessionOwnedPaths.length + completedSessionCleanup.cleared + sessionCleanup.cleared + legacyCleanup.cleared + workingDirectoryLocalCleanup.cleared + ownerSessionCleanup.cleared + ownerLegacyCleanup.cleared + runtimeCleanup2.cleared;
+        const hadFailure = legacyCleanup.hadFailure || sessionCleanup.hadFailure || workingDirectoryLocalCleanup.hadFailure || completedSessionCleanup.hadFailure || ownerSessionCleanup.hadFailure || ownerLegacyCleanup.hadFailure || runtimeCleanup2.hadFailure;
         if (!ownerSessionId && clearedStateOrArtifacts === 0 && !hadFailure) {
           return {
             content: [{
@@ -86491,19 +86614,27 @@ function readDeepInterviewThresholdFromSettings(path22) {
   const threshold = deepInterview.ambiguityThreshold;
   return typeof threshold === "number" && Number.isFinite(threshold) && threshold >= 0 && threshold <= 1 ? threshold : null;
 }
-function getDeepInterviewAmbiguityThreshold() {
-  const profileThreshold = readDeepInterviewThresholdFromSettings((0, import_path96.join)(getConfigDir(), "settings.json"));
-  const projectThreshold = readDeepInterviewThresholdFromSettings((0, import_path96.join)(process.cwd(), ".copilot", "settings.json"));
-  return projectThreshold ?? profileThreshold ?? DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD;
+function getDeepInterviewAmbiguityThresholdResolution() {
+  const profileSettingsPath = (0, import_path96.join)(getConfigDir(), "settings.json");
+  const projectSettingsPath = (0, import_path96.join)(process.cwd(), ".copilot", "settings.json");
+  const profileThreshold = readDeepInterviewThresholdFromSettings(profileSettingsPath);
+  const projectThreshold = readDeepInterviewThresholdFromSettings(projectSettingsPath);
+  if (projectThreshold !== null) {
+    return { threshold: projectThreshold, source: "./.copilot/settings.json" };
+  }
+  if (profileThreshold !== null) {
+    return { threshold: profileThreshold, source: "[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json" };
+  }
+  return { threshold: DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD, source: "default" };
 }
 function formatThresholdPercent(threshold) {
   return `${(threshold * 100).toFixed(2).replace(/\.?0+$/, "")}%`;
 }
 function applyDeepInterviewRuntimeSettings(template) {
-  const threshold = getDeepInterviewAmbiguityThreshold();
+  const { threshold, source } = getDeepInterviewAmbiguityThresholdResolution();
   const percent = formatThresholdPercent(threshold);
-  const withResolvedPlaceholders = template.replaceAll("<resolvedThreshold>", `${threshold}`).replaceAll("<resolvedThresholdPercent>", percent);
-  const withRuntimeSettings = withResolvedPlaceholders.includes("3.5. **Load runtime settings**:") ? withResolvedPlaceholders : withResolvedPlaceholders.replace(
+  const withResolvedPlaceholders = template.replaceAll("<resolvedThreshold>", `${threshold}`).replaceAll("<resolvedThresholdPercent>", percent).replaceAll("<resolvedThresholdSource>", source);
+  const withRuntimeSettings = withResolvedPlaceholders.includes("3.5. **Load runtime settings**:") || withResolvedPlaceholders.includes("## Phase 0: Resolve Ambiguity Threshold") ? withResolvedPlaceholders : withResolvedPlaceholders.replace(
     '4. **Initialize state** via `state_write(mode="deep-interview")`:',
     [
       `3.5. **Load runtime settings** from \`~/.copilot/settings.json\` and \`./.copilot/settings.json\` before state init (project overrides profile). For this run, use \`ambiguityThreshold = ${threshold}\`.`,
@@ -86515,9 +86646,13 @@ function applyDeepInterviewRuntimeSettings(template) {
     `We'll proceed to execution once ambiguity drops below ${percent}.`
   ).replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`).replace("(default: 20%)", `(default: ${percent})`).replace("(default 0.2)", `(default: ${threshold})`).replace("Gate: \u226420% ambiguity", `Gate: \u2264${percent} ambiguity`).replace("(threshold: 20%).", `(threshold: ${percent}).`).replace("ambiguity \u2264 20%", `ambiguity \u2264 ${percent}`);
 }
+function normalizeSkillNameForRuntimeRendering(skillName) {
+  return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, "").replace(/^oh-my-claudecode:/, "").replace(/^omc:/, "");
+}
 function renderBundledSkillBody(skillName, body) {
+  const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);
   const rewrittenBody = rewriteOmcCliInvocations(body.trim());
-  return skillName === "deep-interview" || skillName === "deep-dive" ? applyDeepInterviewRuntimeSettings(rewrittenBody) : rewrittenBody;
+  return normalizedSkillName === "deep-interview" || normalizedSkillName === "deep-dive" ? applyDeepInterviewRuntimeSettings(rewrittenBody) : rewrittenBody;
 }
 function toSafeSkillName(name) {
   const normalized = name.trim();
@@ -86602,7 +86737,7 @@ var cachedSkills = null;
 var cachedSkillsKey = null;
 function getBuiltinSkillsCacheKey() {
   return JSON.stringify({
-    deepInterviewAmbiguityThreshold: getDeepInterviewAmbiguityThreshold()
+    deepInterviewAmbiguityThreshold: getDeepInterviewAmbiguityThresholdResolution()
   });
 }
 function createBuiltinSkills() {

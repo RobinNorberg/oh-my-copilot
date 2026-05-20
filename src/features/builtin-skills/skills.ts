@@ -84,10 +84,26 @@ function readDeepInterviewThresholdFromSettings(path: string): number | null {
     : null;
 }
 
-function getDeepInterviewAmbiguityThreshold(): number {
-  const profileThreshold = readDeepInterviewThresholdFromSettings(join(getCopilotConfigDir(), 'settings.json'));
-  const projectThreshold = readDeepInterviewThresholdFromSettings(join(process.cwd(), '.copilot', 'settings.json'));
-  return projectThreshold ?? profileThreshold ?? DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD;
+type DeepInterviewThresholdResolution = {
+  threshold: number;
+  source: string;
+};
+
+function getDeepInterviewAmbiguityThresholdResolution(): DeepInterviewThresholdResolution {
+  const profileSettingsPath = join(getCopilotConfigDir(), 'settings.json');
+  const projectSettingsPath = join(process.cwd(), '.copilot', 'settings.json');
+  const profileThreshold = readDeepInterviewThresholdFromSettings(profileSettingsPath);
+  const projectThreshold = readDeepInterviewThresholdFromSettings(projectSettingsPath);
+
+  if (projectThreshold !== null) {
+    return { threshold: projectThreshold, source: './.copilot/settings.json' };
+  }
+
+  if (profileThreshold !== null) {
+    return { threshold: profileThreshold, source: '[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json' };
+  }
+
+  return { threshold: DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD, source: 'default' };
 }
 
 function formatThresholdPercent(threshold: number): string {
@@ -95,14 +111,16 @@ function formatThresholdPercent(threshold: number): string {
 }
 
 function applyDeepInterviewRuntimeSettings(template: string): string {
-  const threshold = getDeepInterviewAmbiguityThreshold();
+  const { threshold, source } = getDeepInterviewAmbiguityThresholdResolution();
   const percent = formatThresholdPercent(threshold);
 
   const withResolvedPlaceholders = template
     .replaceAll('<resolvedThreshold>', `${threshold}`)
-    .replaceAll('<resolvedThresholdPercent>', percent);
+    .replaceAll('<resolvedThresholdPercent>', percent)
+    .replaceAll('<resolvedThresholdSource>', source);
 
   const withRuntimeSettings = withResolvedPlaceholders.includes('3.5. **Load runtime settings**:')
+    || withResolvedPlaceholders.includes('## Phase 0: Resolve Ambiguity Threshold')
     ? withResolvedPlaceholders
     : withResolvedPlaceholders.replace(
       '4. **Initialize state** via `state_write(mode="deep-interview")`:',
@@ -127,9 +145,14 @@ function applyDeepInterviewRuntimeSettings(template: string): string {
     .replace('ambiguity ≤ 20%', `ambiguity ≤ ${percent}`);
 }
 
+function normalizeSkillNameForRuntimeRendering(skillName: string): string {
+  return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^oh-my-claudecode:/, '').replace(/^omc:/, '');
+}
+
 export function renderBundledSkillBody(skillName: string, body: string): string {
+  const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);
   const rewrittenBody = rewriteOmcCliInvocations(body.trim());
-  return skillName === 'deep-interview' || skillName === 'deep-dive'
+  return normalizedSkillName === 'deep-interview' || normalizedSkillName === 'deep-dive'
     ? applyDeepInterviewRuntimeSettings(rewrittenBody)
     : rewrittenBody;
 }
@@ -249,7 +272,7 @@ let cachedSkillsKey: string | null = null;
 
 function getBuiltinSkillsCacheKey(): string {
   return JSON.stringify({
-    deepInterviewAmbiguityThreshold: getDeepInterviewAmbiguityThreshold(),
+    deepInterviewAmbiguityThreshold: getDeepInterviewAmbiguityThresholdResolution(),
   });
 }
 

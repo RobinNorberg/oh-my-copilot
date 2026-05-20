@@ -29125,6 +29125,13 @@ var LSP_SERVERS = {
     extensions: [".css", ".scss", ".less"],
     installHint: "npm install -g vscode-langservers-extracted"
   },
+  vue: {
+    name: "Vue Language Server (Volar)",
+    command: "vue-language-server",
+    args: ["--stdio"],
+    extensions: [".vue"],
+    installHint: "npm install -g @vue/language-server"
+  },
   yaml: {
     name: "YAML Language Server",
     command: "yaml-language-server",
@@ -30263,7 +30270,13 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
   const files = findFiles(directory, extensions, ["node_modules", "dist", "build", ".git"]);
   const allDiagnostics = [];
   let filesChecked = 0;
+  const skippedFiles = [];
+  const installHintSet = /* @__PURE__ */ new Set();
   for (const file2 of files) {
+    if (!getServerForFile(file2)) {
+      skippedFiles.push({ file: file2, reason: "no language server registered for extension" });
+      continue;
+    }
     try {
       await lspClientManager.runWithClientLease(file2, async (client) => {
         await client.openDocument(file2);
@@ -30277,18 +30290,29 @@ async function runLspAggregatedDiagnostics(directory, extensions = [".ts", ".tsx
         }
         filesChecked++;
       });
-    } catch (_error) {
-      continue;
+    } catch (error48) {
+      const message = error48 instanceof Error ? error48.message : String(error48);
+      const match = message.match(/^Language server '([^']+)' not found\.\nInstall with: (.+)$/s);
+      if (match) {
+        installHintSet.add(match[2].trim());
+        skippedFiles.push({ file: file2, reason: `missing language server: ${match[1]}` });
+      } else {
+        skippedFiles.push({ file: file2, reason: message });
+      }
     }
   }
   const errorCount = allDiagnostics.filter((d) => d.diagnostic.severity === 1).length;
   const warningCount = allDiagnostics.filter((d) => d.diagnostic.severity === 2).length;
+  const installHints = Array.from(installHintSet);
+  const allFilesSkipped = filesChecked === 0 && files.length > 0;
   return {
-    success: errorCount === 0,
+    success: errorCount === 0 && !allFilesSkipped,
     diagnostics: allDiagnostics,
     errorCount,
     warningCount,
-    filesChecked
+    filesChecked,
+    skippedFiles,
+    installHints
   };
 }
 
@@ -30348,25 +30372,41 @@ function formatTscResult(result) {
 function formatLspResult(result) {
   let diagnostics = "";
   let summary = "";
-  if (result.diagnostics.length === 0) {
+  if (result.diagnostics.length === 0 && result.installHints.length === 0 && result.skippedFiles.length === 0) {
     diagnostics = `Checked ${result.filesChecked} files. No diagnostics found!`;
     summary = `LSP check passed: 0 errors, 0 warnings (${result.filesChecked} files)`;
   } else {
-    const byFile = /* @__PURE__ */ new Map();
-    for (const item of result.diagnostics) {
-      if (!byFile.has(item.file)) {
-        byFile.set(item.file, []);
+    const hasSkips = result.skippedFiles.length > 0;
+    const parts = [];
+    if (result.installHints.length > 0) {
+      const hintLines = result.installHints.map((h) => `  - ${h}`).join("\n");
+      parts.push(
+        `\u26A0 Missing language servers detected:
+${hintLines}
+Install the language server(s) above and re-run, or these files cannot be checked.`
+      );
+    }
+    if (result.diagnostics.length > 0) {
+      const byFile = /* @__PURE__ */ new Map();
+      for (const item of result.diagnostics) {
+        if (!byFile.has(item.file)) {
+          byFile.set(item.file, []);
+        }
+        byFile.get(item.file).push(item);
       }
-      byFile.get(item.file).push(item);
-    }
-    const fileOutputs = [];
-    for (const [file2, items] of byFile) {
-      const diags = items.map((i) => i.diagnostic);
-      fileOutputs.push(`${file2}:
+      const fileOutputs = [];
+      for (const [file2, items] of byFile) {
+        const diags = items.map((i) => i.diagnostic);
+        fileOutputs.push(`${file2}:
 ${formatDiagnostics(diags, file2)}`);
+      }
+      parts.push(fileOutputs.join("\n\n"));
     }
-    diagnostics = fileOutputs.join("\n\n");
-    summary = `LSP check ${result.success ? "passed" : "failed"}: ${result.errorCount} errors, ${result.warningCount} warnings (${result.filesChecked} files)`;
+    if (hasSkips) {
+      parts.push(`Skipped ${result.skippedFiles.length} file(s) due to missing or unregistered language servers.`);
+    }
+    diagnostics = parts.join("\n\n");
+    summary = hasSkips ? `LSP check incomplete: ${result.errorCount} errors, ${result.warningCount} warnings (${result.filesChecked}/${result.filesChecked + result.skippedFiles.length} files checked)` : `LSP check ${result.success ? "passed" : "failed"}: ${result.errorCount} errors, ${result.warningCount} warnings (${result.filesChecked} files)`;
   }
   return {
     strategy: "lsp",
@@ -33044,6 +33084,60 @@ function getLegacyStateFileCandidates(mode, root) {
   ];
   return [...new Set(candidates)];
 }
+function getWorkingDirectoryLocalOmcRoot(root) {
+  return (0, import_path15.join)(root, ".omc");
+}
+function shouldCheckWorkingDirectoryLocalState(root) {
+  return getWorkingDirectoryLocalOmcRoot(root) !== getOmcRoot(root);
+}
+function getWorkingDirectoryLocalSessionStatePath(mode, root, sessionId) {
+  const normalizedName = mode.endsWith("-state") ? mode : `${mode}-state`;
+  return (0, import_path15.join)(getWorkingDirectoryLocalOmcRoot(root), "state", "sessions", sessionId, `${normalizedName}.json`);
+}
+function getWorkingDirectoryLocalLegacyStateFileCandidates(mode, root) {
+  const normalizedName = mode.endsWith("-state") ? mode : `${mode}-state`;
+  return [
+    (0, import_path15.join)(getWorkingDirectoryLocalOmcRoot(root), "state", `${normalizedName}.json`),
+    (0, import_path15.join)(getWorkingDirectoryLocalOmcRoot(root), `${normalizedName}.json`)
+  ];
+}
+function getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId) {
+  if (!shouldCheckWorkingDirectoryLocalState(root)) {
+    return [];
+  }
+  const paths = /* @__PURE__ */ new Set();
+  if (sessionId) {
+    paths.add(getWorkingDirectoryLocalSessionStatePath(mode, root, sessionId));
+  }
+  for (const legacyPath of getWorkingDirectoryLocalLegacyStateFileCandidates(mode, root)) {
+    paths.add(legacyPath);
+  }
+  return [...paths];
+}
+function clearWorkingDirectoryLocalStateCandidates(mode, root, sessionId) {
+  let cleared = 0;
+  let hadFailure = false;
+  const paths = getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId);
+  const localLegacyPaths = new Set(getWorkingDirectoryLocalLegacyStateFileCandidates(mode, root));
+  for (const statePath of paths) {
+    if (!(0, import_fs13.existsSync)(statePath)) {
+      continue;
+    }
+    try {
+      if (sessionId && localLegacyPaths.has(statePath)) {
+        const raw = JSON.parse((0, import_fs13.readFileSync)(statePath, "utf-8"));
+        if (!canClearStateForSession(raw, sessionId)) {
+          continue;
+        }
+      }
+      (0, import_fs13.unlinkSync)(statePath);
+      cleared++;
+    } catch {
+      hadFailure = true;
+    }
+  }
+  return { cleared, hadFailure, paths };
+}
 function clearLegacyStateCandidates(mode, root, sessionId) {
   let cleared = 0;
   let hadFailure = false;
@@ -33103,6 +33197,9 @@ function getStateClearCheckedPaths(mode, root, sessionId) {
   }
   for (const legacyPath of getLegacyStateFileCandidates(mode, root)) {
     paths.add(legacyPath);
+  }
+  for (const localPath of getWorkingDirectoryLocalStateClearCandidates(mode, root, sessionId)) {
+    paths.add(localPath);
   }
   const sessionIds = sessionId ? [sessionId, ...listSessionIds(root)] : listSessionIds(root);
   for (const sid of new Set(sessionIds)) {
@@ -33488,10 +33585,12 @@ var stateClearTool = {
           const success2 = clearModeState(mode, root, sessionId);
           const sessionCleanup2 = clearSessionOwnedStateCandidates(mode, root, sessionId);
           const legacyCleanup2 = clearLegacyStateCandidates(mode, root, sessionId);
+          const shouldUseLocalFallback2 = requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup2.cleared === 0 && legacyCleanup2.cleared === 0;
+          const workingDirectoryLocalCleanup2 = shouldUseLocalFallback2 ? clearWorkingDirectoryLocalStateCandidates(mode, root, sessionId) : { cleared: 0, hadFailure: false, paths: [] };
           let ownerSessionId2;
           let ownerSessionCleanup2 = { cleared: 0, hadFailure: false, paths: [] };
           let ownerLegacyCleanup2 = { cleared: 0, hadFailure: false };
-          if (OWNER_SESSION_FALLBACK_MODES.has(mode) && requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup2.cleared === 0 && legacyCleanup2.cleared === 0) {
+          if (OWNER_SESSION_FALLBACK_MODES.has(mode) && requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup2.cleared === 0 && legacyCleanup2.cleared === 0 && workingDirectoryLocalCleanup2.cleared === 0) {
             ownerSessionId2 = findSingleOwningSessionForMode(mode, root, sessionId);
             if (ownerSessionId2) {
               if (mode === "team") {
@@ -33518,6 +33617,9 @@ var stateClearTool = {
           if (sessionCleanup2.cleared > 0) {
             ghostNoteParts2.push(`removed ${sessionCleanup2.cleared} recovered session file${sessionCleanup2.cleared === 1 ? "" : "s"}`);
           }
+          if (workingDirectoryLocalCleanup2.cleared > 0) {
+            ghostNoteParts2.push(`removed ${workingDirectoryLocalCleanup2.cleared} workingDirectory-local state file${workingDirectoryLocalCleanup2.cleared === 1 ? "" : "s"}`);
+          }
           if (runtimeCleanup2.cleared > 0) {
             ghostNoteParts2.push(`removed ${runtimeCleanup2.cleared} runtime artifact${runtimeCleanup2.cleared === 1 ? "" : "s"}`);
           }
@@ -33535,8 +33637,8 @@ var stateClearTool = {
             if (prunedMissions > 0) details.push(`pruned ${prunedMissions} HUD mission entry(ies)`);
             return details.length > 0 ? ` (${details.join(", ")})` : "";
           })();
-          const clearedStateOrArtifacts2 = requestedSessionOwnedPaths.length + completedSessionCleanup.cleared + sessionCleanup2.cleared + legacyCleanup2.cleared + ownerSessionCleanup2.cleared + ownerLegacyCleanup2.cleared + runtimeCleanup2.cleared;
-          if (!ownerSessionId2 && clearedStateOrArtifacts2 === 0 && success2 && !legacyCleanup2.hadFailure && !sessionCleanup2.hadFailure && !completedSessionCleanup.hadFailure && !ownerSessionCleanup2.hadFailure && !ownerLegacyCleanup2.hadFailure && !runtimeCleanup2.hadFailure) {
+          const clearedStateOrArtifacts2 = requestedSessionOwnedPaths.length + completedSessionCleanup.cleared + sessionCleanup2.cleared + legacyCleanup2.cleared + workingDirectoryLocalCleanup2.cleared + ownerSessionCleanup2.cleared + ownerLegacyCleanup2.cleared + runtimeCleanup2.cleared;
+          if (!ownerSessionId2 && clearedStateOrArtifacts2 === 0 && success2 && !legacyCleanup2.hadFailure && !sessionCleanup2.hadFailure && !workingDirectoryLocalCleanup2.hadFailure && !completedSessionCleanup.hadFailure && !ownerSessionCleanup2.hadFailure && !ownerLegacyCleanup2.hadFailure && !runtimeCleanup2.hadFailure) {
             return {
               content: [{
                 type: "text",
@@ -33544,7 +33646,7 @@ var stateClearTool = {
               }]
             };
           }
-          if (success2 && !legacyCleanup2.hadFailure && !sessionCleanup2.hadFailure && !completedSessionCleanup.hadFailure && !ownerSessionCleanup2.hadFailure && !ownerLegacyCleanup2.hadFailure && !runtimeCleanup2.hadFailure) {
+          if (success2 && !legacyCleanup2.hadFailure && !sessionCleanup2.hadFailure && !workingDirectoryLocalCleanup2.hadFailure && !completedSessionCleanup.hadFailure && !ownerSessionCleanup2.hadFailure && !ownerLegacyCleanup2.hadFailure && !runtimeCleanup2.hadFailure) {
             return {
               content: [{
                 type: "text",
@@ -33562,10 +33664,12 @@ var stateClearTool = {
         }
         const sessionCleanup = clearSessionOwnedStateCandidates(mode, root, sessionId);
         const legacyCleanup = clearLegacyStateCandidates(mode, root, sessionId);
+        const shouldUseLocalFallback = requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup.cleared === 0 && legacyCleanup.cleared === 0;
+        const workingDirectoryLocalCleanup = shouldUseLocalFallback ? clearWorkingDirectoryLocalStateCandidates(mode, root, sessionId) : { cleared: 0, hadFailure: false, paths: [] };
         let ownerSessionId;
         let ownerSessionCleanup = { cleared: 0, hadFailure: false, paths: [] };
         let ownerLegacyCleanup = { cleared: 0, hadFailure: false };
-        if (OWNER_SESSION_FALLBACK_MODES.has(mode) && requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup.cleared === 0 && legacyCleanup.cleared === 0) {
+        if (OWNER_SESSION_FALLBACK_MODES.has(mode) && requestedSessionOwnedPaths.length === 0 && completedSessionCleanup.cleared === 0 && sessionCleanup.cleared === 0 && legacyCleanup.cleared === 0 && workingDirectoryLocalCleanup.cleared === 0) {
           ownerSessionId = findSingleOwningSessionForMode(mode, root, sessionId);
           if (ownerSessionId) {
             if (mode === "team") {
@@ -33591,6 +33695,9 @@ var stateClearTool = {
         if (sessionCleanup.cleared > 0) {
           ghostNoteParts.push(`removed ${sessionCleanup.cleared} recovered session file${sessionCleanup.cleared === 1 ? "" : "s"}`);
         }
+        if (workingDirectoryLocalCleanup.cleared > 0) {
+          ghostNoteParts.push(`removed ${workingDirectoryLocalCleanup.cleared} workingDirectory-local state file${workingDirectoryLocalCleanup.cleared === 1 ? "" : "s"}`);
+        }
         if (runtimeCleanup2.cleared > 0) {
           ghostNoteParts.push(`removed ${runtimeCleanup2.cleared} runtime artifact${runtimeCleanup2.cleared === 1 ? "" : "s"}`);
         }
@@ -33608,8 +33715,8 @@ var stateClearTool = {
           if (prunedMissions > 0) details.push(`pruned ${prunedMissions} HUD mission entry(ies)`);
           return details.length > 0 ? ` (${details.join(", ")})` : "";
         })();
-        const clearedStateOrArtifacts = requestedSessionOwnedPaths.length + completedSessionCleanup.cleared + sessionCleanup.cleared + legacyCleanup.cleared + ownerSessionCleanup.cleared + ownerLegacyCleanup.cleared + runtimeCleanup2.cleared;
-        const hadFailure = legacyCleanup.hadFailure || sessionCleanup.hadFailure || completedSessionCleanup.hadFailure || ownerSessionCleanup.hadFailure || ownerLegacyCleanup.hadFailure || runtimeCleanup2.hadFailure;
+        const clearedStateOrArtifacts = requestedSessionOwnedPaths.length + completedSessionCleanup.cleared + sessionCleanup.cleared + legacyCleanup.cleared + workingDirectoryLocalCleanup.cleared + ownerSessionCleanup.cleared + ownerLegacyCleanup.cleared + runtimeCleanup2.cleared;
+        const hadFailure = legacyCleanup.hadFailure || sessionCleanup.hadFailure || workingDirectoryLocalCleanup.hadFailure || completedSessionCleanup.hadFailure || ownerSessionCleanup.hadFailure || ownerLegacyCleanup.hadFailure || runtimeCleanup2.hadFailure;
         if (!ownerSessionId && clearedStateOrArtifacts === 0 && !hadFailure) {
           return {
             content: [{

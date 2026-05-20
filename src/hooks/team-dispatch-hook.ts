@@ -328,6 +328,14 @@ function paneIsBootstrapping(captured: string): boolean {
   );
 }
 
+function paneLineLooksLikeIdlePrompt(line: string): boolean {
+  // Claude Code can render its idle input prompt inside a box/left gutter
+  // (for example "│ ❯"). Treat that as ready while still requiring the prompt
+  // glyph to be at the visual start of the line, not embedded in arbitrary
+  // output text.
+  return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
+}
+
 function paneLooksReady(captured: string): boolean {
   const content = safeString(captured).trimEnd();
   if (content === '') return false;
@@ -337,11 +345,8 @@ function paneLooksReady(captured: string): boolean {
     .filter((line) => line.trim() !== '');
   if (paneIsBootstrapping(content)) return false;
   const lastLine = lines.length > 0 ? lines[lines.length - 1]! : '';
-  if (/^\s*[›>❯]\s*/u.test(lastLine)) return true;
-  const hasCodexPromptLine = lines.some((line) => /^\s*›\s*/u.test(line));
-  const hasCopilotPromptLine = lines.some((line) => /^\s*❯\s*/u.test(line));
-  if (hasCodexPromptLine || hasCopilotPromptLine) return true;
-  return false;
+  if (paneLineLooksLikeIdlePrompt(lastLine)) return true;
+  return lines.some(paneLineLooksLikeIdlePrompt);
 }
 
 function resolveWorkerCliForRequest(request: DispatchRequest, config: TeamConfig): string {
