@@ -667,7 +667,7 @@ function paneHasClaudeStartupBanner(captured: string): boolean {
     .map((line) => line.replace(/\r/g, '').trim())
     .filter((line) => line.length > 0)
     .slice(-20);
-  const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+  const lastPromptIndex = lines.findLastIndex(paneLineLooksLikeIdlePrompt);
   // Claude Code v2.1.x renders the permission-mode indicator
   // ("⏵⏵ bypass permissions on (shift+tab to cycle)") *below* the prompt
   // as a persistent idle-state UI element. If a prompt is present anywhere
@@ -705,6 +705,14 @@ export function paneHasActiveTask(captured: string): boolean {
   return false;
 }
 
+function paneLineLooksLikeIdlePrompt(line: string): boolean {
+  // Claude Code can render its idle input prompt inside a box/left gutter
+  // (for example "│ ❯"). Treat that as ready while still requiring the prompt
+  // glyph to be at the visual start of the line, not embedded in arbitrary
+  // output text.
+  return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
+}
+
 export function paneLooksReady(captured: string): boolean {
   const content = captured.trimEnd();
   if (content === '') return false;
@@ -716,10 +724,8 @@ export function paneLooksReady(captured: string): boolean {
   if (paneIsBootstrapping(content)) return false;
 
   const lastLine = lines[lines.length - 1]!;
-  if (/^\s*[›>❯]\s*/u.test(lastLine)) return true;
-  const hasCodexPromptLine = lines.some((line) => /^\s*›\s*/u.test(line));
-  const hasClaudePromptLine = lines.some((line) => /^\s*❯\s*/u.test(line));
-  return hasCodexPromptLine || hasClaudePromptLine;
+  if (paneLineLooksLikeIdlePrompt(lastLine)) return true;
+  return lines.some(paneLineLooksLikeIdlePrompt);
 }
 
 export interface WaitForPaneReadyOptions {

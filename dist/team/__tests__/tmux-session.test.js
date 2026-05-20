@@ -248,6 +248,18 @@ describe('pane readiness startup banners', () => {
         expect(paneLooksReady(capture)).toBe(true);
         expect(paneHasActiveTask(capture)).toBe(false);
     });
+    it('treats Claude idle prompt inside the TUI gutter as ready for initial dispatch', () => {
+        const capture = [
+            '╭────────────────────────────────────────────────────────╮',
+            '│ ✻ Welcome to Claude Code v2.1.142                      │',
+            '│                                                        │',
+            '│ ❯                                                      │',
+            '╰────────────────────────────────────────────────────────╯',
+            '  ⏵⏵ bypass permissions on (shift+tab to cycle)',
+        ].join('\n');
+        expect(paneLooksReady(capture)).toBe(true);
+        expect(paneHasActiveTask(capture)).toBe(false);
+    });
     it('still flags Claude Code v2.1.x mid-task panes via paneHasActiveTask', () => {
         // Same v2.1.x pane shape with a spinner + "esc to interrupt" — paneLooksReady
         // sees the prompt and reports ready, but waitForPaneReady's secondary

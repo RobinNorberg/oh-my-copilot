@@ -653,7 +653,7 @@ function paneHasTrustPrompt(captured) {
 }
 function paneHasClaudeStartupBanner(captured) {
   const lines = captured.split("\n").map((line) => line.replace(/\r/g, "").trim()).filter((line) => line.length > 0).slice(-20);
-  const lastPromptIndex = lines.findLastIndex((line) => /^\s*[›>❯]\s*/u.test(line));
+  const lastPromptIndex = lines.findLastIndex(paneLineLooksLikeIdlePrompt);
   if (lastPromptIndex >= 0) return false;
   const lastStartupBannerIndex = lines.findLastIndex(
     (line) => /bypass\s+permissions\s+on/i.test(line) || /shift\+tab\s+to\s+cycle/i.test(line) || /^⏵⏵\s+/.test(line)
@@ -676,6 +676,9 @@ function paneHasActiveTask(captured) {
   if (tail.some((l) => /^[·✻]\s+[A-Za-z][A-Za-z0-9''-]*(?:\s+[A-Za-z][A-Za-z0-9''-]*){0,3}(?:…|\.{3})$/u.test(l))) return true;
   return false;
 }
+function paneLineLooksLikeIdlePrompt(line) {
+  return /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯]\s*/u.test(line);
+}
 function paneLooksReady(captured) {
   const content = captured.trimEnd();
   if (content === "") return false;
@@ -683,10 +686,8 @@ function paneLooksReady(captured) {
   if (lines.length === 0) return false;
   if (paneIsBootstrapping(content)) return false;
   const lastLine = lines[lines.length - 1];
-  if (/^\s*[›>❯]\s*/u.test(lastLine)) return true;
-  const hasCodexPromptLine = lines.some((line) => /^\s*›\s*/u.test(line));
-  const hasClaudePromptLine = lines.some((line) => /^\s*❯\s*/u.test(line));
-  return hasCodexPromptLine || hasClaudePromptLine;
+  if (paneLineLooksLikeIdlePrompt(lastLine)) return true;
+  return lines.some(paneLineLooksLikeIdlePrompt);
 }
 async function waitForPaneReady(paneId, opts = {}) {
   const envTimeout = Number.parseInt(process.env.OMC_SHELL_READY_TIMEOUT_MS ?? "", 10);
