@@ -4,8 +4,8 @@ import { LSP_SERVERS, getServerForFile, getServerForLanguage } from '../tools/ls
 describe('LSP Server Configurations', () => {
   const serverKeys = Object.keys(LSP_SERVERS);
 
-  it('should have 18 configured servers', () => {
-    expect(serverKeys).toHaveLength(18);
+  it('should have 19 configured servers', () => {
+    expect(serverKeys).toHaveLength(19);
   });
 
   it.each(serverKeys)('server "%s" should have valid config', (key) => {
@@ -41,6 +41,7 @@ describe('getServerForFile', () => {
     ['data.json', 'JSON Language Server'],
     ['index.html', 'HTML Language Server'],
     ['style.css', 'CSS Language Server'],
+    ['App.vue', 'Vue Language Server (Volar)'],
     ['config.yaml', 'YAML Language Server'],
     ['index.php', 'PHP Language Server (Intelephense)'],
     ['template.phtml', 'PHP Language Server (Intelephense)'],
@@ -84,6 +85,7 @@ describe('getServerForLanguage', () => {
     ['json', 'JSON Language Server'],
     ['html', 'HTML Language Server'],
     ['css', 'CSS Language Server'],
+    ['vue', 'Vue Language Server (Volar)'],
     ['yaml', 'YAML Language Server'],
     // New languages
     ['php', 'PHP Language Server (Intelephense)'],
