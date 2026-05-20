@@ -409,7 +409,7 @@ describe('Builtin Skills', () => {
       }
     });
 
-    it.skip('loads deep-interview ambiguityThreshold from settings before state init and updates the announcement copy', () => {
+    it.skip('loads deep-interview ambiguityThreshold source before state init and updates the first-line marker', () => {
       const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-profile-'));
       const projectDir = mkdtempSync(join(tmpdir(), 'omc-skill-project-'));
       tempDirs.push(profileDir, projectDir);
@@ -431,11 +431,15 @@ describe('Builtin Skills', () => {
 
       const skill = getBuiltinSkill('deep-interview');
       expect(skill).toBeDefined();
-      expect(skill?.template).toContain('Load runtime settings');
-      expect(skill?.template).toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.12`');
+      expect(skill?.template).toContain('Phase 0: Resolve Ambiguity Threshold (blocking prerequisite)');
+      expect(skill?.template).toContain('Deep Interview threshold: 12% (source: ./.copilot/settings.json)');
       expect(skill?.template).toContain('"threshold": 0.12,');
+      expect(skill?.template).toContain('"threshold_source": "./.copilot/settings.json",');
       expect(skill?.template).toContain('drops below 12%.');
-      expect(skill?.template?.indexOf('Load runtime settings')).toBeLessThan(
+      expect(skill?.template).toContain('- Threshold Source: ./.copilot/settings.json');
+      expect(skill?.template).not.toContain('3.5. **Load runtime settings** from `~/.copilot/settings.json`');
+      expect(skill?.template).toContain('settings files were read, threshold was resolved');
+      expect(skill?.template?.indexOf('Phase 0: Resolve Ambiguity Threshold')).toBeLessThan(
         skill?.template?.indexOf('Initialize state') ?? Number.POSITIVE_INFINITY,
       );
     });
@@ -453,8 +457,9 @@ describe('Builtin Skills', () => {
       );
 
       const first = getBuiltinSkill('deep-interview');
-      expect(first?.template).toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.12`');
+      expect(first?.template).toContain('Deep Interview threshold: 12% (source: ./.copilot/settings.json)');
       expect(first?.template).toContain('"threshold": 0.12,');
+      expect(first?.template).toContain('"threshold_source": "./.copilot/settings.json",');
 
       writeFileSync(
         join(projectDir, '.claude', 'settings.json'),
@@ -462,9 +467,10 @@ describe('Builtin Skills', () => {
       );
 
       const second = getBuiltinSkill('deep-interview');
-      expect(second?.template).toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.33`');
+      expect(second?.template).toContain('Deep Interview threshold: 33% (source: ./.copilot/settings.json)');
       expect(second?.template).toContain('"threshold": 0.33,');
-      expect(second?.template).not.toContain('Resolve `omc.deepInterview.ambiguityThreshold` into `0.12`');
+      expect(second?.template).toContain('"threshold_source": "./.copilot/settings.json",');
+      expect(second?.template).not.toContain('Deep Interview threshold: 12%');
       expect(second?.template).not.toContain('"threshold": 0.12,');
     });
 
@@ -485,7 +491,9 @@ describe('Builtin Skills', () => {
       const t = skill!.template;
 
       // Previously-fixed references (regression guard)
+      expect(t).toContain('Deep Interview threshold: 15% (source: [$COPILOT_CONFIG_DIR|~/.copilot]/settings.json)');
       expect(t).toContain('"threshold": 0.15,');
+      expect(t).toContain('"threshold_source": "[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json",');
       expect(t).toContain('drops below 15%.');
 
       expect(t).toContain('resolved threshold for this run'); // Purpose/Execution_Policy
@@ -505,9 +513,14 @@ describe('Builtin Skills', () => {
 
     it.skip('ships a config-aware deep-interview SKILL.md for native skill-loader paths (issue #2723)', () => {
       const raw = readFileSync(join(originalCwd, 'skills', 'deep-interview', 'SKILL.md'), 'utf-8');
-      expect(raw).toContain('Load runtime settings');
-      expect(raw).toContain('Read `[$CLAUDE_CONFIG_DIR|~/.claude]/settings.json` and `./.claude/settings.json`');
+      expect(raw).toContain('Phase 0: Resolve Ambiguity Threshold (blocking prerequisite)');
+      expect(raw).toContain('User settings: `[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json`');
+      expect(raw).toContain('Project settings: `./.copilot/settings.json`');
       expect(raw).toContain('"threshold": <resolvedThreshold>,');
+      expect(raw).toContain('"threshold_source": "<resolvedThresholdSource>",');
+      expect(raw).toContain('Deep Interview threshold: <resolvedThresholdPercent> (source: <resolvedThresholdSource>)');
+      expect(raw).toContain('- Threshold Source: <resolvedThresholdSource>');
+      expect(raw).toContain('settings files were read, threshold was resolved');
       expect(raw).toContain('ambiguity drops below <resolvedThresholdPercent>');
       expect(raw).toContain('Gate: ≤<resolvedThresholdPercent> ambiguity');
       expect(raw).toContain('"ambiguityThreshold": <resolvedThreshold>,');
@@ -864,9 +877,14 @@ describe('Builtin Skills', () => {
 
     it('ships a config-aware deep-interview SKILL.md for native skill-loader paths (issue #2723)', () => {
       const raw = readFileSync(join(originalCwd, 'skills', 'deep-interview', 'SKILL.md'), 'utf-8');
-      expect(raw).toContain('Load runtime settings');
-      expect(raw).toContain('Read `[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json` and `./.copilot/settings.json`');
+      expect(raw).toContain('Phase 0: Resolve Ambiguity Threshold (blocking prerequisite)');
+      expect(raw).toContain('User settings: `[$COPILOT_CONFIG_DIR|~/.copilot]/settings.json`');
+      expect(raw).toContain('Project settings: `./.copilot/settings.json`');
       expect(raw).toContain('"threshold": <resolvedThreshold>,');
+      expect(raw).toContain('"threshold_source": "<resolvedThresholdSource>",');
+      expect(raw).toContain('Deep Interview threshold: <resolvedThresholdPercent> (source: <resolvedThresholdSource>)');
+      expect(raw).toContain('- Threshold Source: <resolvedThresholdSource>');
+      expect(raw).toContain('settings files were read, threshold was resolved');
       expect(raw).toContain('ambiguity drops below <resolvedThresholdPercent>');
       expect(raw).toContain('Gate: ≤<resolvedThresholdPercent> ambiguity');
       expect(raw).toContain('"ambiguityThreshold": <resolvedThreshold>,');
