@@ -15,6 +15,11 @@ export interface LspAggregationResult {
     errorCount: number;
     warningCount: number;
     filesChecked: number;
+    skippedFiles: Array<{
+        file: string;
+        reason: string;
+    }>;
+    installHints: string[];
 }
 /**
  * Run LSP diagnostics on all TypeScript/JavaScript files in a directory
