@@ -533,7 +533,7 @@ Includes **34 canonical skills + 2 deprecated aliases** (`learner`, `psm`). Runt
 | `ccg`                     | Tri-model workflow via `ask codex` + `ask gemini`, then Claude synthesis | `/oh-my-copilot:ccg`                     |
 | `configure-notifications` | Configure notification integrations (Telegram, Discord, Slack) via natural language | `/oh-my-copilot:configure-notifications` |
 | `deep-dive`               | Two-stage trace → deep-interview pipeline with context handoff   | `/oh-my-copilot:deep-dive`               |
-| `deep-interview`          | Socratic deep interview with ambiguity gating                    | `/oh-my-copilot:deep-interview`          |
+| `deep-interview`          | Socratic deep interview with ambiguity gating                    | `/deep-interview`                           |
 | `deepinit`                | Generate hierarchical AGENTS.md docs                             | `/oh-my-copilot:deepinit`                |
 | `external-context`        | Parallel document-specialist research                            | `/oh-my-copilot:external-context`        |
 | `hud`                     | Configure HUD/statusline                                         | `/oh-my-copilot:hud`                     |
@@ -564,7 +564,7 @@ Includes **34 canonical skills + 2 deprecated aliases** (`learner`, `psm`). Runt
 
 ## Slash Commands
 
-Each installed skill is exposed as `/oh-my-copilot:<skill-name>`. The skills table above is the full runtime-backed list; the commands below highlight common entrypoints and aliases. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands.
+Most installed skills are exposed as `/oh-my-copilot:<skill-name>`. Deep Interview is intentionally documented with the short `/deep-interview` path because that path receives OMC's rendered runtime threshold guidance before the interview starts. The skills table above is the full runtime-backed list; the commands below highlight common entrypoints and aliases. Compatibility keyword modes like `deep-analyze` and `tdd` are prompt-triggered behaviors, not standalone slash commands.
 
 | Command                                     | Description                                                                                   |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
@@ -573,7 +573,7 @@ Each installed skill is exposed as `/oh-my-copilot:<skill-name>`. The skills tab
 | `/oh-my-copilot:autopilot <task>`            | Full autonomous execution                                                                  |
 | `/oh-my-copilot:configure-notifications`     | Configure notification integrations                                                       |
 | `/oh-my-copilot:deep-dive <problem>`         | Run the trace → deep-interview pipeline                                                   |
-| `/oh-my-copilot:deep-interview <idea>`       | Socratic interview with ambiguity scoring before execution                                 |
+| `/deep-interview <idea>`                      | Socratic interview with ambiguity scoring before execution                                 |
 | `/oh-my-copilot:deepinit [path]`             | Index codebase with hierarchical AGENTS.md files                                           |
 | `/oh-my-copilot:mcp-setup`                   | Configure MCP servers                                                                      |
 | `/oh-my-copilot:omc-doctor`                  | Diagnose and fix installation issues                                                       |
