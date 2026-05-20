@@ -15639,12 +15639,14 @@ function normalizeRegistryEntry(value) {
   }
   const args = Array.isArray(raw.args) && raw.args.every((item) => typeof item === "string") ? [...raw.args] : [];
   const env2 = isStringRecord(raw.env) ? { ...raw.env } : void 0;
+  const headers = isStringRecord(raw.headers) ? { ...raw.headers } : void 0;
   const timeout = typeof raw.timeout === "number" && Number.isFinite(raw.timeout) && raw.timeout > 0 ? raw.timeout : void 0;
   const effectiveTimeout = timeout ?? (command && isLauncherBackedMcpCommand(command, args) ? DEFAULT_LAUNCHER_MCP_STARTUP_TIMEOUT_SEC : void 0);
   return {
     ...command ? { command } : {},
     ...args.length > 0 ? { args } : {},
     ...env2 && Object.keys(env2).length > 0 ? { env: env2 } : {},
+    ...headers && Object.keys(headers).length > 0 ? { headers } : {},
     ...url2 ? { url: url2 } : {},
     ...type ? { type } : {},
     ...effectiveTimeout ? { timeout: effectiveTimeout } : {}
@@ -15770,9 +15772,15 @@ function renderTomlString(value) {
 function renderTomlStringArray(values) {
   return `[${values.map(renderTomlString).join(", ")}]`;
 }
-function renderTomlEnvTable(env2) {
-  const entries = Object.entries(env2).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${key} = ${renderTomlString(value)}`);
+function renderTomlBareKey(key) {
+  return /^[A-Za-z0-9_-]+$/.test(key) ? key : renderTomlString(key);
+}
+function renderTomlStringMapInline(values) {
+  const entries = Object.entries(values).sort(([left], [right]) => left.localeCompare(right)).map(([key, value]) => `${renderTomlBareKey(key)} = ${renderTomlString(value)}`);
   return `{ ${entries.join(", ")} }`;
+}
+function renderTomlEnvTable(env2) {
+  return renderTomlStringMapInline(env2);
 }
 function renderCodexServerBlock(name, entry) {
   const lines = [`[mcp_servers.${name}]`];
@@ -15793,6 +15801,12 @@ function renderCodexServerBlock(name, entry) {
   }
   if (entry.timeout) {
     lines.push(`startup_timeout_sec = ${entry.timeout}`);
+  }
+  if (entry.headers && Object.keys(entry.headers).length > 0) {
+    lines.push("", `[mcp_servers.${name}.headers]`);
+    for (const [key, value] of Object.entries(entry.headers).sort(([left], [right]) => left.localeCompare(right))) {
+      lines.push(`${renderTomlBareKey(key)} = ${renderTomlString(value)}`);
+    }
   }
   return lines.join("\n");
 }
