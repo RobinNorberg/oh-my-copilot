@@ -570,6 +570,7 @@ export interface HudElementConfig {
   model: boolean;            // Show current model name
   modelFormat: ModelFormat;   // Model name verbosity level
   omcLabel: boolean;
+  updateNotification?: boolean; // Show available-update prompt text in the OMC label
   rateLimits: boolean;  // Show 5h and weekly rate limits
   ralph: boolean;
   autopilot: boolean;
@@ -706,6 +707,7 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     model: false,             // Disabled by default for backward compatibility
     modelFormat: 'short',     // Short names by default for backward compatibility
     omcLabel: true,
+    updateNotification: true, // Preserve existing update prompt behavior by default
     rateLimits: true,  // Show rate limits by default
     ralph: true,
     autopilot: true,
@@ -769,6 +771,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     model: false,
     modelFormat: 'short',
     omcLabel: true,
+    updateNotification: true,
     rateLimits: true,
     ralph: true,
     autopilot: true,
@@ -814,6 +817,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     model: false,
     modelFormat: 'short',
     omcLabel: true,
+    updateNotification: true,
     rateLimits: true,
     ralph: true,
     autopilot: true,
@@ -859,6 +863,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     model: false,
     modelFormat: 'short',
     omcLabel: true,
+    updateNotification: true,
     rateLimits: true,
     ralph: true,
     autopilot: true,
@@ -904,6 +909,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     model: false,
     modelFormat: 'short',
     omcLabel: true,
+    updateNotification: true,
     rateLimits: false,
     ralph: true,
     autopilot: true,
@@ -949,6 +955,7 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     model: false,
     modelFormat: 'short',
     omcLabel: true,
+    updateNotification: true,
     rateLimits: true,
     ralph: true,
     autopilot: true,
