@@ -12,6 +12,7 @@ import { execSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { evaluateAgentHeavyPreflight } from './lib/pre-tool-enforcer-preflight.mjs';
+import { evaluateForceAgentDelegation } from './lib/force-agent-delegation-preflight.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { readStdin } from './lib/stdin.mjs';
 
@@ -921,6 +922,31 @@ async function main() {
           ? data.sessionId
           : '';
     const modeActive = hasActiveMode(stateDir, sessionId);
+
+    // Force-agent-delegation: symmetric to evaluateAgentHeavyPreflight. Where
+    // preflight blocks Task/Agent spawning when context is exhausted, this
+    // evaluator blocks raw Read/Edit/Write/Grep/Glob when configured rules
+    // indicate the work should be delegated to a specialised agent. Default OFF
+    // — only fires when the OMC config has `routing.forceDelegation.enforce`.
+    const delegationBlock = evaluateForceAgentDelegation({
+      toolName,
+      stateDir,
+      loadOmcConfig,
+    });
+    if (delegationBlock) {
+      // Force-delegation preflight returns `{ decision: 'block', reason }` to
+      // match the agent-heavy preflight contract. Translate to the
+      // Copilot CLI hookSpecificOutput shape (`permissionDecision: 'deny'`).
+      console.log(JSON.stringify({
+        continue: true,
+        hookSpecificOutput: {
+          hookEventName: 'PreToolUse',
+          permissionDecision: 'deny',
+          permissionDecisionReason: delegationBlock.reason,
+        },
+      }));
+      return;
+    }
 
     // Force-inherit check: deny Task/Agent calls with invalid model param when forceInherit is
     // enabled (Bedrock, Vertex, CC Switch, etc.) - issues #1135, #1201, #1767, #1868
