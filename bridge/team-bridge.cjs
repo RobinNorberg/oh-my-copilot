@@ -157,6 +157,7 @@ function getConfigDir() {
 
 // src/team/tmux-session.ts
 var import_fs2 = require("fs");
+var import_crypto = require("crypto");
 var import_path4 = require("path");
 var import_promises = __toESM(require("fs/promises"), 1);
 
@@ -2152,7 +2153,7 @@ ${violationSummary}`
 }
 
 // src/lib/worktree-paths.ts
-var import_crypto = require("crypto");
+var import_crypto2 = require("crypto");
 var import_child_process4 = require("child_process");
 var import_fs14 = require("fs");
 var import_os2 = require("os");
