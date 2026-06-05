@@ -37,5 +37,6 @@ export function detectAllClis(): Record<string, CliInfo> {
     codex: detectCli('codex'),
     gemini: detectCli('gemini'),
     cursor: detectCli('cursor-agent'),
+    grok: detectCli('grok'),
   };
 }

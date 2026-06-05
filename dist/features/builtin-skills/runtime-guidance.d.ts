@@ -3,6 +3,7 @@ export interface SkillRuntimeAvailability {
     claude: boolean;
     codex: boolean;
     gemini: boolean;
+    grok: boolean;
 }
 export declare function detectSkillRuntimeAvailability(detector?: (agentType: CliAgentType) => boolean): SkillRuntimeAvailability;
 export declare function renderSkillRuntimeGuidance(skillName: string, availability?: SkillRuntimeAvailability): string;

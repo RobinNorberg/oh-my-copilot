@@ -155,7 +155,7 @@ function isExplicitRalplanSlashInvocation(prompt) {
 }
 
 function isExplicitAskSlashInvocation(prompt) {
-  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini)\b/i.test(prompt);
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|grok)\b/i.test(prompt);
 }
 
 // Sanitize text to prevent false positives from code blocks, XML tags, URLs, and file paths

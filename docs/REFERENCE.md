@@ -105,6 +105,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
 | `OMC_CODEX_DEFAULT_MODEL`  | _(provider default)_ | Default model for Codex CLI workers                                                                                                                                                                                                                                         |
 | `OMC_GEMINI_DEFAULT_MODEL` | _(provider default)_ | Default model for Gemini CLI workers                                                                                                                                                                                                                                        |
+| `OMC_GROK_DEFAULT_MODEL`   | _(provider default)_ | Default model for Grok Build CLI workers                                                                                                                                                                                                                                    |
 | `OMC_LSP_TIMEOUT_MS`       | `15000`              | Timeout (ms) for LSP requests. Increase for large repos or slow language servers                                                                                                                                                                                            |
 | `DISABLE_OMC`              | _(unset)_            | Set to any value to disable all OMC hooks                                                                                                                                                                                                                                   |
 | `OMC_SKIP_HOOKS`           | _(unset)_            | Comma-separated list of hook names to skip                                                                                                                                                                                                                                  |
@@ -345,14 +346,15 @@ claude --plugin-dir /path/to/oh-my-copilot
 omc ask claude "review this patch"
 omc ask codex "review this patch from a security perspective"
 omc ask gemini --prompt "suggest UX improvements"
+omc ask grok --prompt "cross-check this code review"
 omc ask claude --agent-prompt executor --prompt "create an implementation plan"
 ```
 
-- Provider matrix: `claude | codex | gemini`
+- Provider matrix: `claude | codex | gemini | grok`
 - Artifacts: `.omc/artifacts/ask/{provider}-{slug}-{timestamp}.md`
 - Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
 - Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
-- Skill entrypoint: `/oh-my-copilot:ask <claude|codex|gemini> <prompt>` routes to this command
+- Skill entrypoint: `/oh-my-copilot:ask <claude|codex|gemini|grok> <prompt>` routes to this command
 
 ### `omc team` (CLI runtime surface)
 
@@ -527,7 +529,7 @@ Includes **34 canonical skills + 2 deprecated aliases** (`learner`, `psm`). Runt
 | Skill                     | Description                                                      | Manual Command                              |
 | ------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
 | `ai-slop-cleaner`         | Anti-slop cleanup workflow with optional reviewer-only `--review` pass | `/oh-my-copilot:ai-slop-cleaner`         |
-| `ask`                     | Ask Claude, Codex, or Gemini via local CLI and capture a reusable artifact | `/oh-my-copilot:ask`               |
+| `ask`                     | Ask Claude, Codex, Gemini, or Grok via local CLI and capture a reusable artifact | `/oh-my-copilot:ask`               |
 | `autopilot`               | Full autonomous execution from idea to working code              | `/oh-my-copilot:autopilot`               |
 | `cancel`                  | Unified cancellation for active modes                            | `/oh-my-copilot:cancel`                  |
 | `ccg`                     | Tri-model workflow via `ask codex` + `ask gemini`, then Claude synthesis | `/oh-my-copilot:ccg`                     |
@@ -569,7 +571,7 @@ Most installed skills are exposed as `/oh-my-copilot:<skill-name>`. Deep Intervi
 | Command                                     | Description                                                                                   |
 | ------------------------------------------- | --------------------------------------------------------------------------------------------- |
 | `/oh-my-copilot:ai-slop-cleaner <target>`    | Run the anti-slop cleanup workflow (`--review` for reviewer-only pass)                    |
-| `/oh-my-copilot:ask <claude\|codex\|gemini> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact         |
+| `/oh-my-copilot:ask <claude\|codex\|gemini\|grok> <prompt>` | Route a prompt through the selected advisor CLI and capture an ask artifact         |
 | `/oh-my-copilot:autopilot <task>`            | Full autonomous execution                                                                  |
 | `/oh-my-copilot:configure-notifications`     | Configure notification integrations                                                       |
 | `/oh-my-copilot:deep-dive <problem>`         | Run the trace → deep-interview pipeline                                                   |
