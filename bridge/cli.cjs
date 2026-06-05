@@ -83617,6 +83617,17 @@ function hasDiagnosticIntentNearKeyword(context, keyword) {
   ];
   return patterns.some((pattern) => pattern.test(context));
 }
+function isRalphUltraworkMetaOrBanterContext(context, keywordText) {
+  const normalizedKeyword = keywordText.toLowerCase().replace(/\s+/g, "");
+  if (!["ralph", "ultrawork", "ulw", "uw"].includes(normalizedKeyword)) {
+    return false;
+  }
+  const metaOrBanterPatterns = [
+    /\?.{0,12}(?:lol|lmao)/i,
+    /(?:lol|lmao).{0,40}\?/i
+  ];
+  return metaOrBanterPatterns.some((pattern) => pattern.test(context));
+}
 function isInformationalKeywordContext(text, position, keywordLength, keywordText) {
   const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
   const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
@@ -83634,6 +83645,9 @@ function isInformationalKeywordContext(text, position, keywordLength, keywordTex
     }
     if (hasActivationIntent) {
       return false;
+    }
+    if (isRalphUltraworkMetaOrBanterContext(context, keywordText)) {
+      return true;
     }
     if (hasDiagnosticIntentNearKeyword(context, keywordText)) {
       return true;
