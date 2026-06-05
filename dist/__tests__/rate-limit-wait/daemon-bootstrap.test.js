@@ -65,7 +65,12 @@ describe('daemon bootstrap', () => {
         const [command, args, spawnOptions] = mockSpawn.mock.calls[0];
         expect(command).toBe('node');
         expect(args[0]).toBe('-e');
-        expect(args[1]).toContain("import(\"file:///repo/dist/features/rate-limit-wait/daemon.js\")");
+        // pathToFileURL normalizes the resolved module path to a file:// URL. On
+        // Windows the POSIX-style mock path picks up the current drive letter
+        // (file:///C:/repo/...), so match the URL scheme + suffix instead of an
+        // absolute prefix to stay cross-platform. CI on Linux yields
+        // file:///repo/dist/features/rate-limit-wait/daemon.js.
+        expect(args[1]).toMatch(/import\("file:\/\/\/(?:[A-Za-z]:\/)?repo\/dist\/features\/rate-limit-wait\/daemon\.js"\)/);
         expect(spawnOptions?.detached).toBe(true);
         expect(spawnOptions?.stdio).toBe('ignore');
         const childEnv = spawnOptions?.env;
