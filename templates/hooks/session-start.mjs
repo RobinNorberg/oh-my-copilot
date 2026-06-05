@@ -10,7 +10,7 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
+const { getCopilotConfigDir, getUpdateCheckCachePath } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
 
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
@@ -79,7 +79,7 @@ function shouldRestoreModeState(directory, mode, state, sessionId) {
 }
 
 async function checkForUpdates(currentVersion) {
-  const cacheFile = join(homedir(), '.omcp', 'update-check.json');
+  const cacheFile = getUpdateCheckCachePath();
   const now = Date.now();
   const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -246,6 +246,15 @@ function compactOmcStartupGuidance(content) {
 
   const notice = '\n\n[OMC startup guidance truncated to preserve an 8000-character budget. Read the source file directly for the full document.]';
   return `${normalized.slice(0, OMC_STARTUP_GUIDANCE_MAX_CHARS - notice.length).trimEnd()}${notice}`;
+}
+
+function formatUpdateNoticeForUser(updateInfo, options = {}) {
+  const latestVersion = updateInfo?.latestVersion || 'latest';
+  const currentVersion = updateInfo?.currentVersion || 'unknown';
+  const action = options.autoUpgradePrompt === false
+    ? 'To update later, run: omc update'
+    : 'Run /update to upgrade now, or use /plugin install oh-my-copilot';
+  return `[OMC UPDATE AVAILABLE] oh-my-copilot v${latestVersion} is available (current: v${currentVersion}). ${action}`;
 }
 
 function buildSessionStartAdditionalContext(messages) {
@@ -462,6 +471,7 @@ async function main() {
     const directory = data.cwd || data.directory || process.cwd();
     const sessionId = data.sessionId || data.session_id || data.sessionid || '';
     const messages = [];
+    const userMessages = [];
 
     // Check for updates (non-blocking)
     // Read version from OMC's own package.json, not the project's (fixes #516)
@@ -477,43 +487,11 @@ async function main() {
 
     const updateInfo = currentVersion ? await checkForUpdates(currentVersion) : null;
     if (updateInfo) {
-      // Read config to check autoUpgradePrompt preference
       const configPath = join(getCopilotConfigDir(), '.omcp-config.json');
       const omcConfig = readJsonFile(configPath) || {};
-      const autoUpgradePrompt = omcConfig.autoUpgradePrompt !== false; // default: true
-
-      if (autoUpgradePrompt) {
-        messages.push(`<session-restore>
-
-[OMC AUTO-UPGRADE AVAILABLE]
-
-oh-my-copilot v${updateInfo.latestVersion} is available (current: v${updateInfo.currentVersion}).
-
-ACTION: Use AskUserQuestion to ask the user if they want to upgrade now. Offer these options:
-- "Upgrade now" (Recommended): Run \`npm install -g oh-my-copilot@latest\` via Bash, then run \`omc install --force --skip-copilot-check --refresh-hooks\` to reconcile hooks and copilot-instructions.md
-- "Skip this time": Continue the session without upgrading
-- "Don't ask again": Tell the user to set "autoUpgradePrompt": false in ~/.copilot/.omcp-config.json to disable future prompts
-
-Keep the prompt brief. If the user accepts, execute the upgrade commands and report the result.
-
-</session-restore>
-
----
-`);
-      } else {
-        messages.push(`<session-restore>
-
-[OMC UPDATE AVAILABLE]
-
-A new version of oh-my-copilot is available: v${updateInfo.latestVersion} (current: ${updateInfo.currentVersion})
-
-To update, run: omc update
-
-</session-restore>
-
----
-`);
-      }
+      userMessages.push(formatUpdateNoticeForUser(updateInfo, {
+        autoUpgradePrompt: omcConfig.autoUpgradePrompt !== false,
+      }));
     }
 
     // Check for ultrawork state - warn on conflicting same-path session, otherwise restore.
@@ -615,14 +593,20 @@ ${agentsContent}
       }
     }
 
-    if (messages.length > 0) {
-      console.log(JSON.stringify({
+    if (messages.length > 0 || userMessages.length > 0) {
+      const output = {
         continue: true,
-        hookSpecificOutput: {
+      };
+      if (userMessages.length > 0) {
+        output.systemMessage = userMessages.join('\n');
+      }
+      if (messages.length > 0) {
+        output.hookSpecificOutput = {
           hookEventName: 'SessionStart',
           additionalContext: buildSessionStartAdditionalContext(messages)
-        }
-      }));
+        };
+      }
+      console.log(JSON.stringify(output));
     } else {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
     }

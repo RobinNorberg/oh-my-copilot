@@ -31,3 +31,11 @@ export function getCopilotConfigDir() {
 
   return stripTrailingSep(normalize(configured));
 }
+
+export function getOmcConfigDir() {
+  return join(getCopilotConfigDir(), '.omc');
+}
+
+export function getUpdateCheckCachePath() {
+  return join(getOmcConfigDir(), 'update-check.json');
+}

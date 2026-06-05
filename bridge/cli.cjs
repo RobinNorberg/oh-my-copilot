@@ -3049,6 +3049,12 @@ function getConfigDir() {
   }
   return stripTrailingSep((0, import_path.normalize)(configured));
 }
+function getOmcConfigDir() {
+  return (0, import_path.join)(getConfigDir(), ".omc");
+}
+function getUpdateCheckCachePath() {
+  return (0, import_path.join)(getOmcConfigDir(), "update-check.json");
+}
 var import_path, import_os;
 var init_config_dir = __esm({
   "src/utils/config-dir.ts"() {
@@ -17574,25 +17580,62 @@ function npmInstallGlobalPackage(packageSpec, verbose = false) {
   }
   (0, import_child_process12.execFileSync)("npm", ["install", "-g", packageSpec], npmExecOptions(verbose));
 }
-function detectGlobalCopilotCliInstall() {
+function parseCopilotCliVersion(output) {
+  const trimmed = output.trim();
+  if (!trimmed) {
+    return void 0;
+  }
+  return trimmed.match(/\b(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\b/)?.[1];
+}
+function getFirstResolvedBinaryLine(output, binaryName) {
+  const resolved = output.split(/\r?\n/).map((line) => line.trim()).find(Boolean);
+  if (!resolved) {
+    throw new Error(`Unable to resolve ${binaryName} binary path`);
+  }
+  return resolved;
+}
+function resolveCopilotBinaryPath() {
   try {
-    const npmRoot = String((0, import_child_process12.execSync)("npm root -g", {
+    if (process.platform === "win32") {
+      return getFirstResolvedBinaryLine((0, import_child_process12.execFileSync)("where.exe", ["copilot"], {
+        encoding: "utf-8",
+        stdio: "pipe",
+        timeout: 5e3,
+        windowsHide: true
+      }), "copilot");
+    }
+    return getFirstResolvedBinaryLine((0, import_child_process12.execSync)("command -v copilot 2>/dev/null || which copilot 2>/dev/null", {
+      encoding: "utf-8",
+      stdio: "pipe",
+      timeout: 5e3
+    }), "copilot");
+  } catch {
+    return void 0;
+  }
+}
+function detectCopilotCliFromBinary(npmRoot) {
+  try {
+    const versionOutput = String((0, import_child_process12.execFileSync)("copilot", ["--version"], {
       encoding: "utf-8",
       stdio: "pipe",
       timeout: 1e4,
-      ...process.platform === "win32" ? { windowsHide: true } : {}
-    }) ?? "").trim();
-    if (!npmRoot) {
-      return { status: "unknown", error: "npm root -g returned an empty path" };
+      ...process.platform === "win32" ? { shell: true, windowsHide: true } : {}
+    }) ?? "");
+    const binaryPath = resolveCopilotBinaryPath();
+    const version3 = parseCopilotCliVersion(versionOutput);
+    if (!version3 && !binaryPath) {
+      return { status: "unknown", error: "copilot --version returned no parseable version and binary path could not be resolved" };
     }
-    const packageJsonPath = (0, import_path41.join)(npmRoot, "@github", "copilot", "package.json");
-    if (!(0, import_fs31.existsSync)(packageJsonPath)) {
-      return { status: "absent" };
-    }
-    const packageJson = JSON.parse(String((0, import_fs31.readFileSync)(packageJsonPath, "utf-8") ?? ""));
+    const normalizedBinaryPath = binaryPath?.replace(/\\/g, "/").toLowerCase();
+    const normalizedNpmRoot = npmRoot?.replace(/\\/g, "/").toLowerCase();
+    const isNpmBinary = Boolean(
+      normalizedBinaryPath && normalizedNpmRoot && normalizedBinaryPath.startsWith(normalizedNpmRoot.replace(/\/node_modules$/, ""))
+    );
     return {
       status: "present",
-      version: typeof packageJson.version === "string" && packageJson.version.trim() ? packageJson.version.trim() : void 0
+      version: version3,
+      installMethod: isNpmBinary ? "npm" : process.platform === "win32" ? "native" : "manual",
+      binaryPath
     };
   } catch (error48) {
     return {
@@ -17601,8 +17644,43 @@ function detectGlobalCopilotCliInstall() {
     };
   }
 }
+function detectGlobalCopilotCliInstall() {
+  let npmRoot;
+  try {
+    npmRoot = String((0, import_child_process12.execSync)("npm root -g", {
+      encoding: "utf-8",
+      stdio: "pipe",
+      timeout: 1e4,
+      ...process.platform === "win32" ? { windowsHide: true } : {}
+    }) ?? "").trim();
+    if (!npmRoot) {
+      const binaryInstall = detectCopilotCliFromBinary();
+      return binaryInstall.status === "present" ? binaryInstall : { status: "unknown", error: "npm root -g returned an empty path" };
+    }
+    const packageJsonPath = (0, import_path41.join)(npmRoot, "@github", "copilot", "package.json");
+    if (!(0, import_fs31.existsSync)(packageJsonPath)) {
+      const binaryInstall = detectCopilotCliFromBinary(npmRoot);
+      return binaryInstall.status === "present" ? binaryInstall : { status: "absent" };
+    }
+    const packageJson = JSON.parse(String((0, import_fs31.readFileSync)(packageJsonPath, "utf-8") ?? ""));
+    return {
+      status: "present",
+      version: typeof packageJson.version === "string" && packageJson.version.trim() ? packageJson.version.trim() : void 0,
+      installMethod: "npm"
+    };
+  } catch (error48) {
+    const binaryInstall = detectCopilotCliFromBinary(npmRoot);
+    if (binaryInstall.status === "present") {
+      return binaryInstall;
+    }
+    return {
+      status: "unknown",
+      error: error48 instanceof Error ? error48.message : String(error48)
+    };
+  }
+}
 function restoreGlobalCopilotCliIfNeeded(beforeUpdate, verbose = false) {
-  if (beforeUpdate.status !== "present") {
+  if (beforeUpdate.status !== "present" || beforeUpdate.installMethod !== "npm") {
     return { restored: false };
   }
   if (detectGlobalCopilotCliInstall().status === "present") {
@@ -53090,7 +53168,7 @@ async function main2(watchMode = false, skipInit = false) {
       }
     }
     try {
-      const updateCacheFile = (0, import_path119.join)((0, import_os24.homedir)(), ".omcp", "update-check.json");
+      const updateCacheFile = getUpdateCheckCachePath();
       await (0, import_promises20.access)(updateCacheFile);
       const content = await (0, import_promises20.readFile)(updateCacheFile, "utf-8");
       const cached2 = JSON.parse(content);
@@ -53192,7 +53270,7 @@ async function main2(watchMode = false, skipInit = false) {
     }
   }
 }
-var import_fs103, import_promises20, import_path119, import_os24, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs103, import_promises20, import_path119, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -53212,7 +53290,6 @@ var init_hud = __esm({
     import_fs103 = require("fs");
     import_promises20 = require("fs/promises");
     import_path119 = require("path");
-    import_os24 = require("os");
     init_worktree_paths();
     init_config_dir();
     lastSummarySpawnTimestamp = 0;
