@@ -11,27 +11,31 @@ export function trackAccess(hotPaths, filePath, projectRoot, type) {
     const relativePath = path.isAbsolute(filePath)
         ? path.relative(projectRoot, filePath)
         : filePath;
+    const normalizedHotPaths = ensureHotPathList(hotPaths);
     if (relativePath.startsWith("..") || shouldIgnorePath(relativePath)) {
-        return hotPaths;
+        return normalizedHotPaths;
     }
-    const existing = hotPaths.find((hp) => hp.path === relativePath);
+    const existing = normalizedHotPaths.find((hp) => hp.path === relativePath);
     if (existing) {
         existing.accessCount++;
         existing.lastAccessed = Date.now();
     }
     else {
-        hotPaths.push({
+        normalizedHotPaths.push({
             path: relativePath,
             accessCount: 1,
             lastAccessed: Date.now(),
             type,
         });
     }
-    hotPaths.sort((a, b) => b.accessCount - a.accessCount);
-    if (hotPaths.length > MAX_HOT_PATHS) {
-        hotPaths.splice(MAX_HOT_PATHS);
+    normalizedHotPaths.sort((a, b) => b.accessCount - a.accessCount);
+    if (normalizedHotPaths.length > MAX_HOT_PATHS) {
+        normalizedHotPaths.splice(MAX_HOT_PATHS);
     }
-    return hotPaths;
+    return normalizedHotPaths;
+}
+function ensureHotPathList(hotPaths) {
+    return Array.isArray(hotPaths) ? hotPaths : [];
 }
 function shouldIgnorePath(relativePath) {
     const ignorePatterns = [
@@ -54,7 +58,7 @@ function shouldIgnorePath(relativePath) {
 export function getTopHotPaths(hotPaths, limit = 10, context) {
     const now = context?.now ?? Date.now();
     const scopePath = normalizeScopePath(context?.workingDirectory);
-    return [...hotPaths]
+    return ensureHotPathList(hotPaths)
         .filter((hp) => !shouldIgnorePath(hp.path))
         .sort((a, b) => scoreHotPath(b, scopePath, now) - scoreHotPath(a, scopePath, now))
         .slice(0, limit);
@@ -65,7 +69,7 @@ export function getTopHotPaths(hotPaths, limit = 10, context) {
 export function decayHotPaths(hotPaths) {
     const now = Date.now();
     const dayInMs = 24 * 60 * 60 * 1000;
-    return hotPaths
+    return ensureHotPathList(hotPaths)
         .map((hp) => {
         const age = now - hp.lastAccessed;
         if (age > dayInMs * 7) {

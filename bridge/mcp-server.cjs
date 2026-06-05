@@ -28671,6 +28671,8 @@ async function ensureBridge(sessionId, projectDir) {
 }
 async function killBridgeWithEscalation(sessionId, options) {
   const gracePeriod = options?.gracePeriodMs ?? DEFAULT_GRACE_PERIOD_MS;
+  const sigtermGraceMs = options?.sigtermGraceMs ?? SIGTERM_GRACE_MS;
+  const finalWaitMs = options?.finalWaitMs ?? 1e3;
   const startTime = Date.now();
   const metaPath = getBridgeMetaPath(sessionId);
   const meta3 = await safeReadJson(metaPath);
@@ -28704,10 +28706,10 @@ async function killBridgeWithEscalation(sessionId, options) {
   if (!await waitForExit(gracePeriod)) {
     terminatedBy = "SIGTERM";
     killProcessGroup(meta3.pid, "SIGTERM");
-    if (!await waitForExit(SIGTERM_GRACE_MS)) {
+    if (!await waitForExit(sigtermGraceMs)) {
       terminatedBy = "SIGKILL";
       killProcessGroup(meta3.pid, "SIGKILL");
-      await waitForExit(1e3);
+      await waitForExit(finalWaitMs);
     }
   }
   await deleteBridgeMeta(sessionId);
@@ -28725,7 +28727,7 @@ async function killBridgeWithEscalation(sessionId, options) {
     terminationTimeMs: Date.now() - startTime
   };
 }
-async function cleanupBridgeSessions(sessionIds) {
+async function cleanupBridgeSessions(sessionIds, options = {}) {
   const uniqueSessionIds = [...new Set(Array.from(sessionIds).filter(Boolean))];
   const result = {
     requestedSessions: uniqueSessionIds.length,
@@ -28733,7 +28735,7 @@ async function cleanupBridgeSessions(sessionIds) {
     terminatedSessions: 0,
     errors: []
   };
-  for (const sessionId of uniqueSessionIds) {
+  const cleanupOne = async (sessionId) => {
     try {
       ownedBridgeSessionIds.delete(sessionId);
       const metaPath = getBridgeMetaPath(sessionId);
@@ -28742,12 +28744,12 @@ async function cleanupBridgeSessions(sessionIds) {
       const lockPath = getSessionLockPath(sessionId);
       const hasArtifacts = fs3.existsSync(metaPath) || fs3.existsSync(socketPath) || fs3.existsSync(portPath) || fs3.existsSync(lockPath);
       if (!hasArtifacts) {
-        continue;
+        return;
       }
       result.foundSessions++;
       const meta3 = await safeReadJson(metaPath);
       if (meta3 && isValidBridgeMeta(meta3)) {
-        const escalation = await killBridgeWithEscalation(sessionId);
+        const escalation = await killBridgeWithEscalation(sessionId, options);
         if (escalation.terminatedBy) {
           result.terminatedSessions++;
         }
@@ -28759,6 +28761,13 @@ async function cleanupBridgeSessions(sessionIds) {
       await removeFileIfExists(lockPath);
     } catch (error48) {
       result.errors.push(`session=${sessionId}: ${error48.message}`);
+    }
+  };
+  if (options.parallel) {
+    await Promise.all(uniqueSessionIds.map(cleanupOne));
+  } else {
+    for (const sessionId of uniqueSessionIds) {
+      await cleanupOne(sessionId);
     }
   }
   return result;
@@ -34984,6 +34993,14 @@ var CACHE_EXPIRY_MS = 24 * 60 * 60 * 1e3;
 function getMemoryPath(projectRoot) {
   return getWorktreeProjectMemoryPath(projectRoot);
 }
+function normalizeProjectMemory(memory) {
+  return {
+    ...memory,
+    customNotes: Array.isArray(memory.customNotes) ? memory.customNotes : [],
+    userDirectives: Array.isArray(memory.userDirectives) ? memory.userDirectives : [],
+    hotPaths: Array.isArray(memory.hotPaths) ? memory.hotPaths : []
+  };
+}
 async function loadProjectMemory(projectRoot) {
   const memoryPath = getMemoryPath(projectRoot);
   try {
@@ -34992,7 +35009,7 @@ async function loadProjectMemory(projectRoot) {
     if (!memory.version || !memory.projectRoot || !memory.lastScanned) {
       return null;
     }
-    return memory;
+    return normalizeProjectMemory(memory);
   } catch (_error) {
     return null;
   }
@@ -35029,22 +35046,23 @@ var import_path22 = __toESM(require("path"), 1);
 
 // src/hooks/project-memory/directive-detector.ts
 function addDirective(directives, newDirective) {
-  const isDuplicate = directives.some(
+  const directiveList = Array.isArray(directives) ? directives : [];
+  const isDuplicate = directiveList.some(
     (d) => d.directive.toLowerCase() === newDirective.directive.toLowerCase()
   );
   if (!isDuplicate) {
-    directives.push(newDirective);
-    if (directives.length > 20) {
-      directives.sort((a, b) => {
+    directiveList.push(newDirective);
+    if (directiveList.length > 20) {
+      directiveList.sort((a, b) => {
         if (a.priority !== b.priority) {
           return a.priority === "high" ? -1 : 1;
         }
         return b.timestamp - a.timestamp;
       });
-      directives.splice(20);
+      directiveList.splice(20);
     }
   }
-  return directives;
+  return directiveList;
 }
 
 // src/hooks/project-memory/learner.ts
@@ -35069,6 +35087,7 @@ async function addCustomNote(projectRoot, category, content) {
         if (!memory) {
           return;
         }
+        memory.customNotes = Array.isArray(memory.customNotes) ? memory.customNotes : [];
         memory.customNotes.push({
           timestamp: Date.now(),
           source: "manual",

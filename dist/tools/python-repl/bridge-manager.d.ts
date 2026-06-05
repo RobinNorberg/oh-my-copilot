@@ -19,6 +19,14 @@ export interface BridgeSessionCleanupResult {
     terminatedSessions: number;
     errors: string[];
 }
+export interface BridgeEscalationOptions {
+    gracePeriodMs?: number;
+    sigtermGraceMs?: number;
+    finalWaitMs?: number;
+}
+export interface BridgeSessionCleanupOptions extends BridgeEscalationOptions {
+    parallel?: boolean;
+}
 export interface StaleBridgeCleanupResult {
     scannedSessions: number;
     staleSessions: number;
@@ -76,14 +84,12 @@ export declare function ensureBridge(sessionId: string, projectDir?: string): Pr
  * @param options - Optional configuration
  * @returns EscalationResult with termination details
  */
-export declare function killBridgeWithEscalation(sessionId: string, options?: {
-    gracePeriodMs?: number;
-}): Promise<EscalationResult>;
+export declare function killBridgeWithEscalation(sessionId: string, options?: BridgeEscalationOptions): Promise<EscalationResult>;
 /**
  * Clean up bridge processes for explicit session IDs.
  * Used by session-end to terminate bridges created during the ending session.
  */
-export declare function cleanupBridgeSessions(sessionIds: Iterable<string>): Promise<BridgeSessionCleanupResult>;
+export declare function cleanupBridgeSessions(sessionIds: Iterable<string>, options?: BridgeSessionCleanupOptions): Promise<BridgeSessionCleanupResult>;
 export declare function cleanupOwnedBridgeSessions(): Promise<BridgeSessionCleanupResult>;
 /**
  * Clean up stale bridge artifacts across all runtime sessions.

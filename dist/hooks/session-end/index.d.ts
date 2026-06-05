@@ -19,6 +19,14 @@ export interface SessionMetrics {
 export interface HookOutput {
     continue: boolean;
 }
+export interface SessionEndCleanupWorkerPayload {
+    directory: string;
+    sessionId: string;
+    transcriptPath: string;
+    cleanupBudgetMs: number;
+    initialTeamNames?: string[];
+}
+export declare function resolveSessionEndCleanupBudgetMs(env?: NodeJS.ProcessEnv): number;
 /**
  * Get session start time from state files.
  *
@@ -83,12 +91,10 @@ export declare function cleanupMissionState(directory: string, sessionId?: strin
  * Export session summary to .omcp/sessions/
  */
 export declare function exportSessionSummary(directory: string, metrics: SessionMetrics): void;
+export declare function processSessionEndCleanupWorker(payload: SessionEndCleanupWorkerPayload): Promise<void>;
 /**
  * Process session end
  */
 export declare function processSessionEnd(input: SessionEndInput): Promise<HookOutput>;
-/**
- * Main hook entry point
- */
 export declare function handleSessionEnd(input: SessionEndInput): Promise<HookOutput>;
 //# sourceMappingURL=index.d.ts.map
