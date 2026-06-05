@@ -90,6 +90,7 @@ export const DEFAULT_HUD_CONFIG = {
         model: false, // Disabled by default for backward compatibility
         modelFormat: 'short', // Short names by default for backward compatibility
         omcLabel: true,
+        updateNotification: true, // Preserve existing update prompt behavior by default
         rateLimits: true, // Show rate limits by default
         ralph: true,
         autopilot: true,
@@ -152,6 +153,7 @@ export const PRESET_CONFIGS = {
         model: false,
         modelFormat: 'short',
         omcLabel: true,
+        updateNotification: true,
         rateLimits: true,
         ralph: true,
         autopilot: true,
@@ -197,6 +199,7 @@ export const PRESET_CONFIGS = {
         model: false,
         modelFormat: 'short',
         omcLabel: true,
+        updateNotification: true,
         rateLimits: true,
         ralph: true,
         autopilot: true,
@@ -242,6 +245,7 @@ export const PRESET_CONFIGS = {
         model: false,
         modelFormat: 'short',
         omcLabel: true,
+        updateNotification: true,
         rateLimits: true,
         ralph: true,
         autopilot: true,
@@ -287,6 +291,7 @@ export const PRESET_CONFIGS = {
         model: false,
         modelFormat: 'short',
         omcLabel: true,
+        updateNotification: true,
         rateLimits: false,
         ralph: true,
         autopilot: true,
@@ -332,6 +337,7 @@ export const PRESET_CONFIGS = {
         model: false,
         modelFormat: 'short',
         omcLabel: true,
+        updateNotification: true,
         rateLimits: true,
         ralph: true,
         autopilot: true,

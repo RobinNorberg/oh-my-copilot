@@ -21281,6 +21281,8 @@ var init_types4 = __esm({
         modelFormat: "short",
         // Short names by default for backward compatibility
         omcLabel: true,
+        updateNotification: true,
+        // Preserve existing update prompt behavior by default
         rateLimits: true,
         // Show rate limits by default
         ralph: true,
@@ -21356,6 +21358,7 @@ var init_types4 = __esm({
         model: false,
         modelFormat: "short",
         omcLabel: true,
+        updateNotification: true,
         rateLimits: true,
         ralph: true,
         autopilot: true,
@@ -21401,6 +21404,7 @@ var init_types4 = __esm({
         model: false,
         modelFormat: "short",
         omcLabel: true,
+        updateNotification: true,
         rateLimits: true,
         ralph: true,
         autopilot: true,
@@ -21446,6 +21450,7 @@ var init_types4 = __esm({
         model: false,
         modelFormat: "short",
         omcLabel: true,
+        updateNotification: true,
         rateLimits: true,
         ralph: true,
         autopilot: true,
@@ -21491,6 +21496,7 @@ var init_types4 = __esm({
         model: false,
         modelFormat: "short",
         omcLabel: true,
+        updateNotification: true,
         rateLimits: false,
         ralph: true,
         autopilot: true,
@@ -21536,6 +21542,7 @@ var init_types4 = __esm({
         model: false,
         modelFormat: "short",
         omcLabel: true,
+        updateNotification: true,
         rateLimits: true,
         ralph: true,
         autopilot: true,
@@ -52715,7 +52722,7 @@ async function render(context, config2) {
   }
   if (enabledElements.omcLabel) {
     const versionTag = context.omcVersion ? `#${context.omcVersion}` : "";
-    if (context.updateAvailable) {
+    if (enabledElements.updateNotification !== false && context.updateAvailable) {
       rendered.set(
         "omcLabel",
         bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`)
