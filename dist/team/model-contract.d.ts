@@ -36,6 +36,7 @@ export interface CliBinaryValidation {
     reason?: string;
 }
 declare function getTrustedPrefixes(): string[];
+declare function isTrustedPrefix(resolvedPath: string): boolean;
 /** @deprecated Backward-compat shim; non-interactive shells should generally skip RC files. */
 export declare function shouldLoadShellRc(): boolean;
 /** @deprecated Backward-compat shim retained for API compatibility. */
@@ -47,6 +48,7 @@ export declare function validateCliBinaryPath(binary: string): CliBinaryValidati
 export declare const _testInternals: {
     UNTRUSTED_PATH_PATTERNS: RegExp[];
     getTrustedPrefixes: typeof getTrustedPrefixes;
+    isTrustedPrefix: typeof isTrustedPrefix;
 };
 /**
  * Detect parent launch env for Claude Code API-key auth.

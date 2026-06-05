@@ -3616,7 +3616,7 @@ var init_security_config = __esm({
 
 // src/team/model-contract.ts
 import { spawnSync as spawnSync3 } from "child_process";
-import { isAbsolute as isAbsolute5, normalize as normalize2, win32 as win32Path2 } from "path";
+import { isAbsolute as isAbsolute5, normalize as normalize2, sep as sep2, win32 as win32Path2 } from "path";
 function getTrustedPrefixes() {
   const trusted = [
     "/usr/local/bin",
@@ -3635,7 +3635,12 @@ function getTrustedPrefixes() {
 }
 function isTrustedPrefix(resolvedPath) {
   const normalized = normalize2(resolvedPath);
-  return getTrustedPrefixes().some((prefix) => normalized.startsWith(normalize2(prefix)));
+  return getTrustedPrefixes().some((prefix) => {
+    const p = normalize2(prefix);
+    if (normalized === p) return true;
+    const withSep = p.endsWith(sep2) ? p : p + sep2;
+    return normalized.startsWith(withSep);
+  });
 }
 function assertBinaryName(binary) {
   if (!/^[A-Za-z0-9._-]+$/.test(binary)) {

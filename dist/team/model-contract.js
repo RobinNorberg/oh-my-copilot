@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-import { isAbsolute, normalize, win32 as win32Path } from 'path';
+import { isAbsolute, normalize, sep, win32 as win32Path } from 'path';
 import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
 import { isProviderSpecificModelId } from '../config/models.js';
@@ -32,7 +32,18 @@ function getTrustedPrefixes() {
 }
 function isTrustedPrefix(resolvedPath) {
     const normalized = normalize(resolvedPath);
-    return getTrustedPrefixes().some(prefix => normalized.startsWith(normalize(prefix)));
+    return getTrustedPrefixes().some(prefix => {
+        // `normalize` strips trailing separators, so a plain `startsWith` would treat
+        // a sibling whose name merely begins with the prefix as trusted — e.g.
+        // `/usr/bin` would match `/usr/bin-malicious/grok`, and `~/.local/bin` would
+        // match `~/.local/bin-evil/x`. Enforce a directory boundary: the resolved
+        // path must be the trusted dir itself or a true descendant (prefix + sep).
+        const p = normalize(prefix);
+        if (normalized === p)
+            return true;
+        const withSep = p.endsWith(sep) ? p : p + sep;
+        return normalized.startsWith(withSep);
+    });
 }
 function assertBinaryName(binary) {
     if (!/^[A-Za-z0-9._-]+$/.test(binary)) {
@@ -96,6 +107,7 @@ export function validateCliBinaryPath(binary) {
 export const _testInternals = {
     UNTRUSTED_PATH_PATTERNS,
     getTrustedPrefixes,
+    isTrustedPrefix,
 };
 /**
  * Detect parent launch env for Claude Code API-key auth.

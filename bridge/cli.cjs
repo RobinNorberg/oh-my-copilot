@@ -35560,7 +35560,12 @@ function getTrustedPrefixes() {
 }
 function isTrustedPrefix(resolvedPath) {
   const normalized = (0, import_path76.normalize)(resolvedPath);
-  return getTrustedPrefixes().some((prefix) => normalized.startsWith((0, import_path76.normalize)(prefix)));
+  return getTrustedPrefixes().some((prefix) => {
+    const p = (0, import_path76.normalize)(prefix);
+    if (normalized === p) return true;
+    const withSep = p.endsWith(import_path76.sep) ? p : p + import_path76.sep;
+    return normalized.startsWith(withSep);
+  });
 }
 function assertBinaryName(binary) {
   if (!/^[A-Za-z0-9._-]+$/.test(binary)) {
