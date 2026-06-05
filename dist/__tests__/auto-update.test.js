@@ -27,10 +27,12 @@ vi.mock('fs', async () => {
         mkdirSync: vi.fn(),
         readFileSync: vi.fn(),
         writeFileSync: vi.fn(),
+        readdirSync: vi.fn(),
+        statSync: vi.fn(),
     };
 });
 import { execSync, execFileSync } from 'child_process';
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import { install, isProjectScopedPlugin, isRunningAsPlugin, checkNodeVersion } from '../installer/index.js';
@@ -42,6 +44,8 @@ const mockedExistsSync = vi.mocked(existsSync);
 const mockedMkdirSync = vi.mocked(mkdirSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 const mockedWriteFileSync = vi.mocked(writeFileSync);
+const mockedReaddirSync = vi.mocked(readdirSync);
+const mockedStatSync = vi.mocked(statSync);
 const mockedInstall = vi.mocked(install);
 const mockedIsProjectScopedPlugin = vi.mocked(isProjectScopedPlugin);
 const mockedIsRunningAsPlugin = vi.mocked(isRunningAsPlugin);
@@ -65,8 +69,32 @@ describe('auto-update reconciliation', () => {
         mockedIsProjectScopedPlugin.mockReturnValue(false);
         // Default: running as plugin so forceHooks/refreshHooksInPlugin logic works
         mockedIsRunningAsPlugin.mockReturnValue(true);
+        mockedStatSync.mockImplementation((path) => {
+            if (!mockedExistsSync(path)) {
+                throw new Error(`ENOENT: no such file or directory, stat '${String(path)}'`);
+            }
+            return { isFile: () => true };
+        });
+        mockedReaddirSync.mockImplementation((path, options) => {
+            const normalized = String(path).replace(/\\/g, '/');
+            if (normalized.endsWith('/commands')) {
+                return options && typeof options === 'object' && 'withFileTypes' in options
+                    ? [{ name: 'omc-setup.md', isFile: () => true, isDirectory: () => false }]
+                    : ['omc-setup.md'];
+            }
+            if (normalized.endsWith('/skills')) {
+                return options && typeof options === 'object' && 'withFileTypes' in options
+                    ? [{ name: 'plan', isFile: () => false, isDirectory: () => true }]
+                    : ['plan'];
+            }
+            return [];
+        });
         mockedReadFileSync.mockImplementation((path) => {
-            if (String(path).includes('.omc-version.json')) {
+            const normalized = String(path).replace(/\\/g, '/');
+            if (normalized.endsWith('/.claude-plugin/plugin.json')) {
+                return JSON.stringify({ name: 'oh-my-copilot', commands: './commands/', skills: ['./skills/plan/'] });
+            }
+            if (normalized.includes('.omc-version.json')) {
                 return JSON.stringify({
                     version: '4.1.5',
                     installedAt: '2026-02-09T00:00:00.000Z',

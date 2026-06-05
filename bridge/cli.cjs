@@ -16509,7 +16509,16 @@ function directoryHasMarkdownFiles(directory) {
     return false;
   }
   try {
-    return (0, import_fs30.readdirSync)(directory).some((file2) => file2.endsWith(".md"));
+    return (0, import_fs30.readdirSync)(directory, { withFileTypes: true }).some(
+      (entry) => entry.isFile() && entry.name.endsWith(".md")
+    );
+  } catch {
+    return false;
+  }
+}
+function isRegularFile(path22) {
+  try {
+    return (0, import_fs30.statSync)(path22).isFile();
   } catch {
     return false;
   }
@@ -16552,6 +16561,99 @@ function getInstalledOmcPluginRoots() {
   } catch {
   }
   return Array.from(pluginRoots);
+}
+function readPluginManifest(root) {
+  const manifestPath = (0, import_path40.join)(root, ".claude-plugin", "plugin.json");
+  if (!(0, import_fs30.existsSync)(manifestPath)) {
+    return { manifest: null, errors: [] };
+  }
+  try {
+    const parsed = JSON.parse((0, import_fs30.readFileSync)(manifestPath, "utf-8"));
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return { manifest: null, errors: ["Invalid plugin manifest: .claude-plugin/plugin.json must be a JSON object"] };
+    }
+    return { manifest: parsed, errors: [] };
+  } catch (error48) {
+    const message = error48 instanceof Error ? error48.message : String(error48);
+    return { manifest: null, errors: [`Invalid plugin manifest: .claude-plugin/plugin.json: ${message}`] };
+  }
+}
+function normalizePluginRelPath(value) {
+  return value.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+}
+function isSafePluginRelPath(value) {
+  const normalized = normalizePluginRelPath(value);
+  return normalized.length > 0 && !(0, import_path40.isAbsolute)(value) && !/^[A-Za-z]:[\\/]/.test(value) && !normalized.split("/").includes("..");
+}
+function validatePluginManifestSchema(root, manifest) {
+  const errors = [];
+  if (!manifest) {
+    return errors;
+  }
+  if (typeof manifest.name !== "string" || manifest.name.trim().length === 0) {
+    errors.push("Invalid plugin manifest: .claude-plugin/plugin.json name must be a non-empty string");
+  }
+  if (typeof manifest.commands !== "string" || manifest.commands.trim().length === 0) {
+    errors.push("Invalid plugin manifest: .claude-plugin/plugin.json commands must be a non-empty relative path");
+  } else if (!isSafePluginRelPath(manifest.commands)) {
+    errors.push("Invalid plugin manifest: .claude-plugin/plugin.json commands must stay inside the plugin root");
+  } else if (!directoryHasMarkdownFiles((0, import_path40.join)(root, normalizePluginRelPath(manifest.commands)))) {
+    errors.push(`Missing declared plugin command markdown files in ${normalizePluginRelPath(manifest.commands)}/`);
+  }
+  if (!Array.isArray(manifest.skills) || manifest.skills.length === 0) {
+    errors.push("Invalid plugin manifest: .claude-plugin/plugin.json skills must be a non-empty array");
+  }
+  return errors;
+}
+function validateDeclaredPluginSkills(root, manifest) {
+  const errors = [];
+  const declaredSkills = manifest?.skills;
+  if (!Array.isArray(declaredSkills)) {
+    return errors;
+  }
+  for (const declaredSkill of declaredSkills) {
+    if (typeof declaredSkill !== "string" || declaredSkill.trim().length === 0) {
+      errors.push("Invalid plugin skill declaration in .claude-plugin/plugin.json");
+      continue;
+    }
+    if (!isSafePluginRelPath(declaredSkill)) {
+      errors.push(`Invalid plugin skill declaration outside plugin root: ${declaredSkill}`);
+      continue;
+    }
+    const relPath = normalizePluginRelPath(declaredSkill);
+    const skillPath = relPath.endsWith("/SKILL.md") ? relPath : `${relPath}/SKILL.md`;
+    if (!isRegularFile((0, import_path40.join)(root, skillPath))) {
+      errors.push(`Missing declared plugin skill file: ${skillPath}`);
+    }
+  }
+  return errors;
+}
+function validatePluginSyncPayload(root) {
+  const errors = [];
+  for (const relPath of REQUIRED_PLUGIN_PAYLOAD_FILES) {
+    if (!isRegularFile((0, import_path40.join)(root, relPath))) {
+      errors.push(`Missing required plugin payload file: ${relPath}`);
+    }
+  }
+  for (const relPath of REQUIRED_PLUGIN_COMMAND_FILES) {
+    if (!isRegularFile((0, import_path40.join)(root, relPath))) {
+      errors.push(`Missing required plugin command file: ${relPath}`);
+    }
+  }
+  if (!directoryHasMarkdownFiles((0, import_path40.join)(root, "commands"))) {
+    errors.push("Missing required plugin command markdown files in commands/");
+  }
+  if (!directoryHasSkillDefinitions((0, import_path40.join)(root, "skills"))) {
+    errors.push("Missing required plugin skill definitions in skills/");
+  }
+  const manifestResult = readPluginManifest(root);
+  errors.push(...manifestResult.errors);
+  errors.push(...validatePluginManifestSchema(root, manifestResult.manifest));
+  errors.push(...validateDeclaredPluginSkills(root, manifestResult.manifest));
+  return errors;
+}
+function hasCompletePluginPayload(root) {
+  return validatePluginSyncPayload(root).length === 0;
 }
 function countPluginSyncPayloadEntries(root) {
   let score = 0;
@@ -16625,6 +16727,7 @@ function resolveBestPluginSyncSource(targetRoots) {
     getRuntimePackageRoot()
   ];
   let bestRoot = null;
+  const errors = [];
   let bestScore = -1;
   let bestOrder = Number.POSITIVE_INFINITY;
   for (const [order, candidate] of candidates.entries()) {
@@ -16633,6 +16736,11 @@ function resolveBestPluginSyncSource(targetRoots) {
       continue;
     }
     seen.add(normalizedCandidate);
+    const sourceValidationErrors = validatePluginSyncPayload(candidate);
+    if (sourceValidationErrors.length > 0) {
+      errors.push(...sourceValidationErrors.map((error48) => `${candidate}: ${error48}`));
+      continue;
+    }
     const score = countPluginSyncPayloadEntries(candidate);
     if (score === 0) {
       continue;
@@ -16643,11 +16751,18 @@ function resolveBestPluginSyncSource(targetRoots) {
       bestOrder = order;
     }
   }
-  return bestRoot;
+  return { sourceRoot: bestRoot, errors: bestRoot ? [] : errors };
 }
 function copyPluginSyncPayload(sourceRoot, targetRoots) {
   if (targetRoots.length === 0) {
     return { synced: false, errors: [] };
+  }
+  const sourceValidationErrors = validatePluginSyncPayload(sourceRoot);
+  if (sourceValidationErrors.length > 0) {
+    return {
+      synced: false,
+      errors: sourceValidationErrors.map((error48) => `${sourceRoot}: ${error48}`)
+    };
   }
   let synced = false;
   const errors = [];
@@ -16669,7 +16784,11 @@ function copyPluginSyncPayload(sourceRoot, targetRoots) {
         errors.push(`Failed to sync ${entry} to ${targetRoot}: ${message}`);
       }
     }
-    synced = synced || copiedToTarget;
+    if (copiedToTarget) {
+      const targetValidationErrors = validatePluginSyncPayload(targetRoot);
+      errors.push(...targetValidationErrors.map((error48) => `${targetRoot}: ${error48}`));
+    }
+    synced = synced || copiedToTarget && !errors.some((error48) => error48.startsWith(`${targetRoot}: `));
   }
   return { synced, errors };
 }
@@ -16678,11 +16797,15 @@ function syncInstalledPluginPayload() {
   if (targetRoots.length === 0) {
     return { synced: false, errors: [], sourceRoot: null, targetRoots: [] };
   }
-  const sourceRoot = resolveBestPluginSyncSource(targetRoots);
+  const sourceResolution = resolveBestPluginSyncSource(targetRoots);
+  const sourceRoot = sourceResolution.sourceRoot;
   if (!sourceRoot) {
     return {
       synced: false,
-      errors: ["Unable to find a complete OMC package source to repair installed plugin roots"],
+      errors: [
+        "Unable to find a complete OMC package source to repair installed plugin roots",
+        ...sourceResolution.errors
+      ],
       sourceRoot: null,
       targetRoots
     };
@@ -16692,17 +16815,17 @@ function syncInstalledPluginPayload() {
 }
 function hasPluginProvidedAgentFiles() {
   return getInstalledOmcPluginRoots().some(
-    (pluginRoot) => directoryHasMarkdownFiles((0, import_path40.join)(pluginRoot, "agents"))
+    (pluginRoot) => hasCompletePluginPayload(pluginRoot) && directoryHasMarkdownFiles((0, import_path40.join)(pluginRoot, "agents"))
   );
 }
 function hasPluginProvidedSkillFiles() {
   return getInstalledOmcPluginRoots().some(
-    (pluginRoot) => directoryHasSkillDefinitions((0, import_path40.join)(pluginRoot, "skills"))
+    (pluginRoot) => hasCompletePluginPayload(pluginRoot) && directoryHasSkillDefinitions((0, import_path40.join)(pluginRoot, "skills"))
   );
 }
 function hasPluginProvidedHookFiles() {
   return getInstalledOmcPluginRoots().some(
-    (pluginRoot) => (0, import_fs30.existsSync)((0, import_path40.join)(pluginRoot, "hooks", "hooks.json"))
+    (pluginRoot) => hasCompletePluginPayload(pluginRoot) && (0, import_fs30.existsSync)((0, import_path40.join)(pluginRoot, "hooks", "hooks.json"))
   );
 }
 function hasEnabledOmcPlugin() {
@@ -16996,7 +17119,12 @@ function install(options = {}) {
   const pluginPayloadSync = syncInstalledPluginPayload();
   if (pluginPayloadSync.errors.length > 0) {
     for (const error48 of pluginPayloadSync.errors) {
-      log3(`Plugin cache sync warning: ${error48}`);
+      log3(`Plugin cache sync error: ${error48}`);
+    }
+    if (pluginPayloadSync.targetRoots.length > 0) {
+      result.errors.push(...pluginPayloadSync.errors.map((error48) => `Plugin cache sync failed: ${error48}`));
+      result.message = "Installation failed: OMC plugin cache is incomplete and could not be repaired";
+      return result;
     }
   }
   if (pluginPayloadSync.synced) {
@@ -17295,7 +17423,7 @@ function getInstallInfo() {
     return null;
   }
 }
-var import_fs30, import_path40, import_url7, import_os10, import_child_process11, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, COPILOT_CONFIG_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, OMC_HOOK_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, PLUGIN_SYNC_PAYLOAD;
+var import_fs30, import_path40, import_url7, import_os10, import_child_process11, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, COPILOT_CONFIG_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, OMC_HOOK_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, PLUGIN_SYNC_PAYLOAD, REQUIRED_PLUGIN_PAYLOAD_FILES, REQUIRED_PLUGIN_COMMAND_FILES;
 var init_installer = __esm({
   "src/installer/index.ts"() {
     "use strict";
@@ -17369,6 +17497,7 @@ var init_installer = __esm({
       "scripts",
       "skills",
       "agents",
+      "commands",
       "templates",
       "docs",
       ".claude-plugin",
@@ -17376,6 +17505,16 @@ var init_installer = __esm({
       "README.md",
       "LICENSE",
       "package.json"
+    ];
+    REQUIRED_PLUGIN_PAYLOAD_FILES = [
+      ".claude-plugin/plugin.json",
+      "package.json",
+      "dist/hooks/skill-bridge.cjs",
+      "bridge/cli.cjs",
+      "hooks/hooks.json"
+    ];
+    REQUIRED_PLUGIN_COMMAND_FILES = [
+      "commands/omc-setup.md"
     ];
   }
 });
@@ -17802,15 +17941,19 @@ function reconcileUpdateRuntime(options) {
   }
   try {
     const pluginSyncResult = syncActivePluginCache();
-    if (pluginSyncResult.errors.length > 0 && options?.verbose) {
-      for (const err of pluginSyncResult.errors) {
-        console.warn(`[omc] Plugin cache sync warning: ${err}`);
+    if (pluginSyncResult.errors.length > 0) {
+      errors.push(...pluginSyncResult.errors.map((err) => `Plugin cache sync failed: ${err}`));
+      if (options?.verbose) {
+        for (const err of pluginSyncResult.errors) {
+          console.warn(`[omc] Plugin cache sync error: ${err}`);
+        }
       }
     }
   } catch (error48) {
+    const message = error48 instanceof Error ? error48.message : String(error48);
+    errors.push(`Plugin cache sync failed: ${message}`);
     if (options?.verbose) {
-      const message = error48 instanceof Error ? error48.message : String(error48);
-      console.warn(`[omc] Plugin cache sync warning: ${message}`);
+      console.warn(`[omc] Plugin cache sync error: ${message}`);
     }
   }
   try {
@@ -17869,7 +18012,12 @@ async function performUpdate(options) {
       if (!marketplaceSync.ok && options?.verbose) {
         console.warn(`[omc update] ${marketplaceSync.message}`);
       }
-      syncPluginCache(options?.verbose ?? false);
+      const pluginCacheSync = syncPluginCache(options?.verbose ?? false);
+      if (pluginCacheSync.errors.length > 0 && options?.verbose) {
+        for (const error48 of pluginCacheSync.errors) {
+          console.warn(`[omc update] Plugin cache sync warning: ${error48}`);
+        }
+      }
       if (!process.env.OMC_UPDATE_RECONCILE) {
         process.env.OMC_UPDATE_RECONCILE = "1";
         const omcPath = (0, import_child_process12.execSync)("which omcp 2>/dev/null || where omcp 2>NUL || which omg 2>/dev/null || where omg 2>NUL", {
