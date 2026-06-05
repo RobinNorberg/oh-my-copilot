@@ -468,6 +468,25 @@ $ ultrawork search the codebase`,
                 rmSync(tempDir, { recursive: true, force: true });
             }
         });
+        it('does not arm ralplan state for keywords inside delegated /ask grok prompts', async () => {
+            const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-ask-grok-'));
+            try {
+                execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
+                const sessionId = 'ask-grok-session';
+                const result = await processHook('keyword-detector', {
+                    sessionId,
+                    prompt: '/ask grok please write up a ralplan plan for what we discussed',
+                    directory: tempDir,
+                });
+                expect(result.continue).toBe(true);
+                expect(result.message).toBeUndefined();
+                expect(result.hookSpecificOutput).toBeUndefined();
+                expect(existsSync(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json'))).toBe(false);
+            }
+            finally {
+                rmSync(tempDir, { recursive: true, force: true });
+            }
+        });
         it('arms ralplan startup state and init context for explicit /ralplan invoke in UserPromptSubmit', async () => {
             const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-ralplan-slash-'));
             try {

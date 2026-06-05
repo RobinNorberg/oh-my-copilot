@@ -21,6 +21,7 @@ function getTrustedPrefixes() {
         trusted.push(`${home}/.local/bin`);
         trusted.push(`${home}/.nvm/`);
         trusted.push(`${home}/.cargo/bin`);
+        trusted.push(`${home}/.grok/bin`);
     }
     const custom = (process.env.OMC_TRUSTED_CLI_DIRS ?? '')
         .split(':')
@@ -207,6 +208,22 @@ const CONTRACTS = {
             return rawOutput.trim();
         },
     },
+    grok: {
+        agentType: 'grok',
+        binary: 'grok',
+        installInstructions: 'Install Grok Build: https://build.grok.com',
+        supportsPromptMode: true,
+        promptModeFlag: '-p',
+        buildLaunchArgs(model, extraFlags = []) {
+            const args = ['--always-approve'];
+            if (model)
+                args.push('--model', model);
+            return [...args, ...extraFlags];
+        },
+        parseOutput(rawOutput) {
+            return rawOutput.trim();
+        },
+    },
     cursor: {
         agentType: 'cursor',
         binary: 'cursor-agent',
@@ -333,6 +350,8 @@ const WORKER_MODEL_ENV_ALLOWLIST = [
     'OMC_CODEX_DEFAULT_MODEL',
     'OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL',
     'OMC_GEMINI_DEFAULT_MODEL',
+    'OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL',
+    'OMC_GROK_DEFAULT_MODEL',
 ];
 export function getWorkerEnv(teamName, workerName, agentType, env = process.env) {
     validateTeamName(teamName);

@@ -3726,6 +3726,11 @@ function loadEnvConfig() {
   } else if (process.env.OMC_GEMINI_DEFAULT_MODEL) {
     externalModelsDefaults.geminiModel = process.env.OMC_GEMINI_DEFAULT_MODEL;
   }
+  if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL) {
+    externalModelsDefaults.grokModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+  } else if (process.env.OMC_GROK_DEFAULT_MODEL) {
+    externalModelsDefaults.grokModel = process.env.OMC_GROK_DEFAULT_MODEL;
+  }
   const externalModelsFallback = {
     onModelFailure: "provider_chain"
   };
@@ -3999,7 +4004,7 @@ var init_loader = __esm({
     DEFAULT_CONFIG = buildDefaultConfig();
     CANONICAL_TEAM_ROLE_SET = new Set(CANONICAL_TEAM_ROLES);
     KNOWN_AGENT_NAME_SET = new Set(KNOWN_AGENT_NAMES);
-    TEAM_ROLE_PROVIDERS = /* @__PURE__ */ new Set(["claude", "codex", "gemini"]);
+    TEAM_ROLE_PROVIDERS = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "grok"]);
     TEAM_ROLE_TIERS = /* @__PURE__ */ new Set(["HIGH", "MEDIUM", "LOW"]);
     OMC_STARTUP_COMPACTABLE_SECTIONS = [
       "agent_catalog",
@@ -35553,6 +35558,7 @@ function getTrustedPrefixes() {
     trusted.push(`${home}/.local/bin`);
     trusted.push(`${home}/.nvm/`);
     trusted.push(`${home}/.cargo/bin`);
+    trusted.push(`${home}/.grok/bin`);
   }
   const custom2 = (process.env.OMC_TRUSTED_CLI_DIRS ?? "").split(":").map((part) => part.trim()).filter(Boolean).filter((part) => (0, import_path76.isAbsolute)(part));
   trusted.push(...custom2);
@@ -35787,6 +35793,21 @@ var init_model_contract = __esm({
           return rawOutput.trim();
         }
       },
+      grok: {
+        agentType: "grok",
+        binary: "grok",
+        installInstructions: "Install Grok Build: https://build.grok.com",
+        supportsPromptMode: true,
+        promptModeFlag: "-p",
+        buildLaunchArgs(model, extraFlags = []) {
+          const args = ["--always-approve"];
+          if (model) args.push("--model", model);
+          return [...args, ...extraFlags];
+        },
+        parseOutput(rawOutput) {
+          return rawOutput.trim();
+        }
+      },
       cursor: {
         agentType: "cursor",
         binary: "cursor-agent",
@@ -35822,7 +35843,9 @@ var init_model_contract = __esm({
       "OMC_EXTERNAL_MODELS_DEFAULT_CODEX_MODEL",
       "OMC_CODEX_DEFAULT_MODEL",
       "OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL",
-      "OMC_GEMINI_DEFAULT_MODEL"
+      "OMC_GEMINI_DEFAULT_MODEL",
+      "OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL",
+      "OMC_GROK_DEFAULT_MODEL"
     ];
   }
 });
@@ -36892,6 +36915,13 @@ function agentTypeGuidance(agentType) {
         "- You are an interactive REPL (cursor-agent), not a one-shot CLI. Stay in the session; the leader will continue to send prompts via mailbox.",
         `- You MUST run \`${claimTaskCommand}\` before starting work and \`${transitionTaskStatusCommand}\` when done. Then keep waiting for the next mailbox message; do NOT type \`/exit\` unless the leader sends an explicit shutdown.`,
         "- Reviewer/critic/security-review roles are NOT supported for cursor workers \u2014 those require a verdict-file write-and-exit which the REPL does not perform. Take only executor-style tasks."
+      ].join("\n");
+    case "grok":
+      return [
+        "### Agent-Type Guidance (grok)",
+        `- Prefer short, explicit \`${teamApiCommand} ... --json\` commands and parse outputs before next step.`,
+        "- If a command fails, report the exact stderr to leader-fixed before retrying.",
+        `- You MUST run \`${claimTaskCommand}\` before starting work and \`${transitionTaskStatusCommand}\` when done.`
       ].join("\n");
     case "claude":
     default:
@@ -38164,6 +38194,9 @@ function resolveExternalModel(provider, raw, cfg) {
   const defaults = cfg.externalModels?.defaults;
   if (provider === "codex") {
     return defaults?.codexModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel;
+  }
+  if (provider === "grok") {
+    return defaults?.grokModel ?? "";
   }
   return defaults?.geminiModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
 }
@@ -39821,6 +39854,9 @@ async function spawnV2Worker(opts) {
     }
     if (opts.agentType === "gemini") {
       return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
+    }
+    if (opts.agentType === "grok") {
+      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL || process.env.OMC_GROK_DEFAULT_MODEL || void 0;
     }
     return resolveClaudeWorkerModel();
   })();
@@ -41737,6 +41773,9 @@ async function spawnWorkerForTask(runtime, workerNameValue, taskIndex) {
     if (agentType === "gemini") {
       return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL || process.env.OMC_GEMINI_DEFAULT_MODEL || void 0;
     }
+    if (agentType === "grok") {
+      return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL || process.env.OMC_GROK_DEFAULT_MODEL || void 0;
+    }
     return resolveClaudeWorkerModel();
   })();
   const [launchBinary, ...launchArgs] = buildWorkerArgv(agentType, {
@@ -41861,7 +41900,7 @@ async function shutdownTeam(teamName, sessionName2, cwd, timeoutMs = 3e4, worker
     teamName
   });
   const configData = await readJsonSafe5((0, import_path85.join)(root, "config.json"));
-  const CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "copilot", "codex", "gemini"]);
+  const CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "copilot", "codex", "gemini", "grok"]);
   const agentTypes = configData?.agentTypes ?? [];
   const isCliWorkerTeam = agentTypes.length > 0 && agentTypes.every((t) => CLI_AGENT_TYPES.has(t));
   if (!isCliWorkerTeam) {
@@ -85705,7 +85744,7 @@ function getPromptText(input) {
   return "";
 }
 function isExplicitAskSlashInvocation(promptText) {
-  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini)\b/i.test(promptText);
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|grok)\b/i.test(promptText);
 }
 function activateRalplanStartupState(directory, sessionId) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -89036,7 +89075,8 @@ init_loader();
 var PROVIDER_BINARY = {
   claude: "claude",
   codex: "codex",
-  gemini: "gemini"
+  gemini: "gemini",
+  grok: "grok"
 };
 function probeProvider(provider) {
   const binary = PROVIDER_BINARY[provider];
@@ -89064,7 +89104,7 @@ function collectConfiguredProviders() {
   const roleRouting = cfg.team?.roleRouting ?? {};
   for (const spec of Object.values(roleRouting)) {
     const provider = spec?.provider;
-    if (provider === "claude" || provider === "codex" || provider === "gemini") {
+    if (provider === "claude" || provider === "codex" || provider === "gemini" || provider === "grok") {
       providers.add(provider);
     }
   }
@@ -89989,7 +90029,7 @@ var import_node_path12 = require("node:path");
 var HELP_TOKENS = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var MIN_WORKER_COUNT = 1;
 var MAX_WORKER_COUNT = 20;
-var VALID_TEAM_CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "copilot", "codex", "gemini"]);
+var VALID_TEAM_CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "copilot", "codex", "gemini", "grok"]);
 var DEFAULT_TEAM_CLI_AGENT_TYPE = "claude";
 var TEAM_HELP = `
 Usage: omcp team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] "<task description>"
@@ -92463,15 +92503,15 @@ var import_path112 = require("path");
 var import_url14 = require("url");
 init_security_config();
 var ASK_USAGE = [
-  "Usage: omcp ask <claude|copilot|codex|gemini> <question or task>",
-  '   or: omcp ask <claude|copilot|codex|gemini> -p "<prompt>"',
-  '   or: omcp ask <claude|copilot|codex|gemini> --print "<prompt>"',
-  '   or: omcp ask <claude|copilot|codex|gemini> --prompt "<prompt>"',
-  "   or: omcp ask <claude|copilot|codex|gemini> --prompt-file <path>",
-  '   or: omcp ask <claude|copilot|codex|gemini> --agent-prompt <role> "<prompt>"',
-  '   or: omcp ask <claude|copilot|codex|gemini> --agent-prompt=<role> --prompt "<prompt>"'
+  "Usage: omcp ask <claude|copilot|codex|gemini|grok> <question or task>",
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> -p "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --print "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --prompt "<prompt>"',
+  "   or: omcp ask <claude|copilot|codex|gemini|grok> --prompt-file <path>",
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --agent-prompt <role> "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --agent-prompt=<role> --prompt "<prompt>"'
 ].join("\n");
-var ASK_PROVIDERS = ["claude", "copilot", "codex", "gemini"];
+var ASK_PROVIDERS = ["claude", "copilot", "codex", "gemini", "grok"];
 var ASK_PROVIDER_SET = new Set(ASK_PROVIDERS);
 var ASK_AGENT_PROMPT_FLAG = "--agent-prompt";
 var SAFE_ROLE_PATTERN = /^[a-z][a-z0-9-]*$/;

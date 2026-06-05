@@ -24,7 +24,7 @@ export interface WorkerCadenceContext {
   teamName: string;
   workerName: string;
   worktreePath: string;
-  agentType: 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor';
+  agentType: 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok';
   enabled: boolean;
 }
 

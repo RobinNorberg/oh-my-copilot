@@ -377,6 +377,11 @@ async function spawnV2Worker(opts) {
                 || process.env.OMC_GEMINI_DEFAULT_MODEL
                 || undefined;
         }
+        if (opts.agentType === 'grok') {
+            return process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL
+                || process.env.OMC_GROK_DEFAULT_MODEL
+                || undefined;
+        }
         // Claude agents: resolve Bedrock/Vertex model when on those providers
         return resolveClaudeWorkerModel();
     })();

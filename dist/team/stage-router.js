@@ -111,6 +111,9 @@ function resolveExternalModel(provider, raw, cfg) {
     if (provider === 'codex') {
         return defaults?.codexModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel;
     }
+    if (provider === 'grok') {
+        return defaults?.grokModel ?? '';
+    }
     return defaults?.geminiModel ?? BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel;
 }
 /**
