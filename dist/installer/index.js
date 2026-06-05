@@ -7,8 +7,8 @@
  * Cross-platform support via Node.js-based hook scripts (.mjs).
  * Bash hook scripts were removed in v3.9.0.
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync, unlinkSync, rmSync, realpathSync } from 'fs';
-import { join, dirname, resolve } from 'path';
+import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmodSync, readdirSync, cpSync, unlinkSync, rmSync, realpathSync, statSync } from 'fs';
+import { join, dirname, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { homedir } from 'os';
 import { execSync } from 'child_process';
@@ -820,7 +820,15 @@ function directoryHasMarkdownFiles(directory) {
         return false;
     }
     try {
-        return readdirSync(directory).some(file => file.endsWith('.md'));
+        return readdirSync(directory, { withFileTypes: true }).some(entry => entry.isFile() && entry.name.endsWith('.md'));
+    }
+    catch {
+        return false;
+    }
+}
+function isRegularFile(path) {
+    try {
+        return statSync(path).isFile();
     }
     catch {
         return false;
@@ -873,6 +881,7 @@ const PLUGIN_SYNC_PAYLOAD = [
     'scripts',
     'skills',
     'agents',
+    'commands',
     'templates',
     'docs',
     '.claude-plugin',
@@ -881,6 +890,119 @@ const PLUGIN_SYNC_PAYLOAD = [
     'LICENSE',
     'package.json',
 ];
+const REQUIRED_PLUGIN_PAYLOAD_FILES = [
+    '.claude-plugin/plugin.json',
+    'package.json',
+    'dist/hooks/skill-bridge.cjs',
+    'bridge/cli.cjs',
+    'hooks/hooks.json',
+];
+const REQUIRED_PLUGIN_COMMAND_FILES = [
+    'commands/omc-setup.md',
+];
+function readPluginManifest(root) {
+    const manifestPath = join(root, '.claude-plugin', 'plugin.json');
+    if (!existsSync(manifestPath)) {
+        return { manifest: null, errors: [] };
+    }
+    try {
+        const parsed = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+            return { manifest: null, errors: ['Invalid plugin manifest: .claude-plugin/plugin.json must be a JSON object'] };
+        }
+        return { manifest: parsed, errors: [] };
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { manifest: null, errors: [`Invalid plugin manifest: .claude-plugin/plugin.json: ${message}`] };
+    }
+}
+function normalizePluginRelPath(value) {
+    return value.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+}
+function isSafePluginRelPath(value) {
+    const normalized = normalizePluginRelPath(value);
+    return normalized.length > 0
+        && !isAbsolute(value)
+        && !/^[A-Za-z]:[\\/]/.test(value)
+        && !normalized.split('/').includes('..');
+}
+function validatePluginManifestSchema(root, manifest) {
+    const errors = [];
+    if (!manifest) {
+        return errors;
+    }
+    if (typeof manifest.name !== 'string' || manifest.name.trim().length === 0) {
+        errors.push('Invalid plugin manifest: .claude-plugin/plugin.json name must be a non-empty string');
+    }
+    if (typeof manifest.commands !== 'string' || manifest.commands.trim().length === 0) {
+        errors.push('Invalid plugin manifest: .claude-plugin/plugin.json commands must be a non-empty relative path');
+    }
+    else if (!isSafePluginRelPath(manifest.commands)) {
+        errors.push('Invalid plugin manifest: .claude-plugin/plugin.json commands must stay inside the plugin root');
+    }
+    else if (!directoryHasMarkdownFiles(join(root, normalizePluginRelPath(manifest.commands)))) {
+        errors.push(`Missing declared plugin command markdown files in ${normalizePluginRelPath(manifest.commands)}/`);
+    }
+    if (!Array.isArray(manifest.skills) || manifest.skills.length === 0) {
+        errors.push('Invalid plugin manifest: .claude-plugin/plugin.json skills must be a non-empty array');
+    }
+    return errors;
+}
+function validateDeclaredPluginSkills(root, manifest) {
+    const errors = [];
+    const declaredSkills = manifest?.skills;
+    if (!Array.isArray(declaredSkills)) {
+        return errors;
+    }
+    for (const declaredSkill of declaredSkills) {
+        if (typeof declaredSkill !== 'string' || declaredSkill.trim().length === 0) {
+            errors.push('Invalid plugin skill declaration in .claude-plugin/plugin.json');
+            continue;
+        }
+        if (!isSafePluginRelPath(declaredSkill)) {
+            errors.push(`Invalid plugin skill declaration outside plugin root: ${declaredSkill}`);
+            continue;
+        }
+        const relPath = normalizePluginRelPath(declaredSkill);
+        const skillPath = relPath.endsWith('/SKILL.md') ? relPath : `${relPath}/SKILL.md`;
+        if (!isRegularFile(join(root, skillPath))) {
+            errors.push(`Missing declared plugin skill file: ${skillPath}`);
+        }
+    }
+    return errors;
+}
+function validatePluginSyncPayload(root) {
+    const errors = [];
+    for (const relPath of REQUIRED_PLUGIN_PAYLOAD_FILES) {
+        if (!isRegularFile(join(root, relPath))) {
+            errors.push(`Missing required plugin payload file: ${relPath}`);
+        }
+    }
+    for (const relPath of REQUIRED_PLUGIN_COMMAND_FILES) {
+        if (!isRegularFile(join(root, relPath))) {
+            errors.push(`Missing required plugin command file: ${relPath}`);
+        }
+    }
+    if (!directoryHasMarkdownFiles(join(root, 'commands'))) {
+        errors.push('Missing required plugin command markdown files in commands/');
+    }
+    if (!directoryHasSkillDefinitions(join(root, 'skills'))) {
+        errors.push('Missing required plugin skill definitions in skills/');
+    }
+    const manifestResult = readPluginManifest(root);
+    errors.push(...manifestResult.errors);
+    errors.push(...validatePluginManifestSchema(root, manifestResult.manifest));
+    errors.push(...validateDeclaredPluginSkills(root, manifestResult.manifest));
+    return errors;
+}
+export function validatePluginCachePayload(root) {
+    const errors = validatePluginSyncPayload(root);
+    return { valid: errors.length === 0, errors };
+}
+function hasCompletePluginPayload(root) {
+    return validatePluginSyncPayload(root).length === 0;
+}
 function countPluginSyncPayloadEntries(root) {
     let score = 0;
     for (const entry of PLUGIN_SYNC_PAYLOAD) {
@@ -955,6 +1077,7 @@ function resolveBestPluginSyncSource(targetRoots) {
         getRuntimePackageRoot(),
     ];
     let bestRoot = null;
+    const errors = [];
     let bestScore = -1;
     let bestOrder = Number.POSITIVE_INFINITY;
     for (const [order, candidate] of candidates.entries()) {
@@ -963,6 +1086,11 @@ function resolveBestPluginSyncSource(targetRoots) {
             continue;
         }
         seen.add(normalizedCandidate);
+        const sourceValidationErrors = validatePluginSyncPayload(candidate);
+        if (sourceValidationErrors.length > 0) {
+            errors.push(...sourceValidationErrors.map(error => `${candidate}: ${error}`));
+            continue;
+        }
         const score = countPluginSyncPayloadEntries(candidate);
         if (score === 0) {
             continue;
@@ -973,11 +1101,18 @@ function resolveBestPluginSyncSource(targetRoots) {
             bestOrder = order;
         }
     }
-    return bestRoot;
+    return { sourceRoot: bestRoot, errors: bestRoot ? [] : errors };
 }
 export function copyPluginSyncPayload(sourceRoot, targetRoots) {
     if (targetRoots.length === 0) {
         return { synced: false, errors: [] };
+    }
+    const sourceValidationErrors = validatePluginSyncPayload(sourceRoot);
+    if (sourceValidationErrors.length > 0) {
+        return {
+            synced: false,
+            errors: sourceValidationErrors.map(error => `${sourceRoot}: ${error}`),
+        };
     }
     let synced = false;
     const errors = [];
@@ -1000,7 +1135,11 @@ export function copyPluginSyncPayload(sourceRoot, targetRoots) {
                 errors.push(`Failed to sync ${entry} to ${targetRoot}: ${message}`);
             }
         }
-        synced = synced || copiedToTarget;
+        if (copiedToTarget) {
+            const targetValidationErrors = validatePluginSyncPayload(targetRoot);
+            errors.push(...targetValidationErrors.map(error => `${targetRoot}: ${error}`));
+        }
+        synced = synced || (copiedToTarget && !errors.some(error => error.startsWith(`${targetRoot}: `)));
     }
     return { synced, errors };
 }
@@ -1010,11 +1149,15 @@ export function syncInstalledPluginPayload() {
     if (targetRoots.length === 0) {
         return { synced: false, errors: [], sourceRoot: null, targetRoots: [] };
     }
-    const sourceRoot = resolveBestPluginSyncSource(targetRoots);
+    const sourceResolution = resolveBestPluginSyncSource(targetRoots);
+    const sourceRoot = sourceResolution.sourceRoot;
     if (!sourceRoot) {
         return {
             synced: false,
-            errors: ['Unable to find a complete OMC package source to repair installed plugin roots'],
+            errors: [
+                'Unable to find a complete OMC package source to repair installed plugin roots',
+                ...sourceResolution.errors,
+            ],
             sourceRoot: null,
             targetRoots,
         };
@@ -1027,13 +1170,13 @@ export function syncInstalledPluginPayload() {
  * markdown files, so the legacy ~/.claude/agents copy can be skipped.
  */
 export function hasPluginProvidedAgentFiles() {
-    return getInstalledOmcPluginRoots().some(pluginRoot => directoryHasMarkdownFiles(join(pluginRoot, 'agents')));
+    return getInstalledOmcPluginRoots().some(pluginRoot => hasCompletePluginPayload(pluginRoot) && directoryHasMarkdownFiles(join(pluginRoot, 'agents')));
 }
 export function hasPluginProvidedSkillFiles() {
-    return getInstalledOmcPluginRoots().some(pluginRoot => directoryHasSkillDefinitions(join(pluginRoot, 'skills')));
+    return getInstalledOmcPluginRoots().some(pluginRoot => hasCompletePluginPayload(pluginRoot) && directoryHasSkillDefinitions(join(pluginRoot, 'skills')));
 }
 export function hasPluginProvidedHookFiles() {
-    return getInstalledOmcPluginRoots().some(pluginRoot => existsSync(join(pluginRoot, 'hooks', 'hooks.json')));
+    return getInstalledOmcPluginRoots().some(pluginRoot => hasCompletePluginPayload(pluginRoot) && existsSync(join(pluginRoot, 'hooks', 'hooks.json')));
 }
 export function hasEnabledOmcPlugin() {
     if (process.env.CLAUDE_PLUGIN_ROOT?.trim()) {
@@ -1372,7 +1515,12 @@ export function install(options = {}) {
     const pluginPayloadSync = syncInstalledPluginPayload();
     if (pluginPayloadSync.errors.length > 0) {
         for (const error of pluginPayloadSync.errors) {
-            log(`Plugin cache sync warning: ${error}`);
+            log(`Plugin cache sync error: ${error}`);
+        }
+        if (pluginPayloadSync.targetRoots.length > 0) {
+            result.errors.push(...pluginPayloadSync.errors.map(error => `Plugin cache sync failed: ${error}`));
+            result.message = 'Installation failed: OMC plugin cache is incomplete and could not be repaired';
+            return result;
         }
     }
     if (pluginPayloadSync.synced) {
