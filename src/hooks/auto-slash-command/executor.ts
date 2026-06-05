@@ -114,79 +114,96 @@ function discoverCommandsFromDir(
 }
 
 /**
+ * Discover skills (each skill directory may have a SKILL.md) from a single
+ * skills directory. Used for both user-global and workspace-local skill roots.
+ */
+function discoverSkillsFromDir(skillsDir: string): CommandInfo[] {
+  if (!existsSync(skillsDir)) {
+    return [];
+  }
+
+  const skillCommands: CommandInfo[] = [];
+  let skillDirs;
+  try {
+    skillDirs = readdirSync(skillsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  for (const dir of skillDirs) {
+    if (!dir.isDirectory()) continue;
+
+    const skillPath = join(skillsDir, dir.name, 'SKILL.md');
+    if (!existsSync(skillPath)) continue;
+
+    try {
+      const content = readFileSync(skillPath, 'utf-8');
+      const { metadata: fm, body } = parseFrontmatter(content);
+
+      const rawName = getFrontmatterString(fm, 'name') || dir.name;
+      const canonicalName = toSafeSkillName(rawName);
+      const aliases = Array.from(new Set(
+        parseFrontmatterAliases(fm.aliases)
+          .map((alias: string) => toSafeSkillName(alias))
+          .filter((alias: string) => alias.toLowerCase() !== canonicalName.toLowerCase())
+      ));
+      const commandNames = [canonicalName, ...aliases];
+      const description = getFrontmatterString(fm, 'description') || '';
+      const argumentHint = getFrontmatterString(fm, 'argument-hint');
+      const model = getFrontmatterString(fm, 'model');
+      const agent = getFrontmatterString(fm, 'agent');
+
+      for (const commandName of commandNames) {
+        const isAlias = commandName !== canonicalName;
+        const metadata: CommandMetadata = {
+          name: commandName,
+          description,
+          argumentHint,
+          model,
+          agent,
+          aliases: isAlias ? undefined : aliases,
+          aliasOf: isAlias ? canonicalName : undefined,
+          deprecatedAlias: isAlias || undefined,
+          deprecationMessage: isAlias
+            ? `Alias "/${commandName}" is deprecated. Use "/${canonicalName}" instead.`
+            : undefined,
+        };
+
+        skillCommands.push({
+          name: commandName,
+          path: skillPath,
+          metadata,
+          content: body,
+          scope: 'skill',
+        });
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return skillCommands;
+}
+
+/**
  * Discover all available commands from multiple sources
  */
 export function discoverAllCommands(): CommandInfo[] {
   const userCommandsDir = join(COPILOT_CONFIG_DIR, 'commands');
   const projectCommandsDir = join(process.cwd(), '.copilot', 'commands');
-  const skillsDir = join(COPILOT_CONFIG_DIR, 'skills');
+  // Workspace-local Copilot CLI skills (the workspace equivalent honored during
+  // slash execution) take priority over user-global skills, so existing
+  // workspace SKILL.md packages remain callable without copying them globally.
+  const projectSkillsDir = join(process.cwd(), '.copilot', 'skills');
+  const userSkillsDir = join(COPILOT_CONFIG_DIR, 'skills');
 
   const userCommands = discoverCommandsFromDir(userCommandsDir, 'user');
   const projectCommands = discoverCommandsFromDir(projectCommandsDir, 'project');
+  const projectSkills = discoverSkillsFromDir(projectSkillsDir);
+  const userSkills = discoverSkillsFromDir(userSkillsDir);
 
-  // Discover skills (each skill directory may have a SKILL.md)
-  const skillCommands: CommandInfo[] = [];
-  if (existsSync(skillsDir)) {
-    try {
-      const skillDirs = readdirSync(skillsDir, { withFileTypes: true });
-      for (const dir of skillDirs) {
-        if (!dir.isDirectory()) continue;
-
-        const skillPath = join(skillsDir, dir.name, 'SKILL.md');
-        if (existsSync(skillPath)) {
-          try {
-            const content = readFileSync(skillPath, 'utf-8');
-            const { metadata: fm, body } = parseFrontmatter(content);
-
-            const rawName = getFrontmatterString(fm, 'name') || dir.name;
-            const canonicalName = toSafeSkillName(rawName);
-            const aliases = Array.from(new Set(
-              parseFrontmatterAliases(fm.aliases)
-                .map((alias: string) => toSafeSkillName(alias))
-                .filter((alias: string) => alias.toLowerCase() !== canonicalName.toLowerCase())
-            ));
-            const commandNames = [canonicalName, ...aliases];
-            const description = getFrontmatterString(fm, 'description') || '';
-            const argumentHint = getFrontmatterString(fm, 'argument-hint');
-            const model = getFrontmatterString(fm, 'model');
-            const agent = getFrontmatterString(fm, 'agent');
-
-            for (const commandName of commandNames) {
-              const isAlias = commandName !== canonicalName;
-              const metadata: CommandMetadata = {
-                name: commandName,
-                description,
-                argumentHint,
-                model,
-                agent,
-                aliases: isAlias ? undefined : aliases,
-                aliasOf: isAlias ? canonicalName : undefined,
-                deprecatedAlias: isAlias || undefined,
-                deprecationMessage: isAlias
-                  ? `Alias "/${commandName}" is deprecated. Use "/${canonicalName}" instead.`
-                  : undefined,
-              };
-
-              skillCommands.push({
-                name: commandName,
-                path: skillPath,
-                metadata,
-                content: body,
-                scope: 'skill',
-              });
-            }
-          } catch {
-            continue;
-          }
-        }
-      }
-    } catch {
-      // Ignore errors reading skills directory
-    }
-  }
-
-  // Priority: project > user > skills
-  const prioritized = [...projectCommands, ...userCommands, ...skillCommands];
+  // Priority: project commands > user commands > workspace skills > user skills
+  const prioritized = [...projectCommands, ...userCommands, ...projectSkills, ...userSkills];
   const seen = new Set<string>();
 
   return prioritized.filter((command) => {

@@ -610,7 +610,7 @@ When present, OMC appends a standardized **Skill Pipeline** section to the rende
 
 ### Skills 2.0 Compatibility (MVP)
 
-OMC's canonical project-local skill directory remains `.omc/skills/`, but the runtime now also reads compatibility skills from `.agents/skills/`.
+During slash/skill execution OMC also reads workspace-local Copilot CLI skills from `.copilot/skills/`, so existing workspace `SKILL.md` packages remain callable without copying them into the user-global skills directory.
 
 For builtin and slash-loaded skills, OMC also appends a standardized **Skill Resources** section when the skill directory contains bundled assets such as helper scripts, templates, or support libraries. This helps agents reuse packaged skill resources instead of recreating them ad hoc.
 

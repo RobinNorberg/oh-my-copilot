@@ -177,6 +177,51 @@ Deep interview body`
     expect(result.replacementText).toContain('`.omcp/specs/deep-interview-{slug}.md`');
   });
 
+  it('discovers workspace-local Copilot CLI skills from .copilot/skills before user skills', async () => {
+    mkdirSync(join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'references'), { recursive: true });
+    writeFileSync(
+      join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'SKILL.md'),
+      `---
+name: workspace-skill
+description: Workspace Copilot skill
+---
+
+Workspace Copilot skill body`
+    );
+    writeFileSync(
+      join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'references', 'example.md'),
+      'example'
+    );
+
+    mkdirSync(join(tempConfigDir, 'skills', 'workspace-skill'), { recursive: true });
+    writeFileSync(
+      join(tempConfigDir, 'skills', 'workspace-skill', 'SKILL.md'),
+      `---
+name: workspace-skill
+description: User-global duplicate
+---
+
+User-global duplicate body`
+    );
+
+    const { findCommand, executeSlashCommand, listAvailableCommands } = await loadExecutor();
+
+    expect(findCommand('workspace-skill')?.path).toContain(join('.copilot', 'skills', 'workspace-skill', 'SKILL.md'));
+    expect(listAvailableCommands().some((command) => command.name === 'workspace-skill')).toBe(true);
+
+    const result = executeSlashCommand({
+      command: 'workspace-skill',
+      args: '',
+      raw: '/workspace-skill',
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.replacementText).toContain('Workspace Copilot skill body');
+    expect(result.replacementText).toContain('## Skill Resources');
+    expect(result.replacementText).toContain('`references/`');
+    expect(result.replacementText).not.toContain('User-global duplicate body');
+  });
+
   it.skip('discovers project-local compatibility skills from .agents/skills', async () => {
     mkdirSync(join(tempProjectDir, '.agents', 'skills', 'compat-skill', 'templates'), { recursive: true });
     writeFileSync(
