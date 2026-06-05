@@ -48,9 +48,8 @@ import { resolveToWorktreeRoot, resolveTranscriptPath } from "../lib/worktree-pa
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from "fs";
 import { access, readFile } from "fs/promises";
 import { join, dirname, basename } from "path";
-import { homedir } from "os";
 import { getOmcRoot } from "../lib/worktree-paths.js";
-import { getCopilotConfigDir } from "../utils/config-dir.js";
+import { getCopilotConfigDir, getUpdateCheckCachePath } from "../utils/config-dir.js";
 
 function mergeStdinRateLimits(
   stdinRateLimits: RateLimits | null,
@@ -302,7 +301,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
     }
     // Async file read to avoid blocking event loop (Issue #1273)
     try {
-      const updateCacheFile = join(homedir(), '.omcp', 'update-check.json');
+      const updateCacheFile = getUpdateCheckCachePath();
       await access(updateCacheFile);
       const content = await readFile(updateCacheFile, 'utf-8');
       const cached = JSON.parse(content);
