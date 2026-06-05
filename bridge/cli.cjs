@@ -31551,8 +31551,9 @@ function startReplyListener(_config) {
   }
   ensureStateDir2();
   const modulePath = resolveDaemonModulePath(__filename2, ["notifications", "reply-listener.js"]);
+  const moduleUrl = (0, import_url9.pathToFileURL)(modulePath).href;
   const daemonScript = `
-    import('${modulePath}').then(({ pollLoop }) => {
+    import(${JSON.stringify(moduleUrl)}).then(({ pollLoop }) => {
       return pollLoop();
     }).catch((err) => { console.error('[reply-listener] Fatal:', err instanceof Error ? err.message : 'unknown error'); process.exit(1); });
   `;
@@ -43099,17 +43100,26 @@ function patchHooksJsonForWindows(pluginRoot) {
   try {
     const content = (0, import_fs73.readFileSync)(hooksJsonPath, "utf-8");
     const data = JSON.parse(content);
-    const pattern = /^sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/find-node\.sh" "(\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"]+)"(.*)$/;
+    const currentPattern = /^(?:"\/bin\/sh"|sh) "\$CLAUDE_PLUGIN_ROOT"\/scripts\/find-node\.sh "\$CLAUDE_PLUGIN_ROOT"\/scripts\/run\.cjs "\$CLAUDE_PLUGIN_ROOT"\/scripts\/([^"\s]+)"?(.*)$/;
+    const legacyPattern = /^sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/find-node\.sh" "(\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"\s]+)"?(.*)$/;
     let patched = false;
     for (const groups of Object.values(data.hooks ?? {})) {
       for (const group of groups) {
         for (const hook of group.hooks ?? []) {
-          if (typeof hook.command === "string") {
-            const m = hook.command.match(pattern);
-            if (m) {
-              hook.command = `node "${m[1]}"${m[2]}`;
+          if (typeof hook.command !== "string") continue;
+          const current = hook.command.match(currentPattern);
+          if (current) {
+            const next = `node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/${current[1]}${current[2]}`;
+            if (hook.command !== next) {
+              hook.command = next;
               patched = true;
             }
+            continue;
+          }
+          const legacy = hook.command.match(legacyPattern);
+          if (legacy) {
+            hook.command = `node "${legacy[1]}"${legacy[2]}`;
+            patched = true;
           }
         }
       }
@@ -87927,6 +87937,7 @@ function startDaemon(config2) {
   }
   ensureStateDir7(cfg);
   const modulePath = resolveDaemonModulePath(__filename4, ["features", "rate-limit-wait", "daemon.js"]);
+  const moduleUrl = (0, import_url12.pathToFileURL)(modulePath).href;
   const configId = Date.now().toString(36) + Math.random().toString(36).slice(2);
   const configPath = (0, import_path108.join)((0, import_path108.dirname)(cfg.stateFilePath), `.daemon-config-${configId}.json`);
   try {
@@ -87935,7 +87946,7 @@ function startDaemon(config2) {
     return { success: false, message: "Failed to write daemon config file" };
   }
   const daemonScript = `
-    import('${modulePath}').then(async ({ pollLoopWithConfigFile }) => {
+    import(${JSON.stringify(moduleUrl)}).then(async ({ pollLoopWithConfigFile }) => {
       await pollLoopWithConfigFile(process.env.OMC_DAEMON_CONFIG_FILE);
     }).catch((err) => { console.error(err); process.exit(1); });
   `;
@@ -88333,6 +88344,41 @@ function checkHookConflicts() {
   }
   return merged;
 }
+function isWindowsUnsafePluginHookCommand(command) {
+  return command.includes("find-node.sh") || command.includes("/bin/sh") || /^sh\s/.test(command);
+}
+function checkWindowsUnsafePluginHooks() {
+  if (process.platform !== "win32") {
+    return [];
+  }
+  const roots = [process.env.CLAUDE_PLUGIN_ROOT, ...readInstalledPluginRoots()].filter((root) => typeof root === "string" && root.length > 0);
+  const seenRoots = /* @__PURE__ */ new Set();
+  const unsafe = [];
+  for (const pluginRoot of roots) {
+    if (seenRoots.has(pluginRoot)) continue;
+    seenRoots.add(pluginRoot);
+    const hooksJsonPath = (0, import_path109.join)(pluginRoot, "hooks", "hooks.json");
+    if (!(0, import_fs92.existsSync)(hooksJsonPath)) continue;
+    try {
+      const parsed = JSON.parse((0, import_fs92.readFileSync)(hooksJsonPath, "utf-8"));
+      for (const [event, groups] of Object.entries(parsed.hooks ?? {})) {
+        for (const group of groups) {
+          for (const hook of group.hooks ?? []) {
+            if (hook.type !== "command") continue;
+            for (const command of [hook.command, hook.bash, hook.powershell]) {
+              if (typeof command !== "string") continue;
+              if (isWindowsUnsafePluginHookCommand(command)) {
+                unsafe.push({ pluginRoot, event, command });
+              }
+            }
+          }
+        }
+      }
+    } catch {
+    }
+  }
+  return unsafe;
+}
 function checkFileForOmcMarkers(filePath) {
   if (!(0, import_fs92.existsSync)(filePath)) return null;
   try {
@@ -88581,17 +88627,20 @@ function runConflictCheck() {
   const legacySkills = checkLegacySkills();
   const envFlags = checkEnvFlags();
   const configIssues = checkConfigIssues();
+  const windowsUnsafePluginHooks = checkWindowsUnsafePluginHooks();
   const hasConflicts = hookConflicts.some((h) => !h.isOmc) || // Non-OMC hooks present
   legacySkills.length > 0 || // Legacy skills colliding with plugin
   envFlags.disableOmc || // OMC is disabled
   envFlags.skipHooks.length > 0 || // Hooks are being skipped
-  configIssues.unknownFields.length > 0;
+  configIssues.unknownFields.length > 0 || // Unknown config fields
+  windowsUnsafePluginHooks.length > 0;
   return {
     hookConflicts,
     claudeMdStatus,
     legacySkills,
     envFlags,
     configIssues,
+    windowsUnsafePluginHooks,
     hasConflicts
   };
 }
@@ -88666,6 +88715,17 @@ function formatReport2(report, json2) {
       lines.push(`    - ${skill.name} ${colors.gray(`(${skill.path})`)}`);
     }
     lines.push(`    ${colors.gray("These legacy files shadow plugin skills. Remove them or rename to avoid conflicts.")}`);
+    lines.push("");
+  }
+  if (report.windowsUnsafePluginHooks.length > 0) {
+    lines.push(colors.bold("\u{1FA9F} Windows Plugin Hooks"));
+    lines.push("");
+    lines.push(`  ${colors.yellow("\u26A0")} Plugin hooks still route through sh/find-node on native Windows:`);
+    for (const hook of report.windowsUnsafePluginHooks) {
+      lines.push(`    - ${hook.event} ${colors.gray(`(${hook.pluginRoot})`)}`);
+      lines.push(`      ${colors.gray(hook.command)}`);
+    }
+    lines.push(`    ${colors.gray("Run /oh-my-copilot:omc-setup or update/reinstall the plugin to rewrite hooks to direct node run.cjs commands.")}`);
     lines.push("");
   }
   if (report.configIssues.unknownFields.length > 0) {
