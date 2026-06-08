@@ -138,7 +138,7 @@ export interface TaskFailureSidecar {
 }
 
 /** Worker backend type */
-export type WorkerBackend = 'claude-native' | 'copilot-native' | 'mcp-codex' | 'mcp-gemini' | 'tmux-claude' | 'tmux-copilot' | 'tmux-codex' | 'tmux-gemini' | 'tmux-cursor';
+export type WorkerBackend = 'claude-native' | 'copilot-native' | 'mcp-codex' | 'mcp-gemini' | 'tmux-claude' | 'tmux-copilot' | 'tmux-codex' | 'tmux-gemini' | 'tmux-cursor' | 'tmux-grok';
 
 /** Worker capability tag */
 export type WorkerCapability =
@@ -278,7 +278,7 @@ export interface WorkerInfo {
   name: string;
   index: number;
   role: string;
-  worker_cli?: 'codex' | 'claude' | 'copilot' | 'gemini' | 'cursor';
+  worker_cli?: 'codex' | 'claude' | 'copilot' | 'gemini' | 'cursor' | 'grok';
   assigned_tasks: string[];
   pid?: number;
   pane_id?: string;

@@ -157,6 +157,7 @@ function getConfigDir() {
 
 // src/team/tmux-session.ts
 var import_fs2 = require("fs");
+var import_crypto = require("crypto");
 var import_path4 = require("path");
 var import_promises = __toESM(require("fs/promises"), 1);
 
@@ -1111,7 +1112,7 @@ function findPermissionViolations(changedPaths, permissions, cwd) {
 var COPILOT_FAMILY_DEFAULTS = {
   HAIKU: "claude-haiku-4-5",
   SONNET: "claude-sonnet-4-6",
-  OPUS: "claude-opus-4-7"
+  OPUS: "claude-opus-4-8"
 };
 var BUILTIN_TIER_MODEL_DEFAULTS = {
   LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
@@ -2152,7 +2153,7 @@ ${violationSummary}`
 }
 
 // src/lib/worktree-paths.ts
-var import_crypto = require("crypto");
+var import_crypto2 = require("crypto");
 var import_child_process4 = require("child_process");
 var import_fs14 = require("fs");
 var import_os2 = require("os");

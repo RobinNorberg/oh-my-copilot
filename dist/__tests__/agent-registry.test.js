@@ -124,7 +124,7 @@ describe('Agent Registry Validation', () => {
         const agents = getAgentDefinitions();
         expect(agents.executor?.model).toBe('kimi-k2.6:cloud');
         expect(agents.architect?.model).toBe('glm-5.1:cloud');
-        expect(agents.architect?.model).not.toBe('claude-opus-4-7');
+        expect(agents.architect?.model).not.toBe('claude-opus-4-8');
     });
     test('partial tier env override does not collapse all agents to inherit', () => {
         process.env.OMC_MODEL_HIGH = 'glm-5.1:cloud';

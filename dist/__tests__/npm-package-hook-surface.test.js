@@ -98,9 +98,11 @@ function getPackedFiles() {
     if (packedFilesCache) {
         return packedFilesCache;
     }
-    const stdout = execFileSync('npm', ['pack', '--dry-run', '--json'], {
+    const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+    const stdout = execFileSync(npmBin, ['pack', '--dry-run', '--json'], {
         cwd: PACKAGE_ROOT,
         encoding: 'utf-8',
+        shell: process.platform === 'win32',
     });
     const results = JSON.parse(stdout);
     packedFilesCache = new Set((results[0]?.files ?? []).map(file => file.path));

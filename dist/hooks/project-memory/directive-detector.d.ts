@@ -14,7 +14,7 @@ export declare function inferDirectiveFromPattern(commandHistory: string[], thre
 /**
  * Add directive if not duplicate
  */
-export declare function addDirective(directives: UserDirective[], newDirective: UserDirective): UserDirective[];
+export declare function addDirective(directives: UserDirective[] | null | undefined, newDirective: UserDirective): UserDirective[];
 /**
  * Format directives for context injection
  */

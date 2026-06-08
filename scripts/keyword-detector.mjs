@@ -155,7 +155,7 @@ function isExplicitRalplanSlashInvocation(prompt) {
 }
 
 function isExplicitAskSlashInvocation(prompt) {
-  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini)\b/i.test(prompt);
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|grok)\b/i.test(prompt);
 }
 
 // Sanitize text to prevent false positives from code blocks, XML tags, URLs, and file paths
@@ -553,6 +553,24 @@ function hasDiagnosticIntentNearKeyword(context, keyword) {
   return patterns.some((pattern) => pattern.test(context));
 }
 
+// English-only fork: upstream #3165 also covered Korean banter/meta wording,
+// but this fork only supports English keyword detection, so we port just the
+// English banter signal (e.g. "should I even bother with ralph lol?"). Scoped
+// to ralph/ultrawork matches so explicit imperative activation is unaffected.
+function isRalphUltraworkMetaOrBanterContext(context, keywordText) {
+  const normalizedKeyword = (keywordText || '').toLowerCase().replace(/\s+/g, '');
+  if (!['ralph', 'ultrawork', 'ulw', 'uw'].includes(normalizedKeyword)) {
+    return false;
+  }
+
+  const metaOrBanterPatterns = [
+    /\?.{0,12}(?:lol|lmao)/i,
+    /(?:lol|lmao).{0,40}\?/i,
+  ];
+
+  return metaOrBanterPatterns.some((pattern) => pattern.test(context));
+}
+
 function isInformationalKeywordContext(text, position, keywordLength, keywordText) {
   const start = Math.max(0, position - INFORMATIONAL_CONTEXT_WINDOW);
   const end = Math.min(text.length, position + keywordLength + INFORMATIONAL_CONTEXT_WINDOW);
@@ -565,6 +583,9 @@ function isInformationalKeywordContext(text, position, keywordLength, keywordTex
   if (keywordText) {
     if (hasActivationIntentNearKeyword(context, keywordText)) {
       return false;
+    }
+    if (isRalphUltraworkMetaOrBanterContext(context, keywordText)) {
+      return true;
     }
     if (hasDiagnosticIntentNearKeyword(context, keywordText)) {
       return true;

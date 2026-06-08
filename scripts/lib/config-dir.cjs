@@ -28,4 +28,17 @@ function getCopilotConfigDir() {
   return stripTrailingSep(normalize(configured));
 }
 
-module.exports = { getCopilotConfigDir, getClaudeConfigDir: getCopilotConfigDir };
+function getOmcConfigDir() {
+  return join(getCopilotConfigDir(), '.omc');
+}
+
+function getUpdateCheckCachePath() {
+  return join(getOmcConfigDir(), 'update-check.json');
+}
+
+module.exports = {
+  getCopilotConfigDir,
+  getClaudeConfigDir: getCopilotConfigDir,
+  getOmcConfigDir,
+  getUpdateCheckCachePath,
+};

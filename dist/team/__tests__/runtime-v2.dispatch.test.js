@@ -37,6 +37,7 @@ const modelContractMocks = vi.hoisted(() => ({
     getWorkerEnv: vi.fn(() => ({ OMC_TEAM_WORKER: 'dispatch-team/worker-1' })),
     isPromptModeAgent: vi.fn(() => false),
     getPromptModeArgs: vi.fn((_agentType, instruction) => [instruction]),
+    resolveClaudeWorkerModel: vi.fn(() => undefined),
 }));
 vi.mock('child_process', async (importOriginal) => {
     const actual = await importOriginal();
@@ -59,7 +60,7 @@ vi.mock('../model-contract.js', () => ({
     getWorkerEnv: modelContractMocks.getWorkerEnv,
     isPromptModeAgent: modelContractMocks.isPromptModeAgent,
     getPromptModeArgs: modelContractMocks.getPromptModeArgs,
-    resolveClaudeWorkerModel: vi.fn(() => undefined),
+    resolveClaudeWorkerModel: modelContractMocks.resolveClaudeWorkerModel,
 }));
 vi.mock('../tmux-session.js', async (importOriginal) => {
     const actual = await importOriginal();
@@ -110,6 +111,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         modelContractMocks.getWorkerEnv.mockReset();
         modelContractMocks.isPromptModeAgent.mockReset();
         modelContractMocks.getPromptModeArgs.mockReset();
+        modelContractMocks.resolveClaudeWorkerModel.mockReset();
         mergeMocks.startMergeOrchestrator.mockReset();
         mergeMocks.recoverFromRestart.mockReset();
         mergeMocks.registerWorker.mockReset();
@@ -138,6 +140,7 @@ describe('runtime v2 startup inbox dispatch', () => {
         });
         modelContractMocks.isPromptModeAgent.mockReturnValue(false);
         modelContractMocks.getPromptModeArgs.mockImplementation((_agentType, instruction) => [instruction]);
+        modelContractMocks.resolveClaudeWorkerModel.mockReturnValue(undefined);
         mergeMocks.recoverFromRestart.mockResolvedValue(undefined);
         mergeMocks.registerWorker.mockResolvedValue(undefined);
         mergeMocks.unregisterWorker.mockResolvedValue(undefined);
@@ -514,6 +517,24 @@ describe('runtime v2 startup inbox dispatch', () => {
         });
         expect(mocks.createTeamSession).toHaveBeenCalledWith('dispatch-team', 0, cwd, { newWindow: true });
     });
+    it('aborts startup without persisting a live worker when worker start command delivery fails', async () => {
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-start-delivery-fail-'));
+        mocks.spawnWorkerInPane.mockRejectedValueOnce(new Error('worker_start_delivery_unverified:worker-1:%2:abc123'));
+        const { startTeamV2 } = await import('../runtime-v2.js');
+        await expect(startTeamV2({
+            teamName: 'dispatch-team',
+            workerCount: 1,
+            agentTypes: ['codex'],
+            tasks: [{ subject: 'Dispatch test', description: 'Verify start command delivery failure aborts startup' }],
+            cwd,
+        })).rejects.toThrow('worker_start_delivery_unverified:worker-1:%2:abc123');
+        expect(mocks.spawnWorkerInPane).toHaveBeenCalledTimes(1);
+        expect(mocks.killTeamSession).toHaveBeenCalledWith('dispatch-session', [], '%1', { sessionMode: 'split-pane' });
+        const configPath = join(cwd, '.omcp', 'state', 'team', 'dispatch-team', 'config.json');
+        const persisted = JSON.parse(await readFile(configPath, 'utf-8'));
+        expect(persisted.workers[0].pane_id).toBeUndefined();
+        expect(persisted.workers[0].assigned_tasks).toEqual([]);
+    });
     it('does not auto-kill a worker pane when startup readiness fails', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-no-autokill-ready-'));
         mocks.waitForPaneReady.mockResolvedValue(false);
@@ -642,6 +663,66 @@ describe('runtime v2 startup inbox dispatch', () => {
         });
         expect(runtime.config.workers[0]?.assigned_tasks).toEqual(['1']);
         expect(mocks.sendToWorker).toHaveBeenCalledTimes(1);
+    });
+    it('direct grok launch resolves model from grok env vars and never calls resolveClaudeWorkerModel', async () => {
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-grok-direct-'));
+        const originalGrokModel = process.env.OMC_GROK_DEFAULT_MODEL;
+        const originalGrokExternal = process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+        delete process.env.OMC_GROK_DEFAULT_MODEL;
+        delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+        try {
+            const { startTeamV2 } = await import('../runtime-v2.js');
+            await startTeamV2({
+                teamName: 'dispatch-team',
+                workerCount: 1,
+                agentTypes: ['grok'],
+                tasks: [{ subject: 'Grok dispatch', description: 'Verify direct grok model resolution' }],
+                cwd,
+            });
+            // DIRECT grok launch: no grok env set → model is undefined (NOT a Claude id).
+            expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('grok', expect.objectContaining({ model: undefined }));
+            // crucially, a grok worker must never fall through to the Claude/Bedrock resolver.
+            expect(modelContractMocks.resolveClaudeWorkerModel).not.toHaveBeenCalled();
+        }
+        finally {
+            if (originalGrokModel === undefined)
+                delete process.env.OMC_GROK_DEFAULT_MODEL;
+            else
+                process.env.OMC_GROK_DEFAULT_MODEL = originalGrokModel;
+            if (originalGrokExternal === undefined)
+                delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+            else
+                process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL = originalGrokExternal;
+        }
+    });
+    it('direct grok launch passes OMC_GROK_DEFAULT_MODEL through to buildWorkerArgv', async () => {
+        cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-grok-model-'));
+        const originalGrokModel = process.env.OMC_GROK_DEFAULT_MODEL;
+        const originalGrokExternal = process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+        delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+        process.env.OMC_GROK_DEFAULT_MODEL = 'grok-4-fast';
+        try {
+            const { startTeamV2 } = await import('../runtime-v2.js');
+            await startTeamV2({
+                teamName: 'dispatch-team',
+                workerCount: 1,
+                agentTypes: ['grok'],
+                tasks: [{ subject: 'Grok dispatch', description: 'Verify grok env model passthrough' }],
+                cwd,
+            });
+            expect(modelContractMocks.buildWorkerArgv).toHaveBeenCalledWith('grok', expect.objectContaining({ model: 'grok-4-fast' }));
+            expect(modelContractMocks.resolveClaudeWorkerModel).not.toHaveBeenCalled();
+        }
+        finally {
+            if (originalGrokModel === undefined)
+                delete process.env.OMC_GROK_DEFAULT_MODEL;
+            else
+                process.env.OMC_GROK_DEFAULT_MODEL = originalGrokModel;
+            if (originalGrokExternal === undefined)
+                delete process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+            else
+                process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL = originalGrokExternal;
+        }
     });
     it('keeps gemini prompt-mode launch args to a short inbox pointer and waits for claim evidence', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-gemini-prompt-'));

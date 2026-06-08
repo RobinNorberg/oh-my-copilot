@@ -310,6 +310,13 @@ export function loadEnvConfig() {
         // Legacy fallback
         externalModelsDefaults.geminiModel = process.env.OMC_GEMINI_DEFAULT_MODEL;
     }
+    if (process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL) {
+        externalModelsDefaults.grokModel = process.env.OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL;
+    }
+    else if (process.env.OMC_GROK_DEFAULT_MODEL) {
+        // Legacy fallback
+        externalModelsDefaults.grokModel = process.env.OMC_GROK_DEFAULT_MODEL;
+    }
     const externalModelsFallback = {
         onModelFailure: 'provider_chain'
     };
@@ -385,7 +392,7 @@ function warnOnDeprecatedDelegationRouting(config) {
  */
 const CANONICAL_TEAM_ROLE_SET = new Set(CANONICAL_TEAM_ROLES);
 const KNOWN_AGENT_NAME_SET = new Set(KNOWN_AGENT_NAMES);
-const TEAM_ROLE_PROVIDERS = new Set(["claude", "codex", "gemini"]);
+const TEAM_ROLE_PROVIDERS = new Set(["claude", "codex", "gemini", "grok"]);
 const TEAM_ROLE_TIERS = new Set(["HIGH", "MEDIUM", "LOW"]);
 export function validateTeamConfig(config) {
     const team = config.team;
@@ -784,7 +791,7 @@ export function generateConfigSchema() {
             },
             externalModels: {
                 type: 'object',
-                description: 'External model provider configuration (Codex, Gemini)',
+                description: 'External model provider configuration (Codex, Gemini, Grok)',
                 properties: {
                     defaults: {
                         type: 'object',
@@ -804,6 +811,10 @@ export function generateConfigSchema() {
                                 type: 'string',
                                 default: BUILTIN_EXTERNAL_MODEL_DEFAULTS.geminiModel,
                                 description: 'Default Gemini model'
+                            },
+                            grokModel: {
+                                type: 'string',
+                                description: 'Default Grok Build model'
                             }
                         }
                     },
@@ -898,7 +909,7 @@ export function generateConfigSchema() {
                             maxAgents: { type: "integer", minimum: 1 },
                             defaultAgentType: {
                                 type: "string",
-                                enum: ["claude", "codex", "gemini"],
+                                enum: ["claude", "codex", "gemini", "grok"],
                                 default: "claude",
                             },
                             monitorIntervalMs: { type: "integer", minimum: 1 },
@@ -912,7 +923,7 @@ export function generateConfigSchema() {
                         additionalProperties: {
                             type: "object",
                             properties: {
-                                provider: { type: "string", enum: ["claude", "codex", "gemini"] },
+                                provider: { type: "string", enum: ["claude", "codex", "gemini", "grok"] },
                                 model: { type: "string" },
                                 agent: { type: "string" },
                             },

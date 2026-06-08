@@ -43,27 +43,72 @@ function npmInstallGlobalPackage(packageSpec, verbose = false) {
     }
     execFileSync('npm', ['install', '-g', packageSpec], npmExecOptions(verbose));
 }
-function detectGlobalCopilotCliInstall() {
+function parseCopilotCliVersion(output) {
+    const trimmed = output.trim();
+    if (!trimmed) {
+        return undefined;
+    }
+    return trimmed.match(/\b(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)\b/)?.[1];
+}
+function getFirstResolvedBinaryLine(output, binaryName) {
+    const resolved = output
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .find(Boolean);
+    if (!resolved) {
+        throw new Error(`Unable to resolve ${binaryName} binary path`);
+    }
+    return resolved;
+}
+function resolveCopilotBinaryPath() {
     try {
-        const npmRoot = String(execSync('npm root -g', {
+        if (process.platform === 'win32') {
+            return getFirstResolvedBinaryLine(execFileSync('where.exe', ['copilot'], {
+                encoding: 'utf-8',
+                stdio: 'pipe',
+                timeout: 5000,
+                windowsHide: true,
+            }), 'copilot');
+        }
+        return getFirstResolvedBinaryLine(execSync('command -v copilot 2>/dev/null || which copilot 2>/dev/null', {
+            encoding: 'utf-8',
+            stdio: 'pipe',
+            timeout: 5000,
+        }), 'copilot');
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * Detect a Copilot CLI install through the `copilot` executable when npm
+ * package metadata is absent. Native (non-npm) Copilot CLI installs do not
+ * provide @github/copilot npm package metadata, so they must be treated as
+ * native/manual and excluded from npm restoration. (Ported from upstream #3111)
+ */
+function detectCopilotCliFromBinary(npmRoot) {
+    try {
+        const versionOutput = String(execFileSync('copilot', ['--version'], {
             encoding: 'utf-8',
             stdio: 'pipe',
             timeout: 10000,
-            ...(process.platform === 'win32' ? { windowsHide: true } : {}),
-        }) ?? '').trim();
-        if (!npmRoot) {
-            return { status: 'unknown', error: 'npm root -g returned an empty path' };
+            ...(process.platform === 'win32' ? { shell: true, windowsHide: true } : {}),
+        }) ?? '');
+        const binaryPath = resolveCopilotBinaryPath();
+        const version = parseCopilotCliVersion(versionOutput);
+        if (!version && !binaryPath) {
+            return { status: 'unknown', error: 'copilot --version returned no parseable version and binary path could not be resolved' };
         }
-        const packageJsonPath = join(npmRoot, '@github', 'copilot', 'package.json');
-        if (!existsSync(packageJsonPath)) {
-            return { status: 'absent' };
-        }
-        const packageJson = JSON.parse(String(readFileSync(packageJsonPath, 'utf-8') ?? ''));
+        const normalizedBinaryPath = binaryPath?.replace(/\\/g, '/').toLowerCase();
+        const normalizedNpmRoot = npmRoot?.replace(/\\/g, '/').toLowerCase();
+        const isNpmBinary = Boolean(normalizedBinaryPath &&
+            normalizedNpmRoot &&
+            normalizedBinaryPath.startsWith(normalizedNpmRoot.replace(/\/node_modules$/, '')));
         return {
             status: 'present',
-            version: typeof packageJson.version === 'string' && packageJson.version.trim()
-                ? packageJson.version.trim()
-                : undefined,
+            version,
+            installMethod: isNpmBinary ? 'npm' : process.platform === 'win32' ? 'native' : 'manual',
+            binaryPath,
         };
     }
     catch (error) {
@@ -73,8 +118,48 @@ function detectGlobalCopilotCliInstall() {
         };
     }
 }
+function detectGlobalCopilotCliInstall() {
+    let npmRoot;
+    try {
+        npmRoot = String(execSync('npm root -g', {
+            encoding: 'utf-8',
+            stdio: 'pipe',
+            timeout: 10000,
+            ...(process.platform === 'win32' ? { windowsHide: true } : {}),
+        }) ?? '').trim();
+        if (!npmRoot) {
+            const binaryInstall = detectCopilotCliFromBinary();
+            return binaryInstall.status === 'present'
+                ? binaryInstall
+                : { status: 'unknown', error: 'npm root -g returned an empty path' };
+        }
+        const packageJsonPath = join(npmRoot, '@github', 'copilot', 'package.json');
+        if (!existsSync(packageJsonPath)) {
+            const binaryInstall = detectCopilotCliFromBinary(npmRoot);
+            return binaryInstall.status === 'present' ? binaryInstall : { status: 'absent' };
+        }
+        const packageJson = JSON.parse(String(readFileSync(packageJsonPath, 'utf-8') ?? ''));
+        return {
+            status: 'present',
+            version: typeof packageJson.version === 'string' && packageJson.version.trim()
+                ? packageJson.version.trim()
+                : undefined,
+            installMethod: 'npm',
+        };
+    }
+    catch (error) {
+        const binaryInstall = detectCopilotCliFromBinary(npmRoot);
+        if (binaryInstall.status === 'present') {
+            return binaryInstall;
+        }
+        return {
+            status: 'unknown',
+            error: error instanceof Error ? error.message : String(error),
+        };
+    }
+}
 function restoreGlobalCopilotCliIfNeeded(beforeUpdate, verbose = false) {
-    if (beforeUpdate.status !== 'present') {
+    if (beforeUpdate.status !== 'present' || beforeUpdate.installMethod !== 'npm') {
         return { restored: false };
     }
     if (detectGlobalCopilotCliInstall().status === 'present') {
@@ -504,16 +589,20 @@ export function reconcileUpdateRuntime(options) {
     }
     try {
         const pluginSyncResult = syncActivePluginCache();
-        if (pluginSyncResult.errors.length > 0 && options?.verbose) {
-            for (const err of pluginSyncResult.errors) {
-                console.warn(`[omc] Plugin cache sync warning: ${err}`);
+        if (pluginSyncResult.errors.length > 0) {
+            errors.push(...pluginSyncResult.errors.map(err => `Plugin cache sync failed: ${err}`));
+            if (options?.verbose) {
+                for (const err of pluginSyncResult.errors) {
+                    console.warn(`[omc] Plugin cache sync error: ${err}`);
+                }
             }
         }
     }
     catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`Plugin cache sync failed: ${message}`);
         if (options?.verbose) {
-            const message = error instanceof Error ? error.message : String(error);
-            console.warn(`[omc] Plugin cache sync warning: ${message}`);
+            console.warn(`[omc] Plugin cache sync error: ${message}`);
         }
     }
     // Purge stale plugin cache versions (non-fatal)
@@ -584,7 +673,12 @@ export async function performUpdate(options) {
             if (!marketplaceSync.ok && options?.verbose) {
                 console.warn(`[omc update] ${marketplaceSync.message}`);
             }
-            syncPluginCache(options?.verbose ?? false);
+            const pluginCacheSync = syncPluginCache(options?.verbose ?? false);
+            if (pluginCacheSync.errors.length > 0 && options?.verbose) {
+                for (const error of pluginCacheSync.errors) {
+                    console.warn(`[omc update] Plugin cache sync warning: ${error}`);
+                }
+            }
             // CRITICAL FIX: After npm updates the global package, the current process
             // still has OLD code loaded in memory. We must re-exec to run reconciliation
             // with the NEW code. Otherwise, installOmc() runs OLD logic against NEW files.

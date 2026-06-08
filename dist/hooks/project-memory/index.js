@@ -17,9 +17,9 @@ import { formatContextSummary } from "./formatter.js";
 function applyRescanMerge(detected, existing) {
     const merged = {
         ...detected,
-        customNotes: existing.customNotes,
-        userDirectives: existing.userDirectives,
-        hotPaths: existing.hotPaths,
+        customNotes: Array.isArray(existing.customNotes) ? existing.customNotes : [],
+        userDirectives: Array.isArray(existing.userDirectives) ? existing.userDirectives : [],
+        hotPaths: Array.isArray(existing.hotPaths) ? existing.hotPaths : [],
     };
     for (const key of Object.keys(existing)) {
         if (!(key in merged)) {

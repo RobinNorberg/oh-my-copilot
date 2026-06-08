@@ -65,7 +65,12 @@ describe('daemon bootstrap', () => {
         const [command, args, spawnOptions] = mockSpawn.mock.calls[0];
         expect(command).toBe('node');
         expect(args[0]).toBe('-e');
-        expect(args[1]).toContain("import('/repo/dist/features/rate-limit-wait/daemon.js')");
+        // pathToFileURL normalizes the resolved module path to a file:// URL. On
+        // Windows the POSIX-style mock path picks up the current drive letter
+        // (file:///C:/repo/...), so match the URL scheme + suffix instead of an
+        // absolute prefix to stay cross-platform. CI on Linux yields
+        // file:///repo/dist/features/rate-limit-wait/daemon.js.
+        expect(args[1]).toMatch(/import\("file:\/\/\/(?:[A-Za-z]:\/)?repo\/dist\/features\/rate-limit-wait\/daemon\.js"\)/);
         expect(spawnOptions?.detached).toBe(true);
         expect(spawnOptions?.stdio).toBe('ignore');
         const childEnv = spawnOptions?.env;
@@ -79,6 +84,23 @@ describe('daemon bootstrap', () => {
         const persistedConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
         expect(persistedConfig.pollIntervalMs).toBe(1234);
         expect(persistedConfig.verbose).toBe(true);
+    });
+    it('uses a file URL in daemon import script so Windows backslashes are not parsed as JS escapes', () => {
+        const unref = vi.fn();
+        mockSpawn.mockReturnValue({ pid: 4243, unref });
+        mockResolveDaemonModulePath.mockReturnValue('C:\\Users\\soung\\AppData\\Roaming\\npm\\node_modules\\oh-my-copilot\\dist\\features\\rate-limit-wait\\daemon.js');
+        const config = {
+            stateFilePath: join(testDir, 'state.json'),
+            pidFilePath: join(testDir, 'daemon.pid'),
+            logFilePath: join(testDir, 'daemon.log'),
+        };
+        const result = startDaemon(config);
+        expect(result.success).toBe(true);
+        const [, args] = mockSpawn.mock.calls[0];
+        const daemonScript = args[1];
+        expect(daemonScript).toContain('import("file://');
+        expect(daemonScript).not.toContain("import('C:\\Users");
+        expect(daemonScript).not.toContain('\\features\\rate-limit-wait\\daemon.js');
     });
     it('returns already running when config pid file points to a live process', () => {
         const config = {

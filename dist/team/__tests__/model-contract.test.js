@@ -86,6 +86,43 @@ describe('model-contract', () => {
             expect(prefixes).toContain('/usr/local/bin');
             expect(prefixes).toContain('/usr/bin');
         });
+        it('isTrustedPrefix enforces directory boundaries (no sibling-prefix bypass)', () => {
+            const origHome = process.env.HOME;
+            process.env.HOME = '/home/tester';
+            try {
+                const { isTrustedPrefix } = _testInternals;
+                // exact trusted dir + true descendants are trusted
+                expect(isTrustedPrefix('/usr/bin')).toBe(true);
+                expect(isTrustedPrefix('/usr/bin/codex')).toBe(true);
+                expect(isTrustedPrefix('/usr/local/bin/claude')).toBe(true);
+                expect(isTrustedPrefix('/opt/homebrew/bin/gemini')).toBe(true);
+                expect(isTrustedPrefix('/home/tester/.local/bin/cli')).toBe(true);
+                // siblings whose name merely begins with a trusted prefix are NOT trusted
+                expect(isTrustedPrefix('/usr/bin-malicious/cli')).toBe(false);
+                expect(isTrustedPrefix('/home/tester/.local/bin-evil/cli')).toBe(false);
+                expect(isTrustedPrefix('/opt/homebrew-evil/x')).toBe(false);
+                expect(isTrustedPrefix('/home/tester/Downloads/cli')).toBe(false);
+                // custom trusted dirs (OMC_TRUSTED_CLI_DIRS) get the same boundary check
+                const origCustom = process.env.OMC_TRUSTED_CLI_DIRS;
+                process.env.OMC_TRUSTED_CLI_DIRS = '/opt/mybins';
+                try {
+                    expect(isTrustedPrefix('/opt/mybins/grok')).toBe(true);
+                    expect(isTrustedPrefix('/opt/mybins-evil/grok')).toBe(false);
+                }
+                finally {
+                    if (origCustom === undefined)
+                        delete process.env.OMC_TRUSTED_CLI_DIRS;
+                    else
+                        process.env.OMC_TRUSTED_CLI_DIRS = origCustom;
+                }
+            }
+            finally {
+                if (origHome === undefined)
+                    delete process.env.HOME;
+                else
+                    process.env.HOME = origHome;
+            }
+        });
     });
     describe('getContract', () => {
         it('returns contract for claude', () => {
@@ -107,6 +144,12 @@ describe('model-contract', () => {
             const c = getContract('gemini');
             expect(c.agentType).toBe('gemini');
             expect(c.binary).toBe('gemini');
+        });
+        it('returns contract for grok', () => {
+            const c = getContract('grok');
+            expect(c.agentType).toBe('grok');
+            expect(c.binary).toBe('grok');
+            expect(c.supportsPromptMode).toBe(true);
         });
         it('throws for unknown agent type', () => {
             expect(() => getContract('unknown')).toThrow('Unknown agent type');
@@ -137,6 +180,25 @@ describe('model-contract', () => {
                 const { clearSecurityConfigCache } = await import('../../lib/security-config.js');
                 clearSecurityConfigCache();
                 expect(() => getContract('gemini')).toThrow('blocked by security policy');
+            }
+            finally {
+                if (origSecurity === undefined) {
+                    delete process.env.OMC_SECURITY;
+                }
+                else {
+                    process.env.OMC_SECURITY = origSecurity;
+                }
+                const { clearSecurityConfigCache } = await import('../../lib/security-config.js');
+                clearSecurityConfigCache();
+            }
+        });
+        it('blocks grok when external LLM is disabled', async () => {
+            const origSecurity = process.env.OMC_SECURITY;
+            process.env.OMC_SECURITY = 'strict';
+            try {
+                const { clearSecurityConfigCache } = await import('../../lib/security-config.js');
+                clearSecurityConfigCache();
+                expect(() => getContract('grok')).toThrow('blocked by security policy');
             }
             finally {
                 if (origSecurity === undefined) {
@@ -215,6 +277,13 @@ describe('model-contract', () => {
             expect(args).toContain('--approval-mode');
             expect(args).toContain('yolo');
             expect(args).not.toContain('-p');
+        });
+        it('grok includes --always-approve with no model and appends --model <m> when given', () => {
+            const noModel = buildLaunchArgs('grok', { teamName: 't', workerName: 'w', cwd: '/tmp' });
+            expect(noModel).toEqual(['--always-approve']);
+            expect(noModel).not.toContain('--model');
+            const withModel = buildLaunchArgs('grok', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'grok-4-fast' });
+            expect(withModel).toEqual(['--always-approve', '--model', 'grok-4-fast']);
         });
         it('passes model flag when specified', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'gpt-4' });
@@ -401,6 +470,16 @@ describe('model-contract', () => {
             const c = getContract('codex');
             expect(c.supportsPromptMode).toBe(false);
             expect(c.promptModeFlag).toBeUndefined();
+        });
+        it('grok supports prompt mode', () => {
+            expect(isPromptModeAgent('grok')).toBe(true);
+            const c = getContract('grok');
+            expect(c.supportsPromptMode).toBe(true);
+            expect(c.promptModeFlag).toBe('-p');
+        });
+        it('getPromptModeArgs returns flag + instruction for grok', () => {
+            const args = getPromptModeArgs('grok', 'Read inbox');
+            expect(args).toEqual(['-p', 'Read inbox']);
         });
         it('getPromptModeArgs returns flag + instruction for gemini', () => {
             const args = getPromptModeArgs('gemini', 'Read inbox');

@@ -92,7 +92,7 @@ Optional shortcuts for power users. Natural language works fine without them.
 | `ask codex` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Codex CLI | `ask codex "security analysis"` |
 | `ask gemini` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Delegate to Gemini CLI | `ask gemini "suggest UX improvements"` |
 | `cccg` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | Quadri-model orchestration | `cccg review this PR` |
-| `omcp team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/copilot) | `omcp team 2:codex "security review"` |
+| `omcp team` | ![orchestration](https://img.shields.io/badge/orchestration-blue) | tmux CLI workers (codex/gemini/grok/copilot) | `omcp team 2:codex "security review"` |
 | `code review` | ![analysis](https://img.shields.io/badge/analysis-purple) | Code review mode | `code review the auth module` |
 | `critique` | ![analysis](https://img.shields.io/badge/analysis-purple) | Pre-push adversarial critique | `critique my changes` |
 | `debug`, `diagnose` | ![analysis](https://img.shields.io/badge/analysis-purple) | Session/repo diagnostics | `debug why hooks aren't firing` |
@@ -212,7 +212,7 @@ OMC features like `omcp team` and rate-limit detection require **tmux**:
 
 ### Multi-AI Orchestration
 
-OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validation, design consistency, and parallel execution. All four major CLI tools are supported:
+OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validation, design consistency, and parallel execution. All major CLI tools are supported:
 
 | Provider                                                      | Install                                | What it enables                                  |
 | ------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------ |
@@ -220,11 +220,13 @@ OMC can orchestrate multiple AI CLI providers as tmux workers for cross-validati
 | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | `npm install -g @anthropic-ai/claude-code` | Deep reasoning, architecture analysis            |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli)     | `npm install -g @google/gemini-cli`    | Design review, UI consistency (1M token context) |
 | [Codex CLI](https://github.com/openai/codex)                  | `npm install -g @openai/codex`         | Architecture validation, code review cross-check |
+| [Grok Build](https://build.grok.com)                         | Download from build.grok.com (`grok` at `~/.grok/bin/grok`) | Code review, analysis cross-check    |
 
 ```bash
 omcp team 2:claude "review auth architecture"
 omcp team 2:codex "security analysis"
 omcp team 2:gemini "UI consistency check"
+omcp team 2:grok "code review cross-check"
 omcp team 1:copilot "review existing tests"
 ```
 Only Copilot CLI is required — the others are optional and add cross-provider validation.

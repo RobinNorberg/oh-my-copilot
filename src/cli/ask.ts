@@ -7,16 +7,16 @@ import { fileURLToPath } from 'url';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 
 export const ASK_USAGE = [
-  'Usage: omcp ask <claude|copilot|codex|gemini> <question or task>',
-  '   or: omcp ask <claude|copilot|codex|gemini> -p "<prompt>"',
-  '   or: omcp ask <claude|copilot|codex|gemini> --print "<prompt>"',
-  '   or: omcp ask <claude|copilot|codex|gemini> --prompt "<prompt>"',
-  '   or: omcp ask <claude|copilot|codex|gemini> --prompt-file <path>',
-  '   or: omcp ask <claude|copilot|codex|gemini> --agent-prompt <role> "<prompt>"',
-  '   or: omcp ask <claude|copilot|codex|gemini> --agent-prompt=<role> --prompt "<prompt>"',
+  'Usage: omcp ask <claude|copilot|codex|gemini|grok> <question or task>',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> -p "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --print "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --prompt "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --prompt-file <path>',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --agent-prompt <role> "<prompt>"',
+  '   or: omcp ask <claude|copilot|codex|gemini|grok> --agent-prompt=<role> --prompt "<prompt>"',
 ].join('\n');
 
-const ASK_PROVIDERS = ['claude', 'copilot', 'codex', 'gemini'] as const;
+const ASK_PROVIDERS = ['claude', 'copilot', 'codex', 'gemini', 'grok'] as const;
 export type AskProvider = (typeof ASK_PROVIDERS)[number];
 const ASK_PROVIDER_SET = new Set<string>(ASK_PROVIDERS);
 

@@ -2,11 +2,17 @@
  * Project Memory Storage
  * Handles loading and saving project memory to the resolved project-memory.json path.
  */
-import { ProjectMemory } from './types.js';
+import type { ProjectMemory } from './types.js';
 /**
  * Get the path to the project memory file
  */
 export declare function getMemoryPath(projectRoot: string): string;
+/**
+ * Normalize persisted project memory into the current runtime shape.
+ * Older/minimal project-memory.json files may not contain list fields that
+ * read-only context and compaction paths iterate over.
+ */
+export declare function normalizeProjectMemory(memory: ProjectMemory): ProjectMemory;
 /**
  * Load project memory from disk
  * Returns null if file doesn't exist or is invalid

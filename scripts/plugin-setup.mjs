@@ -23,6 +23,11 @@ const SETTINGS_FILE = join(CLAUDE_DIR, 'settings.json');
 // Use the absolute node binary path so nvm/fnm users don't get
 // "node not found" errors in non-interactive shells (issue #892).
 const nodeBin = process.execPath || 'node';
+// Only rewrite the shipped hooks.json when running from a published plugin
+// cache (npm tarball / marketplace clone). In a git checkout the manifest is
+// source-controlled and must stay direct-node so we never commit an installer's
+// absolute node path. Mirrors upstream #3201.
+const isPublishedPluginCache = !existsSync(join(__dirname, '..', '.git'));
 
 console.log('[OMC] Running post-install setup...');
 
@@ -287,12 +292,14 @@ try {
   console.log('[OMC] Warning: Could not configure settings.json:', e.message);
 }
 
-// Patch hooks.json to use the absolute node binary path so hooks work on all
-// platforms: Windows (no `sh`), nvm/fnm users (node not on PATH in hooks), etc.
+// Patch the published plugin-cache hooks.json to use the absolute node binary
+// path so hooks work on all platforms: Windows (no `sh`), nvm/fnm users (node
+// not on PATH in hooks), etc.
 //
 // The source hooks.json uses `node run.cjs` as a portable template; this step
 // substitutes the real process.execPath so Copilot CLI always invokes the same
-// Node binary that ran this setup script.
+// Node binary that ran this setup script. In a git checkout the manifest is
+// source-controlled and left untouched (see isPublishedPluginCache, #3201).
 //
 // Three patterns are handled:
 //  1. Current  – node "${PLUGIN_ROOT}/scripts/run.cjs" ... (all platforms)
@@ -302,8 +309,8 @@ try {
 //
 // Fixes issues #909, #899, #892, #869.
 try {
-  const hooksJsonPath = join(__dirname, '..', 'hooks', 'hooks.json');
-  if (existsSync(hooksJsonPath)) {
+  const hooksJsonPath = isPublishedPluginCache ? join(__dirname, '..', 'hooks', 'hooks.json') : null;
+  if (hooksJsonPath && existsSync(hooksJsonPath)) {
     const data = JSON.parse(readFileSync(hooksJsonPath, 'utf-8'));
     let patched = false;
 

@@ -257,6 +257,9 @@ describe("reply-listener", () => {
             const source = fs.readFileSync(path.join(__dirname, "..", "reply-listener.ts"), "utf-8");
             expect(source).toContain("resolveDaemonModulePath");
             expect(source).toContain("['notifications', 'reply-listener.js']");
+            expect(source).toContain("pathToFileURL(modulePath).href");
+            expect(source).toContain("import(${JSON.stringify(moduleUrl)})");
+            expect(source).not.toContain("import('${modulePath}')");
         });
     });
     describe("Injection feedback", () => {

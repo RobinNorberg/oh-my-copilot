@@ -1,11 +1,11 @@
 import { spawnSync } from 'child_process';
-import { isAbsolute, normalize, win32 as win32Path } from 'path';
+import { isAbsolute, normalize, sep, win32 as win32Path } from 'path';
 import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
 import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 
-export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor';
+export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok';
 
 export interface CliAgentContract {
   agentType: CliAgentType;
@@ -66,6 +66,7 @@ function getTrustedPrefixes(): string[] {
     trusted.push(`${home}/.local/bin`);
     trusted.push(`${home}/.nvm/`);
     trusted.push(`${home}/.cargo/bin`);
+    trusted.push(`${home}/.grok/bin`);
   }
 
   const custom = (process.env.OMC_TRUSTED_CLI_DIRS ?? '')
@@ -80,7 +81,17 @@ function getTrustedPrefixes(): string[] {
 
 function isTrustedPrefix(resolvedPath: string): boolean {
   const normalized = normalize(resolvedPath);
-  return getTrustedPrefixes().some(prefix => normalized.startsWith(normalize(prefix)));
+  return getTrustedPrefixes().some(prefix => {
+    // `normalize` strips trailing separators, so a plain `startsWith` would treat
+    // a sibling whose name merely begins with the prefix as trusted — e.g.
+    // `/usr/bin` would match `/usr/bin-malicious/grok`, and `~/.local/bin` would
+    // match `~/.local/bin-evil/x`. Enforce a directory boundary: the resolved
+    // path must be the trusted dir itself or a true descendant (prefix + sep).
+    const p = normalize(prefix);
+    if (normalized === p) return true;
+    const withSep = p.endsWith(sep) ? p : p + sep;
+    return normalized.startsWith(withSep);
+  });
 }
 
 function assertBinaryName(binary: string): void {
@@ -155,6 +166,7 @@ export function validateCliBinaryPath(binary: string): CliBinaryValidation {
 export const _testInternals = {
   UNTRUSTED_PATH_PATTERNS,
   getTrustedPrefixes,
+  isTrustedPrefix,
 };
 
 /**
@@ -245,6 +257,21 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
     promptModeFlag: '-p',
     buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
       const args = ['--approval-mode', 'yolo'];
+      if (model) args.push('--model', model);
+      return [...args, ...extraFlags];
+    },
+    parseOutput(rawOutput: string): string {
+      return rawOutput.trim();
+    },
+  },
+  grok: {
+    agentType: 'grok',
+    binary: 'grok',
+    installInstructions: 'Install Grok Build: https://build.grok.com',
+    supportsPromptMode: true,
+    promptModeFlag: '-p',
+    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+      const args = ['--always-approve'];
       if (model) args.push('--model', model);
       return [...args, ...extraFlags];
     },
@@ -390,6 +417,8 @@ const WORKER_MODEL_ENV_ALLOWLIST = [
   'OMC_CODEX_DEFAULT_MODEL',
   'OMC_EXTERNAL_MODELS_DEFAULT_GEMINI_MODEL',
   'OMC_GEMINI_DEFAULT_MODEL',
+  'OMC_EXTERNAL_MODELS_DEFAULT_GROK_MODEL',
+  'OMC_GROK_DEFAULT_MODEL',
 ] as const;
 
 export function getWorkerEnv(

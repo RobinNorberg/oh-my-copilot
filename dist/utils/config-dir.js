@@ -48,4 +48,16 @@ export function getConfigDir() {
 export { getConfigDir as getCopilotConfigDir };
 /** Alias — used by modules ported directly from upstream */
 export { getConfigDir as getClaudeConfigDir };
+/**
+ * Resolve the OMC global configuration/cache directory under the active Copilot
+ * CLI config dir. This keeps hook/updater/HUD caches aligned with
+ * COPILOT_CONFIG_DIR instead of mixing in ~/.omc(p). (Ported from upstream #3112)
+ */
+export function getOmcConfigDir() {
+    return join(getConfigDir(), '.omc');
+}
+/** Resolve the canonical update-check cache file path. */
+export function getUpdateCheckCachePath() {
+    return join(getOmcConfigDir(), 'update-check.json');
+}
 //# sourceMappingURL=config-dir.js.map

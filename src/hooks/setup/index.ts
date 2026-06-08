@@ -153,20 +153,40 @@ export function patchHooksJsonForWindows(pluginRoot: string): void {
       hooks?: Record<string, Array<{ hooks?: Array<{ command?: string }> }>>;
     };
 
-    // Matches: sh "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/X.mjs" [optional args]
-    const pattern =
-      /^sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/find-node\.sh" "(\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"]+)"(.*)$/;
+    // Matches the current portable bootstrap form (and the older "/bin/sh"
+    // hotfix variant) that routes run.cjs through find-node.sh:
+    //   sh "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/X.mjs [optional args]
+    // The trailing quote is optional and [^"\s] avoids greedily eating args.
+    const currentPattern =
+      /^(?:"\/bin\/sh"|sh) "\$CLAUDE_PLUGIN_ROOT"\/scripts\/find-node\.sh "\$CLAUDE_PLUGIN_ROOT"\/scripts\/run\.cjs "\$CLAUDE_PLUGIN_ROOT"\/scripts\/([^"\s]+)"?(.*)$/;
+
+    // Matches the legacy form:
+    //   sh "${CLAUDE_PLUGIN_ROOT}/scripts/find-node.sh" "${CLAUDE_PLUGIN_ROOT}/scripts/X.mjs" [optional args]
+    const legacyPattern =
+      /^sh "\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/find-node\.sh" "(\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/[^"\s]+)"?(.*)$/;
 
     let patched = false;
     for (const groups of Object.values(data.hooks ?? {})) {
       for (const group of groups) {
         for (const hook of group.hooks ?? []) {
-          if (typeof hook.command === 'string') {
-            const m = hook.command.match(pattern);
-            if (m) {
-              hook.command = `node "${m[1]}"${m[2]}`;
+          if (typeof hook.command !== 'string') continue;
+
+          // Current portable form: rewrite to direct node run.cjs (no sh).
+          const current = hook.command.match(currentPattern);
+          if (current) {
+            const next = `node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/${current[1]}${current[2]}`;
+            if (hook.command !== next) {
+              hook.command = next;
               patched = true;
             }
+            continue;
+          }
+
+          // Legacy find-node.sh form: rewrite to direct node call.
+          const legacy = hook.command.match(legacyPattern);
+          if (legacy) {
+            hook.command = `node "${legacy[1]}"${legacy[2]}`;
+            patched = true;
           }
         }
       }

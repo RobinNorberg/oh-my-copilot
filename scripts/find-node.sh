@@ -9,12 +9,17 @@
 #   1. nodeBinary stored in ~/.copilot/.omg-config.json (set at setup time)
 #   2. `which node` (node is on PATH)
 #   3. nvm versioned paths  (~/.nvm/versions/node/*/bin/node)
-#   4. fnm versioned paths  (~/.fnm/node-versions/*/installation/bin/node)
-#   5. Homebrew / system paths (/opt/homebrew/bin/node, /usr/local/bin/node)
+#   4. fnm versioned paths and aliases
+#   5. volta/asdf/nodenv shims
+#   6. Homebrew / system paths (/opt/homebrew/bin/node, /usr/local/bin/node)
 #
 # Exits 0 on failure so it never blocks Copilot CLI hook processing.
 
 NODE_BIN=""
+# Shims that rely on shell init (volta/asdf/nodenv) are deferred: prefer a
+# concrete versioned binary first, falling back to the shim only if nothing
+# else resolves.
+DEFERRED_NODE_BIN=""
 
 # ---------------------------------------------------------------------------
 # 1. Read stored node path from OMC config
@@ -27,15 +32,32 @@ if [ -f "$CONFIG_FILE" ]; then
     | head -1 \
     | sed 's/.*"nodeBinary" *: *"//;s/".*//')
   if [ -n "$_stored" ] && [ -x "$_stored" ]; then
-    NODE_BIN="$_stored"
+    case "$_stored" in
+      "$HOME/.volta/bin/node"|"$HOME/.asdf/shims/node"|"$HOME/.nodenv/shims/node")
+        DEFERRED_NODE_BIN="$_stored"
+        ;;
+      *)
+        NODE_BIN="$_stored"
+        ;;
+    esac
   fi
 fi
 
 # ---------------------------------------------------------------------------
 # 2. which node
 # ---------------------------------------------------------------------------
-if [ -z "$NODE_BIN" ] && command -v node >/dev/null 2>&1; then
-  NODE_BIN="node"
+if [ -z "$NODE_BIN" ]; then
+  _resolved=$(command -v node 2>/dev/null)
+  if [ -n "$_resolved" ]; then
+    case "$_resolved" in
+      "$HOME/.volta/bin/node"|"$HOME/.asdf/shims/node"|"$HOME/.nodenv/shims/node")
+        DEFERRED_NODE_BIN="$_resolved"
+        ;;
+      *)
+        NODE_BIN="$_resolved"
+        ;;
+    esac
+  fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -50,8 +72,20 @@ if [ -z "$NODE_BIN" ] && [ -d "$HOME/.nvm/versions/node" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 4. fnm versioned paths (Linux and macOS default locations)
+# 4. fnm versioned paths and aliases (Linux and macOS default locations)
 # ---------------------------------------------------------------------------
+if [ -z "$NODE_BIN" ]; then
+  for _path in \
+    "$HOME/.fnm/aliases/default/bin/node" \
+    "$HOME/.local/share/fnm/aliases/default/bin/node" \
+    "$HOME/Library/Application Support/fnm/aliases/default/bin/node"; do
+    if [ -x "$_path" ]; then
+      NODE_BIN="$_path"
+      break
+    fi
+  done
+fi
+
 if [ -z "$NODE_BIN" ]; then
   for _fnm_base in \
     "$HOME/.fnm/node-versions" \
@@ -68,7 +102,26 @@ if [ -z "$NODE_BIN" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 5. Common Homebrew / system paths
+# 5. Common version-manager shims that do not require shell init files
+# ---------------------------------------------------------------------------
+if [ -z "$NODE_BIN" ] && [ -n "$DEFERRED_NODE_BIN" ]; then
+  NODE_BIN="$DEFERRED_NODE_BIN"
+fi
+
+if [ -z "$NODE_BIN" ]; then
+  for _path in \
+    "$HOME/.volta/bin/node" \
+    "$HOME/.asdf/shims/node" \
+    "$HOME/.nodenv/shims/node"; do
+    if [ -x "$_path" ]; then
+      NODE_BIN="$_path"
+      break
+    fi
+  done
+fi
+
+# ---------------------------------------------------------------------------
+# 6. Common Homebrew / system paths
 # ---------------------------------------------------------------------------
 if [ -z "$NODE_BIN" ]; then
   for _path in /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node; do

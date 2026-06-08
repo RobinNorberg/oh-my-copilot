@@ -3,7 +3,7 @@
  *
  * Detects and expands slash commands in user prompts.
  * Complements Copilot CLI's native slash command system by adding:
- * - Skill-based commands from ~/.copilot/skills/
+ * - Skill-based commands from ~/.copilot/skills/ and workspace .copilot/skills/
  * - Project-level commands from .copilot/commands/
  * - Template expansion with $ARGUMENTS placeholder
  *

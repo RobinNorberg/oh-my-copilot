@@ -15,6 +15,19 @@ export function getMemoryPath(projectRoot) {
     return getWorktreeProjectMemoryPath(projectRoot);
 }
 /**
+ * Normalize persisted project memory into the current runtime shape.
+ * Older/minimal project-memory.json files may not contain list fields that
+ * read-only context and compaction paths iterate over.
+ */
+export function normalizeProjectMemory(memory) {
+    return {
+        ...memory,
+        customNotes: Array.isArray(memory.customNotes) ? memory.customNotes : [],
+        userDirectives: Array.isArray(memory.userDirectives) ? memory.userDirectives : [],
+        hotPaths: Array.isArray(memory.hotPaths) ? memory.hotPaths : [],
+    };
+}
+/**
  * Load project memory from disk
  * Returns null if file doesn't exist or is invalid
  */
@@ -27,7 +40,7 @@ export async function loadProjectMemory(projectRoot) {
         if (!memory.version || !memory.projectRoot || !memory.lastScanned) {
             return null;
         }
-        return memory;
+        return normalizeProjectMemory(memory);
     }
     catch (_error) {
         // File doesn't exist or invalid JSON
