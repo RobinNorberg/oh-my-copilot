@@ -45,10 +45,15 @@ describe('canonical workflow stage prompt serialization', () => {
   });
 });
 
-function liveLockOwner() {
+/** Process-start identity the lock module accepts for a live owner on this platform. */
+function liveProcessStart() {
+  if (process.platform !== 'linux') return String(Math.max(1, Math.floor(Date.now() - process.uptime() * 1000)));
   const stat = readFileSync(`/proc/${process.pid}/stat`, 'utf8');
-  const processStart = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19];
-  return JSON.stringify({ version: 1, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() });
+  return stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/)[19];
+}
+
+function liveLockOwner() {
+  return JSON.stringify({ version: 1, pid: process.pid, processStart: liveProcessStart(), createdAt: new Date().toISOString(), nonce: randomUUID() });
 }
 
 function abandonedLockOwner() {
