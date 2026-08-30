@@ -14,7 +14,7 @@
 import { spawnSync } from 'node:child_process';
 import { constants as fsConstants, copyFileSync, existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, isAbsolute, join } from 'node:path';
+import { dirname, isAbsolute, join, win32 as pathWin32 } from 'node:path';
 import process from 'node:process';
 
 import { atomicWriteFileSync, ensureDirSync } from './lib/atomic-write.mjs';
@@ -29,8 +29,10 @@ const CONFIG_FILE = join(CONFIG_DIR, '.omc-config.json');
 const STALE_STATE_MS = 24 * 60 * 60 * 1000;
 const STALE_SKILL_STATE_MS = 30 * 60 * 1000;
 const VERSION_PROBE_TIMEOUT_MS = 3000;
-// cmd.exe re-parses the command line, so only a path of this shape is handed to
-// it. Mirrors SAFE_BATCH_PATH in src/platform/executable-resolution.ts.
+// cmd.exe re-parses the command line, so both the shim path and the launcher
+// are constrained. Mirrors SAFE_BATCH_PATH and isValidatedComspec in
+// src/platform/executable-resolution.ts; this file stays self-contained
+// because it is an .mjs script that cannot import the TypeScript module.
 const SAFE_BATCH_PATH = /^[A-Za-z]:\\(?:[A-Za-z0-9 ._-]+\\)*[A-Za-z0-9 ._-]+\.(?:cmd|bat)$/i;
 const DEFAULT_COMSPEC = 'C:\\Windows\\System32\\cmd.exe';
 // Mirrors SESSION_ID_REGEX in the TypeScript runtime.
@@ -233,25 +235,59 @@ function resolveOmcBinary() {
   return '';
 }
 
+/**
+ * A COMSPEC value safe to spawn as the launcher.
+ *
+ * Whitespace is rejected along with control characters: the batch fallback
+ * spawns with windowsVerbatimArguments, which leaves argv[0] unquoted, so a
+ * space-bearing COMSPEC would be split into separate arguments.
+ */
+function isValidatedComspec(candidate) {
+  if (!candidate || /[\0\r\n\s]/.test(candidate) || /[\\/]$/.test(candidate)) return false;
+  if (!pathWin32.isAbsolute(candidate)) return false;
+  return pathWin32.basename(candidate).toLowerCase() === 'cmd.exe';
+}
+
+/** The configured cmd.exe when it validates, else the system one, else none. */
+function validatedComspec() {
+  const configured = process.env.ComSpec ?? process.env.COMSPEC;
+  if (isValidatedComspec(configured)) return configured;
+  try {
+    if (existsSync(DEFAULT_COMSPEC) && isValidatedComspec(DEFAULT_COMSPEC)) return DEFAULT_COMSPEC;
+  } catch {
+    // An unavailable filesystem probe only costs us the version string.
+  }
+  return undefined;
+}
+
 /** `omc --version`, run from an absolute path and never through a shell. */
 function probeOmcVersion(binary) {
   const isBatch = /\.(cmd|bat)$/i.test(binary);
-  // A .cmd shim cannot be started directly, so it goes through cmd.exe — but
-  // only when the path fits a closed grammar, since cmd.exe re-parses it.
-  if (isBatch && !SAFE_BATCH_PATH.test(binary)) return '';
-
-  const run = isBatch
-    ? spawnSync(process.env.ComSpec || DEFAULT_COMSPEC, ['/d', '/s', '/c', `"${binary}" --version`], {
-      encoding: 'utf-8',
-      timeout: VERSION_PROBE_TIMEOUT_MS,
-      windowsHide: true,
-      windowsVerbatimArguments: true,
-    })
-    : spawnSync(binary, ['--version'], {
+  if (!isBatch) {
+    const run = spawnSync(binary, ['--version'], {
       encoding: 'utf-8',
       timeout: VERSION_PROBE_TIMEOUT_MS,
       windowsHide: true,
     });
+    return run.status === 0 ? (run.stdout ?? '').split(/\r?\n/)[0].trim() : '';
+  }
+
+  // A .cmd shim cannot be started directly, so it goes through cmd.exe. Both
+  // halves are constrained: the shim path must fit the closed grammar cmd.exe
+  // will re-parse, and the launcher itself must be a validated cmd.exe.
+  if (!SAFE_BATCH_PATH.test(binary)) return '';
+  const comspec = validatedComspec();
+  if (!comspec) return '';
+
+  // /v:off disables delayed expansion so a `!` in the path cannot be
+  // reinterpreted. The tail is quoted as one unit because cmd.exe strips the
+  // outer pair before parsing what remains.
+  const run = spawnSync(comspec, ['/d', '/v:off', '/s', '/c', `""${binary}" --version"`], {
+    encoding: 'utf-8',
+    timeout: VERSION_PROBE_TIMEOUT_MS,
+    windowsHide: true,
+    windowsVerbatimArguments: true,
+  });
 
   return run.status === 0 ? (run.stdout ?? '').split(/\r?\n/)[0].trim() : '';
 }

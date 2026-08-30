@@ -191,6 +191,30 @@ describe('setup-progress.mjs', () => {
     expect(config.setupVersion).not.toContain('planted');
   });
 
+  it.runIf(process.platform === 'win32')('never spawns a COMSPEC that is not a validated cmd.exe', () => {
+    // The batch fallback spawns with windowsVerbatimArguments, which leaves
+    // argv[0] unquoted, so the launcher is validated before use: absolute,
+    // whitespace-free, and named cmd.exe. This impostor is runnable and writes
+    // a marker, so if it were ever spawned the marker would exist.
+    const { root, project, configDir } = makeWorkspace('omc-progress-comspec-');
+    const marker = join(root, 'impostor-ran.txt');
+    const impostor = join(root, 'notcmd.exe.cmd');
+    writeFileSync(impostor, `@echo off\r\n> "${marker}" echo ran\r\necho 0.0.0-impostor\r\n`);
+
+    const result = spawnSync(process.execPath, [SETUP_PROGRESS, 'complete'], {
+      cwd: project,
+      encoding: 'utf-8',
+      env: { ...process.env, COPILOT_CONFIG_DIR: configDir, ComSpec: impostor },
+    });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+    const config = JSON.parse(readFileSync(join(configDir, '.omc-config.json'), 'utf-8')) as {
+      setupVersion: string;
+    };
+    expect(config.setupVersion).not.toContain('impostor');
+  });
+
   it('leaves an existing config alone rather than adopting the legacy one', () => {
     const { root, project } = makeWorkspace('omc-progress-no-adopt-');
     const home = join(root, 'home');
