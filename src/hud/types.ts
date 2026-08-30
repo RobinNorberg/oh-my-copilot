@@ -123,6 +123,18 @@ export interface ActiveAgent {
   spawnedBy?: string;
 }
 
+/** Fork-specific: backing type for the RecentTools HUD element. */
+export interface RecentTool {
+  /** Tool name (e.g., "Read", "Bash", "Edit") */
+  name: string;
+  /** Target summary (e.g., "auth.ts", "git st…") */
+  target: string | null;
+  /** Execution status */
+  status: 'running' | 'success' | 'failure';
+  /** When the tool was invoked */
+  timestamp: Date;
+}
+
 export interface SkillInvocation {
   name: string;
   args?: string;

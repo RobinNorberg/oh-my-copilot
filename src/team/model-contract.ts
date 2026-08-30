@@ -6,7 +6,7 @@ import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/mode
 import { isExternalLLMDisabled } from '../lib/security-config.js';
 import type { WorkerLaunchDescriptor } from './types.js';
 
-export type CliAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
+export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
 
 export interface CliAgentContract {
   agentType: CliAgentType;
@@ -199,6 +199,19 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
         const resolved = isProviderSpecificModelId(model) ? model : normalizeToCcAlias(model);
         args.push('--model', resolved);
       }
+      return [...args, ...extraFlags];
+    },
+    parseOutput(rawOutput: string): string {
+      return rawOutput.trim();
+    },
+  },
+  copilot: {
+    agentType: 'copilot',
+    binary: 'copilot',
+    installInstructions: 'Install Copilot CLI: https://github.com/github/copilot-cli',
+    buildLaunchArgs(model?: string, extraFlags: string[] = []): string[] {
+      const args = ['--dangerously-skip-permissions'];
+      if (model) args.push('--model', model);
       return [...args, ...extraFlags];
     },
     parseOutput(rawOutput: string): string {
