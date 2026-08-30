@@ -9,7 +9,7 @@
     "results": [
       { "command": "npm ci --ignore-scripts", "verdict": "passed", "evidence": "clean dependency install in /tmp/omc-dev-verify at 570028b24edea9878b0d003bcbf1cb184d8fa47c" },
       { "command": "npm run build", "verdict": "passed", "evidence": "tsc + all build:* steps completed; bridge/cli.cjs, runtime-cli.cjs, team-mcp.cjs, claude-md-coordinator.cjs built" },
-      { "command": "npm pack", "verdict": "passed", "evidence": "oh-my-copilot-4.15.10.tgz, 5169 files, shasum ce52508047bbeb3646905794acc3fc42937f0558" },
+      { "command": "npm pack", "verdict": "passed", "evidence": "oh-my-claude-sisyphus-4.15.10.tgz, 5169 files, shasum ce52508047bbeb3646905794acc3fc42937f0558" },
       { "command": "npm install -g --prefix /tmp/omc-install-prefix <tarball>", "verdict": "passed", "evidence": "added 145 packages; no install-script failure" },
       { "command": "omc --version (scratch HOME)", "verdict": "passed", "evidence": "printed 4.15.10, matching package.json" },
       { "command": "omc doctor conflicts (scratch HOME)", "verdict": "passed", "evidence": "exit 0; 'No conflicts detected / OMC is properly configured'" },
