@@ -16,6 +16,7 @@ import type {
   TelegramNotificationConfig,
   SlackNotificationConfig,
   SlackBotNotificationConfig,
+  TeamsNotificationConfig,
   WebhookNotificationConfig,
   NotificationPayload,
   NotificationResult,
@@ -297,6 +298,29 @@ function validateWebhookUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Validate Microsoft Teams webhook URL.
+ * Supports both:
+ * - Power Automate Workflows: https://*.logic.azure.com/... or https://*.webhook.office.com/...
+ * - Legacy O365 Connectors: https://outlook.office.com/webhook/... or https://outlook.office365.com/webhook/...
+ */
+function validateTeamsUrl(webhookUrl: string): boolean {
+  try {
+    const url = new URL(webhookUrl);
+    if (url.protocol !== "https:") return false;
+    // Power Automate Workflows
+    if (url.hostname.endsWith(".logic.azure.com")) return true;
+    if (url.hostname.endsWith(".webhook.office.com")) return true;
+    // Legacy O365 Connectors
+    if (url.hostname === "outlook.office.com" || url.hostname === "outlook.office365.com") return true;
+    // Microsoft Teams webhook domains
+    if (url.hostname.endsWith(".office.com")) return true;
+    return false;
   } catch {
     return false;
   }
@@ -645,6 +669,54 @@ export async function sendSlackBot(
 /**
  * Send notification via generic webhook (POST JSON).
  */
+/**
+ * Send notification to Microsoft Teams as an Adaptive Card.
+ */
+export async function sendTeams(
+  config: TeamsNotificationConfig,
+  payload: NotificationPayload,
+): Promise<NotificationResult> {
+  if (!config.enabled || !config.webhookUrl) {
+    return { platform: "teams", success: false, error: "Not configured" };
+  }
+
+  if (!validateTeamsUrl(config.webhookUrl)) {
+    return {
+      platform: "teams",
+      success: false,
+      error: "Invalid Teams webhook URL",
+    };
+  }
+
+  try {
+    const { formatTeamsAdaptiveCard } = await import("./formatter.js");
+    const body = formatTeamsAdaptiveCard(payload, config.tagList);
+
+    const response = await fetch(config.webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      return {
+        platform: "teams",
+        success: false,
+        error: `HTTP ${response.status}`,
+      };
+    }
+
+    return { platform: "teams", success: true };
+  } catch (error) {
+    return {
+      platform: "teams",
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
 export async function sendWebhook(
   config: WebhookNotificationConfig,
   payload: NotificationPayload,
@@ -788,6 +860,16 @@ export async function dispatchNotifications(
   );
   if (slackConfig?.enabled) {
     promises.push(sendSlack(slackConfig, payloadFor("slack")));
+  }
+
+  // Microsoft Teams
+  const teamsConfig = getEffectivePlatformConfig<TeamsNotificationConfig>(
+    "teams",
+    config,
+    event,
+  );
+  if (teamsConfig?.enabled) {
+    promises.push(sendTeams(teamsConfig, payloadFor("teams")));
   }
 
   // Webhook

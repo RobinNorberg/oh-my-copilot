@@ -25,6 +25,7 @@ export type NotificationPlatform =
   | "telegram"
   | "slack"
   | "slack-bot"
+  | "teams"
   | "webhook";
 
 /** Discord webhook configuration */
@@ -104,6 +105,15 @@ export interface AskUserQuestionPrompt {
   multiSelect?: boolean;
 }
 
+/** Microsoft Teams webhook configuration (Workflows or legacy O365 Connectors) */
+export interface TeamsNotificationConfig {
+  enabled: boolean;
+  /** Teams incoming webhook URL (Power Automate Workflows or legacy O365 Connector) */
+  webhookUrl: string;
+  /** Optional mentions — each entry is "DisplayName:AAD-Object-ID" (e.g. "John Doe:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx") */
+  tagList?: string[];
+}
+
 export interface WebhookNotificationConfig {
   enabled: boolean;
   /** Webhook URL (POST with JSON body) */
@@ -121,6 +131,7 @@ export type PlatformConfig =
   | TelegramNotificationConfig
   | SlackNotificationConfig
   | SlackBotNotificationConfig
+  | TeamsNotificationConfig
   | WebhookNotificationConfig;
 
 /** Per-event notification configuration */
@@ -133,6 +144,7 @@ export interface EventNotificationConfig {
   telegram?: TelegramNotificationConfig;
   slack?: SlackNotificationConfig;
   "slack-bot"?: SlackBotNotificationConfig;
+  teams?: TeamsNotificationConfig;
   webhook?: WebhookNotificationConfig;
 }
 
@@ -153,6 +165,7 @@ export interface NotificationConfig {
   telegram?: TelegramNotificationConfig;
   slack?: SlackNotificationConfig;
   "slack-bot"?: SlackBotNotificationConfig;
+  teams?: TeamsNotificationConfig;
   webhook?: WebhookNotificationConfig;
 
   /** Per-event configuration */

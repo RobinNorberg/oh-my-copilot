@@ -6,6 +6,7 @@ import {
   formatNotification,
   parseTmuxTail,
   formatAskUserQuestion,
+  formatTeamsAdaptiveCard,
 } from "../formatter.js";
 import type { NotificationPayload } from "../types.js";
 
@@ -22,7 +23,7 @@ describe("formatSessionIdle", () => {
   it("should include idle header and waiting message", () => {
     const result = formatSessionIdle(basePayload);
     expect(result).toContain("# Session Idle");
-    expect(result).toContain("Claude has finished and is waiting for input.");
+    expect(result).toContain("Copilot has finished and is waiting for input.");
   });
 
   it("should include project info in footer", () => {
@@ -596,5 +597,167 @@ describe("formatAskUserQuestion", () => {
     expect(result).toContain("1. PostgreSQL — Relational DB");
     expect(result).toContain("2. MongoDB — Document DB");
     expect(result).toContain("3. Other — reply with free text");
+  });
+});
+describe("formatTeamsAdaptiveCard", () => {
+  const basePayload: NotificationPayload = {
+    event: "session-end",
+    sessionId: "test-session-123",
+    message: "",
+    timestamp: new Date("2025-01-15T12:00:00Z").toISOString(),
+    projectPath: "/home/user/my-project",
+    projectName: "my-project",
+  };
+
+  it("should return valid Adaptive Card JSON", () => {
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload));
+    expect(result.type).toBe("message");
+    expect(result.attachments).toHaveLength(1);
+    expect(result.attachments[0].contentType).toBe("application/vnd.microsoft.card.adaptive");
+    expect(result.attachments[0].content.type).toBe("AdaptiveCard");
+    expect(result.attachments[0].content.version).toBe("1.4");
+    expect(result.attachments[0].content.$schema).toBe("http://adaptivecards.io/schemas/adaptive-card.json");
+  });
+
+  it("should include session-end facts", () => {
+    const payload = {
+      ...basePayload,
+      durationMs: 65000,
+      reason: "completed",
+      agentsSpawned: 5,
+      agentsCompleted: 4,
+      modesUsed: ["ultrawork", "ralph"],
+    };
+    const result = JSON.parse(formatTeamsAdaptiveCard(payload));
+    const factSet = result.attachments[0].content.body.find(
+      (b: any) => b.type === "FactSet",
+    );
+    expect(factSet).toBeDefined();
+    const factTitles = factSet.facts.map((f: any) => f.title);
+    expect(factTitles).toContain("Session");
+    expect(factTitles).toContain("Duration");
+    expect(factTitles).toContain("Reason");
+    expect(factTitles).toContain("Agents");
+    expect(factTitles).toContain("Modes");
+  });
+
+  it("should include heading text block with event title", () => {
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload));
+    const heading = result.attachments[0].content.body.find(
+      (b: any) => b.type === "TextBlock" && b.style === "heading",
+    );
+    expect(heading).toBeDefined();
+    expect(heading.text).toBe("Session Ended");
+  });
+
+  it("should format session-start event", () => {
+    const payload = { ...basePayload, event: "session-start" as const };
+    const result = JSON.parse(formatTeamsAdaptiveCard(payload));
+    const heading = result.attachments[0].content.body.find(
+      (b: any) => b.style === "heading",
+    );
+    expect(heading.text).toBe("Session Started");
+  });
+
+  it("should format ask-user-question event with question", () => {
+    const payload = {
+      ...basePayload,
+      event: "ask-user-question" as const,
+      question: "What database should I use?",
+    };
+    const result = JSON.parse(formatTeamsAdaptiveCard(payload));
+    const heading = result.attachments[0].content.body.find(
+      (b: any) => b.style === "heading",
+    );
+    expect(heading.text).toBe("Input Needed");
+    const factSet = result.attachments[0].content.body.find(
+      (b: any) => b.type === "FactSet",
+    );
+    const questionFact = factSet.facts.find((f: any) => f.title === "Question");
+    expect(questionFact.value).toBe("What database should I use?");
+  });
+
+  it("should include context summary for session-end", () => {
+    const payload = {
+      ...basePayload,
+      contextSummary: "Implemented Teams notifications",
+    };
+    const result = JSON.parse(formatTeamsAdaptiveCard(payload));
+    const summaryBlock = result.attachments[0].content.body.find(
+      (b: any) => b.type === "TextBlock" && b.text?.includes("Summary"),
+    );
+    expect(summaryBlock).toBeDefined();
+    expect(summaryBlock.text).toContain("Implemented Teams notifications");
+  });
+
+  it("should not include msteams entities when no tagList", () => {
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload));
+    expect(result.attachments[0].content.msteams).toBeUndefined();
+  });
+
+  it("should not include msteams entities when tagList is empty", () => {
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload, []));
+    expect(result.attachments[0].content.msteams).toBeUndefined();
+  });
+
+  it("should add msteams entities for valid tagList entries", () => {
+    const tagList = [
+      "John Doe:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "Jane Smith:11111111-2222-3333-4444-555555555555",
+    ];
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload, tagList));
+    const content = result.attachments[0].content;
+    expect(content.msteams).toBeDefined();
+    expect(content.msteams.entities).toHaveLength(2);
+    expect(content.msteams.entities[0]).toEqual({
+      type: "mention",
+      text: "<at>John Doe</at>",
+      mentioned: {
+        id: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        name: "John Doe",
+      },
+    });
+    expect(content.msteams.entities[1]).toEqual({
+      type: "mention",
+      text: "<at>Jane Smith</at>",
+      mentioned: {
+        id: "11111111-2222-3333-4444-555555555555",
+        name: "Jane Smith",
+      },
+    });
+  });
+
+  it("should prepend mention text block when tagList has entries", () => {
+    const tagList = ["John Doe:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"];
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload, tagList));
+    const body = result.attachments[0].content.body;
+    // First block should be the mention text
+    expect(body[0].type).toBe("TextBlock");
+    expect(body[0].text).toBe("<at>John Doe</at>");
+  });
+
+  it("should skip invalid tagList entries (missing colon)", () => {
+    const tagList = ["InvalidEntry", "John Doe:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"];
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload, tagList));
+    const content = result.attachments[0].content;
+    expect(content.msteams.entities).toHaveLength(1);
+    expect(content.msteams.entities[0].mentioned.name).toBe("John Doe");
+  });
+
+  it("should skip tagList entries with empty name or id", () => {
+    const tagList = [":some-id", "SomeName:", "John Doe:valid-id"];
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload, tagList));
+    const content = result.attachments[0].content;
+    expect(content.msteams.entities).toHaveLength(1);
+    expect(content.msteams.entities[0].mentioned.name).toBe("John Doe");
+  });
+
+  it("should include project in footer facts", () => {
+    const result = JSON.parse(formatTeamsAdaptiveCard(basePayload));
+    const factSet = result.attachments[0].content.body.find(
+      (b: any) => b.type === "FactSet",
+    );
+    const projectFact = factSet.facts.find((f: any) => f.title === "Project");
+    expect(projectFact.value).toBe("my-project");
   });
 });

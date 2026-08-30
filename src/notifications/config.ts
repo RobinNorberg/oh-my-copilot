@@ -245,6 +245,16 @@ export function buildConfigFromEnv(): NotificationConfig | null {
     hasAnyPlatform = true;
   }
 
+  // Teams Webhook (Power Automate Workflows or legacy O365 Connectors)
+  const teamsWebhook = process.env.OMC_MICROSOFT_TEAMS_WEBHOOK_URL;
+  if (teamsWebhook) {
+    config.teams = {
+      enabled: true,
+      webhookUrl: teamsWebhook,
+    };
+    hasAnyPlatform = true;
+  }
+
   if (!hasAnyPlatform) return null;
 
   config.enabled = true;
@@ -346,6 +356,16 @@ function mergeEnvIntoFileConfig(
     merged["slack-bot"] = {
       ...merged["slack-bot"],
       mention: validateSlackMention(merged["slack-bot"].mention),
+    };
+  }
+
+  // Merge teams
+  if (!merged.teams && envConfig.teams) {
+    merged.teams = envConfig.teams;
+  } else if (merged.teams && envConfig.teams) {
+    merged.teams = {
+      ...merged.teams,
+      webhookUrl: merged.teams.webhookUrl || envConfig.teams.webhookUrl,
     };
   }
 
