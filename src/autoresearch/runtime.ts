@@ -8,6 +8,7 @@ import {
   writeModeState,
 } from '../lib/mode-state-io.js';
 import { isModeActiveInAnySession } from '../hooks/mode-registry/index.js';
+import { NO_POSIX_SHELL_MESSAGE, resolvePosixCommandInvocation } from '../platform/posix-shell.js';
 import type { ExecutionMode } from '../hooks/mode-registry/types.js';
 import {
   parseEvaluatorResult,
@@ -595,11 +596,35 @@ export async function runAutoresearchEvaluator(
   latestEvaluatorFile?: string,
 ): Promise<AutoresearchEvaluationRecord> {
   const ran_at = nowIso();
-  const result = spawnSync(contract.sandbox.evaluator.command, {
+  // Evaluator commands are user-authored POSIX sh (env prefixes, ./ paths,
+  // 2>/dev/null). cmd.exe cannot interpret them, so on Windows they go through
+  // a discovered POSIX shell, and we fail loudly when none exists rather than
+  // recording an inscrutable error on every iteration.
+  const invocation = resolvePosixCommandInvocation(contract.sandbox.evaluator.command);
+  if (!invocation) {
+    const record: AutoresearchEvaluationRecord = {
+      command: contract.sandbox.evaluator.command,
+      ran_at,
+      status: 'error',
+      exit_code: null,
+      stdout: '',
+      stderr: NO_POSIX_SHELL_MESSAGE,
+    };
+    return finalizeAutoresearchEvaluation(
+      record,
+      contract,
+      worktreePath,
+      ledgerFile,
+      latestEvaluatorFile,
+    );
+  }
+
+  const result = spawnSync(invocation.file, invocation.args, {
     cwd: worktreePath,
     encoding: 'utf-8',
-    shell: true,
+    shell: invocation.shell,
     maxBuffer: 1024 * 1024,
+    windowsHide: true,
   });
   const stdout = result.stdout?.trim() || '';
   const stderr = result.stderr?.trim() || '';
@@ -640,6 +665,16 @@ export async function runAutoresearchEvaluator(
     }
   }
 
+  return finalizeAutoresearchEvaluation(record, contract, worktreePath, ledgerFile, latestEvaluatorFile);
+}
+
+async function finalizeAutoresearchEvaluation(
+  record: AutoresearchEvaluationRecord,
+  contract: AutoresearchMissionContract,
+  worktreePath: string,
+  ledgerFile?: string,
+  latestEvaluatorFile?: string,
+): Promise<AutoresearchEvaluationRecord> {
   if (latestEvaluatorFile) {
     await writeJsonFile(latestEvaluatorFile, record);
   }

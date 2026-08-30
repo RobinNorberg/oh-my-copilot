@@ -26,6 +26,7 @@ Autoresearch is a stateful skill for bounded, evaluator-driven iterative improve
 - Single-mission only in v1
 - Mission setup/evaluator generation stays in `deep-interview --autoresearch`
 - Evaluator output must be structured JSON with required boolean `pass` and optional numeric `score`
+- Evaluator commands are interpreted as POSIX `sh`. Prefer shell-neutral commands (`node eval.js`, `npm run eval`) so the mission runs everywhere; POSIX-only forms (`FOO=1 ./eval.sh`, `2>/dev/null`) require a POSIX shell such as Git Bash on Windows, and the run records an error when none is installed
 - Non-passing iterations do **not** stop the run
 - Stop conditions are explicit and bounded, with max-runtime as the primary strict stop hook
 </Contract>
