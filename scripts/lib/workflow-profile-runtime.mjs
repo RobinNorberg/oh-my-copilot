@@ -74,9 +74,14 @@ function openNoFollowFile(absolute) {
       if (stat.isSymbolicLink() || (isFinal ? !stat.isFile() : !stat.isDirectory())) return null;
       pathIdentity.push({ device: String(stat.dev), inode: String(stat.ino) });
     }
+    // Resolve and assert the canonical path before opening, matching the TypeScript validator. The
+    // returned canonicalPath feeds the boundary checks, so it has to be pinned against the requested
+    // path rather than re-derived once the descriptor is already accepted.
+    const canonicalPath = realpathSync(absolute);
+    if (canonicalPath !== absolute) return null;
     const fd = openSync(absolute, fsConstants.O_RDONLY); const opened = fstatSync(fd, { bigint: true }); const final = pathIdentity[pathIdentity.length - 1];
     if (!opened.isFile() || !sameFileId(opened.dev, final.device) || !sameFileId(opened.ino, final.inode)) { closeSync(fd); return null; }
-    return { fd, pathIdentity, canonicalPath: realpathSync(absolute) };
+    return { fd, pathIdentity, canonicalPath };
   }
   let fd;
   try {

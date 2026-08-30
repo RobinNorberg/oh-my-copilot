@@ -107,10 +107,19 @@ export function atomicWriteFileSync(filePath, content) {
 
 const LOCK_SCHEMA_VERSION = 1;
 const LOCK_OWNER_KEYS = ['createdAt', 'nonce', 'pid', 'processStart', 'version'];
-/** Reclaim a lock whose owner still looks live only once it is this old (hung holder or recycled pid). */
-const PORTABLE_LOCK_MAX_AGE_MS = 60_000;
+/**
+ * Reclaim a lock whose owner still looks live only once it is this old. Deliberately generous: the
+ * critical sections here are synchronous and measured in milliseconds, so this ceiling exists only to
+ * break a deadlock against a recycled pid, never as routine expiry. It is compared against a
+ * wall-clock stamp, and a laptop suspend or an NTP step can age a healthy holder by hours — at a
+ * shorter ceiling that would admit a second writer, so the window is sized to make that implausible.
+ * Death of the owning pid, not elapsed time, is the signal that actually frees a lock.
+ */
+export const PORTABLE_LOCK_MAX_AGE_MS = 1_800_000;
 const PORTABLE_GUARD_MAX_AGE_MS = 5_000;
 const PORTABLE_GUARD_ATTEMPTS = 200;
+/** Transient read failures (EACCES, EBUSY, a scanner holding the file) get this many retries before we fail closed. */
+const PORTABLE_UNVERIFIABLE_RETRIES = 5;
 
 /** 'none' suppresses locking entirely, 'portable' forces the lockfile fallback; null means probe the platform. */
 function testLockMode() {
@@ -186,17 +195,29 @@ function pidIsLive(pid) {
   }
 }
 
-/** Serialize reclaim/release with an O_EXCL marker; the fd is closed immediately so unlink stays portable. */
+/**
+ * Best-effort serialization of the reclaim section with an O_EXCL marker. This is deliberately not a
+ * mutex: two processes that both observe a stale marker can both delete it and enter, and the loser's
+ * delete can remove the winner's fresh marker. That is tolerable because the section re-reads the
+ * owner record under the marker and every removal is conditional on what it re-reads, so a double
+ * admission costs an extra adjudication pass rather than an unsafe removal. The fd is closed before
+ * returning so the later unlink stays portable on Windows.
+ */
 function acquirePortableGuard(guardPath) {
   for (let attempt = 0; attempt < PORTABLE_GUARD_ATTEMPTS; attempt += 1) {
     let fd;
+    let published = false;
     try {
       fd = openSync(guardPath, 'wx', 0o600);
       writeAllSync(fd, String(process.pid), 'lock guard publication');
+      published = true;
       closeSync(fd);
       return true;
     } catch (error) {
       if (fd !== undefined) { try { closeSync(fd); } catch {} }
+      // We created the marker but never published it. Drop it now rather than leaving debris that
+      // blocks every other contender until the staleness window expires.
+      if (fd !== undefined && !published) { try { unlinkSync(guardPath); } catch {} }
       if (error?.code !== 'EEXIST') return false;
       let age = null;
       try { age = Date.now() - statSync(guardPath).mtimeMs; } catch {}
@@ -210,7 +231,16 @@ function acquirePortableGuard(guardPath) {
 function portableLockIsLive(observed) {
   const live = pidIsLive(observed.pid);
   if (live === null) return null;
-  return live && Date.now() - Date.parse(observed.createdAt) <= PORTABLE_LOCK_MAX_AGE_MS;
+  if (!live) return false;
+  // A clock that stepped backwards yields a negative age; that is not expiry, so compare in the
+  // direction that keeps an unreadable or implausible stamp on the holder's side.
+  return !(Date.now() - Date.parse(observed.createdAt) > PORTABLE_LOCK_MAX_AGE_MS);
+}
+
+/** An owner record we cannot parse can never be adjudicated by identity, so its age is the only escape. */
+function unparseableLockIsStale(lockPath) {
+  try { return Date.now() - statSync(lockPath).mtimeMs > PORTABLE_LOCK_MAX_AGE_MS; }
+  catch { return false; }
 }
 
 function portableLockRemoval(lockPath, operation, owner) {
@@ -228,8 +258,11 @@ function portableLockRemoval(lockPath, operation, owner) {
   try {
     const current = readLockOwnerAt(lockPath);
     if (current === 'absent') return 'retry';
-    if (!current) return 'unverifiable';
-    if (operation === 'release') {
+    if (!current) {
+      // Debris we cannot attribute. Release never removes it — an unattributable record is not ours
+      // to delete — but reclaim must have some escape or the path stays wedged forever.
+      if (operation === 'release' || !unparseableLockIsStale(lockPath)) return 'unverifiable';
+    } else if (operation === 'release') {
       if (!owner || current.pid !== owner.pid || current.processStart !== owner.processStart || current.nonce !== owner.nonce) return 'replaced';
     } else {
       const live = portableLockIsLive(current);
@@ -250,22 +283,29 @@ function guardedLockRemoval(lockPath, operation, owner) {
   if (result.status === 0) return 'retry';
   if (result.status === 2) return 'live';
   if (result.status === 4) return 'replaced';
-  return 'unverifiable';
+  // The removal script adjudicates liveness only through /proc, so off Linux it reports unverifiable
+  // even where an flock binary exists. Fall through instead of wedging on a platform we do support.
+  return portableLockingAvailable() ? portableLockRemoval(lockPath, operation, owner) : 'unverifiable';
 }
 
 export function isStateFileLockingSupported() {
   return Boolean(flockPath()) || portableLockingAvailable();
 }
 
-/** Clear or wait out a lock someone else holds. Returns false when the holder cannot be adjudicated. */
-function awaitLockTurn(lockPath, attempt) {
+function lockBackoff(attempt) {
+  // Jittered so contending processes do not re-collide in lockstep.
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1 + Math.floor(Math.random() * Math.min(40, 4 * (attempt + 1))));
+}
+
+/**
+ * Clear or wait out a lock someone else holds. Returns false only once the holder has stayed
+ * unadjudicable across several attempts: a single unreadable read is usually transient (a scanner or
+ * backup agent holding the file, EACCES, EBUSY) and must not abandon the acquisition outright.
+ */
+function awaitLockTurn(lockPath, attempt, unverifiable) {
   const disposition = guardedLockRemoval(lockPath, 'reclaim');
-  if (disposition === 'unverifiable') {
-    console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
-    return false;
-  }
-  // Jittered backoff so contending processes do not re-collide in lockstep.
-  if (disposition === 'live') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1 + Math.floor(Math.random() * Math.min(40, 4 * (attempt + 1))));
+  if (disposition === 'unverifiable' && (unverifiable.count += 1) > PORTABLE_UNVERIFIABLE_RETRIES) return false;
+  if (disposition === 'live' || disposition === 'unverifiable') lockBackoff(attempt);
   return true;
 }
 
@@ -277,10 +317,18 @@ function acquireLockAt(lockPath, attempts = 50, requireExclusive = false) {
     console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${lockPath}`);
     return null;
   }
+  const unverifiable = { count: 0 };
+  // Report once on any give-up that saw an unadjudicable holder, whichever budget ran out first —
+  // the attempt budget can be smaller than the retry budget, and failing closed silently would leave
+  // an operator with no signal at all.
+  const abandon = () => {
+    if (unverifiable.count > 0) console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
+    return null;
+  };
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     // Adjudicate a held lock before paying for owner publication.
     if (existsSync(lockPath)) {
-      if (!awaitLockTurn(lockPath, attempt)) return null;
+      if (!awaitLockTurn(lockPath, attempt, unverifiable)) return abandon();
       continue;
     }
     const owner = { version: LOCK_SCHEMA_VERSION, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() };
@@ -297,10 +345,10 @@ function acquireLockAt(lockPath, attempts = 50, requireExclusive = false) {
       if (fd !== undefined) { try { closeSync(fd); } catch {} }
       try { unlinkSync(tempPath); } catch {}
       if (error?.code !== 'EEXIST') return null;
-      if (!awaitLockTurn(lockPath, attempt)) return null;
+      if (!awaitLockTurn(lockPath, attempt, unverifiable)) return abandon();
     }
   }
-  return null;
+  return abandon();
 }
 
 export function acquireStateFileLockSync(filePath, attempts = 50, requireExclusive = false) {

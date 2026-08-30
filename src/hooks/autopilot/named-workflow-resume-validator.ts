@@ -89,8 +89,13 @@ function validFileIdentity(value: unknown): value is RecordValue {
   );
 }
 
-/** True where /proc lets descriptors be reopened, which is what makes the openat-style walk possible. */
+/**
+ * True where /proc lets descriptors be reopened, which is what makes the openat-style walk possible.
+ * Gated on Linux like the .mjs runtime: FreeBSD with fdescfs also exposes /proc/self/fd, but its
+ * entries are not traversable into, so taking this branch there fails closed on every open.
+ */
 function procSelfFdAvailable(): boolean {
+  if (process.platform !== "linux") return false;
   if (
     typeof constants.O_NOFOLLOW !== "number" ||
     typeof constants.O_DIRECTORY !== "number"

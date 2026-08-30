@@ -13,6 +13,7 @@ import {
   rmSync,
   statSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'fs';
 import { spawn } from 'child_process';
@@ -20,7 +21,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { randomUUID } from 'crypto';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
-import { acquireStateFileLockSync, isStateFileLockingSupported, releaseStateFileLockSync, withStateFileLockSync } from '../../../scripts/lib/atomic-write.mjs';
+import { acquireStateFileLockSync, isStateFileLockingSupported, PORTABLE_LOCK_MAX_AGE_MS, releaseStateFileLockSync, withStateFileLockSync } from '../../../scripts/lib/atomic-write.mjs';
 
 import { tmpdir } from 'os';
 
@@ -400,9 +401,65 @@ describe('portable state file locking', () => {
 
     try {
       expect(withStateFileLockSync(filePath, () => 'written', true)).toEqual({ acquired: false, value: undefined });
+      expect(existsSync(`${filePath}.mutation.lock`)).toBe(true);
     } finally {
       errors.mockRestore();
     }
+  });
+
+  it('reclaims an unreadable lock artifact once it ages past the ceiling', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'portable-lock-aged-debris-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_STATE_LOCK_MODE = 'portable';
+    const filePath = join(directory, 'state.json');
+    const lockPath = `${filePath}.mutation.lock`;
+    writeFileSync(lockPath, 'not a lock owner');
+    // Debris nobody can attribute would otherwise wedge this path forever; age is the only escape.
+    const aged = (Date.now() - (PORTABLE_LOCK_MAX_AGE_MS + 60_000)) / 1000;
+    utimesSync(lockPath, aged, aged);
+
+    expect(withStateFileLockSync(filePath, () => 'written', true)).toEqual({ acquired: true, value: 'written' });
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it.each([
+    ['well past the old sixty-second ceiling', 120_000],
+    ['stamped in the future by a backwards clock', -3_600_000],
+  ])('keeps a live holder whose stamp is %s', (_name, ageMs) => {
+    const directory = mkdtempSync(join(tmpdir(), 'portable-lock-clock-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_STATE_LOCK_MODE = 'portable';
+    const filePath = join(directory, 'state.json');
+    writeFileSync(`${filePath}.mutation.lock`, JSON.stringify({
+      version: 1,
+      pid: process.pid,
+      processStart: '1',
+      createdAt: new Date(Date.now() - ageMs).toISOString(),
+      nonce: randomUUID(),
+    }));
+
+    expect(withStateFileLockSync(filePath, () => 'stolen', true)).toEqual({ acquired: false, value: undefined });
+  });
+
+  it('still reclaims a live-looking holder past the ceiling so a recycled pid cannot deadlock it', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'portable-lock-ceiling-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_STATE_LOCK_MODE = 'portable';
+    const filePath = join(directory, 'state.json');
+    const lockPath = `${filePath}.mutation.lock`;
+    writeFileSync(lockPath, JSON.stringify({
+      version: 1,
+      pid: process.pid,
+      processStart: '1',
+      createdAt: new Date(Date.now() - (PORTABLE_LOCK_MAX_AGE_MS + 60_000)).toISOString(),
+      nonce: randomUUID(),
+    }));
+
+    expect(withStateFileLockSync(filePath, () => 'reclaimed', true)).toEqual({ acquired: true, value: 'reclaimed' });
+    expect(existsSync(lockPath)).toBe(false);
   });
 
   it('serializes concurrent processes so no counter increment is lost', async () => {

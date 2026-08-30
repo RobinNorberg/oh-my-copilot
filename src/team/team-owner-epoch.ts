@@ -127,11 +127,13 @@ export function isValidProcessStartIdentity(value: unknown, platform: NodeJS.Pla
  * PowerShell spawn (~200ms measured), which every lock acquisition would otherwise pay. Only this
  * process is cached: a foreign pid can be recycled, so its identity must be re-read each time.
  */
-let ownProcessStartIdentity: string | null | undefined;
+let ownProcessStartIdentity: string | null = null;
 
 export function currentProcessStartIdentity(pid: number = process.pid): string | null {
   if (pid !== process.pid) return processStartIdentityForPlatform(pid);
-  if (ownProcessStartIdentity === undefined) ownProcessStartIdentity = processStartIdentityForPlatform(pid);
+  // Only a successful probe is cached. Caching a failure would turn one transient hiccup — a
+  // PowerShell spawn that could not start — into a permanent fail-closed for the process lifetime.
+  ownProcessStartIdentity ??= processStartIdentityForPlatform(pid);
   return ownProcessStartIdentity;
 }
 function processStartIdentitiesMayMatch(recorded: string, observed: string): boolean {
