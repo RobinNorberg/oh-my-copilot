@@ -499,7 +499,10 @@ export function startDaemon(config?: DaemonConfig): DaemonResponse {
       ...createMinimalDaemonEnv(),
       OMC_DAEMON_CONFIG_FILE: configPath,
     };
-    const child = spawn('node', ['-e', daemonScript], {
+    // process.execPath, not 'node': under Volta/nvm shims — or when omc itself
+    // was launched by absolute path — the node on the forwarded PATH may not
+    // exist, and the daemon would silently fail to start.
+    const child = spawn(process.execPath, ['-e', daemonScript], {
       detached: true,
       stdio: 'ignore',
       cwd: process.cwd(),
