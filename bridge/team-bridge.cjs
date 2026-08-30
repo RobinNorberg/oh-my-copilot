@@ -795,13 +795,19 @@ function asText(value) {
 function isValidBinaryName(binary) {
   return typeof binary === "string" && SAFE_BINARY_NAME.test(binary);
 }
+function neutralFinderCwd(model) {
+  if (!model.isWindows) return void 0;
+  return process.env.SystemRoot || process.env.windir || "C:\\Windows";
+}
 function resolveCliPath(binary, model) {
   try {
+    const finderCwd = neutralFinderCwd(model);
     const result = (0, import_child_process2.spawnSync)(model.finder, [binary], {
       timeout: RESOLVE_TIMEOUT_MS,
       encoding: "utf8",
       shell: false,
-      windowsHide: true
+      windowsHide: true,
+      ...finderCwd ? { cwd: finderCwd } : {}
     });
     if (result.error || result.signal || result.status !== 0) return void 0;
     const stdout = asText(result.stdout);
@@ -1675,18 +1681,30 @@ function matchGlob(pattern, path5) {
   }
   return pi === pattern.length;
 }
+function pathFlavor() {
+  return process.platform === "win32" ? import_node_path2.win32 : import_node_path2.posix;
+}
+function foldCase(value) {
+  return process.platform === "win32" ? value.toLowerCase() : value;
+}
 function toPatternPath(workingDirectory, filePath) {
-  return (0, import_node_path2.relative)(workingDirectory, (0, import_node_path2.resolve)(workingDirectory, filePath)).replace(/\\/g, "/");
+  const flavor = pathFlavor();
+  const raw = flavor.relative(workingDirectory, flavor.resolve(workingDirectory, filePath));
+  return {
+    relPath: raw.replace(/\\/g, "/"),
+    outside: raw.startsWith("..") || flavor.isAbsolute(raw)
+  };
 }
 function isPathAllowed(permissions, filePath, workingDirectory) {
-  const relPath = toPatternPath(workingDirectory, filePath);
-  if (relPath.startsWith("..")) return false;
+  const { relPath, outside } = toPatternPath(workingDirectory, filePath);
+  if (outside) return false;
+  const target = foldCase(relPath);
   for (const pattern of permissions.deniedPaths) {
-    if (matchGlob(pattern, relPath)) return false;
+    if (matchGlob(foldCase(pattern), target)) return false;
   }
   if (permissions.allowedPaths.length === 0) return true;
   for (const pattern of permissions.allowedPaths) {
-    if (matchGlob(pattern, relPath)) return true;
+    if (matchGlob(foldCase(pattern), target)) return true;
   }
   return false;
 }
@@ -1723,12 +1741,13 @@ function findPermissionViolations(changedPaths, permissions, cwd) {
   const violations = [];
   for (const filePath of changedPaths) {
     if (!isPathAllowed(permissions, filePath, cwd)) {
-      const relPath = toPatternPath(cwd, filePath);
+      const { relPath, outside } = toPatternPath(cwd, filePath);
       let reason;
-      if (relPath.startsWith("..")) {
+      if (outside) {
         reason = `Path escapes working directory: ${relPath}`;
       } else {
-        const matchedDeny = permissions.deniedPaths.find((p) => matchGlob(p, relPath));
+        const target = foldCase(relPath);
+        const matchedDeny = permissions.deniedPaths.find((p) => matchGlob(foldCase(p), target));
         if (matchedDeny) {
           reason = `Matches denied pattern: ${matchedDeny}`;
         } else {
@@ -2038,7 +2057,7 @@ function audit(config, eventType, taskId, details) {
   }
 }
 function sleep(ms) {
-  return new Promise((resolve6) => setTimeout(resolve6, ms));
+  return new Promise((resolve5) => setTimeout(resolve5, ms));
 }
 function captureFileSnapshot(cwd) {
   const files = /* @__PURE__ */ new Set();
@@ -2323,7 +2342,7 @@ function spawnCliProcess(provider, prompt, model, cwd, timeoutMs) {
     stdio: ["pipe", "pipe", "pipe"],
     cwd
   });
-  const result = new Promise((resolve6, reject) => {
+  const result = new Promise((resolve5, reject) => {
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -2346,7 +2365,7 @@ function spawnCliProcess(provider, prompt, model, cwd, timeoutMs) {
         clearTimeout(timeoutHandle);
         if (code === 0) {
           const response = provider === "codex" ? parseCodexOutput(stdout) : stdout.trim();
-          resolve6(response);
+          resolve5(response);
         } else {
           const detail = stderr || stdout.trim() || "No output";
           reject(new Error(`CLI exited with code ${code}: ${detail}`));
@@ -2383,7 +2402,7 @@ async function handleShutdown(config, signal, activeChild) {
     });
     activeChild.kill("SIGTERM");
     await Promise.race([
-      new Promise((resolve6) => activeChild.on("close", () => resolve6())),
+      new Promise((resolve5) => activeChild.on("close", () => resolve5())),
       sleep(5e3)
     ]);
     if (!closed) {
