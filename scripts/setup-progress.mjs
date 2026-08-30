@@ -13,6 +13,8 @@
 
 import { spawnSync } from 'node:child_process';
 import {
+  copyFileSync,
+  existsSync,
   mkdirSync,
   readFileSync,
   readdirSync,
@@ -21,6 +23,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import process from 'node:process';
 
@@ -40,6 +43,32 @@ const SESSION_ID_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 function fail(message) {
   process.stderr.write(`${message}\n`);
   process.exit(1);
+}
+
+/**
+ * Carry a pre-unification config into the resolved config directory.
+ *
+ * The Node surfaces used to resolve ~/.claude while the shell surfaces used
+ * ~/.copilot, so an upgraded install can still hold its only .omc-config.json
+ * in the old location. Setup is the upgrade path, so recover it here rather
+ * than probing two directories on every read. The legacy file is copied, never
+ * moved, and only when the current location has nothing to lose.
+ */
+function adoptLegacyConfigFile() {
+  if (process.env.COPILOT_CONFIG_DIR?.trim()) return;
+  if (existsSync(CONFIG_FILE)) return;
+
+  const legacy = join(homedir(), '.claude', '.omc-config.json');
+  if (legacy === CONFIG_FILE || !existsSync(legacy)) return;
+
+  try {
+    mkdirSync(dirname(CONFIG_FILE), { recursive: true });
+    copyFileSync(legacy, CONFIG_FILE);
+    console.log(`Adopted settings from ${legacy}`);
+    console.log(`The active config is now ${CONFIG_FILE}; the old file is no longer read.`);
+  } catch (error) {
+    console.log(`Note: could not copy ${legacy} (${error instanceof Error ? error.message : String(error)})`);
+  }
 }
 
 function readJsonFile(path) {
@@ -197,6 +226,7 @@ function resolveOmcVersion() {
 function cmdComplete(version) {
   rmSync(STATE_FILE, { force: true });
   clearSkillActiveState();
+  adoptLegacyConfigFile();
 
   let existing = {};
   try {

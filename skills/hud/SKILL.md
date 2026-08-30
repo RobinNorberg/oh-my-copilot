@@ -2,8 +2,8 @@
 name: hud
 description: Configure HUD display options (layout, presets, display elements)
 argument-hint: "[setup|minimal|focused|full|status]"
-role: config-writer  # DOCUMENTATION ONLY - This skill writes to ~/.claude/ paths
-scope: ~/.claude/**  # DOCUMENTATION ONLY - Allowed write scope
+role: config-writer  # DOCUMENTATION ONLY - This skill writes to ~/.copilot/ paths
+scope: ~/.copilot/**  # DOCUMENTATION ONLY - Allowed write scope
 level: 2
 ---
 
@@ -11,7 +11,7 @@ level: 2
 
 Configure the OMC HUD (Heads-Up Display) for the statusline.
 
-Note: All `~/.claude/...` paths in this guide respect `COPILOT_CONFIG_DIR` when that environment variable is set.
+Note: All `~/.copilot/...` paths in this guide respect `COPILOT_CONFIG_DIR` when that environment variable is set.
 
 ## Quick Commands
 
@@ -27,47 +27,47 @@ Note: All `~/.claude/...` paths in this guide respect `COPILOT_CONFIG_DIR` when 
 ## Auto-Setup
 
 When you run `/oh-my-copilot:hud` or `/oh-my-copilot:hud setup`, the system will automatically:
-1. Check if `~/.claude/hud/omcp-hud.mjs` exists
-2. Check if `statusLine` is configured in `~/.claude/settings.json`
+1. Check if `~/.copilot/hud/omcp-hud.mjs` exists
+2. Check if `statusLine` is configured in `~/.copilot/settings.json`
 3. If missing, create the HUD wrapper script and configure settings
 4. Report status and prompt to restart Claude Code if changes were made
 
-**IMPORTANT**: If the argument is `setup` OR if the HUD script doesn't exist at `~/.claude/hud/omcp-hud.mjs`, you MUST create the HUD files directly using the instructions below.
+**IMPORTANT**: If the argument is `setup` OR if the HUD script doesn't exist at `~/.copilot/hud/omcp-hud.mjs`, you MUST create the HUD files directly using the instructions below.
 
 ### Setup Instructions (Run These Commands)
 
 **Step 1:** Check if setup is needed:
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');console.log(f.existsSync(p.join(d,'hud','omcp-hud.mjs'))?'EXISTS':'MISSING')"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');console.log(f.existsSync(p.join(d,'hud','omcp-hud.mjs'))?'EXISTS':'MISSING')"
 ```
 
 **Step 2:** Verify the plugin is installed:
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),b=p.join(d,'plugins','cache','omc','oh-my-copilot');try{const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(v.length===0){console.log('Plugin not installed - run: /plugin install oh-my-copilot');process.exit()}const l=v[v.length-1],h=p.join(b,l,'dist','hud','index.js');console.log('Version:',l);console.log(f.existsSync(h)?'READY':'NOT_FOUND - try reinstalling: /plugin install oh-my-copilot')}catch{console.log('Plugin not installed - run: /plugin install oh-my-copilot')}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),b=p.join(d,'plugins','cache','omc','oh-my-copilot');try{const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));if(v.length===0){console.log('Plugin not installed - run: /plugin install oh-my-copilot');process.exit()}const l=v[v.length-1],h=p.join(b,l,'dist','hud','index.js');console.log('Version:',l);console.log(f.existsSync(h)?'READY':'NOT_FOUND - try reinstalling: /plugin install oh-my-copilot')}catch{console.log('Plugin not installed - run: /plugin install oh-my-copilot')}"
 ```
 
 **Step 3:** If omcp-hud.mjs is MISSING or argument is `setup`, install the HUD wrapper and its dependency from the canonical template:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),r=process.env.CLAUDE_PLUGIN_ROOT;if(r===undefined||r===''){console.error('ERROR: CLAUDE_PLUGIN_ROOT is not set');process.exit(1)}const hud=p.join(d,'hud');f.mkdirSync(p.join(hud,'lib'),{recursive:true});f.copyFileSync(p.join(r,'scripts','lib','hud-wrapper-template.txt'),p.join(hud,'omcp-hud.mjs'));f.copyFileSync(p.join(r,'scripts','lib','config-dir.mjs'),p.join(hud,'lib','config-dir.mjs'));console.log('Installed HUD wrapper to '+p.join(hud,'omcp-hud.mjs'))"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),r=process.env.CLAUDE_PLUGIN_ROOT;if(r===undefined||r===''){console.error('ERROR: CLAUDE_PLUGIN_ROOT is not set');process.exit(1)}const hud=p.join(d,'hud');f.mkdirSync(p.join(hud,'lib'),{recursive:true});f.copyFileSync(p.join(r,'scripts','lib','hud-wrapper-template.txt'),p.join(hud,'omcp-hud.mjs'));f.copyFileSync(p.join(r,'scripts','lib','config-dir.mjs'),p.join(hud,'lib','config-dir.mjs'));console.log('Installed HUD wrapper to '+p.join(hud,'omcp-hud.mjs'))"
 ```
 
 **IMPORTANT:** Always copy from the canonical template at `scripts/lib/hud-wrapper-template.txt`. Do NOT write the wrapper content inline — the template is the single source of truth and is guarded by drift tests (`src/__tests__/hud-wrapper-template-sync.test.ts`, `src/__tests__/paths-consistency.test.ts`).
 
 **Step 4:** Make it executable (Unix only, skip on Windows):
 ```bash
-node -e "if(process.platform==='win32'){console.log('Skipped (Windows)')}else{require('fs').chmodSync(require('path').join(process.env.COPILOT_CONFIG_DIR||require('path').join(require('os').homedir(),'.claude'),'hud','omcp-hud.mjs'),0o755);console.log('Done')}"
+node -e "if(process.platform==='win32'){console.log('Skipped (Windows)')}else{require('fs').chmodSync(require('path').join(process.env.COPILOT_CONFIG_DIR||require('path').join(require('os').homedir(),'.copilot'),'hud','omcp-hud.mjs'),0o755);console.log('Done')}"
 ```
 
 **Step 5:** Update settings.json to use the HUD:
 
-Read `${COPILOT_CONFIG_DIR:-~/.claude}/settings.json`, then update/add the `statusLine` field.
+Read `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json`, then update/add the `statusLine` field.
 
 **IMPORTANT:** Do not use `~` in the command. On Unix, use `$HOME` to keep the path portable across machines. On Windows, use an absolute path because Windows does not expand `~` in shell commands.
 
 If you are on Windows, first determine the correct path:
 ```bash
-node -e "const p=require('path').join(require('os').homedir(),'.claude','hud','omcp-hud.mjs').split(require('path').sep).join('/');console.log(JSON.stringify(p))"
+node -e "const p=require('path').join(require('os').homedir(),'.copilot','hud','omcp-hud.mjs').split(require('path').sep).join('/');console.log(JSON.stringify(p))"
 ```
 
 **IMPORTANT:** The command path MUST use forward slashes on all platforms. Claude Code executes statusLine commands via bash, which interprets backslashes as escape characters and breaks the path.
@@ -77,7 +77,7 @@ Then set the `statusLine` field. On Unix it should stay portable and look like:
 {
   "statusLine": {
     "type": "command",
-    "command": "node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs"
+    "command": "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs"
   }
 }
 ```
@@ -87,7 +87,7 @@ On Windows the path uses forward slashes (not backslashes):
 {
   "statusLine": {
     "type": "command",
-    "command": "node C:/Users/username/.claude/hud/omcp-hud.mjs"
+    "command": "node C:/Users/username/.copilot/hud/omcp-hud.mjs"
   }
 }
 ```
@@ -96,7 +96,7 @@ Use the Edit tool to add/update this field while preserving other settings.
 
 **Step 6:** Clean up old HUD scripts (if any):
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'hud','omcp-hud.js');try{if(f.existsSync(t)){f.unlinkSync(t);console.log('Removed legacy omcp-hud.js')}else{console.log('No legacy script found')}}catch{}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'hud','omcp-hud.js');try{if(f.existsSync(t)){f.unlinkSync(t);console.log('Removed legacy omcp-hud.js')}else{console.log('No legacy script found')}}catch{}"
 ```
 
 **Step 7:** Tell the user to restart Claude Code for changes to take effect.
@@ -155,7 +155,7 @@ When agents are running, the HUD shows detailed information on separate lines:
 
 ## Configuration Location
 
-HUD config is stored in `~/.claude/settings.json` under the `omcHud` key (or your custom config directory if `COPILOT_CONFIG_DIR` is set).
+HUD config is stored in `~/.copilot/settings.json` under the `omcHud` key (or your custom config directory if `COPILOT_CONFIG_DIR` is set).
 
 Legacy config location (deprecated): `~/.claude/.omg/hud-config.json`
 
@@ -239,7 +239,7 @@ If the HUD is not showing:
 {
   "statusLine": {
     "type": "command",
-    "command": "node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs"
+    "command": "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs"
   }
 }
 ```
@@ -247,8 +247,8 @@ If the HUD is not showing:
 **Node 24+ compatibility:** The HUD wrapper script imports `homedir` from `node:os` (not `node:path`). If you encounter `SyntaxError: The requested module 'path' does not provide an export named 'homedir'`, re-run the installer to regenerate `omcp-hud.mjs`.
 
 Manual verification:
-- HUD script: `~/.claude/hud/omcp-hud.mjs`
-- Settings: `~/.claude/settings.json` should have `statusLine` configured as an object with `type` and `command` fields
+- HUD script: `~/.copilot/hud/omcp-hud.mjs`
+- Settings: `~/.copilot/settings.json` should have `statusLine` configured as an object with `type` and `command` fields
 
 ---
 

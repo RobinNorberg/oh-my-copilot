@@ -129,7 +129,7 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
     it('hud SKILL.md keeps Unix statusLine guidance portable while preserving Windows-safe paths', () => {
       const content = readFileSync(join(REPO_ROOT, 'skills', 'hud', 'SKILL.md'), 'utf-8');
       expect(content).toContain('"command": "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs"');
-      expect(content).toContain('"command": "node C:/Users/username/.claude/hud/omcp-hud.mjs"');
+      expect(content).toContain('"command": "node C:/Users/username/.copilot/hud/omcp-hud.mjs"');
       expect(content).not.toContain('"command": "node /home/username/.claude/hud/omcp-hud.mjs"');
       expect(content).not.toContain('The command must use an absolute path, not `~`');
     });

@@ -948,7 +948,7 @@ All existing configurations, plans, and workflows continue working unchanged.
 
 #### Default Execution Mode
 
-Set your preferred execution mode in `~/.claude/.omc-config.json`:
+Set your preferred execution mode in `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`:
 
 ```json
 {

@@ -5,13 +5,7 @@
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-grep -q "oh-my-copilot" "$CONFIG_DIR/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-copilot"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');let c='';try{c=f.readFileSync(t,'utf8')}catch{};console.log(c.includes('oh-my-copilot')?'Plugin verified':'Plugin NOT found - run: claude /install-plugin oh-my-copilot')"
 ```
 
 ## Step 3.2: MCP Server Configuration (Pointer Only)
@@ -44,28 +38,15 @@ Use AskUserQuestion:
 
 #### 3.3.1: Enable Agent Teams in settings.json
 
-**CRITICAL**: Agent teams require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` to be set in `~/.claude/settings.json`. This must be done carefully to preserve existing user settings.
+**CRITICAL**: Agent teams require `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` to be set in `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json`. This must be done carefully to preserve existing user settings.
 
 First, read the current settings.json:
 
 ```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-SETTINGS_FILE="$CONFIG_DIR/settings.json"
-
-if [ -f "$SETTINGS_FILE" ]; then
-  echo "Current settings.json found"
-  cat "$SETTINGS_FILE"
-else
-  echo "No settings.json found - will create one"
-fi
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');try{process.stdout.write(f.readFileSync(t,'utf8'))}catch{console.log('(no settings.json at '+t+')')}"
 ```
 
-Then use the Read tool to read `${COPILOT_CONFIG_DIR:-~/.claude}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
+Then use the Read tool to read `${COPILOT_CONFIG_DIR:-~/.copilot}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
 
 **MERGE_JSON_FILE** is the portable merge used throughout this phase. It deep-merges a
 JSON patch into a file under the active config directory, creates the file when it does
@@ -74,7 +55,7 @@ refuses to touch a file it cannot parse. It runs unchanged in bash, zsh, and Pow
 with no external JSON tooling, no heredoc, and no shell redirection:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');const[name,raw]=process.argv.slice(1);const t=p.join(d,name);const patch=JSON.parse(raw);f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: '+t+' is not valid JSON. Existing file was not modified.');process.exit(1)}}const merge=(a,b)=>{for(const k of Object.keys(b)){const v=b[k];if(v&&typeof v==='object'&&Array.isArray(v)===false){a[k]=merge(a[k]&&typeof a[k]==='object'?a[k]:{},v)}else{a[k]=v}}return a};merge(c,patch);const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Updated '+t)}catch(e){f.rmSync(tmp,{force:true});console.error('ERROR: Failed to update '+t+'. Existing file was not modified.');process.exit(1)}" "settings.json" "{\"env\":{\"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS\":\"1\"}}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');const[name,raw]=process.argv.slice(1);const t=p.join(d,name);const patch=JSON.parse(raw);f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: '+t+' is not valid JSON. Existing file was not modified.');process.exit(1)}}const merge=(a,b)=>{for(const k of Object.keys(b)){const v=b[k];if(v&&typeof v==='object'&&Array.isArray(v)===false){a[k]=merge(a[k]&&typeof a[k]==='object'?a[k]:{},v)}else{a[k]=v}}return a};merge(c,patch);const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Updated '+t)}catch(e){f.rmSync(tmp,{force:true});console.error('ERROR: Failed to update '+t+'. Existing file was not modified.');process.exit(1)}" "settings.json" "{\"env\":{\"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS\":\"1\"}}"
 ```
 
 **IMPORTANT**: The Edit tool is preferred for modifying settings.json when possible, since it preserves formatting and comments. The merge command above is the fallback for when the file needs structural merging.
@@ -137,7 +118,7 @@ teammates inherit your session model.
 After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'settings.json');let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: settings.json is invalid JSON or missing. Restore it from the backup before continuing.');process.exit(1)}console.log('settings.json: valid JSON');console.log((c.env||{}).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS?'Agent teams: ENABLED':'WARNING: Agent teams env var not found in settings.json');console.log('');console.log('Final settings.json:');console.log(JSON.stringify(c,null,2))"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'settings.json');let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: settings.json is invalid JSON or missing. Restore it from the backup before continuing.');process.exit(1)}console.log('settings.json: valid JSON');console.log((c.env||{}).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS?'Agent teams: ENABLED':'WARNING: Agent teams env var not found in settings.json');console.log('');console.log('Final settings.json:');console.log(JSON.stringify(c,null,2))"
 ```
 
 ### If User Chooses NO:

@@ -17,7 +17,7 @@ Show all available skills organized by scope.
 
 **Behavior:**
 1. Scan bundled built-in skills in the plugin `skills/` directory (read-only)
-2. Scan user skills at `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/`
+2. Scan user skills at `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/`
 3. Scan project skills at `.omg/skills/`
 4. Parse YAML frontmatter for metadata
 5. Display in organized table format:
@@ -61,7 +61,7 @@ Interactive wizard for creating a new skill.
 4. **Ask for argument hint** (optional)
    - Example: "<file> [options]"
 5. **Ask for scope:**
-   - `user` → `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/SKILL.md`
+   - `user` → `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/SKILL.md`
    - `project` → `.omg/skills/<name>/SKILL.md`
 6. **Create skill file** with template:
 
@@ -127,13 +127,13 @@ Remove a skill by name.
 
 **Behavior:**
 1. **Search for skill** in both scopes:
-   - `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/SKILL.md`
+   - `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/SKILL.md`
    - `.omg/skills/<name>/SKILL.md`
 2. **If found:**
    - Display skill info (name, description, scope)
    - **Ask for confirmation:** "Delete '<name>' skill from <scope>? (yes/no)"
 3. **If confirmed:**
-   - Delete entire skill directory (e.g., `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/`)
+   - Delete entire skill directory (e.g., `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/<name>/`)
    - Report: "✓ Removed skill '<name>' from <scope>"
 4. **If not found:**
    - Report: "✗ Skill '<name>' not found in user or project scope"
@@ -300,7 +300,7 @@ Sync skills between user and project scopes.
 
 **Behavior:**
 1. **Scan both scopes:**
-   - User skills: `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/`
+   - User skills: `${COPILOT_CONFIG_DIR:-~/.copilot}/skills/omc-learned/`
    - Project skills: `.omg/skills/`
 2. **Compare and categorize:**
    - User-only skills (not in project)
@@ -369,7 +369,7 @@ Interactive wizard for setting up and managing local skills (formerly local-skil
 First, check if skill directories exist and create them if needed:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');for(const[label,dir]of [['User',p.join(d,'skills','omc-learned')],['Project',p.join('.omg','skills')]]){if(f.existsSync(dir)){console.log(label+' skills directory exists: '+dir)}else{f.mkdirSync(dir,{recursive:true});console.log('Created '+label.toLowerCase()+' skills directory: '+dir)}}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');for(const[label,dir]of [['User',p.join(d,'skills','omc-learned')],['Project',p.join('.omg','skills')]]){if(f.existsSync(dir)){console.log(label+' skills directory exists: '+dir)}else{f.mkdirSync(dir,{recursive:true});console.log('Created '+label.toLowerCase()+' skills directory: '+dir)}}"
 ```
 
 #### Step 2: Skill Scan and Inventory
@@ -377,7 +377,7 @@ node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DI
 Scan both directories and show a comprehensive inventory:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');const walk=dir=>{let out=[];let entries=[];try{entries=f.readdirSync(dir,{withFileTypes:true})}catch{return out};for(const e of entries){const t=p.join(dir,e.name);if(e.isDirectory()){out=out.concat(walk(t))}else if(e.name.endsWith('.md')){out.push(t)}}return out};const first=(text,key)=>{const m=text.split(/\r?\n/).find(l=>l.startsWith(key+':'));return m?m.slice(key.length+1).trim():''};for(const[label,dir]of [['USER-LEVEL SKILLS',p.join(d,'skills','omc-learned')],['PROJECT-LEVEL SKILLS',p.join('.omg','skills')]]){console.log('=== '+label+' ('+dir+') ===');if(f.existsSync(dir)===false){console.log('Directory not found');console.log('');continue}const files=walk(dir);console.log('Total skills: '+files.length);for(const file of files){let text='';try{text=f.readFileSync(file,'utf8')}catch{};const name=first(text,'name')||p.basename(file);const desc=first(text,'description');console.log('  - '+name);if(desc)console.log('    Description: '+desc);console.log('    Modified: '+f.statSync(file).mtime.toISOString())}console.log('')}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');const walk=dir=>{let out=[];let entries=[];try{entries=f.readdirSync(dir,{withFileTypes:true})}catch{return out};for(const e of entries){const t=p.join(dir,e.name);if(e.isDirectory()){out=out.concat(walk(t))}else if(e.name.endsWith('.md')){out.push(t)}}return out};const first=(text,key)=>{const m=text.split(/\r?\n/).find(l=>l.startsWith(key+':'));return m?m.slice(key.length+1).trim():''};for(const[label,dir]of [['USER-LEVEL SKILLS',p.join(d,'skills','omc-learned')],['PROJECT-LEVEL SKILLS',p.join('.omg','skills')]]){console.log('=== '+label+' ('+dir+') ===');if(f.existsSync(dir)===false){console.log('Directory not found');console.log('');continue}const files=walk(dir);console.log('Total skills: '+files.length);for(const file of files){let text='';try{text=f.readFileSync(file,'utf8')}catch{};const name=first(text,'name')||p.basename(file);const desc=first(text,'description');console.log('  - '+name);if(desc)console.log('    Description: '+desc);console.log('    Modified: '+f.statSync(file).mtime.toISOString())}console.log('')}"
 
 # Summary
 TOTAL=$((USER_COUNT + PROJECT_COUNT))

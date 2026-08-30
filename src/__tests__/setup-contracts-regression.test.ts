@@ -159,7 +159,7 @@ describe('Contract 2: no unguarded $HOME/.claude in shell/script files', () => {
   ]);
 
   // The safe pattern: ${COPILOT_CONFIG_DIR:-$HOME/.copilot}
-  const SAFE_PATTERN = /\$\{COPILOT_CONFIG_DIR:-\$HOME\/\.claude\}/;
+  const SAFE_PATTERN = /\$\{COPILOT_CONFIG_DIR:-\$HOME\/\.copilot\}/;
   const DANGEROUS_PATTERN = /\$HOME\/\.claude/;
 
   const violations: { file: string; line: number; text: string }[] = [];

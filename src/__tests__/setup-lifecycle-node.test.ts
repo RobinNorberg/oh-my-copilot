@@ -131,6 +131,62 @@ describe('setup-progress.mjs', () => {
     expect(readFileSync(configPath, 'utf-8')).toBe('garbage');
   });
 
+  it('adopts a pre-unification config left in the old directory', () => {
+    // Node surfaces used to resolve ~/.claude while the shell surfaces used
+    // ~/.copilot, so an upgraded install can hold its only .omc-config.json in
+    // the old place. Setup is the upgrade path, so `complete` recovers it.
+    const { root, project } = makeWorkspace('omc-progress-adopt-');
+    const home = join(root, 'home');
+    const legacyDir = join(home, '.claude');
+    mkdirSync(legacyDir, { recursive: true });
+    writeFileSync(
+      join(legacyDir, '.omc-config.json'),
+      JSON.stringify({ taskTool: 'beads', notifications: { enabled: true } }, null, 2),
+    );
+
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+    delete env.COPILOT_CONFIG_DIR;
+    const result = spawnSync(process.execPath, [SETUP_PROGRESS, 'complete', 'v1.2.3'], {
+      cwd: project,
+      encoding: 'utf-8',
+      env,
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Adopted settings from');
+    const adopted = JSON.parse(
+      readFileSync(join(home, '.copilot', '.omc-config.json'), 'utf-8'),
+    ) as Record<string, unknown>;
+    expect(adopted.taskTool).toBe('beads');
+    expect(adopted.setupVersion).toBe('v1.2.3');
+    // The legacy file is copied, never moved, so nothing is destroyed.
+    expect(existsSync(join(legacyDir, '.omc-config.json'))).toBe(true);
+  });
+
+  it('leaves an existing config alone rather than adopting the legacy one', () => {
+    const { root, project } = makeWorkspace('omc-progress-no-adopt-');
+    const home = join(root, 'home');
+    mkdirSync(join(home, '.claude'), { recursive: true });
+    mkdirSync(join(home, '.copilot'), { recursive: true });
+    writeFileSync(join(home, '.claude', '.omc-config.json'), JSON.stringify({ taskTool: 'beads' }));
+    writeFileSync(join(home, '.copilot', '.omc-config.json'), JSON.stringify({ taskTool: 'builtin' }));
+
+    const env: NodeJS.ProcessEnv = { ...process.env, HOME: home, USERPROFILE: home };
+    delete env.COPILOT_CONFIG_DIR;
+    const result = spawnSync(process.execPath, [SETUP_PROGRESS, 'complete', 'v1.2.3'], {
+      cwd: project,
+      encoding: 'utf-8',
+      env,
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain('Adopted settings from');
+    const active = JSON.parse(
+      readFileSync(join(home, '.copilot', '.omc-config.json'), 'utf-8'),
+    ) as Record<string, unknown>;
+    expect(active.taskTool).toBe('builtin');
+  });
+
   it('reads the version from the CLAUDE.md marker when complete gets no argument', () => {
     const { project, configDir } = makeWorkspace('omc-progress-version-');
     mkdirSync(join(project, '.claude'), { recursive: true });

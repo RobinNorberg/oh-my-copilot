@@ -5,7 +5,7 @@
 Check if user has existing 2.x configuration:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');console.log('IS_UPGRADE='+f.existsSync(p.join(d,'commands','ralph-loop.md')))"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');console.log('IS_UPGRADE='+f.existsSync(p.join(d,'commands','ralph-loop.md')))"
 ```
 
 If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.

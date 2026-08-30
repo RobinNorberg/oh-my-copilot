@@ -39,14 +39,14 @@ Detect which provider the user wants based on their request or argument:
 
 ## Shared Config Commands
 
-Every provider section reads and writes the same `${COPILOT_CONFIG_DIR:-~/.claude}/.omc-config.json`.
+Every provider section reads and writes the same `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`.
 These two commands are the only ones you need for that, and both run unchanged in bash,
 zsh, and PowerShell — no jq, no shell-specific redirection.
 
 **READ_NOTIFICATIONS** — print the current `notifications` object, or `NO_CONFIG_FILE`:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false){console.log('NO_CONFIG_FILE');process.exit(0)}let c={};try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.log('INVALID_CONFIG_FILE');process.exit(0)}console.log(JSON.stringify(c.notifications||{},null,2))"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false){console.log('NO_CONFIG_FILE');process.exit(0)}let c={};try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.log('INVALID_CONFIG_FILE');process.exit(0)}console.log(JSON.stringify(c.notifications||{},null,2))"
 ```
 
 **MERGE_CONFIG** — deep-merge one JSON patch into the config. It writes through a temp
@@ -54,7 +54,7 @@ file, so a failure can never truncate the user's existing settings, and it refus
 touch a config it cannot parse:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'.omc-config.json');const patch=JSON.parse(process.argv[1]);f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: existing config is not valid JSON; it was not modified');process.exit(1)}}const merge=(a,b)=>{for(const k of Object.keys(b)){const v=b[k];if(v&&typeof v==='object'&&Array.isArray(v)===false){a[k]=merge(a[k]&&typeof a[k]==='object'?a[k]:{},v)}else{a[k]=v}}return a};merge(c,patch);const tmp=t+'.tmp';f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Updated '+t)" "{\"notifications\":{\"enabled\":true}}"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');const patch=JSON.parse(process.argv[1]);f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: existing config is not valid JSON; it was not modified');process.exit(1)}}const merge=(a,b)=>{for(const k of Object.keys(b)){const v=b[k];if(v&&typeof v==='object'&&Array.isArray(v)===false){a[k]=merge(a[k]&&typeof a[k]==='object'?a[k]:{},v)}else{a[k]=v}}return a};merge(c,patch);const tmp=t+'.tmp';f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Updated '+t)" "{\"notifications\":{\"enabled\":true}}"
 ```
 
 Replace the trailing JSON argument with the patch for the provider you are configuring.
@@ -68,7 +68,7 @@ Set up Telegram notifications so OMC can message you when sessions end, need inp
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.claude}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
@@ -237,7 +237,7 @@ Set up Discord notifications so OMC can ping you when sessions end, need input, 
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.claude}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
@@ -427,7 +427,7 @@ Set up Slack notifications so OMC can message you when sessions end, need input,
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.claude}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
@@ -652,7 +652,7 @@ If the trigger or argument contains "hook", "template", or "customize messages" 
 
 ### Step 1: Detect Existing Hook Config
 
-Check if `${COPILOT_CONFIG_DIR:-~/.claude}/omc_config.hook.json` exists. If it does, show the current configuration. If not, explain what it does.
+Check if `${COPILOT_CONFIG_DIR:-~/.copilot}/omc_config.hook.json` exists. If it does, show the current configuration. If not, explain what it does.
 
 ```
 Hook event templates let you customize the notification messages sent to each platform.
@@ -739,7 +739,7 @@ If per-platform: ask for each enabled platform's template separately.
 
 ### Step 6: Write Configuration
 
-Read or create `${COPILOT_CONFIG_DIR:-~/.claude}/omc_config.hook.json` and merge the new settings:
+Read or create `${COPILOT_CONFIG_DIR:-~/.copilot}/omc_config.hook.json` and merge the new settings:
 
 ```json
 {
@@ -813,7 +813,7 @@ If `~/.claude/omc_config.openclaw.json` exists, detect and offer migration:
 
 **Step 1: Detect Legacy Config**
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');if(f.existsSync(p.join(d,'omc_config.openclaw.json'))===false){console.log('LEGACY_FOUND=false');process.exit(0)}console.log('LEGACY_FOUND=true');let c={};try{c=JSON.parse(f.readFileSync(p.join(d,'.omc-config.json'),'utf8'))}catch{};const list=((c.customIntegrations||{}).integrations)||[];console.log('ALREADY_MIGRATED='+list.some(i=>i&&i.preset==='openclaw'))"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');if(f.existsSync(p.join(d,'omc_config.openclaw.json'))===false){console.log('LEGACY_FOUND=false');process.exit(0)}console.log('LEGACY_FOUND=true');let c={};try{c=JSON.parse(f.readFileSync(p.join(d,'.omc-config.json'),'utf8'))}catch{};const list=((c.customIntegrations||{}).integrations)||[];console.log('ALREADY_MIGRATED='+list.some(i=>i&&i.preset==='openclaw'))"
 ```
 
 **Step 2: Offer Migration**
@@ -1013,7 +1013,7 @@ Show stdout/stderr and exit code.
 
 **List existing:**
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');let c={};try{c=JSON.parse(f.readFileSync(p.join(d,'.omc-config.json'),'utf8'))}catch{};for(const i of ((c.customIntegrations||{}).integrations)||[])console.log(JSON.stringify({id:i.id,type:i.type,preset:i.preset,enabled:i.enabled,events:i.events}))"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot');let c={};try{c=JSON.parse(f.readFileSync(p.join(d,'.omc-config.json'),'utf8'))}catch{};for(const i of ((c.customIntegrations||{}).integrations)||[])console.log(JSON.stringify({id:i.id,type:i.type,preset:i.preset,enabled:i.enabled,events:i.events}))"
 ```
 
 **Disable, enable, or remove one** — pass the integration id and the action
@@ -1021,7 +1021,7 @@ node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DI
 cannot truncate the config:
 
 ```bash
-node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'.omc-config.json');const[id,action]=process.argv.slice(1);let c={};try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: config missing or not valid JSON; it was not modified');process.exit(1)}c.customIntegrations=c.customIntegrations||{};const list=c.customIntegrations.integrations||[];c.customIntegrations.integrations=action==='remove'?list.filter(i=>(i.id===id)===false):list.map(i=>i.id===id?{...i,enabled:action==='enable'}:i);const tmp=t+'.tmp';f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log(action+' applied to '+id)" "my-integration" "disable"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.copilot'),t=p.join(d,'.omc-config.json');const[id,action]=process.argv.slice(1);let c={};try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: config missing or not valid JSON; it was not modified');process.exit(1)}c.customIntegrations=c.customIntegrations||{};const list=c.customIntegrations.integrations||[];c.customIntegrations.integrations=action==='remove'?list.filter(i=>(i.id===id)===false):list.map(i=>i.id===id?{...i,enabled:action==='enable'}:i);const tmp=t+'.tmp';f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log(action+' applied to '+id)" "my-integration" "disable"
 ```
 
 ### Template Variables Reference
