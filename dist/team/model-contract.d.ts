@@ -1,5 +1,5 @@
 import type { WorkerLaunchDescriptor } from './types.js';
-export type CliAgentType = 'claude' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
+export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
 export interface CliAgentContract {
     agentType: CliAgentType;
     binary: string;

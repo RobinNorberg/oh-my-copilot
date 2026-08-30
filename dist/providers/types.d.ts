@@ -35,6 +35,15 @@ export interface IssueInfo {
  * Each provider implements this to support PR/issue operations
  * via its CLI tool or REST API.
  */
+/** Fork-specific: Azure DevOps work item, backing the omc-ado-* skills. */
+export interface WorkItem {
+    id: number;
+    title: string;
+    state: string;
+    tags: string[];
+    assignedTo?: string;
+    url?: string;
+}
 export interface GitProvider {
     /** Provider identifier */
     readonly name: ProviderName;

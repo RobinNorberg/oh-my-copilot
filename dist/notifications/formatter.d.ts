@@ -39,7 +39,7 @@ export declare function parseTmuxTail(raw: string, maxLines?: number): string;
 export declare function formatAgentCall(payload: NotificationPayload): string;
 /**
  * Format ask-user-question notification message.
- * Notifies the user that Claude is waiting for input.
+ * Notifies the user that Copilot is waiting for input.
  */
 export declare function formatAskUserQuestion(payload: NotificationPayload): string;
 /**
@@ -47,4 +47,12 @@ export declare function formatAskUserQuestion(payload: NotificationPayload): str
  * Returns a markdown-formatted string suitable for Discord/Telegram.
  */
 export declare function formatNotification(payload: NotificationPayload): string;
+/**
+ * Format notification as a Microsoft Teams Adaptive Card.
+ * Returns the JSON body to POST to a Teams webhook (Power Automate Workflows or O365 Connectors).
+ * Supports @mentions via tagList entries in "DisplayName:AAD-Object-ID" format.
+ *
+ * Adaptive Card schema: https://adaptivecards.io/schemas/adaptive-card.json
+ */
+export declare function formatTeamsAdaptiveCard(payload: NotificationPayload, tagList?: string[]): string;
 //# sourceMappingURL=formatter.d.ts.map

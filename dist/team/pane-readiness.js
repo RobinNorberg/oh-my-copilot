@@ -2,6 +2,7 @@ const LEGACY_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[�
 const CURSOR_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯→]\s*/u;
 const PROVIDER_IDLE_PROMPT_LINES = {
     claude: LEGACY_IDLE_PROMPT_LINE,
+    copilot: LEGACY_IDLE_PROMPT_LINE,
     codex: LEGACY_IDLE_PROMPT_LINE,
     gemini: LEGACY_IDLE_PROMPT_LINE,
     cursor: CURSOR_IDLE_PROMPT_LINE,

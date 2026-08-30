@@ -117,7 +117,7 @@ export function formatSessionEnd(payload) {
  */
 export function formatSessionIdle(payload) {
     const lines = [`# Session Idle`, ""];
-    lines.push(`Claude has finished and is waiting for input.`);
+    lines.push(`Copilot has finished and is waiting for input.`);
     lines.push("");
     if (payload.reason) {
         lines.push(`**Reason:** ${payload.reason}`);
@@ -361,7 +361,7 @@ export function formatAgentCall(payload) {
 }
 /**
  * Format ask-user-question notification message.
- * Notifies the user that Claude is waiting for input.
+ * Notifies the user that Copilot is waiting for input.
  */
 export function formatAskUserQuestion(payload) {
     const lines = [`# Input Needed`, ""];
@@ -413,5 +413,185 @@ export function formatNotification(payload) {
         default:
             return payload.message || `Event: ${payload.event}`;
     }
+}
+function parseTeamsMention(tag) {
+    const colonIdx = tag.indexOf(":");
+    if (colonIdx <= 0 || colonIdx === tag.length - 1)
+        return null;
+    const name = tag.slice(0, colonIdx).trim();
+    const id = tag.slice(colonIdx + 1).trim();
+    if (!name || !id)
+        return null;
+    return { name, id };
+}
+/**
+ * Format notification as a Microsoft Teams Adaptive Card.
+ * Returns the JSON body to POST to a Teams webhook (Power Automate Workflows or O365 Connectors).
+ * Supports @mentions via tagList entries in "DisplayName:AAD-Object-ID" format.
+ *
+ * Adaptive Card schema: https://adaptivecards.io/schemas/adaptive-card.json
+ */
+export function formatTeamsAdaptiveCard(payload, tagList) {
+    const project = projectDisplay(payload);
+    const time = new Date(payload.timestamp).toLocaleTimeString();
+    // Build facts array based on event type
+    const facts = [];
+    switch (payload.event) {
+        case "session-start":
+            facts.push({ title: "Session", value: payload.sessionId });
+            facts.push({ title: "Project", value: project });
+            facts.push({ title: "Time", value: time });
+            if (payload.tmuxSession) {
+                facts.push({ title: "tmux", value: payload.tmuxSession });
+            }
+            break;
+        case "session-stop":
+            if (payload.activeMode) {
+                facts.push({ title: "Mode", value: payload.activeMode });
+            }
+            if (payload.iteration != null && payload.maxIterations != null) {
+                facts.push({ title: "Iteration", value: `${payload.iteration}/${payload.maxIterations}` });
+            }
+            if (payload.incompleteTasks != null && payload.incompleteTasks > 0) {
+                facts.push({ title: "Incomplete tasks", value: String(payload.incompleteTasks) });
+            }
+            break;
+        case "session-end":
+            facts.push({ title: "Session", value: payload.sessionId });
+            facts.push({ title: "Duration", value: formatDuration(payload.durationMs) });
+            facts.push({ title: "Reason", value: payload.reason || "unknown" });
+            if (payload.agentsSpawned != null) {
+                facts.push({ title: "Agents", value: `${payload.agentsCompleted ?? 0}/${payload.agentsSpawned} completed` });
+            }
+            if (payload.modesUsed && payload.modesUsed.length > 0) {
+                facts.push({ title: "Modes", value: payload.modesUsed.join(", ") });
+            }
+            break;
+        case "session-idle":
+            if (payload.reason) {
+                facts.push({ title: "Reason", value: payload.reason });
+            }
+            if (payload.modesUsed && payload.modesUsed.length > 0) {
+                facts.push({ title: "Modes", value: payload.modesUsed.join(", ") });
+            }
+            break;
+        case "ask-user-question":
+            if (payload.question) {
+                facts.push({ title: "Question", value: payload.question });
+            }
+            break;
+        case "agent-call":
+            if (payload.agentName) {
+                facts.push({ title: "Agent", value: payload.agentName });
+            }
+            if (payload.agentType) {
+                facts.push({ title: "Type", value: payload.agentType });
+            }
+            break;
+    }
+    // Add footer facts
+    if (payload.tmuxSession && payload.event !== "session-start") {
+        facts.push({ title: "tmux", value: payload.tmuxSession });
+    }
+    facts.push({ title: "Project", value: project });
+    // Map event to title and color
+    const eventTitles = {
+        "session-start": { title: "Session Started", style: "good" },
+        "session-stop": { title: "Session Continuing", style: "attention" },
+        "session-end": { title: "Session Ended", style: "default" },
+        "session-idle": { title: "Session Idle", style: "warning" },
+        "ask-user-question": { title: "Input Needed", style: "attention" },
+        "agent-call": { title: "Agent Spawned", style: "default" },
+    };
+    const eventInfo = eventTitles[payload.event] || { title: payload.event, style: "default" };
+    // Build Adaptive Card body
+    const body = [
+        {
+            type: "TextBlock",
+            size: "Medium",
+            weight: "Bolder",
+            text: eventInfo.title,
+            style: "heading",
+        },
+        {
+            type: "FactSet",
+            facts: facts.map((f) => ({ title: f.title, value: f.value })),
+        },
+    ];
+    // Add context summary if present
+    if (payload.contextSummary && payload.event === "session-end") {
+        body.push({
+            type: "TextBlock",
+            text: `**Summary:** ${payload.contextSummary}`,
+            wrap: true,
+        });
+    }
+    // Add tmux tail if present
+    if (payload.tmuxTail) {
+        const parsed = parseTmuxTail(payload.tmuxTail, payload.maxTailLines);
+        if (parsed) {
+            body.push({
+                type: "TextBlock",
+                text: "**Recent output:**",
+                spacing: "Medium",
+            }, {
+                type: "TextBlock",
+                text: parsed,
+                fontType: "Monospace",
+                wrap: true,
+                maxLines: 10,
+            });
+        }
+    }
+    // Parse mention tags and build entities + mention text
+    const mentions = [];
+    if (tagList) {
+        for (const tag of tagList) {
+            const parsed = parseTeamsMention(tag);
+            if (parsed)
+                mentions.push(parsed);
+        }
+    }
+    // Prepend mention text block if there are valid mentions
+    if (mentions.length > 0) {
+        const mentionText = mentions.map((m) => `<at>${m.name}</at>`).join(" ");
+        body.unshift({
+            type: "TextBlock",
+            text: mentionText,
+            wrap: true,
+        });
+    }
+    // Build msteams entities for @mentions
+    const msteams = mentions.length > 0
+        ? {
+            entities: mentions.map((m) => ({
+                type: "mention",
+                text: `<at>${m.name}</at>`,
+                mentioned: {
+                    id: m.id,
+                    name: m.name,
+                },
+            })),
+        }
+        : undefined;
+    // Wrap in Adaptive Card envelope
+    // Power Automate Workflows expect this format
+    const card = {
+        type: "message",
+        attachments: [
+            {
+                contentType: "application/vnd.microsoft.card.adaptive",
+                contentUrl: null,
+                content: {
+                    $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+                    type: "AdaptiveCard",
+                    version: "1.4",
+                    body,
+                    ...(msteams && { msteams }),
+                },
+            },
+        ],
+    };
+    return JSON.stringify(card);
 }
 //# sourceMappingURL=formatter.js.map

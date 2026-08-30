@@ -574,6 +574,16 @@ const WORKER_STARTUP_EVIDENCE_POLICIES = {
         resubmitBudgetMs: 2_750,
         engagedPaneRecheckBudgetMs: 30_000,
     },
+    // Copilot CLI is this fork's host and shares Claude's interactive transport
+    // characteristics, including the lost-submit failure mode, so it gets the same
+    // bounded resubmit behavior rather than the external-provider evidence gate.
+    copilot: {
+        initialBudgetMs: 1_250,
+        finalRecheckBudgetMs: 0,
+        resubmitAttempts: 4,
+        resubmitBudgetMs: 2_750,
+        engagedPaneRecheckBudgetMs: 30_000,
+    },
     // External providers can be visibly ready before they publish task/status
     // evidence. Give that distinct evidence gate enough time for a cold start,
     // then perform one bounded read-only recheck without duplicating the inbox.

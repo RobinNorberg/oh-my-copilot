@@ -143,7 +143,9 @@ export function resolveRoleAssignment(role, cfg) {
     const provider = isOrchestrator
         ? 'claude'
         : (spec?.provider ?? 'claude');
-    const model = provider === 'claude'
+    // 'copilot' is this fork's host CLI, not an external provider, so it resolves
+    // through the host model path alongside 'claude'.
+    const model = provider === 'claude' || provider === 'copilot'
         ? resolveClaudeModel(canonical, spec?.model, cfg)
         : resolveExternalModel(provider, spec?.model, cfg);
     const agent = spec?.agent ?? ROLE_TO_AGENT[canonical];

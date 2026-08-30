@@ -6,6 +6,7 @@ const availability = vi.hoisted(() => ({
     cursor: false,
     grok: false,
     antigravity: false,
+    copilot: false,
 }));
 vi.mock('../team/model-contract.js', () => ({
     isCliAvailable: (agentType) => availability[agentType],

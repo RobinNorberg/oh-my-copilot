@@ -10,6 +10,7 @@ import { loadConfig } from '../../config/loader.js';
 import { probeCli } from '../../team/cli-detection.js';
 const PROVIDER_BINARY = {
     claude: 'claude',
+    copilot: 'copilot',
     codex: 'codex',
     gemini: 'gemini',
     grok: 'grok',

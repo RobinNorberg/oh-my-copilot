@@ -90,7 +90,7 @@ export interface McpWorkerMember {
 export interface HeartbeatData {
     workerName: string;
     teamName: string;
-    provider: 'codex' | 'gemini' | 'claude' | 'cursor' | 'grok' | 'antigravity';
+    provider: 'codex' | 'gemini' | 'claude' | 'copilot' | 'cursor' | 'grok' | 'antigravity';
     pid: number;
     lastPollAt: string;
     currentTaskId?: string;
@@ -326,7 +326,7 @@ export interface TeamRecoveryAttempt {
 }
 export interface WorkerLaunchDescriptor {
     schema_version: 1;
-    provider: 'claude' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
+    provider: 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
     model: string | null;
     binary: string;
     args: string[];
@@ -403,7 +403,7 @@ export interface WorkerInfo {
     name: string;
     index: number;
     role: string;
-    worker_cli?: 'codex' | 'claude' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
+    worker_cli?: 'codex' | 'claude' | 'copilot' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
     assigned_tasks: string[];
     pid?: number;
     pane_id?: string;

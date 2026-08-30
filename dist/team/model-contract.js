@@ -144,6 +144,20 @@ const CONTRACTS = {
             return rawOutput.trim();
         },
     },
+    copilot: {
+        agentType: 'copilot',
+        binary: 'copilot',
+        installInstructions: 'Install Copilot CLI: https://github.com/github/copilot-cli',
+        buildLaunchArgs(model, extraFlags = []) {
+            const args = ['--dangerously-skip-permissions'];
+            if (model)
+                args.push('--model', model);
+            return [...args, ...extraFlags];
+        },
+        parseOutput(rawOutput) {
+            return rawOutput.trim();
+        },
+    },
     codex: {
         agentType: 'codex',
         binary: 'codex',
