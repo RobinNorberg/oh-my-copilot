@@ -39,7 +39,7 @@ The coordinator exclusively performs all `CLAUDE.md`, `CLAUDE-omc.md`, managed-i
 
 After a successful local or global-overwrite install, verify the target file contains both markers. In global preserve mode, verify `CLAUDE-omc.md` contains both markers and the base `CLAUDE.md` contains exactly one managed import block. Stop and report a coordinator failure; never attempt a shell, downloaded-source, or fallback mutation.
 
-For `local` installs inside a git repository, the script also seeds `.git/info/exclude` with an OMC block that re-includes `.omc/`, ignores local `.omc/*` artifacts by default, and preserves `.omc/skills/` for project skills you intend to commit.
+For `local` installs inside a git repository, the script also seeds `.git/info/exclude` with an OMC block that re-includes `.omg/`, ignores local `.omg/*` artifacts by default, and preserves `.omg/skills/` for project skills you intend to commit.
 
 **Note**: Setup never downloads or merges CLAUDE.md in the shell. It uses only the handshake-verified canonical source bundled with the complete active plugin root.
 
@@ -51,7 +51,7 @@ If `CONFIG_TARGET` is `local`:
 ```
 OMC Project Configuration Complete
 - CLAUDE.md: Updated by the active plugin's coordinator at ./.claude/CLAUDE.md
-- Git excludes: Added local `.omc/*` ignore rules to `.git/info/exclude` (keeps `.omc/skills/` trackable for committed project skills)
+- Git excludes: Added local `.omg/*` ignore rules to `.git/info/exclude` (keeps `.omg/skills/` trackable for committed project skills)
 - Backup: Coordinator reported a byte-identical backup only when the previous target required mutation
 - Scope: PROJECT - applies only to this project
 - Hooks: Provided by plugin (no manual installation needed)

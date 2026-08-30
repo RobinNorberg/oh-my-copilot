@@ -76,7 +76,7 @@ User: "/team 3:executor fix all TypeScript errors"
                       -> request shutdown from each teammate through the active team surface
                       <- shutdown acknowledgement from teammates
                       -> clear OMC team state (no TeamDelete call)
-                      -> rm .omc/state/team-state.json
+                      -> rm .omg/state/team-state.json
 ```
 
 **Native Claude Code team model (2.1.178+):**
@@ -156,7 +156,7 @@ When transitioning between stages, important context — decisions made, alterna
 
 **Each completing stage MUST produce a handoff document before transitioning.**
 
-The lead writes handoffs to `.omc/handoffs/<stage-name>.md`.
+The lead writes handoffs to `.omg/handoffs/<stage-name>.md`.
 
 #### Handoff Format
 
@@ -174,7 +174,7 @@ The lead writes handoffs to `.omc/handoffs/<stage-name>.md`.
 
 1. **Lead reads previous handoff BEFORE spawning next stage's agents.** The handoff content is included in the next stage's agent spawn prompts, ensuring agents start with full context.
 2. **Handoffs accumulate.** The verify stage can read all prior handoffs (plan → prd → exec) for full decision history.
-3. **On team cancellation, handoffs survive** in `.omc/handoffs/` for session resume. They are not deleted by native Claude Code team cleanup; no `TeamDelete` call exists in Claude Code 2.1.178+.
+3. **On team cancellation, handoffs survive** in `.omg/handoffs/` for session resume. They are not deleted by native Claude Code team cleanup; no `TeamDelete` call exists in Claude Code 2.1.178+.
 4. **Handoffs are lightweight.** 10-20 lines max. They capture decisions and rationale, not full specifications (those live in deliverable files like DESIGN.md).
 
 #### Example
@@ -191,8 +191,8 @@ The lead writes handoffs to `.omc/handoffs/<stage-name>.md`.
 
 ### Resume and Cancel Semantics
 
-- **Resume:** restart from the last non-terminal stage using staged state + live task status. Read `.omc/handoffs/` to recover stage transition context.
-- **Cancel:** `/oh-my-copilot:cancel` requests teammate shutdown, waits for responses (best effort), marks phase `cancelled` with `active=false`, captures cancellation metadata, then deletes team resources and clears/preserves Team state per policy. Handoff files in `.omc/handoffs/` are preserved for potential resume.
+- **Resume:** restart from the last non-terminal stage using staged state + live task status. Read `.omg/handoffs/` to recover stage transition context.
+- **Cancel:** `/oh-my-copilot:cancel` requests teammate shutdown, waits for responses (best effort), marks phase `cancelled` with `active=false`, captures cancellation metadata, then deletes team resources and clears/preserves Team state per policy. Handoff files in `.omg/handoffs/` are preserved for potential resume.
 - Terminal states are `complete`, `failed`, and `cancelled`.
 
 ## Windows psmux tmux-compatible gate
@@ -422,7 +422,7 @@ When all real tasks (non-internal) are completed or failed:
    ```
 3. **Await responses** -- Each teammate responds with `shutdown_response(approve: true)` and terminates
 4. **Clean up native team state** -- Claude Code 2.1.178+ has no `TeamDelete`; after teammates acknowledge shutdown, clear OMC state and any local task bookkeeping.
-5. **Clean OMC state** -- Remove `.omc/state/team-state.json`
+5. **Clean OMC state** -- Remove `.omg/state/team-state.json`
 6. **Report summary** -- Present results to the user
 
 ## Agent Preamble
@@ -632,7 +632,7 @@ Tmux CLI workers run in dedicated tmux panes with filesystem access. They are **
 /team 3:executor "refactor auth module with security review"
 
 Task decomposition:
-#1 [codex_worker] Security review of current auth code -> output to .omc/research/auth-security.md
+#1 [codex_worker] Security review of current auth code -> output to .omg/research/auth-security.md
 #2 [codex_worker] Refactor auth/login.ts and auth/session.ts (uses #1 findings)
 #3 [claude_worker:designer] Redesign auth UI components (login form, session indicator)
 #4 [claude_worker] Update auth tests + fix integration issues
@@ -808,7 +808,7 @@ This prevents duplicate worker spawns and allows graceful recovery from lead fai
 
 | Aspect                  | Team (Native Claude Code 2.1.178+)                              | Swarm (Legacy SQLite)                  |
 | ----------------------- | ---------------------------------------------------------------- | -------------------------------------- |
-| **Storage**             | OMC state/handoffs plus Claude Code's current task-list surface   | SQLite in `.omc/state/swarm.db`        |
+| **Storage**             | OMC state/handoffs plus Claude Code's current task-list surface   | SQLite in `.omg/state/swarm.db`        |
 | **Dependencies**        | `better-sqlite3` not needed                                      | Requires `better-sqlite3` npm package  |
 | **Task claiming**       | Lead pre-assigns named workers through task-list/TodoWrite state  | SQLite IMMEDIATE transaction -- atomic |
 | **Race conditions**     | Possible if two agents claim same task (mitigate by pre-assigning) | None (SQLite transactions)             |
@@ -850,8 +850,8 @@ When `OMC_RUNTIME_V2=1` is set, the team runtime uses an event-driven architectu
 
 - **No done.json**: Task completion is detected via CLI API lifecycle transitions (claim-task, transition-task-status)
 - **Snapshot-based monitoring**: Each poll cycle takes a point-in-time snapshot of tasks and workers, computes deltas, and emits events
-- **Event log**: All team events are appended to `.omc/state/team/{teamName}/events.jsonl`
-- **Worker status files**: Workers write status to `.omc/state/team/{teamName}/workers/{name}/status.json`
+- **Event log**: All team events are appended to `.omg/state/team/{teamName}/events.jsonl`
+- **Worker status files**: Workers write status to `.omg/state/team/{teamName}/workers/{name}/status.json`
 - **Preserved**: Sentinel gate (blocks premature completion), circuit breaker (dead worker detection), failure sidecars
 
 The v2 runtime is feature-flagged and can be enabled per-session. The legacy v1 runtime remains the default.
@@ -989,7 +989,7 @@ MCP workers can operate in isolated git worktrees to prevent file conflicts betw
 
 ### How It Works
 
-1. **Worktree creation**: Before spawning a worker, call `createWorkerWorktree(teamName, workerName, repoRoot)` to create an isolated worktree at `.omc/worktrees/{team}/{worker}` with branch `omc-team/{teamName}/{workerName}`.
+1. **Worktree creation**: Before spawning a worker, call `createWorkerWorktree(teamName, workerName, repoRoot)` to create an isolated worktree at `.omg/worktrees/{team}/{worker}` with branch `omc-team/{teamName}/{workerName}`.
 
 2. **Worker isolation**: Pass the worktree path as the `workingDirectory` in the worker's `BridgeConfig`. The worker operates exclusively in its own worktree.
 
@@ -1042,7 +1042,7 @@ MCP workers can operate in isolated git worktrees to prevent file conflicts betw
 
 ## Parallel session caveats
 
-- **Multi-repo workspace anchor:** drop a `.omc-workspace` marker at the parent directory so multiple sessions across sub-repos share one `.omc/`. Resolution order: `OMC_STATE_DIR > .omc-workspace > git > cwd`. See `docs/REFERENCE.md`.
+- **Multi-repo workspace anchor:** drop a `.omc-workspace` marker at the parent directory so multiple sessions across sub-repos share one `.omg/`. Resolution order: `OMC_STATE_DIR > .omc-workspace > git > cwd`. See `docs/REFERENCE.md`.
 - **Session id source:** OMC_SESSION_ID env var wins in CLI contexts; hook payload data.session_id wins in hook contexts.
-- **Plan id (when applicable):** Team state is session-scoped. Team handoffs at `.omc/handoffs/` are shared by design (see Wave G in the workspace plan).
+- **Plan id (when applicable):** Team state is session-scoped. Team handoffs at `.omg/handoffs/` are shared by design (see Wave G in the workspace plan).
 - **Parallel verdict:** supported (session-scoped + shared handoffs by design)

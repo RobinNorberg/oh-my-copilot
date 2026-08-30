@@ -18,7 +18,7 @@ vi.mock('../../../lib/worktree-paths.js', () => ({
     },
     getWorktreeRoot: () => TEST_WORKTREE_ROOT,
     validateWorkingDirectory: () => '/',
-    getOmcRoot: (dir) => `${dir ?? TEST_WORKTREE_ROOT}/.omc`,
+    getOmcRoot: (dir) => `${dir ?? TEST_WORKTREE_ROOT}/.omg`,
 }));
 // Import after mocks are set up (vi.mock is hoisted)
 import { readState, writeState, clearState, clearStateCache, cleanupStaleStates, isStateStale, StateManager, } from '../index.js';

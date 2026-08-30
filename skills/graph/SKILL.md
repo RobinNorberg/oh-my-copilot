@@ -31,7 +31,7 @@ Run it via the Bash tool for non-interactive graphs. Progress lines stream as
 
 - Repeatable multi-step pipelines with explicit dependencies (DAG)
 - Work that must survive interruption: kill/restart resumes from journal
-- Auditable runs: OCC journal + projection snapshots under `.omc/graph-runs/<run_id>/`
+- Auditable runs: OCC journal + projection snapshots under `.omg/graph-runs/<run_id>/`
 
 When NOT to use: exploratory one-off work (use conversation or /team);
 anything needing adaptive re-planning mid-run (graphs are deterministic).
@@ -40,7 +40,7 @@ anything needing adaptive re-planning mid-run (graphs are deterministic).
 
 1. **Descriptor given** -> go to step 3.
 2. **Pipeline described** -> author the descriptor JSON (schema below), write
-   it next to the project (suggest `.omc/graphs/<name>.json`) and show it to
+   it next to the project (suggest `.omg/graphs/<name>.json`) and show it to
    the user before running. `run_id` must be unique per logical pipeline;
    rerunning with the same `run_id` RESUMES, not restarts.
 3. **Approval nodes**: if the descriptor contains any `"kind": "human-approval"`
@@ -112,4 +112,4 @@ for what built-in executors actually execute today.
   persistence disabled, and a provider-specific environment allowlist. Agent
   timeouts abort and interrupt the SDK query. Use a custom executor for any
   agent that needs mutation or external effects. Treat
-  `.omc/graph-runs/<run_id>/descriptor.json` as executable content.
+  `.omg/graph-runs/<run_id>/descriptor.json` as executable content.

@@ -32,7 +32,7 @@ export function validateConfigPath(configPath: string, homeDir: string, claudeCo
   const isUnderHome = resolved.startsWith(homeDir + '/') || resolved === homeDir;
   const normalizedConfigDir = resolve(claudeConfigDir);
   const normalizedOmcDir = resolve(homeDir, '.omg');
-  const hasOmcComponent = resolved.includes('/.omg/') || resolved.endsWith('/.omc');
+  const hasOmcComponent = resolved.includes('/.omg/') || resolved.endsWith('/.omg');
   const isTrustedSubpath =
     resolved === normalizedConfigDir ||
     resolved.startsWith(normalizedConfigDir + '/') ||

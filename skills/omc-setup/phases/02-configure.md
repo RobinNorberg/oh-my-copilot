@@ -11,7 +11,7 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "ERROR: jq is required to resume setup safely. Existing setup state was not modified."
   exit 1
 fi
-if ! RESUME_LAST_COMPLETED_STEP=$(jq -r '.lastCompletedStep // 0' ".omc/state/setup-state.json" 2>/dev/null); then
+if ! RESUME_LAST_COMPLETED_STEP=$(jq -r '.lastCompletedStep // 0' ".omg/state/setup-state.json" 2>/dev/null); then
   echo "ERROR: Setup state is invalid JSON. Existing setup state was not modified."
   exit 1
 fi
@@ -54,7 +54,7 @@ This will:
 
 After HUD setup completes, save progress:
 ```bash
-CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omc/state/setup-state.json" 2>/dev/null || echo "unknown")
+CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omg/state/setup-state.json" 2>/dev/null || echo "unknown")
 bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" save 3 "$CONFIG_TYPE"
 ```
 
@@ -276,7 +276,7 @@ echo "Task tool set to: USER_CHOICE"
 ## Save Progress
 
 ```bash
-CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omc/state/setup-state.json" 2>/dev/null || echo "unknown")
+CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omg/state/setup-state.json" 2>/dev/null || echo "unknown")
 if [ "${RESUMED_PHASE_TWO_BOUNDARY:-false}" != "true" ]; then
   bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" save 4 "$CONFIG_TYPE"
 else

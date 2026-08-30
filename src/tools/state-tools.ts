@@ -527,7 +527,7 @@ function getWorkingDirectoryLocalOmcRoot(root: string): string {
 
 function shouldCheckWorkingDirectoryLocalState(root: string): boolean {
   // Non-git state uses a canonical user/central root. Do not probe or mutate
-  // `{workingDirectory}/.omc` implicitly; legacy recovery requires an explicit
+  // `{workingDirectory}/.omg` implicitly; legacy recovery requires an explicit
   // migration path so unrelated directories cannot be swept together.
   if (!getGitTopLevel(root)) return false;
   return getWorkingDirectoryLocalOmcRoot(root) !== getOmcRoot(root);

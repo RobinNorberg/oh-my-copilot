@@ -65,7 +65,7 @@ OMC CLI HELPERS (if installed):
 - omc hud         - Render the current HUD statusline
 - omc teleport    - Create an isolated git worktree
 - omc team status - Inspect a running team job
-- Session summaries are written to `.omc/sessions/*.json`
+- Session summaries are written to `.omg/sessions/*.json`
 
 That's it! Just use Claude Code normally.
 ```
@@ -116,7 +116,7 @@ OMC CLI HELPERS (if installed):
 - omc hud         - Render the current HUD statusline
 - omc teleport    - Create an isolated git worktree
 - omc team status - Inspect a running team job
-- Session summaries are written to `.omc/sessions/*.json`
+- Session summaries are written to `.omg/sessions/*.json`
 
 Your configuration is preserved; retired commands are not recreated.
 ```

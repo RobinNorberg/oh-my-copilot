@@ -27,7 +27,7 @@ State tools manage the state of OMC execution modes (autopilot, ralph, ultrawork
 ### Storage Path
 
 ```
-.omc/state/
+.omg/state/
 ├── sessions/{sessionId}/     # Session-scoped state
 │   ├── autopilot-state.json
 │   ├── ralph-state.json
@@ -84,7 +84,7 @@ Lists all currently active sessions.
 state_list_active()
 ```
 
-Returns all session IDs and their corresponding modes under `.omc/state/sessions/`.
+Returns all session IDs and their corresponding modes under `.omg/state/sessions/`.
 
 #### `state_get_status`
 
@@ -142,7 +142,7 @@ Notepad is a persistent note system that survives context window compaction. In 
 ### Storage Path
 
 ```
-.omc/notepad.md
+.omg/notepad.md
 ```
 
 ### Tools
@@ -240,7 +240,7 @@ Project Memory manages long-term per-project memory. It persists project structu
 ### Storage Path
 
 ```
-.omc/project-memory.json
+.omg/project-memory.json
 ```
 
 ### Tools
@@ -302,7 +302,7 @@ Use for coding rules, prohibitions, and requirements.
 |---|---|---|
 | Scope | Current session | Entire project (persists across sessions) |
 | Purpose | In-progress notes | Project rules, structure, learned knowledge |
-| File | `.omc/notepad.md` | `.omc/project-memory.json` |
+| File | `.omg/notepad.md` | `.omg/project-memory.json` |
 | Compaction | Restored during compaction | Always available |
 
 ### Usage Patterns
@@ -709,7 +709,7 @@ Internal skill management tools used by the runtime to load and list available s
 
 #### `load_omc_skills_local`
 
-Loads skills from the local project directory (`.omc/skills/`).
+Loads skills from the local project directory (`.omg/skills/`).
 
 ```
 load_omc_skills_local()

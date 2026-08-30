@@ -2,7 +2,7 @@
 
 ## Session Notepad (Short-Term Memory)
 
-Compaction-resilient memory system at `.omc/notepad.md` with three tiers:
+Compaction-resilient memory system at `.omg/notepad.md` with three tiers:
 
 | Section | Behavior | Use For |
 |---------|----------|---------|
@@ -26,7 +26,7 @@ Compaction-resilient memory system at `.omc/notepad.md` with three tiers:
 
 Plan-scoped wisdom capture for learnings, decisions, issues, and problems.
 
-**Location:** `.omc/notepads/{plan-name}/`
+**Location:** `.omg/notepads/{plan-name}/`
 
 | File | Purpose |
 |------|---------|
@@ -104,8 +104,8 @@ Reusable verification protocol for workflows.
 Standardized state file locations.
 
 **Standard paths for all mode state files:**
-- Primary: `.omc/state/{name}.json` (local, per-project)
-- Global backup: `~/.omc/state/{name}.json` (global, session continuity)
+- Primary: `.omg/state/{name}.json` (local, per-project)
+- Global backup: `~/.omg/state/{name}.json` (global, session continuity)
 
 **Mode State Files:**
 | Mode | State File |

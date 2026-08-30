@@ -2748,7 +2748,7 @@ function validateConfigPath(configPath2, homeDir, claudeConfigDir) {
   const isUnderHome = resolved.startsWith(homeDir + "/") || resolved === homeDir;
   const normalizedConfigDir = (0, import_path15.resolve)(claudeConfigDir);
   const normalizedOmcDir = (0, import_path15.resolve)(homeDir, ".omg");
-  const hasOmcComponent = resolved.includes("/.omg/") || resolved.endsWith("/.omc");
+  const hasOmcComponent = resolved.includes("/.omg/") || resolved.endsWith("/.omg");
   const isTrustedSubpath = resolved === normalizedConfigDir || resolved.startsWith(normalizedConfigDir + "/") || resolved === normalizedOmcDir || resolved.startsWith(normalizedOmcDir + "/") || hasOmcComponent;
   if (!isUnderHome || !isTrustedSubpath) return false;
   try {

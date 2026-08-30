@@ -68,7 +68,7 @@ Skills are reusable workflow templates that can be invoked via `/oh-my-copilot:s
 |-----------|-------|---------|
 | `project-session-manager/SKILL.md` | project-session-manager (+ `psm` alias) | Isolated dev environments |
 | `writer-memory/SKILL.md` | writer-memory | Agentic memory for writers |
-| `release/SKILL.md` | release | Generic release assistant — analyzes repo CI/rules, caches in `.omc/RELEASE_RULE.md`, guides the release |
+| `release/SKILL.md` | release | Generic release assistant — analyzes repo CI/rules, caches in `.omg/RELEASE_RULE.md`, guides the release |
 
 ## For AI Agents
 
@@ -88,7 +88,7 @@ model: sonnet    # Optional: model override
 pipeline: [skill-name, follow-up-skill]  # Optional: standardized multi-skill flow
 next-skill: follow-up-skill              # Optional: explicit handoff target
 next-skill-args: --direct                # Optional: arguments for the next skill
-handoff: .omc/plans/example.md           # Optional: artifact/context handed to next skill
+handoff: .omg/plans/example.md           # Optional: artifact/context handed to next skill
 ---
 
 # Skill Name

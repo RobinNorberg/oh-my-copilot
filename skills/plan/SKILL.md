@@ -4,7 +4,7 @@ description: Strategic planning with optional interview workflow
 argument-hint: "[--direct|--consensus|--review] [--interactive] [--deliberate] <task description>"
 pipeline: [deep-interview]
 handoff-policy: approval-required
-handoff: .omc/plans/ralplan-*.md
+handoff: .omg/plans/ralplan-*.md
 level: 4
 ---
 
@@ -116,7 +116,7 @@ Without cleanup, the stop hook blocks all subsequent stops with `[RALPLAN - CONS
 6. **Apply improvements**: When reviewers approve with improvement suggestions, merge all accepted improvements into the plan file before proceeding. Final consensus output **MUST** include an **ADR** section with: **Decision**, **Drivers**, **Alternatives considered**, **Why chosen**, **Consequences**, **Follow-ups**. Specifically:
    a. Collect all improvement suggestions from Architect and Critic responses
    b. Deduplicate and categorize the suggestions
-   c. Update the plan file in `.omc/plans/` with the accepted improvements (add missing details, refine steps, strengthen acceptance criteria, ADR updates, etc.)
+   c. Update the plan file in `.omg/plans/` with the accepted improvements (add missing details, refine steps, strengthen acceptance criteria, ADR updates, etc.)
    d. Note which improvements were applied in a brief changelog section at the end of the plan
 7. On Critic approval (with improvements applied): mark the plan status as `pending approval` unless explicit execution approval has already been captured. _(--interactive only)_ If running with `--interactive`, use `AskUserQuestion` to present the plan with these options:
    - **Approve execution via team** (Recommended) — explicit opt-in to proceed via coordinated parallel team agents (`/team`). Team is the canonical orchestration surface since v4.1.7.
@@ -127,13 +127,13 @@ Without cleanup, the stop hook blocks all subsequent stops with `[RALPLAN - CONS
      If NOT running with `--interactive`, output the final plan marked `pending approval`, call `state_clear(mode="ralplan", session_id=<current_session_id>)`, and stop. Do NOT auto-execute.
 8. _(--interactive only)_ User chooses via the structured `AskUserQuestion` UI (never ask for approval in plain text). If user selects **Reject**, call `state_clear(mode="ralplan", session_id=<current_session_id>)` and stop.
 9. On user approval (--interactive only): Call `state_write(mode="ralplan", active=false, session_id=<current_session_id>)` **before** invoking the execution skill (ralph/team), so the stop hook does not interfere with the execution mode's own enforcement. Do NOT use `state_clear` here — it writes a cancel signal that disables enforcement for the newly launched mode.
-   - **Approve execution via team**: **MUST** invoke `Skill("oh-my-copilot:team")` with the approved plan path from `.omc/plans/` as context. Do NOT implement directly. The team skill coordinates parallel agents across the staged pipeline for faster execution on large tasks. This is the recommended default execution path.
-   - **Approve execution via ralph**: **MUST** invoke `Skill("oh-my-copilot:ralph")` with the approved plan path from `.omc/plans/` as context. Do NOT implement directly. Do NOT edit source code files in the planning agent. The Ralph skill owns persistent execution and verification.
+   - **Approve execution via team**: **MUST** invoke `Skill("oh-my-copilot:team")` with the approved plan path from `.omg/plans/` as context. Do NOT implement directly. The team skill coordinates parallel agents across the staged pipeline for faster execution on large tasks. This is the recommended default execution path.
+   - **Approve execution via ralph**: **MUST** invoke `Skill("oh-my-copilot:ralph")` with the approved plan path from `.omg/plans/` as context. Do NOT implement directly. Do NOT edit source code files in the planning agent. The Ralph skill owns persistent execution and verification.
    - **Compact then return for execution approval**: First invoke `Skill("compact")` to compress the context window (reduces token usage accumulated during planning), then return with the saved pending-approval plan path and require a fresh explicit execution approval before any ralph/team launch. This path is recommended when the context window is 50%+ full after the planning session.
 
 ### Review Mode (`--review`)
 
-1. Read plan file from `.omc/plans/`
+1. Read plan file from `.omg/plans/`
 2. Evaluate via Critic using `Task(subagent_type="oh-my-copilot:critic", ...)`
 3. Return verdict: APPROVED, REVISE (with specific feedback), or REJECT (replanning required)
 
@@ -150,7 +150,7 @@ Every plan includes:
 - For consensus/ralplan final output: **ADR** (Decision, Drivers, Alternatives considered, Why chosen, Consequences, Follow-ups)
 - For deliberate consensus mode: **Pre-mortem (3 scenarios)** and **Expanded Test Plan** (unit/integration/e2e/observability)
 
-Plans are saved to `.omc/plans/`. Drafts go to `.omc/drafts/`.
+Plans are saved to `.omg/plans/`. Drafts go to `.omg/drafts/`.
 </Steps>
 
 <Tool_Usage>
@@ -235,7 +235,7 @@ Why bad: Decision fatigue. Present one option with trade-offs, get reaction, the
 - [ ] Plan references specific files/lines where applicable (80%+ claims)
 - [ ] All risks have mitigations identified
 - [ ] No vague terms without metrics ("fast" -> "p99 < 200ms")
-- [ ] Plan saved to `.omc/plans/`
+- [ ] Plan saved to `.omg/plans/`
 - [ ] In consensus mode: RALPLAN-DR summary includes 3-5 principles, top 3 drivers, and >=2 viable options (or explicit invalidation rationale)
 - [ ] In consensus mode final output: ADR section included (Decision / Drivers / Alternatives considered / Why chosen / Consequences / Follow-ups)
 - [ ] In deliberate consensus mode: pre-mortem (3 scenarios) + expanded test plan (unit/integration/e2e/observability) included

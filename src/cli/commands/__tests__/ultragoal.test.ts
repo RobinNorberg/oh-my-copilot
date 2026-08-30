@@ -60,7 +60,7 @@ describe('omc ultragoal CLI', () => {
     await ultragoalCommand([]);
     const joined = captured.out.join('\n');
     expect(joined).toMatch(/omc ultragoal/);
-    expect(joined).toMatch(/Artifacts[^\n]*[\s\S]*\.omc\/ultragoal\/brief\.md/);
+    expect(joined).toMatch(/Artifacts[^\n]*[\s\S]*\.omg\/ultragoal\/brief\.md/);
     expect(joined).toMatch(/Claude \/goal integration/);
     expect(joined).not.toMatch(/\bomx\b/);
   });

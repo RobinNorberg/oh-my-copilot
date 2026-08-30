@@ -44,7 +44,7 @@ The Agent Skills ecosystem centers on project-local skill packaging conventions 
 ## OMC gaps
 
 1. **Project-local compatibility gap**
-   - OMC's canonical project-local skill directory is `.omc/skills/`
+   - OMC's canonical project-local skill directory is `.omg/skills/`
    - emerging conventions also use `.agents/skills/`
    - OMC should interoperate without abandoning its own canonical layout
 
@@ -57,14 +57,14 @@ The Agent Skills ecosystem centers on project-local skill packaging conventions 
 
 ### 1. Compatibility read support for `.agents/skills/`
 
-- Keep `.omc/skills/` as the canonical OMC project-local skill directory
+- Keep `.omg/skills/` as the canonical OMC project-local skill directory
 - Add `.agents/skills/` as a compatibility read source for:
   - learned/project skill discovery
   - slash-loaded skill discovery
 - Preserve deterministic priority order:
   - project commands
   - user commands
-  - project `.omc/skills`
+  - project `.omg/skills`
   - project `.agents/skills`
   - user skill directories
 

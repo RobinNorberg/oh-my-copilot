@@ -90,7 +90,7 @@ describe('HUD CLI diagnostic (no stdin, no watch mode)', () => {
     vi.doMock('../../lib/worktree-paths.js', () => ({
       resolveToWorktreeRoot: vi.fn((cwd?: string) => cwd ?? '/tmp'),
       resolveTranscriptPath: vi.fn((tp?: string) => tp),
-      getOmcRoot: vi.fn(() => '/tmp/.omc'),
+      getOmcRoot: vi.fn(() => '/tmp/.omg'),
     }));
     vi.doMock('../../utils/config-dir.js', () => ({
       getCopilotConfigDir: vi.fn(() => overrides.configDir ?? tempConfigDir),

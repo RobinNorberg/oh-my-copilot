@@ -42,7 +42,7 @@ receipt interface instead of the API directly; after the prerequisite merges,
 its owner (or the rebase of this lane) only needs to emit the receipt:
 
 - **#3706 (merged):** alias telemetry already emits
-  `.omc/state/<project>/state/alias-receipts.json` (`totals.aliasUses`,
+  `.omg/state/<project>/state/alias-receipts.json` (`totals.aliasUses`,
   `byAlias`, `byCanonical`). Canonical share derives as
   `canonicalUses / (canonicalUses + aliasUses)`; the verifier's `alias-usage`
   receipt is the durable hand-off shape.

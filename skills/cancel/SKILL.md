@@ -23,7 +23,7 @@ Automatically detects which mode is active and cancels it:
 - **Ralph**: Stops the persistence loop
 - **Legacy Ultrawork state**: Cleanup-only removal for upgraded installations; it is not an active workflow
 - **UltraQA (retired)**: No live workflow remains; clears stale pre-5.0.0 `ultraqa-state.json` if present
-- **Ultragoal**: Clears the session-scoped ultragoal runtime guard (`.omc/state/.../ultragoal-state.json`) so PreToolUse `/goal` enforcement and Stop reinforcement release. Durable `.omc/ultragoal/` plan/ledger artifacts are preserved.
+- **Ultragoal**: Clears the session-scoped ultragoal runtime guard (`.omg/state/.../ultragoal-state.json`) so PreToolUse `/goal` enforcement and Stop reinforcement release. Durable `.omg/ultragoal/` plan/ledger artifacts are preserved.
 - **Swarm**: Stops coordinated agent swarm, releases claimed tasks
 - **Ultrapilot**: Stops parallel autopilot workers
 - **Pipeline**: Stops sequential agent pipeline
@@ -76,7 +76,7 @@ if [ -n "${OMC_STATE_DIR:-}" ]; then
   OMC_STATE="$OMC_STATE_DIR/${DIR_NAME}-${HASH}/state"
   [ ! -d "$OMC_STATE" ] && { echo "ERROR: State dir not found at $OMC_STATE" >&2; exit 1; }
 elif [ "$REPO_ROOT" != "/" ] && [ -d "$REPO_ROOT/.omc" ]; then
-  OMC_STATE="$REPO_ROOT/.omc/state"
+  OMC_STATE="$REPO_ROOT/.omg/state"
 else
   echo "ERROR: Could not locate .omc state directory" >&2
   exit 1
@@ -104,23 +104,23 @@ fi
 ## Auto-Detection
 
 `/oh-my-copilot:cancel` follows the session-aware state contract:
-- By default the command inspects the current session via `state_list_active` and `state_get_status`, navigating `.omc/state/sessions/{sessionId}/…` to discover which mode is active.
-- When a session id is provided or already known, that session-scoped path is authoritative. Legacy files in `.omc/state/*.json` are consulted only as a compatibility fallback if the session id is missing or empty.
-- Swarm is a shared SQLite/marker mode (`.omc/state/swarm.db` / `.omc/state/swarm-active.marker`) and is not session-scoped.
+- By default the command inspects the current session via `state_list_active` and `state_get_status`, navigating `.omg/state/sessions/{sessionId}/…` to discover which mode is active.
+- When a session id is provided or already known, that session-scoped path is authoritative. Legacy files in `.omg/state/*.json` are consulted only as a compatibility fallback if the session id is missing or empty.
+- Swarm is a shared SQLite/marker mode (`.omg/state/swarm.db` / `.omg/state/swarm-active.marker`) and is not session-scoped.
 - The default cleanup flow calls `state_clear` with the session id to remove only the matching session files; modes stay bound to their originating session.
 
 Active modes are still cancelled in dependency order:
 1. Autopilot (includes linked ralph and retired-state cleanup)
 2. Ralph
 3. Legacy Ultrawork/UltraQA state cleanup
-4. Ultragoal (standalone runtime guard — `state_clear(mode="ultragoal")`; preserves durable `.omc/ultragoal/` artifacts)
+4. Ultragoal (standalone runtime guard — `state_clear(mode="ultragoal")`; preserves durable `.omg/ultragoal/` artifacts)
 5. Swarm (standalone)
 6. Ultrapilot (standalone)
 7. Pipeline (standalone)
 8. Team (Claude Code native)
 9. OMC Teams (tmux CLI workers)
 10. Plan Consensus (standalone)
-11. Self-Improve (standalone — clear state, clean orphaned worktrees, preserve iteration_state for resume, set status: "user_stopped" in the resolved `<self-improve-root>/state/agent-settings.json`; new runs use `.omc/self-improve/topics/<topic-slug>/`, with flat `.omc/self-improve/` retained only for legacy single-track resumes)
+11. Self-Improve (standalone — clear state, clean orphaned worktrees, preserve iteration_state for resume, set status: "user_stopped" in the resolved `<self-improve-root>/state/agent-settings.json`; new runs use `.omg/self-improve/topics/<topic-slug>/`, with flat `.omg/self-improve/` retained only for legacy single-track resumes)
 
 ## Force Clear All
 
@@ -135,40 +135,40 @@ Use `--force` or `--all` when you need to erase every session plus legacy artifa
 ```
 
 Steps under the hood:
-1. `state_list_active` enumerates `.omc/state/sessions/{sessionId}/…` to find every known session.
+1. `state_list_active` enumerates `.omg/state/sessions/{sessionId}/…` to find every known session.
 2. `state_clear` runs once per session to drop that session’s files.
-3. A global `state_clear` without `session_id` removes legacy files under `.omc/state/*.json`, `.omc/state/swarm*.db`, and compatibility artifacts (see list).
-4. Team artifacts (`~/.claude/teams/*/`, `~/.claude/tasks/*/`, `.omc/state/team-state.json`) are best-effort cleared as part of the legacy fallback.
+3. A global `state_clear` without `session_id` removes legacy files under `.omg/state/*.json`, `.omg/state/swarm*.db`, and compatibility artifacts (see list).
+4. Team artifacts (`~/.claude/teams/*/`, `~/.claude/tasks/*/`, `.omg/state/team-state.json`) are best-effort cleared as part of the legacy fallback.
    - Cancel for native team does NOT affect omc-teams state, and vice versa.
 
 Every `state_clear` command honors the `session_id` argument, so even force mode still uses the session-aware paths first before deleting legacy files.
 
 Legacy compatibility list (removed only under `--force`/`--all`):
-- `.omc/state/autopilot-state.json`
-- `.omc/state/ralph-state.json`
-- `.omc/state/ralph-plan-state.json`
-- `.omc/state/ralph-verification.json`
-- `.omc/state/ultrawork-state.json`
-- `.omc/state/ultraqa-state.json`
-- `.omc/state/swarm.db`
-- `.omc/state/swarm.db-wal`
-- `.omc/state/swarm.db-shm`
-- `.omc/state/swarm-active.marker`
-- `.omc/state/swarm-tasks.db`
-- `.omc/state/ultrapilot-state.json`
-- `.omc/state/ultrapilot-ownership.json`
-- `.omc/state/pipeline-state.json`
-- `.omc/state/omc-teams-state.json`
-- `.omc/state/plan-consensus.json`
-- `.omc/state/ralplan-state.json`
-- `.omc/state/boulder.json`
-- `.omc/state/hud-state.json`
-- `.omc/state/subagent-tracking.json`
-- `.omc/state/subagent-tracker.lock`
-- `.omc/state/rate-limit-daemon.pid`
-- `.omc/state/rate-limit-daemon.log`
-- `.omc/state/checkpoints/` (directory)
-- `.omc/state/sessions/` (empty directory cleanup after clearing sessions)
+- `.omg/state/autopilot-state.json`
+- `.omg/state/ralph-state.json`
+- `.omg/state/ralph-plan-state.json`
+- `.omg/state/ralph-verification.json`
+- `.omg/state/ultrawork-state.json`
+- `.omg/state/ultraqa-state.json`
+- `.omg/state/swarm.db`
+- `.omg/state/swarm.db-wal`
+- `.omg/state/swarm.db-shm`
+- `.omg/state/swarm-active.marker`
+- `.omg/state/swarm-tasks.db`
+- `.omg/state/ultrapilot-state.json`
+- `.omg/state/ultrapilot-ownership.json`
+- `.omg/state/pipeline-state.json`
+- `.omg/state/omc-teams-state.json`
+- `.omg/state/plan-consensus.json`
+- `.omg/state/ralplan-state.json`
+- `.omg/state/boulder.json`
+- `.omg/state/hud-state.json`
+- `.omg/state/subagent-tracking.json`
+- `.omg/state/subagent-tracker.lock`
+- `.omg/state/rate-limit-daemon.pid`
+- `.omg/state/rate-limit-daemon.log`
+- `.omg/state/checkpoints/` (directory)
+- `.omg/state/sessions/` (empty directory cleanup after clearing sessions)
 
 ## Implementation Steps
 
@@ -187,9 +187,9 @@ fi
 ### 2. Detect Active Modes
 
 The skill now relies on the session-aware state contract rather than hard-coded file paths:
-1. Call `state_list_active` to enumerate `.omc/state/sessions/{sessionId}/…` and discover every active session.
+1. Call `state_list_active` to enumerate `.omg/state/sessions/{sessionId}/…` and discover every active session.
 2. For each session id, call `state_get_status` to learn which active mode is running and whether dependent modes exist; treat any Ultrawork record as retired cleanup input only.
-3. If a `session_id` was supplied to `/oh-my-copilot:cancel`, skip legacy fallback entirely and operate solely within that session path; otherwise, consult legacy files in `.omc/state/*.json` only if the state tools report no active session. Swarm remains a shared SQLite/marker mode outside session scoping.
+3. If a `session_id` was supplied to `/oh-my-copilot:cancel`, skip legacy fallback entirely and operate solely within that session path; otherwise, consult legacy files in `.omg/state/*.json` only if the state tools report no active session. Swarm remains a shared SQLite/marker mode outside session scoping.
 4. Any cancellation logic in this doc mirrors the dependency order discovered via state tools (autopilot → ralph → …).
 
 ### 3A. Force Mode (if --force or --all)
@@ -305,7 +305,7 @@ UltraQA was retired in 5.0.0. No live workflow exists; if a stale
 #### If Ultragoal Active (standalone)
 
 Clear the runtime guard only: `state_clear(mode="ultragoal", session_id)`.
-Durable `.omc/ultragoal/{brief.md,goals.json,ledger.jsonl}` artifacts are preserved.
+Durable `.omg/ultragoal/{brief.md,goals.json,ledger.jsonl}` artifacts are preserved.
 
 #### No Active Modes
 
@@ -317,8 +317,8 @@ The cancel skill runs as follows:
 1. Parse the `--force` / `--all` flags, tracking whether cleanup should span every session or stay scoped to the current session id.
 2. Use `state_list_active` to enumerate known session ids and `state_get_status` to learn each active mode; treat any Ultrawork record as cleanup-only legacy state.
 3. When operating in default mode, call `state_clear` with that session_id to remove only the session’s files, then run mode-specific cleanup (autopilot → ralph → …) based on the state tool signals.
-4. In force mode, iterate every active session, call `state_clear` per session, then run a global `state_clear` without `session_id` to drop legacy files (`.omc/state/*.json`, compatibility artifacts) and report success. Swarm remains a shared SQLite/marker mode outside session scoping.
-5. Team artifacts (`~/.claude/teams/*/`, `~/.claude/tasks/*/`, `.omc/state/team-state.json`) remain best-effort cleanup items invoked during the legacy/global pass.
+4. In force mode, iterate every active session, call `state_clear` per session, then run a global `state_clear` without `session_id` to drop legacy files (`.omg/state/*.json`, compatibility artifacts) and report success. Swarm remains a shared SQLite/marker mode outside session scoping.
+5. Team artifacts (`~/.claude/teams/*/`, `~/.claude/tasks/*/`, `.omg/state/team-state.json`) remain best-effort cleanup items invoked during the legacy/global pass.
 6. **Always** clear skill-active state as the final step, regardless of which mode was active or whether `--force` was used:
    ```
    state_clear(mode="skill-active", session_id)
@@ -352,7 +352,7 @@ Mode-specific subsections below describe what extra cleanup each handler perform
 | Autopilot | Yes (phase, files, spec, plan, verdicts) | `/oh-my-copilot:autopilot` |
 | Ralph | No | N/A |
 | Ultrawork | No | N/A |
-| Ultragoal | Yes (durable plan/ledger under `.omc/ultragoal/`) | Resume via `/ultragoal` / `omc ultragoal complete-goals` |
+| Ultragoal | Yes (durable plan/ledger under `.omg/ultragoal/`) | Resume via `/ultragoal` / `omc ultragoal complete-goals` |
 | Swarm | No | N/A |
 | Ultrapilot | No | N/A |
 | Pipeline | No | N/A |
@@ -361,7 +361,7 @@ Mode-specific subsections below describe what extra cleanup each handler perform
 ## Notes
 
 - **Dependency-aware**: Autopilot cancellation cleans up Ralph and any retired ultraqa state
-- **Local-only**: Clears state files in `.omc/state/` directory
+- **Local-only**: Clears state files in `.omg/state/` directory
 - **Resume-friendly**: Autopilot state is preserved for seamless resume
 - **Team-aware**: Detects native Claude Code teams and performs graceful shutdown
 
@@ -369,18 +369,18 @@ Mode-specific subsections below describe what extra cleanup each handler perform
 
 When cancelling modes that may have spawned MCP workers (team bridge daemons), the cancel skill should also:
 
-1. **Check for active MCP workers**: Look for heartbeat files at `.omc/state/team-bridge/{team}/*.heartbeat.json`
+1. **Check for active MCP workers**: Look for heartbeat files at `.omg/state/team-bridge/{team}/*.heartbeat.json`
 2. **Send shutdown signals**: Write shutdown signal files for each active worker
 3. **Kill tmux sessions**: Run `tmux kill-session -t omc-team-{team}-{worker}` for each worker
 4. **Clean up heartbeat files**: Remove all heartbeat files for the team
-5. **Clean up shadow registry**: Remove `.omc/state/team-mcp-workers.json`
+5. **Clean up shadow registry**: Remove `.omg/state/team-mcp-workers.json`
 
 ### Force Clear Addition
 
 When `--force` is used, also clean up:
 ```bash
-rm -rf .omc/state/team-bridge/       # Heartbeat files
-rm -f .omc/state/team-mcp-workers.json  # Shadow registry
+rm -rf .omg/state/team-bridge/       # Heartbeat files
+rm -f .omg/state/team-mcp-workers.json  # Shadow registry
 # Kill all omc-team-* tmux sessions
 tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^omc-team-' | while read s; do tmux kill-session -t "$s" 2>/dev/null; done
 ```

@@ -89,16 +89,16 @@ The legacy analytics workflow described in older docs (`omc-analytics`, `omc cos
 The supported monitoring surfaces on current builds are:
 
 - **Agent Observatory** in the HUD / API
-- **Session Replay** logs in `.omc/state/agent-replay-*.jsonl`
-- **Session-end summaries** in `.omc/sessions/<sessionId>.json`
+- **Session Replay** logs in `.omg/state/agent-replay-*.jsonl`
+- **Session-end summaries** in `.omg/sessions/<sessionId>.json`
 - **Session-end notifications** emitted through configured callbacks
 
 #### Supported Inspection Commands
 
 ```bash
 omc hud
-tail -20 .omc/state/agent-replay-*.jsonl
-ls .omc/sessions/*.json
+tail -20 .omg/state/agent-replay-*.jsonl
+ls .omg/sessions/*.json
 ```
 
 #### HUD Display
@@ -136,7 +136,7 @@ Session replay records agent lifecycle events as JSONL for post-session analysis
 
 #### Replay Files
 
-Replay data is stored at: `.omc/state/agent-replay-{sessionId}.jsonl`
+Replay data is stored at: `.omg/state/agent-replay-{sessionId}.jsonl`
 
 Each line is a JSON event:
 ```json
@@ -370,10 +370,10 @@ Session replay is automatically enabled. Review replays after complex workflows:
 
 ```bash
 # Find replay files
-ls .omc/state/agent-replay-*.jsonl
+ls .omg/state/agent-replay-*.jsonl
 
 # View recent events
-tail -20 .omc/state/agent-replay-*.jsonl
+tail -20 .omg/state/agent-replay-*.jsonl
 ```
 
 ### 4. Set Cost Limits
@@ -437,13 +437,13 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 
 ### Missing Session-End Summaries
 
-**Symptoms**: No `.omc/sessions/*.json` files after a session finishes
+**Symptoms**: No `.omg/sessions/*.json` files after a session finishes
 
 **Solutions**:
 1. End the session normally so the `session-end` hook runs
 2. Verify HUD / hooks are installed: `/oh-my-copilot:hud setup`
-3. Check the current workspace `.omc/sessions/` directory
-4. Review `.omc/state/agent-replay-*.jsonl` if you need timing/activity evidence instead
+3. Check the current workspace `.omg/sessions/` directory
+4. Review `.omg/state/agent-replay-*.jsonl` if you need timing/activity evidence instead
 
 ### Stale Agent State
 
@@ -451,8 +451,8 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 
 **Solutions**:
 1. Run `cleanupStaleAgents(cwd)` programmatically
-2. Delete `.omc/state/subagent-tracking.json` to reset
-3. Check for orphaned lock files: `.omc/state/subagent-tracker.lock`
+2. Delete `.omg/state/subagent-tracking.json` to reset
+3. Check for orphaned lock files: `.omg/state/subagent-tracker.lock`
 
 ---
 
@@ -460,11 +460,11 @@ cleanupReplayFiles(process.cwd()); // Keeps last 10 sessions
 
 | File | Purpose | Format |
 |------|---------|--------|
-| `.omc/state/subagent-tracking.json` | Current agent states | JSON |
-| `.omc/state/agent-replay-{id}.jsonl` | Session event timeline | JSONL |
-| `.omc/state/token-tracking.jsonl` | Token usage log | JSONL |
-| `.omc/state/analytics-summary-{id}.json` | Cached session summaries | JSON |
-| `.omc/state/subagent-tracker.lock` | Concurrent access lock | Text |
+| `.omg/state/subagent-tracking.json` | Current agent states | JSON |
+| `.omg/state/agent-replay-{id}.jsonl` | Session event timeline | JSONL |
+| `.omg/state/token-tracking.jsonl` | Token usage log | JSONL |
+| `.omg/state/analytics-summary-{id}.json` | Cached session summaries | JSON |
+| `.omg/state/subagent-tracker.lock` | Concurrent access lock | Text |
 
 ---
 

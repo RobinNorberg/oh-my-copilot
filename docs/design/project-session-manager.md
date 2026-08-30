@@ -377,7 +377,7 @@ User Command
 ├── .psm-session.json        # Session metadata
 ├── .psm-context.md          # Pre-loaded Claude context
 ├── <project files>          # Actual code
-└── .omc/                    # OMC state (if applicable)
+└── .omg/                    # OMC state (if applicable)
 ```
 
 ### 5.3 Session Metadata File

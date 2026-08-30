@@ -20,7 +20,7 @@ TTL expires.
 `skill-active-state.json` lives at:
 
 ```
-.omc/state/sessions/{sessionId}/skill-active-state.json
+.omg/state/sessions/{sessionId}/skill-active-state.json
 ```
 
 The cancel skill calls `state_clear(mode=...)` for known modes, but the
@@ -48,7 +48,7 @@ So the user is blocked for up to 15 minutes (or 5 hook fires) after cancel.
 Delete the file manually:
 
 ```bash
-rm .omc/state/sessions/<sessionId>/skill-active-state.json
+rm .omg/state/sessions/<sessionId>/skill-active-state.json
 ```
 
 Or wait for the 15-min TTL / 5-reinforcement limit to auto-clear it.

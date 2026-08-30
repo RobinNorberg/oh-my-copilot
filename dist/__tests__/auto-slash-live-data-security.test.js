@@ -13,7 +13,7 @@ vi.mock('child_process', async (importOriginal) => {
 });
 vi.mock('../lib/worktree-paths.js', () => ({
     getWorktreeRoot: () => null,
-    getOmcRoot: () => `${process.cwd()}/.omc`,
+    getOmcRoot: () => `${process.cwd()}/.omg`,
 }));
 const mockedExecSync = vi.mocked(childProcess.execSync);
 const mockedExecFileSync = vi.mocked(childProcess.execFileSync);

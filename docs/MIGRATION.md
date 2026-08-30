@@ -23,14 +23,14 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ### TL;DR
 
-Sessions launched outside a Git repository no longer create a separate `.omc/`
-directory for every cwd. OMC uses one canonical `~/.omc/` root, or
+Sessions launched outside a Git repository no longer create a separate `.omg/`
+directory for every cwd. OMC uses one canonical `~/.omg/` root, or
 `$OMC_STATE_DIR/non-git` when centralized state is configured. Protected
 locations and descendants of system temp/OS roots are never used as roots.
 
 ### Migration and compatibility
 
-- Existing non-git `.omc/` roots remain untouched and are not adopted implicitly.
+- Existing non-git `.omg/` roots remain untouched and are not adopted implicitly.
   Use `state_migrate_non_git` with the owning `session_id` to copy matching JSON
   records into the canonical root without overwriting or deleting sources.
 - Existing state under protected locations is never moved or deleted
@@ -66,7 +66,7 @@ hook subsystem is gone with no replacement, and two opt-in features are
 added. Fork-exclusive skills (Azure DevOps, GitHub, and four standalone
 skills) are unaffected.
 
-### Directory moves: `.claude/` → `.copilot/`, `.omc/` → `.omg/`
+### Directory moves: `.claude/` → `.copilot/`, `.omg/` → `.omg/`
 
 **v5.0.0 does not auto-migrate either directory.** Whatever you leave behind
 in the old locations is simply ignored, not read, and not merged — you must
@@ -94,7 +94,7 @@ skills, plugins, rules, tasks, and worktrees.
   plugins, rules, tasks, worktrees — is **not** read from `.claude/` anymore
   and must be moved to `.copilot/` to keep working.
 
-**2. `.omc/` → `.omg/`.** All oh-my-copilot runtime files move: state,
+**2. `.omg/` → `.omg/`.** All oh-my-copilot runtime files move: state,
 sessions, logs, plans, research, `notepad.md`, `project-memory.json`,
 drafts, and autopilot/team state. Move the whole tree:
 
@@ -103,7 +103,7 @@ mv .omc .omg
 ```
 
 If you pin `planOutput.directory` explicitly in config, note its **default**
-changed from `.omc/plans` to `.omg/plans` — update an explicit pin
+changed from `.omg/plans` to `.omg/plans` — update an explicit pin
 accordingly (an unpinned config picks up the new default automatically).
 
 **Unchanged:** the multi-repo workspace marker file is still named
@@ -334,12 +334,12 @@ omc team api list-tasks --input '{"team_name":"review-auth-flow"}' --json
 
 ### TL;DR
 
-`omc team` runtime-v2 is gaining an opt-in worker worktree mode. Worktree-backed workers run from dedicated git worktrees while task lifecycle, mailbox, status, and manifest files stay under the leader workspace's team-specific coordination root (`<repo>/.omc/state/team/<team-name>`).
+`omc team` runtime-v2 is gaining an opt-in worker worktree mode. Worktree-backed workers run from dedicated git worktrees while task lifecycle, mailbox, status, and manifest files stay under the leader workspace's team-specific coordination root (`<repo>/.omg/state/team/<team-name>`).
 
 ### Contract
 
-- Worktree paths use `<repo>/.omc/team/<team-name>/worktrees/<worker-name>`.
-- `OMC_TEAM_STATE_ROOT` points workers back to `<repo>/.omc/state/team/<team-name>`.
+- Worktree paths use `<repo>/.omg/team/<team-name>/worktrees/<worker-name>`.
+- `OMC_TEAM_STATE_ROOT` points workers back to `<repo>/.omg/state/team/<team-name>`.
 - Status/config/manifest/identity surfaces should expose `workspace_mode`, `worktree_mode`, `team_state_root`, and worker worktree metadata.
 - Dirty worker worktrees are preserved and reported; they are not force-cleaned by shutdown/cleanup.
 
@@ -507,7 +507,7 @@ Use canonical role names across prompts, commands, docs, and scripts. Avoid intr
 
 ### Directory and Environment Migration
 
-No directory rename is required for the current OMC state paths. Keep existing `.omc/` project state and `~/.omc/` global state directories in place.
+No directory rename is required for the current OMC state paths. Keep existing `.omg/` project state and `~/.omg/` global state directories in place.
 
 Only update genuinely legacy or custom paths that predate the OMC layout:
 
@@ -610,7 +610,7 @@ npm uninstall -g oh-my-copilot
 
 #### 3. Preserve Existing OMC Directories
 
-Do not rename current OMC directories. Existing project state in `.omc/` and global state in `~/.omc/` are already on the current paths.
+Do not rename current OMC directories. Existing project state in `.omg/` and global state in `~/.omg/` are already on the current paths.
 
 #### 4. Update Legacy Config Names
 
@@ -649,8 +649,8 @@ After migration, verify your setup:
 2. **Verify directories exist**:
 
    ```bash
-   ls -la .omc/  # In project directory
-   ls -la ~/.omc/  # Global directory
+   ls -la .omg/  # In project directory
+   ls -la ~/.omg/  # Global directory
    ```
 
 3. **Test a simple command**:
@@ -700,7 +700,7 @@ Next time keywords match → Solution auto-injects
 
 Storage:
 
-- **Project-level**: `.omc/skills/` (intended to be committed with the repo; uncommitted worktree-local skills disappear when that worktree is removed)
+- **Project-level**: `.omg/skills/` (intended to be committed with the repo; uncommitted worktree-local skills disappear when that worktree is removed)
 - **User-level**: `~/.claude/skills/omc-learned/` (portable)
 
 #### 4. HUD Statusline (Real-Time Orchestration)
@@ -777,7 +777,7 @@ Version 3.1 is a minor release adding powerful new features while maintaining fu
 
 Plan-scoped wisdom capture for learnings, decisions, issues, and problems.
 
-**Location:** `.omc/notepads/{plan-name}/`
+**Location:** `.omg/notepads/{plan-name}/`
 
 | File           | Purpose                            |
 | -------------- | ---------------------------------- |
@@ -913,8 +913,8 @@ State files now use standardized paths:
 
 **Standard paths:**
 
-- Local: `.omc/state/{name}.json`
-- Global: `~/.omc/state/{name}.json`
+- Local: `.omg/state/{name}.json`
+- Global: `~/.omg/state/{name}.json`
 
 Legacy locations are auto-migrated on read.
 
@@ -1019,7 +1019,7 @@ After upgrading, verify new features:
 
 3. **Check state directory**:
    ```bash
-   ls -la .omc/state/
+   ls -la .omg/state/
    ```
 
 ---

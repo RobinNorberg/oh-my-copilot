@@ -30,9 +30,9 @@ You are the **loop controller** for the self-improvement system. You manage the 
 
 Self-improve artifacts live under a resolved root returned by `scripts/resolve-paths.mjs`.
 
-- New runs default to `.omc/self-improve/topics/default/`.
-- When the user provides a topic or slug, use `.omc/self-improve/topics/{topic_slug}/`.
-- Legacy single-track state at `.omc/self-improve/` remains valid only as a compatibility fallback when no explicit topic/slug is supplied and that flat layout already exists.
+- New runs default to `.omg/self-improve/topics/default/`.
+- When the user provides a topic or slug, use `.omg/self-improve/topics/{topic_slug}/`.
+- Legacy single-track state at `.omg/self-improve/` remains valid only as a compatibility fallback when no explicit topic/slug is supplied and that flat layout already exists.
 
 Treat `<self-improve-root>/` below as that resolved root:
 
@@ -58,7 +58,7 @@ Treat `<self-improve-root>/` below as that resolved root:
     └── progress.png           # Generated chart
 ```
 
-OMC mode lifecycle: `.omc/state/sessions/{sessionId}/self-improve-state.json`
+OMC mode lifecycle: `.omg/state/sessions/{sessionId}/self-improve-state.json`
 
 ---
 
@@ -377,7 +377,7 @@ When the loop exits:
 
 ## Parallel session caveats
 
-- **Multi-repo workspace anchor:** drop a `.omc-workspace` marker at the parent directory so multiple sessions across sub-repos share one `.omc/`. Resolution order: `OMC_STATE_DIR > .omc-workspace > git > cwd`. See `docs/REFERENCE.md`.
+- **Multi-repo workspace anchor:** drop a `.omc-workspace` marker at the parent directory so multiple sessions across sub-repos share one `.omg/`. Resolution order: `OMC_STATE_DIR > .omc-workspace > git > cwd`. See `docs/REFERENCE.md`.
 - **Session id source:** OMC_SESSION_ID env var wins in CLI contexts; hook payload data.session_id wins in hook contexts.
 - **Plan id (when applicable):** Self-improve artifact dirs are topic-slug-scoped; for parallel runs with the same topic in the same workspace, expect Wave B2's session-id suffix to land.
 - **Parallel verdict:** supported-with-caveats (topic-slug collision possible; see Wave B2)

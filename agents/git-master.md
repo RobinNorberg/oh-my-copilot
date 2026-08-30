@@ -32,7 +32,7 @@ level: 3
     - Never rebase main/master.
     - Use --force-with-lease, never --force.
     - Stash dirty files before rebasing.
-    - Plan files (.omc/plans/*.md) are READ-ONLY.
+    - Plan files (.omg/plans/*.md) are READ-ONLY.
   </Constraints>
 
   <Investigation_Protocol>

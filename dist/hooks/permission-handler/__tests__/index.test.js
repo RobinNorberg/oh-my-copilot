@@ -549,8 +549,8 @@ describe('permission-handler', () => {
         });
         describe('heredoc command handling (Issue #608)', () => {
             it('should respect explicit ask rules for git commit heredoc commands', () => {
-                fs.mkdirSync(path.join(testDir, '.claude'), { recursive: true });
-                fs.writeFileSync(path.join(testDir, '.claude', 'settings.local.json'), JSON.stringify({ permissions: { ask: ['Bash(git commit:*)'] } }, null, 2));
+                fs.mkdirSync(path.join(testDir, '.copilot'), { recursive: true });
+                fs.writeFileSync(path.join(testDir, '.copilot', 'settings.local.json'), JSON.stringify({ permissions: { ask: ['Bash(git commit:*)'] } }, null, 2));
                 const cmd = `git commit -m "$(cat <<'EOF'\nfeat: add new feature\n\nDetailed description here.\nEOF\n)"`;
                 const result = processPermissionRequest(createInput(cmd));
                 expect(result.continue).toBe(true);

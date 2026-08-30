@@ -2,7 +2,7 @@
 
 `omc ultragoal` is a durable, repo-native multi-goal workflow that pairs with
 the Claude Code `/goal` slash command. It stores plan/ledger artifacts under
-`.omc/ultragoal/` and prints model-facing handoff text that tells the active
+`.omg/ultragoal/` and prints model-facing handoff text that tells the active
 Claude agent when to invoke `/goal <condition>`, when to clear it, and what
 snapshot JSON to share back for ledger reconciliation.
 
@@ -21,7 +21,7 @@ snapshot JSON to share back for ledger reconciliation.
 ## Artifacts
 
 ```
-.omc/ultragoal/
+.omg/ultragoal/
   brief.md       The free-text brief used to seed the plan
   goals.json     The structured plan (version 1) with stories and mode
   ledger.jsonl   Append-only audit trail of plan/goal events

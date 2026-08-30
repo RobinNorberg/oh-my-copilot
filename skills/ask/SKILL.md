@@ -58,7 +58,7 @@ cursor-agent --version
 `omc ask` writes artifacts to:
 
 ```text
-.omc/artifacts/ask/<provider>-<slug>-<timestamp>.md
+.omg/artifacts/ask/<provider>-<slug>-<timestamp>.md
 ```
 
 Task: {{ARGUMENTS}}

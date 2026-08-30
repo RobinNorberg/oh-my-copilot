@@ -85,8 +85,8 @@ Invalid combinations:
 
 ### Standard Paths
 All mode state files use standardized locations:
-- Primary: `.omc/state/{name}.json` (local, per-project)
-- Global backup: `~/.omc/state/{name}.json` (global, session continuity)
+- Primary: `.omg/state/{name}.json` (local, per-project)
+- Global backup: `~/.omg/state/{name}.json` (global, session continuity)
 
 ### Mode State Files
 | Mode | State File |

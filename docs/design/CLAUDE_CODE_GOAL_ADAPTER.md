@@ -89,8 +89,8 @@ The adapter should use logical artifact names first and resolve them through OMC
 
 | Logical artifact    | OMC path intent                                                |
 | ------------------- | -------------------------------------------------------------- |
-| Goal ledger         | `.omc/goals/` or the configured OMC state root.                |
-| Handoff artifact    | `.omc/context/` or configured handoff directory.               |
-| Completion evidence | `.omc/goals/<goal_id>/evidence/` or configured evidence store. |
+| Goal ledger         | `.omg/goals/` or the configured OMC state root.                |
+| Handoff artifact    | `.omg/context/` or configured handoff directory.               |
+| Completion evidence | `.omg/goals/<goal_id>/evidence/` or configured evidence store. |
 
 Docs may compare OMX `.omx` or OMO-native paths, but OMC adapter code must not require `.omx/` to exist in an OMC-only workspace.

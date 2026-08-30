@@ -1,12 +1,12 @@
 ---
 name: release
-description: Generic release assistant — analyzes repo release rules, caches them in .omc/RELEASE_RULE.md, then guides the release
+description: Generic release assistant — analyzes repo release rules, caches them in .omg/RELEASE_RULE.md, then guides the release
 level: 3
 ---
 
 # Release Skill
 
-A thin, repo-aware release assistant. On first run it inspects the project and CI to derive release rules, stores them in `.omc/RELEASE_RULE.md` for future use, then walks you through a release using those rules.
+A thin, repo-aware release assistant. On first run it inspects the project and CI to derive release rules, stores them in `.omg/RELEASE_RULE.md` for future use, then walks you through a release using those rules.
 
 ## Usage
 
@@ -21,7 +21,7 @@ A thin, repo-aware release assistant. On first run it inspects the project and C
 
 ### Step 0 — Load or Build Release Rules
 
-Check whether `.omc/RELEASE_RULE.md` exists.
+Check whether `.omg/RELEASE_RULE.md` exists.
 
 **If it does NOT exist (or `--refresh` was passed):** Run the full repo analysis below and write the file.
 
@@ -31,7 +31,7 @@ Check whether `.omc/RELEASE_RULE.md` exists.
 
 ### Step 1 — Repo Analysis (first run or --refresh)
 
-Inspect the repo and answer the following. Write answers into `.omc/RELEASE_RULE.md`.
+Inspect the repo and answer the following. Write answers into `.omg/RELEASE_RULE.md`.
 
 #### 1a. Version Sources
 
@@ -67,7 +67,7 @@ Inspect the repo and answer the following. Write answers into `.omc/RELEASE_RULE
 
 ---
 
-### Step 2 — Write `.omc/RELEASE_RULE.md`
+### Step 2 — Write `.omg/RELEASE_RULE.md`
 
 Create or overwrite the file with this structure:
 
@@ -194,5 +194,5 @@ Report success or flag any failures.
 ## Notes
 
 - This skill does **not** hardcode any project-specific version files or commands. Everything is derived from repo inspection.
-- `.omc/RELEASE_RULE.md` is a local cache. Commit it to your repo if you want to share the derived rules with your team, or add it to `.gitignore` if you prefer it stays local.
+- `.omg/RELEASE_RULE.md` is a local cache. Commit it to your repo if you want to share the derived rules with your team, or add it to `.gitignore` if you prefer it stays local.
 - For complex monorepos or multi-package workspaces, the skill will detect workspace patterns (npm workspaces, pnpm workspaces, Cargo workspace) and adapt accordingly.

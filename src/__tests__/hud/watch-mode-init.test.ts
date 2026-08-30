@@ -136,7 +136,7 @@ describe('HUD watch mode initialization', () => {
     vi.doMock('../../lib/worktree-paths.js', () => ({
       resolveToWorktreeRoot: vi.fn((cwd?: string) => cwd ?? '/tmp/worktree'),
       resolveTranscriptPath: vi.fn((transcriptPath?: string) => transcriptPath),
-      getOmcRoot: vi.fn(() => '/tmp/worktree/.omc'),
+      getOmcRoot: vi.fn(() => '/tmp/worktree/.omg'),
     }));
 
     return import('../../hud/index.js');

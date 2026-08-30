@@ -110,7 +110,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 
 | Variable                   | Default              | Description                                                                                                                                                                                                                                                                 |
 | -------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omc/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
+| `OMC_STATE_DIR`            | _(unset)_            | Centralized state directory. When set, OMC stores state at `$OMC_STATE_DIR/{project-id}/` instead of `{worktree}/.omg/`. This preserves state across worktree deletions. The project identifier is derived from the git remote URL (or worktree path for local-only repos). |
 | `OMC_BRIDGE_SCRIPT`        | _(auto-detected)_    | Path to the Python bridge script                                                                                                                                                                                                                                            |
 | `OMC_PARALLEL_EXECUTION`   | `true`               | Enable/disable parallel agent execution                                                                                                                                                                                                                                     |
 | `OMC_CODEX_DEFAULT_MODEL`  | _(provider default)_ | Default model for Codex CLI workers                                                                                                                                                                                                                                         |
@@ -125,7 +125,7 @@ If both configurations exist, **project-scoped takes precedence** over global:
 
 #### Centralized State with `OMC_STATE_DIR`
 
-By default, OMC stores state in `{worktree}/.omc/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
+By default, OMC stores state in `{worktree}/.omg/`. This is lost when worktrees are deleted. To preserve state across worktree lifecycles, set `OMC_STATE_DIR`:
 
 ```bash
 # In your shell profile (~/.bashrc, ~/.zshrc, etc.)
@@ -134,33 +134,33 @@ export OMC_STATE_DIR="$HOME/.claude/omc"
 
 This resolves to `~/.claude/omc/{project-identifier}/` where the project identifier uses a hash of the git remote URL (stable across worktrees/clones) with a fallback to the directory path hash for local-only repos.
 
-If both a legacy `{worktree}/.omc/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
+If both a legacy `{worktree}/.omg/` directory and a centralized directory exist, OMC logs a notice and uses the centralized directory. You can then migrate data from the legacy directory and remove it.
 
 #### OMC state, gitignore, worktree, and workspace contract
 
-OMC's project-local state root is `.omc/` unless `OMC_STATE_DIR` or `.omc-workspace` changes the root resolution described below. The default root contains runtime and audit artifacts such as:
+OMC's project-local state root is `.omg/` unless `OMC_STATE_DIR` or `.omc-workspace` changes the root resolution described below. The default root contains runtime and audit artifacts such as:
 
-- `.omc/state/` and `.omc/state/sessions/{sessionId}/` — mode state, session-scoped state, replay markers, and recovery metadata.
-- `.omc/notepad.md` and `.omc/project-memory.json` — local session notes and project memory.
-- `.omc/plans/`, `.omc/research/`, `.omc/logs/`, `.omc/artifacts/`, `.omc/handoffs/`, and `.omc/ultragoal/` — generated plans, research outputs, logs, advisor artifacts, team handoffs, and ultragoal ledgers.
-- `.omc/team/` — opt-in native team worker worktrees when team worktree mode creates them.
-- `.omc/skills/` — the only project-local `.omc` subtree intended to be committed when the team wants to share OMC-authored skills.
+- `.omg/state/` and `.omg/state/sessions/{sessionId}/` — mode state, session-scoped state, replay markers, and recovery metadata.
+- `.omg/notepad.md` and `.omg/project-memory.json` — local session notes and project memory.
+- `.omg/plans/`, `.omg/research/`, `.omg/logs/`, `.omg/artifacts/`, `.omg/handoffs/`, and `.omg/ultragoal/` — generated plans, research outputs, logs, advisor artifacts, team handoffs, and ultragoal ledgers.
+- `.omg/team/` — opt-in native team worker worktrees when team worktree mode creates them.
+- `.omg/skills/` — the only project-local `.omg` subtree intended to be committed when the team wants to share OMC-authored skills.
 
-Git handling is intentionally conservative. The repository `.gitignore` keeps `.omc/` itself visible, ignores `.omc/*`, and then re-includes `.omc/skills/` plus `.omc/skills/**`. That means generated state stays untracked by default, while project skills can be reviewed and committed explicitly. Do not force-add runtime `.omc` files unless you are deliberately attaching a sanitized artifact to an issue or test fixture; runtime state can include prompts, transcripts, absolute paths, machine identifiers, and workflow history.
+Git handling is intentionally conservative. The repository `.gitignore` keeps `.omg/` itself visible, ignores `.omg/*`, and then re-includes `.omg/skills/` plus `.omg/skills/**`. That means generated state stays untracked by default, while project skills can be reviewed and committed explicitly. Do not force-add runtime `.omg` files unless you are deliberately attaching a sanitized artifact to an issue or test fixture; runtime state can include prompts, transcripts, absolute paths, machine identifiers, and workflow history.
 
 Worktree behavior follows the resolved state root:
 
-- **Default single repo / monorepo**: `getOmcRoot()` uses the git toplevel, so every package below one git root shares `{repo}/.omc/`.
-- **Git-less directories**: all cwd variants use the canonical `$HOME/.omc/` root; with `OMC_STATE_DIR`, they use `$OMC_STATE_DIR/non-git`. Existing cwd-local `.omc/` trees are never adopted or mutated implicitly. Protected locations such as `~/.ssh`, `~/.claude`, `~/.config`, user content directories, and descendants of system temp/OS roots are rejected as migration sources. Use the explicit `state_migrate_non_git` tool for owner-checked, non-overwriting migration. Session ownership still comes from `session_id`, and no time-based cleanup is performed.
-- **Linked git worktrees**: without `OMC_STATE_DIR`, each linked worktree has its own `{worktree}/.omc/`; removing that worktree removes its local OMC state. Re-run setup from the worktree you are actively using so installed hooks and generated instructions match that checkout.
+- **Default single repo / monorepo**: `getOmcRoot()` uses the git toplevel, so every package below one git root shares `{repo}/.omg/`.
+- **Git-less directories**: all cwd variants use the canonical `$HOME/.omg/` root; with `OMC_STATE_DIR`, they use `$OMC_STATE_DIR/non-git`. Existing cwd-local `.omg/` trees are never adopted or mutated implicitly. Protected locations such as `~/.ssh`, `~/.claude`, `~/.config`, user content directories, and descendants of system temp/OS roots are rejected as migration sources. Use the explicit `state_migrate_non_git` tool for owner-checked, non-overwriting migration. Session ownership still comes from `session_id`, and no time-based cleanup is performed.
+- **Linked git worktrees**: without `OMC_STATE_DIR`, each linked worktree has its own `{worktree}/.omg/`; removing that worktree removes its local OMC state. Re-run setup from the worktree you are actively using so installed hooks and generated instructions match that checkout.
 - **Persistent state across worktree deletion**: set `OMC_STATE_DIR`; OMC writes to `$OMC_STATE_DIR/{project-id}/`, where the project id is stable across linked worktrees when a remote or primary git dir is available.
-- **Multi-repo workspace**: add `.omc-workspace` to a non-git parent when independent sibling repos should share `{parent}/.omc/`. This is for multi-repo workspaces, not ordinary monorepos.
+- **Multi-repo workspace**: add `.omc-workspace` to a non-git parent when independent sibling repos should share `{parent}/.omg/`. This is for multi-repo workspaces, not ordinary monorepos.
 
 State MCP tools honor an explicit `workingDirectory`. In a git-less session, it identifies the legacy source for explicit migration while state storage follows the canonical non-git root; in a git-backed session, repository and linked-worktree boundary checks remain enforced. A path from another repository or a failed Git probe is rejected rather than silently substituted with the session cwd.
 
 The `state_migrate_non_git` tool is the only supported non-git legacy migration
 path. It requires the exact owning `session_id`, reads only
-`.omc/state/sessions/<session_id>/*.json`, copies records whose embedded owner
+`.omg/state/sessions/<session_id>/*.json`, copies records whose embedded owner
 matches that ID into the canonical root, never overwrites an existing
 destination, preserves source bytes, and reports copied/skipped/rejected
 filenames. It never deletes or mutates the legacy source and refuses Git,
@@ -168,26 +168,26 @@ sensitive, system-temp, and symlinked legacy roots.
 
 #### Session-scoped state cannot capture another session (#3873)
 
-Mode-state files that carry a `session_id` under `.omc/state/sessions/<id>/` are authoritative only for that session. They cannot attach to, resume, or disarm a different session. Only legacy flat-layout files without a `session_id` can bind to whatever session starts next in that directory.
+Mode-state files that carry a `session_id` under `.omg/state/sessions/<id>/` are authoritative only for that session. They cannot attach to, resume, or disarm a different session. Only legacy flat-layout files without a `session_id` can bind to whatever session starts next in that directory.
 
 Do not treat idle time as evidence that a session has ended. OMC performs no time-based cancellation of session-scoped state; cleanup tooling must preserve session-owned files and must not use a time threshold to delete active state.
 
-When migrating to `OMC_STATE_DIR`, remember that setting the variable does not migrate existing contents. Copy or migrate legacy state first, then enable the centralized root; otherwise old plans, notepads, and project memory remain in their original `.omc/` location and are no longer visible.
+When migrating to `OMC_STATE_DIR`, remember that setting the variable does not migrate existing contents. Copy or migrate legacy state first, then enable the centralized root; otherwise old plans, notepads, and project memory remain in their original `.omg/` location and are no longer visible.
 
-Plan persistence follows the same rule. Default generated plans under `.omc/plans/` are local operational artifacts and are ignored. If a plan should become durable project documentation, move it to a tracked docs path or configure `planOutput.directory` to a reviewed directory such as `docs/plans`; keep machine-local session state in `.omc/`.
+Plan persistence follows the same rule. Default generated plans under `.omg/plans/` are local operational artifacts and are ignored. If a plan should become durable project documentation, move it to a tracked docs path or configure `planOutput.directory` to a reviewed directory such as `docs/plans`; keep machine-local session state in `.omg/`.
 
-Cleanup rule of thumb: after OMC sessions are stopped, it is safe to delete ignored runtime subtrees such as `.omc/state/`, `.omc/logs/`, `.omc/artifacts/`, `.omc/research/`, or `.omc/ultragoal/` if you no longer need their recovery/audit history. Do not delete `.omc/skills/` unless you intend to remove project-scoped skills.
+Cleanup rule of thumb: after OMC sessions are stopped, it is safe to delete ignored runtime subtrees such as `.omg/state/`, `.omg/logs/`, `.omg/artifacts/`, `.omg/research/`, or `.omg/ultragoal/` if you no longer need their recovery/audit history. Do not delete `.omg/skills/` unless you intend to remove project-scoped skills.
 
 #### Multi-repo workspaces with `.omc-workspace`
 
-When you have several independent git repos under one parent directory and the parent itself is **not** a git repo, OMC cannot infer a shared root via `git rev-parse --show-toplevel`. Each sub-repo would get its own isolated `.omc/`. To anchor a single `.omc/` at the parent, drop a `.omc-workspace` marker file there:
+When you have several independent git repos under one parent directory and the parent itself is **not** a git repo, OMC cannot infer a shared root via `git rev-parse --show-toplevel`. Each sub-repo would get its own isolated `.omg/`. To anchor a single `.omg/` at the parent, drop a `.omc-workspace` marker file there:
 
 ```bash
 cd /path/to/my-workspace            # parent dir (not a git repo)
 echo '{}' > .omc-workspace          # empty JSON is fine
 ```
 
-From any sub-directory (including inside any sub-git-repo), OMC resolves `.omc/` to `/path/to/my-workspace/.omc/`. The marker may also carry an explicit project identifier so all sessions share state regardless of the parent dir name:
+From any sub-directory (including inside any sub-git-repo), OMC resolves `.omg/` to `/path/to/my-workspace/.omg/`. The marker may also carry an explicit project identifier so all sessions share state regardless of the parent dir name:
 
 ```json
 { "id": "my-org-bidchex" }
@@ -200,16 +200,16 @@ Resolution order inside `getOmcRoot()`:
 3. `git rev-parse --show-toplevel` (monorepo / single repo).
 4. `process.cwd()` (last resort).
 
-Once a workspace is anchored, multiple Claude Code sessions in different sub-repos can run `/ultragoal`, `/ralph`, `/execute`, `/autopilot` in parallel without bleeding state. For `/ultragoal` specifically, pass `--plan-id <id>` or `--auto-plan-id` on `create-goals` so each session writes to `.omc/ultragoal/plans/{planId}/` instead of the shared `goals.json` — see "ultragoal multi-plan" below. The PARALLEL SESSION WARNING in `session-start.mjs` performs a PID-aware liveness check and no longer suppresses restore when the owner session is dead.
+Once a workspace is anchored, multiple Claude Code sessions in different sub-repos can run `/ultragoal`, `/ralph`, `/execute`, `/autopilot` in parallel without bleeding state. For `/ultragoal` specifically, pass `--plan-id <id>` or `--auto-plan-id` on `create-goals` so each session writes to `.omg/ultragoal/plans/{planId}/` instead of the shared `goals.json` — see "ultragoal multi-plan" below. The PARALLEL SESSION WARNING in `session-start.mjs` performs a PID-aware liveness check and no longer suppresses restore when the owner session is dead.
 
-#### `.omc/handoffs/` shared contract
+#### `.omg/handoffs/` shared contract
 
-`.omc/handoffs/` is intentionally **shared across team runs** by design. Its purpose is inter-session message passing: team stage handoffs (plan → prd → exec → verify) accumulate here so a later `team` run can resume from the last non-terminal stage without losing decision history.
+`.omg/handoffs/` is intentionally **shared across team runs** by design. Its purpose is inter-session message passing: team stage handoffs (plan → prd → exec → verify) accumulate here so a later `team` run can resume from the last non-terminal stage without losing decision history.
 
-**Only the `team` skill writes to `.omc/handoffs/`.** All other code that reads the directory does so read-only. This is enforced by the lint test `tests/lint/handoffs-writers.test.ts`, which scans `src/**` and `templates/**` and fails if any file outside `src/team/` or `src/hooks/team-pipeline/` references `handoffs/` as a write target.
+**Only the `team` skill writes to `.omg/handoffs/`.** All other code that reads the directory does so read-only. This is enforced by the lint test `tests/lint/handoffs-writers.test.ts`, which scans `src/**` and `templates/**` and fails if any file outside `src/team/` or `src/hooks/team-pipeline/` references `handoffs/` as a write target.
 
 - Handoff files survive team cancellation and OMC state cleanup intentionally — they are post-mortem artifacts. Claude Code 2.1.178+ has no `TeamDelete`.
-- Do **not** session-scope `.omc/handoffs/` unless the `team` skill explicitly evolves to per-session inboxes (tracked as a follow-up in the ADR).
+- Do **not** session-scope `.omg/handoffs/` unless the `team` skill explicitly evolves to per-session inboxes (tracked as a follow-up in the ADR).
 
 #### Branded path types (`ReadPath` / `WritePath`)
 
@@ -228,7 +228,7 @@ The brand prevents a hook from silently passing a read-fallback path to a writer
 
 #### Legacy state migration (`OMC_MIGRATE_LEGACY_STATE`)
 
-When you adopt `OMC_STATE_DIR` or `.omc-workspace` on a repo that already has existing `{worktree}/.omc/state/` files, you can opt in to a one-shot copy of legacy state into the new session-scoped path:
+When you adopt `OMC_STATE_DIR` or `.omc-workspace` on a repo that already has existing `{worktree}/.omg/state/` files, you can opt in to a one-shot copy of legacy state into the new session-scoped path:
 
 ```bash
 export OMC_MIGRATE_LEGACY_STATE=1
@@ -266,17 +266,17 @@ unset OMC_DISABLE_MULTIREPO
 Default layout (single plan, monorepo / single session):
 
 ```
-.omc/ultragoal/brief.md
-.omc/ultragoal/goals.json
-.omc/ultragoal/ledger.jsonl
+.omg/ultragoal/brief.md
+.omg/ultragoal/goals.json
+.omg/ultragoal/ledger.jsonl
 ```
 
 Multi-plan layout, enabled by `--plan-id <id>` or `--auto-plan-id` on `omc ultragoal create-goals`:
 
 ```
-.omc/ultragoal/plans/{planId}/brief.md
-.omc/ultragoal/plans/{planId}/goals.json
-.omc/ultragoal/plans/{planId}/ledger.jsonl
+.omg/ultragoal/plans/{planId}/brief.md
+.omg/ultragoal/plans/{planId}/goals.json
+.omg/ultragoal/plans/{planId}/ledger.jsonl
 ```
 
 `--auto-plan-id` derives `{epochMs}-{slug}` from the brief title, so two parallel sessions running `omc ultragoal create-goals --auto-plan-id ...` never collide. Subsequent commands (`status`, `add-goal`, `complete-goals`, `checkpoint`, `record-review-blockers`) auto-resolve the plan when there is exactly one; when there are multiple, they require `--plan-id <id>`. `omc ultragoal list-plans` enumerates the available plan ids.
@@ -408,13 +408,13 @@ Tag behavior:
 
 ## Runtime storage and goal artifacts
 
-OMC documentation should describe goal and workflow artifacts by their logical role first, then map that role to the runtime-specific storage root. Do not treat `.omx/` as a universal path: it is the legacy OMX runtime root, while OMC uses `.omc/` for local project state.
+OMC documentation should describe goal and workflow artifacts by their logical role first, then map that role to the runtime-specific storage root. Do not treat `.omx/` as a universal path: it is the legacy OMX runtime root, while OMC uses `.omg/` for local project state.
 
 ### Runtime root mapping
 
 | Runtime                      | Project-local root     | User/global root            | Notes                                                                                                                                                   |
 | ---------------------------- | ---------------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OMC                          | `.omc/`                | `~/.omc/`                   | Canonical OMC storage for project-local state, plans, notepads, logs, research, and ask artifacts.                                                      |
+| OMC                          | `.omg/`                | `~/.omg/`                   | Canonical OMC storage for project-local state, plans, notepads, logs, research, and ask artifacts.                                                      |
 | OMX compatibility/runtime-v1 | `.omx/`                | `~/.omx/`                   | Compatibility root for older OMX sessions and cross-runtime handoffs. Mention only when documenting OMX-specific behavior.                              |
 | OMO native                   | runtime-owned OMO path | runtime-owned OMO user path | OMO-native storage is owned by that runtime. OMC docs should name the logical artifact role unless an OMO command explicitly documents a concrete path. |
 
@@ -424,24 +424,24 @@ Use these names when writing docs or handoffs so the same concept remains portab
 
 | Logical role            | OMC path                                                                   | OMX compatibility path                                                     | Purpose                                                                                                                                                                            |
 | ----------------------- | -------------------------------------------------------------------------- | -------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Goal/spec artifact      | `.omc/specs/<slug>.md` or `.omc/plans/<slug>.md`                           | `.omx/specs/<slug>.md` or `.omx/plans/<slug>.md`                           | Durable statement of the user goal, constraints, acceptance criteria, and execution handoff.                                                                                       |
-| Approved execution plan | `.omc/plans/<slug>.md`                                                     | `.omx/plans/<slug>.md`                                                     | Reviewed implementation plan consumed by execution workflows such as team or ralph.                                                                                                |
-| Task/runtime state      | `.omc/state/<mode>.json` or `.omc/state/sessions/<session-id>/<mode>.json` | `.omx/state/<mode>.json` or `.omx/state/sessions/<session-id>/<mode>.json` | Machine-readable workflow state. Session-scoped state wins over legacy flat files when present.                                                                                    |
-| Team coordination state | `.omc/state/team/<team-name>/...`                                          | `.omx/state/team/<team-name>/...`                                          | Worker task files, mailbox, status, events, and dispatch metadata. Worktree-backed workers should use `OMC_TEAM_STATE_ROOT`/compat env to find the leader-owned coordination root. |
-| Ask/advisor artifacts   | `.omc/artifacts/ask/<provider>-<slug>-<timestamp>.md`                      | `.omx/artifacts/ask/<provider>-<slug>-<timestamp>.md`                      | Persisted advisor output from `omc ask` or compatibility wrappers.                                                                                                                 |
-| Plan-scoped notepad     | `.omc/notepads/<plan-name>/`                                               | `.omx/notepads/<plan-name>/`                                               | Durable notes gathered while planning or executing a named goal.                                                                                                                   |
-| Project memory          | `.omc/project-memory.json` and `.omc/notepad.md`                           | `.omx/project-memory.json` and `.omx/notepad.md`                           | Reusable project facts and session notes.                                                                                                                                          |
+| Goal/spec artifact      | `.omg/specs/<slug>.md` or `.omg/plans/<slug>.md`                           | `.omx/specs/<slug>.md` or `.omx/plans/<slug>.md`                           | Durable statement of the user goal, constraints, acceptance criteria, and execution handoff.                                                                                       |
+| Approved execution plan | `.omg/plans/<slug>.md`                                                     | `.omx/plans/<slug>.md`                                                     | Reviewed implementation plan consumed by execution workflows such as team or ralph.                                                                                                |
+| Task/runtime state      | `.omg/state/<mode>.json` or `.omg/state/sessions/<session-id>/<mode>.json` | `.omx/state/<mode>.json` or `.omx/state/sessions/<session-id>/<mode>.json` | Machine-readable workflow state. Session-scoped state wins over legacy flat files when present.                                                                                    |
+| Team coordination state | `.omg/state/team/<team-name>/...`                                          | `.omx/state/team/<team-name>/...`                                          | Worker task files, mailbox, status, events, and dispatch metadata. Worktree-backed workers should use `OMC_TEAM_STATE_ROOT`/compat env to find the leader-owned coordination root. |
+| Ask/advisor artifacts   | `.omg/artifacts/ask/<provider>-<slug>-<timestamp>.md`                      | `.omx/artifacts/ask/<provider>-<slug>-<timestamp>.md`                      | Persisted advisor output from `omc ask` or compatibility wrappers.                                                                                                                 |
+| Plan-scoped notepad     | `.omg/notepads/<plan-name>/`                                               | `.omx/notepads/<plan-name>/`                                               | Durable notes gathered while planning or executing a named goal.                                                                                                                   |
+| Project memory          | `.omg/project-memory.json` and `.omg/notepad.md`                           | `.omx/project-memory.json` and `.omx/notepad.md`                           | Reusable project facts and session notes.                                                                                                                                          |
 
 When an environment variable such as `OMC_STATE_DIR` centralizes storage, resolve the OMC project-local root through that setting before expanding the paths above. In docs, phrase this as "the OMC state root" or "the team coordination root" when the exact filesystem path may vary.
 
 ### `/goal` interoperability notes
 
-Claude Code's `/goal` feature owns its hidden goal state. OMC integrations should not mutate hidden Claude Code goal storage directly. When OMC needs a goal-related artifact, create or update an explicit OMC artifact such as `.omc/specs/<slug>.md`, `.omc/plans/<slug>.md`, or `.omc/state/<mode>.json` and record any `/goal` relationship as metadata or prose in that artifact.
+Claude Code's `/goal` feature owns its hidden goal state. OMC integrations should not mutate hidden Claude Code goal storage directly. When OMC needs a goal-related artifact, create or update an explicit OMC artifact such as `.omg/specs/<slug>.md`, `.omg/plans/<slug>.md`, or `.omg/state/<mode>.json` and record any `/goal` relationship as metadata or prose in that artifact.
 
 For cross-runtime handoffs:
 
 - Prefer logical names such as "approved execution plan" or "team coordination root" over hardcoded `.omx/...` paths.
-- Use `.omc/...` examples for OMC-facing docs and commands.
+- Use `.omg/...` examples for OMC-facing docs and commands.
 - Use `.omx/...` examples only for OMX compatibility behavior.
 - For OMO-native behavior, link to or quote the OMO command's documented path instead of inventing an OMC/OMX path.
 
@@ -551,7 +551,7 @@ omc ask claude --agent-prompt executor --prompt "create an implementation plan"
 ```
 
 - Provider matrix: `claude | codex | gemini | antigravity | grok | cursor`
-- Artifacts: `.omc/artifacts/ask/{provider}-{slug}-{timestamp}.md`
+- Artifacts: `.omg/artifacts/ask/{provider}-{slug}-{timestamp}.md`
 - Canonical env vars: `OMC_ASK_ADVISOR_SCRIPT`, `OMC_ASK_ORIGINAL_TASK`
 - Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
 - Skill entrypoint: `/oh-my-copilot:ask <claude|codex|gemini|antigravity|grok|cursor> <prompt>` routes to this command
@@ -595,7 +595,7 @@ omc session friction report --since 24h
 omc session friction report --project all --json
 ```
 
-- Local-only/offline report over Claude transcript files, `.omc/sessions/*.json`, and `.omc/state/agent-replay-*.jsonl`
+- Local-only/offline report over Claude transcript files, `.omg/sessions/*.json`, and `.omg/state/agent-replay-*.jsonl`
 - Does not print raw prompt, response, or tool-result content by default; output uses counts, sizes, timestamps, and signal codes
 - Highlights context-bloat and operator-friction indicators such as high estimated context usage, large JSONL entries, tool error rates, long idle gaps, failed agents, and hook noise
 - Supports `--limit`, `--session`, `--since`, `--project`, and `--json`
@@ -650,7 +650,7 @@ Optional compatibility enablement (manual only):
 
 - **Artifact-first terminal convergence**: team monitors prefer finalized state artifacts when present.
 - **Deterministic parse-failure handling**: malformed result artifacts are treated as terminal `failed`.
-- **Cleanup scope**: shutdown/cleanup only clears `.omc/state/team/{teamName}` for the target team (never sibling teams).
+- **Cleanup scope**: shutdown/cleanup only clears `.omg/state/team/{teamName}` for the target team (never sibling teams).
 
 ### Artifact descriptors and bounded handoff
 
@@ -660,8 +660,8 @@ OMC handoffs follow an artifact-first discipline:
 - **Data plane** artifacts stay durable: plans, prompts, specs, traces, and result files.
 - Large payloads should be referenced by descriptor instead of copied into control-plane state.
 - Current low-risk call sites follow this split explicitly:
-  - shared interop state writes oversized task descriptions, task results, and shared messages to `.omc/state/interop/artifacts/**`
-  - prompt persistence keeps durable prompt/response files in `.omc/prompts/**` and exposes descriptor metadata through job status records
+  - shared interop state writes oversized task descriptions, task results, and shared messages to `.omg/state/interop/artifacts/**`
+  - prompt persistence keeps durable prompt/response files in `.omg/prompts/**` and exposes descriptor metadata through job status records
 
 Canonical descriptor fields:
 
@@ -680,7 +680,7 @@ Bounded handoff policy:
 
 1. Keep small payloads inline only when the call site's explicit threshold allows it.
 2. For larger payloads, pass a short summary plus the descriptor.
-3. Keep durable content in artifact paths such as `.omc/plans/`, `.omc/prompts/`, and related artifact stores rather than embedding full bodies into queue or status records.
+3. Keep durable content in artifact paths such as `.omg/plans/`, `.omg/prompts/`, and related artifact stores rather than embedding full bodies into queue or status records.
 
 ## Agents (29 Total)
 
@@ -937,14 +937,14 @@ Built-in skills and slash-loaded skills can now declare a lightweight pipeline/h
 pipeline: [deep-interview, plan, autopilot]
 next-skill: plan
 next-skill-args: --consensus --direct
-handoff: .omc/specs/deep-interview-{slug}.md
+handoff: .omg/specs/deep-interview-{slug}.md
 ```
 
 When present, OMC appends a standardized **Skill Pipeline** section to the rendered skill prompt so the current stage, handoff artifact, and explicit next `Skill("oh-my-copilot:...")` invocation are carried forward consistently.
 
 ### Skills 2.0 Compatibility (MVP)
 
-OMC's canonical project-local skill directory remains `.omc/skills/`, and the runtime also reads Claude Code project skills from `.claude/skills/` plus compatibility skills from `.agents/skills/`.
+OMC's canonical project-local skill directory remains `.omg/skills/`, and the runtime also reads Claude Code project skills from `.claude/skills/` plus compatibility skills from `.agents/skills/`.
 
 For builtin and slash-loaded skills, OMC also appends a standardized **Skill Resources** section when the skill directory contains bundled assets such as helper scripts, templates, or support libraries. This helps agents reuse packaged skill resources instead of recreating them ad hoc.
 
@@ -960,7 +960,7 @@ Key contract points:
 - The adapter renders a measurable `/goal <condition>` handoff; it must not mutate hidden Claude Code session state directly.
 - The deterministic conflict policy is exactly one of `refuse`, `adopt_existing`, or `artifact_only`; competing Ralph/autopilot/Stop-hook/Team loops must not continue with only a warning.
 - `/goal` evaluator success is evidence for OMC final review, not completion by itself; OMC still requires surfaced command/test/docs evidence.
-- OMC stores durable goal ledgers and evidence under OMC-owned logical artifacts and `.omc/`-resolved paths, not hardcoded `.omx/` paths.
+- OMC stores durable goal ledgers and evidence under OMC-owned logical artifacts and `.omg/`-resolved paths, not hardcoded `.omx/` paths.
 
 ---
 
@@ -997,8 +997,8 @@ The `code-simplifier` Stop hook automatically delegates recently modified source
 explicitly enabled via the global OMC config file:
 
 - Linux/Unix default: `${XDG_CONFIG_HOME:-~/.config}/omc/config.json`
-- macOS/Windows legacy/default path: `~/.omc/config.json`
-- Existing legacy `~/.omc/config.json` continues to be read as a fallback where applicable.
+- macOS/Windows legacy/default path: `~/.omg/config.json`
+- Existing legacy `~/.omg/config.json` continues to be read as a fallback where applicable.
 
 **Enable:**
 
@@ -1186,8 +1186,8 @@ For complete documentation, see **[Performance Monitoring Guide](./PERFORMANCE-M
 | Feature                   | Description                                           | Access                                 |
 | ------------------------- | ----------------------------------------------------- | -------------------------------------- |
 | **Agent Observatory**     | Real-time agent status, efficiency, bottlenecks       | HUD / API                              |
-| **Session-End Summaries** | Persisted per-session summaries and callback payloads | `.omc/sessions/*.json`, `session-end`  |
-| **Session Replay**        | Event timeline for post-session analysis              | `.omc/state/agent-replay-*.jsonl`      |
+| **Session-End Summaries** | Persisted per-session summaries and callback payloads | `.omg/sessions/*.json`, `session-end`  |
+| **Session Replay**        | Event timeline for post-session analysis              | `.omg/state/agent-replay-*.jsonl`      |
 | **Session Search**        | Search prior local transcript/session artifacts       | `omc session search`, `session_search` |
 | **Intervention System**   | Auto-detection of stale agents, cost overruns         | Automatic                              |
 
@@ -1196,8 +1196,8 @@ For complete documentation, see **[Performance Monitoring Guide](./PERFORMANCE-M
 ```bash
 omc hud                              # Render the current HUD statusline
 omc team status <team-name>          # Inspect a running team job
-tail -20 .omc/state/agent-replay-*.jsonl
-ls .omc/sessions/*.json
+tail -20 .omg/state/agent-replay-*.jsonl
+ls .omg/sessions/*.json
 ```
 
 ### HUD Presets

@@ -141,7 +141,7 @@ export async function resolveSelfImprovePaths({ projectRoot = process.cwd(), top
   // When a sessionId is provided, scope beneath topics/<slug>/sessions/<sid>/
   // so concurrent runs sharing the same topic slug don't collide.
   // Falls back to OMC_SESSION_ID env var when explicit arg is absent.
-  // Legacy layout (no topic/slug supplied, flat .omc/self-improve/ exists) is
+  // Legacy layout (no topic/slug supplied, flat .omg/self-improve/ exists) is
   // preserved as-is — session scoping only applies to the topic-scoped layout.
   const rawSessionId = sessionId && sessionId.trim()
     ? sessionId.trim()
@@ -173,9 +173,9 @@ function printHelp() {
       'Usage: node resolve-paths.mjs [--project-root PATH] [--topic TEXT | --slug SLUG] [--session-id SID] [--ensure-dirs] [--format json|shell]',
       '',
       'Resolves self-improve artifact paths.',
-      '- New runs default to .omc/self-improve/topics/<topic-slug>/',
-      '- Pass --session-id to isolate parallel runs: .omc/self-improve/topics/<slug>/sessions/<sid>/',
-      '- Legacy flat .omc/self-improve/ is preserved only when no topic/slug is supplied and a flat layout already exists',
+      '- New runs default to .omg/self-improve/topics/<topic-slug>/',
+      '- Pass --session-id to isolate parallel runs: .omg/self-improve/topics/<slug>/sessions/<sid>/',
+      '- Legacy flat .omg/self-improve/ is preserved only when no topic/slug is supplied and a flat layout already exists',
       '',
     ].join('\n'),
   );
