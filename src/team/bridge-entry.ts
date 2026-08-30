@@ -77,7 +77,7 @@ function hasOmcPathSegment(absolutePath: string): boolean {
  * - Must resolve (via realpathSync) to a path under the user's home directory
  * - Must be inside a git worktree
  */
-function validateBridgeWorkingDirectory(workingDirectory: string): void {
+export function validateBridgeWorkingDirectory(workingDirectory: string): void {
   // Check exists and is directory
   let stat;
   try {
@@ -89,10 +89,12 @@ function validateBridgeWorkingDirectory(workingDirectory: string): void {
     throw new Error(`workingDirectory is not a directory: ${workingDirectory}`);
   }
 
-  // Resolve symlinks and verify under homedir
+  // Resolve symlinks and verify under homedir. Same containment rule as
+  // validateConfigPath: a string prefix with '/' never matches on Windows, so
+  // every working directory under the user's home was rejected there.
   const resolved = realpathSync(workingDirectory);
-  const home = homedir();
-  if (!resolved.startsWith(home + '/') && resolved !== home) {
+  const home = resolve(homedir());
+  if (!isAtOrUnder(home, resolved)) {
     throw new Error(`workingDirectory is outside home directory: ${resolved}`);
   }
 

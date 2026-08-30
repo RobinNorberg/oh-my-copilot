@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, statSync, realpathSync } from 'fs';
-import { join } from 'path';
+import { isAbsolute, join, relative, resolve } from 'path';
 import { homedir, tmpdir } from 'os';
 import type { BridgeConfig, TaskFile, OutboxMessage } from '../types.js';
 import { readTask, updateTask } from '../task-file-ops.js';
@@ -312,6 +312,17 @@ describe('Bridge Integration', () => {
 describe('validateBridgeWorkingDirectory logic', () => {
   // validateBridgeWorkingDirectory is private in bridge-entry.ts, so we
   // replicate its core checks to validate the security properties.
+  //
+  // NOTE: being a replica, this cannot catch drift in the real function — and
+  // it did not: both carried a `home + '/'` prefix check that rejected every
+  // path on Windows until it was fixed in bridge-entry.ts. Containment here
+  // mirrors the production rule.
+
+  function isAtOrUnder(parent: string, child: string): boolean {
+    const rel = relative(parent, child);
+    if (rel === '') return true;
+    return !rel.startsWith('..') && !isAbsolute(rel);
+  }
 
   function validateBridgeWorkingDirectory(workingDirectory: string): void {
     let stat;
@@ -324,21 +335,24 @@ describe('validateBridgeWorkingDirectory logic', () => {
       throw new Error(`workingDirectory is not a directory: ${workingDirectory}`);
     }
     const resolved = realpathSync(workingDirectory);
-    const home = homedir();
-    if (!resolved.startsWith(home + '/') && resolved !== home) {
+    if (!isAtOrUnder(resolve(homedir()), resolved)) {
       throw new Error(`workingDirectory is outside home directory: ${resolved}`);
     }
   }
 
-  it('rejects /etc as working directory', () => {
-    expect(() => validateBridgeWorkingDirectory('/etc')).toThrow('outside home directory');
+  /** A directory that exists on this platform and is outside the user's home. */
+  const OUTSIDE_HOME_DIR = process.platform === 'win32'
+    ? (process.env.SystemRoot ?? 'C:\\Windows')
+    : '/etc';
+
+  it('rejects a system directory outside home as working directory', () => {
+    expect(() => validateBridgeWorkingDirectory(OUTSIDE_HOME_DIR)).toThrow('outside home directory');
   });
 
-  it('rejects /tmp as working directory (outside home)', () => {
-    // /tmp is typically outside $HOME
-    const home = homedir();
-    if (!'/tmp'.startsWith(home)) {
-      expect(() => validateBridgeWorkingDirectory('/tmp')).toThrow('outside home directory');
+  it('rejects the temp directory as working directory when it is outside home', () => {
+    const realTmp = realpathSync(tmpdir());
+    if (!isAtOrUnder(resolve(homedir()), realTmp)) {
+      expect(() => validateBridgeWorkingDirectory(realTmp)).toThrow('outside home directory');
     }
   });
 

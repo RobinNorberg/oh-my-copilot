@@ -13,7 +13,7 @@
 //     handle (if set externally) and can optionally create an orphan rebase-merge dir.
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { OrchestratorHandle } from '../../merge-orchestrator.js';
@@ -240,9 +240,10 @@ export async function createGitFixture(opts: CreateGitFixtureOpts): Promise<GitF
       } catch {
         // ignore cleanup errors
       }
-      // Use rm -rf via shell to avoid Node's multi-step recursive walk racing
-      // with concurrent git object writes (ENOTEMPTY race under vitest threads).
-      execFileSync('rm', ['-rf', tmpBase], { stdio: 'pipe' });
+      // maxRetries covers the ENOTEMPTY/EBUSY race between Node's recursive
+      // walk and concurrent git object writes under vitest threads — the reason
+      // this used to shell out to `rm -rf`, which does not exist on Windows.
+      rmSync(tmpBase, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     },
   };
 }

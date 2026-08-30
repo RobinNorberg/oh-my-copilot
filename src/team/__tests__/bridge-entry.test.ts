@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'fs';
 import { join } from 'path';
-import { validateConfigPath } from '../bridge-entry.js';
+import { validateBridgeWorkingDirectory, validateConfigPath } from '../bridge-entry.js';
 
 describe('bridge-entry security', () => {
   const source = readFileSync(join(__dirname, '..', 'bridge-entry.ts'), 'utf-8');
@@ -36,7 +36,12 @@ describe('bridge-entry security', () => {
   });
 
   it('checks path is under homedir', () => {
-    expect(source).toContain("home + '/'");
+    // Behavioral, not a source grep: the old grep pinned a `home + '/'` prefix
+    // check, which is exactly the expression that rejected every path on Windows.
+    const outsideHome = process.platform === 'win32'
+      ? (process.env.SystemRoot ?? 'C:\\Windows')
+      : '/etc';
+    expect(() => validateBridgeWorkingDirectory(outsideHome)).toThrow('outside home directory');
   });
 
   it('verifies git worktree', () => {
