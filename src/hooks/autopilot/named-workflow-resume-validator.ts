@@ -56,6 +56,13 @@ function exactKeys(value: RecordValue, keys: string[]): boolean {
 function safeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
 }
+/** Windows file ids run past the safe integer range, so identities carry device and inode as decimal strings; states written as numbers still validate. */
+function fileId(value: unknown): boolean {
+  return typeof value === "string" ? /^\d+$/.test(value) : safeInteger(value);
+}
+function sameFileId(left: unknown, right: unknown): boolean {
+  return String(left) === String(right);
+}
 function timestamp(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
@@ -70,8 +77,8 @@ function validFileIdentity(value: unknown): value is RecordValue {
       "ctimeNs",
       "contentSha256",
     ]) &&
-    safeInteger(value.device) &&
-    safeInteger(value.inode) &&
+    fileId(value.device) &&
+    fileId(value.inode) &&
     safeInteger(value.size) &&
     typeof value.mtimeNs === "string" &&
     /^\d+$/.test(value.mtimeNs) &&
@@ -266,12 +273,12 @@ function validBoundary(
   const opened = noFollowCanonicalFile(boundary.transcriptPath, root);
   if (!opened) return false;
   try {
-    const stat = fstatSync(opened.fd);
+    const stat = fstatSync(opened.fd, { bigint: true });
     const identity = boundary.fileIdentity;
     if (
-      stat.dev !== identity.device ||
-      stat.ino !== identity.inode ||
-      stat.size < boundary.byteOffset ||
+      !sameFileId(stat.dev, identity.device) ||
+      !sameFileId(stat.ino, identity.inode) ||
+      Number(stat.size) < boundary.byteOffset ||
       identity.size !== boundary.byteOffset
     )
       return false;
@@ -343,7 +350,7 @@ function readStableTranscript(path: string, sessionId: string, root: string): St
     const before = fstatSync(opened.fd, { bigint: true }); if (!before.isFile()) return null; const size = Number(before.size); const hash = createHash("sha256"); if (!scanTranscriptJsonl(opened.fd, 0, size, sessionId, undefined, hash)) return null; const contentSha256 = hash.digest("hex");
     const after = fstatSync(opened.fd, { bigint: true }); if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) return null;
     const fd = opened.fd; opened.fd = -1;
-    return { fd, path: opened.path, identity: { device: Number(after.dev), inode: Number(after.ino), size: Number(after.size), mtimeNs: after.mtimeNs.toString(), ctimeNs: after.ctimeNs.toString(), contentSha256 }, hashRange: (start, end) => start >= 0 && end >= start && end <= size ? hashTranscriptRange(fd, start, end) : null, scanJsonl: (start, end, callback) => start >= 0 && end >= start && end <= size ? scanTranscriptJsonl(fd, start, end, sessionId, callback) : false };
+    return { fd, path: opened.path, identity: { device: String(after.dev), inode: String(after.ino), size: Number(after.size), mtimeNs: after.mtimeNs.toString(), ctimeNs: after.ctimeNs.toString(), contentSha256 }, hashRange: (start, end) => start >= 0 && end >= start && end <= size ? hashTranscriptRange(fd, start, end) : null, scanJsonl: (start, end, callback) => start >= 0 && end >= start && end <= size ? scanTranscriptJsonl(fd, start, end, sessionId, callback) : false };
   } catch { return null; } finally { if (opened.fd !== -1) closeSync(opened.fd); }
 }
 
@@ -401,8 +408,8 @@ function authenticatedObservation(
   if (!transcript) return false;
   try {
     if (
-      transcript.identity.device !== stable.device ||
-      transcript.identity.inode !== stable.inode ||
+      !sameFileId(transcript.identity.device, stable.device) ||
+      !sameFileId(transcript.identity.inode, stable.inode) ||
       Number(transcript.identity.size) < Number(stable.size) ||
       transcript.hashRange(0, Number(stable.size)) !== stable.contentSha256 ||
       Number(observation.byteOffset) < Number(boundary.byteOffset) ||
@@ -519,7 +526,7 @@ export function validateNamedWorkflowStateStructure(
     if (previousObservation) {
       const previousBoundary = previousObservation.activationBoundary as RecordValue;
       const previousStable = previousObservation.stableFile as RecordValue;
-      if (boundary.transcriptPath !== previousBoundary.transcriptPath || boundary.byteOffset !== previousStable.size || JSON.stringify(boundary.fileIdentity) !== JSON.stringify(previousStable)) return null;
+      if (boundary.transcriptPath !== previousBoundary.transcriptPath || boundary.byteOffset !== previousStable.size || !sameFileIdentity(boundary.fileIdentity, previousStable)) return null;
     }
     previousObservation = observation;
   }
@@ -527,7 +534,7 @@ export function validateNamedWorkflowStateStructure(
     const current = tracking.activationBoundary as unknown as RecordValue;
     const stable = previousObservation.stableFile as RecordValue;
     const boundary = previousObservation.activationBoundary as RecordValue;
-    if (current.transcriptPath !== boundary.transcriptPath || current.byteOffset !== stable.size || JSON.stringify(current.fileIdentity) !== JSON.stringify(stable)) return null;
+    if (current.transcriptPath !== boundary.transcriptPath || current.byteOffset !== stable.size || !sameFileIdentity(current.fileIdentity, stable)) return null;
   }
   if (terminal ? state.phase !== "complete" : state.phase !== workflow.stages[tracking.currentStageIndex]) return null;
   return { tracking: tracking as NonNullable<AutopilotState["pipelineTracking"]>, task };
@@ -660,7 +667,7 @@ export function validateNamedWorkflowState(
       if (
         boundary.transcriptPath !== previousBoundary.transcriptPath ||
         boundary.byteOffset !== previousStable.size ||
-        JSON.stringify(boundary.fileIdentity) !== JSON.stringify(previousStable)
+        !sameFileIdentity(boundary.fileIdentity, previousStable)
       )
         return null;
     }
@@ -673,7 +680,7 @@ export function validateNamedWorkflowState(
     if (
       current.transcriptPath !== boundary.transcriptPath ||
       current.byteOffset !== stable.size ||
-      JSON.stringify(current.fileIdentity) !== JSON.stringify(stable)
+      !sameFileIdentity(current.fileIdentity, stable)
     )
       return null;
   }
@@ -758,10 +765,11 @@ export function refreshNamedWorkflowBoundaryForCommit(
   }
 }
 
-function sameFileIdentity(left: RecordValue, right: RecordValue): boolean {
+function sameFileIdentity(left: unknown, right: unknown): boolean {
+  if (!isRecord(left) || !isRecord(right)) return false;
   return (
-    left.device === right.device &&
-    left.inode === right.inode &&
+    sameFileId(left.device, right.device) &&
+    sameFileId(left.inode, right.inode) &&
     left.size === right.size &&
     left.mtimeNs === right.mtimeNs &&
     left.ctimeNs === right.ctimeNs &&

@@ -54,7 +54,7 @@ export function resolveWorkflowStagePrompt(state, stageId) {
   return resolveCanonicalWorkflowStagePrompt(stageId, task);
 }
 function transcriptRoot() { return realpathSync(resolve(getCopilotConfigDir(), 'projects')); }
-function fileIdentity(stat, contentSha256) { return { device: Number(stat.dev), inode: Number(stat.ino), size: Number(stat.size), mtimeNs: stat.mtimeNs.toString(), ctimeNs: stat.ctimeNs.toString(), contentSha256 }; }
+function fileIdentity(stat, contentSha256) { return { device: String(stat.dev), inode: String(stat.ino), size: Number(stat.size), mtimeNs: stat.mtimeNs.toString(), ctimeNs: stat.ctimeNs.toString(), contentSha256 }; }
 function hashRange(fd, start, end) { const hash = createHash('sha256'); const chunk = Buffer.allocUnsafe(TRANSCRIPT_CHUNK_BYTES); for (let offset = start; offset < end;) { const count = readSync(fd, chunk, 0, Math.min(chunk.length, end - offset), offset); if (count <= 0) return null; hash.update(chunk.subarray(0, count)); offset += count; } return hash.digest('hex'); }
 function scanJsonl(fd, start, end, sessionId, callback, hash) { const chunk = Buffer.allocUnsafe(TRANSCRIPT_CHUNK_BYTES); const record = Buffer.allocUnsafe(MAX_JSONL_RECORD_BYTES + 1); let recordBytes = 0; let byteOffset = start; let lineNumber = 0; const decodeRecord = length => { try { return new TextDecoder('utf-8', { fatal: true }).decode(record.subarray(0, length)); } catch { return null; } }; const emitRecord = crlf => { const length = recordBytes - (crlf && recordBytes > 0 && record[recordBytes - 1] === 0x0d ? 1 : 0); const line = decodeRecord(length); if (line === null) return false; return !callback || callback(line, byteOffset, lineNumber, createHash('sha256').update(record.subarray(0, length)).digest('hex')) !== false; }; for (let offset = start; offset < end;) { const maxRead = recordBytes >= MAX_JSONL_RECORD_BYTES ? 1 : MAX_JSONL_RECORD_BYTES + 1 - recordBytes; const count = readSync(fd, chunk, 0, Math.min(chunk.length, end - offset, maxRead), offset); if (count <= 0) return false; hash?.update(chunk.subarray(0, count)); for (let index = 0; index < count; index += 1) { const byte = chunk[index]; if (byte === 0x0a) { if (!emitRecord(true)) return false; byteOffset += recordBytes + 1; recordBytes = 0; lineNumber += 1; } else if ((recordBytes === MAX_JSONL_RECORD_BYTES && byte !== 0x0d) || recordBytes > MAX_JSONL_RECORD_BYTES) { workflowTranscriptFailures.set(sessionId, WORKFLOW_TRANSCRIPT_RECORD_TOO_LARGE); return false; } else { record[recordBytes++] = byte; } } offset += count; } if (recordBytes > MAX_JSONL_RECORD_BYTES) { workflowTranscriptFailures.set(sessionId, WORKFLOW_TRANSCRIPT_RECORD_TOO_LARGE); return false; } return recordBytes === 0 || emitRecord(false); }
 function procSelfFdAvailable() { return workflowPlatform() === 'linux' && typeof fsConstants.O_NOFOLLOW === 'number' && typeof fsConstants.O_DIRECTORY === 'number' && existsSync('/proc/self/fd'); }
@@ -109,9 +109,13 @@ function activationBoundary(transcriptPath, sessionId) {
 }
 export function createWorkflowState({ directory, sessionId, task, workflow, transcriptPath }) { clearWorkflowTranscriptFailure(sessionId); const boundary = typeof transcriptPath === 'string' && transcriptPath ? activationBoundary(transcriptPath, sessionId) : null; if (!boundary) return null; const now = new Date().toISOString(); const stages = workflow.stages.map((id, index) => ({ id, status: index === 0 ? 'active' : 'pending', iterations: 0, ...(index === 0 ? { startedAt: now } : {}) })); return { active: true, mode: 'autopilot', prompt: task, directory, project_dir: directory, project_path: directory, session_id: sessionId, workflowRunId: randomUUID(), started_at: now, updated_at: now, last_checked_at: now, phase: workflow.stages[0], workflow, pipelineTracking: { stages, currentStageIndex: 0, trackingRevision: 0, activationBoundary: boundary, completionObservations: [] } }; }
 function isFiniteInteger(value) { return Number.isSafeInteger(value) && value >= 0; }
+/** Windows file ids run past the safe integer range, so identities carry device and inode as decimal strings; states written as numbers still validate. */
+function isFileId(value) { return typeof value === 'string' ? /^\d+$/.test(value) : isFiniteInteger(value); }
+function sameFileId(left, right) { return String(left) === String(right); }
+function normalizedFileIdentity(value) { return { ...value, device: String(value.device), inode: String(value.inode) }; }
 function hasExactKeys(value, keys) { if (!value || typeof value !== 'object' || Array.isArray(value)) return false; const actual = Object.keys(value).sort(); const expected = [...keys].sort(); return actual.length === expected.length && actual.every((key, index) => key === expected[index]); }
 function isTimestamp(value) { return typeof value === 'string' && Number.isFinite(Date.parse(value)); }
-function isFileIdentity(value) { return hasExactKeys(value, ['device', 'inode', 'size', 'mtimeNs', 'ctimeNs', 'contentSha256']) && isFiniteInteger(value.device) && isFiniteInteger(value.inode) && isFiniteInteger(value.size) && /^\d+$/.test(value.mtimeNs) && /^\d+$/.test(value.ctimeNs) && /^[a-f0-9]{64}$/.test(value.contentSha256); }
+function isFileIdentity(value) { return hasExactKeys(value, ['device', 'inode', 'size', 'mtimeNs', 'ctimeNs', 'contentSha256']) && isFileId(value.device) && isFileId(value.inode) && isFiniteInteger(value.size) && /^\d+$/.test(value.mtimeNs) && /^\d+$/.test(value.ctimeNs) && /^[a-f0-9]{64}$/.test(value.contentSha256); }
 function isBoundary(value, sessionId, root) { return hasExactKeys(value, ['transcriptPath', 'transcriptRoot', 'transcriptBasename', 'sessionId', 'byteOffset', 'fileIdentity']) && typeof value.transcriptPath === 'string' && value.transcriptPath.startsWith(root + sep) && value.transcriptRoot === root && value.transcriptBasename === `${sessionId}.jsonl` && value.sessionId === sessionId && isFiniteInteger(value.byteOffset) && isFileIdentity(value.fileIdentity) && value.fileIdentity.size === value.byteOffset; }
 function hasAuthenticatedBoundary(value, sessionId, root) {
   if (!isBoundary(value, sessionId, root)) return false;
@@ -119,14 +123,14 @@ function hasAuthenticatedBoundary(value, sessionId, root) {
   if (!transcript) return false;
   try {
     if (transcript.root !== root || transcript.canonicalPath !== value.transcriptPath || basename(transcript.canonicalPath) !== `${sessionId}.jsonl`) return false;
-    return transcript.identity.device === value.fileIdentity.device && transcript.identity.inode === value.fileIdentity.inode && transcript.identity.size >= value.byteOffset && transcript.hashRange(0, value.byteOffset) === value.fileIdentity.contentSha256;
+    return sameFileId(transcript.identity.device, value.fileIdentity.device) && sameFileId(transcript.identity.inode, value.fileIdentity.inode) && transcript.identity.size >= value.byteOffset && transcript.hashRange(0, value.byteOffset) === value.fileIdentity.contentSha256;
   } finally { closeStableTranscript(transcript); }
 }
 function hasAuthenticatedObservation(observation, sessionId, root) {
   if (!hasAuthenticatedBoundary(observation.activationBoundary, sessionId, root)) return false;
   const transcript = readStableTranscript(observation.activationBoundary.transcriptPath, sessionId);
   try {
-    if (transcript.root !== root || transcript.canonicalPath !== observation.activationBoundary.transcriptPath || transcript.identity.device !== observation.stableFile.device || transcript.identity.inode !== observation.stableFile.inode || transcript.identity.size < observation.stableFile.size || transcript.hashRange(0, observation.stableFile.size) !== observation.stableFile.contentSha256) return false;
+    if (transcript.root !== root || transcript.canonicalPath !== observation.activationBoundary.transcriptPath || !sameFileId(transcript.identity.device, observation.stableFile.device) || !sameFileId(transcript.identity.inode, observation.stableFile.inode) || transcript.identity.size < observation.stableFile.size || transcript.hashRange(0, observation.stableFile.size) !== observation.stableFile.contentSha256) return false;
     const boundary = observation.activationBoundary; if (observation.byteOffset < boundary.byteOffset || observation.byteOffset >= observation.stableFile.size) return false;
     let authenticated = false;
     if (!transcript.scanJsonl(boundary.byteOffset, observation.stableFile.size, (line, byteOffset, lineNumber, recordContentSha256) => { if (byteOffset !== observation.byteOffset || lineNumber !== observation.lineNumber) return true; let record; try { record = JSON.parse(line); } catch { return false; } const text = assistantText(record); authenticated = recordContentSha256 === observation.recordContentSha256 && recordSessionId(record) === sessionId && record?.type === 'assistant' && record?.message?.role === 'assistant' && !record?.isMeta && !record?.isReplay && !record?.replay && !record?.meta && text !== null && !text.includes('<local-command-stdout>') && text.trim() === `Signal: ${SIGNALS[observation.stageId]}`; return true; })) return false;
@@ -153,14 +157,14 @@ export function isValidWorkflowTrackingState(state, sessionId = state?.session_i
     const validObservations = tracking.completionObservations.every((observation, index) => {
       if (!hasExactKeys(observation, ['stageId', 'sessionId', 'signalId', 'lineNumber', 'byteOffset', 'recordContentSha256', 'stableFile', 'activationBoundary', 'observedAt'])) return false;
       if (observation.stageId !== workflow.stages[index] || observation.sessionId !== sessionId || observation.signalId !== SIGNALS[observation.stageId] || !isFiniteInteger(observation.lineNumber) || !isFiniteInteger(observation.byteOffset) || !/^[a-f0-9]{64}$/.test(observation.recordContentSha256) || !isTimestamp(observation.observedAt) || !isFileIdentity(observation.stableFile) || !hasAuthenticatedObservation(observation, sessionId, root)) return false;
-      if (previousObservation && (observation.activationBoundary.transcriptPath !== previousObservation.activationBoundary.transcriptPath || observation.activationBoundary.byteOffset !== previousObservation.stableFile.size || canonicalJson(observation.activationBoundary.fileIdentity) !== canonicalJson(previousObservation.stableFile))) return false;
+      if (previousObservation && (observation.activationBoundary.transcriptPath !== previousObservation.activationBoundary.transcriptPath || observation.activationBoundary.byteOffset !== previousObservation.stableFile.size || canonicalJson(normalizedFileIdentity(observation.activationBoundary.fileIdentity)) !== canonicalJson(normalizedFileIdentity(previousObservation.stableFile)))) return false;
       previousObservation = observation;
       return true;
     });
     if (!validObservations) return false;
     if (tracking.currentStageIndex > 0) {
       const latest = tracking.completionObservations.at(-1);
-      if (tracking.activationBoundary.transcriptPath !== latest.activationBoundary.transcriptPath || tracking.activationBoundary.byteOffset !== latest.stableFile.size || canonicalJson(tracking.activationBoundary.fileIdentity) !== canonicalJson(latest.stableFile)) return false;
+      if (tracking.activationBoundary.transcriptPath !== latest.activationBoundary.transcriptPath || tracking.activationBoundary.byteOffset !== latest.stableFile.size || canonicalJson(normalizedFileIdentity(tracking.activationBoundary.fileIdentity)) !== canonicalJson(normalizedFileIdentity(latest.stableFile))) return false;
     }
     return true;
   } catch { return false; }
@@ -188,7 +192,7 @@ export function advanceWorkflowOnStop(state, input, sessionId) { clearWorkflowTr
   const transcript = typeof suppliedPath === 'string' ? readStableTranscript(suppliedPath, sessionId) : null;
   const absolute = transcript?.canonicalPath;
   if (!boundary || !transcript || absolute !== boundary.transcriptPath || boundary.transcriptRoot !== transcript.root || boundary.transcriptBasename !== `${sessionId}.jsonl` || boundary.sessionId !== sessionId || !Number.isSafeInteger(boundary.byteOffset) || boundary.byteOffset < 0) { closeStableTranscript(transcript); return null; }
-  if (transcript.identity.size < boundary.byteOffset || boundary.fileIdentity.device !== transcript.identity.device || boundary.fileIdentity.inode !== transcript.identity.inode || transcript.hashRange(0, boundary.byteOffset) !== boundary.fileIdentity.contentSha256) { closeStableTranscript(transcript); return null; }
+  if (transcript.identity.size < boundary.byteOffset || !sameFileId(boundary.fileIdentity.device, transcript.identity.device) || !sameFileId(boundary.fileIdentity.inode, transcript.identity.inode) || transcript.hashRange(0, boundary.byteOffset) !== boundary.fileIdentity.contentSha256) { closeStableTranscript(transcript); return null; }
   const evidence = completionEvidence(transcript, boundary.byteOffset, transcript.identity.size, SIGNALS[stageId], sessionId); if (!evidence) { closeStableTranscript(transcript); return null; }
   const revision = Number.isSafeInteger(tracking.trackingRevision) ? tracking.trackingRevision : 0; const observedAt = new Date().toISOString(); const nextIndex = index + 1; const nextStage = workflow.stages[nextIndex] || null; const nextStagePrompt = nextStage ? resolveWorkflowStagePrompt(state, nextStage) : null; if (nextStage && !nextStagePrompt) { closeStableTranscript(transcript); return null; }
   const updated = JSON.parse(JSON.stringify(state)); updated.pipelineTracking.stages[index].status = 'complete'; updated.pipelineTracking.stages[index].completedAt = observedAt;
@@ -201,7 +205,7 @@ export function refreshWorkflowBoundaryForCommit(advance) {
   const transcript = readStableTranscript(advance.expectedTranscriptPath, advance.expectedSessionId);
   if (!transcript) return false;
   try {
-    if (transcript.canonicalPath !== advance.expectedTranscriptPath || canonicalJson(transcript.identity) !== canonicalJson(advance.expectedTranscriptIdentity) || canonicalJson(transcript.pathIdentity) !== canonicalJson(advance.expectedTranscriptPathIdentity)) return false;
+    if (transcript.canonicalPath !== advance.expectedTranscriptPath || canonicalJson(normalizedFileIdentity(transcript.identity)) !== canonicalJson(normalizedFileIdentity(advance.expectedTranscriptIdentity)) || canonicalJson(transcript.pathIdentity) !== canonicalJson(advance.expectedTranscriptPathIdentity)) return false;
     const observation = advance.updated?.pipelineTracking?.completionObservations?.at(-1);
     const boundary = observation?.activationBoundary;
     if (!boundary || transcript.identity.size < boundary.byteOffset) return false;

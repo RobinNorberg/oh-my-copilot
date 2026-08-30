@@ -83,7 +83,7 @@ function fixture(kind) {
 function transcriptIdentity(path) {
   const stat = lstatSync(path, { bigint: true });
   const content = readFileSync(path);
-  return { device: Number(stat.dev), inode: Number(stat.ino), size: Number(stat.size), mtimeNs: stat.mtimeNs.toString(), ctimeNs: stat.ctimeNs.toString(), contentSha256: createHash('sha256').update(content).digest('hex') };
+  return { device: String(stat.dev), inode: String(stat.ino), size: Number(stat.size), mtimeNs: stat.mtimeNs.toString(), ctimeNs: stat.ctimeNs.toString(), contentSha256: createHash('sha256').update(content).digest('hex') };
 }
 
 function workflowState(f, stages = ['ralplan', 'execution']) {
@@ -325,7 +325,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
     expect(state.pipelineTracking).toMatchObject({ currentStageIndex: 1, trackingRevision: 1 });
     expect(state.pipelineTracking.completionObservations).toEqual([expect.objectContaining({
       stageId: 'ralplan', sessionId: f.sessionId, signalId: 'PIPELINE_RALPLAN_COMPLETE', byteOffset: initial.pipelineTracking.activationBoundary.byteOffset + Buffer.byteLength(JSON.stringify({ sessionId: f.sessionId, type: 'assistant', message: { role: 'assistant', content: [{ type: 'text', text: 'unrelated secret-token-never-in-output' }] } })) + 1,
-      lineNumber: 1, recordContentSha256: expect.stringMatching(/^[a-f0-9]{64}$/), stableFile: expect.objectContaining({ device: expect.any(Number), inode: expect.any(Number), size: expect.any(Number) }), activationBoundary: expect.objectContaining({ sessionId: f.sessionId, transcriptBasename: `${f.sessionId}.jsonl` }), observedAt: expect.any(String),
+      lineNumber: 1, recordContentSha256: expect.stringMatching(/^[a-f0-9]{64}$/), stableFile: expect.objectContaining({ device: expect.stringMatching(/^\d+$/), inode: expect.stringMatching(/^\d+$/), size: expect.any(Number) }), activationBoundary: expect.objectContaining({ sessionId: f.sessionId, transcriptBasename: `${f.sessionId}.jsonl` }), observedAt: expect.any(String),
     })]);
   });
 

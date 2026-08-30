@@ -138,8 +138,8 @@ function stateBytes(cwd: string) {
 }
 
 function fileIdentity(path: string, content: Buffer) {
-  const stat = lstatSync(path);
-  return { device: stat.dev, inode: stat.ino, size: stat.size, mtimeNs: '0', ctimeNs: '0', contentSha256: createHash('sha256').update(content).digest('hex') };
+  const stat = lstatSync(path, { bigint: true });
+  return { device: String(stat.dev), inode: String(stat.ino), size: Number(stat.size), mtimeNs: '0', ctimeNs: '0', contentSha256: createHash('sha256').update(content).digest('hex') };
 }
 
 function advancePausedWorkflowState(state: any, transcriptPath: string, signal = 'PIPELINE_RALPLAN_COMPLETE') {
@@ -299,7 +299,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
       expect(JSON.parse(stateBytes(nested)!.toString())).toMatchObject({
         prompt: 'ship the release',
         workflow: { workflowName: 'release-flow', stages: ['ralplan', 'execution'] },
-        pipelineTracking: { activationBoundary: { transcriptPath: join(nested, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl'), byteOffset: 0, fileIdentity: { inode: expect.any(Number), device: expect.any(Number), size: 0 } } },
+        pipelineTracking: { activationBoundary: { transcriptPath: join(nested, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl'), byteOffset: 0, fileIdentity: { inode: expect.stringMatching(/^\d+$/), device: expect.stringMatching(/^\d+$/), size: 0 } } },
       });
     } finally {
       rmSync(parent, { recursive: true, force: true });
