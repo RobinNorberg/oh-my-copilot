@@ -35,13 +35,15 @@ Claude writes code confidently. Too confidently. Same-context critique has autho
 <Steps>
 1. **Determine scope**:
    - If argument provided, use it as the git range (e.g., `HEAD~3..HEAD`, `abc123..def456`)
-   - Otherwise, detect unpushed commits:
+   - Otherwise, detect unpushed commits. A non-zero exit here just means the branch has
+     no upstream; treat it as "try the fallback", not as an error to report:
      ```bash
-     git log @{u}..HEAD --oneline 2>/dev/null
+     git log @{u}..HEAD --oneline
      ```
-   - If that fails (no upstream tracking branch), fall back:
+   - If that fails, try `origin/main` and then `origin/master`. This picks whichever
+     exists and prints nothing when neither does:
      ```bash
-     git log origin/main..HEAD --oneline 2>/dev/null || git log origin/master..HEAD --oneline 2>/dev/null
+     node -e "const{spawnSync}=require('node:child_process');for(const base of ['origin/main','origin/master']){const r=spawnSync('git',['log',base+'..HEAD','--oneline'],{encoding:'utf8'});if(r.status===0){process.stdout.write(r.stdout);break}}"
      ```
    - If no unpushed commits found, report **"Nothing to critique — no unpushed commits found."** and stop
 

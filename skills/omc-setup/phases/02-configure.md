@@ -7,19 +7,7 @@
 Capture the original progress marker once when Phase 2 starts. A resumed run that enters at Step 2.4 must not repeat the completed Steps 2.5/2.6 prompts or overwrite a higher progress marker:
 
 ```bash
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to resume setup safely. Existing setup state was not modified."
-  exit 1
-fi
-if ! RESUME_LAST_COMPLETED_STEP=$(jq -r '.lastCompletedStep // 0' ".omg/state/setup-state.json" 2>/dev/null); then
-  echo "ERROR: Setup state is invalid JSON. Existing setup state was not modified."
-  exit 1
-fi
-if [ "$RESUME_LAST_COMPLETED_STEP" -ge 4 ] 2>/dev/null; then
-  RESUMED_PHASE_TWO_BOUNDARY="true"
-else
-  RESUMED_PHASE_TWO_BOUNDARY="false"
-fi
+node -e "const p=require('path'),f=require('fs'),t=p.join('.omg','state','setup-state.json');let s={};if(f.existsSync(t)){try{s=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: Setup state is invalid JSON. Existing setup state was not modified.');process.exit(1)}}const step=Number.isFinite(s.lastCompletedStep)?s.lastCompletedStep:0;console.log('RESUME_LAST_COMPLETED_STEP='+step);console.log('RESUMED_PHASE_TWO_BOUNDARY='+(step>=4))"
 ```
 
 ## Step 2.0: Check Ralph Ruby Dependency
@@ -27,14 +15,7 @@ fi
 Ralph workflows require Ruby. On fresh Ubuntu installations, missing Ruby can cause Ralph to fail later with an opaque Claude Code abort. Check for Ruby during setup and show a product-facing remediation hint without blocking the rest of setup:
 
 ```bash
-if command -v ruby >/dev/null 2>&1; then
-  echo "Ruby detected for Ralph workflows: $(ruby --version 2>/dev/null | head -1)"
-else
-  echo "WARNING: Ruby was not found on PATH. Ralph workflows require Ruby."
-  echo "Install it, then restart Claude Code before using Ralph."
-  echo "Ubuntu/Debian: sudo apt update && sudo apt install ruby-full"
-  echo "macOS: brew install ruby"
-fi
+node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('ruby',['--version'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0){console.log('Ruby detected for Ralph workflows: '+(r.stdout||'').split(/\r?\n/)[0])}else{console.log('WARNING: Ruby was not found on PATH. Ralph workflows require Ruby.');console.log('Install it, then restart Claude Code before using Ralph.');console.log('Ubuntu/Debian: sudo apt update && sudo apt install ruby-full');console.log('macOS: brew install ruby');console.log('Windows: winget install RubyInstallerTeam.Ruby')}"
 ```
 
 ## Step 2.1: Setup HUD Statusline
@@ -87,56 +68,23 @@ if(v==='')try{const j=JSON.parse(f.readFileSync('.omc-version.json','utf-8'));v=
 if(v==='')for(const c of['.claude/CLAUDE.md',p.join(d,'CLAUDE.md')]){try{const m=f.readFileSync(c,'utf-8').match(/^# oh-my-copilot.*?(v?\d+\.\d+\.\d+)/m);if(m){v=m[1].replace(/^v/,'');break}}catch{}}
 console.log('Installed:',v||'(not found)');
 "
+```
 
-# Check npm for latest version
-LATEST_VERSION=$(npm view oh-my-copilot version 2>/dev/null)
+Then compare it against the published version. Pass the installed version printed above
+as the argument:
 
-if [ -n "$INSTALLED_VERSION" ] && [ -n "$LATEST_VERSION" ]; then
-  if [ "$INSTALLED_VERSION" != "$LATEST_VERSION" ]; then
-    echo ""
-    echo "UPDATE AVAILABLE:"
-    echo "  Installed: v$INSTALLED_VERSION"
-    echo "  Latest:    v$LATEST_VERSION"
-    echo ""
-    echo "To update, run: claude /install-plugin oh-my-copilot"
-  else
-    echo "You're on the latest version: v$INSTALLED_VERSION"
-  fi
-elif [ -n "$LATEST_VERSION" ]; then
-  echo "Latest version available: v$LATEST_VERSION"
-fi
+```bash
+node -e "const{spawnSync}=require('node:child_process');const installed=(process.argv[1]||'').trim();const r=spawnSync('npm',['view','oh-my-copilot','version'],{encoding:'utf8',shell:process.platform==='win32'});const latest=r.status===0?(r.stdout||'').trim():'';if(installed&&latest){if(installed===latest){console.log('You are on the latest version: v'+installed)}else{console.log('UPDATE AVAILABLE:');console.log('  Installed: v'+installed);console.log('  Latest:    v'+latest);console.log('To update, run: claude /install-plugin oh-my-copilot')}}else if(latest){console.log('Latest version available: v'+latest)}else{console.log('Latest version: (unavailable)')}" "INSTALLED_VERSION"
 ```
 
 ## Step 2.4: Clear Retired Setup Values
 
 The `ultrawork` workflow was removed in 5.0.0 and the `defaultExecutionMode` config key is no longer read by any runtime surface. Upgrades from 4.x may still carry a dead persisted value in `.omc-config.json`. Clear it so the config matches the current contract:
 
-```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-CONFIG_FILE="$CONFIG_DIR/.omc-config.json"
+The write goes through a temp file, so a failure leaves the existing config untouched:
 
-if [ -f "$CONFIG_FILE" ] && grep -q '"defaultExecutionMode"' "$CONFIG_FILE" 2>/dev/null; then
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "WARNING: jq is required to clear the retired defaultExecutionMode key from $CONFIG_FILE."
-    echo "The stale value is harmless (no runtime reads it), but install jq and rerun setup to clean it."
-  else
-    TEMP_FILE=$(mktemp "${CONFIG_FILE}.tmp.XXXXXX")
-    trap 'rm -f "$TEMP_FILE"' EXIT
-    if jq 'del(.defaultExecutionMode)' "$CONFIG_FILE" > "$TEMP_FILE" \
-      && mv "$TEMP_FILE" "$CONFIG_FILE"; then
-      echo "Cleared retired defaultExecutionMode key (ultrawork was removed in 5.0.0)"
-    else
-      echo "WARNING: Failed to clear retired defaultExecutionMode. Existing config was not modified."
-      rm -f "$TEMP_FILE"
-    fi
-    trap - EXIT
-  fi
-fi
+```bash
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false)process.exit(0);let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.log('WARNING: '+t+' is not valid JSON. Existing config was not modified.');process.exit(0)}if(c===null||(typeof c==='object')===false||('defaultExecutionMode' in c)===false)process.exit(0);delete c.defaultExecutionMode;const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Cleared retired defaultExecutionMode key (ultrawork was removed in 5.0.0)')}catch(e){f.rmSync(tmp,{force:true});console.log('WARNING: Failed to clear retired defaultExecutionMode. Existing config was not modified.')}"
 ```
 
 **Note:** Never write a new `defaultExecutionMode` value. Generic keywords no longer route through a configured execution mode; invoke `/oh-my-copilot:execute` or `/oh-my-copilot:team` directly instead.
@@ -150,13 +98,7 @@ The OMC CLI (`omc` command) provides standalone helper commands such as `omc hud
 First, check if the CLI is already installed:
 
 ```bash
-if command -v omc &>/dev/null; then
-  OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
-  echo "OMC CLI already installed: $OMC_CLI_VERSION"
-  OMC_CLI_INSTALLED="true"
-else
-  OMC_CLI_INSTALLED="false"
-fi
+node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('omc',['--version'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0){console.log('OMC CLI already installed: '+((r.stdout||'').split(/\r?\n/)[0]||'installed'));console.log('OMC_CLI_INSTALLED=true')}else{console.log('OMC_CLI_INSTALLED=false')}"
 ```
 
 If `OMC_CLI_INSTALLED` is `"true"`, skip the rest of this step.
@@ -172,24 +114,7 @@ If `OMC_CLI_INSTALLED` is `"false"`, use AskUserQuestion:
 If user chooses **Yes**:
 
 ```bash
-if ! command -v npm &>/dev/null; then
-  echo "WARNING: npm not found. Cannot install OMC CLI automatically."
-  echo "Install Node.js/npm first, then run: npm install -g oh-my-copilot"
-else
-  if npm install -g oh-my-copilot 2>&1; then
-    echo "OMC CLI installed successfully."
-    if command -v omc &>/dev/null; then
-      OMC_CLI_VERSION=$(omc --version 2>/dev/null | head -1 || echo "installed")
-      echo "Verified: omc $OMC_CLI_VERSION"
-    else
-      echo "Installed but 'omc' not on PATH. You may need to restart your shell."
-    fi
-  else
-    echo "WARNING: Failed to install OMC CLI (permission issue or network error)."
-    echo "You can install manually later: npm install -g oh-my-copilot"
-    echo "Or with sudo: sudo npm install -g oh-my-copilot"
-  fi
-fi
+node -e "const{spawnSync}=require('node:child_process');const sh=process.platform==='win32';const run=(c,a)=>spawnSync(c,a,{encoding:'utf8',shell:sh});if((run('npm',['--version']).status===0)===false){console.log('WARNING: npm not found. Cannot install OMC CLI automatically.');console.log('Install Node.js/npm first, then run: npm install -g oh-my-copilot');process.exit(0)}const i=spawnSync('npm',['install','-g','oh-my-copilot'],{stdio:'inherit',shell:sh});if(i.status===0){console.log('OMC CLI installed successfully.');const v=run('omc',['--version']);console.log(v.status===0?'Verified: omc '+((v.stdout||'').split(/\r?\n/)[0]||'installed'):\"Installed but 'omc' not on PATH. You may need to restart your shell.\")}else{console.log('WARNING: Failed to install OMC CLI (permission issue or network error).');console.log('You can install manually later: npm install -g oh-my-copilot');console.log('On Linux/macOS you may need: sudo npm install -g oh-my-copilot')}"
 ```
 
 **Note**: The CLI is optional. All core functionality is also available through the plugin system.
@@ -199,24 +124,7 @@ fi
 First, detect available task tools:
 
 ```bash
-BD_VERSION=""
-if command -v bd &>/dev/null; then
-  BD_VERSION=$(bd --version 2>/dev/null | head -1 || echo "installed")
-fi
-
-BR_VERSION=""
-if command -v br &>/dev/null; then
-  BR_VERSION=$(br --version 2>/dev/null | head -1 || echo "installed")
-fi
-
-if [ -n "$BD_VERSION" ]; then
-  echo "Found beads (bd): $BD_VERSION"
-fi
-if [ -n "$BR_VERSION" ]; then
-  echo "Found beads-rust (br): $BR_VERSION"
-fi
-if [ -z "$BD_VERSION" ] && [ -z "$BR_VERSION" ]; then
-  echo "No external task tools found. Using built-in Tasks."
+node -e "const{spawnSync}=require('node:child_process');const sh=process.platform==='win32';let found=false;for(const[cmd,label]of [['bd','beads (bd)'],['br','beads-rust (br)']]){const r=spawnSync(cmd,['--version'],{encoding:'utf8',shell:sh});if(r.status===0){found=true;console.log('Found '+label+': '+((r.stdout||'').split(/\r?\n/)[0]||'installed'))}}if(found===false)console.log('No external task tools found. Using built-in Tasks.')"
 fi
 ```
 
@@ -235,41 +143,11 @@ If beads or beads-rust is detected, use AskUserQuestion:
 
 Store the preference:
 
+Pass the user's selection (`builtin`, `beads`, or `beads-rust`) as the argument. The write
+goes through a temp file, so a failure leaves the existing config untouched:
+
 ```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-CONFIG_FILE="$CONFIG_DIR/.omc-config.json"
-mkdir -p "$(dirname "$CONFIG_FILE")"
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to update $CONFIG_FILE safely."
-  echo "Install jq and rerun setup. Existing config was not modified."
-  exit 1
-fi
-
-if [ -f "$CONFIG_FILE" ]; then
-  EXISTING=$(cat "$CONFIG_FILE")
-else
-  EXISTING='{}'
-fi
-
-# USER_CHOICE is "builtin", "beads", or "beads-rust" based on user selection
-TEMP_FILE=$(mktemp "${CONFIG_FILE}.tmp.XXXXXX")
-trap 'rm -f "$TEMP_FILE"' EXIT
-if printf '%s\n' "$EXISTING" | jq --arg tool "USER_CHOICE" '. + {taskTool: $tool, taskToolConfig: {injectInstructions: true, useMcp: false}}' > "$TEMP_FILE" \
-  && mv "$TEMP_FILE" "$CONFIG_FILE"; then
-  :
-else
-  echo "ERROR: Failed to update $CONFIG_FILE. Existing config was not modified."
-  rm -f "$TEMP_FILE"
-  exit 1
-fi
-trap - EXIT
-echo "Task tool set to: USER_CHOICE"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'.omc-config.json');const tool=process.argv[1];f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: '+t+' is not valid JSON. Existing config was not modified.');process.exit(1)}}c.taskTool=tool;c.taskToolConfig={injectInstructions:true,useMcp:false};const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Task tool set to: '+tool)}catch(e){f.rmSync(tmp,{force:true});console.error('ERROR: Failed to update '+t+'. Existing config was not modified.');process.exit(1)}" "USER_CHOICE"
 ```
 
 **Note:** The beads context instructions will be injected automatically on the next session start.

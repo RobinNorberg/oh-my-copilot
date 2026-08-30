@@ -5,13 +5,7 @@
 Check if user has existing 2.x configuration:
 
 ```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-ls "$CONFIG_DIR/commands/ralph-loop.md" 2>/dev/null
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');console.log('IS_UPGRADE='+f.existsSync(p.join(d,'commands','ralph-loop.md')))"
 ```
 
 If found, this is an upgrade from 2.x. Set `IS_UPGRADE=true`.
@@ -136,8 +130,7 @@ OMC includes rule templates you can copy to your project's `.claude/rules/` dire
 
 Copy with:
 ```bash
-mkdir -p .claude/rules
-cp "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/templates/rules/"*.md .claude/rules/
+node -e "const p=require('path'),f=require('fs'),r=process.env.OMC_SETUP_PLUGIN_ROOT||process.env.CLAUDE_PLUGIN_ROOT;if(r===undefined||r===''){console.error('ERROR: plugin root is not set');process.exit(1)}const src=p.join(r,'templates','rules'),dest=p.join('.claude','rules');f.mkdirSync(dest,{recursive:true});for(const n of f.readdirSync(src).filter(x=>x.endsWith('.md'))){f.copyFileSync(p.join(src,n),p.join(dest,n));console.log('Copied '+n)}"
 ```
 
 See `templates/rules/README.md` for details.
@@ -176,7 +169,7 @@ Use AskUserQuestion:
 If user chooses "Yes, star it!":
 
 ```bash
-gh api -X PUT /user/starred/Yeachan-Heo/oh-my-copilot 2>/dev/null && echo "Thanks for starring!" || true
+node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('gh',['api','-X','PUT','/user/starred/Yeachan-Heo/oh-my-copilot'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0)console.log('Thanks for starring')"
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.

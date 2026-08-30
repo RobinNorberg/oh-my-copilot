@@ -30,7 +30,7 @@ Perform a full Azure DevOps sprint planning cycle for the current project. Reads
 Read `.omg/config.json`:
 
 ```bash
-cat .omg/config.json 2>/dev/null || echo "NOT_FOUND"
+node -e "const f=require('fs');try{process.stdout.write(f.readFileSync('.omg/config.json','utf8'))}catch{console.log('NOT_FOUND')}"
 ```
 
 Extract from the `ado` key:

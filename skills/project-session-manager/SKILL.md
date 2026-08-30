@@ -188,12 +188,11 @@ Parse `{{ARGUMENTS}}` to determine:
 
 1. **Resolve reference**:
    ```bash
-   # Read project aliases
-   cat ~/.psm/projects.json 2>/dev/null || echo '{"aliases":{}}'
-
-   # Parse ref format: alias#num, owner/repo#num, or URL
-   # Extract: project_alias, repo (owner/repo), pr_number, local_path
+   node -e "const p=require('path'),f=require('fs');try{process.stdout.write(f.readFileSync(p.join(require('os').homedir(),'.psm','projects.json'),'utf8'))}catch{console.log('{\"aliases\":{}}')}"
    ```
+
+   Then parse the ref format (`alias#num`, `owner/repo#num`, or a URL) and extract
+   `project_alias`, `repo` (owner/repo), `pr_number`, and `local_path`.
 
 2. **Fetch PR info**:
    ```bash
@@ -354,17 +353,17 @@ Parse `{{ARGUMENTS}}` to determine:
 
 1. **Read sessions registry**:
    ```bash
-   cat ~/.psm/sessions.json 2>/dev/null || echo '{"sessions":{}}'
+   node -e "const p=require('path'),f=require('fs');try{process.stdout.write(f.readFileSync(p.join(require('os').homedir(),'.psm','sessions.json'),'utf8'))}catch{console.log('{\"sessions\":{}}')}"
    ```
 
-2. **Check tmux sessions**:
+2. **Check tmux sessions** (prints nothing where tmux is not installed):
    ```bash
-   tmux list-sessions -F "#{session_name}" 2>/dev/null | grep "^psm_"
+   node -e "const{execFileSync}=require('node:child_process');let o='';try{o=execFileSync('tmux',['list-sessions','-F','#{session_name}'],{encoding:'utf8'})}catch{o=''};for(const s of o.split(/\r?\n/).map(x=>x.trim()).filter(x=>x.startsWith('psm_')))console.log(s)"
    ```
 
 3. **Check worktrees**:
    ```bash
-   ls -la ~/.psm/worktrees/*/ 2>/dev/null
+   node -e "const p=require('path'),f=require('fs'),b=p.join(require('os').homedir(),'.psm','worktrees');try{for(const proj of f.readdirSync(b)){for(const w of f.readdirSync(p.join(b,proj)))console.log(p.join(b,proj,w))}}catch{console.log('(no worktrees)')}"
    ```
 
 4. **Format output**:
@@ -385,14 +384,16 @@ Parse `{{ARGUMENTS}}` to determine:
 
 1. **Parse session ID**: `project:type-number`
 
-2. **Verify session exists**:
+2. **Verify session exists**. First translate the public id to a tmux-safe name by
+   replacing every `.` and `:` with `_`, then check it (a non-zero exit means the
+   session does not exist):
    ```bash
-   tmux has-session -t "psm_${session_id//[.:]/_}" 2>/dev/null   # translate public id to tmux-safe name
+   tmux has-session -t "psm_<tmux-safe-id>"
    ```
 
 3. **Attach**:
    ```bash
-   tmux attach -t "psm_${session_id//[.:]/_}"
+   tmux attach -t "psm_<tmux-safe-id>"
    ```
 
 ### Subcommand: `kill <session>`
@@ -401,18 +402,20 @@ Parse `{{ARGUMENTS}}` to determine:
 
 **Steps**:
 
-1. **Kill tmux session**:
+1. **Kill tmux session** using the same tmux-safe name (`.` and `:` replaced with `_`).
+   A non-zero exit just means the session was already gone:
    ```bash
-   tmux kill-session -t "psm_${session_id//[.:]/_}" 2>/dev/null
+   tmux kill-session -t "psm_<tmux-safe-id>"
    ```
 
-2. **Remove worktree**:
+2. **Remove worktree**. Read both paths out of the registry:
    ```bash
-   worktree_path=$(jq -r ".sessions[\"$session_id\"].worktree" ~/.psm/sessions.json)
-   source_repo=$(jq -r ".sessions[\"$session_id\"].source_repo" ~/.psm/sessions.json)
+   node -e "const p=require('path'),f=require('fs'),id=process.argv[1];const s=JSON.parse(f.readFileSync(p.join(require('os').homedir(),'.psm','sessions.json'),'utf8')).sessions[id]||{};console.log(s.worktree||'');console.log(s.source_repo||'')" "<session_id>"
+   ```
 
-   cd "$source_repo"
-   git worktree remove "$worktree_path" --force
+   Then, with `worktree_path` and `source_repo` from those two lines:
+   ```bash
+   git -C "<source_repo>" worktree remove "<worktree_path>" --force
    ```
 
 3. **Update registry**:
@@ -457,15 +460,15 @@ Parse `{{ARGUMENTS}}` to determine:
 
 **Steps**:
 
-1. **Detect current session** from tmux or cwd:
+1. **Detect current session** from tmux, or fall back to checking whether the cwd sits
+   inside a worktree. This prints nothing when tmux is absent or no session is attached:
    ```bash
-   tmux display-message -p "#{session_name}" 2>/dev/null
-   # or check if cwd is inside a worktree
+   node -e "const{execFileSync}=require('node:child_process');try{process.stdout.write(execFileSync('tmux',['display-message','-p','#{session_name}'],{encoding:'utf8'}))}catch{}"
    ```
 
 2. **Read session metadata**:
    ```bash
-   cat .psm-session.json 2>/dev/null
+   node -e "const f=require('fs');try{process.stdout.write(f.readFileSync('.psm-session.json','utf8'))}catch{console.log('(no .psm-session.json here)')}"
    ```
 
 3. **Show status**:
@@ -562,31 +565,9 @@ Optional (per provider):
 
 On first run, create default config:
 
+This creates `~/.psm/worktrees` and `~/.psm/logs`, then seeds `projects.json` and
+`sessions.json` only when they do not already exist:
+
 ```bash
-mkdir -p ~/.psm/worktrees ~/.psm/logs
-
-# Create default projects.json if not exists
-if [[ ! -f ~/.psm/projects.json ]]; then
-  cat > ~/.psm/projects.json << 'EOF'
-{
-  "aliases": {
-    "omc": {
-      "repo": "Yeachan-Heo/oh-my-copilot",
-      "local": "~/Workspace/oh-my-copilot",
-      "default_base": "main"
-    }
-  },
-  "defaults": {
-    "worktree_root": "~/.psm/worktrees",
-    "cleanup_after_days": 14,
-    "auto_cleanup_merged": true
-  }
-}
-EOF
-fi
-
-# Create sessions.json if not exists
-if [[ ! -f ~/.psm/sessions.json ]]; then
-  echo '{"version":1,"sessions":{},"stats":{"total_created":0,"total_cleaned":0}}' > ~/.psm/sessions.json
-fi
+node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),root=p.join(h,'.psm');f.mkdirSync(p.join(root,'worktrees'),{recursive:true});f.mkdirSync(p.join(root,'logs'),{recursive:true});const projects={aliases:{omc:{repo:'Yeachan-Heo/oh-my-copilot',local:'~/Workspace/oh-my-copilot',default_base:'main'}},defaults:{worktree_root:'~/.psm/worktrees',cleanup_after_days:14,auto_cleanup_merged:true}};const sessions={version:1,sessions:{},stats:{total_created:0,total_cleaned:0}};for(const[name,value]of [['projects.json',projects],['sessions.json',sessions]]){const t=p.join(root,name);if(f.existsSync(t)){console.log('Kept existing '+t)}else{f.writeFileSync(t,JSON.stringify(value,null,2));console.log('Created '+t)}}"
 ```

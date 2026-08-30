@@ -78,7 +78,7 @@ If no GitHub remote is detected, inform the user and ask whether they want to co
 Check if `.omg/config.json` already exists:
 
 ```bash
-cat .omg/config.json 2>/dev/null || echo "NOT_FOUND"
+node -e "const f=require('fs');try{process.stdout.write(f.readFileSync('.omg/config.json','utf8'))}catch{console.log('NOT_FOUND')}"
 ```
 
 If it exists and contains `github` settings, ask the user whether to update or keep the existing configuration (use AskUserQuestion).
@@ -126,7 +126,7 @@ Create or update the config file. Preserve any existing keys (e.g. `ado`).
 First, ensure the `.omg/` directory exists:
 
 ```bash
-mkdir -p .omc
+node -e "require('fs').mkdirSync('.omg',{recursive:true});console.log('Ensured .omg/')"
 ```
 
 Write `.omg/config.json` using the Write (or Edit) tool. The schema is:

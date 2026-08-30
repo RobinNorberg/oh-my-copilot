@@ -49,10 +49,7 @@ node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DI
 **Step 3:** If omcp-hud.mjs is MISSING or argument is `setup`, install the HUD wrapper and its dependency from the canonical template:
 
 ```bash
-HUD_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud"
-mkdir -p "$HUD_DIR/lib"
-cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/hud-wrapper-template.txt" "$HUD_DIR/omcp-hud.mjs"
-cp "${CLAUDE_PLUGIN_ROOT}/scripts/lib/config-dir.mjs" "$HUD_DIR/lib/config-dir.mjs"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),r=process.env.CLAUDE_PLUGIN_ROOT;if(r===undefined||r===''){console.error('ERROR: CLAUDE_PLUGIN_ROOT is not set');process.exit(1)}const hud=p.join(d,'hud');f.mkdirSync(p.join(hud,'lib'),{recursive:true});f.copyFileSync(p.join(r,'scripts','lib','hud-wrapper-template.txt'),p.join(hud,'omcp-hud.mjs'));f.copyFileSync(p.join(r,'scripts','lib','config-dir.mjs'),p.join(hud,'lib','config-dir.mjs'));console.log('Installed HUD wrapper to '+p.join(hud,'omcp-hud.mjs'))"
 ```
 
 **IMPORTANT:** Always copy from the canonical template at `scripts/lib/hud-wrapper-template.txt`. Do NOT write the wrapper content inline — the template is the single source of truth and is guarded by drift tests (`src/__tests__/hud-wrapper-template-sync.test.ts`, `src/__tests__/paths-consistency.test.ts`).

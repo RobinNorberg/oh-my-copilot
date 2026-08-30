@@ -48,58 +48,28 @@ any state tool, you MUST first load all of them via `ToolSearch`:
 ToolSearch(query="select:mcp__plugin_oh-my-copilot_t__state_clear,mcp__plugin_oh-my-copilot_t__state_read,mcp__plugin_oh-my-copilot_t__state_write,mcp__plugin_oh-my-copilot_t__state_list_active,mcp__plugin_oh-my-copilot_t__state_get_status")
 ```
 
-If `state_clear` is unavailable or fails, use this **bash fallback** as an **emergency
+If `state_clear` is unavailable or fails, use this **Node fallback** as an **emergency
 escape from the stop hook loop**. This is NOT a full replacement for the cancel flow —
 it only removes state files to unblock the session. Linked active modes (for example,
 autopilot→ralph) must be cleared separately by running the fallback once per mode.
 
-Replace `MODE` with the specific mode (e.g. `ralplan`, `ralph`, `ultrawork`, `ultragoal`).
+Replace `ralplan` in the first line with the specific mode (e.g. `ralph`, `ultrawork`,
+`ultragoal`).
 
 **WARNING:** Do NOT use this fallback for `autopilot` or `omc-teams`. Autopilot requires
 `state_write(active=false)` to preserve resume data. omc-teams requires tmux session
 cleanup that cannot be done via file deletion alone.
 
-```bash
-# Fallback: direct file removal when state_clear MCP tool is unavailable
-SESSION_ID="${CLAUDE_SESSION_ID:-${CLAUDECODE_SESSION_ID:-}}"
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || { d="$PWD"; while [ "$d" != "/" ] && [ ! -d "$d/.omc" ]; do d="$(dirname "$d")"; done; echo "$d"; })"
+This runs identically in bash, zsh, and PowerShell. It reuses the plugin's own state-root
+resolver, so it honours `OMC_STATE_DIR`, workspace markers, and git worktrees exactly as
+the state tools do — no shell reimplementation of the project-identifier hash.
 
-# Cross-platform SHA-256 (macOS: shasum, Linux: sha256sum)
-sha256portable() { printf '%s' "$1" | (sha256sum 2>/dev/null || shasum -a 256) | cut -c1-16; }
-
-# Resolve state directory (supports OMC_STATE_DIR centralized storage)
-if [ -n "${OMC_STATE_DIR:-}" ]; then
-  # Mirror getProjectIdentifier() from worktree-paths.ts
-  SOURCE="$(git remote get-url origin 2>/dev/null || echo "$REPO_ROOT")"
-  HASH="$(sha256portable "$SOURCE")"
-  DIR_NAME="$(basename "$REPO_ROOT" | sed 's/[^a-zA-Z0-9_-]/_/g')"
-  OMC_STATE="$OMC_STATE_DIR/${DIR_NAME}-${HASH}/state"
-  [ ! -d "$OMC_STATE" ] && { echo "ERROR: State dir not found at $OMC_STATE" >&2; exit 1; }
-elif [ "$REPO_ROOT" != "/" ] && [ -d "$REPO_ROOT/.omc" ]; then
-  OMC_STATE="$REPO_ROOT/.omg/state"
-else
-  echo "ERROR: Could not locate .omc state directory" >&2
-  exit 1
-fi
-MODE="ralplan"  # <-- replace with the target mode
-
-# Clear session-scoped state for the specific mode
-if [ -n "$SESSION_ID" ] && [ -d "$OMC_STATE/sessions/$SESSION_ID" ]; then
-  rm -f "$OMC_STATE/sessions/$SESSION_ID/${MODE}-state.json"
-  rm -f "$OMC_STATE/sessions/$SESSION_ID/${MODE}-stop-breaker.json"
-  rm -f "$OMC_STATE/sessions/$SESSION_ID/skill-active-state.json"
-  # Write cancel signal so stop hook detects cancellation in progress
-  NOW_ISO="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-  EXPIRES_ISO="$(date -u -d "+30 seconds" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || python3 - <<'PY'\nfrom datetime import datetime, timedelta, timezone\nprint((datetime.now(timezone.utc) + timedelta(seconds=30)).strftime('%Y-%m-%dT%H:%M:%SZ'))\nPY\n)"
-  printf '{"active":true,"requested_at":"%s","expires_at":"%s","mode":"%s","source":"bash_fallback"}' \
-    "$NOW_ISO" "$EXPIRES_ISO" "$MODE" > "$OMC_STATE/sessions/$SESSION_ID/cancel-signal-state.json"
-fi
-
-# Clear legacy state only if no session ID (avoid clearing another session's state)
-if [ -z "$SESSION_ID" ]; then
-  rm -f "$OMC_STATE/${MODE}-state.json"
-fi
 ```
+node -e "const MODE='ralplan';const p=require('node:path'),fs=require('node:fs'),{pathToFileURL}=require('node:url');const root=process.env.CLAUDE_PLUGIN_ROOT;if(root===undefined||root===''){console.error('ERROR: CLAUDE_PLUGIN_ROOT is not set');process.exit(1)}import(pathToFileURL(p.join(root,'scripts','lib','state-root.mjs')).href).then(async m=>{const dir=p.join(await m.resolveOmcStateRoot(process.cwd()),'state');if(fs.existsSync(dir)===false){console.error('ERROR: state directory not found at '+dir);process.exit(1)}const sid=process.env.CLAUDE_SESSION_ID||process.env.CLAUDECODE_SESSION_ID||'';if(sid===''){fs.rmSync(p.join(dir,MODE+'-state.json'),{force:true});console.log('Cleared legacy '+MODE+' state in '+dir);return}const sdir=p.join(dir,'sessions',sid);for(const f of [MODE+'-state.json',MODE+'-stop-breaker.json','skill-active-state.json'])fs.rmSync(p.join(sdir,f),{force:true});const now=Date.now();fs.mkdirSync(sdir,{recursive:true});fs.writeFileSync(p.join(sdir,'cancel-signal-state.json'),JSON.stringify({active:true,requested_at:new Date(now).toISOString(),expires_at:new Date(now+30000).toISOString(),mode:MODE,source:'node_fallback'}));console.log('Cleared '+MODE+' state for session '+sid)})"
+```
+
+The cancel signal it writes is what tells the stop hook a cancellation is in progress; it
+expires 30 seconds after it is written.
 
 ## Auto-Detection
 
@@ -176,13 +146,9 @@ When you invoke this skill:
 
 ### 1. Parse Arguments
 
-```bash
-# Check for --force or --all flags
-FORCE_MODE=false
-if [[ "$*" == *"--force"* ]] || [[ "$*" == *"--all"* ]]; then
-  FORCE_MODE=true
-fi
-```
+Read the invocation arguments directly: force mode is on when the arguments contain
+`--force` or `--all`, and off otherwise. This is a decision you make while executing the
+skill, not a shell command to run.
 
 ### 2. Detect Active Modes
 
@@ -377,10 +343,15 @@ When cancelling modes that may have spawned MCP workers (team bridge daemons), t
 
 ### Force Clear Addition
 
-When `--force` is used, also clean up:
-```bash
-rm -rf .omg/state/team-bridge/       # Heartbeat files
-rm -f .omg/state/team-mcp-workers.json  # Shadow registry
-# Kill all omc-team-* tmux sessions
-tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^omc-team-' | while read s; do tmux kill-session -t "$s" 2>/dev/null; done
+When `--force` is used, also clean up the heartbeat files and the shadow registry:
+
+```
+node -e "const fs=require('node:fs'),p=require('node:path');fs.rmSync(p.join('.omg','state','team-bridge'),{recursive:true,force:true});fs.rmSync(p.join('.omg','state','team-mcp-workers.json'),{force:true});console.log('Cleared team bridge heartbeats and shadow registry')"
+```
+
+Then kill any leftover `omc-team-*` tmux sessions. This is a no-op where tmux is not
+installed, so it is safe to run everywhere:
+
+```
+node -e "const{execFileSync}=require('node:child_process');let out='';try{out=execFileSync('tmux',['list-sessions','-F','#{session_name}'],{encoding:'utf8'})}catch{out=''};for(const s of out.split(/\r?\n/).map(x=>x.trim()).filter(x=>x.startsWith('omc-team-'))){try{execFileSync('tmux',['kill-session','-t',s]);console.log('Killed '+s)}catch{}}"
 ```

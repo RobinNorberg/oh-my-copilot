@@ -100,33 +100,12 @@ The script is the sole cache resolver. It accepts only complete plugin roots (ca
 **CRITICAL**: Before doing anything else, check if setup has already been completed. This prevents users from having to re-run the full setup wizard after every update.
 
 ```bash
-# Check if setup was already completed
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-CONFIG_FILE="$CONFIG_DIR/.omc-config.json"
-
-if [ -f "$CONFIG_FILE" ]; then
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "ERROR: jq is required to inspect existing OMC setup state. Existing config was not modified."
-    exit 1
-  fi
-  if ! SETUP_COMPLETED=$(jq -r '.setupCompleted // empty' "$CONFIG_FILE" 2>/dev/null) \
-    || ! SETUP_VERSION=$(jq -r '.setupVersion // empty' "$CONFIG_FILE" 2>/dev/null); then
-    echo "ERROR: Existing OMC config is invalid JSON. Existing config was not modified."
-    exit 1
-  fi
-
-  if [ -n "$SETUP_COMPLETED" ] && [ "$SETUP_COMPLETED" != "null" ]; then
-    echo "OMC setup was already completed on: $SETUP_COMPLETED"
-    [ -n "$SETUP_VERSION" ] && echo "Setup version: $SETUP_VERSION"
-    ALREADY_CONFIGURED="true"
-  fi
-fi
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'.omc-config.json');if(f.existsSync(t)===false){console.log('ALREADY_CONFIGURED=false');process.exit(0)}let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: Existing OMC config is invalid JSON. Existing config was not modified.');process.exit(1)}if(c&&c.setupCompleted){console.log('OMC setup was already completed on: '+c.setupCompleted);if(c.setupVersion)console.log('Setup version: '+c.setupVersion);console.log('ALREADY_CONFIGURED=true')}else{console.log('ALREADY_CONFIGURED=false')}"
 ```
+
+Treat `ALREADY_CONFIGURED=true` in the output as the configured case. A non-zero exit
+means the existing config could not be parsed; stop and report that rather than
+overwriting it.
 
 ### If Already Configured (and no --force flag)
 

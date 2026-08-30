@@ -612,7 +612,9 @@ describe('OMC setup Ralph Ruby dependency guidance (issue #2969)', () => {
     const content = readFileSync(phasePath, 'utf-8');
 
     expect(content).toContain('Step 2.0: Check Ralph Ruby Dependency');
-    expect(content).toContain('command -v ruby');
+    // Detection runs through Node so the check works on Windows too, where
+    // `command -v` does not exist.
+    expect(content).toContain("spawnSync('ruby'");
     expect(content).toContain('Ralph workflows require Ruby');
     expect(content).toContain('sudo apt update && sudo apt install ruby-full');
     expect(content).toContain('restart Claude Code');

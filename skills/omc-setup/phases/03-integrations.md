@@ -67,50 +67,17 @@ fi
 
 Then use the Read tool to read `${COPILOT_CONFIG_DIR:-~/.claude}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
 
-Use jq to safely merge without overwriting existing settings:
+**MERGE_JSON_FILE** is the portable merge used throughout this phase. It deep-merges a
+JSON patch into a file under the active config directory, creates the file when it does
+not exist, writes through a temp file so a failure cannot truncate the original, and
+refuses to touch a file it cannot parse. It runs unchanged in bash, zsh, and PowerShell,
+with no external JSON tooling, no heredoc, and no shell redirection:
 
 ```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-SETTINGS_FILE="$CONFIG_DIR/settings.json"
-
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to update $SETTINGS_FILE safely."
-  echo "Install jq and rerun setup. Existing settings were not modified."
-  exit 1
-fi
-
-if [ -f "$SETTINGS_FILE" ]; then
-  TEMP_FILE=$(mktemp "${SETTINGS_FILE}.tmp.XXXXXX")
-  trap 'rm -f "$TEMP_FILE"' EXIT
-  if jq '.env = (.env // {} | . + {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"})' "$SETTINGS_FILE" > "$TEMP_FILE" \
-    && mv "$TEMP_FILE" "$SETTINGS_FILE"; then
-    :
-  else
-    echo "ERROR: Failed to update $SETTINGS_FILE. Existing settings were not modified."
-    rm -f "$TEMP_FILE"
-    exit 1
-  fi
-  trap - EXIT
-  echo "Added CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS to existing settings.json"
-else
-  mkdir -p "$(dirname "$SETTINGS_FILE")"
-  cat > "$SETTINGS_FILE" << 'SETTINGS_EOF'
-{
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  }
-}
-SETTINGS_EOF
-  echo "Created settings.json with teams enabled"
-fi
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');const[name,raw]=process.argv.slice(1);const t=p.join(d,name);const patch=JSON.parse(raw);f.mkdirSync(p.dirname(t),{recursive:true});let c={};if(f.existsSync(t)){try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: '+t+' is not valid JSON. Existing file was not modified.');process.exit(1)}}const merge=(a,b)=>{for(const k of Object.keys(b)){const v=b[k];if(v&&typeof v==='object'&&Array.isArray(v)===false){a[k]=merge(a[k]&&typeof a[k]==='object'?a[k]:{},v)}else{a[k]=v}}return a};merge(c,patch);const tmp=t+'.tmp.'+process.pid;try{f.writeFileSync(tmp,JSON.stringify(c,null,2));f.renameSync(tmp,t);console.log('Updated '+t)}catch(e){f.rmSync(tmp,{force:true});console.error('ERROR: Failed to update '+t+'. Existing file was not modified.');process.exit(1)}" "settings.json" "{\"env\":{\"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS\":\"1\"}}"
 ```
 
-**IMPORTANT**: The Edit tool is preferred for modifying settings.json when possible, since it preserves formatting and comments. The jq approach above is the fallback for when the file needs structural merging.
+**IMPORTANT**: The Edit tool is preferred for modifying settings.json when possible, since it preserves formatting and comments. The merge command above is the fallback for when the file needs structural merging.
 
 #### 3.3.2: Configure Teammate Display Mode
 
@@ -125,35 +92,11 @@ Use AskUserQuestion:
 
 If user chooses anything other than "Auto", add `teammateMode` to settings.json:
 
-```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-SETTINGS_FILE="$CONFIG_DIR/settings.json"
+Run **MERGE_JSON_FILE** with `settings.json` and this patch, where `TEAMMATE_MODE` is
+`in-process` or `tmux`. Skip this entirely if the user chose "Auto" (that is the default):
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to update $SETTINGS_FILE safely."
-  echo "Install jq and rerun setup. Existing settings were not modified."
-  exit 1
-fi
-
-# TEAMMATE_MODE is "in-process" or "tmux" based on user choice
-# Skip this if user chose "Auto" (that's the default)
-TEMP_FILE=$(mktemp "${SETTINGS_FILE}.tmp.XXXXXX")
-trap 'rm -f "$TEMP_FILE"' EXIT
-if jq --arg mode "TEAMMATE_MODE" '. + {teammateMode: $mode}' "$SETTINGS_FILE" > "$TEMP_FILE" \
-  && mv "$TEMP_FILE" "$SETTINGS_FILE"; then
-  :
-else
-  echo "ERROR: Failed to update $SETTINGS_FILE. Existing settings were not modified."
-  rm -f "$TEMP_FILE"
-  exit 1
-fi
-trap - EXIT
-echo "Teammate display mode set to: TEAMMATE_MODE"
+```json
+{"teammateMode":"TEAMMATE_MODE"}
 ```
 
 #### 3.3.3: Configure Team Defaults in omc-config
@@ -177,49 +120,15 @@ Use AskUserQuestion with multiple questions:
 
 Store the team configuration in the active Claude config directory's `.omc-config.json`:
 
-```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-CONFIG_FILE="$CONFIG_DIR/.omc-config.json"
-mkdir -p "$(dirname "$CONFIG_FILE")"
+Run **MERGE_JSON_FILE** with `.omc-config.json` and this patch, substituting the user's
+choices for `MAX_AGENTS` (a number, unquoted) and `AGENT_TYPE`:
 
-if ! command -v jq >/dev/null 2>&1; then
-  echo "ERROR: jq is required to update $CONFIG_FILE safely."
-  echo "Install jq and rerun setup. Existing config was not modified."
-  exit 1
-fi
-
-if [ -f "$CONFIG_FILE" ]; then
-  EXISTING=$(cat "$CONFIG_FILE")
-else
-  EXISTING='{}'
-fi
-
-# Replace MAX_AGENTS, AGENT_TYPE with user choices
-TEMP_FILE=$(mktemp "${CONFIG_FILE}.tmp.XXXXXX")
-trap 'rm -f "$TEMP_FILE"' EXIT
-if printf '%s\n' "$EXISTING" | jq \
-  --argjson maxAgents MAX_AGENTS \
-  --arg agentType "AGENT_TYPE" \
-  '. + {team: {ops: {maxAgents: $maxAgents, defaultAgentType: $agentType, monitorIntervalMs: 30000, shutdownTimeoutMs: 15000}}}' > "$TEMP_FILE" \
-  && mv "$TEMP_FILE" "$CONFIG_FILE"; then
-  :
-else
-  echo "ERROR: Failed to update $CONFIG_FILE. Existing config was not modified."
-  rm -f "$TEMP_FILE"
-  exit 1
-fi
-trap - EXIT
-
-echo "Team configuration saved:"
-echo "  Max agents: MAX_AGENTS"
-echo "  Default provider: AGENT_TYPE"
-echo "  Model: teammates inherit your session model"
+```json
+{"team":{"ops":{"maxAgents":MAX_AGENTS,"defaultAgentType":"AGENT_TYPE","monitorIntervalMs":30000,"shutdownTimeoutMs":15000}}}
 ```
+
+Then report the saved team configuration: max agents, default provider, and that
+teammates inherit your session model.
 
 **Note:** Teammates do not have a separate model default. Each teammate is a full Claude Code session that inherits your configured model. Subagents spawned by teammates can use any model tier.
 
@@ -228,30 +137,7 @@ echo "  Model: teammates inherit your session model"
 After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-SETTINGS_FILE="$CONFIG_DIR/settings.json"
-
-if jq empty "$SETTINGS_FILE" 2>/dev/null; then
-  echo "settings.json: valid JSON"
-else
-  echo "ERROR: settings.json is invalid JSON! Restoring from backup..."
-  exit 1
-fi
-
-if jq -e '.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS' "$SETTINGS_FILE" > /dev/null 2>&1; then
-  echo "Agent teams: ENABLED"
-else
-  echo "WARNING: Agent teams env var not found in settings.json"
-fi
-
-echo ""
-echo "Final settings.json:"
-jq '.' "$SETTINGS_FILE"
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),t=p.join(d,'settings.json');let c;try{c=JSON.parse(f.readFileSync(t,'utf8'))}catch{console.error('ERROR: settings.json is invalid JSON or missing. Restore it from the backup before continuing.');process.exit(1)}console.log('settings.json: valid JSON');console.log((c.env||{}).CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS?'Agent teams: ENABLED':'WARNING: Agent teams env var not found in settings.json');console.log('');console.log('Final settings.json:');console.log(JSON.stringify(c,null,2))"
 ```
 
 ### If User Chooses NO:

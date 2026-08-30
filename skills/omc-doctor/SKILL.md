@@ -17,7 +17,7 @@ You are the OMC Doctor - diagnose and fix installation issues.
 ```bash
 # Get installed and latest versions (cross-platform)
 node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.claude'),b=p.join(d,'plugins','cache','omc','oh-my-copilot');try{const v=f.readdirSync(b).filter(x=>/^\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));console.log('Installed:',v.length?v[v.length-1]:'(none)')}catch{console.log('Installed: (none)')}"
-npm view oh-my-copilot version 2>/dev/null || echo "Latest: (unavailable)"
+node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('npm',['view','oh-my-copilot','version'],{encoding:'utf8',shell:process.platform==='win32'});console.log('Latest:',r.status===0?(r.stdout||'').trim():'(unavailable)')"
 ```
 
 **Diagnosis**:
@@ -38,7 +38,7 @@ Read both `${COPILOT_CONFIG_DIR:-~/.claude}/settings.json` (profile-level) and `
 ### Step 3: Check for Legacy Bash Hook Scripts
 
 ```bash
-ls -la "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/hooks/*.sh 2>/dev/null
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude'),b=p.join(d,'hooks');try{const s=f.readdirSync(b).filter(x=>x.endsWith('.sh'));console.log(s.length===0?'No legacy .sh hooks in '+b:'Legacy .sh hooks in '+b+': '+s.join(', '))}catch{console.log('No hooks directory at '+b)}"
 ```
 
 **Diagnosis**:
@@ -47,23 +47,12 @@ ls -la "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/hooks/*.sh 2>/dev/null
 ### Step 4: Check CLAUDE.md
 
 ```bash
-# Check if CLAUDE.md exists
-ls -la "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/CLAUDE.md 2>/dev/null
-
-# Check for OMC markers (<!-- OMC:START --> is the canonical marker)
-grep -q "<!-- OMC:START -->" "${COPILOT_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" 2>/dev/null && echo "Has OMC config" || echo "Missing OMC config in CLAUDE.md"
+# Presence, OMC marker, companion reference, and every CLAUDE-*.md companion in one
+# pass. The needle is OMC:START, the unique part of the canonical marker.
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');const base=p.join(d,'CLAUDE.md');const MARK='OMC:START';let text='';try{text=f.readFileSync(base,'utf8');console.log('CLAUDE.md: present at '+base+' ('+text.length+' bytes)')}catch{console.log('CLAUDE.md: MISSING at '+base)};console.log(text.includes(MARK)?'Has OMC config':'Missing OMC config in CLAUDE.md');const ref=text.match(/CLAUDE-[^ )]*\.md/);console.log('Companion reference:',ref?ref[0]:'(none)');let names=[];try{names=f.readdirSync(d).filter(x=>{const n=x.toLowerCase();return n.startsWith('claude-')&&n.endsWith('.md')})}catch{};for(const n of names){let c='';try{c=f.readFileSync(p.join(d,n),'utf8')}catch{};console.log((c.includes(MARK)?'Has OMC config in companion: ':'Companion without OMC config: ')+n)}"
 
 # Check CLAUDE.md (or deterministic companion) version marker and compare with latest installed plugin cache version
-node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.claude');const base=p.join(d,'CLAUDE.md');let baseContent='';try{baseContent=f.readFileSync(base,'utf8')}catch{};let candidates=[base];let referenced='';const importMatch=baseContent.match(/CLAUDE-[^ )]*\\.md/);if(importMatch){referenced=p.join(d,importMatch[0]);candidates.push(referenced)}else{const defaultCompanion=p.join(d,'CLAUDE-omc.md');if(f.existsSync(defaultCompanion))candidates.push(defaultCompanion);try{const others=f.readdirSync(d).filter(n=>/^CLAUDE-.*\\.md$/i.test(n)).sort().map(n=>p.join(d,n));for(const o of others){if(candidates.includes(o)===false)candidates.push(o)}}catch{}};let claudeV='(missing)';let claudeSource='(none)';for(const file of candidates){try{const c=f.readFileSync(file,'utf8');const m=c.match(/<!--\\s*OMC:VERSION:([^\\s]+)\\s*-->/i);if(m){claudeV=m[1];claudeSource=file;break}}catch{}};if(claudeV==='(missing)'&&candidates.length>0){claudeV='(missing marker)';claudeSource='scanned deterministic CLAUDE sources';};let pluginV='(none)';try{const b=p.join(d,'plugins','cache','omc','oh-my-copilot');const v=f.readdirSync(b).filter(x=>/^\\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));pluginV=v.length?v[v.length-1]:'(none)';}catch{};console.log('CLAUDE.md OMC version:',claudeV);console.log('OMC version source:',claudeSource);console.log('Latest cached plugin version:',pluginV);if(claudeV==='(missing)'||claudeV==='(missing marker)'||pluginV==='(none)'){console.log('VERSION CHECK SKIPPED: missing CLAUDE marker or plugin cache')}else if(claudeV===pluginV){console.log('VERSION MATCH: CLAUDE and plugin cache are aligned')}else{console.log('VERSION DRIFT: CLAUDE.md and plugin versions differ')}"
-
-# Check companion files for file-split pattern (e.g. CLAUDE-omc.md)
-find "${COPILOT_CONFIG_DIR:-$HOME/.claude}" -maxdepth 1 -type f -name 'CLAUDE-*.md' -print 2>/dev/null
-while IFS= read -r f; do
-  grep -q "<!-- OMC:START -->" "$f" 2>/dev/null && echo "Has OMC config in companion: $f"
-done < <(find "${COPILOT_CONFIG_DIR:-$HOME/.claude}" -maxdepth 1 -type f -name 'CLAUDE-*.md' -print 2>/dev/null)
-
-# Check if CLAUDE.md references a companion file
-grep -o "CLAUDE-[^ )]*\.md" "${COPILOT_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" 2>/dev/null
+node -e "const p=require('path'),f=require('fs'),h=require('os').homedir(),d=process.env.COPILOT_CONFIG_DIR||p.join(h,'.claude');const base=p.join(d,'CLAUDE.md');let baseContent='';try{baseContent=f.readFileSync(base,'utf8')}catch{};let candidates=[base];let referenced='';const importMatch=baseContent.match(/CLAUDE-[^ )]*\\.md/);if(importMatch){referenced=p.join(d,importMatch[0]);candidates.push(referenced)}else{const defaultCompanion=p.join(d,'CLAUDE-omc.md');if(f.existsSync(defaultCompanion))candidates.push(defaultCompanion);try{const others=f.readdirSync(d).filter(n=>/^CLAUDE-.*\\.md$/i.test(n)).sort().map(n=>p.join(d,n));for(const o of others){if(candidates.includes(o)===false)candidates.push(o)}}catch{}};let claudeV='(missing)';let claudeSource='(none)';for(const file of candidates){try{const c=f.readFileSync(file,'utf8');const m=c.match(/OMC:VERSION:([^\\s]+)/i);if(m){claudeV=m[1];claudeSource=file;break}}catch{}};if(claudeV==='(missing)'&&candidates.length>0){claudeV='(missing marker)';claudeSource='scanned deterministic CLAUDE sources';};let pluginV='(none)';try{const b=p.join(d,'plugins','cache','omc','oh-my-copilot');const v=f.readdirSync(b).filter(x=>/^\\d/.test(x)).sort((a,c)=>a.localeCompare(c,void 0,{numeric:true}));pluginV=v.length?v[v.length-1]:'(none)';}catch{};console.log('CLAUDE.md OMC version:',claudeV);console.log('OMC version source:',claudeSource);console.log('Latest cached plugin version:',pluginV);if(claudeV==='(missing)'||claudeV==='(missing marker)'||pluginV==='(none)'){console.log('VERSION CHECK SKIPPED: missing CLAUDE marker or plugin cache')}else if(claudeV===pluginV){console.log('VERSION MATCH: CLAUDE and plugin cache are aligned')}else{console.log('VERSION DRIFT: CLAUDE.md and plugin versions differ')}"
 ```
 
 **Diagnosis**:
@@ -79,13 +68,7 @@ grep -o "CLAUDE-[^ )]*\.md" "${COPILOT_CONFIG_DIR:-$HOME/.claude}/CLAUDE.md" 2>/
 Ralph workflows require Ruby. Check for Ruby explicitly so fresh installations get actionable guidance instead of a later opaque Ralph failure.
 
 ```bash
-if command -v ruby >/dev/null 2>&1; then
-  echo "Ruby for Ralph: $(ruby --version 2>/dev/null | head -1)"
-else
-  echo "Ruby for Ralph: MISSING"
-  echo "Install Ruby before using Ralph. Ubuntu/Debian: sudo apt update && sudo apt install ruby-full"
-  echo "macOS: brew install ruby"
-fi
+node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('ruby',['--version'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0){console.log('Ruby for Ralph:',(r.stdout||'').split(/\r?\n/)[0])}else{console.log('Ruby for Ralph: MISSING');console.log('Install Ruby before using Ralph. Ubuntu/Debian: sudo apt update && sudo apt install ruby-full');console.log('macOS: brew install ruby');console.log('Windows: winget install RubyInstallerTeam.Ruby')}"
 ```
 
 **Diagnosis**:
@@ -108,14 +91,7 @@ Check for legacy agents, commands, and skills installed via curl (before plugin 
 **Important**: Only flag files whose names match actual plugin-provided names. Do NOT flag user's custom agents/commands/skills that are unrelated to OMC.
 
 ```bash
-# Check for legacy agents directory
-ls -la "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/agents/ 2>/dev/null
-
-# Check for legacy commands directory
-ls -la "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/commands/ 2>/dev/null
-
-# Check for legacy skills directory
-ls -la "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/skills/ 2>/dev/null
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');for(const dir of ['agents','commands','skills']){try{const e=f.readdirSync(p.join(d,dir));console.log(dir+' ('+e.length+'): '+e.join(', '))}catch{console.log(dir+': (absent)')}}"
 ```
 
 **Diagnosis**:
@@ -180,10 +156,7 @@ Remove the `"hooks"` section from `${COPILOT_CONFIG_DIR:-~/.claude}/settings.jso
 
 ### Fix: Legacy Bash Scripts
 ```bash
-rm -f "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/hooks/keyword-detector.sh
-rm -f "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/hooks/persistent-mode.sh
-rm -f "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/hooks/session-start.sh
-rm -f "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/hooks/stop-continuation.sh
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');for(const n of ['keyword-detector.sh','persistent-mode.sh','session-start.sh','stop-continuation.sh']){const t=p.join(d,'hooks',n);if(f.existsSync(t)){f.rmSync(t,{force:true});console.log('Removed '+t)}}"
 ```
 
 ### Fix: Outdated Plugin
@@ -208,16 +181,16 @@ WebFetch(url: "https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/
 
 Remove legacy agents, commands, and skills directories (now provided by plugin):
 
-```bash
-# Backup first (optional - ask user)
-# mv "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/agents "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/agents.bak
-# mv "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/commands "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/commands.bak
-# mv "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/skills "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/skills.bak
+Back up first (offer this to the user before removing anything):
 
-# Or remove directly
-rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/agents
-rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/commands
-rm -rf "${COPILOT_CONFIG_DIR:-$HOME/.claude}"/skills
+```bash
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');for(const n of ['agents','commands','skills']){const s=p.join(d,n);if(f.existsSync(s)){f.renameSync(s,s+'.bak');console.log('Moved '+s+' to '+s+'.bak')}}"
+```
+
+Or remove directly:
+
+```bash
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');for(const n of ['agents','commands','skills']){const t=p.join(d,n);if(f.existsSync(t)){f.rmSync(t,{recursive:true,force:true});console.log('Removed '+t)}}"
 ```
 
 **Note**: Only remove if these contain oh-my-copilot-related files. If user has custom agents/commands/skills, warn them and ask before removing.

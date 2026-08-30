@@ -369,23 +369,7 @@ Interactive wizard for setting up and managing local skills (formerly local-skil
 First, check if skill directories exist and create them if needed:
 
 ```bash
-# Check and create user-level skills directory
-USER_SKILLS_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned"
-if [ -d "$USER_SKILLS_DIR" ]; then
-  echo "User skills directory exists: $USER_SKILLS_DIR"
-else
-  mkdir -p "$USER_SKILLS_DIR"
-  echo "Created user skills directory: $USER_SKILLS_DIR"
-fi
-
-# Check and create project-level skills directory
-PROJECT_SKILLS_DIR=".omg/skills"
-if [ -d "$PROJECT_SKILLS_DIR" ]; then
-  echo "Project skills directory exists: $PROJECT_SKILLS_DIR"
-else
-  mkdir -p "$PROJECT_SKILLS_DIR"
-  echo "Created project skills directory: $PROJECT_SKILLS_DIR"
-fi
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');for(const[label,dir]of [['User',p.join(d,'skills','omc-learned')],['Project',p.join('.omg','skills')]]){if(f.existsSync(dir)){console.log(label+' skills directory exists: '+dir)}else{f.mkdirSync(dir,{recursive:true});console.log('Created '+label.toLowerCase()+' skills directory: '+dir)}}"
 ```
 
 #### Step 2: Skill Scan and Inventory
@@ -393,53 +377,7 @@ fi
 Scan both directories and show a comprehensive inventory:
 
 ```bash
-# Scan user-level skills
-echo "=== USER-LEVEL SKILLS (~/.claude/skills/omc-learned/) ==="
-if [ -d "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" ]; then
-  USER_COUNT=$(find "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
-  echo "Total skills: $USER_COUNT"
-
-  if [ $USER_COUNT -gt 0 ]; then
-    echo ""
-    echo "Skills found:"
-    find "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" -name "*.md" -type f -exec sh -c '
-      FILE="$1"
-      NAME=$(grep -m1 "^name:" "$FILE" 2>/dev/null | sed "s/name: //")
-      DESC=$(grep -m1 "^description:" "$FILE" 2>/dev/null | sed "s/description: //")
-      MODIFIED=$(stat -c "%y" "$FILE" 2>/dev/null || stat -f "%Sm" "$FILE" 2>/dev/null)
-      echo "  - $NAME"
-      [ -n "$DESC" ] && echo "    Description: $DESC"
-      echo "    Modified: $MODIFIED"
-      echo ""
-    ' sh {} \;
-  fi
-else
-  echo "Directory not found"
-fi
-
-echo ""
-echo "=== PROJECT-LEVEL SKILLS (.omg/skills/) ==="
-if [ -d ".omg/skills" ]; then
-  PROJECT_COUNT=$(find ".omg/skills" -name "*.md" 2>/dev/null | wc -l)
-  echo "Total skills: $PROJECT_COUNT"
-
-  if [ $PROJECT_COUNT -gt 0 ]; then
-    echo ""
-    echo "Skills found:"
-    find ".omg/skills" -name "*.md" -type f -exec sh -c '
-      FILE="$1"
-      NAME=$(grep -m1 "^name:" "$FILE" 2>/dev/null | sed "s/name: //")
-      DESC=$(grep -m1 "^description:" "$FILE" 2>/dev/null | sed "s/description: //")
-      MODIFIED=$(stat -c "%y" "$FILE" 2>/dev/null || stat -f "%Sm" "$FILE" 2>/dev/null)
-      echo "  - $NAME"
-      [ -n "$DESC" ] && echo "    Description: $DESC"
-      echo "    Modified: $MODIFIED"
-      echo ""
-    ' sh {} \;
-  fi
-else
-  echo "Directory not found"
-fi
+node -e "const p=require('path'),f=require('fs'),d=process.env.COPILOT_CONFIG_DIR||p.join(require('os').homedir(),'.claude');const walk=dir=>{let out=[];let entries=[];try{entries=f.readdirSync(dir,{withFileTypes:true})}catch{return out};for(const e of entries){const t=p.join(dir,e.name);if(e.isDirectory()){out=out.concat(walk(t))}else if(e.name.endsWith('.md')){out.push(t)}}return out};const first=(text,key)=>{const m=text.split(/\r?\n/).find(l=>l.startsWith(key+':'));return m?m.slice(key.length+1).trim():''};for(const[label,dir]of [['USER-LEVEL SKILLS',p.join(d,'skills','omc-learned')],['PROJECT-LEVEL SKILLS',p.join('.omg','skills')]]){console.log('=== '+label+' ('+dir+') ===');if(f.existsSync(dir)===false){console.log('Directory not found');console.log('');continue}const files=walk(dir);console.log('Total skills: '+files.length);for(const file of files){let text='';try{text=f.readFileSync(file,'utf8')}catch{};const name=first(text,'name')||p.basename(file);const desc=first(text,'description');console.log('  - '+name);if(desc)console.log('    Description: '+desc);console.log('    Modified: '+f.statSync(file).mtime.toISOString())}console.log('')}"
 
 # Summary
 TOTAL=$((USER_COUNT + PROJECT_COUNT))
