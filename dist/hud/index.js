@@ -392,6 +392,7 @@ async function main(watchMode = false, skipInit = false) {
                 : null,
             sessionSummary,
             lastToolName: transcriptData.lastToolName,
+            recentTools: transcriptData.recentTools,
             payloadEstimate,
         };
         // Debug: log data if OMC_DEBUG is set

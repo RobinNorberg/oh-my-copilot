@@ -42941,207 +42941,63 @@ var init_historical_agent_ownership = __esm({
   "src/installer/historical-agent-ownership.ts"() {
     "use strict";
     HISTORICAL_AGENT_OWNERSHIP = [
-      { filename: "analyst.md", byteLength: 3539, sha256: "7508ad221b63a4195449a1d21fb82f79bc1bb1b18cc27cdbf9687050c738c645", gitBlob: "f5a6e73195c81488e10fdc2b0fdc0a61207e223f", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "analyst.md", byteLength: 4832, sha256: "2971ca1421c128b2ca6f569807860594f79da22ecb6cd1829cb678e8f362d631", gitBlob: "4332a1d2c65ae0f1a22ed6c72f57fa2ee8fe3c21", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.10" },
-      { filename: "analyst.md", byteLength: 5431, sha256: "986259201ddbe054ad2248fec503ebbcee0a308fea54359715461aee30e007bd", gitBlob: "83bb4622e6ccb10cf1f3d8f7ff04fa352873a3ff", firstReleaseTag: "v4.1.11", lastReleaseTag: "v4.3.3" },
-      { filename: "analyst.md", byteLength: 5434, sha256: "3f8d3717635e09f1533bcd55a541cd685eb022187a22ceb97672cff3f14a532f", gitBlob: "3b3e92cb03c1705543bee6d034943c75bceef7fd", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.8.2" },
-      { filename: "analyst.md", byteLength: 5443, sha256: "b3a979c108514cf0b6b06dae7885f7fcbfd8f32208c7c4df7ea63becce66ad16", gitBlob: "c97e30968cb2a9dfa1aacc352874a7d42408f5d1", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "analyst.md", byteLength: 5432, sha256: "0df623596ef938c98780432fd851c0a18cab06bfc18a22dff5d54b1a196e2a18", gitBlob: "d4223b10c8466ed95b4eb3afed849fe5d9bccb7a", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "analyst.md", byteLength: 5565, sha256: "d61db30524426a5812432262a57fc8aa04021def3ef60870cdad64b2304a9f90", gitBlob: "a975598d3b0140fb732229e9ddc4189ec8d8cf2f", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.14.6" },
-      { filename: "analyst.md", byteLength: 6317, sha256: "b08225a9bd349c84697a63b9e7e4e1016c01dafec5b3337bb95f70fce495ceb1", gitBlob: "fe2f523e108993aaffeb6e8ab8d8bbf268fa0eff", firstReleaseTag: "v4.14.7", lastReleaseTag: "v4.15.7" },
-      { filename: "api-reviewer.md", byteLength: 5152, sha256: "fbffc73e2e84f4733b6b7af0445442e4ede9df7e65711c43d8fccf5bd5bde58c", gitBlob: "7350c070a21f09bcdca6a2f9e95389e92d1fa754", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "architect-low.md", byteLength: 2245, sha256: "57f68fe06802314af773fe82ecfeb1f56dc5d96971a260fa2fb79a3c26edb2b3", gitBlob: "1ef95d589bb7e0bc00796b2a9e99aa79f750a12b", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "architect-medium.md", byteLength: 4011, sha256: "eeb4fa3919cb5eee5d90776cc3531f85cb69a43928d500397b7ceea16bb69230", gitBlob: "d7b22e7ea9ac86f84c125d15afdee2595120a2d2", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "architect.md", byteLength: 9972, sha256: "2e27438266dd9b5adc9dda1463032738144b697532dc959a9da4ee35c2fab8f9", gitBlob: "0dfa116d390c638bc3be972e218f6de6df927636", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "architect.md", byteLength: 5445, sha256: "3423c63221d23af7a33aae6cce598f0c59c8ca039b8628c0bd40d972966ac8c0", gitBlob: "1f1593731cc262bbd8a7070987bd6f10d188fb82", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.18" },
-      { filename: "architect.md", byteLength: 5953, sha256: "83e20105ca868873ceda0e8f2eb26398b8b60770d0d24d51893163dcbaf1e1b1", gitBlob: "cc0227bdb98e825bccbaa32679fc2d88746b1701", firstReleaseTag: "v4.2.0", lastReleaseTag: "v4.3.3" },
-      { filename: "architect.md", byteLength: 5955, sha256: "4336126e0f5e83d52fb3146fead98469fe8a0afd32e32c51b98b4c453459fdbc", gitBlob: "30821e5b7c5b5d1369bae6b79f3130b4cd6ed732", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.3.4" },
-      { filename: "architect.md", byteLength: 5846, sha256: "3c865d6fbf364b92ec33f3151803a4b7b9dd3a6a1a664fe599de5ef7be6fb570", gitBlob: "377de6ae92d9a03e515d5261e12d06766d258fb2", firstReleaseTag: "v4.4.0", lastReleaseTag: "v4.4.5" },
-      { filename: "architect.md", byteLength: 6877, sha256: "fbac3c92794169a9a902c8a86877a77cf1a8ab6e82b4f26fe4159f516d881faa", gitBlob: "08d588daf546a5b8291807b7a1e392a8ffed1a23", firstReleaseTag: "v4.5.0", lastReleaseTag: "v4.8.2" },
-      { filename: "architect.md", byteLength: 6886, sha256: "d47c9fce4ec9510121cbcf653e3c73db58d0c5dc9393588ba75dde862d3034d5", gitBlob: "de7f54e7db65096d9f8bdc425b990f9f376e812b", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "architect.md", byteLength: 6875, sha256: "c0a1081e607a333bb8ee3d7b097b7504eb3ad46b2d351dfccb72097cda24cf50", gitBlob: "cba04ad1c23f1a795f5b62b0a15d08d56ad94c33", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "architect.md", byteLength: 7008, sha256: "67c585938f2faa3384f6d88a65ef93932e027ec058b28ca12d9d15068370a44c", gitBlob: "c69fa8bcde0a9be39b37e8a20b5208123e8184cf", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.14.5" },
-      { filename: "architect.md", byteLength: 7685, sha256: "054854158e573b95efc0022bf4ebdd1c947d02e4cbf0f820d8a37bb155e104b7", gitBlob: "1eefa8170204fe1a903e80e7f17e70f6fdb74fe9", firstReleaseTag: "v4.14.6", lastReleaseTag: "v4.15.7" },
-      { filename: "build-fixer-low.md", byteLength: 1926, sha256: "4607140848cd41b1f1d62eb077202014d2b467dcc15a412353101fdedb1f8c00", gitBlob: "bcfa371c263bf4b1493ca1f856ef907b4bef2bd1", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "build-fixer.md", byteLength: 7244, sha256: "48020fac37ec37370151f7aa36d1eb2a84b73de61b5ab41efb00aac5038a0eba", gitBlob: "e025ee8c7085b261d24f21b2865a6a1350b1c79a", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "build-fixer.md", byteLength: 4544, sha256: "cac4a3306ff35f8d01c7173d436c351267accb95b4cdf92658240d46950de093", gitBlob: "e8e34458a508a8982f4fee6c453d4946d0eb6ffc", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.3" },
-      { filename: "build-fixer.md", byteLength: 4555, sha256: "af080383b633f6871618f98b76678a8753aec11b5cb5688197495d17748a0c52", gitBlob: "f2e79fa048558cd1aefdd348c254cad299cb7981", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.7.7" },
-      { filename: "code-reviewer-low.md", byteLength: 1903, sha256: "1903808be31c3a6db653cc2e0ab4af6a5838cc91365c950e7504e61686269125", gitBlob: "42b41b4cd615519889d712de9374080a772582eb", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "code-reviewer.md", byteLength: 6049, sha256: "31a8cac2f6245bc83cb23c572c78c5098b79a96e7751aa98a692b4ebc4da30ad", gitBlob: "d27eae057282c062d583244378d4d8a4ba5eab1f", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "code-reviewer.md", byteLength: 5126, sha256: "f50ab36aaf3ba2d0c688bd0890b7a8679aafaddceb5f4fd05e9c8209df501e16", gitBlob: "19e76d2fe57b3d764fb0d1087b856dfdff4326b2", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.18" },
-      { filename: "code-reviewer.md", byteLength: 5634, sha256: "5391cf0065c167272d90a784b1938434443fb3b3d2b7c4d1b189b1303c445f3c", gitBlob: "f698de23b84b680cc9960fe2a8bc215f90649e18", firstReleaseTag: "v4.2.0", lastReleaseTag: "v4.3.0" },
-      { filename: "code-reviewer.md", byteLength: 6138, sha256: "7acc7993d3bfd67cefd76c1b7597624068d147cf16d75a08d80ea78436227972", gitBlob: "64a8907e37ac4775e372beb85428f805beaee722", firstReleaseTag: "v4.3.1", lastReleaseTag: "v4.3.3" },
-      { filename: "code-reviewer.md", byteLength: 6149, sha256: "b430cfb8f88d95c5f34195131e24df9b1ea300be7d4e5d7ad65f1040e7889567", gitBlob: "aedeb4cbbabde728281dbfd505085220c142085b", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.3.4" },
-      { filename: "code-reviewer.md", byteLength: 6035, sha256: "164b987e66b33aebb625893137357dc864dc00ce378481adc9e575201340e57d", gitBlob: "7b4f5884b1d850b0bc28153e0a9d3ea41b3d606f", firstReleaseTag: "v4.4.0", lastReleaseTag: "v4.7.7" },
-      { filename: "code-reviewer.md", byteLength: 11795, sha256: "972728c0e4ce00639cc3b2364a6366bcac21af074e74e069a5cddc49ebb82235", gitBlob: "0f8f30910814d148c6d87536830d9e2278e6db09", firstReleaseTag: "v4.7.8", lastReleaseTag: "v4.7.8" },
-      { filename: "code-reviewer.md", byteLength: 12046, sha256: "c38b6d24149e4a1c57129b68be7343f80b237e58da4c4c49c73f9888b1c93ec8", gitBlob: "90ed95fdf18079ca8f58a407cf9ca31fcc9fbc77", firstReleaseTag: "v4.7.9", lastReleaseTag: "v4.8.2" },
-      { filename: "code-reviewer.md", byteLength: 12055, sha256: "9a26e24f530c60e310274279087bb159578282fabf19d19bef208b24b844ad6f", gitBlob: "dd7d4fb54b601c3b6c18a83e13e41887b149e560", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "code-reviewer.md", byteLength: 12044, sha256: "42ea7e51311cffe7b7bbf9dda386b1debb2c48f4c03509b8bd02e43cf52c251c", gitBlob: "59ef9f9d6bedd65e363b612bd2729f241ec70c1e", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "code-reviewer.md", byteLength: 12177, sha256: "192c5c219bdf652516d8264caf03e0f72c075aede85b81c974815e6177db2469", gitBlob: "5590f872aad02595999358b4270f73f0aa9e73d8", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.13.5" },
-      { filename: "code-reviewer.md", byteLength: 14463, sha256: "3e06d0421a5290340020a1f7904d144a0ea2a6a61ab8d8d41863cf37319d7d74", gitBlob: "f97ab6c31c14fd15da422a2f431c84bd6d51a7c0", firstReleaseTag: "v4.13.6", lastReleaseTag: "v4.14.5" },
-      { filename: "code-reviewer.md", byteLength: 15169, sha256: "0194fe714d4dcd61cf049322ae1f737deda5e59356eba4faca51ad38d025e9fc", gitBlob: "1dea64c1089f5e50422304ad565c065c3a6168f8", firstReleaseTag: "v4.14.6", lastReleaseTag: "v4.15.7" },
-      { filename: "code-simplifier.md", byteLength: 4403, sha256: "ad0bbcaeb000ac91b24906c160c309880c034d8b38e19cce625f09d4d3bab74f", gitBlob: "01676fe234df9e3d69bbd27af5da6ea40f79c139", firstReleaseTag: "v4.3.0", lastReleaseTag: "v4.3.3" },
-      { filename: "code-simplifier.md", byteLength: 4414, sha256: "11952957123feb8d129b41e6cfaaab40ac018a71accdf25da3233c5c738a659d", gitBlob: "3130e378afbad6a1d90221f59f0b1634f7aef685", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.8.2" },
-      { filename: "code-simplifier.md", byteLength: 4423, sha256: "5f30bef8a39fe76ac129cd31f5dcce5558c67151c3e76fce4675454c69aa2936", gitBlob: "15f53ab58f8ea5751662afdae6462e038019c5e0", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "code-simplifier.md", byteLength: 4412, sha256: "44a797ce76724e94821e6434cf9d578c6775ddd9eb233a3b4c071e2cb5f7f0cc", gitBlob: "d13c0859f7f2358835d75579a3584aa48fc29856", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.15.7" },
-      { filename: "critic.md", byteLength: 6014, sha256: "5cb78048dbedbc37e6c915551596a21a2d4c2007e927be215d9b1260956bcc98", gitBlob: "2b1c94be413b2fc7062a60f8a57655a09d674b35", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "critic.md", byteLength: 5132, sha256: "7b22771fa5cdf27b586fc96e700b370eced37eeb097c5981c1f02a07b19be6c7", gitBlob: "dc1a2992664af1bb578f1a2337dc1a869e8850b5", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.3" },
-      { filename: "critic.md", byteLength: 5143, sha256: "573a6e27c82dad59b16e89f47aaeb27e9dfc9155b645ef397980a176398c0ea4", gitBlob: "8632674a1b0c9e5ac8bc0c104f5f68a9c85de3f0", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.4.5" },
-      { filename: "critic.md", byteLength: 6568, sha256: "ec453839d45cbc8c0b29e2a4081b9e6df162c0e32d1a77900d12a0bab5772f14", gitBlob: "3c0e2fdbf26f49e9fc861a2c4e078b7f8cc4fce8", firstReleaseTag: "v4.5.0", lastReleaseTag: "v4.7.7" },
-      { filename: "critic.md", byteLength: 21440, sha256: "7a2571011570e0f56e5c059fc9ad13dde7808f71b69ab5f5337d03d5037d6dd3", gitBlob: "e3d0fc5dfdc2c0b6f51f3d4671f7e8188e79511a", firstReleaseTag: "v4.7.8", lastReleaseTag: "v4.8.2" },
-      { filename: "critic.md", byteLength: 21449, sha256: "e552d8ca193166d1101fdcac7d51aa066de037ddff0987b7478bd4ec8ec665e0", gitBlob: "2db0f437824db9664640f116c0311d81e6965de1", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "critic.md", byteLength: 21438, sha256: "e9a7adc94895f2905735bb437f2b747c9eab258f2f72bd68066d294c70dd80b8", gitBlob: "6c42962e2afeea6437b3f12eeb3f75e463f896e2", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "critic.md", byteLength: 21571, sha256: "a6d716ab88db4a53377c1efa79942d9540aeca6e48a36dfa542b636681729779", gitBlob: "a0004ff231adc80a0c814cc53b73be56df98c8bc", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.14.5" },
-      { filename: "critic.md", byteLength: 22285, sha256: "7ac22331649f07805eca351e784629520a831d6a7ff8596628c66e6d4703b072", gitBlob: "e697f33d01c1db27cebebca4b9f1c12a541fa4fe", firstReleaseTag: "v4.14.6", lastReleaseTag: "v4.15.7" },
-      { filename: "debugger.md", byteLength: 5476, sha256: "454542081471de9a6abb99db54b640d0e13b9846849e954358cf9716636cc07f", gitBlob: "074a5f313b01d037c3cae3b6d3fb872bd5cb969b", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "debugger.md", byteLength: 5413, sha256: "05355b54d0e75079c0762d9dffe70da10844cefc6df83320dbe2e83ab95f4a73", gitBlob: "4713a8039d9debda27d733bd5c8f3d969f05b597", firstReleaseTag: "v4.3.1", lastReleaseTag: "v4.3.3" },
-      { filename: "debugger.md", byteLength: 5424, sha256: "f1a71c40b3287bd33789bc37ea345dde91c2b56e4d3d3b179936d2d96e7752b7", gitBlob: "998a707f221135198e7a2278a8400a11392571e9", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.7.7" },
-      { filename: "debugger.md", byteLength: 9057, sha256: "2d66952cd3adf85a10b5d49960bea8d27792ad707e8ea509144661db2443b2f7", gitBlob: "67517332d4bbb2c010c3fc771db7539af7c084e2", firstReleaseTag: "v4.7.8", lastReleaseTag: "v4.8.2" },
-      { filename: "debugger.md", byteLength: 9066, sha256: "ea83d73afa5d668fd39d6610ea10ec867e02af9f9df9107a85d4de6b49700a47", gitBlob: "1596a0f18c517f5e1da1e5f1f210e8ad3f5ef6d3", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "debugger.md", byteLength: 9055, sha256: "e39b54b437720fd044cfb4b8c05d260741ba875ac5fa9459ab6aa3d0272bdb05", gitBlob: "d38cf27a5bc83f875313a8ef21276774e3ce4d66", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "debugger.md", byteLength: 9188, sha256: "1eb6caa1ced9dbead61b4a971f8fbc050fb32b5c669ad1291c5723a2ae8afa5f", gitBlob: "f53c46b4753b95145b2e10007d2cf0d2a9247271", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.14.6" },
-      { filename: "debugger.md", byteLength: 9897, sha256: "14714f2a4671411e006c604291e0551cc38cc45c18e0665de2f30ef6996047c6", gitBlob: "904b667802399e03e4791858e31a38c23bf0a732", firstReleaseTag: "v4.14.7", lastReleaseTag: "v4.15.7" },
-      { filename: "deep-executor.md", byteLength: 11518, sha256: "d69c8d02219bf96fec51313754a52d6c9e24be24a147c97952eb16422a82de06", gitBlob: "d96c3bc82dcb73ad3d75e734971560d3edfa7080", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "deep-executor.md", byteLength: 6069, sha256: "7ab2a7c26f5ed860ac015e5bbd13af8762979d83c995baa86a6a6a34d771d981", gitBlob: "432f6bedea76e968df701741e38010628b29d04f", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.18" },
-      { filename: "deep-executor.md", byteLength: 6577, sha256: "46b65f7fd3cff8bf6e22d61e37e92c33e98f9c0f9139498cd154bccba58f4f28", gitBlob: "4f828fd1c85400c3d4516b93876488139fc8b9e2", firstReleaseTag: "v4.2.0", lastReleaseTag: "v4.2.7" },
-      { filename: "deep-executor.md", byteLength: 6586, sha256: "084f040b7e50f255b695b839f272b8942e14bd907459df5ba42f26f2606cc15c", gitBlob: "3eb1721beb2c258004d134ab62b1f4d44e104090", firstReleaseTag: "v4.2.8", lastReleaseTag: "v4.3.3" },
-      { filename: "deep-executor.md", byteLength: 6597, sha256: "60d0bcb3ca1ee03529509f857f969512cfbdc584033bce3a1a87a256f0b66ec7", gitBlob: "56b6607b79b08fd7c9bddf23df5ac24b62e9b541", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.3.4" },
-      { filename: "deep-executor.md", byteLength: 6488, sha256: "392b91cb10baacdd876953c0b95f445bd6e3379e5d190b60bcb59ede30f761ca", gitBlob: "39b0dec823c8742179407ed1e4e8356808151e15", firstReleaseTag: "v4.4.0", lastReleaseTag: "v4.7.7" },
-      { filename: "dependency-expert.md", byteLength: 5489, sha256: "ecb794b20ca9ce6b4ddd59c3d2f71c85492ea69141a8cb6d0a517b2f9fed2c5a", gitBlob: "4010a44001c73c99131168f124e8c114372251f4", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "designer-high.md", byteLength: 5931, sha256: "eecd781a3e473b249312493089ac4f14acd7ab714c9cd6ce48433641b10ca35c", gitBlob: "e9e76a3eba694efe490c725226c1fc8fa3685e87", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "designer-low.md", byteLength: 3313, sha256: "0225d48fda441738d6814bb46cdd033ec5cf6c1c8c115788e6738c4fa1dae9c0", gitBlob: "d9a64d2d812fd2dfed8a662b562d7e99ab1a079b", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "designer.md", byteLength: 4571, sha256: "037d2d6ca6d672cf93ffa3ab2a392203b3cb00faa13f369a9eafab9e647c6104", gitBlob: "9f85f1c046dceeaec4582d1e3c17fbac6f783106", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "designer.md", byteLength: 5458, sha256: "49f775dada948357b0dd5c6729adba7d8018a20a3229e5d8c1ef7e78488891b4", gitBlob: "fa451c264e1f2a8f5eb8e3685179c372fee445c3", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.18" },
-      { filename: "designer.md", byteLength: 5960, sha256: "f4a31543b5a89834425778ad4dc18f8ba5017e8b07518918a4f2ea98ed8de2fb", gitBlob: "30dedaef6cff5e1aa19eb44bf6c473ab7cd21e39", firstReleaseTag: "v4.2.0", lastReleaseTag: "v4.3.3" },
-      { filename: "designer.md", byteLength: 5971, sha256: "c5ace68ab4cf450e10d3141c54e2843e1a54edac4f9fa149d204e548a63ff100", gitBlob: "57de0b6046e46009c69ded9e092f3865bfebc19f", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.3.4" },
-      { filename: "designer.md", byteLength: 5759, sha256: "f49ee8a8f7a462ec3344d74788ffd95f5eca15ddb285c0ce22e7dfed35183256", gitBlob: "c07252185c236232eb64e92a3f3132664d3608aa", firstReleaseTag: "v4.4.0", lastReleaseTag: "v4.8.2" },
-      { filename: "designer.md", byteLength: 5768, sha256: "a300143947e297e45bd4b00a3d07b859475ba93691eff0270db414abaa7e26c5", gitBlob: "c0e4dbce6293adbb76c7eb642483616907858809", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "designer.md", byteLength: 5757, sha256: "4bbf0f7298beb56a381cf1a2f4265fda40a1ad3f9e665af31785efe3b6b838e6", gitBlob: "a7813997f46ae4d491fa7245154d861bca7b5f49", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "designer.md", byteLength: 5890, sha256: "de5a1df9885e72997d692c5ad4d4a66cec9da303862fe118a49dbb4cd6558e32", gitBlob: "780377a69c9452ba24c43c35375636b678991692", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.13.5" },
-      { filename: "designer.md", byteLength: 9627, sha256: "61e77f70753e09e87d2ef4e549c4459c1572cab3eddd72e2a0a430169bb256c8", gitBlob: "d23f95782f8f207f4aacf18c0f44f78ee03f458b", firstReleaseTag: "v4.13.6", lastReleaseTag: "v4.15.7" },
-      { filename: "document-specialist.md", byteLength: 4687, sha256: "06a876282a9b0a3df9f64eab4021643ce72b00d18a65afe66af026754595d45e", gitBlob: "a0abff1b62cfd7414d9af86665c08be25730942d", firstReleaseTag: "v4.2.8", lastReleaseTag: "v4.3.3" },
-      { filename: "document-specialist.md", byteLength: 4698, sha256: "2ef90b21eb4c278384859ae149bd8db07dfc3a93f2ce2f49347f37dffdd2c1f0", gitBlob: "a1c7c2fce3326e3e3b6a4b60215a66924f18799f", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.7.6" },
-      { filename: "document-specialist.md", byteLength: 5012, sha256: "301664b041188dda651e3c3f15ce9b8468c9f7096e5c3d6ff75c0610cf612ada", gitBlob: "41eae6251f76834ab3ebc32cbacc39c1ecc5804e", firstReleaseTag: "v4.7.7", lastReleaseTag: "v4.7.9" },
-      { filename: "document-specialist.md", byteLength: 7183, sha256: "77bb82c1191ede4212acbb498ca98fb3a44049cfd08727583d82c5d1d04a7124", gitBlob: "238bf6afb0a2f4f52f9ec57266a9cd25d9e6ebe1", firstReleaseTag: "v4.7.10", lastReleaseTag: "v4.8.2" },
-      { filename: "document-specialist.md", byteLength: 7192, sha256: "4897f3fac88e5be2fa46b9f93c578a864fb31bdc911ca6d7735017ad8eb529ab", gitBlob: "07a8f0c0b54858a7202d7bd84b9fcd62b2c63abc", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "document-specialist.md", byteLength: 7181, sha256: "1b306df45efb601d53e1b527e0f5dfa12594d0ab1e81832946a512a814230da3", gitBlob: "01b785a1cd973458c6441edb8b75751380badd36", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "document-specialist.md", byteLength: 7310, sha256: "d6f01d210e5e74bb8e6f534657fd77eb39ca5feebc2bb451088cbe6b7790fd74", gitBlob: "79215e89a82f5c1902758b6f695fa8089dfb56f5", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" },
-      { filename: "executor-high.md", byteLength: 7350, sha256: "fcf788dd78c638cb36a0eec2742d2659f42d34fa26d567369636f14edfe6fb57", gitBlob: "04b88ed82c8c94af11121f2a97d7e63a3ac7a03b", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "executor-low.md", byteLength: 2503, sha256: "3599a83ee126ddcb89f0ec1db581a0b18cdf4ebe20e6772a61c3a66c0447b238", gitBlob: "5749ed21344c4934ca33e81ad8077a9385a91f0b", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "executor.md", byteLength: 4137, sha256: "7dddf0b285c82fbedfb260b8d6965db0035d803e5ebe6209f43fe2d3e8a21849", gitBlob: "4c665f9a515b18bb786ba7e6053ff4ed00161500", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "executor.md", byteLength: 4859, sha256: "90b54f845257fd373396b1babe4e1a197b107d50bceb93dd4e1062ddb628b011", gitBlob: "19eb61916842d30fb9e710372f6f775f58b3f5aa", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.18" },
-      { filename: "executor.md", byteLength: 5266, sha256: "3c2ec2c771aa86698c9dfe4f902aa47475446f84b87b191552a6e0d46c3c4ba2", gitBlob: "b8c293d9fd2bed71cc680ee00bedc36ce971efe0", firstReleaseTag: "v4.2.0", lastReleaseTag: "v4.3.3" },
-      { filename: "executor.md", byteLength: 5277, sha256: "89a0d768528192bea1791f824116f07d6e8befa3ab17473dc4f30a3a9262c3f8", gitBlob: "e490e54e2a720985aacb9e54aa9c87ffba973416", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.3.4" },
-      { filename: "executor.md", byteLength: 5168, sha256: "baa9f75d91e72fd1596ea6e1cf232ed2a6b54427e3b43f5c8bf6ee60544935c2", gitBlob: "61528d077b26fe1530f038ba26a7ebca8cf2defe", firstReleaseTag: "v4.4.0", lastReleaseTag: "v4.7.7" },
-      { filename: "executor.md", byteLength: 7432, sha256: "83df010c3ae92adf91fbdcefacd9383d407f30745bb4863ebc995d38d29f9cc5", gitBlob: "f5992eba462f3539bd663e3cce2f3a89208b57ee", firstReleaseTag: "v4.7.8", lastReleaseTag: "v4.8.2" },
-      { filename: "executor.md", byteLength: 7441, sha256: "598fbcde9f3a8c2e5a39f9213ad8a0dd6674af848c34f97cf61886d79aa1ea14", gitBlob: "10aa2e0742807093e0cff6fc2bdb14d9e12b9855", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "executor.md", byteLength: 7430, sha256: "f467a68cf7636bb9faceedf4d5f07321ebaecc4d127f94947a436c5091421d5b", gitBlob: "92cb6dd6fdfab3beee911c91c4e7276fbe0efcff", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "executor.md", byteLength: 7563, sha256: "996bfa5ed0b560285c0ca020e75f02a60a4ef97062ecaac7b285699f57711865", gitBlob: "54c79972b7fdf7c6189daf3e2820ab358506bc49", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" },
-      { filename: "explore-high.md", byteLength: 7728, sha256: "984d9fea47c45d54d47ebddb10cf5b8647f7667906c280400eb7ecfcd6c9eee3", gitBlob: "c535510a0e0e541d82d184be4211ae5e971aaf2d", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "explore-medium.md", byteLength: 4072, sha256: "8d60817e76cb7cc78eec5979b3007dcc4325af42e036dd4d539d031d5b1bc862", gitBlob: "fd2da7f453787061e6661b5d060302bd301539dc", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "explore.md", byteLength: 3164, sha256: "cce28c6147f00e841b6582f96c0593302523a51dfa38e1b19e01f5ace91f5d9f", gitBlob: "2aa5e2f04ab0a4b45c60926e85db78279b3bb3a0", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "explore.md", byteLength: 5260, sha256: "dcda623eae48287e7cd3efffdf578d48896afeb74ac27c50911669c1805c65b1", gitBlob: "c3639d424aa168d7a7f60b4fddc16a620078adc8", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.2.3" },
-      { filename: "explore.md", byteLength: 6530, sha256: "f3a83dc262731c091e92503311d9e410472059a6a755d94261431d71a779c64a", gitBlob: "4ac0f53985b3095fb4f1cdf4d400df6faa288024", firstReleaseTag: "v4.2.4", lastReleaseTag: "v4.3.3" },
-      { filename: "explore.md", byteLength: 6541, sha256: "3a34c91f7050ee8574a16e68f71b706f8b13ec2fadb39ed0ffd3ffffd8762419", gitBlob: "4c69af979c80d1f7155d4520265317beae533312", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.7.6" },
-      { filename: "explore.md", byteLength: 6981, sha256: "47a4571bce3b7a18497a7cf8192024c314de9d86740b34ffcb50ee6c0eeb0873", gitBlob: "8a7a941f208db5199470421db7dd9291b776f405", firstReleaseTag: "v4.7.7", lastReleaseTag: "v4.8.2" },
-      { filename: "explore.md", byteLength: 7401, sha256: "953af89c36968f6d735dbccc5ba494bb35872498f432e833235111e197a04693", gitBlob: "d527d2ab73674f697226d4b6187f61269a135987", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "explore.md", byteLength: 7390, sha256: "c75bad9c35876f30f273e855a1807cd76e0f362cf97872852370cb4da08d78c6", gitBlob: "86fd24c1c6e6a688fda6d0188499d6a76e588945", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "explore.md", byteLength: 7523, sha256: "a629637a20d2848e459c581057da0d258125e03eb243d8c984e98a0ed6636bcb", gitBlob: "519c61a2340c06d4373e9217c607e695f22652f4", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" },
-      { filename: "git-master.md", byteLength: 3830, sha256: "7c51a5706ce8c828848293e03e6a5de491a9c09e487802c6b534a66bb33c2635", gitBlob: "b8784cfe636ce41b9b66433c9b4de06fbda68ef8", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "git-master.md", byteLength: 4660, sha256: "7238f26e331a35557f011b82f9b5a330130ceb20f0f76149121a52e4f302ae25", gitBlob: "a2a0eff138d781e6d90d84420cace53a9f65a2eb", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.3" },
-      { filename: "git-master.md", byteLength: 4671, sha256: "73832c6808664765b73b2dd12d4b44b9fefc250831225cb154c843f50a89d927", gitBlob: "0d7a932695797a60c0eb036e8528f049e8f43f68", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.8.2" },
-      { filename: "git-master.md", byteLength: 4680, sha256: "ee6dfffd47afcd06cfeb2756d9eb8ebbb36ac92083f1c04c2e9a2782ae96fbe9", gitBlob: "20830fe3ab69d8b7a2d255518f8bb6db65abd696", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "git-master.md", byteLength: 4669, sha256: "488cbd45d8a9d12597a1645969d6ff9041004e0a30dc08961a7e77aea1f9c1fd", gitBlob: "e1fded0b68999e4be736dda367d7bd7e04cd3365", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.12.0" },
-      { filename: "git-master.md", byteLength: 4683, sha256: "097df0c648a60a3336daa89706c83722bce0ee1a7b7e3a367835e831c2433239", gitBlob: "dc0e65378c54fae99ce3358f0e39dafe8ae0f7d5", firstReleaseTag: "v4.12.1", lastReleaseTag: "v4.13.2" },
-      { filename: "git-master.md", byteLength: 4816, sha256: "40fbc2b31b1b1e0f957dcc7343e8b3a9e92422927c868db68d46cbb07f4abb58", gitBlob: "313b3eaca08e56097e5334a7432b91373e7ebcde", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" },
-      { filename: "harsh-critic.md", byteLength: 10040, sha256: "38d7365a2b0d4f17beee68a0438a4182d18ef9ca3bc74b8230d8a3d8a39f05d8", gitBlob: "913ed89ade29866f01bd2d90db7ef5cea4090b21", firstReleaseTag: "v4.6.1", lastReleaseTag: "v4.6.7" },
-      { filename: "harsh-critic.md", byteLength: 16942, sha256: "1808d4fb454525036a51f1834bfa3f93259fe34c9ea9b25d9532c792d619067a", gitBlob: "2bf16a6d9f42cf91e16ff16fe1f3f717d9313689", firstReleaseTag: "v4.7.0", lastReleaseTag: "v4.7.1" },
-      { filename: "harsh-critic.md", byteLength: 18824, sha256: "cc143eb707eca4993cbc63668dae3cacd62c80c11b09bdb928e5e70d6efa11d2", gitBlob: "4df066efe9701e279a3e70e5d273e0977d6e9448", firstReleaseTag: "v4.7.2", lastReleaseTag: "v4.7.7" },
-      { filename: "information-architect.md", byteLength: 11899, sha256: "d538a4905e0cbfff57eae73061981dda3b1a03b2faf1ffd7b717fc4162b66b1b", gitBlob: "a66a9ca9fa8810c04b56fccfdd5c424536abbd83", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "performance-reviewer.md", byteLength: 5376, sha256: "c47749dbebd12958e2eefa1ac0eafb3e81dc3a8ce35e95fdbd936497ad46bdb9", gitBlob: "e27e0cd510c6059709ae4050b06ea0d359936b43", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "planner.md", byteLength: 12966, sha256: "ea8a64a6b168464c0090d91c9382f77c6f5bc177475de5513f52a3a0328ea87c", gitBlob: "6de233df1e19cfb51392fd6a2cad0e299e763d79", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "planner.md", byteLength: 5841, sha256: "fc2d772232f38ac01d34e06a60aea535819c7e620fbf01d7d9e251a3be35ea38", gitBlob: "87d6907d5be67e06e60e83e1598c877f8fe609f4", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.10" },
-      { filename: "planner.md", byteLength: 6632, sha256: "53d040e23441cd5e29b635c2f42bfd3530151979fd233c69003d97ee2a03108a", gitBlob: "7c207a11df34015cb24e20b7a0099082c5c3fc0b", firstReleaseTag: "v4.1.11", lastReleaseTag: "v4.2.7" },
-      { filename: "planner.md", byteLength: 6641, sha256: "aeb4e933ee7171643741eed2b19dd81eac14999cf2d6d0389a51cc71ce16764c", gitBlob: "5303ee52844f007fe0c361802ef7e9a97a0722c8", firstReleaseTag: "v4.2.8", lastReleaseTag: "v4.3.3" },
-      { filename: "planner.md", byteLength: 6623, sha256: "128e90605aecb8f50847a2ff08d367d9e59008fb1770c127e36d6d109ced85f3", gitBlob: "3ff2465faed5761e95a3341ee7eebc0414a43376", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.4.5" },
-      { filename: "planner.md", byteLength: 8487, sha256: "e92ad321aa66b146aa8116476b2d3060f41d016bc1ba81ebd59b072a9bc2f8d5", gitBlob: "12af6aec319522ddb12acb890ce68bb0a5afd1f3", firstReleaseTag: "v4.5.0", lastReleaseTag: "v4.8.2" },
-      { filename: "planner.md", byteLength: 8496, sha256: "e9a47fc7cbdf15398f87d959ab47223f8c5429e44d55c59beb490675728ff21c", gitBlob: "fdf97cf5a29f16f1692edc2cd29020e5ce1e14bb", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "planner.md", byteLength: 8485, sha256: "ac766a3ea38b84e1931cce2374d25c680830a3e36d4ca5fe84d3f57ff818aa71", gitBlob: "c9ed9f57b488f051cda40036c69bcc0f6b2437a3", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "planner.md", byteLength: 8618, sha256: "20186e7bb9cc8298838cf2bd7caf187c79d9b9cb8ed941a9600b9c98454a09e5", gitBlob: "d6850ceab6fb5aa1ef8edeafc5b83682d7d02fb5", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" },
-      { filename: "product-analyst.md", byteLength: 13212, sha256: "9645acd18b8a645095a80e0bc92a4c4f5000904468426703de6bd204569fc19b", gitBlob: "aa294db8a01f8c06ab8db4da99e62c4066dfb9b5", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "product-manager.md", byteLength: 9900, sha256: "f2bc3809e4e2009bb148ab4f9ae73d1034b1b76a346bcf76c16e1aa89e22d40c", gitBlob: "b88efcd2919eb4bbd4e828218d7ffa4a1ee6bad7", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "qa-tester-high.md", byteLength: 3481, sha256: "b6b9049fcb95a826dd18a341b8405febb7ce3bb41da0ce7601f2a1634196f92f", gitBlob: "e416eba7d64749e405c819d19cb419b12e683a8f", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "qa-tester.md", byteLength: 5781, sha256: "c00813d028fadc820a97b619efc5bb78d7721222608a3c50417c894aba4e64aa", gitBlob: "acd730c56088daf9251e517d42248b64f5e09f40", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "qa-tester.md", byteLength: 5073, sha256: "de9b01c276b5aaf169e889e4316d80b3c9dc856dd22ae9d19cddab75dc4d3e57", gitBlob: "6a7364fc775e4bb4f701f7149b41969ce264a4ad", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.3" },
-      { filename: "qa-tester.md", byteLength: 5084, sha256: "f4dca79c8269aef8a95bc2a62598b24afb0e749ef44f80bb8a90c85cb017771e", gitBlob: "6423da37f6237d94ab540a329f8156f56c9614a1", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.8.2" },
-      { filename: "qa-tester.md", byteLength: 5093, sha256: "b6cfa0dcc7d37bc3962381afbe853801bed5ec25ed8898ccb1b6368de3b096bc", gitBlob: "c43c3613ed33310fa5e27a636dbf5916c11ea8e7", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "qa-tester.md", byteLength: 5082, sha256: "2f808a58afc484440aff1d683341d71249f075e5b4ab6f3ec562ff83f3bb666d", gitBlob: "8a3e01707a6ec63e0675c55dee0ff6004aec7ec8", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "qa-tester.md", byteLength: 5215, sha256: "f34416b12bfc9c4071ee034c4e481733334b05e8e42d604cd84d579c557832ce", gitBlob: "968677a0daa644e5d4bfe33d5afba472872d76ea", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" },
-      { filename: "quality-reviewer.md", byteLength: 5388, sha256: "18ecad81bd3e2af46e03981d6d12e98ff744ba61b7a0c0552676a41b1502f49a", gitBlob: "5e0a47a068a091a87c420c13bd57843d47b419a9", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.18" },
-      { filename: "quality-reviewer.md", byteLength: 5896, sha256: "78eacd535f0b4eacd019cc615e2ca05f190c9386ff4878c6e2a72bfa7d09a78f", gitBlob: "908bbcd1f72ddee38b4ea45c140f9f384282e2d2", firstReleaseTag: "v4.2.0", lastReleaseTag: "v4.3.0" },
-      { filename: "quality-reviewer.md", byteLength: 8630, sha256: "d90ef5cfc12bc412400ccbf18003ef2ea11497d6e59e5a05db8832ed09cfdf7a", gitBlob: "f92202e5b42e3350611ce39015094f85b33f9ead", firstReleaseTag: "v4.3.1", lastReleaseTag: "v4.3.3" },
-      { filename: "quality-reviewer.md", byteLength: 8641, sha256: "8b949dbf776499ed2f61f8b9d9202caf74712857de04c12d5d6563ca0def6184", gitBlob: "4afa7cd79db5346e7ca9059fd4482e52a9d9bdc5", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.3.4" },
-      { filename: "quality-reviewer.md", byteLength: 8535, sha256: "98f44f332f9fe951c9aac52fd34ad4e1183cf0e4fcce05c3d7493ca5919b9c14", gitBlob: "99812ffe67e72692aa1a6b72404945c7bd20ac53", firstReleaseTag: "v4.4.0", lastReleaseTag: "v4.7.7" },
-      { filename: "quality-strategist.md", byteLength: 9211, sha256: "b67c4aadb5d669f88100a70f2755435b09cb405ed732c666db4df34d1e5e3dc8", gitBlob: "d07c77d41adc4b1e992182af66f1f69c3aeb86f7", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "researcher-low.md", byteLength: 2313, sha256: "42c6d5edc118b73c0d2f63cd9108be4c93be9f85fd3b4b3808e8fd2dd1076cb2", gitBlob: "ec9e58182d6b2fdcb33069685053d60d4dda3e91", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "researcher.md", byteLength: 1803, sha256: "9d2e37cd75f0b2c116f864d55366e53b0abcff04013fd14e4a26a1de903cde83", gitBlob: "475266b6548c09681194e783910028e909be4052", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "researcher.md", byteLength: 4681, sha256: "44df8878c71b3c46d3d29850cb127202cda699743b7854b31b90052661e8a976", gitBlob: "d5a398a06dabbdf7342d29748ec38ffc5291aee4", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.2.7" },
-      { filename: "scientist-high.md", byteLength: 37441, sha256: "45bd55bf11f9b70b78672c0ae1b690af1a3f37c16de7420410c72c947219f09b", gitBlob: "982a6098c392ae68a00fec4a31315dfd73b0a6ff", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "scientist-low.md", byteLength: 6193, sha256: "36439720677aca15a6c5346113cef85150624ae2b561ce87f7ecc6a62f624c61", gitBlob: "9cd8c858106750676f9c599564d89bbf3bb09f94", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "scientist.md", byteLength: 36550, sha256: "a83691961b62ffb7ff05c37e0401bb186a0c65ac65a4e9cea5d2d726333c9050", gitBlob: "43cb1ad8ffd9b846c674ea9ddb238f96fbdfe11b", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "scientist.md", byteLength: 5357, sha256: "e9cf952be76a644f9dd693ab089fa39dbfc19b8d199a90603517ae7d645dd7a3", gitBlob: "f680515b2b83e73357d17b80f6294434cf30d904", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.2.7" },
-      { filename: "scientist.md", byteLength: 5366, sha256: "17c8454bc6967a4bdd9feb66dd63736710cf6e54b08678b36248e6546c9bc946", gitBlob: "c837fdb858d3f4fa97000df8132a4aa33137f934", firstReleaseTag: "v4.2.8", lastReleaseTag: "v4.3.3" },
-      { filename: "scientist.md", byteLength: 5377, sha256: "0eec3f270c1a8df330f00f01ce34c3c4b46a4f976ea0e5ec5913ede19602e514", gitBlob: "28580fc2da873437978eb358179a92bd6b21c04f", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.8.2" },
-      { filename: "scientist.md", byteLength: 5386, sha256: "90a217575d1ec6750c1ad42d1b3cde89b79f9caf170c1c0104aedcbb58596ab5", gitBlob: "289f4a10ae0d0442ee60c118e308c9ffcf1f98bd", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "scientist.md", byteLength: 5375, sha256: "f99bf14660866bce2fe8ef9fcb33be630aa398ebfd6e332684fcd97552a678dd", gitBlob: "a420695a6309d1dd82f880991b30f541066451de", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "scientist.md", byteLength: 5508, sha256: "cbe304e00b334c4c6035325542e522f66f8671b631dbc5fff4db9383bbefcd23", gitBlob: "7414274edb22b6f0242d08e02a539658ebd15958", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" },
-      { filename: "security-reviewer-low.md", byteLength: 2201, sha256: "d57c41f1e1320b3a83397780595e9a060069edfed6ff69774335d5b7ebf4e2f9", gitBlob: "c6600d08ba24ad6d034f0fc6dd12b91548189401", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "security-reviewer.md", byteLength: 6667, sha256: "57d92316f8610e52ef6793adc3c77296927f649bc1610429f35d0d236e26b3e5", gitBlob: "f3d4306ec7b7b5ad69c621d473c1ee4ad61008d6", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "security-reviewer.md", byteLength: 6147, sha256: "1156268997a8b5373995f36c853d3dd24c475a1b8444d21504ab59cc4d5ce849", gitBlob: "52242a753fc0daaa0bfda16e39dc4354be09aad5", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.18" },
-      { filename: "security-reviewer.md", byteLength: 6655, sha256: "8218fc08e6dc9a514362323efcf869e84144bd8053e2923fd4c7970415dcde5a", gitBlob: "319e731457736aa8569f6339d172eded7a734978", firstReleaseTag: "v4.2.0", lastReleaseTag: "v4.3.0" },
-      { filename: "security-reviewer.md", byteLength: 6602, sha256: "020b1e3450654ea4005e572fa66a2e91a7b6db1c64875bead93aefd7e2404980", gitBlob: "3128cf48d5301c48d5f37180c9391fca50fb06f0", firstReleaseTag: "v4.3.1", lastReleaseTag: "v4.3.3" },
-      { filename: "security-reviewer.md", byteLength: 6613, sha256: "845741d632d40bbcfad56edbbb56eb8305bc3f7bb63e82eca70e28764ae6f053", gitBlob: "4e0b456cdcd4350544c5f9820ffd1b893194504a", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.3.4" },
-      { filename: "security-reviewer.md", byteLength: 6503, sha256: "8769911a585ea2966c4fac875e2d536bc41ad8d023e429c0c910862c7deabc7f", gitBlob: "d4c1e42a75bf2d3957a5857cc051f4346a07d04b", firstReleaseTag: "v4.4.0", lastReleaseTag: "v4.7.7" },
-      { filename: "security-reviewer.md", byteLength: 9014, sha256: "f3aeaed2e0195c91f7f4890118b7ae4f294c6933f3ed49cdb93f428165d35162", gitBlob: "92a7cf7c3a632cf93cd19f9105c6a6f628902cf0", firstReleaseTag: "v4.7.8", lastReleaseTag: "v4.8.2" },
-      { filename: "security-reviewer.md", byteLength: 9023, sha256: "07d3980188922142f36d8e84c60ec3db0445a18548ea2bc70f609f4ceecfbfcb", gitBlob: "0f370a68b94e54ac186e7a8a645c8e91352b41d8", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "security-reviewer.md", byteLength: 9012, sha256: "11aeb0a4184206ca25a8fc1bd19824191d0062f1bca3c5f9f11bb157fd83b9b5", gitBlob: "76deaf6c2e087ea96a9e193a26f878af41dd19d0", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "security-reviewer.md", byteLength: 9145, sha256: "78e9fbd98057fd3ed113171957038df8096cc1cbe7d0870452ced2f3200e2200", gitBlob: "750501c59a9f129bc2be19ff102ddbd1567db628", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.14.5" },
-      { filename: "security-reviewer.md", byteLength: 9818, sha256: "ede4e0af76067168dc3aecacffc73f330a950bf79ec187471950cb2d985de8e9", gitBlob: "c36f17c1cb74950e24f2f161458ff3d4cd58950b", firstReleaseTag: "v4.14.6", lastReleaseTag: "v4.15.7" },
-      { filename: "style-reviewer.md", byteLength: 4430, sha256: "084bade0aadd36ddb0b220038ad599047bc187f698025d250a8ed3f3b8db7785", gitBlob: "6d301d91d448475e36ef8f7d13f217dea62a5e2d", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "tdd-guide-low.md", byteLength: 1922, sha256: "43b2d38c219bf5992c2cb79521e38d2da117b25466a0ac46b54dbf9de72b84ad", gitBlob: "a68d747f0dccdd677b4155e4e6da6ec9ae797344", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "tdd-guide.md", byteLength: 8236, sha256: "bbb6c65fa5375f6c6da6127c25a2340603d7b8df06ea3c874eaab24162f66154", gitBlob: "47c297e8968abfd0f83b303bc6ebabe9e28e1f7e", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "test-engineer.md", byteLength: 5147, sha256: "251c3cbf0dc27e518df950c0a6861905de1a4a537b5ae0b601ecad91f5e40fa9", gitBlob: "3ad8da1576ba79770b0af7ef49961479fbace2ea", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.1.18" },
-      { filename: "test-engineer.md", byteLength: 5655, sha256: "804f615d83e6601af11473b0544392f5c35261aa916c1b8b1a1ddf216ed5948d", gitBlob: "b7bcf786691890c8e4d90bfa6ae554bb8795b048", firstReleaseTag: "v4.2.0", lastReleaseTag: "v4.3.0" },
-      { filename: "test-engineer.md", byteLength: 5606, sha256: "1a38e356ad44133b9895ed4787e4b9a8c3a2b13c6e7cfbbb147b5237604b44a2", gitBlob: "d11a4743878e8bd8e64d8b8cb519c53baa252907", firstReleaseTag: "v4.3.1", lastReleaseTag: "v4.3.3" },
-      { filename: "test-engineer.md", byteLength: 5617, sha256: "2c3d5793b7b5c7958e9953b97f07cef48e4c3ec524a4219adc1565f55b403f2e", gitBlob: "bc12d1d675c47f8d9b3d2db5a45a73b53cb7c423", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.3.4" },
-      { filename: "test-engineer.md", byteLength: 5507, sha256: "4bb0f20f5f0e60ea92d5f7a8b46fe3f6c1dd8513362117813cf983559966c5a5", gitBlob: "5183e5b7b2e3f1318250915ef08d0639262fa727", firstReleaseTag: "v4.4.0", lastReleaseTag: "v4.7.7" },
-      { filename: "test-engineer.md", byteLength: 6493, sha256: "1e0021206f87f59027f54180633eff7a5795d84d34b86146c8436d0b7512838b", gitBlob: "cd698af6aca64e6118e16b5225770096e26064ee", firstReleaseTag: "v4.7.8", lastReleaseTag: "v4.8.2" },
-      { filename: "test-engineer.md", byteLength: 6502, sha256: "07c9cf50f6ceee2deddbe5e7f7908a95795a9e6991746d8e101fed333481a959", gitBlob: "9f7c1e60ff0520143f46755a8208fb1b9404e673", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "test-engineer.md", byteLength: 6491, sha256: "a107d60370ca5fb59e624d4341a2ad7d7d4b9b0f062d04ecec1f8f9618b3aa9b", gitBlob: "964f7227101d3adac264759aba7d454c7a663daa", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "test-engineer.md", byteLength: 6624, sha256: "6edcaf059b9cccc7eaa1ddde385bd23467d3e0ec798d0de153a3b6f03e5de939", gitBlob: "0ad8b2ecd975365fdc36d252677a14ee24309b64", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" },
-      { filename: "tracer.md", byteLength: 11153, sha256: "85f84acf02f3a5bf7215c458235eeed3cea21fcb6cbbed15d411d8efbc7f2455", gitBlob: "44758846869323a1a1fea13778b372e6d1b4d52c", firstReleaseTag: "v4.8.0", lastReleaseTag: "v4.8.2" },
-      { filename: "tracer.md", byteLength: 11162, sha256: "0388ac6d0d82d55c5e12ac42f9029fdc3e187dcac356f7797a2df4ba9f2dc9ee", gitBlob: "942b7400ab7143075696a1447604fc1cd558c0ae", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "tracer.md", byteLength: 11151, sha256: "43b87391b40d13670bd71bc9f145566c26471051c8a212a87077d51a2ea2acae", gitBlob: "62fd5922f832145a3cf9fc6521752d5fdff68900", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "tracer.md", byteLength: 11284, sha256: "17f21f7a43395bbb4b245122d9a3d0c5449d58d3054422858336f01318b7e816", gitBlob: "bbd69e0b76d16c2ce288e5416a6a4e5140264d34", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.14.6" },
-      { filename: "tracer.md", byteLength: 12013, sha256: "948875149f833317423510482ac7c5f7b7fad845422986e87fdcd30c440232d7", gitBlob: "aea63f909d0a5ac8115a9e7e094e2aa7da9737bd", firstReleaseTag: "v4.14.7", lastReleaseTag: "v4.15.7" },
-      { filename: "ux-researcher.md", byteLength: 12113, sha256: "0c8b96124a6ce8fd875e0781c178bd64a715f58e1dced2551317d4b849e61a6f", gitBlob: "10088f785f700118af6176ac8c214c097612d494", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "verifier.md", byteLength: 5225, sha256: "69295a5c3ee2088002328a4a677e179f62746796bea8168672b01873be4fa263", gitBlob: "b3187f6e30bddbaea78670cb68affff310758d5d", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "verifier.md", byteLength: 5180, sha256: "0609a092d3a338c0be559446f077635396e1f41d544b13b7bb03498b42debd1d", gitBlob: "08139669a0ad17ed7da3b25808d2617dc5a9b5ae", firstReleaseTag: "v4.3.1", lastReleaseTag: "v4.3.3" },
-      { filename: "verifier.md", byteLength: 5191, sha256: "579b12a672c38b816cbe5926cefc3f2736f80439769f956f13a143bbf5670d03", gitBlob: "d44edaef38596e6aa5e0a08372374dc6b370f296", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.7.8" },
-      { filename: "verifier.md", byteLength: 5430, sha256: "ceb8bf2c88ae4a2fcafc1660a239e9b5315ac52f2b04731b2230b2b76625c9ad", gitBlob: "af736ffbddffa6b319251375cc1a93b2cf2ccf84", firstReleaseTag: "v4.7.9", lastReleaseTag: "v4.8.2" },
-      { filename: "verifier.md", byteLength: 5806, sha256: "cb365987c06a8941eef8cb99272d18db6df3a683e53aa5a511f86eb7c0e7e1d9", gitBlob: "cfa1c15aa2c256978ceef355f9d44ad80ef6bd90", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "verifier.md", byteLength: 5795, sha256: "b3989f4c2d1b6b6b2cc2817013005a3ba9fe2688b1c8040638b4b218022a19ab", gitBlob: "a54f08966962417020acbe54619e3c05d2b0f96e", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "verifier.md", byteLength: 5928, sha256: "aaff548cc93e96f411137495935733dbd768bc894b306fb01d78478da690dc8e", gitBlob: "a3ceb374176471f646a2479f3aae9d02fd8ccd75", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.14.6" },
-      { filename: "verifier.md", byteLength: 6643, sha256: "8560d3a986199809497866a4fedbf9417cecca7cb670d0ba4aad70a7891e9a25", gitBlob: "aef6c20563c783639f5024426cb46c62badcbdd0", firstReleaseTag: "v4.14.7", lastReleaseTag: "v4.15.7" },
-      { filename: "vision.md", byteLength: 1448, sha256: "6b749e4cd185a5b46678e253d714b5b3891f0b5be08aa9badfa565d284f550c0", gitBlob: "ebc0880d5e049b2632f89de00ed9669eb730c747", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "vision.md", byteLength: 3895, sha256: "6a71b35f94c2ba0b167546d76f6476123e94f2693e3fb118c00ccad26218df6e", gitBlob: "fab1612e86f8836b101ce83c7346dd195d23344f", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.0" },
-      { filename: "writer.md", byteLength: 6914, sha256: "03f93c34c28637c58fb8c64f0af1291bed75f1eddc8d58817b7d94a95d0b52ec", gitBlob: "5b70b5412907175f28c8d6899a62eb3f1b6ac72e", firstReleaseTag: "v4.0.0", lastReleaseTag: "v4.0.10" },
-      { filename: "writer.md", byteLength: 3984, sha256: "8c0ff3173cab8d3ab1a8f6fef1fbb509655711b82a0f163d85f38546caf9936f", gitBlob: "5884e9d95146d567abd30cea17a89ffd256467aa", firstReleaseTag: "v4.1.0", lastReleaseTag: "v4.3.3" },
-      { filename: "writer.md", byteLength: 3995, sha256: "8fe1491421050c13285858dfb42c0e214d7ecebaaaa7bf62232609a144085bb3", gitBlob: "83370a7b17678f88f08c2214140be6add5370192", firstReleaseTag: "v4.3.4", lastReleaseTag: "v4.7.8" },
-      { filename: "writer.md", byteLength: 4255, sha256: "855596d8c3c5f95ce39a905c94d48163c896c502a8af9af272508218c85bced3", gitBlob: "3aea07bfea9958f4672ad5aa90fead3f9681c8f1", firstReleaseTag: "v4.7.9", lastReleaseTag: "v4.8.2" },
-      { filename: "writer.md", byteLength: 4264, sha256: "93f935811a29c8368dc8f5aa168622bd9a5bf7e4ad692ff16b9b996044f76bef", gitBlob: "84276bb10e2777d4fed43b395680eb00d4dd10da", firstReleaseTag: "v4.9.0", lastReleaseTag: "v4.11.6" },
-      { filename: "writer.md", byteLength: 4253, sha256: "92c3e76dc8de5c25f01fe8ec72a787212195699bb2fc416edb1f4b5e6ca2a95c", gitBlob: "8deebfea03dc2098e7109565c5836b428c314c33", firstReleaseTag: "v4.12.0", lastReleaseTag: "v4.13.2" },
-      { filename: "writer.md", byteLength: 4386, sha256: "ccbf8dc3957f1c633c95c5b99a0e74237ed1a393c562474cc3443c62abbc47c0", gitBlob: "f50c4ca484cc51d903a1079b0476a895f1400cac", firstReleaseTag: "v4.13.3", lastReleaseTag: "v4.15.7" }
+      { filename: "analyst.agent.md", byteLength: 6221, sha256: "ab626db4fdca0092ee5ab1127fd09d26a793867f81669c0448ab1031dccedb12", gitBlob: "ae05891f532125eb4c6d9c9950aba766e2a49e41", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "analyst.agent.md", byteLength: 6210, sha256: "c145e647c518660b5705bb28817c73a7b72512a98cb6df0c86b2fd94ffcd0e98", gitBlob: "b2bd419f987eebe4e8583eff085f92a9f270286d", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "analyst.agent.md", byteLength: 6343, sha256: "1c2fa8c95a1cac35952dc2e6c2493f06175687cbaa3595c6861de6c853be2a65", gitBlob: "f83f364d26bd102190e29d3e9e36f6362390bbc4", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "architect.agent.md", byteLength: 8241, sha256: "511a1ddeeabb5a8ac7c0ddbbf193b2576ad15ed0b0c27f22b7a05036e7f8d11a", gitBlob: "3842f97780395430ddaccb047a23a9c62007d5c8", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "architect.agent.md", byteLength: 8230, sha256: "6a03b7e8392fe222031068aff7dbfae8e518313ffaf76ad632f01a3b14a2acef", gitBlob: "d80644db4cdc456b18c5a87330f14e83aadd2c77", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "architect.agent.md", byteLength: 8363, sha256: "37042cd645194b94fd1bab5eef568eb9632bba62dd981c1da8749ee9e22d7762", gitBlob: "206e7baf1d2a6f08802b31e356ba37a0c826c790", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "code-reviewer.agent.md", byteLength: 14770, sha256: "5c91aaf56e1ce4aa5420f5f393163eccf2a380381f2f063b964f18ef51220c4f", gitBlob: "2999498eda3bca3b59a098bfe09cb2e9545abfdd", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "code-reviewer.agent.md", byteLength: 14759, sha256: "c27716ef22a2f56de0835c6849b54c478a2c23c1820afa1296ec0c6837d21717", gitBlob: "719f1d63db198a169b87dbe806e812412dd5f557", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "code-reviewer.agent.md", byteLength: 14892, sha256: "84bd7f1df25e7c9d942ca024396b966a92e824c5adcccf915d03adb9e6221b15", gitBlob: "45f27897dd5a221c12121daa3e8a8cbe6b54b5a9", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.21" },
+      { filename: "code-reviewer.agent.md", byteLength: 17178, sha256: "632d3d75283226ccdd639989972d7c1c144fcd6d16161c46450b59d9532f2471", gitBlob: "fcbbb227ee6b2e0e7143c98c5cfb08ec12257b31", firstReleaseTag: "v4.13.45", lastReleaseTag: "v4.13.102" },
+      { filename: "code-simplifier.agent.md", byteLength: 4414, sha256: "11952957123feb8d129b41e6cfaaab40ac018a71accdf25da3233c5c738a659d", gitBlob: "3130e378afbad6a1d90221f59f0b1634f7aef685", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "code-simplifier.agent.md", byteLength: 4403, sha256: "ad0bbcaeb000ac91b24906c160c309880c034d8b38e19cce625f09d4d3bab74f", gitBlob: "01676fe234df9e3d69bbd27af5da6ea40f79c139", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.13.102" },
+      { filename: "critic.agent.md", byteLength: 21440, sha256: "7a2571011570e0f56e5c059fc9ad13dde7808f71b69ab5f5337d03d5037d6dd3", gitBlob: "e3d0fc5dfdc2c0b6f51f3d4671f7e8188e79511a", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "critic.agent.md", byteLength: 21429, sha256: "342d1494d55b4b009c4249bb82e8b39b04d85fc8aa62e34f99e361d72fbf37b3", gitBlob: "7ade2c2f9caf6a9ea5cc662d85b306b1408d6982", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "critic.agent.md", byteLength: 21562, sha256: "210c231152747d8cbdebd3057d0cca4e9bf39d7312e1f64b4e1c85ed364d621e", gitBlob: "bf4484f6d5e36b09ae9ef26b4b82c1d67d6a06d1", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "debugger.agent.md", byteLength: 9683, sha256: "fc0c13cea3772bc6de34c992ad244db608c468f809f4276475c6cc57e4eff963", gitBlob: "e374edead79e5d12111e0753d9cd37e2445825e7", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "debugger.agent.md", byteLength: 9672, sha256: "54cbe24126e27ae8cdcaa522b35c90fba14ace14c8a1e9c0951a2cb26cfc94ae", gitBlob: "a6625bf18ba2716dd288a6f9b82443c23b0f8fd2", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "debugger.agent.md", byteLength: 9805, sha256: "f095d30a5485b36a211b5b3c8274339a72aaa331a1239a9210278080c9336be8", gitBlob: "3028ebb6a23d1f3e359ab5a5102275f33718c24d", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "designer.agent.md", byteLength: 7083, sha256: "cbb52f2ef3e92f2d353656c363bf7bc2e06f54a4b395e91d576c6ea2d31facb6", gitBlob: "3174665fe23999e3085fae23d10116010145498b", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "designer.agent.md", byteLength: 7072, sha256: "40bf2856f8d1e927e1f5d1bb04033aafa6ec140ddef1fbc9f24f36945f0daf5b", gitBlob: "adb7e642d00c04d6585a30c6aff8a61bbef7a755", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "designer.agent.md", byteLength: 7205, sha256: "deb953d257821a4f002c955e8419a38a2b734139b72c62205acf06ff6f3d7cfd", gitBlob: "02a221e6df6a64410cd915652fb917c7d517d06c", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.21" },
+      { filename: "designer.agent.md", byteLength: 10942, sha256: "3f332ce0808e1b7f1b903cc03c54488dae444f990d177a0d8d1e1bfc85e482cc", gitBlob: "43233570bffd92f3240d54ac9dfc639d1a241f4e", firstReleaseTag: "v4.13.45", lastReleaseTag: "v4.13.102" },
+      { filename: "devils-advocate.agent.md", byteLength: 12322, sha256: "1783098bff255f8b94142c3c4ec09cd6ec46894b4644146373f44ea0f5e21bed", gitBlob: "1b1289c1d9986cef37121d30226511ed90cde6ec", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "devils-advocate.agent.md", byteLength: 12455, sha256: "5be5c63db08993d7a2b2bc7255ce123d275c8cfee687fc472c67b23c70ad1c76", gitBlob: "c97dde8fa5345beaa331deae0af41281dcdc9605", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "document-specialist.agent.md", byteLength: 5012, sha256: "301664b041188dda651e3c3f15ce9b8468c9f7096e5c3d6ff75c0610cf612ada", gitBlob: "41eae6251f76834ab3ebc32cbacc39c1ecc5804e", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "document-specialist.agent.md", byteLength: 5001, sha256: "4dbb629a2006d8056d4bfdf67af2de8f05e1e1c94a3eebe0359ee783ba866bcd", gitBlob: "1aace0bc8de999a9165100356ca3f3aca0b6bbc5", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "document-specialist.agent.md", byteLength: 5134, sha256: "f1ac25792de294459cee4fb63bc96d94ca2c635063f7e03f27c88679adfd5f91", gitBlob: "cf13bb9963338087c8aad437631ad48a9f9a26fc", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "executor.agent.md", byteLength: 8683, sha256: "bf6677e35f7e84f9bb4b66c92d9f6d7d221741bcc97c405afe187ae524579b34", gitBlob: "f9a03cf39055bd5febf207bee355a8575e0cc978", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "executor.agent.md", byteLength: 8672, sha256: "ddbddb5f43221671ae1ad4692d0a86e1aef66a131c1605c2cfcac18410f2282d", gitBlob: "86b645dbd2eda12fca841dc5882d52c162e80655", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "executor.agent.md", byteLength: 8805, sha256: "0a669638cd9d4d36781fec878d9d7bcf039fab4dd25cdadaeaf2619f458bc1bf", gitBlob: "cf29e68c09a815f45c9329de3f6017bfe25e8243", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "explore.agent.md", byteLength: 7668, sha256: "b2397b44a9751d0a5ce1c5ea68134eafd04f6334469b1888161297053279fee8", gitBlob: "09b9f5bb4bf8d59282a0dbd206a8f5a00c5776d2", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "explore.agent.md", byteLength: 7657, sha256: "1e03ca97e4b0cb4d18c90c99bd4939a1d8fbe6b0d796a15fbf2ada6d38510fdb", gitBlob: "dc43ef72024c3e07a9ec9cb8c2a453fb441d6507", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "explore.agent.md", byteLength: 7790, sha256: "6a143ea5370f1f76037309202b21af8f0f41497f04827c2af52062debc087e45", gitBlob: "e1fcc7b8200b8e7d76004c342be594fef476cbe2", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "git-master.agent.md", byteLength: 9738, sha256: "834689b217f536da73a562ef8d9fcc18553e769464f76ed53092258b06f7a095", gitBlob: "33e2582b4801054e7b270dfe594d32740fa4cf6b", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "git-master.agent.md", byteLength: 9727, sha256: "8bda1d73ebf4005aee396e9bdf1c1dd1ada5a37d4be0a206ab96c5cdb827be65", gitBlob: "84a6a8044bc7151a2ba84239f8efed2136da232a", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "git-master.agent.md", byteLength: 9860, sha256: "2b3665f9eb9fe3a82c93ae5ff1ed845b6b125d7c6df246b5e7a3a20b741a3c0e", gitBlob: "48a2700dad40e41d06bd764b27f0ba5ff564a9a6", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "planner.agent.md", byteLength: 9884, sha256: "4b789b68d47eeeaef96e0923f3cb103356e37e383e77a058ea96e741d3196df3", gitBlob: "9d254e763dac76cd392a1f90828b0c6cd0d38de1", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "planner.agent.md", byteLength: 9873, sha256: "a852372a8cf082be3612ffb1ce8ecac49c1dfd4f00c7761e28c06ebfd3dc065a", gitBlob: "7219e10c39730642f8c193746ffea6b53aa63a14", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "planner.agent.md", byteLength: 10006, sha256: "03e6d79927452da755d4f83e4abf03f7989d1d0138396fb0458889423dc212e1", gitBlob: "849a019e3ece65cd8c930bd8613ad6cacd0aae69", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "qa-tester.agent.md", byteLength: 6461, sha256: "dcb67d7ef22953114c79410dd535b3fc7d353d5ecdba847a8f981ddb3c1d2adc", gitBlob: "49027a80d8a61879c3e79d12d20b476e1f1acdc0", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "qa-tester.agent.md", byteLength: 6450, sha256: "d761350005acc1766d391cba81bc83aa379fdf0363edaa6aa8a632a1a7d78b49", gitBlob: "a8374301a29f93eb780dcebdc7410f13b2d3b38e", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "qa-tester.agent.md", byteLength: 6583, sha256: "176adc2e6e6a4c46b354b6ae2d26f047fabfb6a463457d20cd79e50fce882e0c", gitBlob: "aa28370dbe7c5efc94ba809fe21939b77c724b77", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "scientist.agent.md", byteLength: 6784, sha256: "83530ee032bbb99991792f966bcf56cd76114477507e951bf0ac56797dc0a0ad", gitBlob: "5b40ddceb238154251d10b8812872e630eab4473", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "scientist.agent.md", byteLength: 6773, sha256: "6d9eede73041fe150dec6c393e806bdf362f7d5b9e1286f2e052c9258eb11640", gitBlob: "48f32c9819f19641f5975121e99753d80494d582", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "scientist.agent.md", byteLength: 6906, sha256: "f17bbfb423b74a26bb00f9d79507a2975294800808e895faa7fb8dd6468e7927", gitBlob: "0d9cab1f27f6177ac5c1bece7f5ff37ba16b5e9c", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "security-reviewer.agent.md", byteLength: 10309, sha256: "8ee54d86ed77a160cfcd252def5f7909217221120e10a9e6dc17bdc43757ece6", gitBlob: "69829e87703d2a8764867be4a5855449515cbdd6", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "security-reviewer.agent.md", byteLength: 10298, sha256: "63e97f77e507a7df090d65c1517ee61d1d4b79baaf705cbf98c915be3079824a", gitBlob: "731771108385a966b73db5e83624ef83ca0475f7", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "security-reviewer.agent.md", byteLength: 10431, sha256: "45e9b90443a03cfb81de6e01d49241ea7a0c66cdcd8100e541fb25d7e50a6a9a", gitBlob: "d4efb61c563d26cd210e394dd9dda3d6fbdc13a9", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "test-engineer.agent.md", byteLength: 7915, sha256: "b4ba7ecdf8829ef604eed32a5547f620ae88e057d8f299bdf7f553f80f70f89d", gitBlob: "de4ba2fc1934e93f69f60f955f9d2dd8fcebf6fd", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "test-engineer.agent.md", byteLength: 7904, sha256: "5cbab81b783df5890cbd94291ac39d6ae57e786455798f093e5654c6040b797d", gitBlob: "23b2af7f0bbcb530c0c0cc065934c062e5a67185", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "test-engineer.agent.md", byteLength: 8037, sha256: "99925189e92d0cca417fd3e7c7162f4952bce7020eeb3649e6bb54f0be727a88", gitBlob: "2e99d29c7e4472f55ce89e15601593b5e35792f4", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "verifier.agent.md", byteLength: 6103, sha256: "226bd3678e60d59410e2464c42355ee4fb254d71fe7732eecbfd6fc5f3932c76", gitBlob: "c4798e8cd2b906e4981101fc58a463444970c274", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "verifier.agent.md", byteLength: 6092, sha256: "4b93f208946405c12d6953701ea47a23d5752c88e5beb0a621fe9b92b06f8fd4", gitBlob: "d238c632941f6437cb92a54dc755e2bdeffbfaf3", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "verifier.agent.md", byteLength: 6225, sha256: "bc52f848dfb69648996c12908b72fa6a4b4db0c8417854e23282d17a2fb7a0c0", gitBlob: "74de0c4ffd670459cf3e0ddde39989dc01f6ea7f", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" },
+      { filename: "writer.agent.md", byteLength: 5480, sha256: "09fadb1fdc23e333e4d58320ea3e32fb503b8c7f9195bebdb8632d9ff5f773e8", gitBlob: "1e1df4c08fa8df67cbffff341395359df439e469", firstReleaseTag: "v4.11.7", lastReleaseTag: "v4.11.7" },
+      { filename: "writer.agent.md", byteLength: 5469, sha256: "60ea42e5bcb8454fb2db2462d8894fef5e0da90935a065e5dee5b7b4a170534a", gitBlob: "4fe6481319f1429f0b3c215f956b59f1bc5b25fd", firstReleaseTag: "v4.11.8", lastReleaseTag: "v4.11.9" },
+      { filename: "writer.agent.md", byteLength: 5602, sha256: "17df9e92dd53156ce5a88020ae289a690d255d596119adbd14603679edc3bc64", gitBlob: "6e58bbe4bfa899547e1f9a6071ffe352960f8c3b", firstReleaseTag: "v4.13.21", lastReleaseTag: "v4.13.102" }
     ];
   }
 });
@@ -47394,6 +47250,7 @@ var init_types7 = __esm({
         "background",
         "callCounts",
         "lastTool",
+        "recentTools",
         "sessionSummary"
       ],
       detail: ["missionBoard", "agents", "contextWarning", "payloadWarning", "todos"]
@@ -47463,6 +47320,9 @@ var init_types7 = __esm({
         callCountsFormat: "auto",
         // Preserve platform-based emoji/ASCII defaults unless explicitly overridden
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false,
         // Disabled by default - opt-in AI-generated session summary
         maxOutputLines: 4,
@@ -47524,6 +47384,9 @@ var init_types7 = __esm({
         useBars: false,
         showCallCounts: false,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false,
         maxOutputLines: 2,
         safeMode: true
@@ -47567,6 +47430,9 @@ var init_types7 = __esm({
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false,
         // Opt-in: sends transcript to claude -p
         maxOutputLines: 4,
@@ -47611,6 +47477,9 @@ var init_types7 = __esm({
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false,
         // Opt-in: sends transcript to claude -p
         maxOutputLines: 12,
@@ -47655,6 +47524,9 @@ var init_types7 = __esm({
         useBars: false,
         showCallCounts: true,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false,
         maxOutputLines: 4,
         safeMode: true
@@ -47698,6 +47570,9 @@ var init_types7 = __esm({
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false,
         // Opt-in: sends transcript to claude -p
         maxOutputLines: 6,
@@ -55255,6 +55130,14 @@ function buildConfigFromEnv() {
     };
     hasAnyPlatform = true;
   }
+  const teamsWebhook = process.env.OMC_MICROSOFT_TEAMS_WEBHOOK_URL;
+  if (teamsWebhook) {
+    config2.teams = {
+      enabled: true,
+      webhookUrl: teamsWebhook
+    };
+    hasAnyPlatform = true;
+  }
   if (!hasAnyPlatform) return null;
   config2.enabled = true;
   return config2;
@@ -55321,6 +55204,14 @@ function mergeEnvIntoFileConfig(fileConfig, envConfig) {
     merged["slack-bot"] = {
       ...merged["slack-bot"],
       mention: validateSlackMention(merged["slack-bot"].mention)
+    };
+  }
+  if (!merged.teams && envConfig.teams) {
+    merged.teams = envConfig.teams;
+  } else if (merged.teams && envConfig.teams) {
+    merged.teams = {
+      ...merged.teams,
+      webhookUrl: merged.teams.webhookUrl || envConfig.teams.webhookUrl
     };
   }
   return merged;
@@ -55708,6 +55599,18 @@ var init_config = __esm({
 });
 
 // src/notifications/formatter.ts
+var formatter_exports = {};
+__export(formatter_exports, {
+  formatAgentCall: () => formatAgentCall,
+  formatAskUserQuestion: () => formatAskUserQuestion,
+  formatNotification: () => formatNotification,
+  formatSessionEnd: () => formatSessionEnd,
+  formatSessionIdle: () => formatSessionIdle,
+  formatSessionStart: () => formatSessionStart,
+  formatSessionStop: () => formatSessionStop,
+  formatTeamsAdaptiveCard: () => formatTeamsAdaptiveCard,
+  parseTmuxTail: () => parseTmuxTail
+});
 function formatDuration2(ms) {
   if (!ms) return "unknown";
   const seconds = Math.floor(ms / 1e3);
@@ -55951,7 +55854,7 @@ function formatAskUserQuestion(payload) {
       }
     }
   }
-  lines.push(`Claude is waiting for your response.`);
+  lines.push(`Copilot is waiting for your response.`);
   lines.push("");
   lines.push(buildFooter(payload, true));
   return lines.join("\n");
@@ -55973,6 +55876,166 @@ function formatNotification(payload) {
     default:
       return payload.message || `Event: ${payload.event}`;
   }
+}
+function parseTeamsMention(tag) {
+  const colonIdx = tag.indexOf(":");
+  if (colonIdx <= 0 || colonIdx === tag.length - 1) return null;
+  const name = tag.slice(0, colonIdx).trim();
+  const id = tag.slice(colonIdx + 1).trim();
+  if (!name || !id) return null;
+  return { name, id };
+}
+function formatTeamsAdaptiveCard(payload, tagList) {
+  const project = projectDisplay(payload);
+  const time3 = new Date(payload.timestamp).toLocaleTimeString();
+  const facts = [];
+  switch (payload.event) {
+    case "session-start":
+      facts.push({ title: "Session", value: payload.sessionId });
+      facts.push({ title: "Project", value: project });
+      facts.push({ title: "Time", value: time3 });
+      if (payload.tmuxSession) {
+        facts.push({ title: "tmux", value: payload.tmuxSession });
+      }
+      break;
+    case "session-stop":
+      if (payload.activeMode) {
+        facts.push({ title: "Mode", value: payload.activeMode });
+      }
+      if (payload.iteration != null && payload.maxIterations != null) {
+        facts.push({ title: "Iteration", value: `${payload.iteration}/${payload.maxIterations}` });
+      }
+      if (payload.incompleteTasks != null && payload.incompleteTasks > 0) {
+        facts.push({ title: "Incomplete tasks", value: String(payload.incompleteTasks) });
+      }
+      break;
+    case "session-end":
+      facts.push({ title: "Session", value: payload.sessionId });
+      facts.push({ title: "Duration", value: formatDuration2(payload.durationMs) });
+      facts.push({ title: "Reason", value: payload.reason || "unknown" });
+      if (payload.agentsSpawned != null) {
+        facts.push({ title: "Agents", value: `${payload.agentsCompleted ?? 0}/${payload.agentsSpawned} completed` });
+      }
+      if (payload.modesUsed && payload.modesUsed.length > 0) {
+        facts.push({ title: "Modes", value: payload.modesUsed.join(", ") });
+      }
+      break;
+    case "session-idle":
+      if (payload.reason) {
+        facts.push({ title: "Reason", value: payload.reason });
+      }
+      if (payload.modesUsed && payload.modesUsed.length > 0) {
+        facts.push({ title: "Modes", value: payload.modesUsed.join(", ") });
+      }
+      break;
+    case "ask-user-question":
+      if (payload.question) {
+        facts.push({ title: "Question", value: payload.question });
+      }
+      break;
+    case "agent-call":
+      if (payload.agentName) {
+        facts.push({ title: "Agent", value: payload.agentName });
+      }
+      if (payload.agentType) {
+        facts.push({ title: "Type", value: payload.agentType });
+      }
+      break;
+  }
+  if (payload.tmuxSession && payload.event !== "session-start") {
+    facts.push({ title: "tmux", value: payload.tmuxSession });
+  }
+  facts.push({ title: "Project", value: project });
+  const eventTitles = {
+    "session-start": { title: "Session Started", style: "good" },
+    "session-stop": { title: "Session Continuing", style: "attention" },
+    "session-end": { title: "Session Ended", style: "default" },
+    "session-idle": { title: "Session Idle", style: "warning" },
+    "ask-user-question": { title: "Input Needed", style: "attention" },
+    "agent-call": { title: "Agent Spawned", style: "default" }
+  };
+  const eventInfo = eventTitles[payload.event] || { title: payload.event, style: "default" };
+  const body = [
+    {
+      type: "TextBlock",
+      size: "Medium",
+      weight: "Bolder",
+      text: eventInfo.title,
+      style: "heading"
+    },
+    {
+      type: "FactSet",
+      facts: facts.map((f) => ({ title: f.title, value: f.value }))
+    }
+  ];
+  if (payload.contextSummary && payload.event === "session-end") {
+    body.push({
+      type: "TextBlock",
+      text: `**Summary:** ${payload.contextSummary}`,
+      wrap: true
+    });
+  }
+  if (payload.tmuxTail) {
+    const parsed = parseTmuxTail(payload.tmuxTail, payload.maxTailLines);
+    if (parsed) {
+      body.push(
+        {
+          type: "TextBlock",
+          text: "**Recent output:**",
+          spacing: "Medium"
+        },
+        {
+          type: "TextBlock",
+          text: parsed,
+          fontType: "Monospace",
+          wrap: true,
+          maxLines: 10
+        }
+      );
+    }
+  }
+  const mentions = [];
+  if (tagList) {
+    for (const tag of tagList) {
+      const parsed = parseTeamsMention(tag);
+      if (parsed) mentions.push(parsed);
+    }
+  }
+  if (mentions.length > 0) {
+    const mentionText = mentions.map((m) => `<at>${m.name}</at>`).join(" ");
+    body.unshift({
+      type: "TextBlock",
+      text: mentionText,
+      wrap: true
+    });
+  }
+  const msteams = mentions.length > 0 ? {
+    entities: mentions.map((m) => ({
+      type: "mention",
+      text: `<at>${m.name}</at>`,
+      mentioned: {
+        id: m.id,
+        name: m.name
+      }
+    }))
+  } : void 0;
+  const card = {
+    type: "message",
+    attachments: [
+      {
+        contentType: "application/vnd.microsoft.card.adaptive",
+        contentUrl: null,
+        content: {
+          $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
+          type: "AdaptiveCard",
+          version: "1.4",
+          body,
+          ...msteams && { msteams }
+        }
+      }
+    ]
+  };
+  return JSON.stringify(card);
 }
 var import_path73, ANSI_ESCAPE_RE, UI_CHROME_RE, CTRL_O_RE, BOX_DRAWING_RE, OMC_HUD_RE, BYPASS_PERM_RE, BARE_PROMPT_RE, MIN_ALNUM_RATIO, REVIEW_SEED_OUTCOME_PATTERNS, REVIEW_SEED_CUE_RE, REVIEW_SEED_LIST_RE, SOURCE_PATH_LINE_RE, STATIC_CODE_ALERT_RE, HELP_USAGE_LINE_RE, STATIC_HELP_CODE_RE, DIFF_HEADER_LINE_RE, STRUCTURED_ALERT_KEYWORD_RE, SEARCH_COMMAND_RE, QUOTED_OR_REGEX_QUERY_RE, ZERO_ALERT_SUMMARY_RE, ALERT_REGEX_LITERAL_RE, GENERIC_HOOK_FAILURE_PROSE_RE, ISSUE_PROMPT_NOISE_RE, PERMISSION_DENIED_SCAN_LINE_RE, CLEAN_DIAGNOSTIC_QUERY_RE, JSONISH_LINE_RE, REQUEST_RESPONSE_LITERAL_RE, CODE_LITERAL_PREFIX_RE, DEFAULT_MAX_TAIL_LINES;
 var init_formatter = __esm({
@@ -56196,8 +56259,8 @@ var init_template_engine = __esm({
       "session-start": "# Session Started\n\n**Session:** `{{sessionId}}`\n**Project:** `{{projectDisplay}}`\n**Time:** {{time}}{{#if tmuxSession}}\n**tmux:** `{{tmuxSession}}`{{/if}}",
       "session-stop": "# Session Continuing\n{{#if activeMode}}\n**Mode:** {{activeMode}}{{/if}}{{#if iterationDisplay}}\n**Iteration:** {{iterationDisplay}}{{/if}}{{#if incompleteTasks}}\n**Incomplete tasks:** {{incompleteTasks}}{{/if}}\n\n{{footer}}",
       "session-end": "# Session Ended\n\n**Session:** `{{sessionId}}`\n**Duration:** {{duration}}\n**Reason:** {{reasonDisplay}}{{#if agentDisplay}}\n**Agents:** {{agentDisplay}}{{/if}}{{#if modesDisplay}}\n**Modes:** {{modesDisplay}}{{/if}}{{#if contextSummary}}\n\n**Summary:** {{contextSummary}}{{/if}}{{tmuxTailBlock}}\n\n{{footer}}",
-      "session-idle": "# Session Idle\n\nClaude has finished and is waiting for input.\n{{#if reason}}\n**Reason:** {{reason}}{{/if}}{{#if modesDisplay}}\n**Modes:** {{modesDisplay}}{{/if}}{{tmuxTailBlock}}\n\n{{footer}}",
-      "ask-user-question": "# Input Needed\n{{#if question}}\n**Question:** {{question}}\n{{/if}}\nClaude is waiting for your response.\n\n{{footer}}",
+      "session-idle": "# Session Idle\n\nCopilot has finished and is waiting for input.\n{{#if reason}}\n**Reason:** {{reason}}{{/if}}{{#if modesDisplay}}\n**Modes:** {{modesDisplay}}{{/if}}{{tmuxTailBlock}}\n\n{{footer}}",
+      "ask-user-question": "# Input Needed\n{{#if question}}\n**Question:** {{question}}\n{{/if}}\nCopilot is waiting for your response.\n\n{{footer}}",
       "agent-call": "# Agent Spawned\n{{#if agentName}}\n**Agent:** `{{agentName}}`{{/if}}{{#if agentType}}\n**Type:** `{{agentType}}`{{/if}}\n\n{{footer}}"
     };
   }
@@ -56377,6 +56440,19 @@ function validateWebhookUrl(url) {
   try {
     const parsed = new URL(url);
     return parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+function validateTeamsUrl(webhookUrl) {
+  try {
+    const url = new URL(webhookUrl);
+    if (url.protocol !== "https:") return false;
+    if (url.hostname.endsWith(".logic.azure.com")) return true;
+    if (url.hostname.endsWith(".webhook.office.com")) return true;
+    if (url.hostname === "outlook.office.com" || url.hostname === "outlook.office365.com") return true;
+    if (url.hostname.endsWith(".office.com")) return true;
+    return false;
   } catch {
     return false;
   }
@@ -56636,6 +56712,42 @@ async function sendSlackBot(config2, payload) {
     };
   }
 }
+async function sendTeams(config2, payload) {
+  if (!config2.enabled || !config2.webhookUrl) {
+    return { platform: "teams", success: false, error: "Not configured" };
+  }
+  if (!validateTeamsUrl(config2.webhookUrl)) {
+    return {
+      platform: "teams",
+      success: false,
+      error: "Invalid Teams webhook URL"
+    };
+  }
+  try {
+    const { formatTeamsAdaptiveCard: formatTeamsAdaptiveCard2 } = await Promise.resolve().then(() => (init_formatter(), formatter_exports));
+    const body = formatTeamsAdaptiveCard2(payload, config2.tagList);
+    const response = await fetch(config2.webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body,
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS)
+    });
+    if (!response.ok) {
+      return {
+        platform: "teams",
+        success: false,
+        error: `HTTP ${response.status}`
+      };
+    }
+    return { platform: "teams", success: true };
+  } catch (error2) {
+    return {
+      platform: "teams",
+      success: false,
+      error: error2 instanceof Error ? error2.message : "Unknown error"
+    };
+  }
+}
 async function sendWebhook(config2, payload) {
   if (!config2.enabled || !config2.url) {
     return { platform: "webhook", success: false, error: "Not configured" };
@@ -56729,6 +56841,14 @@ async function dispatchNotifications(config2, event, payload, platformMessages) 
   );
   if (slackConfig?.enabled) {
     promises.push(sendSlack(slackConfig, payloadFor("slack")));
+  }
+  const teamsConfig = getEffectivePlatformConfig(
+    "teams",
+    config2,
+    event
+  );
+  if (teamsConfig?.enabled) {
+    promises.push(sendTeams(teamsConfig, payloadFor("teams")));
   }
   const webhookConfig = getEffectivePlatformConfig(
     "webhook",
@@ -89419,7 +89539,8 @@ async function parseTranscript(transcriptPath, options) {
     toolCallCount: 0,
     agentCallCount: 0,
     skillCallCount: 0,
-    lastToolName: null
+    lastToolName: null,
+    recentTools: []
   };
   if (!transcriptPath || !(0, import_fs131.existsSync)(transcriptPath)) {
     return result;
@@ -89445,6 +89566,7 @@ async function parseTranscript(transcriptPath, options) {
   };
   let sessionTotalsReliable = false;
   const observedSessionIds = /* @__PURE__ */ new Set();
+  const recentToolMap = /* @__PURE__ */ new Map();
   try {
     const stat2 = (0, import_fs131.statSync)(transcriptPath);
     const fileSize = stat2.size;
@@ -89462,7 +89584,8 @@ async function parseTranscript(transcriptPath, options) {
             MAX_AGENT_MAP_SIZE,
             backgroundAgentMap,
             sessionTokenTotals,
-            observedSessionIds
+            observedSessionIds,
+            recentToolMap
           );
         } catch {
         }
@@ -89486,7 +89609,8 @@ async function parseTranscript(transcriptPath, options) {
             MAX_AGENT_MAP_SIZE,
             backgroundAgentMap,
             sessionTokenTotals,
-            observedSessionIds
+            observedSessionIds,
+            recentToolMap
           );
         } catch {
         }
@@ -89507,6 +89631,9 @@ async function parseTranscript(transcriptPath, options) {
     ...completed.slice(-(10 - running.length))
   ].slice(0, 10);
   result.todos = latestTodos;
+  result.recentTools = Array.from(recentToolMap.values()).map(
+    ({ id: _id, ...tool2 }) => tool2
+  );
   if (sessionTotalsReliable && sessionTokenTotals.seenUsage) {
     result.sessionTotalTokens = sessionTokenTotals.inputTokens + sessionTokenTotals.outputTokens;
   }
@@ -89542,6 +89669,10 @@ function cloneTranscriptData(result) {
       endTime: cloneDate(agent.endTime)
     })),
     todos: result.todos.map((todo) => ({ ...todo })),
+    recentTools: result.recentTools.map((tool2) => ({
+      ...tool2,
+      timestamp: new Date(tool2.timestamp.getTime())
+    })),
     incomingMessages: result.incomingMessages?.map((message2) => ({ ...message2 })),
     sessionStart: cloneDate(result.sessionStart),
     lastActivatedSkill: result.lastActivatedSkill ? {
@@ -89637,7 +89768,7 @@ function extractTargetSummary(input, toolName) {
   }
   return "...";
 }
-function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 50, backgroundAgentMap, sessionTokenTotals, observedSessionIds) {
+function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 50, backgroundAgentMap, sessionTokenTotals, observedSessionIds, recentToolMap) {
   const timestamp2 = entry2.timestamp ? new Date(entry2.timestamp) : /* @__PURE__ */ new Date();
   if (entry2.sessionId) {
     observedSessionIds?.add(entry2.sessionId);
@@ -89700,6 +89831,19 @@ function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 5
     if (block.type === "tool_use" && block.id && block.name) {
       result.toolCallCount++;
       result.lastToolName = block.name;
+      if (recentToolMap && !RECENT_TOOLS_SKIP.includes(block.name)) {
+        if (recentToolMap.size >= MAX_RECENT_TOOLS) {
+          const oldestKey = recentToolMap.keys().next().value;
+          if (oldestKey) recentToolMap.delete(oldestKey);
+        }
+        recentToolMap.set(block.id, {
+          id: block.id,
+          name: block.name.replace("proxy_", ""),
+          target: extractTargetSummary(block.input, block.name),
+          status: "running",
+          timestamp: timestamp2
+        });
+      }
       if (block.name === "Task" || block.name === "proxy_Task" || block.name === "Agent" || block.name === "proxy_Agent") {
         result.agentCallCount++;
         const input = block.input;
@@ -89770,6 +89914,13 @@ function processEntry(entry2, agentMap, latestTodos, result, maxAgentMapSize = 5
     }
     if (block.type === "tool_result" && block.tool_use_id) {
       pendingPermissionMap.delete(block.tool_use_id);
+      if (recentToolMap) {
+        const trackedTool = recentToolMap.get(block.tool_use_id);
+        if (trackedTool) {
+          const isError = block.is_error === true || typeof block.content === "string" && block.content.toLowerCase().includes("error");
+          trackedTool.status = isError ? "failure" : "success";
+        }
+      }
       const agent = agentMap.get(block.tool_use_id);
       if (agent) {
         const blockContent = block.content;
@@ -89831,7 +89982,7 @@ function extractLastRequestTokenUsage(usage) {
 function getNumericUsageValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-var import_fs131, import_readline5, import_path154, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
+var import_fs131, import_readline5, import_path154, MAX_TAIL_BYTES, MAX_AGENT_MAP_SIZE, MAX_RECENT_TOOLS, RECENT_TOOLS_SKIP, PERMISSION_TOOLS, PERMISSION_THRESHOLD_MS, pendingPermissionMap, THINKING_PART_TYPES2, THINKING_RECENCY_MS, transcriptCache, TRANSCRIPT_CACHE_MAX_SIZE;
 var init_transcript = __esm({
   "src/hud/transcript.ts"() {
     "use strict";
@@ -89841,6 +89992,22 @@ var init_transcript = __esm({
     init_agent_kind();
     MAX_TAIL_BYTES = 4 * 1024 * 1024;
     MAX_AGENT_MAP_SIZE = 100;
+    MAX_RECENT_TOOLS = 20;
+    RECENT_TOOLS_SKIP = [
+      "TodoWrite",
+      "Skill",
+      "proxy_Skill",
+      "Task",
+      "proxy_Task",
+      "Agent",
+      "proxy_Agent",
+      "report_intent",
+      "task_complete",
+      "thinking",
+      "read_agent",
+      "list_agents",
+      "write_agent"
+    ];
     PERMISSION_TOOLS = [
       "Edit",
       "Write",
@@ -91881,6 +92048,59 @@ var init_last_tool = __esm({
   }
 });
 
+// src/hud/elements/recent-tools.ts
+function collapseTools(tools) {
+  const collapsed = [];
+  for (const tool2 of tools) {
+    const last = collapsed[collapsed.length - 1];
+    if (last && last.name === tool2.name) {
+      last.count++;
+      last.status = tool2.status;
+      last.target = tool2.target;
+    } else {
+      collapsed.push({
+        name: tool2.name,
+        target: tool2.target,
+        status: tool2.status,
+        count: 1
+      });
+    }
+  }
+  return collapsed;
+}
+function renderRecentTools(tools, max = 5, showTarget = true, safeMode) {
+  if (!tools.length) return null;
+  const icons = safeMode ? SAFE_STATUS_ICONS : STATUS_ICONS;
+  const display = tools.slice(-(max * 3));
+  const collapsed = collapseTools(display).slice(-max);
+  const parts = collapsed.map((t) => {
+    const icon = icons[t.status];
+    const count = t.count > 1 ? ` ${dim(`x${t.count}`)}` : "";
+    if (showTarget && t.target && t.target !== "...") {
+      return `${icon}${t.name}${dim(":")}${t.target}${count}`;
+    }
+    return `${icon}${t.name}${count}`;
+  });
+  return parts.join(dim(" | "));
+}
+var STATUS_ICONS, SAFE_STATUS_ICONS;
+var init_recent_tools = __esm({
+  "src/hud/elements/recent-tools.ts"() {
+    "use strict";
+    init_colors();
+    STATUS_ICONS = {
+      running: yellow("~"),
+      success: green("+"),
+      failure: red("x")
+    };
+    SAFE_STATUS_ICONS = {
+      running: "~",
+      success: "+",
+      failure: "x"
+    };
+  }
+});
+
 // src/hud/render.ts
 function buildMainElementOrder(elementOrder) {
   if (!Array.isArray(elementOrder) || elementOrder.length === 0) {
@@ -92194,6 +92414,15 @@ async function render(context, config2) {
     const tool2 = renderLastTool(context.lastToolName ?? null);
     if (tool2) rendered.set("lastTool", tool2);
   }
+  if (enabledElements.showRecentTools === true) {
+    const tools = renderRecentTools(
+      context.recentTools ?? [],
+      enabledElements.recentToolsMax ?? 5,
+      enabledElements.recentToolsShowTarget !== false,
+      enabledElements.safeMode
+    );
+    if (tools) rendered.set("recentTools", tools);
+  }
   if (enabledElements.sessionSummary && context.sessionSummary) {
     const summary = renderSessionSummary(context.sessionSummary);
     if (summary) rendered.set("sessionSummary", summary);
@@ -92317,6 +92546,7 @@ var init_render = __esm({
     init_mission_board();
     init_session_summary();
     init_last_tool();
+    init_recent_tools();
     ANSI_REGEX = /\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/;
     PLAIN_SEPARATOR = " | ";
     DIM_SEPARATOR = dim(PLAIN_SEPARATOR);
@@ -92775,6 +93005,7 @@ async function main2(watchMode = false, skipInit = false) {
       profileName: process.env.COPILOT_CONFIG_DIR ? (0, import_path158.basename)(process.env.COPILOT_CONFIG_DIR).replace(/^\./, "") : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,
+      recentTools: transcriptData.recentTools,
       payloadEstimate
     };
     if (process.env.OMC_DEBUG) {

@@ -20,6 +20,14 @@ import { classifyAgentSpawn, parseIncomingAgentWrapper } from "./agent-kind.js";
 // agents in long sessions, leaving them stuck as "running" in the HUD.
 const MAX_TAIL_BYTES = 4 * 1024 * 1024;
 const MAX_AGENT_MAP_SIZE = 100; // Cap agent tracking
+const MAX_RECENT_TOOLS = 20; // Track last 20 tool calls for the RecentTools element
+/** Internal/meta tools excluded from the RecentTools element. */
+const RECENT_TOOLS_SKIP = [
+    "TodoWrite", "Skill", "proxy_Skill", "Task", "proxy_Task",
+    "Agent", "proxy_Agent",
+    "report_intent", "task_complete", "thinking",
+    "read_agent", "list_agents", "write_agent",
+];
 const _MIN_RUNNING_AGENTS_THRESHOLD = 10; // Early termination threshold
 /**
  * Tools known to require permission approval in Claude Code.
@@ -65,6 +73,7 @@ export async function parseTranscript(transcriptPath, options) {
         agentCallCount: 0,
         skillCallCount: 0,
         lastToolName: null,
+        recentTools: [],
     };
     if (!transcriptPath || !existsSync(transcriptPath)) {
         return result;
@@ -91,6 +100,7 @@ export async function parseTranscript(transcriptPath, options) {
     };
     let sessionTotalsReliable = false;
     const observedSessionIds = new Set();
+    const recentToolMap = new Map();
     try {
         const stat = statSync(transcriptPath);
         const fileSize = stat.size;
@@ -101,7 +111,7 @@ export async function parseTranscript(transcriptPath, options) {
                     continue;
                 try {
                     const entry = JSON.parse(line);
-                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap, sessionTokenTotals, observedSessionIds);
+                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap, sessionTokenTotals, observedSessionIds, recentToolMap);
                 }
                 catch {
                     // Skip malformed lines
@@ -122,7 +132,7 @@ export async function parseTranscript(transcriptPath, options) {
                     continue;
                 try {
                     const entry = JSON.parse(line);
-                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap, sessionTokenTotals, observedSessionIds);
+                    processEntry(entry, agentMap, latestTodos, result, MAX_AGENT_MAP_SIZE, backgroundAgentMap, sessionTokenTotals, observedSessionIds, recentToolMap);
                 }
                 catch {
                     // Skip malformed lines
@@ -141,6 +151,8 @@ export async function parseTranscript(transcriptPath, options) {
         ...completed.slice(-(10 - running.length)),
     ].slice(0, 10);
     result.todos = latestTodos;
+    // Map preserves insertion order, so this is oldest-first.
+    result.recentTools = Array.from(recentToolMap.values()).map(({ id: _id, ...tool }) => tool);
     if (sessionTotalsReliable && sessionTokenTotals.seenUsage) {
         result.sessionTotalTokens = sessionTokenTotals.inputTokens + sessionTokenTotals.outputTokens;
     }
@@ -180,6 +192,10 @@ function cloneTranscriptData(result) {
             endTime: cloneDate(agent.endTime),
         })),
         todos: result.todos.map((todo) => ({ ...todo })),
+        recentTools: result.recentTools.map((tool) => ({
+            ...tool,
+            timestamp: new Date(tool.timestamp.getTime()),
+        })),
         incomingMessages: result.incomingMessages?.map((message) => ({ ...message })),
         sessionStart: cloneDate(result.sessionStart),
         lastActivatedSkill: result.lastActivatedSkill
@@ -316,7 +332,7 @@ function extractTargetSummary(input, toolName) {
 /**
  * Process a single transcript entry
  */
-function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50, backgroundAgentMap, sessionTokenTotals, observedSessionIds) {
+function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50, backgroundAgentMap, sessionTokenTotals, observedSessionIds, recentToolMap) {
     const timestamp = entry.timestamp ? new Date(entry.timestamp) : new Date();
     if (entry.sessionId) {
         observedSessionIds?.add(entry.sessionId);
@@ -405,6 +421,21 @@ function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50
         if (block.type === "tool_use" && block.id && block.name) {
             result.toolCallCount++;
             result.lastToolName = block.name;
+            // Track for the RecentTools HUD element (skip internal/meta tools).
+            if (recentToolMap && !RECENT_TOOLS_SKIP.includes(block.name)) {
+                if (recentToolMap.size >= MAX_RECENT_TOOLS) {
+                    const oldestKey = recentToolMap.keys().next().value;
+                    if (oldestKey)
+                        recentToolMap.delete(oldestKey);
+                }
+                recentToolMap.set(block.id, {
+                    id: block.id,
+                    name: block.name.replace("proxy_", ""),
+                    target: extractTargetSummary(block.input, block.name),
+                    status: "running",
+                    timestamp,
+                });
+            }
             if (block.name === "Task" ||
                 block.name === "proxy_Task" ||
                 block.name === "Agent" ||
@@ -485,6 +516,16 @@ function processEntry(entry, agentMap, latestTodos, result, maxAgentMapSize = 50
         if (block.type === "tool_result" && block.tool_use_id) {
             // Clear from pending permissions when tool_result arrives
             pendingPermissionMap.delete(block.tool_use_id);
+            // Resolve RecentTools status for this invocation.
+            if (recentToolMap) {
+                const trackedTool = recentToolMap.get(block.tool_use_id);
+                if (trackedTool) {
+                    const isError = block.is_error === true ||
+                        (typeof block.content === "string" &&
+                            block.content.toLowerCase().includes("error"));
+                    trackedTool.status = isError ? "failure" : "success";
+                }
+            }
             const agent = agentMap.get(block.tool_use_id);
             if (agent) {
                 const blockContent = block.content;

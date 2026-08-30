@@ -5,7 +5,7 @@
  * All sends are non-blocking with timeouts. Failures are swallowed to avoid
  * blocking hooks.
  */
-import type { DiscordNotificationConfig, DiscordBotNotificationConfig, TelegramNotificationConfig, SlackNotificationConfig, SlackBotNotificationConfig, WebhookNotificationConfig, NotificationPayload, NotificationResult, NotificationPlatform, DispatchResult, NotificationConfig, NotificationEvent } from "./types.js";
+import type { DiscordNotificationConfig, DiscordBotNotificationConfig, TelegramNotificationConfig, SlackNotificationConfig, SlackBotNotificationConfig, TeamsNotificationConfig, WebhookNotificationConfig, NotificationPayload, NotificationResult, NotificationPlatform, DispatchResult, NotificationConfig, NotificationEvent } from "./types.js";
 /**
  * Send notification via Discord webhook.
  */
@@ -32,6 +32,10 @@ export declare function sendSlackBot(config: SlackBotNotificationConfig, payload
 /**
  * Send notification via generic webhook (POST JSON).
  */
+/**
+ * Send notification to Microsoft Teams as an Adaptive Card.
+ */
+export declare function sendTeams(config: TeamsNotificationConfig, payload: NotificationPayload): Promise<NotificationResult>;
 export declare function sendWebhook(config: WebhookNotificationConfig, payload: NotificationPayload): Promise<NotificationResult>;
 /**
  * Dispatch notifications to all enabled platforms for an event.

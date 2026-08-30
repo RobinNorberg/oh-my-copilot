@@ -387,7 +387,7 @@ export function formatAskUserQuestion(payload) {
             }
         }
     }
-    lines.push(`Claude is waiting for your response.`);
+    lines.push(`Copilot is waiting for your response.`);
     lines.push("");
     lines.push(buildFooter(payload, true));
     return lines.join("\n");

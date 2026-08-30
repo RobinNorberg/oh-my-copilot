@@ -152,6 +152,11 @@ export interface TranscriptData {
     skillCallCount: number;
     /** Name of the last tool_use block seen in transcript */
     lastToolName: string | null;
+    /**
+     * Fork-specific: recent tool invocations, oldest first, for the RecentTools
+     * HUD element. Excludes internal/meta tools (TodoWrite, Skill, Task, ...).
+     */
+    recentTools: RecentTool[];
 }
 export interface RalphStateForHud {
     active: boolean;
@@ -376,6 +381,8 @@ export interface HudRenderContext {
     sessionSummary: SessionSummaryState | null;
     /** Name of the last tool called in this session */
     lastToolName?: string | null;
+    /** Recent tool invocations (oldest first) backing the RecentTools element */
+    recentTools?: RecentTool[];
     /** Best-effort local transcript-backed request payload pressure estimate. */
     payloadEstimate?: PayloadEstimate | null;
 }
@@ -479,6 +486,9 @@ export interface HudElementConfig {
     showCallCounts?: boolean;
     callCountsFormat?: CallCountsFormat;
     showLastTool?: boolean;
+    showRecentTools?: boolean;
+    recentToolsMax?: number;
+    recentToolsShowTarget?: boolean;
     sessionSummary: boolean;
     maxOutputLines: number;
     safeMode: boolean;

@@ -452,7 +452,7 @@ export function formatAskUserQuestion(payload: NotificationPayload): string {
     }
   }
 
-  lines.push(`Claude is waiting for your response.`);
+  lines.push(`Copilot is waiting for your response.`);
   lines.push("");
   lines.push(buildFooter(payload, true));
 

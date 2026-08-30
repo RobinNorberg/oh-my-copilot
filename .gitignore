@@ -3,6 +3,8 @@ node_modules/
 .DS_Store
 !.omc/
 .omc/*
+!.omcp/
+.omcp/*
 !.omc/skills/
 !.omc/skills/**
 .idea/

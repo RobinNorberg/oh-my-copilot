@@ -10,7 +10,7 @@ export type VerbosityLevel = "verbose" | "agent" | "session" | "minimal";
 /** Events that can trigger notifications */
 export type NotificationEvent = "session-start" | "session-stop" | "session-end" | "session-idle" | "ask-user-question" | "agent-call";
 /** Supported notification platforms */
-export type NotificationPlatform = "discord" | "discord-bot" | "telegram" | "slack" | "slack-bot" | "webhook";
+export type NotificationPlatform = "discord" | "discord-bot" | "telegram" | "slack" | "slack-bot" | "teams" | "webhook";
 /** Discord webhook configuration */
 export interface DiscordNotificationConfig {
     enabled: boolean;
@@ -81,6 +81,14 @@ export interface AskUserQuestionPrompt {
     otherLabel?: string;
     multiSelect?: boolean;
 }
+/** Microsoft Teams webhook configuration (Workflows or legacy O365 Connectors) */
+export interface TeamsNotificationConfig {
+    enabled: boolean;
+    /** Teams incoming webhook URL (Power Automate Workflows or legacy O365 Connector) */
+    webhookUrl: string;
+    /** Optional mentions — each entry is "DisplayName:AAD-Object-ID" (e.g. "John Doe:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx") */
+    tagList?: string[];
+}
 export interface WebhookNotificationConfig {
     enabled: boolean;
     /** Webhook URL (POST with JSON body) */
@@ -91,7 +99,7 @@ export interface WebhookNotificationConfig {
     method?: "POST" | "PUT";
 }
 /** Platform config union */
-export type PlatformConfig = DiscordNotificationConfig | DiscordBotNotificationConfig | TelegramNotificationConfig | SlackNotificationConfig | SlackBotNotificationConfig | WebhookNotificationConfig;
+export type PlatformConfig = DiscordNotificationConfig | DiscordBotNotificationConfig | TelegramNotificationConfig | SlackNotificationConfig | SlackBotNotificationConfig | TeamsNotificationConfig | WebhookNotificationConfig;
 /** Per-event notification configuration */
 export interface EventNotificationConfig {
     /** Whether this event triggers notifications */
@@ -102,6 +110,7 @@ export interface EventNotificationConfig {
     telegram?: TelegramNotificationConfig;
     slack?: SlackNotificationConfig;
     "slack-bot"?: SlackBotNotificationConfig;
+    teams?: TeamsNotificationConfig;
     webhook?: WebhookNotificationConfig;
 }
 /** Top-level notification configuration (stored in .omc-config.json) */
@@ -118,6 +127,7 @@ export interface NotificationConfig {
     telegram?: TelegramNotificationConfig;
     slack?: SlackNotificationConfig;
     "slack-bot"?: SlackBotNotificationConfig;
+    teams?: TeamsNotificationConfig;
     webhook?: WebhookNotificationConfig;
     /** Per-event configuration */
     events?: {

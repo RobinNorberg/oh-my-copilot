@@ -72,7 +72,7 @@ export const DEFAULT_ELEMENT_ORDER = {
         'omcLabel', 'model', 'enterpriseCost', 'rateLimits', 'customBuckets', 'permission', 'thinking',
         'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
         'skills', 'lastSkill', 'contextBar', 'agents', 'background',
-        'callCounts', 'lastTool', 'sessionSummary',
+        'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
     ],
     detail: ['missionBoard', 'agents', 'contextWarning', 'payloadWarning', 'todos'],
 };
@@ -121,6 +121,9 @@ export const DEFAULT_HUD_CONFIG = {
         showCallCounts: true, // Show tool/agent/skill call counts by default (Issue #710)
         callCountsFormat: 'auto', // Preserve platform-based emoji/ASCII defaults unless explicitly overridden
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false, // Disabled by default - opt-in AI-generated session summary
         maxOutputLines: 4,
         safeMode: true, // Enabled by default to prevent terminal rendering corruption (Issue #346)
@@ -180,6 +183,9 @@ export const PRESET_CONFIGS = {
         useBars: false,
         showCallCounts: false,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false,
         maxOutputLines: 2,
         safeMode: true,
@@ -223,6 +229,9 @@ export const PRESET_CONFIGS = {
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false, // Opt-in: sends transcript to claude -p
         maxOutputLines: 4,
         safeMode: true,
@@ -266,6 +275,9 @@ export const PRESET_CONFIGS = {
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false, // Opt-in: sends transcript to claude -p
         maxOutputLines: 12,
         safeMode: true,
@@ -309,6 +321,9 @@ export const PRESET_CONFIGS = {
         useBars: false,
         showCallCounts: true,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false,
         maxOutputLines: 4,
         safeMode: true,
@@ -352,6 +367,9 @@ export const PRESET_CONFIGS = {
         useBars: true,
         showCallCounts: true,
         showLastTool: false,
+        showRecentTools: false,
+        recentToolsMax: 5,
+        recentToolsShowTarget: true,
         sessionSummary: false, // Opt-in: sends transcript to claude -p
         maxOutputLines: 6,
         safeMode: true,
