@@ -112,8 +112,11 @@ describe('resolveLaunchPolicy', () => {
   });
 
   it('returns "outside-tmux" when tmux is available but no TMUX or CMUX env', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     mockedExecFileSync.mockReturnValue('tmux 3.6a' as any);
     expect(resolveLaunchPolicy({})).toBe('outside-tmux');
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
   });
 
   it('returns "direct" when tmux is not available', () => {
@@ -124,12 +127,15 @@ describe('resolveLaunchPolicy', () => {
   });
 
   it('returns "outside-tmux" with requireTmux=true even when CMUX_SURFACE_ID is set', () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     mockedExecFileSync.mockReturnValue('tmux 3.6a' as any);
     expect(resolveLaunchPolicy(
       { CMUX_SURFACE_ID: 'some-id' },
       [],
       { requireTmux: true },
     )).toBe('outside-tmux');
+    Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
   });
 
   it('returns "direct" with requireTmux=true when tmux is not available', () => {
@@ -160,6 +166,7 @@ describe('resolveLaunchPolicy', () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+    mockedSpawnSync.mockReset();
     mockedSpawnSync
       .mockReturnValueOnce({
         status: 0,
@@ -179,12 +186,18 @@ describe('resolveLaunchPolicy', () => {
       } as ReturnType<typeof spawnSync>);
 
     expect(resolveLaunchPolicy({})).toBe('outside-tmux');
-    expect(mockedSpawnSync).toHaveBeenNthCalledWith(1, 'where', ['tmux'], { timeout: 5000, encoding: 'utf8' });
+    expect(mockedSpawnSync).toHaveBeenNthCalledWith(
+      1,
+      'where.exe',
+      ['tmux'],
+      { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true },
+    );
+    // shell:false keeps the space in "Program Files" from splitting the path.
     expect(mockedSpawnSync).toHaveBeenNthCalledWith(
       2,
       'C:\\Windows\\System32\\cmd.exe',
       ['/d', '/s', '/c', '"C:\\Program Files\\psmux\\tmux.cmd" -V'],
-      { timeout: 5000 }
+      { timeout: 5000, shell: false, windowsHide: true }
     );
 
     Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
@@ -376,17 +389,19 @@ describe('tmux command execution parity on Windows', () => {
     );
   });
 
-  it('keeps POSIX shell quoting for tmux format args outside native Windows', async () => {
+  it('uses argv execution for tmux format args outside native Windows too', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
     mockedExec.mockClear();
     mockedExecFile.mockClear();
-    mockExecAsync('42\n');
+    mockExecFileAsync('42\n');
 
     await tmuxCmdAsync(['display-message', '-p', '#{window_width}']);
 
-    expect(mockedExecFile).not.toHaveBeenCalled();
-    expect(mockedExec).toHaveBeenLastCalledWith(
-      "tmux 'display-message' '-p' '#{window_width}'",
+    // No shell means no quoting: tmux receives the format string verbatim.
+    expect(mockedExec).not.toHaveBeenCalled();
+    expect(mockedExecFile).toHaveBeenLastCalledWith(
+      'tmux',
+      ['display-message', '-p', '#{window_width}'],
       expect.objectContaining({ encoding: 'utf-8' }),
       expect.any(Function),
     );

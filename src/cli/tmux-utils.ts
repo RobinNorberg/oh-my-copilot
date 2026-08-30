@@ -4,13 +4,10 @@
  */
 
 import {
-  exec,
   execFile,
   execFileSync,
-  execSync,
   spawnSync,
   type ExecFileSyncOptionsWithStringEncoding,
-  type ExecSyncOptionsWithStringEncoding,
   type SpawnSyncOptionsWithStringEncoding,
   type SpawnSyncReturns,
 } from 'child_process';
@@ -102,23 +99,27 @@ export async function tmuxExecAsync(
   });
 }
 
+/**
+ * Argv-based tmux call for commands that carry format strings.
+ *
+ * These used to run as a `tmux <command>` shell string, which skipped the
+ * win32 .cmd/COMSPEC wrapping in resolveTmuxInvocation and forced callers to
+ * POSIX-quote format args — quotes that cmd.exe passes through literally.
+ * @deprecated Prefer tmuxExec; this remains for existing callers.
+ */
 export function tmuxShell(
-  command: string,
-  opts?: TmuxExecOptions & Omit<ExecSyncOptionsWithStringEncoding, 'env' | 'encoding'> & { encoding?: BufferEncoding },
+  args: string[],
+  opts?: TmuxExecOptions & Omit<ExecFileSyncOptionsWithStringEncoding, 'env' | 'encoding'> & { encoding?: BufferEncoding },
 ): string {
-  const { stripTmux: _, ...execOpts } = opts ?? {};
-  return execSync(`tmux ${command}`, { encoding: 'utf-8', ...execOpts, env: resolveEnv(opts) }) as string;
+  return tmuxExec(args, opts);
 }
 
+/** @deprecated Prefer tmuxExecAsync; this remains for existing callers. */
 export async function tmuxShellAsync(
-  command: string,
+  args: string[],
   opts?: TmuxExecOptions & { timeout?: number },
 ): Promise<{ stdout: string; stderr: string }> {
-  const { stripTmux: _, timeout, ...rest } = opts ?? {};
-  return promisify(exec)(`tmux ${command}`, {
-    encoding: 'utf-8', env: resolveEnv(opts),
-    ...(timeout !== undefined ? { timeout } : {}), ...rest,
-  });
+  return tmuxExecAsync(args, opts);
 }
 
 export function tmuxSpawn(
@@ -130,14 +131,14 @@ export function tmuxSpawn(
   return spawnSync(invocation.command, invocation.args, { encoding: 'utf-8', ...spawnOpts, env: resolveEnv(opts) });
 }
 
+/**
+ * Argv execution carries `#{...}` format args to tmux verbatim on every
+ * platform, so no shell — and therefore no per-platform quoting — is involved.
+ */
 export async function tmuxCmdAsync(
   args: string[],
   opts?: TmuxExecOptions & { timeout?: number },
 ): Promise<{ stdout: string; stderr: string }> {
-  if (args.some(a => a.includes('#{')) && !isNativeWindowsShell()) {
-    const escaped = args.map(a => "'" + a.replace(/'/g, "'\\''") + "'").join(' ');
-    return tmuxShellAsync(escaped, opts);
-  }
   return tmuxExecAsync(args, opts);
 }
 
@@ -162,15 +163,15 @@ function resolveTmuxBinaryPath(): string {
  */
 export function isTmuxAvailable(): boolean {
   try {
-    const resolvedBinary = resolveTmuxBinaryPath();
-    if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
-      const comspec = process.env.COMSPEC || 'cmd.exe';
-      const result = spawnSync(comspec, ['/d', '/s', '/c', `"${resolvedBinary}" -V`], { timeout: 5000 });
-      return result.status === 0;
-    }
-
     if (process.platform === 'win32') {
-      const result = spawnSync(resolvedBinary, ['-V'], { timeout: 5000, shell: true });
+      // shell:false keeps an install path with spaces ("C:\Program Files\...")
+      // from splitting into separate arguments.
+      const invocation = resolveTmuxInvocation(['-V']);
+      const result = spawnSync(invocation.command, invocation.args, {
+        timeout: 5000,
+        shell: false,
+        windowsHide: true,
+      });
       return result.status === 0;
     }
 

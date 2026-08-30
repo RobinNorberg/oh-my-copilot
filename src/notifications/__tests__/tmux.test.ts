@@ -44,7 +44,7 @@ describe("getCurrentTmuxSession", () => {
 
     expect(getCurrentTmuxSession()).toBe("my-detached-session");
     expect(mockTmuxShell).toHaveBeenCalledWith(
-      "list-panes -a -F '#{pane_id} #{session_name}'",
+      ["list-panes", "-a", "-F", "#{pane_id} #{session_name}"],
       expect.objectContaining({ timeout: 3000 })
     );
   });
@@ -67,7 +67,7 @@ describe("getCurrentTmuxSession", () => {
 
     expect(getCurrentTmuxSession()).toBe("fallback-session");
     expect(mockTmuxShell).toHaveBeenCalledWith(
-      "display-message -p '#S'",
+      ["display-message", "-p", "#S"],
       expect.objectContaining({ timeout: 3000 })
     );
   });

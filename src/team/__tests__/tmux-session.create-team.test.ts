@@ -103,11 +103,18 @@ vi.mock('child_process', async (importOriginal) => {
     return '';
   });
 
+  // validateTmux probes `tmux -V` through argv execution, not a shell string.
+  const execFileSyncMock = vi.fn((_cmd: string, args: string[] = []) => {
+    if (args.includes('-V')) return 'tmux 3.4\n';
+    return runMockExec(args).stdout;
+  });
+
   return {
     ...actual,
     exec: execMock,
     execFile: execFileMock,
     execSync: execSyncMock,
+    execFileSync: execFileSyncMock,
   };
 });
 

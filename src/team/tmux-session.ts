@@ -855,7 +855,7 @@ export function validateTmux(hasTmuxContext = false): void {
     return;
   }
   try {
-    tmuxShell('-V', { stripTmux: true, timeout: 5000, stdio: 'pipe' });
+    tmuxShell(['-V'], { stripTmux: true, timeout: 5000, stdio: 'pipe' });
   } catch {
     throw new Error(
       'tmux is not available. Install it:\n' +
@@ -935,10 +935,9 @@ export function isSessionAlive(teamName: string, workerName: string): boolean {
 export function listActiveSessions(teamName: string): string[] {
   const prefix = `${TMUX_SESSION_PREFIX}-${sanitizeName(teamName)}-`;
   try {
-    // Use shell execution for format strings containing #{} to prevent
-    // MSYS2/Git Bash from stripping curly braces in execFileSync args.
-    // All arguments here are hardcoded constants, not user input.
-    const output = tmuxShell("list-sessions -F '#{session_name}'", {
+    // Argv execution carries the #{} format string to tmux verbatim; a shell
+    // string would need per-platform quoting that cmd.exe does not honor.
+    const output = tmuxShell(['list-sessions', '-F', '#{session_name}'], {
       timeout: 5000, stdio: ['pipe', 'pipe', 'pipe']
     });
     return output.trim().split('\n')
