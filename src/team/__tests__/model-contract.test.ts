@@ -703,7 +703,11 @@ describe('model-contract', () => {
         1,
         'where.exe',
         ['codex'],
-        { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true },
+        // cwd is the Windows directory, never the inherited one: where.exe
+        // searches the current directory before PATH.
+        expect.objectContaining({
+          timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true, cwd: expect.any(String),
+        }),
       );
       expect(mockSpawnSync).toHaveBeenNthCalledWith(
         3,
@@ -732,7 +736,9 @@ describe('model-contract', () => {
         1,
         'where.exe',
         ['gemini'],
-        { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true },
+        expect.objectContaining({
+          timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true, cwd: expect.any(String),
+        }),
       );
       // Fail closed: no second spawn. A bare name under shell:true would let
       // cmd.exe resolve it against the CWD and run a planted gemini.cmd, and

@@ -44,14 +44,49 @@ describe('resolveExecutable', () => {
   });
 
   it('uses where.exe on Windows and takes the first absolute line', () => {
+    vi.stubEnv('SystemRoot', 'C:\\Windows');
     mockSpawnSync.mockReturnValue(spawnResult({ stdout: 'codex\r\nC:\\Tools\\codex.cmd\r\n' }));
 
     expect(resolveExecutable('codex', 'win32')).toBe('C:\\Tools\\codex.cmd');
     expect(mockSpawnSync).toHaveBeenCalledWith(
       'where.exe',
       ['codex'],
-      { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true },
+      expect.objectContaining({ timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true }),
     );
+  });
+
+  it('runs where.exe from a neutral directory, not the inherited cwd', () => {
+    vi.stubEnv('SystemRoot', 'C:\\Windows');
+    mockSpawnSync.mockReturnValue(spawnResult({ stdout: 'C:\\Program Files\\nodejs\\codex.exe\r\n' }));
+
+    resolveExecutable('codex', 'win32');
+
+    // where.exe searches the current directory before PATH, so inheriting the
+    // cwd would let a repo-planted codex.exe outrank the real install.
+    const options = mockSpawnSync.mock.calls[0][2] as { cwd?: string };
+    expect(options.cwd).toBe('C:\\Windows');
+    expect(options.cwd).not.toBe(process.cwd());
+  });
+
+  it('does not override the cwd on POSIX, where which never searches it', () => {
+    mockSpawnSync.mockReturnValue(spawnResult({ stdout: '/usr/local/bin/codex\n' }));
+
+    resolveExecutable('codex', 'linux');
+
+    const options = mockSpawnSync.mock.calls[0][2] as { cwd?: string };
+    expect(options.cwd).toBeUndefined();
+  });
+
+  it('falls back to the Windows directory when SystemRoot is unset', () => {
+    vi.stubEnv('SystemRoot', '');
+    vi.stubEnv('windir', '');
+    mockSpawnSync.mockReturnValue(spawnResult({ stdout: 'C:\\Program Files\\nodejs\\codex.exe\r\n' }));
+
+    resolveExecutable('codex', 'win32');
+
+    // Still never the inherited cwd.
+    const options = mockSpawnSync.mock.calls[0][2] as { cwd?: string };
+    expect(options.cwd).toBe('C:\\Windows');
   });
 
   it('rejects unsafe binary names without spawning anything', () => {

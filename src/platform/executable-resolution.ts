@@ -94,13 +94,32 @@ function errorCode(error: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
+/**
+ * A directory to run the finder from that no untrusted repo can write to.
+ *
+ * where.exe searches the CURRENT DIRECTORY before PATH and reports the hit as
+ * an absolute path, so running it with the inherited cwd lets a claude.exe
+ * planted in a cloned repo outrank the real install — and the resolved path
+ * then flows on into the worker-spawn path. `which` does not search the cwd,
+ * so POSIX needs no override.
+ */
+function neutralFinderCwd(model: PlatformModel): string | undefined {
+  if (!model.isWindows) return undefined;
+  // The Windows directory needs administrator rights to write to, so it cannot
+  // hold a plant plausibly. No existence probe: if it somehow does not exist,
+  // the spawn fails and resolution reports nothing, which is the safe answer.
+  return process.env.SystemRoot || process.env.windir || 'C:\\Windows';
+}
+
 function resolveCliPath(binary: string, model: PlatformModel): string | undefined {
   try {
+    const finderCwd = neutralFinderCwd(model);
     const result = spawnSync(model.finder, [binary], {
       timeout: RESOLVE_TIMEOUT_MS,
       encoding: 'utf8',
       shell: false,
       windowsHide: true,
+      ...(finderCwd ? { cwd: finderCwd } : {}),
     }) as SpawnResult;
 
     // A finder error, timeout, signal, or nonzero exit is a resolution failure.

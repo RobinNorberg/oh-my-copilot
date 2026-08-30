@@ -107,12 +107,14 @@ describe('cli-detection', () => {
       path: 'C:\\Tools\\codex.cmd',
       version: 'codex 2.0.0',
     });
-    expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'where.exe', ['codex'], {
+    expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'where.exe', ['codex'], expect.objectContaining({
       timeout: 5000,
       encoding: 'utf8',
       shell: false,
       windowsHide: true,
-    });
+      // Never the inherited cwd: where.exe searches it before PATH.
+      cwd: expect.any(String),
+    }));
     expect(mockSpawnSync).toHaveBeenNthCalledWith(2, 'C:\\Tools\\codex.cmd', ['--version'], expect.objectContaining({ shell: false }));
   });
 
