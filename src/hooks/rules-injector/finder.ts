@@ -1,7 +1,7 @@
 /**
  * Rules Finder
  *
- * Finds rule files in project directories and [$CLAUDE_CONFIG_DIR|~/.claude].
+ * Finds rule files in project directories and [$COPILOT_CONFIG_DIR|~/.claude].
  *
  * Ported from oh-my-opencode's rules-injector hook.
  */
@@ -20,7 +20,7 @@ import {
   PROJECT_RULE_SUBDIRS,
   RULE_EXTENSIONS,
 } from './constants.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import type { RuleFileCandidate } from './types.js';
 
 /**
@@ -153,7 +153,7 @@ export function calculateDistance(
 /**
  * Find all rule files for a given context.
  * Searches from currentFile upward to projectRoot for rule directories,
- * then [$CLAUDE_CONFIG_DIR|~/.claude]/rules.
+ * then [$COPILOT_CONFIG_DIR|~/.claude]/rules.
  */
 export function findRuleFiles(
   projectRoot: string | null,
@@ -227,7 +227,7 @@ export function findRuleFiles(
   }
 
   // Search user-level rule directory
-  const userRuleDir = join(getClaudeConfigDir(), 'rules');
+  const userRuleDir = join(getCopilotConfigDir(), 'rules');
   const userFiles: string[] = [];
   findRuleFilesRecursive(userRuleDir, userFiles);
 

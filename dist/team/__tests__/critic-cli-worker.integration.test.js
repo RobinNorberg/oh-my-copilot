@@ -32,6 +32,12 @@ const SHOULD_RUN = codexAvailable();
 describe.skipIf(!SHOULD_RUN)('critic CLI worker integration (AC-7)', () => {
     it('verdict.json from codex critic worker drives task to completed', async () => {
         const cwd = mkdtempSync(join(tmpdir(), 'omc-critic-integration-'));
+        const previousHome = process.env.HOME;
+        const previousUserProfile = process.env.USERPROFILE;
+        const previousStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = cwd;
+        process.env.USERPROFILE = cwd;
+        delete process.env.OMC_STATE_DIR;
         try {
             const teamName = 'critic-int';
             const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
@@ -98,6 +104,18 @@ describe.skipIf(!SHOULD_RUN)('critic CLI worker integration (AC-7)', () => {
             expect(existsSync(outputFile + '.processed')).toBe(true);
         }
         finally {
+            if (previousHome === undefined)
+                delete process.env.HOME;
+            else
+                process.env.HOME = previousHome;
+            if (previousUserProfile === undefined)
+                delete process.env.USERPROFILE;
+            else
+                process.env.USERPROFILE = previousUserProfile;
+            if (previousStateDir === undefined)
+                delete process.env.OMC_STATE_DIR;
+            else
+                process.env.OMC_STATE_DIR = previousStateDir;
             rmSync(cwd, { recursive: true, force: true });
         }
     });

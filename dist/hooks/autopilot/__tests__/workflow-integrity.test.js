@@ -10,16 +10,30 @@ import { initAutopilot, readAutopilotState, writeAutopilotState, } from "../stat
 import { prepareNamedWorkflowAdvance, refreshNamedWorkflowBoundaryForCommit, validateNamedWorkflowState, validateNamedWorkflowStateStructure, } from "../named-workflow-resume-validator.js";
 describe("workflow descriptor integrity enforcement (#3487)", () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), "workflow-integrity-"));
-        process.env.CLAUDE_CONFIG_DIR = join(testDir, "claude-config");
-        mkdirSync(join(process.env.CLAUDE_CONFIG_DIR, "projects"), {
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
+        process.env.COPILOT_CONFIG_DIR = join(testDir, "claude-config");
+        mkdirSync(join(process.env.COPILOT_CONFIG_DIR, "projects"), {
             recursive: true,
         });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
-        delete process.env.CLAUDE_CONFIG_DIR;
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        delete process.env.COPILOT_CONFIG_DIR;
         delete process.env.OMC_TEST_FLOCK_AVAILABLE;
     });
     it("returns a redacted integrity failure without mutating or advancing profile state", async () => {

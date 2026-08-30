@@ -11,15 +11,15 @@ import { spawn } from 'child_process';
 import { join, dirname, basename, resolve, relative, isAbsolute } from 'path';
 import { homedir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { getClaudeConfigDir, getUpdateCheckCachePath } from './lib/config-dir.mjs';
+import { getCopilotConfigDir, getUpdateCheckCachePath } from './lib/config-dir.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { pathIdentity, publishCacheOccupancy, readOccupiedPluginRoots } from './lib/cache-occupancy.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/** Claude config directory (respects CLAUDE_CONFIG_DIR env var) */
-const configDir = getClaudeConfigDir();
+/** Claude config directory (respects COPILOT_CONFIG_DIR env var) */
+const configDir = getCopilotConfigDir();
 
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
@@ -527,8 +527,8 @@ function formatUpdateNoticeForUser(updateInfo, options = {}) {
     ? 'To update the plugin channel, run: /plugin marketplace update omc && /omc-setup'
     : (options.autoUpgradePrompt === false
       ? 'To update later, run: omc update'
-      : 'Run /update to upgrade now, or use /plugin install oh-my-claudecode');
-  return `[OMC UPDATE AVAILABLE] oh-my-claudecode v${latestVersion} is available (current: v${currentVersion}). ${action}`;
+      : 'Run /update to upgrade now, or use /plugin install oh-my-copilot');
+  return `[OMC UPDATE AVAILABLE] oh-my-copilot v${latestVersion} is available (current: v${currentVersion}). ${action}`;
 }
 
 function buildSessionStartAdditionalContext(messages) {
@@ -582,7 +582,7 @@ function extractOmcVersion(content) {
 }
 
 function getPluginCacheBase() {
-  return join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+  return join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
 }
 
 function isPathInsideOrEqual(parent, child) {
@@ -598,7 +598,7 @@ function isManagedPluginCacheRoot(pluginRoot) {
   // A stale root can come from an older config-dir location; the canonical
   // cache path shape still proves it is an OMC managed cache version.
   const unixRoot = normalizedRoot.replace(/\\/g, '/');
-  return /\/plugins\/cache\/omc\/oh-my-claudecode\/\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(unixRoot);
+  return /\/plugins\/cache\/omc\/oh-my-copilot\/\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$/.test(unixRoot);
 }
 
 function getLatestPluginCacheVersion() {
@@ -621,7 +621,7 @@ function getMarketplaceCloneVersion() {
 
     const marketplaceManifest = readJsonFile(join(marketplaceRoot, '.claude-plugin', 'marketplace.json'));
     const pluginEntry = Array.isArray(marketplaceManifest?.plugins)
-      ? marketplaceManifest.plugins.find(plugin => plugin?.name === 'oh-my-claudecode')
+      ? marketplaceManifest.plugins.find(plugin => plugin?.name === 'oh-my-copilot')
       : null;
     const version = typeof pluginEntry?.version === 'string' ? pluginEntry.version.trim() : '';
     return parseSemver(version) ? version : null;
@@ -787,7 +787,7 @@ async function checkNpmUpdate(currentVersion) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch('https://registry.npmjs.org/oh-my-claude-sisyphus/latest', {
+    const response = await fetch('https://registry.npmjs.org/oh-my-copilot/latest', {
       signal: controller.signal
     });
     if (!response.ok) return null;
@@ -806,8 +806,8 @@ async function checkNpmUpdate(currentVersion) {
 async function checkHudInstallation(retryCount = 0) {
   const hudDir = join(configDir, 'hud');
   // Support current and legacy script names
-  const hudScriptOmc = join(hudDir, 'omc-hud.mjs');
-  const hudScriptLegacy = join(hudDir, 'omc-hud.js');
+  const hudScriptOmc = join(hudDir, 'omcp-hud.mjs');
+  const hudScriptLegacy = join(hudDir, 'omcp-hud.js');
   const settingsFile = join(configDir, 'settings.json');
 
   const MAX_RETRIES = 2;
@@ -849,8 +849,8 @@ async function checkHudInstallation(retryCount = 0) {
           : null);
 
       // If OMC HUD wrapper is configured, ensure at least one plugin cache version is built.
-      if (statusLineCommand?.includes('omc-hud')) {
-        const pluginCacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+      if (statusLineCommand?.includes('omcp-hud')) {
+        const pluginCacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
         if (existsSync(pluginCacheBase)) {
           const versions = readdirSync(pluginCacheBase)
             .filter(version => !version.startsWith('.'))
@@ -1034,9 +1034,9 @@ Treat this as prior-session context only. Prioritize the user's newest request, 
     }
 
     // Check for incomplete todos (project-local only, not global
-    // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/)
+    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/)
     // NOTE: We intentionally do NOT scan the global
-    // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/ directory.
+    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const localTodoPaths = [
@@ -1115,7 +1115,7 @@ ${cleanContent}
     // This prevents "Cannot find module" errors for sessions started before a
     // plugin update whose CLAUDE_PLUGIN_ROOT still points to the old version.
     try {
-      const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+      const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
       const occupancy = readOccupiedPluginRoots(configDir);
       let versions = [];
       if (existsSync(cacheBase)) {

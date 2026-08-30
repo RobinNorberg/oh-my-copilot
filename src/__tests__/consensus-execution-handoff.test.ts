@@ -5,7 +5,7 @@
  *
  * Verifies that the plan skill's consensus mode (ralplan) mandates:
  * 1. Structured AskUserQuestion for approval (not plain text)
- * 2. Explicit Skill("oh-my-claudecode:ralph") invocation on approval
+ * 2. Explicit Skill("oh-my-copilot:ralph") invocation on approval
  * 3. Prohibition of direct implementation from the planning agent
  * 4. User feedback step after Planner but before Architect/Critic (#600)
  * 5. RALPLAN-DR short mode and deliberate mode requirements (#999)
@@ -56,7 +56,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
 
       const consensusSection = extractSection(skill!.template, 'Consensus Mode');
       expect(consensusSection).toBeDefined();
-      expect(consensusSection).toContain('Skill("oh-my-claudecode:ralph")');
+      expect(consensusSection).toContain('Skill("oh-my-copilot:ralph")');
     });
 
     it('should use MUST language for execution handoff', () => {
@@ -114,7 +114,7 @@ describe('Issue #595: Consensus mode execution handoff', () => {
 
       const escalation = extractTagContent(skill!.template, 'Escalation_And_Stop_Conditions');
       expect(escalation).toBeDefined();
-      expect(escalation).toContain('Skill("oh-my-claudecode:ralph")');
+      expect(escalation).toContain('Skill("oh-my-copilot:ralph")');
       // Old vague language should be gone
       expect(escalation).not.toContain('transition to execution mode (ralph or executor)');
     });
@@ -331,8 +331,8 @@ describe('Issue #2945: planning modules require explicit execution consent', () 
     expect(escalation).toBeDefined();
     expect(escalation).toContain('without explicitly naming an execution path');
     expect(escalation).toContain('pending approval');
-    expect(escalation).toContain('Do NOT invoke `Skill("oh-my-claudecode:ralph")`');
-    expect(escalation).not.toMatch(/skip planning[\s\S]{0,120}MUST[\s\S]{0,80}Skill\("oh-my-claudecode:ralph"\)/i);
+    expect(escalation).toContain('Do NOT invoke `Skill("oh-my-copilot:ralph")`');
+    expect(escalation).not.toMatch(/skip planning[\s\S]{0,120}MUST[\s\S]{0,80}Skill\("oh-my-copilot:ralph"\)/i);
   });
 
   it('ralplan documents the same planning/execution boundary', () => {

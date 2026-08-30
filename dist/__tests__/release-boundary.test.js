@@ -8,7 +8,7 @@ import { join } from 'node:path';
 // @ts-expect-error The release helper is intentionally dependency-free ESM without declarations.
 import * as releaseBoundary from '../../scripts/release-boundary.mjs';
 const { assertArchive, assertEvidence, assertNpmAbsent, assertSlsaProvenance, assertTrigger, buildEvidenceFromBytes, cliMain, decodeDssePayload, prepareStage, selectSlsaAttestation, verifyRegistry, writeEvidence, } = releaseBoundary;
-const PACKAGE_NAME = 'oh-my-claude-sisyphus';
+const PACKAGE_NAME = 'oh-my-copilot';
 const VERSION = '4.15.4';
 const TAG = `v${VERSION}`;
 const SHA = 'a'.repeat(40);
@@ -63,8 +63,8 @@ function packageManifest(gitHead) {
         version: VERSION,
         ...(gitHead ? { gitHead } : {}),
         bin: {
-            'oh-my-claudecode': 'bin/oh-my-claudecode.js',
-            omc: 'bin/oh-my-claudecode.js',
+            'oh-my-copilot': 'bin/oh-my-copilot.js',
+            omc: 'bin/oh-my-copilot.js',
             'omc-cli': 'bridge/cli.cjs',
         },
     };
@@ -74,13 +74,13 @@ function releaseTarball(gitHead = SHA, extraEntries = [], readme = '# fixture\n'
         { path: 'package/package.json', content: `${JSON.stringify(packageManifest(gitHead), null, 2)}\n` },
         {
             path: 'package/.claude-plugin/plugin.json',
-            content: JSON.stringify({ name: 'oh-my-claudecode', version: VERSION }),
+            content: JSON.stringify({ name: 'oh-my-copilot', version: VERSION }),
         },
         {
             path: 'package/.claude-plugin/marketplace.json',
             content: JSON.stringify({
                 version: VERSION,
-                plugins: [{ name: 'oh-my-claudecode', version: VERSION, source: './' }],
+                plugins: [{ name: 'oh-my-copilot', version: VERSION, source: './' }],
             }),
         },
         {
@@ -91,7 +91,7 @@ function releaseTarball(gitHead = SHA, extraEntries = [], readme = '# fixture\n'
                 },
             }),
         },
-        { path: 'package/bin/oh-my-claudecode.js', content: '#!/usr/bin/env node\n', mode: 0o755 },
+        { path: 'package/bin/oh-my-copilot.js', content: '#!/usr/bin/env node\n', mode: 0o755 },
         { path: 'package/bridge/cli.cjs', content: 'module.exports = {};\n' },
         { path: 'package/bridge/claude-md-coordinator.cjs', content: 'module.exports = {};\n' },
         { path: 'package/bridge/mcp-server.cjs', content: 'module.exports = {};\n' },
@@ -156,19 +156,19 @@ function dssePayload(sha512, overrides = {}) {
                 buildType: 'https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1',
                 externalParameters: {
                     workflow: {
-                        repository: 'https://github.com/Yeachan-Heo/oh-my-claudecode',
+                        repository: 'https://github.com/Yeachan-Heo/oh-my-copilot',
                         path: '.github/workflows/ci.yml',
                         ref: `refs/tags/${TAG}`,
                     },
                 },
                 resolvedDependencies: [{
-                        uri: `git+https://github.com/Yeachan-Heo/oh-my-claudecode@refs/tags/${TAG}`,
+                        uri: `git+https://github.com/Yeachan-Heo/oh-my-copilot@refs/tags/${TAG}`,
                         digest: { gitCommit: SHA },
                     }],
             },
             runDetails: {
                 builder: { id: 'https://github.com/actions/runner/github-hosted' },
-                metadata: { invocationId: 'https://github.com/Yeachan-Heo/oh-my-claudecode/actions/runs/123' },
+                metadata: { invocationId: 'https://github.com/Yeachan-Heo/oh-my-copilot/actions/runs/123' },
             },
         },
         ...overrides,
@@ -205,13 +205,13 @@ function createTriggerRepository() {
     mkdirSync(join(root, '.github'), { recursive: true });
     mkdirSync(join(root, 'docs'), { recursive: true });
     writeFileSync(join(root, 'package.json'), JSON.stringify(packageManifest(), null, 2));
-    writeFileSync(join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'oh-my-claudecode', version: VERSION }));
+    writeFileSync(join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'oh-my-copilot', version: VERSION }));
     writeFileSync(join(root, '.claude-plugin', 'marketplace.json'), JSON.stringify({
         version: VERSION,
-        plugins: [{ name: 'oh-my-claudecode', version: VERSION }],
+        plugins: [{ name: 'oh-my-copilot', version: VERSION }],
     }));
     writeFileSync(join(root, 'docs', 'CLAUDE.md'), `<!-- OMC:VERSION:${VERSION} -->\n`);
-    writeFileSync(join(root, 'CHANGELOG.md'), `# oh-my-claudecode v${VERSION}: fixture\n`);
+    writeFileSync(join(root, 'CHANGELOG.md'), `# oh-my-copilot v${VERSION}: fixture\n`);
     writeFileSync(join(root, '.github', 'release-body.md'), '# Release notes\n');
     execFileSync('git', ['init'], { cwd: root, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.name', 'Release Test'], { cwd: root, stdio: 'ignore' });
@@ -298,7 +298,7 @@ describe('release-boundary.mjs', () => {
         writeFileSync(trackedManifestPath, trackedManifest);
         const seedPath = writeTarball(root, 'seed.tgz', makeTarball([
             { path: 'package/package.json', content: trackedManifest },
-            { path: 'package/bin/oh-my-claudecode.js', content: '#!/usr/bin/env node\n', mode: 0o755 },
+            { path: 'package/bin/oh-my-copilot.js', content: '#!/usr/bin/env node\n', mode: 0o755 },
         ]));
         const stage = join(root, 'stage');
         prepareStage(seedPath, stage, SHA);
@@ -342,7 +342,7 @@ describe('release-boundary.mjs', () => {
             'package/.claude-plugin/plugin.json',
             'package/.mcp.json',
             'package/README.md',
-            'package/bin/oh-my-claudecode.js',
+            'package/bin/oh-my-copilot.js',
             'package/bridge/claude-md-coordinator.cjs',
             'package/bridge/cli.cjs',
             'package/bridge/mcp-server.cjs',
@@ -357,10 +357,10 @@ describe('release-boundary.mjs', () => {
         expect(assertEvidence(tarballPath, evidencePath)).toEqual(evidence);
         const missingCoordinatorPath = writeTarball(root, 'missing-coordinator.tgz', makeTarball([
             { path: 'package/package.json', content: `${JSON.stringify(packageManifest(SHA), null, 2)}\n` },
-            { path: 'package/.claude-plugin/plugin.json', content: JSON.stringify({ name: 'oh-my-claudecode', version: VERSION }) },
-            { path: 'package/.claude-plugin/marketplace.json', content: JSON.stringify({ version: VERSION, plugins: [{ name: 'oh-my-claudecode', version: VERSION, source: './' }] }) },
+            { path: 'package/.claude-plugin/plugin.json', content: JSON.stringify({ name: 'oh-my-copilot', version: VERSION }) },
+            { path: 'package/.claude-plugin/marketplace.json', content: JSON.stringify({ version: VERSION, plugins: [{ name: 'oh-my-copilot', version: VERSION, source: './' }] }) },
             { path: 'package/.mcp.json', content: JSON.stringify({ mcpServers: { omc: { command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/bridge/mcp-server.cjs'] } } }) },
-            { path: 'package/bin/oh-my-claudecode.js', content: '#!/usr/bin/env node\n', mode: 0o755 },
+            { path: 'package/bin/oh-my-copilot.js', content: '#!/usr/bin/env node\n', mode: 0o755 },
             { path: 'package/bridge/cli.cjs', content: 'module.exports = {};\n' },
             { path: 'package/bridge/mcp-server.cjs', content: 'module.exports = {};\n' },
             { path: 'package/bridge/runtime-cli.cjs', content: 'module.exports = {};\n' },
@@ -376,6 +376,19 @@ describe('release-boundary.mjs', () => {
         ])).resolves.toBeUndefined();
         writeFileSync(tarballPath, releaseTarball(SHA, [], '# tampered bytes\n'));
         expect(() => assertEvidence(tarballPath, evidencePath)).toThrow();
+    });
+    it.each([
+        'package/con/config.json',
+        'package/COM1.txt',
+        'package/lpt²/log.txt',
+        'package/CON .txt',
+        'package/cache./value.json',
+        'package/cache /value.json',
+    ])('rejects Windows archive path collisions: %s', path => {
+        const root = makeTempRoot('release-boundary-windows-path-');
+        const tarballPath = writeTarball(root, 'unsafe-windows-path.tgz', releaseTarball(SHA, [{ path, content: 'unsafe' }]));
+        expect(() => assertArchive(tarballPath, { version: VERSION, gitHead: SHA }))
+            .toThrow('tar archive path is unsafe');
     });
     it('decodes exactly one DSSE SLSA statement and requires distinct workflow-v1 build type and GitHub-hosted builder', () => {
         const archiveEvidence = buildEvidenceFromBytes(releaseTarball());

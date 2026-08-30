@@ -120,7 +120,7 @@ describe('alias-resolver — Tier-0 routing', () => {
     expect(resolveWorkflowAlias('Release').canonical).toBe('omc-release');
     expect(resolveWorkflowAlias('/release').canonical).toBe('omc-release');
     expect(resolveWorkflowAlias('/omc:release').canonical).toBe('omc-release');
-    expect(resolveWorkflowAlias('/oh-my-claudecode:psm').canonical).toBe('project-session-manager');
+    expect(resolveWorkflowAlias('/oh-my-copilot:psm').canonical).toBe('project-session-manager');
     expect(resolveWorkflowAlias('OMC:RALPLAN').canonical).toBe('ralplan');
   });
 

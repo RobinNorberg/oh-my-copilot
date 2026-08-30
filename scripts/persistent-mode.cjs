@@ -24,7 +24,7 @@ const {
 const { execFileSync } = require("child_process");
 const { homedir } = require("os");
 const { join, dirname, resolve, normalize } = require("path");
-const { getClaudeConfigDir } = require("./lib/config-dir.cjs");
+const { getCopilotConfigDir } = require("./lib/config-dir.cjs");
 const { resolveOmcStateRoot } = require("./lib/state-root.cjs");
 
 async function readStdin(timeoutMs = 2000) {
@@ -496,7 +496,7 @@ function getAutopilotPhase(state) {
 
 function isAutopilotRoutingEchoPrompt(promptText) {
   return /^\[MAGIC KEYWORDS?(?: DETECTED)?:\s*AUTOPILOT\s*\]\s*$/i.test(promptText) ||
-    /^\/(?:oh-my-claudecode:|omc:)?autopilot(?:\s+execute)?\s*$/i.test(promptText);
+    /^\/(?:oh-my-copilot:|omc:)?autopilot(?:\s+execute)?\s*$/i.test(promptText);
 }
 
 function isOrphanedAutopilotRoutingEchoState(state) {
@@ -756,7 +756,7 @@ function getActiveSubagentCount(stateDir) {
  * Blocking these stops causes a deadlock: can't compact because can't stop,
  * can't continue because context is full.
  *
- * See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/213
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
  */
 function isContextLimitStop(data) {
   const reasons = [
@@ -915,7 +915,7 @@ async function main() {
 
     // CRITICAL: Never block context-limit stops.
     // Blocking these causes a deadlock where Claude Code cannot compact.
-    // See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/213
+    // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
     if (isContextLimitStop(data)) {
       console.log(JSON.stringify({ continue: true, suppressOutput: true }));
       return;
@@ -988,7 +988,7 @@ async function main() {
         // Fire-and-forget notification
         sendStopNotification('ralph', ralph.state, sessionId, directory).catch(() => {});
 
-        const ralphReason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-claudecode:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
+        const ralphReason = `[RALPH LOOP - ITERATION ${iteration + 1}/${maxIter}] Work is NOT done. Continue working.\nWhen FULLY complete (after Architect verification), run /oh-my-copilot:cancel to cleanly exit ralph mode and clean up all state files. If cancel fails, retry with /oh-my-copilot:cancel --force.\n${ralph.state.prompt ? `Task: ${ralph.state.prompt}` : ""}`;
         console.log(
           JSON.stringify({
             decision: "block",
@@ -1006,7 +1006,7 @@ async function main() {
           return;
         }
         writeJsonFile(ralph.path, ralph.state);
-        const extendReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-claudecode:cancel (or --force).`;
+        const extendReason = `[RALPH LOOP - EXTENDED] Max iterations reached; extending to ${ralph.state.max_iterations} and continuing. When FULLY complete (after Architect verification), run /oh-my-copilot:cancel (or --force).`;
         console.log(JSON.stringify({ decision: "block", reason: extendReason }));
         return;
       }
@@ -1032,7 +1032,7 @@ async function main() {
           sendStopNotification('autopilot', autopilot.state, sessionId, directory).catch(() => {});
 
           const cancelGuidance = typeof autopilot.state.session_id === "string" && autopilot.state.session_id === sessionId
-            ? " When all phases are complete, run /oh-my-claudecode:cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /oh-my-claudecode:cancel --force."
+            ? " When all phases are complete, run /oh-my-copilot:cancel to cleanly exit and clean up this session's autopilot state files. If cancel fails, retry with /oh-my-copilot:cancel --force."
             : "";
           console.log(
             JSON.stringify({
@@ -1095,7 +1095,7 @@ async function main() {
                   writeStopBreaker(stateDir, "team-pipeline", breakerCount, sessionId);
                   sendStopNotification("team", team.state, sessionId, directory).catch(() => {});
 
-                  const teamPipelineReason = `[TEAM PIPELINE - PHASE: ${phase.toUpperCase()} | REINFORCEMENT ${breakerCount}/${TEAM_PIPELINE_STOP_BLOCKER_MAX}] The team pipeline is active in phase "${phase}". Continue working on the team workflow. Do not stop until the pipeline reaches a terminal state (complete/failed/cancelled). When done, run /oh-my-claudecode:cancel to cleanly exit.`;
+                  const teamPipelineReason = `[TEAM PIPELINE - PHASE: ${phase.toUpperCase()} | REINFORCEMENT ${breakerCount}/${TEAM_PIPELINE_STOP_BLOCKER_MAX}] The team pipeline is active in phase "${phase}". Continue working on the team workflow. Do not stop until the pipeline reaches a terminal state (complete/failed/cancelled). When done, run /oh-my-copilot:cancel to cleanly exit.`;
                   console.log(JSON.stringify({
                     decision: "block",
                     reason: teamPipelineReason,
@@ -1137,7 +1137,7 @@ async function main() {
 
           sendStopNotification("ralplan", ralplan.state, sessionId, directory).catch(() => {});
 
-          const ralplanReason = `[RALPLAN - CONSENSUS PLANNING | REINFORCEMENT ${breakerCount}/${RALPLAN_STOP_BLOCKER_MAX}] The ralplan consensus workflow is active. Continue the Planner/Architect/Critic planning loop only. Ralplan is read-only/planning mode: do not implement, invoke execution skills, edit source, commit, push, or open PRs from this continuation. When consensus is reached, stop at a pending-approval handoff and require explicit user approval before execution. When done, run /oh-my-claudecode:cancel to cleanly exit.`;
+          const ralplanReason = `[RALPLAN - CONSENSUS PLANNING | REINFORCEMENT ${breakerCount}/${RALPLAN_STOP_BLOCKER_MAX}] The ralplan consensus workflow is active. Continue the Planner/Architect/Critic planning loop only. Ralplan is read-only/planning mode: do not implement, invoke execution skills, edit source, commit, push, or open PRs from this continuation. When consensus is reached, stop at a pending-approval handoff and require explicit user approval before execution. When done, run /oh-my-copilot:cancel to cleanly exit.`;
           console.log(JSON.stringify({
             decision: "block",
             reason: ralplanReason,
@@ -1166,7 +1166,7 @@ async function main() {
           console.log(
             JSON.stringify({
               decision: "block",
-              reason: `[ULTRAPILOT] ${incomplete} workers still running. Continue working. When all workers complete, run /oh-my-claudecode:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.`,
+              reason: `[ULTRAPILOT] ${incomplete} workers still running. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
           );
           return;
@@ -1191,7 +1191,7 @@ async function main() {
           console.log(
             JSON.stringify({
               decision: "block",
-              reason: `[SWARM ACTIVE] ${pending} tasks remain. Continue working. When all tasks are done, run /oh-my-claudecode:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.`,
+              reason: `[SWARM ACTIVE] ${pending} tasks remain. Continue working. When all tasks are done, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
           );
           return;
@@ -1216,7 +1216,7 @@ async function main() {
           console.log(
             JSON.stringify({
               decision: "block",
-              reason: `[PIPELINE - Stage ${currentStage + 1}/${totalStages}] Pipeline not complete. Continue working. When all stages complete, run /oh-my-claudecode:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-claudecode:cancel --force.`,
+              reason: `[PIPELINE - Stage ${currentStage + 1}/${totalStages}] Pipeline not complete. Continue working. When all stages complete, run /oh-my-copilot:cancel to cleanly exit and clean up state files. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
           );
           return;
@@ -1240,7 +1240,7 @@ async function main() {
           console.log(
             JSON.stringify({
               decision: "block",
-              reason: `[TEAM - Phase: ${phase}] Team mode active. Continue working. When all team tasks complete, run /oh-my-claudecode:cancel to cleanly exit. If cancel fails, retry with /oh-my-claudecode:cancel --force.`,
+              reason: `[TEAM - Phase: ${phase}] Team mode active. Continue working. When all team tasks complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
           );
           return;
@@ -1264,7 +1264,7 @@ async function main() {
           console.log(
             JSON.stringify({
               decision: "block",
-              reason: `[OMC TEAMS - Phase: ${phase}] OMC Teams workers active. Continue working. When all workers complete, run /oh-my-claudecode:cancel to cleanly exit. If cancel fails, retry with /oh-my-claudecode:cancel --force.`,
+              reason: `[OMC TEAMS - Phase: ${phase}] OMC Teams workers active. Continue working. When all workers complete, run /oh-my-copilot:cancel to cleanly exit. If cancel fails, retry with /oh-my-copilot:cancel --force.`,
             }),
           );
           return;

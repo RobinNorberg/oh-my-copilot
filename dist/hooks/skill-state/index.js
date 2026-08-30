@@ -61,7 +61,7 @@ export const CANONICAL_WORKFLOW_SKILLS = [
     'self-improve',
 ];
 export function isCanonicalWorkflowSkill(skillName) {
-    const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
     return CANONICAL_WORKFLOW_SKILLS.includes(normalized);
 }
 const PROTECTION_CONFIGS = {
@@ -122,10 +122,10 @@ const SKILL_PROTECTION = {
 };
 const RETIRED_SKILL_NAMES = new Set(['ultrawork', 'ccg']);
 export function getSkillProtection(skillName, rawSkillName) {
-    if (rawSkillName != null && !rawSkillName.toLowerCase().startsWith('oh-my-claudecode:')) {
+    if (rawSkillName != null && !rawSkillName.toLowerCase().startsWith('oh-my-copilot:')) {
         return 'none';
     }
-    const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
     if (RETIRED_SKILL_NAMES.has(normalized))
         return 'none';
     return SKILL_PROTECTION[normalized] ?? 'none';
@@ -207,7 +207,7 @@ function normalizeToV2(raw) {
 // ---------------------------------------------------------------------------
 /** Upsert (create or update) a workflow slot on a v2 state. Pure. */
 export function upsertWorkflowSkillSlot(state, skillName, slotData = {}) {
-    const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
     const existing = state.active_skills[normalized];
     const now = new Date().toISOString();
     const base = {
@@ -243,7 +243,7 @@ export function upsertWorkflowSkillSlot(state, skillName, slotData = {}) {
  * absent (idempotent).
  */
 export function markWorkflowSkillCompleted(state, skillName, now = new Date().toISOString()) {
-    const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
     const existing = state.active_skills[normalized];
     if (!existing)
         return state;
@@ -255,7 +255,7 @@ export function markWorkflowSkillCompleted(state, skillName, now = new Date().to
 }
 /** Hard-clear: remove a slot entirely (for explicit cancel). Pure. */
 export function clearWorkflowSkillSlot(state, skillName) {
-    const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
     if (!(normalized in state.active_skills))
         return state;
     const next = { ...state.active_skills };
@@ -329,7 +329,7 @@ export function resolveAuthoritativeWorkflowSkill(state) {
  * "no ledger entry" from "tombstoned" via `isWorkflowSkillTombstoned`.
  */
 export function isWorkflowSkillLive(state, skillName) {
-    const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
     if (!isCanonicalWorkflowSkill(normalized))
         return false;
     const slot = state.active_skills[normalized];
@@ -341,7 +341,7 @@ export function isWorkflowSkillLive(state, skillName) {
  * until TTL pruning removes the slot or a fresh invocation reactivates it.
  */
 export function isWorkflowSkillTombstoned(state, skillName, ttlMs = WORKFLOW_TOMBSTONE_TTL_MS, now = Date.now()) {
-    const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
     const slot = state.active_skills[normalized];
     if (!slot || !slot.completed_at)
         return false;
@@ -497,7 +497,7 @@ export function readSkillActiveState(directory, sessionId) {
  * copies together via `writeSkillActiveStateCopies()`.
  *
  * @param rawSkillName - Original skill name as invoked. When provided without
- *   the `oh-my-claudecode:` prefix, protection returns 'none' to avoid
+ *   the `oh-my-copilot:` prefix, protection returns 'none' to avoid
  *   confusion with user-defined project skills of the same name (#1581).
  */
 export function writeSkillActiveState(directory, skillName, sessionId, rawSkillName) {
@@ -506,7 +506,7 @@ export function writeSkillActiveState(directory, skillName, sessionId, rawSkillN
         return null;
     const config = PROTECTION_CONFIGS[protection];
     const now = new Date().toISOString();
-    const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, '');
+    const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, '');
     const existingV2 = readSkillActiveStateNormalized(directory, sessionId);
     const existing = existingV2.support_skill;
     // Nesting guard: a DIFFERENT support skill already owns the slot — skip.
@@ -569,7 +569,7 @@ export function checkSkillActiveState(directory, sessionId) {
     // Retired skills may leave support-state records behind, but those records
     // are cleanup-only and must never re-arm stop enforcement.
     const normalizedSupportSkill = typeof state.skill_name === 'string'
-        ? state.skill_name.toLowerCase().replace(/^oh-my-claudecode:/, '')
+        ? state.skill_name.toLowerCase().replace(/^oh-my-copilot:/, '')
         : '';
     if (RETIRED_SKILL_NAMES.has(normalizedSupportSkill)) {
         return { shouldBlock: false, message: '', skillName: state.skill_name };

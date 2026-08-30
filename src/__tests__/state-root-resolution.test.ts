@@ -566,7 +566,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
         tool_name: 'Skill',
         // `skill` needs a non-'none' protection level. The OMC-prefixed `skill`
         // slash-command maps to 'light' protection, which triggers the write.
-        tool_input: { skill: 'oh-my-claudecode:skill' },
+        tool_input: { skill: 'oh-my-copilot:skill' },
         session_id: sessionId,
         cwd: fakeProject,
       },

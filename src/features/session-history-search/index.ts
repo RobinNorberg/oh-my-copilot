@@ -8,7 +8,7 @@ import {
   validateWorkingDirectory,
   getOmcRoot,
 } from '../../lib/worktree-paths.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { encodeProjectPath } from '../../utils/encode-project-path.js';
 import type {
   SessionHistoryMatch,
@@ -140,7 +140,7 @@ function uniqueSortedTargets(targets: SearchTarget[]): SearchTarget[] {
 }
 
 function buildCurrentProjectTargets(projectRoot: string, transcriptProjectRoots: string[] = [projectRoot]): SearchTarget[] {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const projectRoots = new Set<string>(transcriptProjectRoots);
   for (const root of transcriptProjectRoots) {
     const mainRepoRoot = getMainRepoRoot(root);
@@ -182,7 +182,7 @@ function buildCurrentProjectTargets(projectRoot: string, transcriptProjectRoots:
 }
 
 function buildAllProjectTargets(): SearchTarget[] {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const targets: SearchTarget[] = [];
 
   for (const filePath of listJsonlFiles(join(claudeDir, 'projects'))) {

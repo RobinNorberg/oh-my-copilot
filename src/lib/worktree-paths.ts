@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFi
 import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
 import { pathToFileURL } from 'url';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { encodeProjectPath } from '../utils/encode-project-path.js';
 
 /**
@@ -1142,9 +1142,9 @@ export function isValidTranscriptPath(transcriptPath: string): boolean {
   const normalized = normalize(expandedPath);
   const home = homedir();
 
-  // Allowed: [$CLAUDE_CONFIG_DIR|~/.claude], ~/.omc/..., system temp dir
+  // Allowed: [$COPILOT_CONFIG_DIR|~/.claude], ~/.omc/..., system temp dir
   const allowedPrefixes = [
-    getClaudeConfigDir(),
+    getCopilotConfigDir(),
     join(home, '.omc'),
     tmpdir(), // honors $TMPDIR; covers /tmp and macOS /var/folders defaults
     '/tmp',
@@ -1435,7 +1435,7 @@ export function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: 
     const sessionFile = basename(transcriptPath);
     if (sessionFile) {
       // The projects directory is under the Claude config dir
-      const projectsDir = join(getClaudeConfigDir(), 'projects');
+      const projectsDir = join(getCopilotConfigDir(), 'projects');
 
       if (existsSync(projectsDir)) {
         // Encode the main project root the same way Claude Code does.
@@ -1481,7 +1481,7 @@ export function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: 
       // basename handles `\` (Windows transcript_path) and `/` (POSIX).
       const sessionFile = basename(transcriptPath);
       if (sessionFile) {
-        const projectsDir = join(getClaudeConfigDir(), 'projects');
+        const projectsDir = join(getCopilotConfigDir(), 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = encodeProjectPath(mainRepoRoot);
           const resolvedPath = join(projectsDir, encodedMain, sessionFile);

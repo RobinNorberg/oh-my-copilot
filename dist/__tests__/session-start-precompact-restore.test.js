@@ -10,7 +10,7 @@ import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, renameSync, rmSync, symlinkSync, unlinkSync, writeFileSync, existsSync, readFileSync, linkSync, realpathSync, utimesSync } from 'node:fs';
 import * as nodeFs from 'fs';
 import { basename, join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 vi.mock('fs', async () => {
     const actual = await vi.importActual('fs');
@@ -31,6 +31,7 @@ function makeProject(root) {
     const project = join(root, 'project');
     // session-start validateCwd requires a real workspace anchor (.git / .omc-workspace)
     mkdirSync(join(project, '.git'), { recursive: true });
+    execFileSync('git', ['init', '--quiet'], { cwd: project, stdio: 'ignore' });
     return project;
 }
 function writeCheckpoint(project, createdAt, extra = {}) {
@@ -132,7 +133,7 @@ describe('session-start.mjs PreCompact checkpoint restore (issue #3730)', () => 
     let home;
     let project;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'omc-precompact-session-start-'));
+        tempDir = mkdtempSync(join(homedir(), 'omc-precompact-session-start-'));
         home = join(tempDir, 'home');
         mkdirSync(home, { recursive: true });
         project = makeProject(tempDir);
@@ -685,7 +686,7 @@ describe('precompact-restore helper parity (issue #3730 security)', () => {
     let tempDir;
     let project;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'omc-precompact-template-parity-'));
+        tempDir = mkdtempSync(join(homedir(), 'omc-precompact-template-parity-'));
         project = join(tempDir, 'project');
         mkdirSync(join(project, '.omc', 'state', 'checkpoints'), { recursive: true });
         writeFileSync(join(project, '.omc', 'state', 'checkpoints', 'checkpoint-now.json'), JSON.stringify({ created_at: new Date().toISOString(), session_id: 'valid-session-3730', trigger: 'auto', active_modes: {}, todo_summary: { pending: 1, in_progress: 0, completed: 0 }, wisdom_exported: false }), 'utf-8');

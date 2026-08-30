@@ -13,9 +13,9 @@ case "$0" in
   *) SCRIPT_DIR=. ;;
 esac
 SCRIPT_DIR=$(cd "$SCRIPT_DIR" 2>/dev/null && pwd -P) || SCRIPT_DIR=.
-CONFIG_DIR=${CLAUDE_CONFIG_DIR:-$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)}
+CONFIG_DIR=${COPILOT_CONFIG_DIR:-$(cd "$SCRIPT_DIR/.." 2>/dev/null && pwd -P)}
 CACHE_DIR=${OMC_HUD_CACHE_DIR:-"$CONFIG_DIR/hud/cache"}
-HUD_SCRIPT=${1:-"$SCRIPT_DIR/omc-hud.mjs"}
+HUD_SCRIPT=${1:-"$SCRIPT_DIR/omcp-hud.mjs"}
 INPUT_TMP="$CACHE_DIR/stdin.$$.tmp"
 LOCK_STALE_SECONDS=${OMC_HUD_LOCK_STALE_SECONDS:-10}
 

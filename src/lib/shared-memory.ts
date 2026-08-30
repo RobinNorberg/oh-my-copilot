@@ -15,14 +15,14 @@
  * - ttl: optional time-to-live in seconds
  * - expiresAt: optional ISO timestamp (computed from ttl)
  *
- * @see https://github.com/anthropics/oh-my-claudecode/issues/1119
+ * @see https://github.com/anthropics/oh-my-copilot/issues/1119
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, readdirSync, renameSync } from 'fs';
 import { join } from 'path';
 import { getOmcRoot } from './worktree-paths.js';
 import { withFileLockSync } from './file-lock.js';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,13 +56,13 @@ const CONFIG_FILE_NAME = '.omc-config.json';
  * Check if shared memory is enabled via config.
  *
  * Reads `agents.sharedMemory.enabled` from
- * `[$CLAUDE_CONFIG_DIR|~/.claude]/.omc-config.json`.
+ * `[$COPILOT_CONFIG_DIR|~/.claude]/.omc-config.json`.
  * Defaults to true when the config key is absent (opt-out rather than opt-in
  * once the feature ships, but tools check this gate).
  */
 export function isSharedMemoryEnabled(): boolean {
   try {
-    const configPath = join(getClaudeConfigDir(), CONFIG_FILE_NAME);
+    const configPath = join(getCopilotConfigDir(), CONFIG_FILE_NAME);
     if (!existsSync(configPath)) return true; // default enabled
     const raw = JSON.parse(readFileSync(configPath, 'utf-8'));
     const enabled = raw?.agents?.sharedMemory?.enabled;

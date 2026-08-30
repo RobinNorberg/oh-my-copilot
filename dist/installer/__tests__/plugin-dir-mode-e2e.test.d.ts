@@ -3,7 +3,7 @@
  *
  * Unlike `plugin-dir-mode.test.ts`, which exercises the CLI precedence helper
  * in isolation, this suite calls the real `install()` function from
- * `src/installer/index.ts` against a throwaway `CLAUDE_CONFIG_DIR` and asserts
+ * `src/installer/index.ts` against a throwaway `COPILOT_CONFIG_DIR` and asserts
  * the resulting on-disk shape matches the documented contract.
  *
  * Scope: installer contract only. The CLI auto-detection log message and the

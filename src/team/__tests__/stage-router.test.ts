@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { resolveRoleAssignment, buildResolvedRoutingSnapshot } from '../stage-router.js';
 import { CANONICAL_TEAM_ROLES } from '../../shared/types.js';
 import type { CanonicalTeamRole, PluginConfig } from '../../shared/types.js';
-import { CLAUDE_FAMILY_DEFAULTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS } from '../../config/models.js';
+import { COPILOT_FAMILY_DEFAULTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS } from '../../config/models.js';
 
 type TeamRoleRoutingConfig = NonNullable<NonNullable<PluginConfig['team']>['roleRouting']>;
 
@@ -40,21 +40,21 @@ afterAll(() => {
 });
 
 const EXPECTED_DEFAULTS: Record<CanonicalTeamRole, { model: string; agent: string }> = {
-  orchestrator: { model: CLAUDE_FAMILY_DEFAULTS.OPUS, agent: 'omc' },
-  planner: { model: CLAUDE_FAMILY_DEFAULTS.OPUS, agent: 'planner' },
-  analyst: { model: CLAUDE_FAMILY_DEFAULTS.OPUS, agent: 'analyst' },
-  architect: { model: CLAUDE_FAMILY_DEFAULTS.OPUS, agent: 'architect' },
-  executor: { model: CLAUDE_FAMILY_DEFAULTS.SONNET, agent: 'executor' },
-  debugger: { model: CLAUDE_FAMILY_DEFAULTS.SONNET, agent: 'debugger' },
-  critic: { model: CLAUDE_FAMILY_DEFAULTS.OPUS, agent: 'critic' },
-  'code-reviewer': { model: CLAUDE_FAMILY_DEFAULTS.OPUS, agent: 'codeReviewer' },
-  'security-reviewer': { model: CLAUDE_FAMILY_DEFAULTS.SONNET, agent: 'securityReviewer' },
-  'test-engineer': { model: CLAUDE_FAMILY_DEFAULTS.SONNET, agent: 'testEngineer' },
-  designer: { model: CLAUDE_FAMILY_DEFAULTS.SONNET, agent: 'designer' },
-  writer: { model: CLAUDE_FAMILY_DEFAULTS.HAIKU, agent: 'writer' },
-  'code-simplifier': { model: CLAUDE_FAMILY_DEFAULTS.OPUS, agent: 'codeSimplifier' },
-  explore: { model: CLAUDE_FAMILY_DEFAULTS.HAIKU, agent: 'explore' },
-  'document-specialist': { model: CLAUDE_FAMILY_DEFAULTS.SONNET, agent: 'documentSpecialist' },
+  orchestrator: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'omc' },
+  planner: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'planner' },
+  analyst: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'analyst' },
+  architect: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'architect' },
+  executor: { model: COPILOT_FAMILY_DEFAULTS.SONNET, agent: 'executor' },
+  debugger: { model: COPILOT_FAMILY_DEFAULTS.SONNET, agent: 'debugger' },
+  critic: { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'critic' },
+  'code-reviewer': { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'codeReviewer' },
+  'security-reviewer': { model: COPILOT_FAMILY_DEFAULTS.SONNET, agent: 'securityReviewer' },
+  'test-engineer': { model: COPILOT_FAMILY_DEFAULTS.SONNET, agent: 'testEngineer' },
+  designer: { model: COPILOT_FAMILY_DEFAULTS.SONNET, agent: 'designer' },
+  writer: { model: COPILOT_FAMILY_DEFAULTS.HAIKU, agent: 'writer' },
+  'code-simplifier': { model: COPILOT_FAMILY_DEFAULTS.OPUS, agent: 'codeSimplifier' },
+  explore: { model: COPILOT_FAMILY_DEFAULTS.HAIKU, agent: 'explore' },
+  'document-specialist': { model: COPILOT_FAMILY_DEFAULTS.SONNET, agent: 'documentSpecialist' },
 };
 
 describe('stage-router resolveRoleAssignment', () => {
@@ -99,7 +99,7 @@ describe('stage-router resolveRoleAssignment', () => {
       // grok has no builtin default model and none configured → resolves to ''
       // (NOT a Claude tier model id).
       expect(out.model).toBe('');
-      expect(out.model).not.toBe(CLAUDE_FAMILY_DEFAULTS.OPUS);
+      expect(out.model).not.toBe(COPILOT_FAMILY_DEFAULTS.OPUS);
       expect(out.agent).toBe('codeReviewer');
     });
 
@@ -120,7 +120,7 @@ describe('stage-router resolveRoleAssignment', () => {
       const out = resolveRoleAssignment('executor', cfg);
       expect(out.provider).toBe('cursor');
       expect(out.model).toBe('');
-      expect(out.model).not.toBe(CLAUDE_FAMILY_DEFAULTS.OPUS);
+      expect(out.model).not.toBe(COPILOT_FAMILY_DEFAULTS.OPUS);
       expect(out.agent).toBe('executor');
     });
 
@@ -154,7 +154,7 @@ describe('stage-router resolveRoleAssignment', () => {
       expect(out.provider).toBe('grok');
       // tier names are claude-centric → grok ignores them and uses its (empty) default
       expect(out.model).toBe('');
-      expect(out.model).not.toBe(CLAUDE_FAMILY_DEFAULTS.OPUS);
+      expect(out.model).not.toBe(COPILOT_FAMILY_DEFAULTS.OPUS);
     });
 
     it('resolves tier name (HIGH) into Claude opus model for claude provider', () => {
@@ -163,7 +163,7 @@ describe('stage-router resolveRoleAssignment', () => {
       };
       const out = resolveRoleAssignment('executor', cfg);
       expect(out.provider).toBe('claude');
-      expect(out.model).toBe(CLAUDE_FAMILY_DEFAULTS.OPUS);
+      expect(out.model).toBe(COPILOT_FAMILY_DEFAULTS.OPUS);
     });
 
     it('tier name on external provider falls back to provider builtin (tiers are claude-centric)', () => {

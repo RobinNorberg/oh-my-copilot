@@ -21,7 +21,7 @@ function runCli(args: string[], homeDir: string): CliRunResult {
     env: {
       ...process.env,
       HOME: homeDir,
-      CLAUDE_CONFIG_DIR: join(homeDir, '.claude'),
+      COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
     },
     encoding: 'utf-8',
   });

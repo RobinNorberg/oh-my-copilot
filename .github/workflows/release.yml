@@ -70,7 +70,7 @@ jobs:
           RECOVERY_ARCHIVE_DIR="$RUNNER_TEMP/recovery-archive"
           RECOVERY_EVIDENCE_JSON="$RUNNER_TEMP/recovery-evidence.json"
           mkdir -p "$RECOVERY_ARCHIVE_DIR"
-          RECOVERY_TARBALL_NAME=$(npm pack --ignore-scripts --pack-destination "$RECOVERY_ARCHIVE_DIR" --silent "oh-my-claude-sisyphus@$VERSION")
+          RECOVERY_TARBALL_NAME=$(npm pack --ignore-scripts --pack-destination "$RECOVERY_ARCHIVE_DIR" --silent "oh-my-copilot@$VERSION")
           RECOVERY_TARBALL="$RECOVERY_ARCHIVE_DIR/$RECOVERY_TARBALL_NAME"
           node scripts/release-boundary.mjs assert-archive --tarball "$RECOVERY_TARBALL" --version "$VERSION" --git-head "$RECOVERY_SHA"
           node scripts/release-boundary.mjs write-evidence --tarball "$RECOVERY_TARBALL" --output "$RECOVERY_EVIDENCE_JSON"
@@ -83,10 +83,10 @@ jobs:
           RECOVERY_PREFIX="$RUNNER_TEMP/recovery-provenance-verification"
           RECOVERY_AUDIT_JSON="$RECOVERY_PREFIX/audit-signatures.json"
           rm -rf "$RECOVERY_PREFIX"
-          npm install --ignore-scripts --no-audit --no-fund --prefix "$RECOVERY_PREFIX" "oh-my-claude-sisyphus@$VERSION"
+          npm install --ignore-scripts --no-audit --no-fund --prefix "$RECOVERY_PREFIX" "oh-my-copilot@$VERSION"
           npm audit signatures --json --include-attestations --prefix "$RECOVERY_PREFIX" > "$RECOVERY_AUDIT_JSON"
           test -s "$RECOVERY_AUDIT_JSON"
-          node scripts/release-boundary.mjs verify-registry --package oh-my-claude-sisyphus --version "$VERSION" --tag "$RECOVERY_TAG" --sha "$RECOVERY_SHA" --evidence "$RECOVERY_EVIDENCE_JSON" --tarball "$RECOVERY_TARBALL" --provenance required --audit "$RECOVERY_AUDIT_JSON"
+          node scripts/release-boundary.mjs verify-registry --package oh-my-copilot --version "$VERSION" --tag "$RECOVERY_TAG" --sha "$RECOVERY_SHA" --evidence "$RECOVERY_EVIDENCE_JSON" --tarball "$RECOVERY_TARBALL" --provenance required --audit "$RECOVERY_AUDIT_JSON"
 
       - name: Validate recovery release notes
         run: |

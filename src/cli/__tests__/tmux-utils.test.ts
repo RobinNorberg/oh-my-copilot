@@ -26,7 +26,7 @@ import {
   buildTmuxShellCommand,
   buildTmuxShellCommandWithEnv,
   createHudWatchPane,
-  isClaudeAvailable,
+  isCopilotAvailable,
   killTmuxPane,
   listHudWatchPaneIdsInCurrentWindow,
   resolveLaunchPolicy,
@@ -191,13 +191,13 @@ describe('resolveLaunchPolicy', () => {
   });
 });
 
-describe('isClaudeAvailable', () => {
+describe('isCopilotAvailable', () => {
   it('uses shell:true on win32 so npm .cmd wrappers resolve', () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     mockedExecFileSync.mockReturnValue(Buffer.from('2.1.116'));
 
-    expect(isClaudeAvailable()).toBe(true);
+    expect(isCopilotAvailable()).toBe(true);
     expect(mockedExecFileSync).toHaveBeenCalledWith('claude', ['--version'], {
       stdio: 'ignore',
       shell: true,
@@ -223,11 +223,11 @@ describe('tmuxEnv', () => {
 
   it('preserves unrelated env vars', () => {
     vi.stubEnv('PSMUX_SESSION', 'psmux-session-1');
-    vi.stubEnv('CLAUDE_CONFIG_DIR', '/tmp/cfg');
+    vi.stubEnv('COPILOT_CONFIG_DIR', '/tmp/cfg');
 
     const env = tmuxEnv();
 
-    expect(env.CLAUDE_CONFIG_DIR).toBe('/tmp/cfg');
+    expect(env.COPILOT_CONFIG_DIR).toBe('/tmp/cfg');
     expect(env.PSMUX_SESSION).toBeUndefined();
   });
 

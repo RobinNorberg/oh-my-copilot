@@ -9,11 +9,11 @@ const PROJECT_ROOT = join(__dirname, '..', '..');
 const COMMAND_PATH = join(PROJECT_ROOT, 'commands', 'compact.md');
 const PLUGIN_MANIFEST_PATH = join(PROJECT_ROOT, '.claude-plugin', 'plugin.json');
 
-const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
+const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
 let tempConfigDir: string;
 
 async function loadCommandsModule() {
-  // getClaudeConfigDir reads env at module load time in some call paths.
+  // getCopilotConfigDir reads env at module load time in some call paths.
   return import('../commands/index.js');
 }
 
@@ -21,15 +21,15 @@ describe('manual compact command', () => {
   beforeEach(() => {
     tempConfigDir = join(tmpdir(), `omc-manual-compact-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(join(tempConfigDir, 'commands'), { recursive: true });
-    process.env.CLAUDE_CONFIG_DIR = tempConfigDir;
+    process.env.COPILOT_CONFIG_DIR = tempConfigDir;
   });
 
   afterEach(() => {
     rmSync(tempConfigDir, { recursive: true, force: true });
     if (originalConfigDir === undefined) {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.COPILOT_CONFIG_DIR;
     } else {
-      process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+      process.env.COPILOT_CONFIG_DIR = originalConfigDir;
     }
   });
 
@@ -40,7 +40,7 @@ describe('manual compact command', () => {
     expect(manifest.commands).toBe('./commands/');
 
     const command = readFileSync(COMMAND_PATH, 'utf-8');
-    expect(command).toContain('/oh-my-claudecode:compact');
+    expect(command).toContain('/oh-my-copilot:compact');
     expect(command).toContain('Bare `/compact` is reserved for Claude Code');
     expect(command).not.toContain('Skill("compact")');
     expect(command).toContain('instruction-only');

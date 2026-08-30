@@ -17,16 +17,16 @@ export const SLASH_COMMAND_PATTERN = /^\/([a-zA-Z][\w-]*)\s*(.*)/;
 
 /**
  * Commands that should NOT be auto-expanded
- * (they have special handling elsewhere or are now skills with oh-my-claudecode: prefix)
+ * (they have special handling elsewhere or are now skills with oh-my-copilot: prefix)
  */
 export const EXCLUDED_COMMANDS = new Set([
   // ralph / ultraqa / learner were retired in 5.0.0; execute and verify cover them.
-  'oh-my-claudecode:ralplan',
-  'oh-my-claudecode:execute',
-  'oh-my-claudecode:verify',
-  'oh-my-claudecode:skillify',
-  'oh-my-claudecode:plan',
-  'oh-my-claudecode:cancel',
+  'oh-my-copilot:ralplan',
+  'oh-my-copilot:execute',
+  'oh-my-copilot:verify',
+  'oh-my-copilot:skillify',
+  'oh-my-copilot:plan',
+  'oh-my-copilot:cancel',
   // Claude Code built-in commands that shouldn't be expanded
   'help',
   'clear',

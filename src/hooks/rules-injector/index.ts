@@ -3,7 +3,7 @@
  *
  * Automatically injects relevant rule files when Claude accesses files.
  * Supports project-level (.claude/rules, .github/instructions) and
- * user-level rules under [$CLAUDE_CONFIG_DIR|~/.claude].
+ * user-level rules under [$COPILOT_CONFIG_DIR|~/.claude].
  *
  * Ported from oh-my-opencode's rules-injector hook.
  */

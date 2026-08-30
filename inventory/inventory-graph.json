@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "generatedAt": null,
-  "repository": "Yeachan-Heo/oh-my-claudecode",
+  "repository": "Yeachan-Heo/oh-my-copilot",
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
@@ -7015,9 +7015,9 @@
         "path": "benchmarks/shared/types.ts"
       },
       {
-        "id": "bin/oh-my-claudecode.js",
+        "id": "bin/oh-my-copilot.js",
         "kind": "other",
-        "path": "bin/oh-my-claudecode.js"
+        "path": "bin/oh-my-copilot.js"
       },
       {
         "id": "bridge/claude-md-coordinator.cjs",
@@ -32580,9 +32580,9 @@
         "path": "generated/prompt-ssot/role-verifier.md"
       },
       {
-        "id": "geobench/oh-my-claudecode.yaml",
+        "id": "geobench/oh-my-copilot.yaml",
         "kind": "other",
-        "path": "geobench/oh-my-claudecode.yaml"
+        "path": "geobench/oh-my-copilot.yaml"
       },
       {
         "id": "hooks/hooks.json",
@@ -40812,7 +40812,7 @@
         "kind": "type-imports"
       },
       {
-        "from": "bin/oh-my-claudecode.js",
+        "from": "bin/oh-my-copilot.js",
         "to": "bridge/cli.cjs",
         "kind": "imports"
       },

@@ -34,7 +34,7 @@ Standard Claude Code with default settings:
 
 ### OMC Configuration
 
-Oh-My-ClaudeCode enhanced with:
+Oh-My-Copilot enhanced with:
 - Multi-agent orchestration
 - Specialist delegation (architect, executor, etc.)
 - Ralph persistence loop for complex tasks
@@ -103,7 +103,7 @@ Instances that vanilla solved but OMC failed:
 # Install SWE-bench
 pip install swebench
 
-# Install oh-my-claudecode (if testing OMC)
+# Install oh-my-copilot (if testing OMC)
 # Follow setup instructions in main README
 ```
 
@@ -172,7 +172,7 @@ results/
 
 - [SWE-bench Paper](https://arxiv.org/abs/2310.06770)
 - [SWE-bench Repository](https://github.com/princeton-nlp/SWE-bench)
-- [Oh-My-ClaudeCode Documentation](../README.md)
+- [Oh-My-Copilot Documentation](../README.md)
 
 ---
 

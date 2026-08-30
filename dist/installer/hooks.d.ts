@@ -57,7 +57,7 @@ export declare const TODO_CONTINUATION_PROMPT = "[SYSTEM REMINDER - TODO CONTINU
 /**
  * Ralph mode message - injected when ralph keyword detected
  */
-export declare const RALPH_MESSAGE = "[RALPH MODE ACTIVATED]\n\nRalph mode persists until the requested work is verified complete. Follow these rules:\n\n### Execution\n- Work through every remaining requirement\n- Delegate independent specialist work when it improves correctness\n- Keep the durable Ralph state aligned with actual progress\n\n### Completion Requirements\n- Verify ALL requirements from the original task are met\n- Architect verification is MANDATORY before claiming completion\n- When FULLY complete, run `/oh-my-claudecode:cancel` to cleanly exit and clean up state files\n\nContinue working until the task is truly done.\n";
+export declare const RALPH_MESSAGE = "[RALPH MODE ACTIVATED]\n\nRalph mode persists until the requested work is verified complete. Follow these rules:\n\n### Execution\n- Work through every remaining requirement\n- Delegate independent specialist work when it improves correctness\n- Keep the durable Ralph state aligned with actual progress\n\n### Completion Requirements\n- Verify ALL requirements from the original task are met\n- Architect verification is MANDATORY before claiming completion\n- When FULLY complete, run `/oh-my-copilot:cancel` to cleanly exit and clean up state files\n\nContinue working until the task is truly done.\n";
 /**
  * Prompt translation message - injected when non-English input detected
  * Reminds users to write prompts in English for consistent agent routing

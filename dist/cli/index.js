@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Oh-My-ClaudeCode CLI
+ * Oh-My-Copilot CLI
  *
  * Command-line interface for the OMC multi-agent system.
  *
@@ -13,7 +13,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { join } from 'path';
 import { writeFileSync, existsSync } from 'fs';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { OMC_PLUGIN_ROOT_ENV } from '../lib/env-vars.js';
 import { loadConfig, getConfigPaths, } from '../config/loader.js';
 import { createOmcSession } from '../index.js';
@@ -225,7 +225,7 @@ Profile types (use with --profile):
   webhook      Generic webhook (POST with JSON body)
 
 Examples:
-  $ omc config-stop-callback file --enable --path ${join(getClaudeConfigDir(), 'logs/{date}.md')}
+  $ omc config-stop-callback file --enable --path ${join(getCopilotConfigDir(), 'logs/{date}.md')}
   $ omc config-stop-callback telegram --enable --token <token> --chat <id>
   $ omc config-stop-callback discord --enable --webhook <url>
   $ omc config-stop-callback file --disable
@@ -432,7 +432,7 @@ Examples:
             const current = config.stopHookCallbacks.file;
             config.stopHookCallbacks.file = {
                 enabled: enabled ?? current?.enabled ?? false,
-                path: options.path ?? current?.path ?? join(getClaudeConfigDir(), 'session-logs/{session_id}.md'),
+                path: options.path ?? current?.path ?? join(getCopilotConfigDir(), 'session-logs/{session_id}.md'),
                 format: options.format ?? current?.format ?? 'markdown',
             };
             break;
@@ -593,7 +593,7 @@ Examples:
   $ omc info                     Show agents, features, and MCP servers`)
     .action(async () => {
     const session = createOmcSession();
-    console.log(chalk.blue.bold('\nOh-My-ClaudeCode System Information\n'));
+    console.log(chalk.blue.bold('\nOh-My-Copilot System Information\n'));
     console.log(chalk.gray('━'.repeat(50)));
     console.log(chalk.blue('\nAvailable Agents:'));
     const agents = session.queryOptions.options.agents;
@@ -662,7 +662,7 @@ Examples:
   $ omc update --standalone      Force npm update in plugin context`)
     .action(async (options) => {
     if (!options.quiet) {
-        console.log(chalk.blue('Oh-My-ClaudeCode Update\n'));
+        console.log(chalk.blue('Oh-My-Copilot Update\n'));
     }
     try {
         // Show current version
@@ -759,7 +759,7 @@ Examples:
   $ omc version                  Show version, install method, and commit hash`)
     .action(async () => {
     const installed = getInstalledVersion();
-    console.log(chalk.blue.bold('\nOh-My-ClaudeCode Version Information\n'));
+    console.log(chalk.blue.bold('\nOh-My-Copilot Version Information\n'));
     console.log(chalk.gray('━'.repeat(50)));
     console.log(`\n  Package version:   ${chalk.green(version)}`);
     if (installed) {
@@ -778,7 +778,7 @@ Examples:
         console.log(chalk.gray('  (Run the install script to create version metadata)'));
     }
     console.log(chalk.gray('\n━'.repeat(50)));
-    console.log(chalk.gray('\nTo check for updates, run: oh-my-claudecode update --check'));
+    console.log(chalk.gray('\nTo check for updates, run: oh-my-copilot update --check'));
 });
 /**
  * Install command - Install agents and commands (default: ~/.claude/)
@@ -794,11 +794,11 @@ Examples:
   $ omc install                  Install to config directory (default: ~/.claude/)
   $ omc install --force          Reinstall, overwriting existing files
   $ omc install --quiet          Silent install for scripts
-  $ CLAUDE_CONFIG_DIR=$HOME/.claude-isolated-workspace omc install  Isolated config directory`)
+  $ COPILOT_CONFIG_DIR=$HOME/.claude-isolated-workspace omc install  Isolated config directory`)
     .action(async (options) => {
     if (!options.quiet) {
         console.log(chalk.blue('╔═══════════════════════════════════════════════════════════╗'));
-        console.log(chalk.blue('║         Oh-My-ClaudeCode Installer                        ║'));
+        console.log(chalk.blue('║         Oh-My-Copilot Installer                        ║'));
         console.log(chalk.blue('║   Multi-Agent Orchestration for Claude Code               ║'));
         console.log(chalk.blue('╚═══════════════════════════════════════════════════════════╝'));
         console.log('');
@@ -820,7 +820,7 @@ Examples:
     const result = installOmc({
         force: options.force,
         verbose: !options.quiet,
-        skipClaudeCheck: options.skipClaudeCheck
+        skipCopilotCheck: options.skipCopilotCheck
     });
     if (result.success) {
         if (!options.quiet) {
@@ -829,7 +829,7 @@ Examples:
             console.log(chalk.green('║         Installation Complete!                            ║'));
             console.log(chalk.green('╚═══════════════════════════════════════════════════════════╝'));
             console.log('');
-            console.log(chalk.gray(`Installed to: ${getClaudeConfigDir()}`));
+            console.log(chalk.gray(`Installed to: ${getCopilotConfigDir()}`));
             console.log('');
             console.log(chalk.yellow('Usage:'));
             console.log('  claude                        # Start Claude Code normally');
@@ -1192,7 +1192,7 @@ Examples:
   $ omc setup --force-hooks       Force reinstall hooks`)
     .action(async (options) => {
     if (!options.quiet) {
-        console.log(chalk.blue('Oh-My-ClaudeCode Setup\n'));
+        console.log(chalk.blue('Oh-My-Copilot Setup\n'));
     }
     // Step 1: Run installation (which handles hooks, agents, skills)
     if (!options.quiet) {
@@ -1223,7 +1223,7 @@ Examples:
     const result = installOmc({
         force: !!options.force,
         verbose: !options.quiet,
-        skipClaudeCheck: true,
+        skipCopilotCheck: true,
         forceHooks: !!options.forceHooks,
         noPlugin: useLocalBundledSkills,
         pluginDirMode,
@@ -1266,7 +1266,7 @@ Examples:
         if (reportedVersion !== version) {
             console.log(chalk.gray(`CLI package version: ${version}`));
         }
-        console.log(chalk.gray('Start Claude Code and use /oh-my-claudecode:omc-setup for interactive setup.'));
+        console.log(chalk.gray('Start Claude Code and use /oh-my-copilot:omc-setup for interactive setup.'));
     }
 });
 /**
@@ -1280,17 +1280,17 @@ program
     const result = installOmc({
         force: false,
         verbose: false,
-        skipClaudeCheck: true
+        skipCopilotCheck: true
     });
     if (result.success) {
-        console.log(chalk.green('✓ Oh-My-ClaudeCode installed successfully!'));
-        console.log(chalk.gray('  Run "oh-my-claudecode info" to see available agents.'));
+        console.log(chalk.green('✓ Oh-My-Copilot installed successfully!'));
+        console.log(chalk.gray('  Run "oh-my-copilot info" to see available agents.'));
         console.log(chalk.yellow('  Run "/omc-default" (project) or "/omc-default-global" (global) in Claude Code.'));
     }
     else {
         // Don't fail the npm install, just warn
         console.warn(chalk.yellow('⚠ Could not complete OMC setup:'), result.message);
-        console.warn(chalk.gray('  Run "oh-my-claudecode install" manually to complete setup.'));
+        console.warn(chalk.gray('  Run "oh-my-copilot install" manually to complete setup.'));
     }
 });
 /**

@@ -3,13 +3,16 @@ import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, readdirSync
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { readTask, updateTask, findNextTask, areBlockersResolved, writeTaskFailure, readTaskFailure, listTaskIds, isTaskRetryExhausted, acquireTaskLock, releaseTaskLock, withTaskLock, } from '../task-file-ops.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 const TEST_TEAM = 'test-team-ops';
 // Each test run uses its own isolated tmpdir to avoid cross-test interference.
 let TEST_CWD;
 let TASKS_DIR;
+let previousHome;
+let previousUserProfile;
 function writeTask(task) {
     mkdirSync(TASKS_DIR, { recursive: true });
-    writeFileSync(join(TASKS_DIR, `${task.id}.json`), JSON.stringify(task, null, 2));
+    writeFileSync(join(TASKS_DIR, `task-${task.id}.json`), JSON.stringify(task, null, 2));
 }
 /** Remove all .lock files from the test tasks directory */
 function cleanupLocks() {
@@ -26,12 +29,24 @@ function cleanupLocks() {
 }
 beforeEach(() => {
     TEST_CWD = join(tmpdir(), `omc-task-file-ops-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    TASKS_DIR = join(TEST_CWD, '.omc', 'state', 'team', TEST_TEAM, 'tasks');
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = TEST_CWD;
+    process.env.USERPROFILE = TEST_CWD;
+    TASKS_DIR = join(getOmcRoot(TEST_CWD), 'state', 'team', TEST_TEAM, 'tasks');
     mkdirSync(TASKS_DIR, { recursive: true });
 });
 afterEach(() => {
     cleanupLocks();
     rmSync(TEST_CWD, { recursive: true, force: true });
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
 });
 describe('readTask', () => {
     it('reads existing task', () => {
@@ -67,9 +82,9 @@ describe('updateTask', () => {
     it('preserves unknown fields', () => {
         mkdirSync(TASKS_DIR, { recursive: true });
         const taskWithExtra = { id: '1', subject: 'Test', description: 'Desc', status: 'pending', owner: 'w', blocks: [], blockedBy: [], customField: 'keep' };
-        writeFileSync(join(TASKS_DIR, '1.json'), JSON.stringify(taskWithExtra));
+        writeFileSync(join(TASKS_DIR, 'task-1.json'), JSON.stringify(taskWithExtra));
         updateTask(TEST_TEAM, '1', { status: 'completed' }, { cwd: TEST_CWD });
-        const raw = JSON.parse(readFileSync(join(TASKS_DIR, '1.json'), 'utf-8'));
+        const raw = JSON.parse(readFileSync(join(TASKS_DIR, 'task-1.json'), 'utf-8'));
         expect(raw.customField).toBe('keep');
         expect(raw.status).toBe('completed');
     });
@@ -136,7 +151,7 @@ describe('findNextTask', () => {
         writeTask({ id: '1', subject: 'T1', description: 'D', status: 'pending', owner: 'w1', blocks: [], blockedBy: [] });
         const result = await findNextTask(TEST_TEAM, 'w1', { cwd: TEST_CWD });
         expect(result).not.toBeNull();
-        const raw = JSON.parse(readFileSync(join(TASKS_DIR, '1.json'), 'utf-8'));
+        const raw = JSON.parse(readFileSync(join(TASKS_DIR, 'task-1.json'), 'utf-8'));
         expect(raw.claimedBy).toBe('w1');
         expect(raw.claimPid).toBe(process.pid);
         expect(typeof raw.claimedAt).toBe('number');
@@ -145,13 +160,13 @@ describe('findNextTask', () => {
     it('sets task status to in_progress on disk', async () => {
         writeTask({ id: '1', subject: 'T1', description: 'D', status: 'pending', owner: 'w1', blocks: [], blockedBy: [] });
         await findNextTask(TEST_TEAM, 'w1', { cwd: TEST_CWD });
-        const raw = JSON.parse(readFileSync(join(TASKS_DIR, '1.json'), 'utf-8'));
+        const raw = JSON.parse(readFileSync(join(TASKS_DIR, 'task-1.json'), 'utf-8'));
         expect(raw.status).toBe('in_progress');
     });
     it('lock file is cleaned up after claiming', async () => {
         writeTask({ id: '1', subject: 'T1', description: 'D', status: 'pending', owner: 'w1', blocks: [], blockedBy: [] });
         await findNextTask(TEST_TEAM, 'w1', { cwd: TEST_CWD });
-        expect(existsSync(join(TASKS_DIR, '1.lock'))).toBe(false);
+        expect(existsSync(join(TASKS_DIR, 'task-1.lock'))).toBe(false);
     });
     it('prevents double-claim: second sequential call returns null', async () => {
         writeTask({ id: '1', subject: 'T1', description: 'D', status: 'pending', owner: 'w1', blocks: [], blockedBy: [] });
@@ -315,9 +330,9 @@ describe('listTaskIds', () => {
     });
     it('excludes tmp, failure, and lock files', () => {
         writeTask({ id: '1', subject: 'T', description: 'D', status: 'pending', owner: 'w', blocks: [], blockedBy: [] });
-        writeFileSync(join(TASKS_DIR, '1.json.tmp.123'), '{}');
-        writeFileSync(join(TASKS_DIR, '1.failure.json'), '{}');
-        writeFileSync(join(TASKS_DIR, '1.lock'), '{}');
+        writeFileSync(join(TASKS_DIR, 'task-1.json.tmp.123'), '{}');
+        writeFileSync(join(TASKS_DIR, 'task-1.failure.json'), '{}');
+        writeFileSync(join(TASKS_DIR, 'task-1.lock'), '{}');
         expect(listTaskIds(TEST_TEAM, { cwd: TEST_CWD })).toEqual(['1']);
     });
     it('returns empty for nonexistent team', () => {

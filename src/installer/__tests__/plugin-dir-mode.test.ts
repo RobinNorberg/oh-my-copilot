@@ -12,7 +12,7 @@
  *   5. Real OMC plugin enabled → existing skip behavior unchanged (independent
  *      of pluginDirMode).
  *
- * These tests run install() against a throwaway CLAUDE_CONFIG_DIR and assert on
+ * These tests run install() against a throwaway COPILOT_CONFIG_DIR and assert on
  * the resulting filesystem layout. Module imports are reset between tests so
  * each call picks up the isolated config dir.
  */
@@ -33,7 +33,7 @@ async function freshInstaller() {
 beforeEach(() => {
   testDir = mkdtempSync(join(tmpdir(), 'omc-pdm-'));
   // Force a clean, isolated config dir for every test
-  process.env.CLAUDE_CONFIG_DIR = testDir;
+  process.env.COPILOT_CONFIG_DIR = testDir;
   // Avoid plugin auto-detection from the developer's real ~/.claude
   delete process.env.CLAUDE_PLUGIN_ROOT;
   delete process.env.OMC_PLUGIN_ROOT;
@@ -55,7 +55,7 @@ describe('install() with pluginDirMode option', () => {
     const { install } = await freshInstaller();
     const result = install({
       verbose: false,
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       pluginDirMode: true,
     });
 
@@ -72,7 +72,7 @@ describe('install() with pluginDirMode option', () => {
     const { install, hasEnabledOmcPlugin } = await freshInstaller();
     const result = install({
       verbose: false,
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
     });
 
     // If a plugin happens to be enabled in the host environment, the assertion
@@ -88,7 +88,7 @@ describe('install() with pluginDirMode option', () => {
     const { install } = await freshInstaller();
     const result = install({
       verbose: false,
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       noPlugin: true,
       pluginDirMode: true,
     });
@@ -114,7 +114,7 @@ describe('5. real OMC plugin enabled → existing skip behavior unchanged', () =
     const { install } = await freshInstaller();
     const result = install({
       verbose: false,
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       pluginDirMode: true,
     });
     expect(result.installedAgents).toEqual([]);

@@ -122,7 +122,7 @@ function spawnGraphRun(runsRoot: string, markerDir: string): RunningCli {
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     [MARKER_ENV_VAR]: markerDir,
-    CLAUDE_CONFIG_DIR: join(runsRoot, ".claude-config"),
+    COPILOT_CONFIG_DIR: join(runsRoot, ".claude-config"),
     NODE_NO_WARNINGS: "1",
   };
   // The spawned CLI must parse its argv; the vitest opt-out must not leak.

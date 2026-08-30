@@ -12,11 +12,32 @@ import { initNotepad, addWorkingMemoryEntry, addManualEntry, setPriorityContext,
 import { loadProjectMemory, saveProjectMemory, withProjectMemoryLock, } from '../hooks/project-memory/index.js';
 describe('Shared Memory Concurrency (issue #1160)', () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
+    let previousStateDir;
     beforeEach(() => {
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousStateDir = process.env.OMC_STATE_DIR;
         testDir = join(tmpdir(), `concurrency-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(testDir, { recursive: true });
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
+        delete process.env.OMC_STATE_DIR;
     });
     afterEach(() => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousStateDir;
         if (existsSync(testDir)) {
             rmSync(testDir, { recursive: true, force: true });
         }

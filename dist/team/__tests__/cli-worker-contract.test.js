@@ -12,6 +12,20 @@ describe('cli-worker-contract', () => {
             expect(shouldInjectContract('critic', 'gemini')).toBe(true);
             expect(shouldInjectContract('code-reviewer', 'gemini')).toBe(true);
         });
+        it('returns true for reviewer roles on cursor (issue #3880)', () => {
+            // The contract is a prompt instruction plus a leader-polled file, not an
+            // exit-on-complete handshake, so a persistent cursor pane satisfies it
+            // exactly as the persistent codex pane already does.
+            expect(shouldInjectContract('critic', 'cursor')).toBe(true);
+            expect(shouldInjectContract('code-reviewer', 'cursor')).toBe(true);
+            expect(shouldInjectContract('security-reviewer', 'cursor')).toBe(true);
+            expect(shouldInjectContract('test-engineer', 'cursor')).toBe(true);
+        });
+        it('treats cursor exactly like the other persistent-pane provider (issue #3880)', () => {
+            for (const role of CONTRACT_ROLES) {
+                expect(shouldInjectContract(role, 'cursor')).toBe(shouldInjectContract(role, 'codex'));
+            }
+        });
         it('returns false for claude workers regardless of role', () => {
             expect(shouldInjectContract('critic', 'claude')).toBe(false);
             expect(shouldInjectContract('code-reviewer', 'claude')).toBe(false);
@@ -20,6 +34,8 @@ describe('cli-worker-contract', () => {
             expect(shouldInjectContract('executor', 'codex')).toBe(false);
             expect(shouldInjectContract('architect', 'gemini')).toBe(false);
             expect(shouldInjectContract('planner', 'codex')).toBe(false);
+            expect(shouldInjectContract('executor', 'cursor')).toBe(false);
+            expect(shouldInjectContract('architect', 'cursor')).toBe(false);
         });
         it('returns false for null/undefined inputs', () => {
             expect(shouldInjectContract(null, 'codex')).toBe(false);
@@ -38,11 +54,25 @@ describe('cli-worker-contract', () => {
             expect(fragment).toContain('code-reviewer');
             expect(fragment).toContain('/tmp/team/workers/worker-1/verdict.json');
             expect(fragment).toContain('"verdict": "approve" | "revise" | "reject"');
+            expect(fragment).toContain('"claim_token": "<claim token from the claim response>"');
+            expect(fragment).toContain('"launch_attempt_id": "<exact OMC_WORKER_LAUNCH_ATTEMPT_ID>"');
             expect(fragment).toContain('REQUIRED: Structured Verdict Output');
         });
         it('documents the severity enum', () => {
             const fragment = renderCliWorkerOutputContract('critic', '/x/verdict.json');
             expect(fragment).toContain('"critical" | "major" | "minor" | "nit"');
+        });
+        it('renders authenticated identity values for recovery continuations', () => {
+            const fragment = renderCliWorkerOutputContract('critic', '/x/verdict.json', {
+                taskId: '7',
+                claimToken: 'claim-7',
+                taskVersion: 4,
+                launchAttemptId: 'attempt-7',
+            });
+            expect(fragment).toContain('"task_id": "7"');
+            expect(fragment).toContain('"claim_token": "claim-7"');
+            expect(fragment).toContain('"task_version": 4');
+            expect(fragment).toContain('"launch_attempt_id": "attempt-7"');
         });
     });
     describe('cliWorkerOutputFilePath', () => {
@@ -53,6 +83,12 @@ describe('cli-worker-contract', () => {
         it('normalizes windows backslashes to forward slashes', () => {
             const p = cliWorkerOutputFilePath('C:\\proj\\.omc\\state\\team\\foo', 'worker-1');
             expect(p).toBe('C:/proj/.omc/state/team/foo/workers/worker-1/verdict.json');
+        });
+        it('scopes replacement artifacts to the assignment and launch attempt', () => {
+            const p = cliWorkerOutputFilePath('/repo/.omc/state/team/foo', 'worker-1', {
+                taskId: '7', assignmentId: 'recovery-2-attempt-9',
+            });
+            expect(p).toBe('/repo/.omc/state/team/foo/workers/worker-1/verdict-7-recovery-2-attempt-9.json');
         });
     });
     describe('parseCliWorkerVerdict', () => {
@@ -106,6 +142,12 @@ describe('cli-worker-contract', () => {
                 role: 'critic', task_id: '1', verdict: 'maybe', summary: 's', findings: [],
             });
             expect(() => parseCliWorkerVerdict(raw)).toThrow(/verdict_invalid_verdict/);
+        });
+        it('rejects task identifiers that could escape the task directory', () => {
+            const raw = JSON.stringify({
+                role: 'critic', task_id: '../other-team/task-1', verdict: 'approve', summary: 's', findings: [],
+            });
+            expect(() => parseCliWorkerVerdict(raw)).toThrow(/verdict_invalid_task_id/);
         });
         it('rejects unknown severity value', () => {
             const raw = JSON.stringify({

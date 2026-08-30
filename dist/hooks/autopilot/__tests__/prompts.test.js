@@ -8,11 +8,11 @@ describe("Prompt Generation", () => {
         });
         it("should include analyst Task invocation", () => {
             const prompt = getExpansionPrompt("test");
-            expect(prompt).toContain("oh-my-claudecode:analyst");
+            expect(prompt).toContain("oh-my-copilot:analyst");
         });
         it("should include architect Task invocation", () => {
             const prompt = getExpansionPrompt("test");
-            expect(prompt).toContain("oh-my-claudecode:architect");
+            expect(prompt).toContain("oh-my-copilot:architect");
         });
         it("should include custom open questions path when provided", () => {
             const prompt = getExpansionPrompt("test", "docs/plans/questions.md");
@@ -33,7 +33,7 @@ describe("Prompt Generation", () => {
         });
         it("should include critic Task for validation", () => {
             const prompt = getDirectPlanningPrompt("spec.md");
-            expect(prompt).toContain("oh-my-claudecode:critic");
+            expect(prompt).toContain("oh-my-copilot:critic");
         });
         it("should include custom plan path when provided", () => {
             const prompt = getDirectPlanningPrompt("spec.md", "docs/plans/plan-autopilot-impl.md");
@@ -45,10 +45,10 @@ describe("Prompt Generation", () => {
             const prompt = getExecutionPrompt("/path/to/plan.md");
             expect(prompt).toContain("/path/to/plan.md");
         });
-        it("should specify Ralph+Ultrawork activation", () => {
+        it("should specify Ralph persistence without retired workflow activation", () => {
             const prompt = getExecutionPrompt("plan.md");
             expect(prompt).toContain("Ralph");
-            expect(prompt).toContain("Ultrawork");
+            expect(prompt).not.toContain("Ultrawork");
         });
         it("should require concise executor summaries", () => {
             const prompt = getExecutionPrompt("plan.md");

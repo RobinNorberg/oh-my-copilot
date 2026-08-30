@@ -10,7 +10,7 @@ import {
 } from "fs";
 import { createHash } from "crypto";
 import { basename, join, parse, relative, resolve, sep } from "path";
-import { getClaudeConfigDir } from "../../utils/config-dir.js";
+import { getCopilotConfigDir } from "../../utils/config-dir.js";
 import { verifyWorkflowDescriptor } from "./pipeline.js";
 import type { AutopilotState } from "./types.js";
 import { TextDecoder } from "util";
@@ -480,7 +480,7 @@ export function validateNamedWorkflowState(
   const task = typeof state.prompt === "string" ? state.prompt.trim() : "";
   let root: string;
   try {
-    root = realpathSync(join(getClaudeConfigDir(), "projects"));
+    root = realpathSync(join(getCopilotConfigDir(), "projects"));
   } catch {
     return null;
   }
@@ -645,7 +645,7 @@ export function refreshNamedWorkflowBoundaryForCommit(
   clearNamedWorkflowTranscriptFailure(advance.commitToken.sessionId);
   let root: string;
   try {
-    root = realpathSync(join(getClaudeConfigDir(), "projects"));
+    root = realpathSync(join(getCopilotConfigDir(), "projects"));
   } catch {
     return false;
   }
@@ -763,7 +763,7 @@ export function prepareNamedWorkflowAdvance(
 
   let root: string;
   try {
-    root = realpathSync(join(getClaudeConfigDir(), "projects"));
+    root = realpathSync(join(getCopilotConfigDir(), "projects"));
   } catch {
     return null;
   }

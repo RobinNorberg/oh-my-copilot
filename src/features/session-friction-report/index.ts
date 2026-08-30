@@ -3,7 +3,7 @@ import { createReadStream, existsSync, readdirSync, statSync } from 'fs';
 import { dirname, join, normalize, resolve } from 'path';
 import { createInterface } from 'readline';
 import { getOmcRoot, resolveToWorktreeRoot, validateSessionId, validateWorkingDirectory } from '../../lib/worktree-paths.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { encodeProjectPath } from '../../utils/encode-project-path.js';
 import type { SessionFrictionReport, SessionFrictionReportOptions, SessionFrictionSession, SessionFrictionSignal } from './types.js';
 
@@ -159,7 +159,7 @@ function uniqueSortedTargets(targets: ScanTarget[]): ScanTarget[] {
 }
 
 function buildTargets(projectRoot: string, projectRoots: string[], scopeMode: 'current' | 'project' | 'all'): ScanTarget[] {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const targets: ScanTarget[] = [];
 
   if (scopeMode === 'all') {

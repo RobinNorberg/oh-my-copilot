@@ -4,7 +4,7 @@ description: ""
 
 # OMC deepinit
 
-This compatibility command keeps `/oh-my-claudecode:deepinit` available without loading the full `deepinit` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:deepinit` available without loading the full `deepinit` skill description in every Claude Code session.
 
 ## Dispatch
 

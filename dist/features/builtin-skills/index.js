@@ -1,7 +1,7 @@
 /**
  * Builtin Skills Feature
  *
- * Provides bundled skills for Oh-My-ClaudeCode-OMC.
+ * Provides bundled skills for Oh-My-Copilot-OMC.
  *
  * Adapted from oh-my-opencode's builtin-skills feature.
  */

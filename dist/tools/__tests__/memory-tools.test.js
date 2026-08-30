@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { projectMemoryAddDirectiveTool, projectMemoryAddNoteTool, projectMemoryWriteTool, } from '../memory-tools.js';
-import { getProjectIdentifier } from '../../lib/worktree-paths.js';
 const TEST_DIR = '/tmp/memory-tools-test';
 // Mock validateWorkingDirectory to allow test directory
 vi.mock('../../lib/worktree-paths.js', async () => {
@@ -15,12 +14,26 @@ vi.mock('../../lib/worktree-paths.js', async () => {
     };
 });
 describe('memory-tools payload validation', () => {
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = TEST_DIR;
+        process.env.USERPROFILE = TEST_DIR;
         delete process.env.OMC_STATE_DIR;
         mkdirSync(join(TEST_DIR, '.omc'), { recursive: true });
     });
     afterEach(() => {
         delete process.env.OMC_STATE_DIR;
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         rmSync(TEST_DIR, { recursive: true, force: true });
     });
     it('should accept large memory payloads', async () => {
@@ -70,7 +83,7 @@ describe('memory-tools payload validation', () => {
                 },
                 workingDirectory: TEST_DIR,
             });
-            const centralizedPath = join(stateDir, getProjectIdentifier(TEST_DIR), 'project-memory.json');
+            const centralizedPath = join(stateDir, 'non-git', 'project-memory.json');
             expect(result.content[0].text).toContain(centralizedPath);
             expect(JSON.parse(readFileSync(centralizedPath, 'utf-8')).projectRoot).toBe(TEST_DIR);
             expect(existsSync(join(TEST_DIR, '.omc', 'project-memory.json'))).toBe(false);

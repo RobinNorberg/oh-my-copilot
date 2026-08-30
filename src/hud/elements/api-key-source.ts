@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { dim, cyan } from '../colors.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 
 export type ApiKeySource = 'project' | 'global' | 'env';
 
@@ -51,7 +51,7 @@ export function detectApiKeySource(cwd?: string): ApiKeySource | null {
   }
 
   // 2. Global config
-  const globalSettings = join(getClaudeConfigDir(), 'settings.json');
+  const globalSettings = join(getCopilotConfigDir(), 'settings.json');
   if (settingsFileHasApiKey(globalSettings)) return 'global';
 
   // 3. Environment variable

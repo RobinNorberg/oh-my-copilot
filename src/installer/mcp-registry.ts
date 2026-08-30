@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { dirname, join } from 'path';
 
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import {
   getGlobalOmcConfigPath,
   getGlobalOmcConfigCandidates,
@@ -75,7 +75,7 @@ export function getClaudeMcpConfigPath(): string {
     return process.env.CLAUDE_MCP_CONFIG_PATH.trim();
   }
 
-  return join(dirname(getClaudeConfigDir()), '.claude.json');
+  return join(dirname(getCopilotConfigDir()), '.claude.json');
 }
 
 export function getCodexConfigPath(): string {

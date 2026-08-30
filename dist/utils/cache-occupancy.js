@@ -3,7 +3,7 @@ import { mkdir, writeFile, rename, rm } from 'fs/promises';
 import { createHash, randomUUID } from 'crypto';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'path';
-import { getClaudeConfigDir } from './config-dir.js';
+import { getCopilotConfigDir } from './config-dir.js';
 const REGISTRY_VERSION = 1;
 const RECORD_PATTERN = /^[a-f0-9]{64}\.json$/;
 /** Resolve paths for identity comparisons; only Windows has case-insensitive paths. */
@@ -53,7 +53,7 @@ function processAlive(pid) {
         return error.code === 'EPERM';
     }
 }
-export function getCacheOccupancyDir(configDir = getClaudeConfigDir()) {
+export function getCacheOccupancyDir(configDir = getCopilotConfigDir()) {
     return join(configDir, '.omc', 'cache-occupancy');
 }
 function recordName(pluginRoot, pid, identity) {
@@ -96,7 +96,7 @@ function validRecord(value) {
         && typeof record.pluginRoot === 'string' && record.pluginRoot.length > 0
         && typeof record.updatedAt === 'string' && Number.isFinite(Date.parse(record.updatedAt));
 }
-export function readOccupiedPluginRoots(configDir = getClaudeConfigDir()) {
+export function readOccupiedPluginRoots(configDir = getCopilotConfigDir()) {
     const directory = getCacheOccupancyDir(configDir);
     let names;
     try {

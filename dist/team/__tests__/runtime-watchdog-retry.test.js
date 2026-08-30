@@ -84,21 +84,48 @@ function initTask(cwd, teamName, task = {}) {
     const root = join(cwd, '.omc', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     mkdirSync(join(root, 'workers', 'worker-1'), { recursive: true });
-    writeFileSync(join(root, 'tasks', '1.json'), JSON.stringify({
+    writeFileSync(join(root, 'tasks', 'task-1.json'), JSON.stringify({
         id: '1', subject: 'Task 1', description: 'Do work', status: 'in_progress', owner: 'worker-1',
         assignedAt: new Date().toISOString(), ...task,
     }));
     return root;
 }
+function taskFixturePath(root, taskId) {
+    return join(root, 'tasks', `task-${taskId}.json`);
+}
 async function runTick() {
     await vi.advanceTimersByTimeAsync(20);
 }
+function isolateFixtureEnv(root) {
+    const home = process.env.HOME;
+    const userProfile = process.env.USERPROFILE;
+    const stateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return () => {
+        if (home === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = home;
+        if (userProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = userProfile;
+        if (stateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = stateDir;
+    };
+}
 describe('watchdogCliWorkers dead-pane retry behavior', () => {
     let cwd;
+    let restoreFixtureEnv;
     let warnSpy;
     beforeEach(() => {
         vi.useRealTimers();
         cwd = mkdtempSync(join(tmpdir(), 'runtime-watchdog-retry-'));
+        restoreFixtureEnv = isolateFixtureEnv(cwd);
         tmuxMocks.isWorkerAlive.mockReset().mockResolvedValue(false);
         tmuxMocks.spawnWorkerInPane.mockReset().mockResolvedValue(undefined);
         tmuxMocks.sendToWorker.mockReset().mockResolvedValue(true);
@@ -114,6 +141,8 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
         vi.useFakeTimers();
     });
     afterEach(() => {
+        const restore = restoreFixtureEnv;
+        restoreFixtureEnv = undefined;
         fsPromisesControl.renameHook = undefined;
         fsPromisesControl.taskTargetPath = undefined;
         fsPromisesControl.taskTargetWriteFileCalls = 0;
@@ -123,7 +152,12 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
         warnSpy.mockRestore();
         vi.useRealTimers();
         vi.doUnmock('../lib/atomic-write.js');
-        rmSync(cwd, { recursive: true, force: true });
+        try {
+            restore?.();
+        }
+        finally {
+            rmSync(cwd, { recursive: true, force: true });
+        }
     });
     it('requeues once with the established five-retry budget', async () => {
         const teamName = 'dead-pane-requeue-team';
@@ -131,7 +165,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
         const stop = watchdogCliWorkers(makeRuntime(cwd, teamName), 20);
         await runTick();
         await stop();
-        const task = JSON.parse(readFileSync(join(root, 'tasks', '1.json'), 'utf8'));
+        const task = JSON.parse(readFileSync(taskFixturePath(root, '1'), 'utf8'));
         expect(['pending', 'in_progress']).toContain(task.status);
         expect(task.owner === null || task.owner === 'worker-1').toBe(true);
         expect(readTaskFailure(teamName, '1', { cwd })?.retryCount).toBe(1);
@@ -145,7 +179,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
         const stop = watchdogCliWorkers(runtime, 20);
         await runTick();
         await stop();
-        const task = JSON.parse(readFileSync(join(root, 'tasks', '1.json'), 'utf8'));
+        const task = JSON.parse(readFileSync(taskFixturePath(root, '1'), 'utf8'));
         expect(['pending', 'in_progress']).toContain(task.status);
         expect(task.owner === null || task.owner === 'worker-1').toBe(true);
         expect(readTaskFailure(teamName, '1', { cwd })?.retryCount).toBe(1);
@@ -157,16 +191,16 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
     it('reassigns the requeued first task before a later pending task', async () => {
         const teamName = 'multi-task-requeue-team';
         const root = initTask(cwd, teamName);
-        writeFileSync(join(root, 'tasks', '2.json'), JSON.stringify({ id: '2', subject: 'Task 2', description: 'Done', status: 'completed', owner: 'worker-2' }));
-        writeFileSync(join(root, 'tasks', '3.json'), JSON.stringify({ id: '3', subject: 'Task 3', description: 'Later', status: 'pending', owner: null }));
+        writeFileSync(taskFixturePath(root, '2'), JSON.stringify({ id: '2', subject: 'Task 2', description: 'Done', status: 'completed', owner: 'worker-2' }));
+        writeFileSync(taskFixturePath(root, '3'), JSON.stringify({ id: '3', subject: 'Task 3', description: 'Later', status: 'pending', owner: null }));
         const runtime = makeRuntime(cwd, teamName, [
             { subject: 'Task 1', description: 'Do work' }, { subject: 'Task 2', description: 'Done' }, { subject: 'Task 3', description: 'Later' },
         ]);
         const stop = watchdogCliWorkers(runtime, 20);
         await runTick();
         await stop();
-        const task1 = JSON.parse(readFileSync(join(root, 'tasks', '1.json'), 'utf8'));
-        const task3 = JSON.parse(readFileSync(join(root, 'tasks', '3.json'), 'utf8'));
+        const task1 = JSON.parse(readFileSync(taskFixturePath(root, '1'), 'utf8'));
+        const task3 = JSON.parse(readFileSync(taskFixturePath(root, '3'), 'utf8'));
         expect(['pending', 'in_progress']).toContain(task1.status);
         expect(task1.owner === null || task1.owner === 'worker-1').toBe(true);
         expect(task3).toMatchObject({ status: 'pending', owner: null });
@@ -180,7 +214,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
         const stop = watchdogCliWorkers(runtime, 20);
         await runTick();
         await stop();
-        const task = JSON.parse(readFileSync(join(root, 'tasks', '1.json'), 'utf8'));
+        const task = JSON.parse(readFileSync(taskFixturePath(root, '1'), 'utf8'));
         expect(task.status).toBe('failed');
         expect(task.summary).toContain('Worker pane died before done.json was written');
         expect(readTaskFailure(teamName, '1', { cwd })?.retryCount).toBe(DEFAULT_MAX_TASK_RETRIES);
@@ -193,7 +227,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
         const stopB = watchdogCliWorkers(makeRuntime(cwd, teamName), 20);
         await runTick();
         await Promise.all([stopA(), stopB()]);
-        const task = JSON.parse(readFileSync(join(root, 'tasks', '1.json'), 'utf8'));
+        const task = JSON.parse(readFileSync(taskFixturePath(root, '1'), 'utf8'));
         expect(['pending', 'in_progress']).toContain(task.status);
         expect(task.owner === null || task.owner === 'worker-1').toBe(true);
         expect(readTaskFailure(teamName, '1', { cwd })?.retryCount).toBe(1);
@@ -205,19 +239,19 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
         const stop = watchdogCliWorkers(runtime, 20);
         await runTick();
         await stop();
-        expect(JSON.parse(readFileSync(join(root, 'tasks', '1.json'), 'utf8'))).toMatchObject({ status: 'completed', summary: 'done elsewhere' });
+        expect(JSON.parse(readFileSync(taskFixturePath(root, '1'), 'utf8'))).toMatchObject({ status: 'completed', summary: 'done elsewhere' });
         expect(readTaskFailure(teamName, '1', { cwd })).toBeNull();
-        writeFileSync(join(root, 'tasks', '1.json'), JSON.stringify({ id: '1', subject: 'Task 1', description: 'Do work', status: 'in_progress', owner: 'worker-2' }));
+        writeFileSync(taskFixturePath(root, '1'), JSON.stringify({ id: '1', subject: 'Task 1', description: 'Do work', status: 'in_progress', owner: 'worker-2' }));
         const ownerStop = watchdogCliWorkers(makeRuntime(cwd, teamName), 20);
         await runTick();
         await ownerStop();
-        expect(JSON.parse(readFileSync(join(root, 'tasks', '1.json'), 'utf8'))).toMatchObject({ status: 'in_progress', owner: 'worker-2' });
+        expect(JSON.parse(readFileSync(taskFixturePath(root, '1'), 'utf8'))).toMatchObject({ status: 'in_progress', owner: 'worker-2' });
         expect(readTaskFailure(teamName, '1', { cwd })).toBeNull();
     });
     it('keeps a mutating dead-pane tick alive until every retry effect completes', async () => {
         const teamName = 'watchdog-stop-quiescence-team';
         const root = initTask(cwd, teamName);
-        const taskPath = join(root, 'tasks', '1.json');
+        const taskPath = taskFixturePath(root, '1');
         const runtime = makeRuntime(cwd, teamName);
         const spawnEntered = deferred();
         const releaseSpawn = deferred();
@@ -271,7 +305,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
     it('keeps the previous task JSON parseable until atomic task publication', async () => {
         const teamName = 'watchdog-atomic-publication-team';
         const root = initTask(cwd, teamName);
-        const taskPath = join(root, 'tasks', '1.json');
+        const taskPath = taskFixturePath(root, '1');
         const oldTask = JSON.parse(readFileSync(taskPath, 'utf8'));
         const renameEntered = deferred();
         const releaseRename = deferred();
@@ -301,7 +335,7 @@ describe('watchdogCliWorkers dead-pane retry behavior', () => {
     it('reproduces the historical direct-write parse failure as a controlled baseline', async () => {
         const teamName = 'watchdog-historical-direct-write-team';
         const root = initTask(cwd, teamName);
-        const taskPath = join(root, 'tasks', '1.json');
+        const taskPath = taskFixturePath(root, '1');
         const truncated = deferred();
         const releaseDirectWrite = deferred();
         historicalDirectWriteControl.taskTargetPath = taskPath;

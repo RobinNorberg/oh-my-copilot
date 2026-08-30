@@ -15,7 +15,7 @@
 //           {
 //             "pattern": "Read",
 //             "threshold": { "count": 10, "windowSeconds": 120 },
-//             "denyMessage": "10+ raw Reads in 2 min — spawn Agent(subagent_type='oh-my-claudecode:explore', model='haiku', ...). Bypass: ALLOW_RAW_READ=1.",
+//             "denyMessage": "10+ raw Reads in 2 min — spawn Agent(subagent_type='oh-my-copilot:explore', model='haiku', ...). Bypass: ALLOW_RAW_READ=1.",
 //             "bypassEnv": "ALLOW_RAW_READ"
 //           }
 //         ]

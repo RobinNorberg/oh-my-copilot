@@ -34,7 +34,7 @@ describe("session isolation", () => {
       agents: [
         {
           agent_id: agentId,
-          agent_type: "oh-my-claudecode:executor",
+          agent_type: "oh-my-copilot:executor",
           started_at: new Date().toISOString(),
           parent_mode: "ultrawork",
           status: "running",

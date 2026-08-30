@@ -2,7 +2,7 @@
  * Claude Code Configuration Directory Resolution
  *
  * Resolves the active Claude Code configuration directory, honouring
- * CLAUDE_CONFIG_DIR (absolute path, or ~-prefixed) with fallback to
+ * COPILOT_CONFIG_DIR (absolute path, or ~-prefixed) with fallback to
  * ~/.claude.  Trailing separators are stripped; filesystem roots are
  * preserved.
  *
@@ -14,14 +14,14 @@
 /**
  * Resolve the Claude Code configuration directory.
  *
- * Honours CLAUDE_CONFIG_DIR (absolute path, or ~-prefixed) with fallback
+ * Honours COPILOT_CONFIG_DIR (absolute path, or ~-prefixed) with fallback
  * to ~/.claude.  Trailing separators are stripped; filesystem roots are
  * preserved.
  */
-export declare function getClaudeConfigDir(): string;
+export declare function getCopilotConfigDir(): string;
 /**
  * Resolve the OMC global configuration/cache directory under the active Claude
- * config dir. This keeps hook/updater/HUD caches aligned with CLAUDE_CONFIG_DIR
+ * config dir. This keeps hook/updater/HUD caches aligned with COPILOT_CONFIG_DIR
  * instead of mixing in ~/.omc.
  */
 export declare function getOmcConfigDir(): string;

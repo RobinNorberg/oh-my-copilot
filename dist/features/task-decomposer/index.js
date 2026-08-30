@@ -547,18 +547,18 @@ function generatePromptForComponent(component, analysis, _context) {
 }
 function selectAgentType(component) {
     const roleToAgent = {
-        frontend: 'oh-my-claudecode:designer',
-        backend: 'oh-my-claudecode:executor',
-        database: 'oh-my-claudecode:executor',
-        api: 'oh-my-claudecode:executor',
-        ui: 'oh-my-claudecode:designer',
-        shared: 'oh-my-claudecode:executor',
-        testing: 'oh-my-claudecode:qa-tester',
-        docs: 'oh-my-claudecode:writer',
-        config: 'oh-my-claudecode:executor',
-        module: 'oh-my-claudecode:executor'
+        frontend: 'oh-my-copilot:designer',
+        backend: 'oh-my-copilot:executor',
+        database: 'oh-my-copilot:executor',
+        api: 'oh-my-copilot:executor',
+        ui: 'oh-my-copilot:designer',
+        shared: 'oh-my-copilot:executor',
+        testing: 'oh-my-copilot:qa-tester',
+        docs: 'oh-my-copilot:writer',
+        config: 'oh-my-copilot:executor',
+        module: 'oh-my-copilot:executor'
     };
-    return roleToAgent[component.role] || 'oh-my-claudecode:executor';
+    return roleToAgent[component.role] || 'oh-my-copilot:executor';
 }
 function selectModelTier(component) {
     if (component.effort < 0.3)

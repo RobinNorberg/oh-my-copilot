@@ -141,13 +141,13 @@ Every spawned executor response must return ONLY a short execution summary under
 
 \`\`\`
 // For simple tasks (single file, straightforward logic)
-Task(subagent_type="oh-my-claudecode:executor", model="haiku", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="haiku", prompt="...")
 
 // For standard implementation (feature, multiple methods)
-Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="...")
 
 // For complex work (architecture, debugging, refactoring)
-Task(subagent_type="oh-my-claudecode:executor", model="opus", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="opus", prompt="...")
 \`\`\`
 
 ### Progress Tracking

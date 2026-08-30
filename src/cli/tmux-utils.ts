@@ -202,7 +202,7 @@ export function isTmuxAvailable(): boolean {
 /**
  * Check if claude CLI is available on the system
  */
-export function isClaudeAvailable(): boolean {
+export function isCopilotAvailable(): boolean {
   try {
     execFileSync('claude', ['--version'], {
       stdio: 'ignore',

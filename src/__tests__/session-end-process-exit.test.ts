@@ -37,7 +37,7 @@ function runUntilClose(
     const startedAt = Date.now();
     const child = spawn(process.execPath, [RUN_CJS, script], {
       cwd,
-      env: { ...process.env, HOME: cwd, USERPROFILE: cwd, ...extraEnv, CLAUDE_PLUGIN_ROOT: REPO_ROOT, CLAUDE_CONFIG_DIR: join(cwd, '.claude') },
+      env: { ...process.env, HOME: cwd, USERPROFILE: cwd, ...extraEnv, CLAUDE_PLUGIN_ROOT: REPO_ROOT, COPILOT_CONFIG_DIR: join(cwd, '.claude') },
       stdio: ['pipe', 'ignore', 'ignore'],
       windowsHide: true,
     });

@@ -146,7 +146,7 @@ export function buildSimplifierMessage(files: string[]): string {
 
 ${fileList}
 
-Use: Task(subagent_type="oh-my-claudecode:code-simplifier", prompt="Simplify the recently modified files:\\n${fileArgs}")`;
+Use: Task(subagent_type="oh-my-copilot:code-simplifier", prompt="Simplify the recently modified files:\\n${fileArgs}")`;
 }
 
 /**

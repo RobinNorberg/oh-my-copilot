@@ -3,15 +3,33 @@ import { execSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { clearWorktreeCache } from '../../lib/worktree-paths.js';
 import { addUltragoalGoal, buildClaudeGoalInstruction, checkpointUltragoal, createUltragoalPlan, isUltragoalDone, readUltragoalPlan, recordFinalReviewBlockers, startNextUltragoal, } from '../artifacts.js';
 async function withTempRepo(run) {
     const cwd = await mkdtemp(join(tmpdir(), 'omc-ultragoal-'));
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
     try {
         return await run(cwd);
     }
     finally {
+        if (originalHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = originalHome;
+        if (originalUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = originalUserProfile;
+        if (originalStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = originalStateDir;
         await rm(cwd, { recursive: true, force: true });
     }
 }
@@ -575,7 +593,7 @@ describe('ultragoal artifacts', () => {
     });
     describe('multi-repo workspace anchor', () => {
         it('writes artifacts to the workspace anchor .omc/ when .omc-workspace marker exists in a parent dir', async () => {
-            const workspaceRoot = await mkdtemp(join(tmpdir(), 'omc-workspace-anchor-'));
+            const workspaceRoot = await mkdtemp(join(homedir(), 'omc-workspace-anchor-'));
             try {
                 // Create workspace marker so getOmcRoot() anchors to workspaceRoot
                 writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');

@@ -1,6 +1,6 @@
 # Issue #3704: Prompt SSOT composer and projection digests
 
-**Epic:** [#3698](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3698)
+**Epic:** [#3698](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3698)
 **Planning contract:** `docs/design/ISSUE-3698-LIGHTWEIGHT-WORKFLOW-PLAN.md` §6.2 (Prompt SSOT), §7 (metrics)
 **Scope:** additive surface only. No legacy consumer rewiring — projection parity and install migration are #3705. No release/tag/publish mutation.
 

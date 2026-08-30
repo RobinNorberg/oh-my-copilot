@@ -27,8 +27,14 @@ vi.mock('../action-runner.js', () => actionRunner);
 import { isManifestTerminal, mutateSessionEndJob, prepareCoreManifest, readSessionEndJob, sealCoreManifest, sealWikiManifest, takeSessionEndDiscoveryPage } from '../cleanup-manifest.js';
 import { processSessionEndWorker, reconcileSessionEndJobs, workerEnvironment } from '../worker.js';
 const directories = [];
+let previousHome;
+let previousUserProfile;
 function project() {
     const directory = mkdtempSync(join(tmpdir(), 'omc-session-end-worker-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    process.env.HOME = directory;
+    process.env.USERPROFILE = directory;
     directories.push(directory);
     return directory;
 }
@@ -39,6 +45,14 @@ afterEach(() => {
         rmSync(directory, { recursive: true, force: true });
     vi.useRealTimers();
     vi.unstubAllEnvs();
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
 });
 describe('SessionEnd durable worker', () => {
     it('concurrent workers execute each action at most once and leave a recoverable manifest', async () => {

@@ -9,7 +9,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import type { WorkerBackend, WorkerCapability } from './types.js';
 import { listMcpWorkers } from './team-registration.js';
 import { readHeartbeat, isWorkerAlive } from './heartbeat.js';
@@ -37,7 +37,7 @@ export function getTeamMembers(
 
   // 1. Read Claude native members from config.json
   try {
-    const configPath = join(getClaudeConfigDir(), 'teams', teamName, 'config.json');
+    const configPath = join(getCopilotConfigDir(), 'teams', teamName, 'config.json');
     if (existsSync(configPath)) {
       const config = JSON.parse(readFileSync(configPath, 'utf-8'));
       if (Array.isArray(config.members)) {
@@ -48,9 +48,9 @@ export function getTeamMembers(
           members.push({
             name: member.name || 'unknown',
             agentId: member.agentId || '',
-            backend: 'claude-native',
+            backend: 'copilot-native',
             model: member.model || 'unknown',
-            capabilities: getDefaultCapabilities('claude-native'),
+            capabilities: getDefaultCapabilities('copilot-native'),
             joinedAt: member.joinedAt || 0,
             status: 'active', // Claude native members are managed by CC
             currentTaskId: null,
@@ -80,7 +80,7 @@ export function getTeamMembers(
       // Determine backend and default capabilities
       let backend: WorkerBackend;
       if (worker.agentType === 'mcp-gemini') backend = 'mcp-gemini';
-      else if (worker.agentType === 'tmux-claude') backend = 'tmux-claude';
+      else if (worker.agentType === 'tmux-copilot') backend = 'tmux-copilot';
       else if (worker.agentType === 'tmux-codex') backend = 'tmux-codex';
       else if (worker.agentType === 'tmux-gemini') backend = 'tmux-gemini';
       else if (worker.agentType === 'tmux-antigravity') backend = 'tmux-antigravity';

@@ -41,7 +41,7 @@ Do not use this skill when:
 
 This skill can be bounded to an explicit file list or changed-file scope when the caller already knows the safe cleanup surface.
 
-- Good fit: `oh-my-claudecode:ai-slop-cleaner skills/ralph/SKILL.md skills/ai-slop-cleaner/SKILL.md`
+- Good fit: `oh-my-copilot:ai-slop-cleaner skills/ralph/SKILL.md skills/ai-slop-cleaner/SKILL.md`
 - Good fit: a Ralph session handing off only the files changed in that session
 - Preserve the same regression-safe workflow even when the scope is a short file list
 - Do not silently expand a changed-file scope into broader cleanup work unless the user explicitly asks for it
@@ -129,9 +129,9 @@ Use these as review prompts, not absolute bans. Keep intentional brand, accessib
 
 ## Usage
 
-- `/oh-my-claudecode:ai-slop-cleaner <target>`
-- `/oh-my-claudecode:ai-slop-cleaner <target> --review`
-- `/oh-my-claudecode:ai-slop-cleaner <file-a> <file-b> <file-c>`
+- `/oh-my-copilot:ai-slop-cleaner <target>`
+- `/oh-my-copilot:ai-slop-cleaner <target> --review`
+- `/oh-my-copilot:ai-slop-cleaner <file-a> <file-b> <file-c>`
 - From Ralph: run the cleaner on the Ralph session's changed files only, then return to Ralph for post-cleanup regression verification
 
 ## Good Fits

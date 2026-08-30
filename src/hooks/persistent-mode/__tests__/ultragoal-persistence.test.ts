@@ -11,7 +11,7 @@ const ISOLATED_ENV_KEYS = [
   'HOME',
   'USERPROFILE',
   'OMC_STATE_DIR',
-  'CLAUDE_CONFIG_DIR',
+  'COPILOT_CONFIG_DIR',
   'XDG_CONFIG_HOME',
   'CLAUDE_PLUGIN_ROOT',
   'OMC_SESSION_ID',
@@ -111,7 +111,7 @@ beforeEach(() => {
   process.env.HOME = home;
   process.env.USERPROFILE = home;
   process.env.OMC_STATE_DIR = '';
-  process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+  process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
   process.env.XDG_CONFIG_HOME = join(home, '.config');
   process.env.CLAUDE_PLUGIN_ROOT = '';
   process.env.OMC_SESSION_ID = '';
@@ -190,7 +190,7 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
       cwd,
       session_id: 'session-a',
       tool_name: 'Skill',
-      tool_input: { skill: 'oh-my-claudecode:cancel' },
+      tool_input: { skill: 'oh-my-copilot:cancel' },
     });
     const clearState = runHook(preToolScript, {
       cwd,
@@ -206,7 +206,7 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
   it('allows trusted plugin CLI cancel/state bootstrap and denies untrusted node scripts (#3630)', () => {
     const cwd = makeTempProject('omc-ultragoal-plugin-cancel-');
     writeUltragoalState(cwd);
-    const pluginEntry = join(cwd, 'bin', 'oh-my-claudecode.js');
+    const pluginEntry = join(cwd, 'bin', 'oh-my-copilot.js');
     mkdirSync(join(cwd, 'bin'), { recursive: true });
     writeFileSync(pluginEntry, '#!/usr/bin/env node\n');
 
@@ -302,7 +302,7 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
       cwd,
       session_id: 'session-a',
       tool_name: 'Skill',
-      tool_input: { skill: 'oh-my-claudecode:ultragoal' },
+      tool_input: { skill: 'oh-my-copilot:ultragoal' },
     });
     expect(readUltragoalState(cwd).awaiting_confirmation).not.toBe(true);
     expectUltragoalEnforcement(cwd);
@@ -329,7 +329,7 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
         cwd,
         session_id: 'session-a',
         tool_name: 'Skill',
-        tool_input: { skill: 'oh-my-claudecode:ultragoal' },
+        tool_input: { skill: 'oh-my-copilot:ultragoal' },
       });
       expect(readUltragoalState(cwd).awaiting_confirmation).not.toBe(true);
       expectUltragoalEnforcement(cwd);

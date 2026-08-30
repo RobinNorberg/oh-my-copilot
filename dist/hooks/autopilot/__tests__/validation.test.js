@@ -6,11 +6,25 @@ import { recordValidationVerdict, getValidationStatus, startValidationRound, sho
 import { initAutopilot, transitionPhase } from '../state.js';
 describe('AutopilotValidation', () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'autopilot-validation-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     describe('recordValidationVerdict', () => {
         it('should return false when state does not exist', () => {
@@ -343,9 +357,9 @@ describe('AutopilotValidation', () => {
             const prompt = getValidationSpawnPrompt(specPath);
             expect(prompt).toContain('SPAWN PARALLEL VALIDATION ARCHITECTS');
             expect(prompt).toContain(specPath);
-            expect(prompt).toContain('oh-my-claudecode:architect');
-            expect(prompt).toContain('oh-my-claudecode:security-reviewer');
-            expect(prompt).toContain('oh-my-claudecode:code-reviewer');
+            expect(prompt).toContain('oh-my-copilot:architect');
+            expect(prompt).toContain('oh-my-copilot:security-reviewer');
+            expect(prompt).toContain('oh-my-copilot:code-reviewer');
         });
         it('should include all three validation types', () => {
             const prompt = getValidationSpawnPrompt('/spec.md');

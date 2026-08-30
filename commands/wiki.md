@@ -4,7 +4,7 @@ description: ""
 
 # OMC wiki
 
-This compatibility command keeps `/oh-my-claudecode:wiki` available without loading the full `wiki` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:wiki` available without loading the full `wiki` skill description in every Claude Code session.
 
 ## Dispatch
 

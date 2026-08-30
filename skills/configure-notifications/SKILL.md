@@ -43,12 +43,12 @@ Set up Telegram notifications so OMC can message you when sessions end, need inp
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${CLAUDE_CONFIG_DIR:-~/.claude}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.claude}/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
 ```bash
-CONFIG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   HAS_TELEGRAM=$(jq -r '.notifications.telegram.enabled // false' "$CONFIG_FILE" 2>/dev/null)
@@ -151,7 +151,7 @@ Default selection: session-end + ask-user-question.
 Read the existing config, merge the new Telegram settings, and write back:
 
 ```bash
-CONFIG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -245,9 +245,9 @@ You can also set these via environment variables:
   OMC_TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
   OMC_TELEGRAM_CHAT_ID=123456789
 
-To reconfigure: /oh-my-claudecode:configure-notifications telegram
-To configure Discord: /oh-my-claudecode:configure-notifications discord
-To configure Slack: /oh-my-claudecode:configure-notifications slack
+To reconfigure: /oh-my-copilot:configure-notifications telegram
+To configure Discord: /oh-my-copilot:configure-notifications discord
+To configure Slack: /oh-my-copilot:configure-notifications slack
 ```
 
 ### Environment Variable Alternative
@@ -269,12 +269,12 @@ Set up Discord notifications so OMC can ping you when sessions end, need input, 
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${CLAUDE_CONFIG_DIR:-~/.claude}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.claude}/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
 ```bash
-CONFIG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   # Check for existing discord config
@@ -385,7 +385,7 @@ Use AskUserQuestion:
 Read the existing config, merge the new Discord settings, and write back:
 
 ```bash
-CONFIG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -487,9 +487,9 @@ You can also set these via environment variables:
   OMC_DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
   OMC_DISCORD_MENTION=<@1465264645320474637>
 
-To reconfigure: /oh-my-claudecode:configure-notifications discord
-To configure Telegram: /oh-my-claudecode:configure-notifications telegram
-To configure Slack: /oh-my-claudecode:configure-notifications slack
+To reconfigure: /oh-my-copilot:configure-notifications discord
+To configure Telegram: /oh-my-copilot:configure-notifications telegram
+To configure Slack: /oh-my-copilot:configure-notifications slack
 ```
 
 ### Environment Variable Alternative
@@ -519,12 +519,12 @@ Set up Slack notifications so OMC can message you when sessions end, need input,
 
 ### How This Skill Works
 
-This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${CLAUDE_CONFIG_DIR:-~/.claude}/.omc-config.json`.
+This is an interactive, natural-language configuration skill. Walk the user through setup by asking questions with AskUserQuestion. Write the result to `${COPILOT_CONFIG_DIR:-~/.claude}/.omc-config.json`.
 
 ### Step 1: Detect Existing Configuration
 
 ```bash
-CONFIG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
 
 if [ -f "$CONFIG_FILE" ]; then
   HAS_SLACK=$(jq -r '.notifications.slack.enabled // false' "$CONFIG_FILE" 2>/dev/null)
@@ -645,7 +645,7 @@ Use AskUserQuestion:
 Read the existing config, merge the new Slack settings, and write back:
 
 ```bash
-CONFIG_FILE="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
+CONFIG_FILE="${COPILOT_CONFIG_DIR:-$HOME/.claude}/.omc-config.json"
 mkdir -p "$(dirname "$CONFIG_FILE")"
 
 if [ -f "$CONFIG_FILE" ]; then
@@ -734,9 +734,9 @@ You can also set these via environment variables:
   OMC_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
   OMC_SLACK_MENTION=<@U1234567890>
 
-To reconfigure: /oh-my-claudecode:configure-notifications slack
-To configure Discord: /oh-my-claudecode:configure-notifications discord
-To configure Telegram: /oh-my-claudecode:configure-notifications telegram
+To reconfigure: /oh-my-copilot:configure-notifications slack
+To configure Discord: /oh-my-copilot:configure-notifications discord
+To configure Telegram: /oh-my-copilot:configure-notifications telegram
 ```
 
 ### Environment Variable Alternative
@@ -792,7 +792,7 @@ If the trigger or argument contains "hook", "template", or "customize messages" 
 
 ### Step 1: Detect Existing Hook Config
 
-Check if `${CLAUDE_CONFIG_DIR:-~/.claude}/omc_config.hook.json` exists. If it does, show the current configuration. If not, explain what it does.
+Check if `${COPILOT_CONFIG_DIR:-~/.claude}/omc_config.hook.json` exists. If it does, show the current configuration. If not, explain what it does.
 
 ```
 Hook event templates let you customize the notification messages sent to each platform.
@@ -879,7 +879,7 @@ If per-platform: ask for each enabled platform's template separately.
 
 ### Step 6: Write Configuration
 
-Read or create `${CLAUDE_CONFIG_DIR:-~/.claude}/omc_config.hook.json` and merge the new settings:
+Read or create `${COPILOT_CONFIG_DIR:-~/.claude}/omc_config.hook.json` and merge the new settings:
 
 ```json
 {
@@ -935,7 +935,7 @@ Offer to send a test notification with the new template.
 
 ## Related
 
-- `/oh-my-claudecode:configure-openclaw` — Configure OpenClaw gateway integration
+- `/oh-my-copilot:configure-openclaw` — Configure OpenClaw gateway integration
 
 ---
 
@@ -953,7 +953,7 @@ If `~/.claude/omc_config.openclaw.json` exists, detect and offer migration:
 
 **Step 1: Detect Legacy Config**
 ```bash
-LEGACY_CONFIG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/omc_config.openclaw.json"
+LEGACY_CONFIG="${COPILOT_CONFIG_DIR:-$HOME/.claude}/omc_config.openclaw.json"
 if [ -f "$LEGACY_CONFIG" ]; then
   echo "LEGACY_FOUND=true"
   # Check if already migrated

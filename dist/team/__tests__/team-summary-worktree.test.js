@@ -4,9 +4,32 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { getTeamSummary } from '../monitor.js';
 import { executeTeamApiOperation } from '../api-interop.js';
+function isolateFixtureRoot(root) {
+    const home = process.env.HOME;
+    const userProfile = process.env.USERPROFILE;
+    const stateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return () => {
+        if (home === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = home;
+        if (userProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = userProfile;
+        if (stateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = stateDir;
+    };
+}
 describe('team summary worktree metadata', () => {
     it('surfaces workspace and worker worktree contract fields', async () => {
         const cwd = mkdtempSync(join(tmpdir(), 'omc-summary-worktree-'));
+        const restoreEnv = isolateFixtureRoot(cwd);
         const teamName = 'summary-team';
         const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
         const teamStateRoot = join(cwd, '.omc', 'state', 'team', teamName);
@@ -78,7 +101,12 @@ describe('team summary worktree metadata', () => {
             });
         }
         finally {
-            rmSync(cwd, { recursive: true, force: true });
+            try {
+                restoreEnv();
+            }
+            finally {
+                rmSync(cwd, { recursive: true, force: true });
+            }
         }
     });
 });

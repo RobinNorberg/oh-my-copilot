@@ -25,8 +25,8 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeHooksDataForPlatform } from './lib/hook-command-normalizer.mjs';
 
-function getClaudeConfigDir() {
-  const configured = (process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')).replace(/[\\/]+$/, '');
+function getCopilotConfigDir() {
+  const configured = (process.env.COPILOT_CONFIG_DIR || join(homedir(), '.claude')).replace(/[\\/]+$/, '');
   if (configured === '~') return homedir();
   if (configured.startsWith('~/') || configured.startsWith('~\\')) return join(homedir(), configured.slice(2));
   return configured;
@@ -125,7 +125,7 @@ function rewriteOmcRegistryEntries(installedPluginsPath, latestRoot) {
   const stalePaths = [];
 
   for (const [pluginId, value] of Object.entries(plugins)) {
-    if (!pluginId.toLowerCase().includes('oh-my-claudecode') || !Array.isArray(value)) continue;
+    if (!pluginId.toLowerCase().includes('oh-my-copilot') || !Array.isArray(value)) continue;
 
     for (const entry of value) {
       if (!entry || typeof entry !== 'object') continue;
@@ -175,8 +175,8 @@ function replaceWithSymlink(versionPath, latestRoot) {
 }
 
 export function repairPluginCacheReferences() {
-  const configDir = getClaudeConfigDir();
-  const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+  const configDir = getCopilotConfigDir();
+  const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
   const latestRoot = latestValidCacheRoot(cacheBase);
   const result = { latestRoot, registryUpdated: false, hooksPatched: false, symlinked: 0, errors: [] };
 

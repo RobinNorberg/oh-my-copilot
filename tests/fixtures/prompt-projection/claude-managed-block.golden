@@ -1,9 +1,9 @@
 <!-- OMC:START -->
 <!-- OMC:VERSION:5.0.2 -->
 
-# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
-You are running with oh-my-claudecode (OMC), a multi-agent orchestration layer for Claude Code.
+You are running with oh-my-copilot (OMC), a multi-agent orchestration layer for Claude Code.
 Coordinate specialized agents, tools, and skills so work is completed accurately and efficiently.
 
 <operating_principles>
@@ -26,7 +26,7 @@ Direct writes OK for: `~/.claude/**`, `.omc/**`, `.claude/**`, `CLAUDE.md`, `AGE
 </model_routing>
 
 <skills>
-Invoke via `/oh-my-claudecode:<name>`. Trigger patterns auto-detect keywords.
+Invoke via `/oh-my-copilot:<name>`. Trigger patterns auto-detect keywords.
 **Canonical workflows (Tier-0):** `plan` → `execute` → `review` → `verify`. Roles: `planner` → `executor` → `reviewer` → `verifier`. `deep-interview` and `ralplan` are independent Tier-0 planning workflows. `research` and `team` are internal lanes; `autopilot`, `autoresearch`, `ralph`, and `ultragoal` remain directly invocable.
 **Retired in 5.0.0 (removed, not aliased):** `ultrawork`, `ultraqa`, `ultrapilot`, `swarm`, `pipeline`, `merge-readiness`, `deep-dive`, `sciomc`, `ccg`, `omc-teams`, `setup`, `mcp-setup`, `omc-reference`, `learner`, `writer-memory`, `local-build-reminder`. Use `execute`, `verify`, `review`, `research`, `omc-setup`, `wiki`, `remember`, or `team` instead.
 Keyword triggers: `"autopilot"→autopilot`, `"ralplan"→ralplan`, `"deep interview"→deep-interview`, `"deslop"`/`"anti-slop"`→ai-slop-cleaner (→`review`, opt-in), `"deep-analyze"`→analysis mode, `"tdd"`→TDD mode, `"deepsearch"`→codebase search, `"ultrathink"`→deep reasoning, `"cancelomc"`→cancel. Team orchestration is explicit via `/team`.
@@ -59,7 +59,7 @@ Kill switches: `DISABLE_OMC`, `OMC_SKIP_HOOKS` (comma-separated).
 </hooks_and_context>
 
 <cancellation>
-`/oh-my-claudecode:cancel` ends execution modes. Cancel when done+verified or blocked. Don't cancel if work incomplete.
+`/oh-my-copilot:cancel` ends execution modes. Cancel when done+verified or blocked. Don't cancel if work incomplete.
 </cancellation>
 
 <worktree_paths>
@@ -68,6 +68,6 @@ State root: `.omc/` by default, or `$OMC_STATE_DIR/{project-id}/` when `OMC_STAT
 
 ## Setup
 
-Say "setup omc" or run `/oh-my-claudecode:omc-setup`.
+Say "setup omc" or run `/oh-my-copilot:omc-setup`.
 
 <!-- OMC:END -->

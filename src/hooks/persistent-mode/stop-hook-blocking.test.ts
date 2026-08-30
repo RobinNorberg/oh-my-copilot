@@ -1404,7 +1404,7 @@ describe("Stop Hook Blocking Contract", () => {
         autopilotPath,
         JSON.stringify({
           active: true,
-          original_prompt: "/oh-my-claudecode:autopilot execute",
+          original_prompt: "/oh-my-copilot:autopilot execute",
           session_id: sessionId,
           started_at: new Date().toISOString(),
           last_checked_at: new Date().toISOString(),
@@ -1428,7 +1428,7 @@ describe("Stop Hook Blocking Contract", () => {
         JSON.stringify({
           active: true,
           phase: "expansion",
-          original_prompt: "/oh-my-claudecode:autopilot execute",
+          original_prompt: "/oh-my-copilot:autopilot execute",
           session_id: sessionId,
           started_at: new Date().toISOString(),
           last_checked_at: new Date().toISOString(),
@@ -1509,7 +1509,7 @@ describe("Stop Hook Blocking Contract", () => {
           active: true,
           session_id: sessionId,
           current_phase: "ralplan",
-          original_prompt: "/oh-my-claudecode:ralplan issue #2622",
+          original_prompt: "/oh-my-copilot:ralplan issue #2622",
           awaiting_confirmation: true,
           awaiting_confirmation_set_at: new Date().toISOString(),
           started_at: new Date().toISOString(),
@@ -1817,7 +1817,7 @@ describe("Stop Hook Blocking Contract", () => {
       expect(output.continue).toBe(true);
       expect(output.decision).toBeUndefined();
       expect(reason).not.toContain("[ULTRAWORK");
-      expect(reason).not.toContain("/oh-my-claudecode:cancel");
+      expect(reason).not.toContain("/oh-my-copilot:cancel");
     });
 
     it("uses current_phase when autopilot phase is missing in cjs script", () => {
@@ -1897,7 +1897,7 @@ describe("Stop Hook Blocking Contract", () => {
         autopilotPath,
         JSON.stringify({
           active: true,
-          original_prompt: "/oh-my-claudecode:autopilot execute",
+          original_prompt: "/oh-my-copilot:autopilot execute",
           session_id: sessionId,
           started_at: new Date().toISOString(),
           last_checked_at: new Date().toISOString(),
@@ -1921,7 +1921,7 @@ describe("Stop Hook Blocking Contract", () => {
         JSON.stringify({
           active: true,
           phase: "expansion",
-          original_prompt: "/oh-my-claudecode:autopilot execute",
+          original_prompt: "/oh-my-copilot:autopilot execute",
           session_id: sessionId,
           started_at: new Date().toISOString(),
           last_checked_at: new Date().toISOString(),
@@ -2156,7 +2156,7 @@ describe("Stop Hook Blocking Contract", () => {
 
       expect(output.decision).toBe("block");
       expect(output.reason).toContain("AUTOPILOT");
-      expect(output.reason).not.toContain('/oh-my-claudecode:cancel');
+      expect(output.reason).not.toContain('/oh-my-copilot:cancel');
     });
 
     it("leaves retired ultrawork state untouched in cjs script", () => {

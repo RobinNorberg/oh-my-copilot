@@ -1,11 +1,11 @@
 ---
-title: Oh-My-ClaudeCode
+title: Oh-My-Copilot
 subtitle: Multi-Agent Orchestration for Autonomous Development
 author: Yeachan Heo
 theme: night
 ---
 
-# Oh-My-ClaudeCode
+# Oh-My-Copilot
 
 **Multi-Agent Orchestration for Autonomous Development**
 
@@ -24,7 +24,7 @@ What do you need?
 *Drop your idea in the chat!*
 
 ---
-# oh-my-claudecode: Multi-Agent Orchestration for Claude Code
+# oh-my-copilot: Multi-Agent Orchestration for Claude Code
 
 ## Zero learning curve. Maximum power.
 
@@ -46,7 +46,7 @@ Version 3.6.3
 | 0:54 | Getting Started |
 | 0:58 | Q&A |
 
-Note: This is a 60-minute seminar covering the complete oh-my-claudecode system. We'll focus on practical usage patterns.
+Note: This is a 60-minute seminar covering the complete oh-my-copilot system. We'll focus on practical usage patterns.
 
 ---
 
@@ -70,7 +70,7 @@ Note: These are real problems I faced building production applications with Clau
 
 ---
 
-## What is oh-my-claudecode?
+## What is oh-my-copilot?
 
 **A multi-agent orchestration system for Claude Code**
 
@@ -296,7 +296,7 @@ I want a/an...
 ```
 autopilot: build a REST API with CRUD for inventory
 
-/oh-my-claudecode:autopilot Add OAuth2 authentication
+/oh-my-copilot:autopilot Add OAuth2 authentication
 
 autopilot: create a CLI tool that tracks daily habits
 ```
@@ -685,7 +685,7 @@ Note: The tier system is central to OMC's cost efficiency. Always start low and 
 **Delegation Code:**
 ```javascript
 Task(
-  subagent_type="oh-my-claudecode:executor-low",
+  subagent_type="oh-my-copilot:executor-low",
   model="haiku",
   prompt="Add validation to the login form"
 )
@@ -993,7 +993,7 @@ Note: Keywords are optional - natural language works fine. Keywords just give yo
 
 **Setup:**
 ```
-/oh-my-claudecode:hud setup
+/oh-my-copilot:hud setup
 ```
 
 **Presets:**
@@ -1074,19 +1074,19 @@ Note: Analytics help you understand where tokens are going and optimize your usa
 
 **Method 1: Plugin Marketplace (Recommended)**
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-claudecode
-/plugin install oh-my-claudecode
+/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin install oh-my-copilot
 ```
 
 **Method 2: NPM Global**
 ```bash
-npm install -g oh-my-claudecode
+npm install -g oh-my-copilot
 ```
 
 **Method 3: Manual Git Clone**
 ```bash
-git clone https://github.com/Yeachan-Heo/oh-my-claudecode.git
-cd oh-my-claudecode
+git clone https://github.com/Yeachan-Heo/oh-my-copilot.git
+cd oh-my-copilot
 npm install && npm run build
 ```
 
@@ -1103,13 +1103,13 @@ Note: Plugin marketplace is the easiest - one command and you're done.
 
 **Step 1: Install**
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-claudecode
-/plugin install oh-my-claudecode
+/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin install oh-my-copilot
 ```
 
 **Step 2: Setup**
 ```bash
-/oh-my-claudecode:omc-setup
+/oh-my-copilot:omc-setup
 ```
 (Configures defaults, HUD, preferences)
 
@@ -1184,17 +1184,17 @@ Note: Matching the right mode to the task type is key to getting the most out of
 
 **GitHub Repository**
 ```
-github.com/Yeachan-Heo/oh-my-claudecode
+github.com/Yeachan-Heo/oh-my-copilot
 ```
 
 **Website & Documentation**
 ```
-yeachan-heo.github.io/oh-my-claudecode-website
+yeachan-heo.github.io/oh-my-copilot-website
 ```
 
 **NPM Package**
 ```
-npm install -g oh-my-claudecode
+npm install -g oh-my-copilot
 ```
 
 **Documentation Directory**
@@ -1206,8 +1206,8 @@ npm install -g oh-my-claudecode
 
 **Getting Help**
 ```
-/oh-my-claudecode:omc-help    - Usage guide
-/oh-my-claudecode:omc-doctor  - Diagnose issues
+/oh-my-copilot:omc-help    - Usage guide
+/oh-my-copilot:omc-doctor  - Diagnose issues
 ```
 
 Note: The GitHub repo has all documentation, examples, and issue tracking.
@@ -1222,8 +1222,8 @@ Note: The GitHub repo has all documentation, examples, and issue tracking.
 |----------|--------|
 | Does OMC work with Claude API keys? | Yes, both Max/Pro subscription and API keys work |
 | Can I use OMC with other AI models? | No, OMC is specifically for Claude Code |
-| How do I stop a runaway autopilot? | Say "stop", "cancel", or `/oh-my-claudecode:cancel` |
-| Why is my HUD not showing? | Run `/oh-my-claudecode:hud setup` |
+| How do I stop a runaway autopilot? | Say "stop", "cancel", or `/oh-my-copilot:cancel` |
+| Why is my HUD not showing? | Run `/oh-my-copilot:hud setup` |
 | Can I create custom agents? | Yes, add `.md` files to `agents/` directory |
 | Is there a cost limit? | No built-in limit, but  helps control costs |
 
@@ -1235,18 +1235,18 @@ Note: Thank you for attending! Feel free to reach out via GitHub issues for any 
 
 ## Thank You
 
-**oh-my-claudecode**
+**oh-my-copilot**
 
 Zero learning curve. Maximum power.
 
 ```
-github.com/Yeachan-Heo/oh-my-claudecode
+github.com/Yeachan-Heo/oh-my-copilot
 ```
 
 **Get Started Now:**
 ```
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-claudecode
-/plugin install oh-my-claudecode
+/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin install oh-my-copilot
 autopilot: build something amazing
 ```
 
@@ -1352,11 +1352,11 @@ autopilot: build something amazing
 
 | Shortcut | Full Command | Effect |
 |----------|--------------|--------|
-| `autopilot:` | `/oh-my-claudecode:autopilot` | Full autonomous mode |
-| `ralph:` | `/oh-my-claudecode:ralph` | Persistence mode |
-| `ulw` | `/oh-my-claudecode:ultrawork` | Parallel execution |
-| `eco:` | `/oh-my-claudecode:` | Token-efficient mode |
-| `plan` | `/oh-my-claudecode:plan` | Planning interview |
+| `autopilot:` | `/oh-my-copilot:autopilot` | Full autonomous mode |
+| `ralph:` | `/oh-my-copilot:ralph` | Persistence mode |
+| `ulw` | `/oh-my-copilot:ultrawork` | Parallel execution |
+| `eco:` | `/oh-my-copilot:` | Token-efficient mode |
+| `plan` | `/oh-my-copilot:plan` | Planning interview |
 
 **Combinations:**
 ```

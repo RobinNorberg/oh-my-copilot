@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 const { shutdownTeamV2Mock, shutdownTeamMock } = vi.hoisted(() => ({
     shutdownTeamV2Mock: vi.fn(async () => ({ outcome: 'cleaned' })),
     shutdownTeamMock: vi.fn(async () => { }),
@@ -21,18 +22,42 @@ vi.mock('../runtime.js', async (importOriginal) => {
     };
 });
 import { executeTeamApiOperation } from '../api-interop.js';
-async function writeJson(cwd, relativePath, value) {
-    const fullPath = join(cwd, relativePath);
-    await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, JSON.stringify(value, null, 2), 'utf-8');
+function isolateFixtureRoot(root) {
+    const previousHome = process.env.HOME;
+    const previousUserProfile = process.env.USERPROFILE;
+    const previousOmcStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return () => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousOmcStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousOmcStateDir;
+    };
 }
-async function writeText(cwd, relativePath, value) {
-    const fullPath = join(cwd, relativePath);
-    await mkdir(dirname(fullPath), { recursive: true });
-    await writeFile(fullPath, value, 'utf-8');
+function teamStatePath(cwd, teamName, ...segments) {
+    return join(getOmcRoot(cwd), 'state', 'team', teamName, ...segments);
+}
+async function writeJson(filePath, value) {
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, JSON.stringify(value, null, 2), 'utf-8');
+}
+async function writeText(root, relativePath, value) {
+    const filePath = join(root, relativePath);
+    await mkdir(dirname(filePath), { recursive: true });
+    await writeFile(filePath, value, 'utf-8');
 }
 async function expectCleanupBlockedAndStatePreserved(cwd, teamName, evidencePath) {
-    const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+    const teamRoot = teamStatePath(cwd, teamName);
     const result = await executeTeamApiOperation('cleanup', { team_name: teamName }, cwd);
     expect(result.ok).toBe(false);
     if (result.ok)
@@ -46,9 +71,12 @@ async function expectCleanupBlockedAndStatePreserved(cwd, teamName, evidencePath
 }
 describe('team api cleanup', () => {
     let cwd = '';
+    let restoreFixtureEnv;
     afterEach(async () => {
         shutdownTeamV2Mock.mockClear();
         shutdownTeamMock.mockClear();
+        restoreFixtureEnv?.();
+        restoreFixtureEnv = undefined;
         if (cwd) {
             await rm(cwd, { recursive: true, force: true });
             cwd = '';
@@ -56,8 +84,9 @@ describe('team api cleanup', () => {
     });
     it('routes cleanup through runtime-v2 shutdown when a v2 team config exists', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-api-cleanup-v2-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
         const teamName = 'cleanup-v2';
-        await writeJson(cwd, `.omc/state/team/${teamName}/config.json`, {
+        await writeJson(teamStatePath(cwd, teamName, 'config.json'), {
             name: teamName,
             task: 'test',
             agent_type: 'claude',
@@ -87,9 +116,10 @@ describe('team api cleanup', () => {
     });
     it('surfaces shutdown gate failures instead of deleting team state directly', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-api-cleanup-gated-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
         const teamName = 'cleanup-gated';
-        const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
-        await writeJson(cwd, `.omc/state/team/${teamName}/config.json`, {
+        const teamRoot = teamStatePath(cwd, teamName);
+        await writeJson(teamStatePath(cwd, teamName, 'config.json'), {
             name: teamName,
             task: 'test',
             agent_type: 'claude',
@@ -112,7 +142,7 @@ describe('team api cleanup', () => {
             resize_hook_name: null,
             resize_hook_target: null,
         });
-        await writeJson(cwd, `.omc/state/team/${teamName}/tasks/task-1.json`, {
+        await writeJson(teamStatePath(cwd, teamName, 'tasks', 'task-1.json'), {
             id: '1',
             subject: 'pending work',
             description: 'still pending',
@@ -133,8 +163,9 @@ describe('team api cleanup', () => {
     });
     it('falls back to raw cleanup when no config or native worktree evidence exists', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-api-cleanup-orphan-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
         const teamName = 'cleanup-orphan';
-        const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+        const teamRoot = teamStatePath(cwd, teamName);
         await mkdir(join(teamRoot, 'tasks'), { recursive: true });
         await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
         const result = await executeTeamApiOperation('cleanup', { team_name: teamName }, cwd);
@@ -145,12 +176,13 @@ describe('team api cleanup', () => {
     });
     it('blocks orphan-cleanup when worktree recovery evidence exists without explicit acknowledgement', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-api-orphan-cleanup-guard-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
         const teamName = 'orphan-cleanup-guard';
-        const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+        const teamRoot = teamStatePath(cwd, teamName);
         await mkdir(teamRoot, { recursive: true });
         await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
         const backupPath = join(teamRoot, 'workers', 'worker-1', 'worktree-root-agents.json');
-        await writeJson(cwd, `.omc/state/team/${teamName}/workers/worker-1/worktree-root-agents.json`, {
+        await writeJson(teamStatePath(cwd, teamName, 'workers', 'worker-1', 'worktree-root-agents.json'), {
             worktreePath: join(cwd, '.omc-worktrees', `${teamName}-worker-1`),
             hadOriginal: false,
             installedContent: 'worker overlay',
@@ -169,11 +201,12 @@ describe('team api cleanup', () => {
     });
     it('allows acknowledged orphan-cleanup to remove team state despite worktree recovery evidence', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-api-orphan-cleanup-ack-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
         const teamName = 'orphan-cleanup-ack';
-        const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+        const teamRoot = teamStatePath(cwd, teamName);
         await mkdir(teamRoot, { recursive: true });
         await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
-        await writeJson(cwd, `.omc/state/team/${teamName}/workers/worker-1/worktree-root-agents.json`, {
+        await writeJson(teamStatePath(cwd, teamName, 'workers', 'worker-1', 'worktree-root-agents.json'), {
             worktreePath: join(cwd, '.omc-worktrees', `${teamName}-worker-1`),
             hadOriginal: false,
             installedContent: 'worker overlay',
@@ -190,8 +223,9 @@ describe('team api cleanup', () => {
     });
     it('blocks no-config cleanup when worktree metadata is unreadable', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-api-cleanup-corrupt-worktrees-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
         const teamName = 'cleanup-corrupt-worktrees';
-        const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+        const teamRoot = teamStatePath(cwd, teamName);
         await mkdir(teamRoot, { recursive: true });
         await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
         const metadataPath = join(teamRoot, 'worktrees.json');
@@ -200,12 +234,13 @@ describe('team api cleanup', () => {
     });
     it('blocks no-config cleanup when only a root AGENTS backup remains', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-api-cleanup-backup-only-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
         const teamName = 'cleanup-backup-only';
-        const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+        const teamRoot = teamStatePath(cwd, teamName);
         await mkdir(teamRoot, { recursive: true });
         await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
         const backupPath = join(teamRoot, 'workers', 'worker-1', 'worktree-root-agents.json');
-        await writeJson(cwd, `.omc/state/team/${teamName}/workers/worker-1/worktree-root-agents.json`, {
+        await writeJson(teamStatePath(cwd, teamName, 'workers', 'worker-1', 'worktree-root-agents.json'), {
             worktreePath: join(cwd, '.omc-worktrees', `${teamName}-worker-1`),
             hadOriginal: true,
             originalContent: 'root agents',
@@ -216,13 +251,14 @@ describe('team api cleanup', () => {
     });
     it('blocks corrupt-config cleanup when native worktree recovery evidence exists', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-api-cleanup-corrupt-config-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
         const teamName = 'cleanup-corrupt-config';
-        const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+        const teamRoot = teamStatePath(cwd, teamName);
         await mkdir(teamRoot, { recursive: true });
         await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
         await writeText(cwd, `.omc/state/team/${teamName}/config.json`, '{bad-config');
         const metadataPath = join(teamRoot, 'worktrees.json');
-        await writeJson(cwd, `.omc/state/team/${teamName}/worktrees.json`, [{
+        await writeJson(teamStatePath(cwd, teamName, 'worktrees.json'), [{
                 workerName: 'worker-1',
                 path: join(cwd, '.omc-worktrees', `${teamName}-worker-1`),
                 branch: `omc/${teamName}/worker-1`,

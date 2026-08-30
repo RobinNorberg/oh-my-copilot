@@ -1267,7 +1267,7 @@ ${prdPath ? `**Active PRD file:** ${prdPath}\n\n` : ''}**Instructions:**
 3. Run quality checks (tests, typecheck, lint)
 4. When complete, create a revision-bound completion claim in the active PRD file: set \`passes\` to true and set \`completionCriteriaRevision\` to \`${governingCriteriaRevision}\` (the current \`governingCriteriaRevision\`). Do not mark \`architectVerified\`; reviewer approval does that only after verification.
 5. If implementation proves an acceptance criterion false, amend or supersede it with evidence instead of silently deleting it or claiming it passes (see the amendment ledger above and the ralph skill)
-6. If ALL stories are done, run \`/oh-my-claudecode:cancel\` to cleanly exit ralph mode and clean up all state files
+6. If ALL stories are done, run \`/oh-my-copilot:cancel\` to cleanly exit ralph mode and clean up all state files
 
 </current-story>
 

@@ -346,6 +346,64 @@ describe('model-contract', () => {
             const withModel = buildLaunchArgs('grok', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'grok-4-fast' });
             expect(withModel).toEqual(['--always-approve', '--model', 'grok-4-fast']);
         });
+        it('cursor leads with --force --trust and appends --model <m> when given (issue #3880)', () => {
+            const noModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp' });
+            expect(noModel).toEqual(['--force', '--trust']);
+            expect(noModel).not.toContain('--model');
+            const emptyModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', model: '' });
+            expect(emptyModel).toEqual(['--force', '--trust']);
+            expect(emptyModel).not.toContain('--model');
+            const withModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'cursor-grok-4.6-high' });
+            expect(withModel).toEqual(['--force', '--trust', '--model', 'cursor-grok-4.6-high']);
+        });
+        it('cursor appends extraFlags after the model flag (issue #3880)', () => {
+            const args = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'composer-2.5', extraFlags: ['--foo'] });
+            expect(args).toEqual(['--force', '--trust', '--model', 'composer-2.5', '--foo']);
+            const noModel = buildLaunchArgs('cursor', { teamName: 't', workerName: 'w', cwd: '/tmp', extraFlags: ['--foo'] });
+            expect(noModel).toEqual(['--force', '--trust', '--foo']);
+        });
+        it('cursor keeps required trust flags singular when extra flags repeat them', () => {
+            const args = buildLaunchArgs('cursor', {
+                teamName: 't', workerName: 'w', cwd: '/tmp',
+                extraFlags: ['--trust', '--force', '--trust', '--foo'],
+            });
+            expect(args).toEqual(['--force', '--trust', '--foo']);
+            expect(countArg(args, '--force')).toBe(1);
+            expect(countArg(args, '--trust')).toBe(1);
+        });
+        it('cursor removes documented force aliases from extra flags', () => {
+            const args = buildLaunchArgs('cursor', {
+                teamName: 't', workerName: 'w', cwd: '/tmp',
+                extraFlags: ['-f', '--yolo', '--force', '--trust'],
+            });
+            expect(args).toEqual(['--force', '--trust']);
+        });
+        it('cursor worker argv leads with the cursor-agent binary then approval flags', () => {
+            const argv = buildWorkerArgv('cursor', {
+                teamName: 'cursor-team', workerName: 'w', cwd: '/tmp',
+                model: 'cursor-grok-4.6-high', resolvedBinaryPath: '/usr/local/bin/cursor-agent',
+            });
+            expect(argv).toEqual([
+                '/usr/local/bin/cursor-agent', '--force', '--trust', '--model', 'cursor-grok-4.6-high',
+            ]);
+        });
+        it('every CLI provider carries an approval-bypass flag so no worker pane can block on a prompt', () => {
+            // A team worker pane has nobody to answer an approval or trust question.
+            // cursor was the sole provider launched bare, which stranded it on
+            // "Workspace Trust Required" in any directory cursor had not seen before.
+            const approvalFlags = {
+                claude: '--dangerously-skip-permissions',
+                codex: '--dangerously-bypass-approvals-and-sandbox',
+                gemini: '--approval-mode',
+                grok: '--always-approve',
+                antigravity: '--dangerously-skip-permissions',
+                cursor: '--trust',
+            };
+            for (const [agent, flag] of Object.entries(approvalFlags)) {
+                const args = buildLaunchArgs(agent, { teamName: 't', workerName: 'w', cwd: '/tmp' });
+                expect(args, `${agent} must bypass approval prompts`).toContain(flag);
+            }
+        });
         it('passes model flag when specified', () => {
             const args = buildLaunchArgs('codex', { teamName: 't', workerName: 'w', cwd: '/tmp', model: 'gpt-4' });
             expect(args).toContain('--model');
@@ -678,6 +736,16 @@ describe('model-contract', () => {
             const validated = validateWorkerLaunchDescriptor(source);
             validated.args.push('--changed');
             expect(source.args).toEqual(['--flag']);
+        });
+        it('normalizes persisted Cursor descriptors to the required trust flags', () => {
+            const validated = validateWorkerLaunchDescriptor({
+                schema_version: 1,
+                provider: 'cursor',
+                model: null,
+                binary: '/usr/local/bin/cursor-agent',
+                args: ['--yolo', '--model', 'composer-2.5', '--trust', '--force'],
+            });
+            expect(validated.args).toEqual(['--force', '--trust', '--model', 'composer-2.5']);
         });
     });
 });

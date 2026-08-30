@@ -45,7 +45,7 @@ vi.mock('fs', async () => {
 
 async function loadInstallerWithEnv(claudeConfigDir: string, homeDir: string) {
   vi.resetModules();
-  process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+  process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
   process.env.HOME = homeDir;
   return import('../installer/index.js');
 }
@@ -56,7 +56,7 @@ function writeInstalledPluginRegistry(claudeConfigDir: string, pluginRoot: strin
   writeFileSync(
     join(pluginsDir, 'installed_plugins.json'),
     JSON.stringify({
-      'oh-my-claudecode': [
+      'oh-my-copilot': [
         { installPath: pluginRoot },
       ],
     }, null, 2)
@@ -66,7 +66,7 @@ function writeInstalledPluginRegistry(claudeConfigDir: string, pluginRoot: strin
 function writeEnabledPluginSettings(claudeConfigDir: string): void {
   writeFileSync(
     join(claudeConfigDir, 'settings.json'),
-    JSON.stringify({ plugins: ['oh-my-claudecode'] }, null, 2)
+    JSON.stringify({ plugins: ['oh-my-copilot'] }, null, 2)
   );
 }
 
@@ -86,12 +86,12 @@ function writeMinimallyCompletePluginPayload(pluginRoot: string): void {
   writeFileSync(
     join(pluginRoot, '.claude-plugin', 'plugin.json'),
     JSON.stringify({
-      name: 'oh-my-claudecode',
+      name: 'oh-my-copilot',
       commands: './commands/',
       skills: ['./skills/ultragoal/'],
     }, null, 2)
   );
-  writeFileSync(join(pluginRoot, 'package.json'), JSON.stringify({ name: 'oh-my-claude-sisyphus', version: '4.10.2' }, null, 2));
+  writeFileSync(join(pluginRoot, 'package.json'), JSON.stringify({ name: 'oh-my-copilot', version: '4.10.2' }, null, 2));
 }
 
 function getBundledSkillNames(): string[] {
@@ -124,15 +124,15 @@ describe('installer bundled + standalone skill sync', () => {
     mkdirSync(homeDir, { recursive: true });
     mkdirSync(claudeConfigDir, { recursive: true });
 
-    originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
     originalHome = process.env.HOME;
   });
 
   afterEach(() => {
     if (originalClaudeConfigDir === undefined) {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.COPILOT_CONFIG_DIR;
     } else {
-      process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+      process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
     }
 
     if (originalHome === undefined) {
@@ -148,7 +148,7 @@ describe('installer bundled + standalone skill sync', () => {
   it('installs standalone slash skills into ~/.claude/skills during legacy install', async () => {
     const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 
@@ -173,14 +173,14 @@ describe('installer bundled + standalone skill sync', () => {
   });
 
   it('installs bundled skills when no enabled OMC plugin is configured', async () => {
-    const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-claudecode', '4.10.2');
+    const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-copilot', '4.10.2');
     mkdirSync(join(pluginRoot, 'skills', 'ultragoal'), { recursive: true });
     writeFileSync(join(pluginRoot, 'skills', 'ultragoal', 'SKILL.md'), 'name: ultragoal\n');
     writeInstalledPluginRegistry(claudeConfigDir, pluginRoot);
 
     const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 
@@ -199,14 +199,14 @@ describe('installer bundled + standalone skill sync', () => {
   });
 
   it('skips bundled skill sync when an installed plugin already provides skills', async () => {
-    const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-claudecode', '4.10.2');
+    const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-copilot', '4.10.2');
     writeMinimallyCompletePluginPayload(pluginRoot);
     writeInstalledPluginRegistry(claudeConfigDir, pluginRoot);
     writeEnabledPluginSettings(claudeConfigDir);
 
     const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 
@@ -216,7 +216,7 @@ describe('installer bundled + standalone skill sync', () => {
   });
 
   it('forces bundled skill sync with noPlugin even when plugin skills exist', async () => {
-    const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-claudecode', '4.10.2');
+    const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-copilot', '4.10.2');
     mkdirSync(join(pluginRoot, 'skills', 'ultragoal'), { recursive: true });
     writeFileSync(join(pluginRoot, 'skills', 'ultragoal', 'SKILL.md'), 'name: ultragoal\n');
     writeInstalledPluginRegistry(claudeConfigDir, pluginRoot);
@@ -224,7 +224,7 @@ describe('installer bundled + standalone skill sync', () => {
 
     const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
       noPlugin: true,
     });
@@ -235,14 +235,14 @@ describe('installer bundled + standalone skill sync', () => {
   });
 
   it('falls back to bundled skills when plugin is enabled but skill files are unavailable', async () => {
-    const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-claudecode', '4.10.2');
+    const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-copilot', '4.10.2');
     mkdirSync(pluginRoot, { recursive: true });
     writeInstalledPluginRegistry(claudeConfigDir, pluginRoot);
     writeEnabledPluginSettings(claudeConfigDir);
 
     const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 
@@ -257,7 +257,7 @@ describe('installer bundled + standalone skill sync', () => {
 
     const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
       noPlugin: true,
     });
@@ -278,7 +278,7 @@ describe('installer bundled + standalone skill sync', () => {
     try {
       const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
       const result = installer.install({
-        skipClaudeCheck: true,
+        skipCopilotCheck: true,
         skipHud: true,
         verbose: true,
       });

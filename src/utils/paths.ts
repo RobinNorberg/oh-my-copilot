@@ -9,7 +9,7 @@
 import { join, dirname } from 'path';
 import { existsSync, readFileSync, readdirSync, statSync, lstatSync, unlinkSync, rmSync, renameSync, symlinkSync } from 'fs';
 import { homedir } from 'os';
-import { getClaudeConfigDir } from './config-dir.js';
+import { getCopilotConfigDir } from './config-dir.js';
 import { pathIdentity, readOccupiedPluginRoots } from './cache-occupancy.js';
 
 /**
@@ -168,13 +168,13 @@ export function getGlobalOmcStateCandidates(...segments: string[]): string[] {
 }
 
 /**
- * Get the plugin cache base directory for oh-my-claudecode.
+ * Get the plugin cache base directory for oh-my-copilot.
  * This is the directory containing version subdirectories.
  *
- * Structure: <configDir>/plugins/cache/omc/oh-my-claudecode/
+ * Structure: <configDir>/plugins/cache/omc/oh-my-copilot/
  */
 export function getPluginCacheBase(): string {
-  return join(getClaudeConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+  return join(getCopilotConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
 }
 
 /**
@@ -498,7 +498,7 @@ export function purgeStalePluginCacheVersions(options?: { skipGracePeriod?: bool
     restored: 0, restoredPaths: [], skipped: 0, skippedPaths: [], errors: [],
   };
 
-  const configDir = getClaudeConfigDir();
+  const configDir = getCopilotConfigDir();
   const pluginsDir = join(configDir, 'plugins');
   const installedFile = join(pluginsDir, 'installed_plugins.json');
   const cacheDir = join(pluginsDir, 'cache');

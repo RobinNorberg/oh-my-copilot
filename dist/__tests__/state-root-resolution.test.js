@@ -14,7 +14,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { getOmcRoot, clearWorktreeCache } from '../lib/worktree-paths.js';
+import { getOmcRoot, clearWorktreeCache, validateWorkingDirectory } from '../lib/worktree-paths.js';
 const NODE = process.execPath;
 const REPO_ROOT = resolve(join(__dirname, '..', '..'));
 const SESSION_START = join(REPO_ROOT, 'scripts', 'session-start.mjs');
@@ -29,7 +29,8 @@ function buildHookEnv(extraEnv = {}) {
     }
     // Remove OMC_STATE_DIR from parent env so only extraEnv controls it.
     delete env.OMC_STATE_DIR;
-    return { ...env, CLAUDE_PLUGIN_ROOT: REPO_ROOT, ...extraEnv };
+    delete env.CLAUDE_PLUGIN_ROOT;
+    return { ...env, ...extraEnv };
 }
 /** Run a hook script synchronously and return the parsed JSON output. */
 function runHook(scriptPath, input, extraEnv = {}) {
@@ -95,19 +96,38 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     let tempDir;
     let fakeProject;
     let fakeStateDir;
+    let previousHome;
+    let previousUserProfile;
+    let previousStateDir;
     beforeEach(() => {
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousStateDir = process.env.OMC_STATE_DIR;
         tempDir = mkdtempSync(join(tmpdir(), 'omc-state-root-'));
         fakeProject = join(tempDir, 'project');
         fakeStateDir = join(tempDir, 'centralized-state');
         mkdirSync(fakeProject, { recursive: true });
-        // session-start validateCwd requires a real workspace anchor (.git / .omc-workspace)
-        mkdirSync(join(fakeProject, '.git'), { recursive: true });
+        // Hook probes require valid Git metadata rather than an empty .git dir.
+        execFileSync('git', ['init'], { cwd: fakeProject, stdio: 'pipe' });
         mkdirSync(fakeStateDir, { recursive: true });
+        process.env.HOME = tempDir;
+        process.env.USERPROFILE = tempDir;
         delete process.env.OMC_STATE_DIR;
         clearWorktreeCache();
     });
     afterEach(() => {
-        delete process.env.OMC_STATE_DIR;
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousStateDir;
         clearWorktreeCache();
         rmSync(tempDir, { recursive: true, force: true });
     });
@@ -237,7 +257,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
         expect(context).toContain('[RALPH LOOP RESTORED]');
         expect(context).toContain('Centralized-state task');
     });
-    it('session-start reads ultrawork state from centralized path when OMC_STATE_DIR is set', () => {
+    it('session-start does not restore retired ultrawork state from centralized paths', () => {
         const sessionId = 'test-session-uw-central';
         const centralizedOmcRoot = getCentralizedOmcRoot(fakeProject, fakeStateDir);
         const stateDir = join(centralizedOmcRoot, 'state', 'sessions', sessionId);
@@ -251,8 +271,8 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
         const output = runHook(SESSION_START, { hook_event_name: 'SessionStart', session_id: sessionId, cwd: fakeProject }, { OMC_STATE_DIR: fakeStateDir });
         const context = output
             .hookSpecificOutput?.additionalContext ?? '';
-        expect(context).toContain('[ULTRAWORK MODE RESTORED]');
-        expect(context).toContain('Centralized ultrawork task');
+        expect(context).not.toContain('[ULTRAWORK MODE RESTORED]');
+        expect(context).not.toContain('Centralized ultrawork task');
     });
     it('session-start does NOT restore state when OMC_STATE_DIR is set but state is only in default .omc', () => {
         const sessionId = 'test-session-only-default';
@@ -413,7 +433,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
             tool_name: 'Skill',
             // `skill` needs a non-'none' protection level. The OMC-prefixed `skill`
             // slash-command maps to 'light' protection, which triggers the write.
-            tool_input: { skill: 'oh-my-claudecode:skill' },
+            tool_input: { skill: 'oh-my-copilot:skill' },
             session_id: sessionId,
             cwd: fakeProject,
         }, { OMC_STATE_DIR: fakeStateDir });
@@ -421,6 +441,123 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
         const defaultPath = join(fakeProject, '.omc', 'state', 'sessions', sessionId, 'skill-active-state.json');
         expect(existsSync(centralizedPath)).toBe(true);
         expect(existsSync(defaultPath)).toBe(false);
+    });
+    it('anchors git-less directories at one stable home state root', () => {
+        const fakeHome = join(tempDir, 'home');
+        const firstCwd = join(fakeHome, 'workspace', 'first');
+        const secondCwd = join(fakeHome, 'workspace', 'second', 'nested');
+        mkdirSync(firstCwd, { recursive: true });
+        mkdirSync(secondCwd, { recursive: true });
+        const previousHome = process.env.HOME;
+        const previousUserProfile = process.env.USERPROFILE;
+        const previousCwd = process.cwd();
+        process.env.HOME = fakeHome;
+        process.env.USERPROFILE = fakeHome;
+        try {
+            clearWorktreeCache();
+            const expected = join(fakeHome, '.omc');
+            process.chdir(firstCwd);
+            expect(getOmcRoot()).toBe(expected);
+            process.chdir(secondCwd);
+            expect(getOmcRoot()).toBe(expected);
+            expect(existsSync(join(firstCwd, '.omc'))).toBe(false);
+            expect(existsSync(join(secondCwd, '.omc'))).toBe(false);
+        }
+        finally {
+            process.chdir(previousCwd);
+            if (previousHome === undefined)
+                delete process.env.HOME;
+            else
+                process.env.HOME = previousHome;
+            if (previousUserProfile === undefined)
+                delete process.env.USERPROFILE;
+            else
+                process.env.USERPROFILE = previousUserProfile;
+            clearWorktreeCache();
+        }
+    });
+    it('does not implicitly adopt an existing git-less state root', () => {
+        const fakeHome = join(tempDir, 'home');
+        const project = join(fakeHome, 'workspace', 'project');
+        const nestedCwd = join(project, 'deep', 'path');
+        mkdirSync(join(project, '.omc'), { recursive: true });
+        mkdirSync(nestedCwd, { recursive: true });
+        const previousHome = process.env.HOME;
+        const previousUserProfile = process.env.USERPROFILE;
+        const previousCwd = process.cwd();
+        process.env.HOME = fakeHome;
+        process.env.USERPROFILE = fakeHome;
+        try {
+            clearWorktreeCache();
+            process.chdir(nestedCwd);
+            expect(getOmcRoot()).toBe(join(fakeHome, '.omc'));
+        }
+        finally {
+            process.chdir(previousCwd);
+            if (previousHome === undefined)
+                delete process.env.HOME;
+            else
+                process.env.HOME = previousHome;
+            if (previousUserProfile === undefined)
+                delete process.env.USERPROFILE;
+            else
+                process.env.USERPROFILE = previousUserProfile;
+            clearWorktreeCache();
+        }
+    });
+    it('does not reuse state roots under protected home directories', () => {
+        const fakeHome = join(tempDir, 'home');
+        const sensitiveCwd = join(fakeHome, '.ssh', 'nested');
+        mkdirSync(join(fakeHome, '.ssh', '.omc'), { recursive: true });
+        mkdirSync(sensitiveCwd, { recursive: true });
+        const previousHome = process.env.HOME;
+        const previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = fakeHome;
+        process.env.USERPROFILE = fakeHome;
+        try {
+            clearWorktreeCache();
+            expect(getOmcRoot(sensitiveCwd)).toBe(join(fakeHome, '.omc'));
+        }
+        finally {
+            if (previousHome === undefined)
+                delete process.env.HOME;
+            else
+                process.env.HOME = previousHome;
+            if (previousUserProfile === undefined)
+                delete process.env.USERPROFILE;
+            else
+                process.env.USERPROFILE = previousUserProfile;
+            clearWorktreeCache();
+        }
+    });
+    it('honors an explicit workingDirectory when both directories are git-less', () => {
+        const fakeHome = join(tempDir, 'home');
+        const currentCwd = join(fakeHome, 'current');
+        const requestedCwd = join(currentCwd, 'requested');
+        mkdirSync(currentCwd, { recursive: true });
+        mkdirSync(requestedCwd, { recursive: true });
+        const previousHome = process.env.HOME;
+        const previousUserProfile = process.env.USERPROFILE;
+        const originalCwd = process.cwd();
+        process.env.HOME = fakeHome;
+        process.env.USERPROFILE = fakeHome;
+        process.chdir(currentCwd);
+        try {
+            clearWorktreeCache();
+            expect(validateWorkingDirectory(requestedCwd)).toBe(resolve(requestedCwd));
+        }
+        finally {
+            process.chdir(originalCwd);
+            if (previousHome === undefined)
+                delete process.env.HOME;
+            else
+                process.env.HOME = previousHome;
+            if (previousUserProfile === undefined)
+                delete process.env.USERPROFILE;
+            else
+                process.env.USERPROFILE = previousUserProfile;
+            clearWorktreeCache();
+        }
     });
 });
 //# sourceMappingURL=state-root-resolution.test.js.map

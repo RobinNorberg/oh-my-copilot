@@ -10,7 +10,7 @@
 import * as path from 'path';
 import { execFileSync } from 'child_process';
 import { getOmcRoot, getWorktreeRoot } from '../../lib/worktree-paths.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { toForwardSlash } from '../../utils/paths.js';
 import { existsSync, readFileSync } from 'fs';
 import { HOOK_NAME, ALLOWED_PATH_PATTERNS, WARNED_EXTENSIONS, WRITE_EDIT_TOOLS, DIRECT_WORK_REMINDER, ORCHESTRATOR_DELEGATION_REQUIRED, BOULDER_CONTINUATION_PROMPT, VERIFICATION_REMINDER, SINGLE_TASK_DIRECTIVE, } from './constants.js';
@@ -31,7 +31,7 @@ export function clearEnforcementCache() {
 }
 /**
  * Read enforcement level from config.
- * Checks: .omc/config.json → [$CLAUDE_CONFIG_DIR|~/.claude]/.omc-config.json → default (warn)
+ * Checks: .omc/config.json → [$COPILOT_CONFIG_DIR|~/.claude]/.omc-config.json → default (warn)
  */
 function getEnforcementLevel(directory) {
     const now = Date.now();
@@ -42,7 +42,7 @@ function getEnforcementLevel(directory) {
         return enforcementCache.level;
     }
     const localConfig = path.join(getOmcRoot(directory), 'config.json');
-    const globalConfig = path.join(getClaudeConfigDir(), '.omc-config.json');
+    const globalConfig = path.join(getCopilotConfigDir(), '.omc-config.json');
     let level = 'warn'; // Default
     for (const configPath of [localConfig, globalConfig]) {
         if (existsSync(configPath)) {
@@ -81,7 +81,7 @@ export function isAllowedPath(filePath, directory) {
         return true;
     // Absolute path: strip worktree root, then re-check
     if (path.isAbsolute(filePath)) {
-        const relToConfigDir = path.relative(getClaudeConfigDir(), filePath);
+        const relToConfigDir = path.relative(getCopilotConfigDir(), filePath);
         if (!relToConfigDir || (!relToConfigDir.startsWith('..') && !path.isAbsolute(relToConfigDir))) {
             return true;
         }

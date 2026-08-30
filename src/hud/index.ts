@@ -2,7 +2,7 @@
 /**
  * OMC HUD - Main Entry Point
  *
- * Statusline command that visualizes oh-my-claudecode state.
+ * Statusline command that visualizes oh-my-copilot state.
  * Receives stdin JSON from Claude Code and outputs formatted statusline.
  */
 
@@ -55,7 +55,7 @@ import { join, basename, dirname } from "path";
 import { spawn } from "child_process";
 import { fileURLToPath } from "url";
 import { getOmcRoot } from "../lib/worktree-paths.js";
-import { getClaudeConfigDir, getUpdateCheckCachePath } from "../utils/config-dir.js";
+import { getCopilotConfigDir, getUpdateCheckCachePath } from "../utils/config-dir.js";
 
 /**
  * Extract session ID (UUID) from a transcript path.
@@ -216,8 +216,8 @@ async function calculateSessionHealth(
  */
 function showDiagnostic(): void {
   const version = getRuntimePackageVersion();
-  const configDir = getClaudeConfigDir();
-  const hudScript = join(configDir, "hud", "omc-hud.mjs");
+  const configDir = getCopilotConfigDir();
+  const hudScript = join(configDir, "hud", "omcp-hud.mjs");
   const settingsFile = join(configDir, "settings.json");
 
   const hudExists = existsSync(hudScript);
@@ -226,9 +226,9 @@ function showDiagnostic(): void {
     const settings = JSON.parse(readFileSync(settingsFile, "utf-8"));
     const sl = settings.statusLine;
     if (sl && typeof sl === "object" && typeof (sl as Record<string, unknown>).command === "string") {
-      statusLineOk = ((sl as Record<string, unknown>).command as string).includes("omc-hud");
+      statusLineOk = ((sl as Record<string, unknown>).command as string).includes("omcp-hud");
     } else if (typeof sl === "string") {
-      statusLineOk = sl.includes("omc-hud");
+      statusLineOk = sl.includes("omcp-hud");
     }
   } catch {
     /* settings.json missing or invalid */
@@ -242,7 +242,7 @@ function showDiagnostic(): void {
   console.log(`  statusLine:  ${statusLineOk ? "configured" : "NOT configured"}`);
 
   if (!hudExists || !statusLineOk) {
-    console.log("  Run /oh-my-claudecode:hud setup to fix.");
+    console.log("  Run /oh-my-copilot:hud setup to fix.");
   } else {
     console.log("  HUD renders automatically inside Claude Code sessions.");
   }
@@ -490,8 +490,8 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
       apiKeyMode: detectApiKeySource(cwd) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
-      profileName: process.env.CLAUDE_CONFIG_DIR
-        ? basename(process.env.CLAUDE_CONFIG_DIR).replace(/^\./, "")
+      profileName: process.env.COPILOT_CONFIG_DIR
+        ? basename(process.env.COPILOT_CONFIG_DIR).replace(/^\./, "")
         : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,
@@ -591,5 +591,5 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
 // Export for programmatic use (e.g., omc hud --watch loop)
 export { main };
 
-// Auto-run (unconditional so dynamic import() via omc-hud.mjs wrapper works correctly)
+// Auto-run (unconditional so dynamic import() via omcp-hud.mjs wrapper works correctly)
 main();

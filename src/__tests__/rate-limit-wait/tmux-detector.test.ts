@@ -44,7 +44,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(true);
+      expect(result.hasCopilotCode).toBe(true);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(true);
       expect(result.confidence).toBeGreaterThan(0.5);
@@ -84,7 +84,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.isBlocked).toBe(false);
     });
 
@@ -96,7 +96,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false); // No Claude context
     });
@@ -104,7 +104,7 @@ describe('tmux-detector', () => {
     it('should handle empty content', () => {
       const result = analyzePaneContent('');
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(false);
       expect(result.isBlocked).toBe(false);
       expect(result.confidence).toBe(0);
@@ -137,7 +137,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(true);
+      expect(result.hasCopilotCode).toBe(true);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(true);
       expect(result.confidence).toBeGreaterThanOrEqual(0.6);
@@ -155,7 +155,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(true);
+      expect(result.hasCopilotCode).toBe(true);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(true);
       expect(result.rateLimitType).toBe('unknown');
@@ -175,7 +175,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -193,7 +193,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -211,7 +211,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -226,7 +226,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -241,7 +241,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -256,7 +256,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -273,7 +273,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -290,7 +290,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -306,7 +306,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -320,7 +320,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -336,7 +336,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(false);
       expect(result.isBlocked).toBe(false);
     });
@@ -350,7 +350,7 @@ describe('tmux-detector', () => {
 
       const result = analyzePaneContent(content);
 
-      expect(result.hasClaudeCode).toBe(false);
+      expect(result.hasCopilotCode).toBe(false);
       expect(result.hasRateLimitMessage).toBe(true);
       expect(result.isBlocked).toBe(false);
     });
@@ -563,7 +563,7 @@ describe('tmux-detector', () => {
           paneIndex: 0,
           isActive: true,
           analysis: {
-            hasClaudeCode: true,
+            hasCopilotCode: true,
             hasRateLimitMessage: true,
             isBlocked: true,
             rateLimitType: 'five_hour',
@@ -592,7 +592,7 @@ describe('tmux-detector', () => {
           paneIndex: 0,
           isActive: true,
           analysis: {
-            hasClaudeCode: true,
+            hasCopilotCode: true,
             hasRateLimitMessage: true,
             isBlocked: true,
             confidence: 0.8,

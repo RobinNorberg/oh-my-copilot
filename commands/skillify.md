@@ -4,7 +4,7 @@ description: ""
 
 # OMC skillify
 
-This compatibility command keeps `/oh-my-claudecode:skillify` available without loading the full `skillify` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:skillify` available without loading the full `skillify` skill description in every Claude Code session.
 
 ## Dispatch
 

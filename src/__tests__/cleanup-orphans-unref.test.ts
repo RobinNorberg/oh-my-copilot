@@ -41,7 +41,7 @@ describe('scripts/cleanup-orphans.mjs — SIGKILL escalation timer must not bloc
 
   it('does not use removed native team config as an orphan signal', () => {
     expect(src).not.toContain('teamConfigExists');
-    expect(src).not.toContain('getClaudeConfigDir');
+    expect(src).not.toContain('getCopilotConfigDir');
     expect(src).not.toContain("teams', name, 'config.json");
   });
 

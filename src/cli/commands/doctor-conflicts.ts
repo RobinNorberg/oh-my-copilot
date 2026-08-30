@@ -5,7 +5,7 @@
 
 import { existsSync, lstatSync, readdirSync, readFileSync } from 'fs';
 import { basename, dirname, join } from 'path';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { isOmcHook } from '../../installer/index.js';
 import { analyzeLegacyClaudeMd, decodeClaudeMdUtf8 } from '../../installer/claude-md-analysis.js';
 import { colors } from '../utils/formatting.js';
@@ -105,7 +105,7 @@ function collectHooksFromSettings(settingsPath: string): ConflictReport['hookCon
  * We check both levels so the diagnostic is complete.
  */
 export function checkHookConflicts(): ConflictReport['hookConflicts'] {
-  const profileSettingsPath = join(getClaudeConfigDir(), 'settings.json');
+  const profileSettingsPath = join(getCopilotConfigDir(), 'settings.json');
   const projectSettingsPath = join(process.cwd(), '.claude', 'settings.json');
 
   const profileHooks = collectHooksFromSettings(profileSettingsPath);
@@ -298,7 +298,7 @@ function genericClaudeMdFiles(configDir: string): string[] {
 
 /** Analyze main and companion CLAUDE files without following symlinks. */
 export function checkClaudeMdStatus(): ConflictReport['claudeMdStatus'] {
-  const configDir = getClaudeConfigDir();
+  const configDir = getCopilotConfigDir();
   const claudeMdPath = join(configDir, 'CLAUDE.md');
   const activePath = join(configDir, 'CLAUDE-omc.md');
   const genericPaths = genericClaudeMdFiles(configDir);
@@ -378,7 +378,7 @@ function isValidSetupPluginRoot(pluginRoot: string): boolean {
 }
 
 function readInstalledPluginRoots(): string[] {
-  const installedPluginsPath = join(getClaudeConfigDir(), 'plugins', 'installed_plugins.json');
+  const installedPluginsPath = join(getCopilotConfigDir(), 'plugins', 'installed_plugins.json');
   if (!existsSync(installedPluginsPath)) {
     return [];
   }
@@ -397,7 +397,7 @@ function readInstalledPluginRoots(): string[] {
       : parsed as Record<string, unknown>;
 
     return Object.entries(plugins)
-      .filter(([key]) => key.startsWith('oh-my-claudecode'))
+      .filter(([key]) => key.startsWith('oh-my-copilot'))
       .flatMap(([, value]) => Array.isArray(value) ? value : [])
       .map(entry => entry && typeof entry === 'object' && 'installPath' in entry
         ? (entry as { installPath?: unknown }).installPath
@@ -491,7 +491,7 @@ function isSupportedSetupFallbackSkill(legacySkillsDir: string, entry: string, b
  * false positives for user's custom skills.
  */
 export function checkLegacySkills(): ConflictReport['legacySkills'] {
-  const legacySkillsDir = join(getClaudeConfigDir(), 'skills');
+  const legacySkillsDir = join(getCopilotConfigDir(), 'skills');
   if (!existsSync(legacySkillsDir)) return [];
 
   const collisions: ConflictReport['legacySkills'] = [];
@@ -521,7 +521,7 @@ export function checkLegacySkills(): ConflictReport['legacySkills'] {
  */
 export function checkConfigIssues(): ConflictReport['configIssues'] {
   const unknownFields: string[] = [];
-  const configPath = join(getClaudeConfigDir(), '.omc-config.json');
+  const configPath = join(getCopilotConfigDir(), '.omc-config.json');
 
   if (!existsSync(configPath)) {
     return { unknownFields };
@@ -657,7 +657,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
   const lines: string[] = [];
 
   lines.push('');
-  lines.push(colors.bold('🔍 Oh-My-ClaudeCode Conflict Diagnostic'));
+  lines.push(colors.bold('🔍 Oh-My-Copilot Conflict Diagnostic'));
   lines.push(colors.gray('━'.repeat(60)));
   lines.push('');
 
@@ -694,7 +694,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
       }
     } else {
       lines.push(`  ${colors.yellow('⚠')} No OMC markers found`);
-      lines.push(`    ${colors.gray('Run /oh-my-claudecode:omc-setup to add markers to the selected guide')}`);
+      lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup to add markers to the selected guide')}`);
       if (report.claudeMdStatus.dirtyFiles.length > 0) {
         lines.push(`  ${colors.blue('ℹ')} User content present: ${report.claudeMdStatus.dirtyFiles.join(', ')}`);
       }
@@ -702,7 +702,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
     lines.push(`  ${colors.gray(`Path: ${report.claudeMdStatus.path}`)}`);
     if (report.claudeMdStatus.exactLegacyPaths.length > 0) {
       lines.push(`  ${colors.yellow('⚠')} Exact legacy guide content: ${report.claudeMdStatus.exactLegacyPaths.join(', ')}`);
-      lines.push(`    ${colors.gray('Run /oh-my-claudecode:omc-setup for coordinator-backed cleanup with a verified backup.')}`);
+      lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup for coordinator-backed cleanup with a verified backup.')}`);
     }
     if (report.claudeMdStatus.manualReviewPaths.length > 0) {
       lines.push(`  ${colors.yellow('⚠')} Inspection-only review required: ${report.claudeMdStatus.manualReviewPaths.join(', ')}`);
@@ -752,7 +752,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
       lines.push(`    - ${hook.event} ${colors.gray(`(${hook.pluginRoot})`)}`);
       lines.push(`      ${colors.gray(hook.command)}`);
     }
-    lines.push(`    ${colors.gray('Run /oh-my-claudecode:omc-setup or update/reinstall the plugin to rewrite hooks to direct node run.cjs commands.')}`);
+    lines.push(`    ${colors.gray('Run /oh-my-copilot:omc-setup or update/reinstall the plugin to rewrite hooks to direct node run.cjs commands.')}`);
     lines.push('');
   }
 
@@ -826,7 +826,7 @@ export function formatReport(report: ConflictReport, json: boolean): string {
   lines.push(colors.gray('━'.repeat(60)));
   if (report.hasConflicts) {
     lines.push(`${colors.yellow('⚠')} Potential conflicts detected`);
-    lines.push(`${colors.gray('Review the issues above and run /oh-my-claudecode:omc-setup if needed')}`);
+    lines.push(`${colors.gray('Review the issues above and run /oh-my-copilot:omc-setup if needed')}`);
   } else {
     lines.push(`${colors.green('✓')} No conflicts detected`);
     lines.push(`${colors.gray('OMC is properly configured')}`);

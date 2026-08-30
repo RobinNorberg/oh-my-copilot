@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from 'fs';
 import { join } from 'path';
-import { tmpdir } from 'os';
+import { homedir } from 'os';
 import { mergeTrackerStates, readDiskState, writeTrackingState, readTrackingState, flushPendingWrites, getStateFilePath, executeFlush, } from '../index.js';
 function makeState(overrides = {}) {
     return {
@@ -15,13 +15,27 @@ function makeState(overrides = {}) {
 }
 describe('flush-race', () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
-        testDir = join(tmpdir(), `flush-race-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        testDir = mkdtempSync(join(homedir(), 'flush-race-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
         mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
     });
     afterEach(() => {
         flushPendingWrites();
         rmSync(testDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     describe('mergeTrackerStates', () => {
         it('should union disjoint agent entries from both states', () => {
@@ -359,7 +373,7 @@ describe('flush-race', () => {
             expect(pendingResult.agents[0].agent_id).toBe('pending-agent');
         });
         it('should return empty state when no file exists', () => {
-            const emptyDir = join(tmpdir(), `empty-test-${Date.now()}`);
+            const emptyDir = mkdtempSync(join(testDir, 'empty-test-'));
             mkdirSync(join(emptyDir, '.omc', 'state'), { recursive: true });
             try {
                 const result = readDiskState(emptyDir);

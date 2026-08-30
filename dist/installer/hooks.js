@@ -12,7 +12,7 @@ import { join, dirname } from "path";
 import { readFileSync, existsSync } from "fs";
 import { fileURLToPath } from "url";
 import { homedir } from "os";
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 // =============================================================================
 // TEMPLATE LOADER (loads hook scripts from templates/hooks/)
 // =============================================================================
@@ -64,7 +64,7 @@ export function isWindows() {
 }
 /** Get the hooks directory path */
 export function getHooksDir() {
-    return join(getClaudeConfigDir(), "hooks");
+    return join(getCopilotConfigDir(), "hooks");
 }
 /**
  * Get the home directory environment variable for hook commands.
@@ -77,19 +77,19 @@ function normalizePath(value) {
     return value.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 function isDefaultClaudeConfigDir() {
-    return normalizePath(getClaudeConfigDir()) === normalizePath(join(homedir(), '.claude'));
+    return normalizePath(getCopilotConfigDir()) === normalizePath(join(homedir(), '.claude'));
 }
 function quoteCommandPath(path) {
     return `"${path.replace(/"/g, '\\"')}"`;
 }
 function buildHookCommand(filename) {
     if (isWindows()) {
-        return `node ${quoteCommandPath(join(getClaudeConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
+        return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
     }
     if (isDefaultClaudeConfigDir()) {
-        return `node "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/${filename}"`;
+        return `node "\${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/${filename}"`;
     }
-    return `node ${quoteCommandPath(join(getClaudeConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
+    return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;
 }
 /**
  * Ultrathink/Think mode message
@@ -225,7 +225,7 @@ Ralph mode persists until the requested work is verified complete. Follow these 
 ### Completion Requirements
 - Verify ALL requirements from the original task are met
 - Architect verification is MANDATORY before claiming completion
-- When FULLY complete, run \`/oh-my-claudecode:cancel\` to cleanly exit and clean up state files
+- When FULLY complete, run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files
 
 Continue working until the task is truly done.
 `;

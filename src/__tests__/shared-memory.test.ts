@@ -25,7 +25,7 @@ import {
 } from '../lib/shared-memory.js';
 
 describe('Shared Memory', () => {
-  const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
   let testDir: string;
   let omcDir: string;
   let tildeConfigDir: string;
@@ -36,14 +36,14 @@ describe('Shared Memory', () => {
     tildeConfigDir = join(homedir(), `.omc-test-shared-memory-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(omcDir, { recursive: true });
     mockGetOmcRoot.mockReturnValue(omcDir);
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
   });
 
   afterEach(() => {
     if (originalConfigDir === undefined) {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.COPILOT_CONFIG_DIR;
     } else {
-      process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+      process.env.COPILOT_CONFIG_DIR = originalConfigDir;
     }
     if (existsSync(testDir)) {
       rmSync(testDir, { recursive: true, force: true });
@@ -382,7 +382,7 @@ describe('Shared Memory', () => {
       expect(isSharedMemoryEnabled()).toBe(true);
     });
 
-    it('should read config from the active CLAUDE_CONFIG_DIR', () => {
+    it('should read config from the active COPILOT_CONFIG_DIR', () => {
       const claudeConfigDir = join(testDir, 'claude-config');
       mkdirSync(claudeConfigDir, { recursive: true });
       writeFileSync(join(claudeConfigDir, '.omc-config.json'), JSON.stringify({
@@ -393,12 +393,12 @@ describe('Shared Memory', () => {
         },
       }));
 
-      process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+      process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
 
       expect(isSharedMemoryEnabled()).toBe(false);
     });
 
-    it('should expand ~-prefixed CLAUDE_CONFIG_DIR values', () => {
+    it('should expand ~-prefixed COPILOT_CONFIG_DIR values', () => {
       mkdirSync(tildeConfigDir, { recursive: true });
       writeFileSync(join(tildeConfigDir, '.omc-config.json'), JSON.stringify({
         agents: {
@@ -408,7 +408,7 @@ describe('Shared Memory', () => {
         },
       }));
 
-      process.env.CLAUDE_CONFIG_DIR = `~/${basename(tildeConfigDir)}`;
+      process.env.COPILOT_CONFIG_DIR = `~/${basename(tildeConfigDir)}`;
 
       expect(isSharedMemoryEnabled()).toBe(false);
     });

@@ -4,7 +4,7 @@
 
 ## What Are Hooks?
 
-Hooks are scripts that execute automatically in response to Claude Code lifecycle events. oh-my-claudecode extends Claude Code's default behavior with 21 hooks.
+Hooks are scripts that execute automatically in response to Claude Code lifecycle events. oh-my-copilot extends Claude Code's default behavior with 21 hooks.
 
 When a user submits a prompt, a tool runs, or a session starts/ends, hooks fire automatically to inject additional context, activate modes, and manage state.
 
@@ -267,7 +267,7 @@ Enforces continuation when an execution mode is active. This is the hook that ke
 - **Reinforcement message**: "The boulder never stops" — prompts Claude to continue working
 - **Staleness check**: States older than 2 hours are treated as inactive to prevent stale state from blocking new sessions
 - **Notification**: Sends Discord/Telegram/Slack notification on first stop (if configured)
-- **Cancel**: Use `/oh-my-claudecode:cancel` to deactivate modes
+- **Cancel**: Use `/oh-my-copilot:cancel` to deactivate modes
 
 > **Note**: autopilot, ralph, and ultrawork are **skills** (invoked via keyword-detector), not hooks. The persistent-mode hook is what enforces their continuation by blocking the Stop event.
 
@@ -301,7 +301,7 @@ When a session ID is present, state is stored in session scope under `.omc/state
 - **Pending confirmation**: a fresh unconfirmed state is exempt from both Stop reinforcement and matching-`/goal` PreToolUse enforcement. Freshness requires `awaiting_confirmation: true` and a timestamp age in `[0, 2 minutes)`; a non-empty `awaiting_confirmation_set_at` is authoritative, while an absent or blank value may fall back to `started_at`. Invalid, future, or expired timestamps fail closed.
 - **Stop hook**: after confirmation, reinforces only when the state is active, fresh (within the normal 2-hour mode-state freshness window), session-matching, and project-matching. Terminal phases (`complete`, `completed`, `done`, `all-done`, `failed`, `cancelled`) and all-done `.omc/ultragoal/goals.json` plans are ignored.
 - **PreToolUse guard**: after confirmation, tools are denied unless the hook can see a matching active Claude `/goal` snapshot. Use `ALLOW_ULTRAGOAL_WITHOUT_GOAL=1` only as an intentional local bypass.
-- **Completion**: after the final quality gate and ultragoal checkpoint, mark the state inactive or run `/oh-my-claudecode:cancel` so the state file is cleared with other workflow state.
+- **Completion**: after the final quality gate and ultragoal checkpoint, mark the state inactive or run `/oh-my-copilot:cancel` so the state file is cleared with other workflow state.
 
 #### Canceling a Mode
 
@@ -312,7 +312,7 @@ cancelomc
 or
 
 ```
-/oh-my-claudecode:cancel
+/oh-my-copilot:cancel
 ```
 
 `cancel` removes state files for all active modes: ralph, autopilot, ultrawork, and any others.
@@ -512,5 +512,5 @@ stopomc
 `team` is not auto-detected. It must be invoked explicitly via the `/team` slash command to prevent infinite spawning.
 
 ```
-/oh-my-claudecode:team 3:executor "build a fullstack todo app"
+/oh-my-copilot:team 3:executor "build a fullstack todo app"
 ```

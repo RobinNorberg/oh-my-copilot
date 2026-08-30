@@ -6,7 +6,7 @@ import { getTeamStatus } from '../team-status.js';
 import { atomicWriteJson } from '../fs-utils.js';
 import { appendOutbox } from '../inbox-outbox.js';
 import { recordTaskUsage } from '../usage-tracker.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import type { HeartbeatData, TaskFile, OutboxMessage, McpWorkerMember } from '../types.js';
 
 const TEST_TEAM = 'test-team-status';
@@ -34,7 +34,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  const outboxDir = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
+  const outboxDir = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
 
   if (previousHome === undefined) delete process.env.HOME;
   else process.env.HOME = previousHome;

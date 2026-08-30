@@ -7,7 +7,7 @@
  *
  * Root cause chain:
  * 1. buildDefaultConfig() → config.agents.executor.model = 'claude-sonnet-5'
- *    (from CLAUDE_FAMILY_DEFAULTS.SONNET, because no Bedrock env vars found)
+ *    (from COPILOT_FAMILY_DEFAULTS.SONNET, because no Bedrock env vars found)
  * 2. getAgentDefinitions() resolves executor.model = 'claude-sonnet-5'
  *    (configuredModel from config takes precedence over agent's defaultModel)
  * 3. enforceModel() injects 'claude-sonnet-5' into Task calls
@@ -104,9 +104,9 @@ describe('Bedrock model routing repro', () => {
             //    CLAUDE_CODE_USE_BEDROCK from parent Claude Code process ──
             // (all Bedrock env vars already cleared by beforeEach)
             // 1. Bedrock detection fails
-            const { isBedrock, isNonClaudeProvider } = await import('../config/models.js');
+            const { isBedrock, isNonCopilotProvider } = await import('../config/models.js');
             expect(isBedrock()).toBe(false);
-            expect(isNonClaudeProvider()).toBe(false);
+            expect(isNonCopilotProvider()).toBe(false);
             // 2. loadConfig does NOT auto-enable forceInherit
             const { loadConfig } = await import('../config/loader.js');
             const config = loadConfig();
@@ -123,7 +123,7 @@ describe('Bedrock model routing repro', () => {
             const executorResult = enforceModel({
                 description: 'Implement feature',
                 prompt: 'Write the code',
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
             });
             expect(executorResult.injected).toBe(true);
             expect(executorResult.modifiedInput.model).toBe('sonnet');
@@ -131,7 +131,7 @@ describe('Bedrock model routing repro', () => {
             const exploreResult = enforceModel({
                 description: 'Find files',
                 prompt: 'Search codebase',
-                subagent_type: 'oh-my-claudecode:explore',
+                subagent_type: 'oh-my-copilot:explore',
             });
             expect(exploreResult.injected).toBe(true);
             expect(exploreResult.modifiedInput.model).toBe('haiku');
@@ -139,7 +139,7 @@ describe('Bedrock model routing repro', () => {
             const architectResult = enforceModel({
                 description: 'Design system',
                 prompt: 'Analyze architecture',
-                subagent_type: 'oh-my-claudecode:architect',
+                subagent_type: 'oh-my-copilot:architect',
             });
             expect(architectResult.injected).toBe(true);
             expect(architectResult.modifiedInput.model).toBe('opus');
@@ -162,7 +162,7 @@ describe('Bedrock model routing repro', () => {
                 const result = enforceModel({
                     description: 'test',
                     prompt: 'test',
-                    subagent_type: `oh-my-claudecode:${agent}`,
+                    subagent_type: `oh-my-copilot:${agent}`,
                 });
                 expect(result.model).toBe('inherit');
                 expect(result.modifiedInput.model).toBeUndefined();
@@ -180,9 +180,9 @@ describe('Bedrock model routing repro', () => {
             process.env.ANTHROPIC_DEFAULT_OPUS_MODEL = 'global.anthropic.claude-opus-4-6-v1:0';
             process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL = 'global.anthropic.claude-haiku-4-5-v1:0';
             // 1. isBedrock now checks tier model env vars too.
-            const { isBedrock, isNonClaudeProvider } = await import('../config/models.js');
+            const { isBedrock, isNonCopilotProvider } = await import('../config/models.js');
             expect(isBedrock()).toBe(true);
-            expect(isNonClaudeProvider()).toBe(true);
+            expect(isNonCopilotProvider()).toBe(true);
             // 2. tier-only provider IDs do not globally force all spawned agents to inherit.
             const { loadConfig } = await import('../config/loader.js');
             const config = loadConfig();
@@ -202,7 +202,7 @@ describe('Bedrock model routing repro', () => {
             const result = enforceModel({
                 description: 'Implement feature',
                 prompt: 'Write the code',
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
             });
             expect(result.injected).toBe(true);
             expect(result.model).toBe('global.anthropic.claude-sonnet-4-6-v1:0');
@@ -233,7 +233,7 @@ describe('Bedrock model routing repro', () => {
             const taskInput = {
                 description: 'Implement feature',
                 prompt: 'Write the code',
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 model: 'sonnet', // LLM passes this based on CLAUDE.md instructions
             };
             // Bridge logic (bridge.ts:1082-1093):
@@ -254,7 +254,7 @@ describe('Bedrock model routing repro', () => {
             const taskInput = {
                 description: 'Implement feature',
                 prompt: 'Write the code',
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 model: 'sonnet', // LLM passes this based on CLAUDE.md instructions
             };
             const nextTaskInput = { ...taskInput };
@@ -277,7 +277,7 @@ describe('Bedrock model routing repro', () => {
             const result = enforceModel({
                 description: 'Implement feature',
                 prompt: 'Write the code',
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 model: 'sonnet', // LLM passes this explicitly
             });
             // enforceModel preserves explicit model (doesn't override it)
@@ -293,7 +293,7 @@ describe('Bedrock model routing repro', () => {
             const result = enforceModel({
                 description: 'test',
                 prompt: 'test',
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
             });
             // This is exactly the model ID from the error report
             expect(result.modifiedInput.model).toBe('sonnet');
@@ -312,7 +312,7 @@ describe('Bedrock model routing repro', () => {
                 toolInput: {
                     description: 'Implement feature',
                     prompt: 'Write the code',
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                     model: 'claude-sonnet-4-6',
                 },
                 directory: process.cwd(),
@@ -333,7 +333,7 @@ describe('Bedrock model routing repro', () => {
                 toolInput: {
                     description: 'Implement feature',
                     prompt: 'Write the code',
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                     // No model param — this is the correct behavior
                 },
                 directory: process.cwd(),
@@ -352,7 +352,7 @@ describe('Bedrock model routing repro', () => {
                 toolInput: {
                     description: 'Implement feature',
                     prompt: 'Write the code',
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                     model: 'sonnet',
                 },
                 directory: process.cwd(),

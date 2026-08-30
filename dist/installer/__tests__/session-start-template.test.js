@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 const SCRIPT_PATH = join(__dirname, '..', '..', '..', 'templates', 'hooks', 'session-start.mjs');
 const NODE = process.execPath;
-describe('session-start template guard for same-root parallel sessions (#1744)', () => {
+describe('session-start template retired-state handling', () => {
     let tempDir;
     let fakeHome;
     let fakeProject;
@@ -34,7 +34,7 @@ describe('session-start template guard for same-root parallel sessions (#1744)',
         }).trim();
         return JSON.parse(raw);
     }
-    it('warns and suppresses conflicting same-root restore for a different active session', () => {
+    it('ignores retired ultrawork state from a different active session', () => {
         const now = new Date().toISOString();
         writeFileSync(join(fakeProject, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
             active: true,
@@ -50,8 +50,7 @@ describe('session-start template guard for same-root parallel sessions (#1744)',
         });
         const context = output.hookSpecificOutput?.additionalContext || '';
         expect(output.continue).toBe(true);
-        expect(context).toContain('[PARALLEL SESSION WARNING]');
-        expect(context).toContain('suppressed the restore');
+        expect(context).not.toContain('[PARALLEL SESSION WARNING]');
         expect(context).not.toContain('[ULTRAWORK MODE RESTORED]');
         expect(context).not.toContain('Old task that should not bleed into session-b');
     });
@@ -63,7 +62,7 @@ describe('session-start template guard for same-root parallel sessions (#1744)',
             last_checked_at: '2026-04-23T00:05:00.000Z',
             original_prompt: 'budget '.repeat(520),
         }));
-        writeFileSync(join(fakeProject, 'AGENTS.md'), `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+        writeFileSync(join(fakeProject, 'AGENTS.md'), `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>schema</guidance_schema_contract>
 
@@ -82,7 +81,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
     it('compacts large OMC AGENTS guidance and caps aggregate session context', () => {
         mkdirSync(fakeProject, { recursive: true });
         const largeAgents = [
-            '# oh-my-claudecode - Intelligent Multi-Agent Orchestration',
+            '# oh-my-copilot - Intelligent Multi-Agent Orchestration',
             '<guidance_schema_contract>schema details</guidance_schema_contract>',
             '<operating_principles>keep this high value section</operating_principles>',
             '<agent_catalog>' + 'agent '.repeat(5000) + '</agent_catalog>',
@@ -105,7 +104,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
         expect(context).not.toContain('<skills>');
         expect(context.length).toBeLessThanOrEqual(6000);
     });
-    it('still restores ultrawork for the owning session', () => {
+    it('does not restore retired ultrawork for the owning session', () => {
         writeFileSync(join(fakeProject, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
             active: true,
             session_id: 'session-owner',
@@ -120,8 +119,8 @@ ${'- preserve this startup guidance\n'.repeat(400)}
         });
         const context = output.hookSpecificOutput?.additionalContext || '';
         expect(output.continue).toBe(true);
-        expect(context).toContain('[ULTRAWORK MODE RESTORED]');
-        expect(context).toContain('Resume me');
+        expect(context).not.toContain('[ULTRAWORK MODE RESTORED]');
+        expect(context).not.toContain('Resume me');
         expect(context).not.toContain('[PARALLEL SESSION WARNING]');
     });
     it('does not warn for global fallback state from a different normalized project path', () => {
@@ -145,7 +144,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
         expect(context).not.toContain('[ULTRAWORK MODE RESTORED]');
     });
     it('keeps model routing override under budget for non-standard providers', () => {
-        writeFileSync(join(fakeProject, 'AGENTS.md'), `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+        writeFileSync(join(fakeProject, 'AGENTS.md'), `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>schema</guidance_schema_contract>
 
@@ -233,99 +232,6 @@ ${'- oversized startup guidance\n'.repeat(700)}
 // ==========================================================================
 // E.2 — PID-aware liveness in session-start template (Wave E)
 // ==========================================================================
-describe('session-start PID-aware liveness (#E2)', () => {
-    const SCRIPT_PATH = join(__dirname, '..', '..', '..', 'templates', 'hooks', 'session-start.mjs');
-    const NODE = process.execPath;
-    let tempDir;
-    let fakeProject;
-    let fakeHome;
-    const now = new Date().toISOString();
-    beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'omc-pid-liveness-'));
-        fakeHome = join(tempDir, 'home');
-        fakeProject = join(tempDir, 'project');
-        // validateCwd in session-start.mjs requires .git or .omc-workspace
-        mkdirSync(join(fakeProject, '.git'), { recursive: true });
-        mkdirSync(join(fakeProject, '.omc', 'state'), { recursive: true });
-    });
-    afterEach(() => {
-        rmSync(tempDir, { recursive: true, force: true });
-    });
-    function runSessionStartPid(input, extraEnv = {}) {
-        const raw = execFileSync(NODE, [SCRIPT_PATH], {
-            input: JSON.stringify(input),
-            encoding: 'utf-8',
-            env: {
-                ...process.env,
-                HOME: fakeHome,
-                USERPROFILE: fakeHome,
-                ...extraEnv,
-            },
-            timeout: 15000,
-        }).trim();
-        return JSON.parse(raw);
-    }
-    it('PID-dead-reclaim: dead owner PID allows new session to reclaim without PARALLEL SESSION WARNING', () => {
-        // PID 999999 is virtually guaranteed to not exist
-        writeFileSync(join(fakeProject, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
-            active: true,
-            session_id: 'old-sid',
-            owner_pid: 999999,
-            started_at: now,
-            last_checked_at: now,
-            original_prompt: 'Old task from dead process',
-        }));
-        const output = runSessionStartPid({
-            hook_event_name: 'SessionStart',
-            session_id: 'new-sid',
-            cwd: fakeProject,
-        });
-        const context = output.hookSpecificOutput?.additionalContext || '';
-        expect(output.continue).toBe(true);
-        // Owner is dead — no parallel session warning should be emitted
-        expect(context).not.toContain('[PARALLEL SESSION WARNING]');
-        // Restore should NOT be suppressed (dead owner = safe to reclaim)
-        expect(context).not.toContain('suppressed the restore');
-    });
-    it('owner PID alive: same-root different session emits PARALLEL SESSION WARNING', () => {
-        // process.pid is definitely alive
-        writeFileSync(join(fakeProject, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
-            active: true,
-            session_id: 'owner-session',
-            owner_pid: process.pid,
-            started_at: now,
-            last_checked_at: now,
-            original_prompt: 'Live task',
-        }));
-        const output = runSessionStartPid({
-            hook_event_name: 'SessionStart',
-            session_id: 'intruder-session',
-            cwd: fakeProject,
-        });
-        const context = output.hookSpecificOutput?.additionalContext || '';
-        expect(output.continue).toBe(true);
-        expect(context).toContain('[PARALLEL SESSION WARNING]');
-    });
-    it('missing PID field: backward-compat assumes alive and emits PARALLEL SESSION WARNING', () => {
-        // No owner_pid field — backward-compat path
-        writeFileSync(join(fakeProject, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
-            active: true,
-            session_id: 'legacy-session',
-            started_at: now,
-            last_checked_at: now,
-            original_prompt: 'Legacy no-pid task',
-        }));
-        const output = runSessionStartPid({
-            hook_event_name: 'SessionStart',
-            session_id: 'different-session',
-            cwd: fakeProject,
-        });
-        const context = output.hookSpecificOutput?.additionalContext || '';
-        expect(output.continue).toBe(true);
-        // Without a PID, the hook assumes alive → warning expected
-        expect(context).toContain('[PARALLEL SESSION WARNING]');
-    });
-});
 describe('session-start template cwd validation (Wave B1)', () => {
     let tempDir;
     let fakeHome;

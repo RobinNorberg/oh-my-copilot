@@ -8,7 +8,7 @@
 import { z } from 'zod';
 import { resolve, normalize, sep } from 'path';
 import { homedir } from 'os';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { loadAllSkills } from '../hooks/learner/loader.js';
 import { MAX_SKILL_CONTENT_LENGTH } from '../hooks/learner/constants.js';
 import type { LearnedSkill } from '../hooks/learner/types.js';
@@ -122,7 +122,7 @@ export const loadLocalTool = {
 // Tool 2: load_omc_skills_global
 export const loadGlobalTool = {
   name: 'load_omc_skills_global',
-  description: 'Load and list skills from global user directories (~/.omc/skills/ and [$CLAUDE_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.',
+  description: 'Load and list skills from global user directories (~/.omc/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.',
   schema: loadGlobalSchema,
   handler: async (_args: Record<string, never>) => {
     const allSkills = loadAllSkills(null);
@@ -159,7 +159,7 @@ export const listSkillsTool = {
     }
 
     if (skills.length === 0) {
-      output = `## No Skills Found\n\nNo skill files were discovered in any searched directories.\n\nSearched:\n- Project: .omc/skills/\n- Global: ~/.omc/skills/\n- Claude config: ${getClaudeConfigDir()}/skills/omc-learned/`;
+      output = `## No Skills Found\n\nNo skill files were discovered in any searched directories.\n\nSearched:\n- Project: .omc/skills/\n- Global: ~/.omc/skills/\n- Claude config: ${getCopilotConfigDir()}/skills/omc-learned/`;
     }
 
     return {

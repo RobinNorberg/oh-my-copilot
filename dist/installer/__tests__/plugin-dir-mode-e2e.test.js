@@ -3,7 +3,7 @@
  *
  * Unlike `plugin-dir-mode.test.ts`, which exercises the CLI precedence helper
  * in isolation, this suite calls the real `install()` function from
- * `src/installer/index.ts` against a throwaway `CLAUDE_CONFIG_DIR` and asserts
+ * `src/installer/index.ts` against a throwaway `COPILOT_CONFIG_DIR` and asserts
  * the resulting on-disk shape matches the documented contract.
  *
  * Scope: installer contract only. The CLI auto-detection log message and the
@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { OMC_PLUGIN_ROOT_ENV } from '../../lib/env-vars.js';
 const SAVED_ENV_KEYS = [
-    'CLAUDE_CONFIG_DIR',
+    'COPILOT_CONFIG_DIR',
     OMC_PLUGIN_ROOT_ENV,
     'CLAUDE_PLUGIN_ROOT',
     'OMC_DEV',
@@ -37,7 +37,7 @@ beforeEach(() => {
         savedEnv[key] = process.env[key];
         delete process.env[key];
     }
-    process.env.CLAUDE_CONFIG_DIR = testDir;
+    process.env.COPILOT_CONFIG_DIR = testDir;
 });
 afterEach(() => {
     for (const key of SAVED_ENV_KEYS) {
@@ -57,9 +57,9 @@ afterEach(() => {
 describe('install() — plugin-dir-mode end-to-end filesystem shape', () => {
     it('case 1: pluginDirMode=true → installs HUD/CLAUDE.md/settings/.omc-config but NOT agents/skills', async () => {
         const { install } = await freshInstaller();
-        install({ verbose: false, skipClaudeCheck: true, pluginDirMode: true });
+        install({ verbose: false, skipCopilotCheck: true, pluginDirMode: true });
         // HUD wrapper present and non-empty
-        const hudPath = join(testDir, 'hud', 'omc-hud.mjs');
+        const hudPath = join(testDir, 'hud', 'omcp-hud.mjs');
         expect(existsSync(hudPath)).toBe(true);
         expect(statSync(hudPath).size).toBeGreaterThan(0);
         // CLAUDE.md present with merge markers
@@ -90,8 +90,8 @@ describe('install() — plugin-dir-mode end-to-end filesystem shape', () => {
         // OMC_PLUGIN_ROOT points anywhere real.
         process.env[OMC_PLUGIN_ROOT_ENV] = '/tmp/fake-nonexistent-root-for-pdm-e2e';
         const { install } = await freshInstaller();
-        install({ verbose: false, skipClaudeCheck: true, pluginDirMode: true });
-        expect(existsSync(join(testDir, 'hud', 'omc-hud.mjs'))).toBe(true);
+        install({ verbose: false, skipCopilotCheck: true, pluginDirMode: true });
+        expect(existsSync(join(testDir, 'hud', 'omcp-hud.mjs'))).toBe(true);
         expect(existsSync(join(testDir, 'CLAUDE.md'))).toBe(true);
         expect(existsSync(join(testDir, 'settings.json'))).toBe(true);
         expect(existsSync(join(testDir, '.omc-config.json'))).toBe(true);
@@ -105,7 +105,7 @@ describe('install() — plugin-dir-mode end-to-end filesystem shape', () => {
         const { install, hasEnabledOmcPlugin } = await freshInstaller();
         const result = install({
             verbose: false,
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             pluginDirMode: true,
             noPlugin: true,
         });
@@ -122,7 +122,7 @@ describe('install() — plugin-dir-mode end-to-end filesystem shape', () => {
         const { install, hasEnabledOmcPlugin } = await freshInstaller();
         // Fresh tmp config dir is guaranteed not to have an enabled plugin.
         expect(hasEnabledOmcPlugin()).toBe(false);
-        const result = install({ verbose: false, skipClaudeCheck: true });
+        const result = install({ verbose: false, skipCopilotCheck: true });
         expect(result.installedAgents.length).toBeGreaterThan(0);
         expect(result.installedSkills.length).toBeGreaterThan(0);
         expect(isPopulated(join(testDir, 'agents'))).toBe(true);

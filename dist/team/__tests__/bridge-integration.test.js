@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, statSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { homedir, tmpdir } from 'os';
@@ -7,14 +7,36 @@ import { checkShutdownSignal, writeShutdownSignal, appendOutbox } from '../inbox
 import { writeHeartbeat, readHeartbeat } from '../heartbeat.js';
 import { sanitizeName } from '../tmux-session.js';
 import { logAuditEvent, readAuditLog } from '../audit-log.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const TEST_TEAM = 'test-bridge-int';
-// Task files now live in the canonical .omc/state/team path (relative to WORK_DIR)
-const TEAMS_DIR = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
 // Resolve symlinks (macOS /var -> /private/var) so validateResolvedPath matches
 const WORK_DIR = join(realpathSync(tmpdir()), '__test_bridge_work__');
+const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
+process.env.COPILOT_CONFIG_DIR = join(WORK_DIR, '.claude');
+// Task files now live in the canonical .omc/state/team path (relative to WORK_DIR)
+const TEAMS_DIR = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
 // Canonical tasks dir for this team
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
 const TASKS_DIR = join(WORK_DIR, '.omc', 'state', 'team', TEST_TEAM, 'tasks');
+beforeAll(() => {
+    process.env.HOME = WORK_DIR;
+    process.env.USERPROFILE = WORK_DIR;
+});
+afterAll(() => {
+    if (originalClaudeConfigDir === undefined)
+        delete process.env.COPILOT_CONFIG_DIR;
+    else
+        process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
+    if (originalHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = originalHome;
+    if (originalUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = originalUserProfile;
+});
 function writeTask(task) {
     mkdirSync(TASKS_DIR, { recursive: true });
     writeFileSync(join(TASKS_DIR, `${task.id}.json`), JSON.stringify(task, null, 2));
@@ -283,7 +305,7 @@ describe('validateBridgeWorkingDirectory logic', () => {
         }
     });
     it('accepts a valid directory under home', () => {
-        const testDir = join(getClaudeConfigDir(), '__bridge_validate_test__');
+        const testDir = join(getCopilotConfigDir(), '__bridge_validate_test__');
         mkdirSync(testDir, { recursive: true });
         try {
             expect(() => validateBridgeWorkingDirectory(testDir)).not.toThrow();

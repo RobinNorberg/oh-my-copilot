@@ -32,7 +32,7 @@ function runKeywordDetector(
     CLAUDE_PLUGIN_ROOT: '',
     HOME: effectiveHome,
     USERPROFILE: env.USERPROFILE || effectiveHome,
-    CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR || join(effectiveHome, '.claude'),
+    COPILOT_CONFIG_DIR: env.COPILOT_CONFIG_DIR || join(effectiveHome, '.claude'),
     ...env,
   };
 
@@ -77,7 +77,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     expect(context).toContain('<search-mode>');
     expect(context).toContain('MAXIMIZE SEARCH EFFORT');
     expect(context).not.toContain('[MAGIC KEYWORD: DEEPSEARCH]');
-    expect(context).not.toContain('Skill: oh-my-claudecode:deepsearch');
+    expect(context).not.toContain('Skill: oh-my-copilot:deepsearch');
   });
 
   it.each([
@@ -163,14 +163,14 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     '/omc:ccg deep interview this task',
     '/omc:claude-codex-gemini deep interview this task',
     '/omc:울트라워크 build me an app',
-    '/oh-my-claudecode:ウルトラワーク build me an app',
+    '/oh-my-copilot:ウルトラワーク build me an app',
     '/omc:씨씨지 deep interview this task',
-    '/oh-my-claudecode:シーシージー deep interview this task',
-    '/oh-my-claudecode:ultrawork build me an app',
-    '/oh-my-claudecode:ulw build me an app',
-    '/oh-my-claudecode:uw build me an app',
-    '/oh-my-claudecode:ccg deep interview this task',
-    '/oh-my-claudecode:claude-codex-gemini deep interview this task',
+    '/oh-my-copilot:シーシージー deep interview this task',
+    '/oh-my-copilot:ultrawork build me an app',
+    '/oh-my-copilot:ulw build me an app',
+    '/oh-my-copilot:uw build me an app',
+    '/oh-my-copilot:ccg deep interview this task',
+    '/oh-my-copilot:claude-codex-gemini deep interview this task',
   ])('passes through retired slash route before dispatching arguments: %s', (prompt) => {
     for (const detectorPath of [SCRIPT_PATH, TEMPLATE_PATH]) {
       const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-retired-slash-'));
@@ -227,7 +227,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     const context = output.hookSpecificOutput?.additionalContext ?? '';
 
     expect(context).toContain('[MAGIC KEYWORD: RALPLAN]');
-    expect(context).toContain('Preferred invocation: /oh-my-claudecode:ralplan');
+    expect(context).toContain('Preferred invocation: /oh-my-copilot:ralplan');
     expect(context).not.toContain('name: ralplan');
   });
 
@@ -495,7 +495,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
 
     try {
       const sessionId = 'slash-ralplan-session';
-      const output = runKeywordDetector('/oh-my-claudecode:ralplan issue #2622', tempDir, sessionId);
+      const output = runKeywordDetector('/oh-my-copilot:ralplan issue #2622', tempDir, sessionId);
       const context = output.hookSpecificOutput?.additionalContext ?? '';
 
       expect(output.continue).toBe(true);
@@ -518,7 +518,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
       expect(state.current_phase).toBe('ralplan');
       expect(state.awaiting_confirmation).toBe(true);
       expect(typeof state.awaiting_confirmation_set_at).toBe('string');
-      expect(state.original_prompt).toBe('/oh-my-claudecode:ralplan issue #2622');
+      expect(state.original_prompt).toBe('/oh-my-copilot:ralplan issue #2622');
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }
@@ -581,7 +581,7 @@ OMC Ultrawork = "특수부대 작전 반"
     const output = runKeywordDetector(`Investigate why this pasted transcript branched sessions:
 
 [MAGIC KEYWORD: RALPH]
-Skill: oh-my-claudecode:ralph
+Skill: oh-my-copilot:ralph
 User request:
 ralph fix parser`);
     const context = output.hookSpecificOutput?.additionalContext ?? '';
@@ -675,7 +675,7 @@ diff --git a/a b/b
   });
 
   it.each([
-    '/oh-my-claudecode:ralph issue #3411',
+    '/oh-my-copilot:ralph issue #3411',
     'ralph this',
   ])('still activates ralph for issue #3411 explicit invocation: %s', (prompt) => {
     const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-ralph-3411-positive-'));

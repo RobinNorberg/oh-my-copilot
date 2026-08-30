@@ -12,7 +12,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, appendFileSync, ren
 import { basename, join, dirname, resolve } from 'path';
 import { homedir, tmpdir } from 'os';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { getClaudeConfigDir } from './lib/config-dir.mjs';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 import { readStdin } from './lib/stdin.mjs';
@@ -130,7 +130,7 @@ const debugLog = (...args) => {
 };
 
 // State file for session tracking
-const cfgDir = getClaudeConfigDir();
+const cfgDir = getCopilotConfigDir();
 const STATE_FILE = join(cfgDir, '.session-stats.json');
 
 // Ensure state directory exists
@@ -409,7 +409,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
     if (mainRepoRoot !== worktreeTop) {
       const sessionFile = basename(transcriptPath);
       if (sessionFile) {
-        const projectsDir = join(getClaudeConfigDir(), 'projects');
+        const projectsDir = join(getCopilotConfigDir(), 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = encodeProjectPath(mainRepoRoot);
           const resolvedPath = join(projectsDir, encodedMain, sessionFile);
@@ -887,7 +887,7 @@ function getAgentCompletionSummary(directory, quietLevel = QUIET_LEVEL, sessionI
 
       const parts = [];
       if (quietLevel < 2 && running.length > 0) {
-        parts.push(`Running: ${running.length} [${running.map(a => a.agent_type.replace('oh-my-claudecode:', '')).join(', ')}]`);
+        parts.push(`Running: ${running.length} [${running.map(a => a.agent_type.replace('oh-my-copilot:', '')).join(', ')}]`);
       }
       if (quietLevel < 2 && completed > 0) parts.push(`Completed: ${completed}`);
       if (failed > 0) parts.push(`Failed: ${failed}`);
@@ -1059,7 +1059,7 @@ async function main() {
       const currentState = readSkillActiveState(directory, sessionId);
       const completingSkill = (skillName ?? '')
         .toLowerCase()
-        .replace(/^oh-my-claudecode:/, '');
+        .replace(/^oh-my-copilot:/, '');
       if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
         clearSkillActiveState(directory, sessionId);
       }

@@ -54,17 +54,17 @@ describe('renderSkills', () => {
         });
     });
     describe('namespaced skill names', () => {
-        it('displays only last segment for namespaced skills (oh-my-claudecode:plan)', () => {
-            const lastSkill = { name: 'oh-my-claudecode:plan', timestamp: new Date() };
+        it('displays only last segment for namespaced skills (oh-my-copilot:plan)', () => {
+            const lastSkill = { name: 'oh-my-copilot:plan', timestamp: new Date() };
             const result = renderSkills(inactiveUltrawork, inactiveRalph, lastSkill);
             expect(result).toContain('skill:plan');
-            expect(result).not.toContain('oh-my-claudecode');
+            expect(result).not.toContain('oh-my-copilot');
         });
         it('displays only last segment for namespaced skills with args', () => {
-            const lastSkill = { name: 'oh-my-claudecode:autopilot', args: 'build app', timestamp: new Date() };
+            const lastSkill = { name: 'oh-my-copilot:autopilot', args: 'build app', timestamp: new Date() };
             const result = renderSkills(inactiveUltrawork, inactiveRalph, lastSkill);
             expect(result).toContain('skill:autopilot(build app)');
-            expect(result).not.toContain('oh-my-claudecode');
+            expect(result).not.toContain('oh-my-copilot');
         });
         it('handles multiple colons in skill name', () => {
             const lastSkill = { name: 'namespace:subcategory:action', timestamp: new Date() };
@@ -106,17 +106,17 @@ describe('renderLastSkill', () => {
         });
     });
     describe('namespaced skill names', () => {
-        it('displays only last segment for namespaced skills (oh-my-claudecode:plan)', () => {
-            const lastSkill = { name: 'oh-my-claudecode:plan', timestamp: new Date() };
+        it('displays only last segment for namespaced skills (oh-my-copilot:plan)', () => {
+            const lastSkill = { name: 'oh-my-copilot:plan', timestamp: new Date() };
             const result = renderLastSkill(lastSkill);
             expect(result).toContain('skill:plan');
-            expect(result).not.toContain('oh-my-claudecode');
+            expect(result).not.toContain('oh-my-copilot');
         });
         it('displays only last segment for namespaced skills with args', () => {
-            const lastSkill = { name: 'oh-my-claudecode:autopilot', args: 'build app', timestamp: new Date() };
+            const lastSkill = { name: 'oh-my-copilot:autopilot', args: 'build app', timestamp: new Date() };
             const result = renderLastSkill(lastSkill);
             expect(result).toContain('skill:autopilot(build app)');
-            expect(result).not.toContain('oh-my-claudecode');
+            expect(result).not.toContain('oh-my-copilot');
         });
         it('handles multiple colons in skill name', () => {
             const lastSkill = { name: 'namespace:subcategory:action', timestamp: new Date() };

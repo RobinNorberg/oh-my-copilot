@@ -9,19 +9,30 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { join } from 'path';
-import { tmpdir } from 'os';
+import { homedir } from 'os';
 import { clearWorktreeCache } from '../../lib/worktree-paths.js';
 import { initInteropSession } from '../shared-state.js';
 describe('shared-state workspace-marker path resolution', () => {
     let workspaceRoot;
     let subDir;
+    let fixtureHome;
+    let previousHome;
+    let previousUserProfile;
+    let previousStateDir;
     beforeEach(() => {
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousStateDir = process.env.OMC_STATE_DIR;
         // Build fixture:
         //   A/              ← workspace root (contains .omc-workspace marker)
         //   A/sub/          ← child git repo (git init'd)
-        workspaceRoot = mkdtempSync(join(tmpdir(), 'omc-workspace-'));
+        fixtureHome = mkdtempSync(join(homedir(), 'omc-workspace-home-'));
+        workspaceRoot = join(fixtureHome, 'workspace');
         subDir = join(workspaceRoot, 'sub');
         mkdirSync(subDir, { recursive: true });
+        process.env.HOME = fixtureHome;
+        process.env.USERPROFILE = fixtureHome;
+        delete process.env.OMC_STATE_DIR;
         // Place the workspace marker at the workspace root.
         writeFileSync(join(workspaceRoot, '.omc-workspace'), '');
         // Initialize a real git repo inside sub/ so git-based resolution
@@ -36,7 +47,19 @@ describe('shared-state workspace-marker path resolution', () => {
         clearWorktreeCache();
     });
     afterEach(() => {
-        rmSync(workspaceRoot, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousStateDir;
+        rmSync(fixtureHome, { recursive: true, force: true });
         // Clear caches so other tests are not polluted by this fixture.
         clearWorktreeCache();
     });

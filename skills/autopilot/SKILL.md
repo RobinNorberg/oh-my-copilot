@@ -33,7 +33,7 @@ Most non-trivial software tasks require coordinated phases: understanding requir
 - Parallel execution is used within phases where possible (Phase 2 and Phase 4)
 - QA cycles repeat up to 5 times; if the same error persists 3 times, stop and report the fundamental issue
 - Validation requires approval from all reviewers; rejected items get fixed and re-validated
-- Cancel with `/oh-my-claudecode:cancel` at any time; progress is preserved for resume
+- Cancel with `/oh-my-copilot:cancel` at any time; progress is preserved for resume
 </Execution_Policy>
 
 <Workflow_Profiles>
@@ -112,13 +112,13 @@ V1 does not support `stageModels`, model routing, provider or role selection; in
 
 6. **Phase 5 - Cleanup**: Delete all state files on successful completion
    - Remove `.omc/state/autopilot-state.json`, `ralph-state.json` (plus stale retired `ultraqa-state.json`/`ultrawork-state.json` if legacy copies exist)
-   - Run `/oh-my-claudecode:cancel` for clean exit
+   - Run `/oh-my-copilot:cancel` for clean exit
 </Steps>
 
 <Tool_Usage>
-- Use `Task(subagent_type="oh-my-claudecode:architect", ...)` for Phase 4 architecture validation
-- Use `Task(subagent_type="oh-my-claudecode:security-reviewer", ...)` for Phase 4 security review
-- Use `Task(subagent_type="oh-my-claudecode:code-reviewer", ...)` for Phase 4 quality review
+- Use `Task(subagent_type="oh-my-copilot:architect", ...)` for Phase 4 architecture validation
+- Use `Task(subagent_type="oh-my-copilot:security-reviewer", ...)` for Phase 4 security review
+- Use `Task(subagent_type="oh-my-copilot:code-reviewer", ...)` for Phase 4 quality review
 - Agents form their own analysis and return it; the LEAD then spawns any cross-validation agents itself. Do not rely on a subagent spawning further subagents without checking the Claude Code depth setting: Claude Code 2.1.217–2.1.218 defaulted `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` to 1, while 2.1.219+ defaults to 3. Keep cross-validation at the LEAD level unless nested delegation is deliberate and supported by the active runtime.
 - Never block on external tools; proceed with available agents if delegation fails
 </Tool_Usage>
@@ -217,7 +217,7 @@ Limitations:
 
 ## Resume
 
-If autopilot was cancelled or failed, run `/oh-my-claudecode:autopilot` again to resume from where it stopped.
+If autopilot was cancelled or failed, run `/oh-my-copilot:autopilot` again to resume from where it stopped.
 
 ## Best Practices for Input
 

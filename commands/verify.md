@@ -4,7 +4,7 @@ description: ""
 
 # OMC verify
 
-This compatibility command keeps `/oh-my-claudecode:verify` available without loading the full `verify` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:verify` available without loading the full `verify` skill description in every Claude Code session.
 
 ## Dispatch
 

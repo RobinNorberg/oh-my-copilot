@@ -865,7 +865,7 @@ function compactBudgetedText(text: string, maxChars: number): string {
 function looksLikeOmcGuidance(content: string): boolean {
   return (
     content.includes("<guidance_schema_contract>") &&
-    /oh-my-(claudecode|codex)/i.test(content) &&
+    /oh-my-(copilot|claudecode|codex)/i.test(content) &&
     OMC_STARTUP_COMPACTABLE_SECTIONS.some(
       (section) =>
         content.includes(`<${section}>`) && content.includes(`</${section}>`),
@@ -978,7 +978,7 @@ export function loadContextFromFiles(files: string[]): string {
 export function generateConfigSchema(): object {
   return {
     $schema: "http://json-schema.org/draft-07/schema#",
-    title: "Oh-My-ClaudeCode Configuration",
+    title: "Oh-My-Copilot Configuration",
     type: "object",
     properties: {
       agents: {

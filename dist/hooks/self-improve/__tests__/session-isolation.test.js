@@ -6,21 +6,70 @@
  * share state.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 const RESOLVER = join(process.cwd(), 'skills', 'self-improve', 'scripts', 'resolve-paths.mjs');
-function readJson(command, args) {
-    return JSON.parse(execFileSync(command, args, { encoding: 'utf-8' }));
+const ISOLATED_ENV_KEYS = [
+    'HOME',
+    'USERPROFILE',
+    'OMC_STATE_DIR',
+    'COPILOT_CONFIG_DIR',
+    'XDG_CONFIG_HOME',
+    'CLAUDE_PLUGIN_ROOT',
+    'OMC_SESSION_ID',
+    'OMC_DISABLE_MULTIREPO',
+    'NODE_ENV',
+];
+let fixtureEnv;
+function restoreFixtureEnv() {
+    for (const key of ISOLATED_ENV_KEYS) {
+        const value = fixtureEnv[key];
+        if (value === undefined)
+            delete process.env[key];
+        else
+            process.env[key] = value;
+    }
+}
+function readJson(command, args, env = {}) {
+    return JSON.parse(execFileSync(command, args, {
+        encoding: 'utf-8',
+        env: {
+            ...process.env,
+            NODE_ENV: 'test',
+            OMC_STATE_DIR: '',
+            CLAUDE_PLUGIN_ROOT: '',
+            ...env,
+        },
+    }));
 }
 describe('self-improve session isolation (Wave B2)', () => {
     let root;
+    let environmentRoot;
     beforeEach(() => {
+        fixtureEnv = Object.fromEntries(ISOLATED_ENV_KEYS.map((key) => [key, process.env[key]]));
         root = mkdtempSync(join(tmpdir(), 'omc-si-session-isolation-'));
+        environmentRoot = mkdtempSync(join(tmpdir(), 'omc-si-session-isolation-env-'));
+        const home = join(environmentRoot, 'home');
+        const claudeConfigDir = join(home, '.claude');
+        mkdirSync(claudeConfigDir, { recursive: true });
+        mkdirSync(join(home, '.config'), { recursive: true });
+        execFileSync('git', ['init', '--quiet'], { cwd: root, stdio: 'pipe' });
+        process.env.HOME = home;
+        process.env.USERPROFILE = home;
+        process.env.OMC_STATE_DIR = '';
+        process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
+        process.env.XDG_CONFIG_HOME = join(home, '.config');
+        process.env.CLAUDE_PLUGIN_ROOT = '';
+        process.env.OMC_SESSION_ID = '';
+        process.env.OMC_DISABLE_MULTIREPO = '';
+        process.env.NODE_ENV = 'test';
     });
     afterEach(() => {
+        restoreFixtureEnv();
         rmSync(root, { recursive: true, force: true });
+        rmSync(environmentRoot, { recursive: true, force: true });
     });
     it('two runs with same topic slug but different session IDs resolve to distinct dirs', () => {
         const slug = 'perf-track';
@@ -57,7 +106,6 @@ describe('self-improve session isolation (Wave B2)', () => {
         // Write a file into session A's state dir
         writeFileSync(join(pathsA.state_dir, 'iteration_state.json'), JSON.stringify({ active: true, session: sidA }));
         // Session B's state dir should not contain that file
-        const { existsSync } = require('node:fs');
         expect(existsSync(join(pathsB.state_dir, 'iteration_state.json'))).toBe(false);
     });
     it('session_id is returned in the paths object', () => {

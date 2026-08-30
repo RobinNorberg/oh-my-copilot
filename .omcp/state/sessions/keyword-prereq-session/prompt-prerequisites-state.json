@@ -1,0 +1,23 @@
+{
+  "active": true,
+  "session_id": "keyword-prereq-session",
+  "execution_keywords": [
+    "ralph"
+  ],
+  "required_tool_calls": [
+    "notepad_read",
+    "project_memory_read"
+  ],
+  "required_file_paths": [
+    "src/hooks/bridge.ts"
+  ],
+  "completed_tool_calls": [],
+  "completed_file_paths": [],
+  "created_at": "2026-05-03T23:17:39.825Z",
+  "updated_at": "2026-05-03T23:17:39.825Z",
+  "_meta": {
+    "written_at": "2026-05-03T23:17:39.826Z",
+    "mode": "prompt-prerequisites",
+    "sessionId": "keyword-prereq-session"
+  }
+}

@@ -5,13 +5,13 @@
 ## Step 3.1: Verify Plugin Installation
 
 ```bash
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
   "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
 esac
-grep -q "oh-my-claudecode" "$CONFIG_DIR/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-claudecode"
+grep -q "oh-my-copilot" "$CONFIG_DIR/settings.json" && echo "Plugin verified" || echo "Plugin NOT found - run: claude /install-plugin oh-my-copilot"
 ```
 
 ## Step 3.2: MCP Server Configuration (Pointer Only)
@@ -20,7 +20,7 @@ MCP servers extend Claude Code with additional tools (web search, GitHub, etc.).
 
 If the user asks about MCP servers, point them at the native registration path:
 
-- Claude Code: `claude mcp add <name> ...` (see `claude mcp --help`), or the native MCP config selected by `CLAUDE_MCP_CONFIG_PATH` (by default, the sibling `.claude.json` next to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`)
+- Claude Code: `claude mcp add <name> ...` (see `claude mcp --help`), or the native MCP config selected by `CLAUDE_MCP_CONFIG_PATH` (by default, the sibling `.claude.json` next to `${COPILOT_CONFIG_DIR:-$HOME/.claude}`)
 - OMC keeps its own bundled MCP server (`bridge/mcp-server.cjs`) registered via `.mcp.json`; it requires no user action
 - Company-context guidance, if used, is documented in `docs/company-context-interface.md`
 
@@ -49,7 +49,7 @@ Use AskUserQuestion:
 First, read the current settings.json:
 
 ```bash
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
@@ -65,12 +65,12 @@ else
 fi
 ```
 
-Then use the Read tool to read `${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
+Then use the Read tool to read `${COPILOT_CONFIG_DIR:-~/.claude}/settings.json` (if it exists). Use the Edit tool to merge the teams configuration while preserving ALL existing settings.
 
 Use jq to safely merge without overwriting existing settings:
 
 ```bash
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
@@ -126,7 +126,7 @@ Use AskUserQuestion:
 If user chooses anything other than "Auto", add `teammateMode` to settings.json:
 
 ```bash
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
@@ -178,7 +178,7 @@ Use AskUserQuestion with multiple questions:
 Store the team configuration in the active Claude config directory's `.omc-config.json`:
 
 ```bash
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
@@ -228,7 +228,7 @@ echo "  Model: teammates inherit your session model"
 After all modifications, verify settings.json is valid JSON and contains the expected keys:
 
 ```bash
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
@@ -265,7 +265,7 @@ Skip this step. Agent teams will remain disabled. User can enable later by addin
 }
 ```
 
-Or by running `/oh-my-claudecode:omc-setup --force` and choosing to enable teams.
+Or by running `/oh-my-copilot:omc-setup --force` and choosing to enable teams.
 
 ## Save Progress
 

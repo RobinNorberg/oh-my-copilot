@@ -46,7 +46,7 @@ describe('npm trusted publishing contract', () => {
     expect(releaseJob).toContain('npm install --global npm@11.17.0');
     expect(releaseJob).toContain('test "$(npm --version)" = "11.17.0"');
     expect(releaseBoundary).toContain("const WORKFLOW_PATH = '.github/workflows/ci.yml'");
-    expect(releaseBoundary).toContain("const REPOSITORY_URL = 'https://github.com/Yeachan-Heo/oh-my-claudecode'");
+    expect(releaseBoundary).toContain("const REPOSITORY_URL = 'https://github.com/Yeachan-Heo/oh-my-copilot'");
     expect(releaseBoundary).not.toContain("const WORKFLOW_PATH = '.github/workflows/release.yml'");
   });
 
@@ -138,7 +138,7 @@ describe('npm trusted publishing contract', () => {
       'node scripts/release-boundary.mjs assert-trigger --tag "$GITHUB_REF_NAME" --sha "$RELEASE_SHA"',
     );
     expect(releaseJob).toContain(
-      'node scripts/release-boundary.mjs assert-npm-absent --package oh-my-claude-sisyphus --version "$VERSION"',
+      'node scripts/release-boundary.mjs assert-npm-absent --package oh-my-copilot --version "$VERSION"',
     );
     expect(releaseJob).toContain('git cat-file -e HEAD:.github/release-body.md');
     expect(releaseJob).toContain('cp .github/release-body.md "$RUNNER_TEMP/release-notes.md"');
@@ -154,7 +154,7 @@ describe('npm trusted publishing contract', () => {
     expect(releaseJob).toContain('require(process.argv[1]).gitHead');
     expect(releaseJob).toContain('require(process.argv[1]).sourceSha');
     expect(releaseJob).toContain(
-      'node scripts/release-boundary.mjs verify-registry --package oh-my-claude-sisyphus --version "$VERSION" --tag "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --evidence "$EVIDENCE_JSON" --tarball "$FINAL_TARBALL" --provenance required --audit "$AUDIT_JSON"',
+      'node scripts/release-boundary.mjs verify-registry --package oh-my-copilot --version "$VERSION" --tag "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --evidence "$EVIDENCE_JSON" --tarball "$FINAL_TARBALL" --provenance required --audit "$AUDIT_JSON"',
     );
     expect(releaseJob).toContain('body_path: ${{ runner.temp }}/release-notes.md');
     expect(releaseJob).toContain('Assert clean deterministic tracked tree before archive');
@@ -173,7 +173,7 @@ describe('npm trusted publishing contract', () => {
       'RECOVERY_TAG: v4.15.4\n      RECOVERY_SHA: cb6932311ac956687e3c66bb6a48d52a8df14d56\n      RECOVERY_INPUT_TAG: ${{ inputs.tag }}\n      RECOVERY_INPUT_SHA: ${{ inputs.sha }}',
     );
     expect(recoveryJob).toContain(
-      'node scripts/release-boundary.mjs verify-registry --package oh-my-claude-sisyphus --version "$VERSION" --tag "$RECOVERY_TAG" --sha "$RECOVERY_SHA" --evidence "$RECOVERY_EVIDENCE_JSON" --tarball "$RECOVERY_TARBALL" --provenance required --audit "$RECOVERY_AUDIT_JSON"',
+      'node scripts/release-boundary.mjs verify-registry --package oh-my-copilot --version "$VERSION" --tag "$RECOVERY_TAG" --sha "$RECOVERY_SHA" --evidence "$RECOVERY_EVIDENCE_JSON" --tarball "$RECOVERY_TARBALL" --provenance required --audit "$RECOVERY_AUDIT_JSON"',
     );
     expect(recovery).toContain(
       'workflow_dispatch:\n    inputs:\n      tag:\n        description: Exact annotated release tag to recover\n        required: true\n        type: string\n      sha:\n        description: Exact 40-character hexadecimal commit SHA to recover\n        required: true\n        type: string',

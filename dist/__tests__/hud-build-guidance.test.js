@@ -8,7 +8,7 @@ const root = join(__dirname, '..', '..');
 describe('HUD build/load guidance', () => {
     it('session-start checks legacy hud script name and build guidance', () => {
         const content = readFileSync(join(root, 'scripts', 'session-start.mjs'), 'utf-8');
-        expect(content).toContain("const hudScriptLegacy = join(hudDir, 'omc-hud.js');");
+        expect(content).toContain("const hudScriptLegacy = join(hudDir, 'omcp-hud.js');");
         expect(content).toContain('HUD plugin cache is not built. Run: cd');
         expect(content).toContain('npm install && npm run build');
     });
@@ -18,8 +18,8 @@ describe('HUD build/load guidance', () => {
         const content = readFileSync(join(root, 'scripts', 'lib', 'hud-wrapper-template.txt'), 'utf-8');
         expect(content).toContain('join(configDir, "plugins", "marketplaces", "omc", "dist/hud/index.js")');
         expect(content).toContain('pathToFileURL(marketplaceHudPath).href');
-        expect(content).toContain('"oh-my-claude-sisyphus/dist/hud/index.js"');
-        expect(content).toContain('"oh-my-claudecode/dist/hud/index.js"');
+        expect(content).toContain('"oh-my-copilot/dist/hud/index.js"');
+        expect(content).toContain('"oh-my-copilot/dist/hud/index.js"');
         expect(content).toContain('Plugin installed but not built');
         expect(content).toContain('Plugin HUD load failed');
     });
@@ -28,8 +28,8 @@ describe('HUD build/load guidance', () => {
         expect(content).toContain('const latestInstalledVersion = sortedVersions[0];');
         expect(content).toContain('join(configDir, "plugins", "marketplaces", "omc", "dist/hud/index.js")');
         expect(content).toContain('pathToFileURL(marketplaceHudPath).href');
-        expect(content).toContain('"oh-my-claude-sisyphus/dist/hud/index.js"');
-        expect(content).toContain('"oh-my-claudecode/dist/hud/index.js"');
+        expect(content).toContain('"oh-my-copilot/dist/hud/index.js"');
+        expect(content).toContain('"oh-my-copilot/dist/hud/index.js"');
         expect(content).toContain('Plugin HUD load failed');
     });
 });

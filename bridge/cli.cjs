@@ -3035,9 +3035,9 @@ function stripTrailingSep(p) {
   }
   return p === (0, import_path.parse)(p).root ? p : p.slice(0, -1);
 }
-function getClaudeConfigDir() {
+function getCopilotConfigDir() {
   const home = (0, import_os.homedir)();
-  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  const configured = process.env.COPILOT_CONFIG_DIR?.trim();
   if (!configured) {
     return stripTrailingSep((0, import_path.normalize)((0, import_path.join)(home, ".claude")));
   }
@@ -3050,7 +3050,7 @@ function getClaudeConfigDir() {
   return stripTrailingSep((0, import_path.normalize)(configured));
 }
 function getOmcConfigDir() {
-  return (0, import_path.join)(getClaudeConfigDir(), ".omc");
+  return (0, import_path.join)(getCopilotConfigDir(), ".omc");
 }
 function getUpdateCheckCachePath() {
   return (0, import_path.join)(getOmcConfigDir(), "update-check.json");
@@ -3162,7 +3162,7 @@ function processAlive(pid) {
     return error2.code === "EPERM";
   }
 }
-function getCacheOccupancyDir(configDir = getClaudeConfigDir()) {
+function getCacheOccupancyDir(configDir = getCopilotConfigDir()) {
   return (0, import_path2.join)(configDir, ".omc", "cache-occupancy");
 }
 function validRecord(value) {
@@ -3170,7 +3170,7 @@ function validRecord(value) {
   const record2 = value;
   return record2.version === REGISTRY_VERSION && Number.isSafeInteger(record2.pid) && typeof record2.pid === "number" && record2.pid > 0 && typeof record2.processStartIdentity === "string" && record2.processStartIdentity.length > 0 && typeof record2.pluginRoot === "string" && record2.pluginRoot.length > 0 && typeof record2.updatedAt === "string" && Number.isFinite(Date.parse(record2.updatedAt));
 }
-function readOccupiedPluginRoots(configDir = getClaudeConfigDir()) {
+function readOccupiedPluginRoots(configDir = getCopilotConfigDir()) {
   const directory = getCacheOccupancyDir(configDir);
   let names;
   try {
@@ -3457,7 +3457,7 @@ function purgeStalePluginCacheVersions(options) {
     skippedPaths: [],
     errors: []
   };
-  const configDir = getClaudeConfigDir();
+  const configDir = getCopilotConfigDir();
   const pluginsDir = (0, import_path3.join)(configDir, "plugins");
   const installedFile = (0, import_path3.join)(pluginsDir, "installed_plugins.json");
   const cacheDir = (0, import_path3.join)(pluginsDir, "cache");
@@ -3985,7 +3985,7 @@ function shouldAutoForceInherit() {
   }
   return false;
 }
-var DIRECT_MODEL_ENV_KEYS, INHERIT_TIER_PRIORITY, CLAUDE_TIER_ALIASES, TIER_ENV_KEYS, CLAUDE_FAMILY_DEFAULTS, BUILTIN_TIER_MODEL_DEFAULTS, CLAUDE_FAMILY_HIGH_VARIANTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS;
+var DIRECT_MODEL_ENV_KEYS, INHERIT_TIER_PRIORITY, CLAUDE_TIER_ALIASES, TIER_ENV_KEYS, COPILOT_FAMILY_DEFAULTS, BUILTIN_TIER_MODEL_DEFAULTS, CLAUDE_FAMILY_HIGH_VARIANTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS;
 var init_models = __esm({
   "src/config/models.ts"() {
     "use strict";
@@ -4010,22 +4010,22 @@ var init_models = __esm({
         "ANTHROPIC_DEFAULT_OPUS_MODEL"
       ]
     };
-    CLAUDE_FAMILY_DEFAULTS = {
+    COPILOT_FAMILY_DEFAULTS = {
       HAIKU: "claude-haiku-4-5",
       SONNET: "claude-sonnet-5",
       OPUS: "claude-opus-4-8",
       FABLE: "claude-fable-5"
     };
     BUILTIN_TIER_MODEL_DEFAULTS = {
-      LOW: CLAUDE_FAMILY_DEFAULTS.HAIKU,
-      MEDIUM: CLAUDE_FAMILY_DEFAULTS.SONNET,
-      HIGH: CLAUDE_FAMILY_DEFAULTS.OPUS
+      LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
+      MEDIUM: COPILOT_FAMILY_DEFAULTS.SONNET,
+      HIGH: COPILOT_FAMILY_DEFAULTS.OPUS
     };
     CLAUDE_FAMILY_HIGH_VARIANTS = {
-      HAIKU: `${CLAUDE_FAMILY_DEFAULTS.HAIKU}-high`,
-      SONNET: `${CLAUDE_FAMILY_DEFAULTS.SONNET}-high`,
-      OPUS: `${CLAUDE_FAMILY_DEFAULTS.OPUS}-high`,
-      FABLE: `${CLAUDE_FAMILY_DEFAULTS.FABLE}-high`
+      HAIKU: `${COPILOT_FAMILY_DEFAULTS.HAIKU}-high`,
+      SONNET: `${COPILOT_FAMILY_DEFAULTS.SONNET}-high`,
+      OPUS: `${COPILOT_FAMILY_DEFAULTS.OPUS}-high`,
+      FABLE: `${COPILOT_FAMILY_DEFAULTS.FABLE}-high`
     };
     BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
       codexModel: "gpt-5.3-codex",
@@ -4673,7 +4673,7 @@ function compactBudgetedText(text, maxChars) {
   return `${text.slice(0, maxChars - notice.length).trimEnd()}${notice}`;
 }
 function looksLikeOmcGuidance(content) {
-  return content.includes("<guidance_schema_contract>") && /oh-my-(claudecode|codex)/i.test(content) && OMC_STARTUP_COMPACTABLE_SECTIONS.some(
+  return content.includes("<guidance_schema_contract>") && /oh-my-(copilot|claudecode|codex)/i.test(content) && OMC_STARTUP_COMPACTABLE_SECTIONS.some(
     (section) => content.includes(`<${section}>`) && content.includes(`</${section}>`)
   );
 }
@@ -31587,7 +31587,7 @@ function isValidTranscriptPath(transcriptPath) {
   const normalized = (0, import_path18.normalize)(expandedPath);
   const home = (0, import_os4.homedir)();
   const allowedPrefixes = [
-    getClaudeConfigDir(),
+    getCopilotConfigDir(),
     (0, import_path18.join)(home, ".omc"),
     (0, import_os4.tmpdir)(),
     // honors $TMPDIR; covers /tmp and macOS /var/folders defaults
@@ -31684,7 +31684,7 @@ function resolveTranscriptPath(transcriptPath, cwd2) {
     const mainProjectRoot = normalizedCwd.substring(0, markerIdx);
     const sessionFile = (0, import_path18.basename)(transcriptPath);
     if (sessionFile) {
-      const projectsDir = (0, import_path18.join)(getClaudeConfigDir(), "projects");
+      const projectsDir = (0, import_path18.join)(getCopilotConfigDir(), "projects");
       if ((0, import_fs13.existsSync)(projectsDir)) {
         const encodedMain = encodeProjectPath(mainProjectRoot);
         const resolvedPath = (0, import_path18.join)(projectsDir, encodedMain, sessionFile);
@@ -31717,7 +31717,7 @@ function resolveTranscriptPath(transcriptPath, cwd2) {
     if (mainRepoRoot !== worktreeTop) {
       const sessionFile = (0, import_path18.basename)(transcriptPath);
       if (sessionFile) {
-        const projectsDir = (0, import_path18.join)(getClaudeConfigDir(), "projects");
+        const projectsDir = (0, import_path18.join)(getCopilotConfigDir(), "projects");
         if ((0, import_fs13.existsSync)(projectsDir)) {
           const encodedMain = encodeProjectPath(mainRepoRoot);
           const resolvedPath = (0, import_path18.join)(projectsDir, encodedMain, sessionFile);
@@ -33429,7 +33429,7 @@ var init_constants = __esm({
     import_os5 = require("os");
     init_config_dir();
     init_worktree_paths();
-    USER_SKILLS_DIR = (0, import_path21.join)(getClaudeConfigDir(), "skills", "omc-learned");
+    USER_SKILLS_DIR = (0, import_path21.join)(getCopilotConfigDir(), "skills", "omc-learned");
     GLOBAL_SKILLS_DIR = (0, import_path21.join)((0, import_os5.homedir)(), ".omc", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
     PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path21.join)(".agents", "skills");
@@ -35159,7 +35159,7 @@ function canStartMode(mode, cwd2) {
         return {
           allowed: false,
           blockedBy: exclusiveMode,
-          message: `Cannot start ${MODE_CONFIGS[mode].name} while ${config2.name} is active. Cancel ${config2.name} first with /oh-my-claudecode:cancel.`
+          message: `Cannot start ${MODE_CONFIGS[mode].name} while ${config2.name} is active. Cancel ${config2.name} first with /oh-my-copilot:cancel.`
         };
       }
     }
@@ -35460,7 +35460,7 @@ Your task: Expand this product idea into detailed requirements and technical spe
 
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:analyst",
+  subagent_type="oh-my-copilot:analyst",
   model="opus",
   prompt="REQUIREMENTS ANALYSIS for: ${escapeForPrompt(idea)}
 
@@ -35482,7 +35482,7 @@ After Analyst completes, spawn Architect:
 
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="TECHNICAL SPECIFICATION for: ${escapeForPrompt(idea)}
 
@@ -35534,7 +35534,7 @@ Spawn Architect to create the implementation plan:
 
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="CREATE IMPLEMENTATION PLAN
 
@@ -35572,7 +35572,7 @@ After Architect creates the plan:
 
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:critic",
+  subagent_type="oh-my-copilot:critic",
   model="opus",
   prompt="REVIEW IMPLEMENTATION PLAN
 
@@ -35619,13 +35619,13 @@ Ralph persistence is active. Delegate independent tasks to executor agents or a 
 
 \`\`\`
 // For simple tasks (single file, straightforward logic)
-Task(subagent_type="oh-my-claudecode:executor-low", model="haiku", prompt="...")
+Task(subagent_type="oh-my-copilot:executor-low", model="haiku", prompt="...")
 
 // For standard implementation (feature, multiple methods)
-Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="...")
 
 // For complex work (architecture, debugging, refactoring)
-Task(subagent_type="oh-my-claudecode:executor-high", model="opus", prompt="...")
+Task(subagent_type="oh-my-copilot:executor-high", model="opus", prompt="...")
 \`\`\`
 
 ### Progress Tracking
@@ -35672,7 +35672,7 @@ For each failure:
 1. **Diagnose** - Understand the error
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:architect-low",
+  subagent_type="oh-my-copilot:architect-low",
   model="haiku",
   prompt="Diagnose this error and suggest fix: [ERROR]"
 )
@@ -35681,7 +35681,7 @@ Task(
 2. **Fix** - Apply the fix
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:debugger",
+  subagent_type="oh-my-copilot:debugger",
   model="sonnet",
   prompt="Fix this error with minimal changes: [ERROR]"
 )
@@ -35713,7 +35713,7 @@ Each reviewer must return ONLY a concise review summary under 100 words with ver
 \`\`\`
 // Functional Completeness Review
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="FUNCTIONAL COMPLETENESS REVIEW
 
@@ -35730,7 +35730,7 @@ Verdict: APPROVED (all requirements met) or REJECTED (with specific gaps)"
 
 // Security Review
 Task(
-  subagent_type="oh-my-claudecode:security-reviewer",
+  subagent_type="oh-my-copilot:security-reviewer",
   model="opus",
   prompt="SECURITY REVIEW
 
@@ -35747,7 +35747,7 @@ Verdict: APPROVED (no vulnerabilities) or REJECTED (with specific issues)"
 
 // Code Quality Review
 Task(
-  subagent_type="oh-my-claudecode:code-reviewer",
+  subagent_type="oh-my-copilot:code-reviewer",
   model="opus",
   prompt="CODE QUALITY REVIEW
 
@@ -35843,7 +35843,7 @@ ${getExpansionPrompt(context.idea, void 0, false)}
 
 After the spec is created at \`${specPath}\`, invoke the RALPLAN consensus workflow:
 
-Use the \`/oh-my-claudecode:ralplan\` skill to create a consensus-driven implementation plan.
+Use the \`/oh-my-copilot:ralplan\` skill to create a consensus-driven implementation plan.
 The plan should be saved to: \`${planPath}\`
 
 The RALPLAN process will:
@@ -36026,13 +36026,13 @@ Every spawned executor response must return ONLY a short execution summary under
 
 \`\`\`
 // For simple tasks (single file, straightforward logic)
-Task(subagent_type="oh-my-claudecode:executor", model="haiku", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="haiku", prompt="...")
 
 // For standard implementation (feature, multiple methods)
-Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="...")
 
 // For complex work (architecture, debugging, refactoring)
-Task(subagent_type="oh-my-claudecode:executor", model="opus", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="opus", prompt="...")
 \`\`\`
 
 ### Progress Tracking
@@ -36084,7 +36084,7 @@ Each reviewer must return ONLY a concise review summary under 100 words covering
 \`\`\`
 // Functional Completeness Review
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="FUNCTIONAL COMPLETENESS REVIEW
 
@@ -36101,7 +36101,7 @@ Verdict: APPROVED (all requirements met) or REJECTED (with specific gaps)"
 
 // Security Review
 Task(
-  subagent_type="oh-my-claudecode:security-reviewer",
+  subagent_type="oh-my-copilot:security-reviewer",
   model="opus",
   prompt="SECURITY REVIEW
 
@@ -36118,7 +36118,7 @@ Verdict: APPROVED (no vulnerabilities) or REJECTED (with specific issues)"
 
 // Code Quality Review
 Task(
-  subagent_type="oh-my-claudecode:code-reviewer",
+  subagent_type="oh-my-copilot:code-reviewer",
   model="opus",
   prompt="CODE QUALITY REVIEW
 
@@ -36920,7 +36920,7 @@ ${prdPath ? `**Active PRD file:** ${prdPath}
 3. Run quality checks (tests, typecheck, lint)
 4. When complete, create a revision-bound completion claim in the active PRD file: set \`passes\` to true and set \`completionCriteriaRevision\` to \`${governingCriteriaRevision}\` (the current \`governingCriteriaRevision\`). Do not mark \`architectVerified\`; reviewer approval does that only after verification.
 5. If implementation proves an acceptance criterion false, amend or supersede it with evidence instead of silently deleting it or claiming it passes (see the amendment ledger above and the ralph skill)
-6. If ALL stories are done, run \`/oh-my-claudecode:cancel\` to cleanly exit ralph mode and clean up all state files
+6. If ALL stories are done, run \`/oh-my-copilot:cancel\` to cleanly exit ralph mode and clean up all state files
 
 </current-story>
 
@@ -38102,7 +38102,7 @@ var init_omc_cli_rendering = __esm({
   "src/utils/omc-cli-rendering.ts"() {
     "use strict";
     import_child_process14 = require("child_process");
-    OMC_CLI_BINARY = "omc";
+    OMC_CLI_BINARY = "omcp";
     OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
   }
 });
@@ -38307,7 +38307,7 @@ ${getVerificationAgentStep(state.critic_mode)}
    - Return ONLY a concise review summary under 100 words with verdict, evidence highlights, files checked, and blockers. Do not paste long logs inline.
 
 3. **Based on ${criticLabel}'s response:**
-   - If APPROVED: Output the exact correlated approval tag \`${approvalTag}\`, then run \`/oh-my-claudecode:cancel\` to cleanly exit
+   - If APPROVED: Output the exact correlated approval tag \`${approvalTag}\`, then run \`/oh-my-copilot:cancel\` to cleanly exit
    - If REJECTED: Continue working on the identified issues
 
 </ralph-verification>
@@ -38335,7 +38335,7 @@ ${state.original_task}
 1. Address ALL issues identified by ${criticLabel}
 2. Do NOT claim completion again until issues are fixed${state.story_id ? `, and do not progress story ${state.story_id} until it passes review` : ""}
 3. When truly done, another ${criticLabel} verification will be triggered
-4. After ${criticLabel} approves, run \`/oh-my-claudecode:cancel\` to cleanly exit
+4. After ${criticLabel} approves, run \`/oh-my-copilot:cancel\` to cleanly exit
 
 Continue working now.
 
@@ -38921,13 +38921,13 @@ You are now in validation phase. Spawn parallel validation architects:
 
 \`\`\`
 // Spawn all three in parallel
-Task(subagent_type="oh-my-claudecode:architect", model="opus",
+Task(subagent_type="oh-my-copilot:architect", model="opus",
   prompt="FUNCTIONAL COMPLETENESS REVIEW: Verify all requirements from spec are implemented")
 
-Task(subagent_type="oh-my-claudecode:security-reviewer", model="opus",
+Task(subagent_type="oh-my-copilot:security-reviewer", model="opus",
   prompt="SECURITY REVIEW: Check for vulnerabilities, injection risks, auth issues")
 
-Task(subagent_type="oh-my-claudecode:code-reviewer", model="opus",
+Task(subagent_type="oh-my-copilot:code-reviewer", model="opus",
   prompt="CODE QUALITY REVIEW: Check patterns, maintainability, test coverage")
 \`\`\`
 
@@ -39706,7 +39706,7 @@ function validateNamedWorkflowState(state, sessionId) {
   const task = typeof state.prompt === "string" ? state.prompt.trim() : "";
   let root2;
   try {
-    root2 = (0, import_fs28.realpathSync)((0, import_path35.join)(getClaudeConfigDir(), "projects"));
+    root2 = (0, import_fs28.realpathSync)((0, import_path35.join)(getCopilotConfigDir(), "projects"));
   } catch {
     return null;
   }
@@ -39777,7 +39777,7 @@ function refreshNamedWorkflowBoundaryForCommit(advance) {
   clearNamedWorkflowTranscriptFailure(advance.commitToken.sessionId);
   let root2;
   try {
-    root2 = (0, import_fs28.realpathSync)((0, import_path35.join)(getClaudeConfigDir(), "projects"));
+    root2 = (0, import_fs28.realpathSync)((0, import_path35.join)(getCopilotConfigDir(), "projects"));
   } catch {
     return false;
   }
@@ -39845,7 +39845,7 @@ function prepareNamedWorkflowAdvance(state, sessionId) {
     return null;
   let root2;
   try {
-    root2 = (0, import_fs28.realpathSync)((0, import_path35.join)(getClaudeConfigDir(), "projects"));
+    root2 = (0, import_fs28.realpathSync)((0, import_path35.join)(getCopilotConfigDir(), "projects"));
   } catch {
     return null;
   }
@@ -40279,7 +40279,7 @@ function appendReplayEvent(directory, sessionId, event) {
 function recordAgentStart(directory, sessionId, agentId, agentType, task, parentMode, model, description, name) {
   appendReplayEvent(directory, sessionId, {
     agent: agentId.substring(0, 7),
-    agent_type: agentType.replace("oh-my-claudecode:", ""),
+    agent_type: agentType.replace("oh-my-copilot:", ""),
     event: "agent_start",
     task: task?.substring(0, 100),
     parent_mode: parentMode,
@@ -40291,7 +40291,7 @@ function recordAgentStart(directory, sessionId, agentId, agentType, task, parent
 function recordAgentStop(directory, sessionId, agentId, agentType, success, durationMs, metadata) {
   appendReplayEvent(directory, sessionId, {
     agent: agentId.substring(0, 7),
-    agent_type: agentType.replace("oh-my-claudecode:", ""),
+    agent_type: agentType.replace("oh-my-copilot:", ""),
     event: "agent_stop",
     success,
     duration_ms: durationMs,
@@ -40801,19 +40801,19 @@ function normalizePath(value) {
   return value.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 function isDefaultClaudeConfigDir() {
-  return normalizePath(getClaudeConfigDir()) === normalizePath((0, import_path55.join)((0, import_os9.homedir)(), ".claude"));
+  return normalizePath(getCopilotConfigDir()) === normalizePath((0, import_path55.join)((0, import_os9.homedir)(), ".claude"));
 }
 function quoteCommandPath(path27) {
   return `"${path27.replace(/"/g, '\\"')}"`;
 }
 function buildHookCommand(filename) {
   if (isWindows()) {
-    return `node ${quoteCommandPath((0, import_path55.join)(getClaudeConfigDir(), "hooks", filename).replace(/\\/g, "/"))}`;
+    return `node ${quoteCommandPath((0, import_path55.join)(getCopilotConfigDir(), "hooks", filename).replace(/\\/g, "/"))}`;
   }
   if (isDefaultClaudeConfigDir()) {
-    return `node "\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/${filename}"`;
+    return `node "\${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/${filename}"`;
   }
-  return `node ${quoteCommandPath((0, import_path55.join)(getClaudeConfigDir(), "hooks", filename).replace(/\\/g, "/"))}`;
+  return `node ${quoteCommandPath((0, import_path55.join)(getCopilotConfigDir(), "hooks", filename).replace(/\\/g, "/"))}`;
 }
 function getHooksSettingsConfig() {
   return HOOKS_SETTINGS_CONFIG_NODE;
@@ -40924,7 +40924,7 @@ Ralph mode persists until the requested work is verified complete. Follow these 
 ### Completion Requirements
 - Verify ALL requirements from the original task are met
 - Architect verification is MANDATORY before claiming completion
-- When FULLY complete, run \`/oh-my-claudecode:cancel\` to cleanly exit and clean up state files
+- When FULLY complete, run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files
 
 Continue working until the task is truly done.
 `;
@@ -41037,7 +41037,7 @@ function getRuntimePackageVersion() {
   }
   try {
     const __filename4 = (0, import_url9.fileURLToPath)(importMetaUrl);
-    const pathMatch = __filename4.match(/oh-my-claudecode\/(\d+\.\d+\.\d+[^/]*)\//);
+    const pathMatch = __filename4.match(/oh-my-copilot\/(\d+\.\d+\.\d+[^/]*)\//);
     if (pathMatch?.[1]) {
       return pathMatch[1];
     }
@@ -41284,7 +41284,7 @@ function getClaudeMcpConfigPath() {
   if (process.env.CLAUDE_MCP_CONFIG_PATH?.trim()) {
     return process.env.CLAUDE_MCP_CONFIG_PATH.trim();
   }
-  return (0, import_path58.join)((0, import_path58.dirname)(getClaudeConfigDir()), ".claude.json");
+  return (0, import_path58.join)((0, import_path58.dirname)(getCopilotConfigDir()), ".claude.json");
 }
 function getCodexConfigPath() {
   const codexHome = process.env.CODEX_HOME?.trim() || (0, import_path58.join)((0, import_os11.homedir)(), ".codex");
@@ -41959,7 +41959,7 @@ var init_paths3 = __esm({
   "src/lib/paths.ts"() {
     "use strict";
     OMC_PLUGIN_MARKETPLACE_SLUG = "omc";
-    OMC_PLUGIN_PACKAGE_NAME = "oh-my-claudecode";
+    OMC_PLUGIN_PACKAGE_NAME = "oh-my-copilot";
     OMC_PLUGIN_CACHE_REL = `plugins/cache/${OMC_PLUGIN_MARKETPLACE_SLUG}/${OMC_PLUGIN_PACKAGE_NAME}`;
     OMC_PLUGIN_MARKETPLACE_REL = `plugins/marketplaces/${OMC_PLUGIN_MARKETPLACE_SLUG}`;
     OMC_CONFIG_FILE_REL = ".omc-config.json";
@@ -42079,7 +42079,7 @@ var init_user_skill_compat = __esm({
     import_fs46 = require("fs");
     import_path59 = require("path");
     init_config_dir();
-    CLAUDE_SKILLS_DIR = (0, import_path59.join)(getClaudeConfigDir(), "skills");
+    CLAUDE_SKILLS_DIR = (0, import_path59.join)(getCopilotConfigDir(), "skills");
     OMC_LEARNED_DIR = (0, import_path59.join)(CLAUDE_SKILLS_DIR, "omc-learned");
     CLAUDE_SKILL_FILENAME = "SKILL.md";
   }
@@ -42100,8 +42100,8 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "287d4091749263fc4a646321f6586ad9080c34b8c78503c47f17dabd12a28f77",
         "lineCount": 411,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
-        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
         "normalizedSha256": "287d4091749263fc4a646321f6586ad9080c34b8c78503c47f17dabd12a28f77"
       },
       {
@@ -42113,8 +42113,8 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "b052a9b9be4aeb4bcd012839e212332213100d24d565ca57f0d7f128e6fe7477",
         "lineCount": 395,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
-        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
         "normalizedSha256": "b052a9b9be4aeb4bcd012839e212332213100d24d565ca57f0d7f128e6fe7477"
       },
       {
@@ -42126,8 +42126,8 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "e7f081c220adf8e57f1c0bbc97ab6c7caa8b928bb02c95fa7306db3c64f1ad6e",
         "lineCount": 718,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
-        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
         "normalizedSha256": "e7f081c220adf8e57f1c0bbc97ab6c7caa8b928bb02c95fa7306db3c64f1ad6e"
       },
       {
@@ -42139,7 +42139,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "29392870c7a6b6f06f93f2877cae448825498bb5e438c81b0dad3c96b8fc2ac5",
         "lineCount": 720,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "29392870c7a6b6f06f93f2877cae448825498bb5e438c81b0dad3c96b8fc2ac5"
       },
@@ -42152,7 +42152,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "b046b3b3cb97b347386fff48f4d84e5af64e5f4194b676e04369012f91bb23f4",
         "lineCount": 680,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "b046b3b3cb97b347386fff48f4d84e5af64e5f4194b676e04369012f91bb23f4"
       },
@@ -42165,7 +42165,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "e2f01b2570ef9a8f0ca2ed5b33352fa1f35126c4061583e8799b13729fa13610",
         "lineCount": 680,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "e2f01b2570ef9a8f0ca2ed5b33352fa1f35126c4061583e8799b13729fa13610"
       },
@@ -42178,7 +42178,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "e7137b0f9fb77753b782910834c8ca23ad2db83d8942f14868be7eccbaa462ed",
         "lineCount": 659,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "e7137b0f9fb77753b782910834c8ca23ad2db83d8942f14868be7eccbaa462ed"
       },
@@ -42191,7 +42191,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "8354f803febe3ee1c4fc719596ebb1aa096bb3f8b344dcd640ac1c792445aad9",
         "lineCount": 576,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "8354f803febe3ee1c4fc719596ebb1aa096bb3f8b344dcd640ac1c792445aad9"
       },
@@ -42204,7 +42204,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "f78fe8182ba2bb94b345477f25fe5da8b10950f486d97dfe08c5cf4725a923a7",
         "lineCount": 583,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "f78fe8182ba2bb94b345477f25fe5da8b10950f486d97dfe08c5cf4725a923a7"
       },
@@ -42217,7 +42217,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "7590ed845e49d05d772ecbc3de4b0ae1a20fd4d026ad5572b647ca665c3da128",
         "lineCount": 576,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "7590ed845e49d05d772ecbc3de4b0ae1a20fd4d026ad5572b647ca665c3da128"
       },
@@ -42230,7 +42230,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "44dcb8243c81521372e5b05ed4a6c2070a70eab2cac463c77fdde729432428b8",
         "lineCount": 534,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "44dcb8243c81521372e5b05ed4a6c2070a70eab2cac463c77fdde729432428b8"
       },
@@ -42243,7 +42243,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "4fc8628543dbea375e0108cc44ed3cd7243b757d1a2ac58cb0086984b8f6a119",
         "lineCount": 457,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "4fc8628543dbea375e0108cc44ed3cd7243b757d1a2ac58cb0086984b8f6a119"
       },
@@ -42256,7 +42256,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "ac274106313706b880e2f2d98d7dd9d264dfe86bba8c27fd421c0702c15abdfd",
         "lineCount": 457,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "ac274106313706b880e2f2d98d7dd9d264dfe86bba8c27fd421c0702c15abdfd"
       },
@@ -42269,7 +42269,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "bdf21db37ead6784352d1f8e82129b82080f84a48ab86bdc2db78c6d79d7ec3b",
         "lineCount": 431,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "bdf21db37ead6784352d1f8e82129b82080f84a48ab86bdc2db78c6d79d7ec3b"
       },
@@ -42282,7 +42282,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "fd53d1ee2ee96ade4372e00a21b0bcf079c1d46d9ba0e5a599f0eb2c8fddb2a0",
         "lineCount": 424,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "fd53d1ee2ee96ade4372e00a21b0bcf079c1d46d9ba0e5a599f0eb2c8fddb2a0"
       },
@@ -42295,7 +42295,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "684738ecf9ecbe7273f06b0935ad22f01ec622fdd933add02276b078e97b29c4",
         "lineCount": 417,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "684738ecf9ecbe7273f06b0935ad22f01ec622fdd933add02276b078e97b29c4"
       },
@@ -42308,7 +42308,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "f50ebdb7bf4753ee2d14d403feda4b734c55039c3cbad211c3e8bde4c54e2d39",
         "lineCount": 386,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "f50ebdb7bf4753ee2d14d403feda4b734c55039c3cbad211c3e8bde4c54e2d39"
       },
@@ -42321,7 +42321,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "32ed686cf8a071bafab679e196590160a7add0757918bf332a2455bca97eb2f9",
         "lineCount": 304,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
         "normalizedSha256": "32ed686cf8a071bafab679e196590160a7add0757918bf332a2455bca97eb2f9"
       },
@@ -42334,7 +42334,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "393c02f244aa1033d542e1b0d1ae17a9188eedd23ae262c3d69d1ca0676d3710",
         "lineCount": 304,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
         "normalizedSha256": "393c02f244aa1033d542e1b0d1ae17a9188eedd23ae262c3d69d1ca0676d3710"
       },
@@ -42347,7 +42347,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "1b164df10e9a1f621288a501592470206e2af7ec10a13f85ca5faef22418d6cc",
         "lineCount": 292,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
         "normalizedSha256": "1b164df10e9a1f621288a501592470206e2af7ec10a13f85ca5faef22418d6cc"
       },
@@ -42360,7 +42360,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "5001bd4e3be7801b26e2961f11ea237719a098b624ed20c9767763aee3958b3a",
         "lineCount": 292,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
         "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
         "normalizedSha256": "5001bd4e3be7801b26e2961f11ea237719a098b624ed20c9767763aee3958b3a"
       },
@@ -43184,10 +43184,10 @@ function hasUnchangedRegularAgentFile(filepath, previous) {
   return current !== null && current.dev === previous.dev && current.ino === previous.ino && current.size === previous.size && current.mtimeMs === previous.mtimeMs && current.content.equals(previous.content);
 }
 function currentAgentsDir() {
-  return (0, import_path60.join)(getClaudeConfigDir(), "agents");
+  return (0, import_path60.join)(getCopilotConfigDir(), "agents");
 }
 function currentSkillsDir() {
-  return (0, import_path60.join)(getClaudeConfigDir(), "skills");
+  return (0, import_path60.join)(getCopilotConfigDir(), "skills");
 }
 function isComparableVersion(version3) {
   return !!version3 && /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(version3);
@@ -43220,7 +43220,7 @@ function getNewestInstalledVersionHint() {
     }
   }
   const claudeCandidates = [
-    (0, import_path60.join)(CLAUDE_CONFIG_DIR, "CLAUDE.md"),
+    (0, import_path60.join)(COPILOT_CONFIG_DIR, "CLAUDE.md"),
     (0, import_path60.join)((0, import_os12.homedir)(), "CLAUDE.md")
   ];
   for (const candidatePath of claudeCandidates) {
@@ -43262,16 +43262,16 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath, cacheWrapp
   }
   const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, "/");
   if (cacheWrapperPath) {
-    if (isDefaultClaudeConfigDirPath(CLAUDE_CONFIG_DIR)) {
-      return "sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud-cache.sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs";
+    if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
+      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
     }
     return `sh ${quoteShellArg(cacheWrapperPath.replace(/\\/g, "/"))} ${quoteShellArg(normalizedHudScriptPath)}`;
   }
-  if (isDefaultClaudeConfigDirPath(CLAUDE_CONFIG_DIR)) {
+  if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
     if (findNodePath) {
-      return "sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs";
+      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
     }
-    return "node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs";
+    return "node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
   }
   if (findNodePath) {
     return `sh ${quoteShellArg(findNodePath.replace(/\\/g, "/"))} ${quoteShellArg(normalizedHudScriptPath)}`;
@@ -43279,7 +43279,7 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath, cacheWrapp
   return `node ${quoteShellArg(normalizedHudScriptPath)}`;
 }
 function isHudEnabledInConfig() {
-  const configPath = (0, import_path60.join)(CLAUDE_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+  const configPath = (0, import_path60.join)(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
   if (!(0, import_fs47.existsSync)(configPath)) {
     return true;
   }
@@ -43294,12 +43294,12 @@ function isHudEnabledInConfig() {
 function isOmcStatusLine(statusLine) {
   if (!statusLine) return false;
   if (typeof statusLine === "string") {
-    return statusLine.includes("omc-hud");
+    return statusLine.includes("omcp-hud");
   }
   if (typeof statusLine === "object") {
     const sl = statusLine;
     if (typeof sl.command === "string") {
-      return sl.command.includes("omc-hud");
+      return sl.command.includes("omcp-hud");
     }
   }
   return false;
@@ -43361,7 +43361,7 @@ function isShippedStandaloneHookPayload(targetPath, filename, location) {
 function isOmcHook(command) {
   const lowerCommand = command.toLowerCase();
   const omcPattern = /(?:^|[\/\\_-])omc(?:$|[\/\\_-])/;
-  const fullNamePattern = /oh-my-claudecode/;
+  const fullNamePattern = /oh-my-copilot/;
   if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
     return true;
   }
@@ -43416,7 +43416,7 @@ function checkNodeVersion() {
     required: MIN_NODE_VERSION
   };
 }
-function isClaudeInstalled() {
+function isCopilotInstalled() {
   try {
     const command = isWindows() ? "where claude" : "which claude";
     (0, import_child_process18.execSync)(command, { encoding: "utf-8", stdio: "pipe" });
@@ -43433,7 +43433,7 @@ function isProjectScopedPlugin() {
   if (!pluginRoot) {
     return false;
   }
-  const globalPluginBase = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "plugins");
+  const globalPluginBase = (0, import_path60.join)(COPILOT_CONFIG_DIR, "plugins");
   const normalizedPluginRoot = pluginRoot.replace(/\\/g, "/").replace(/\/$/, "");
   const normalizedGlobalBase = globalPluginBase.replace(/\\/g, "/").replace(/\/$/, "");
   return !normalizedPluginRoot.startsWith(normalizedGlobalBase);
@@ -43519,7 +43519,7 @@ function pruneLegacyStandaloneHookScripts(log3, activeStandaloneOmcHookFilenames
     }
   }
   if (removed > 0) {
-    log3(`  Removed ${removed} legacy hook script file${removed === 1 ? "" : "s"} from ${(0, import_path60.basename)(CLAUDE_CONFIG_DIR)}/hooks`);
+    log3(`  Removed ${removed} legacy hook script file${removed === 1 ? "" : "s"} from ${(0, import_path60.basename)(COPILOT_CONFIG_DIR)}/hooks`);
   }
 }
 function configureInstallerSettings(baseSettings, context) {
@@ -43604,7 +43604,7 @@ function configureInstallerSettings(baseSettings, context) {
         const findNodeSrc = (0, import_path60.join)(getPackageDir3(), "scripts", "find-node.sh");
         const findNodeDest = (0, import_path60.join)(HUD_DIR, "find-node.sh");
         const cacheWrapperSrc = (0, import_path60.join)(getPackageDir3(), "scripts", "lib", "hud-cache-wrapper.sh");
-        const cacheWrapperDest = (0, import_path60.join)(HUD_DIR, "omc-hud-cache.sh");
+        const cacheWrapperDest = (0, import_path60.join)(HUD_DIR, "omcp-hud-cache.sh");
         const configDirHelperSrc = (0, import_path60.join)(getPackageDir3(), "scripts", "lib", "config-dir.sh");
         const hudLibDir = (0, import_path60.join)(HUD_DIR, "lib");
         const configDirHelperDest = (0, import_path60.join)(hudLibDir, "config-dir.sh");
@@ -43973,7 +43973,7 @@ function resolveInstalledOmcPluginRoots() {
   if (explicitRoot) {
     return { mode: "plugin", roots: [explicitRoot], cleanupAllowed: true };
   }
-  const installedPluginsPath = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "plugins", "installed_plugins.json");
+  const installedPluginsPath = (0, import_path60.join)(COPILOT_CONFIG_DIR, "plugins", "installed_plugins.json");
   if (!(0, import_fs47.existsSync)(installedPluginsPath)) {
     return { mode: "legacy", roots: [], cleanupAllowed: true };
   }
@@ -44221,7 +44221,7 @@ function countPluginSyncPayloadEntries(root2) {
   return score;
 }
 function getKnownMarketplaceInstallRoots() {
-  const knownMarketplacesPath = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "plugins", "known_marketplaces.json");
+  const knownMarketplacesPath = (0, import_path60.join)(COPILOT_CONFIG_DIR, "plugins", "known_marketplaces.json");
   if (!(0, import_fs47.existsSync)(knownMarketplacesPath)) {
     return [];
   }
@@ -44229,7 +44229,7 @@ function getKnownMarketplaceInstallRoots() {
     const raw = JSON.parse((0, import_fs47.readFileSync)(knownMarketplacesPath, "utf-8"));
     const roots = /* @__PURE__ */ new Set();
     for (const [marketplaceId, entry2] of Object.entries(raw)) {
-      const isOmcMarketplace = marketplaceId.toLowerCase().includes("omc") || marketplaceId.toLowerCase().includes("oh-my-claudecode");
+      const isOmcMarketplace = marketplaceId.toLowerCase().includes("omc") || marketplaceId.toLowerCase().includes("oh-my-copilot");
       if (!isOmcMarketplace) {
         continue;
       }
@@ -44256,7 +44256,7 @@ function getGlobalInstalledPackageRoot() {
     if (!npmRoot) {
       return null;
     }
-    const globalPackageRoot = (0, import_path60.join)(npmRoot, "oh-my-claude-sisyphus");
+    const globalPackageRoot = (0, import_path60.join)(npmRoot, "oh-my-copilot");
     return (0, import_fs47.existsSync)(globalPackageRoot) ? globalPackageRoot : null;
   } catch {
     return null;
@@ -44264,7 +44264,7 @@ function getGlobalInstalledPackageRoot() {
 }
 function isCacheInstalledPluginRoot(root2) {
   const normalizedRoot = normalizePath2(root2);
-  const cacheBase = normalizePath2((0, import_path60.join)(CLAUDE_CONFIG_DIR, "plugins", "cache"));
+  const cacheBase = normalizePath2((0, import_path60.join)(COPILOT_CONFIG_DIR, "plugins", "cache"));
   if (!(normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`))) {
     return false;
   }
@@ -44512,13 +44512,13 @@ function hasEnabledOmcPlugin() {
     for (const candidate of [settings.enabledPlugins, settings.plugins]) {
       if (Array.isArray(candidate)) {
         if (candidate.some(
-          (plugin) => typeof plugin === "string" && plugin.toLowerCase().includes("oh-my-claudecode")
+          (plugin) => typeof plugin === "string" && plugin.toLowerCase().includes("oh-my-copilot")
         )) {
           return true;
         }
       } else if (candidate && typeof candidate === "object") {
         if (Object.entries(candidate).some(
-          ([pluginId, value]) => pluginId.toLowerCase().includes("oh-my-claudecode") && value !== false
+          ([pluginId, value]) => pluginId.toLowerCase().includes("oh-my-copilot") && value !== false
         )) {
           return true;
         }
@@ -44532,13 +44532,13 @@ function isOmcPluginEnabledInSettings(settings) {
   for (const candidate of [settings.enabledPlugins, settings.plugins]) {
     if (Array.isArray(candidate)) {
       if (candidate.some(
-        (plugin) => typeof plugin === "string" && plugin.toLowerCase().includes("oh-my-claudecode")
+        (plugin) => typeof plugin === "string" && plugin.toLowerCase().includes("oh-my-copilot")
       )) {
         return true;
       }
     } else if (candidate && typeof candidate === "object") {
       if (Object.entries(candidate).some(
-        ([pluginId, value]) => pluginId.toLowerCase().includes("oh-my-claudecode") && value !== false
+        ([pluginId, value]) => pluginId.toLowerCase().includes("oh-my-copilot") && value !== false
       )) {
         return true;
       }
@@ -44661,7 +44661,7 @@ function extractOmcVersionFromClaudeMd(content) {
     const markerVersion = versionMarkerMatch[1].trim();
     return markerVersion.startsWith("v") ? markerVersion : `v${markerVersion}`;
   }
-  const headingMatch = content.match(/^#\s+oh-my-claudecode.*?\b(v?\d+\.\d+\.\d+(?:[-+][^\s]+)?)\b/m);
+  const headingMatch = content.match(/^#\s+oh-my-copilot.*?\b(v?\d+\.\d+\.\d+(?:[-+][^\s]+)?)\b/m);
   if (headingMatch?.[1]) {
     const headingVersion = headingMatch[1].trim();
     return headingVersion.startsWith("v") ? headingVersion : `v${headingVersion}`;
@@ -44669,7 +44669,7 @@ function extractOmcVersionFromClaudeMd(content) {
   return null;
 }
 function syncPersistedSetupVersion(options) {
-  const configPath = options?.configPath ?? (0, import_path60.join)(CLAUDE_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+  const configPath = options?.configPath ?? (0, import_path60.join)(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
   let config2 = {};
   if ((0, import_fs47.existsSync)(configPath)) {
     const rawConfig = (0, import_fs47.readFileSync)(configPath, "utf-8").trim();
@@ -44684,7 +44684,7 @@ function syncPersistedSetupVersion(options) {
   }
   let detectedVersion = options?.version?.trim();
   if (!detectedVersion) {
-    const claudeMdPath = options?.claudeMdPath ?? (0, import_path60.join)(CLAUDE_CONFIG_DIR, "CLAUDE.md");
+    const claudeMdPath = options?.claudeMdPath ?? (0, import_path60.join)(COPILOT_CONFIG_DIR, "CLAUDE.md");
     if ((0, import_fs47.existsSync)(claudeMdPath)) {
       detectedVersion = extractOmcVersionFromClaudeMd((0, import_fs47.readFileSync)(claudeMdPath, "utf-8")) ?? void 0;
     }
@@ -44775,7 +44775,7 @@ function install(options = {}) {
   } else if (pluginProvidesAgentFiles) {
     log3("Detected installed OMC plugin agent definitions - skipping legacy ~/.claude/agents sync");
   }
-  if (!options.skipClaudeCheck && !isClaudeInstalled()) {
+  if (!options.skipCopilotCheck && !isCopilotInstalled()) {
     log3("Warning: Claude Code not found. Install it first:");
     if (isWindows()) {
       log3("  Visit https://docs.anthropic.com/claude-code for Windows installation");
@@ -44784,8 +44784,8 @@ function install(options = {}) {
     }
   }
   try {
-    if ((!projectScoped || shouldInstallBundledSkills) && !(0, import_fs47.existsSync)(CLAUDE_CONFIG_DIR)) {
-      (0, import_fs47.mkdirSync)(CLAUDE_CONFIG_DIR, { recursive: true });
+    if ((!projectScoped || shouldInstallBundledSkills) && !(0, import_fs47.existsSync)(COPILOT_CONFIG_DIR)) {
+      (0, import_fs47.mkdirSync)(COPILOT_CONFIG_DIR, { recursive: true });
     }
     if (shouldInstallBundledSkills && !(0, import_fs47.existsSync)(SKILLS_DIR)) {
       (0, import_fs47.mkdirSync)(SKILLS_DIR, { recursive: true });
@@ -44889,7 +44889,7 @@ function install(options = {}) {
     if (!projectScoped) {
       const transaction = executeClaudeMdTransaction({
         mode: "global-overwrite",
-        root: CLAUDE_CONFIG_DIR,
+        root: COPILOT_CONFIG_DIR,
         source: (0, import_path60.join)(getPackageDir3(), "docs", "CLAUDE.md"),
         sourceRoot: getPackageDir3(),
         version: targetVersion
@@ -44915,13 +44915,13 @@ function install(options = {}) {
       if (!(0, import_fs47.existsSync)(HUD_DIR)) {
         (0, import_fs47.mkdirSync)(HUD_DIR, { recursive: true });
       }
-      hudScriptPath = (0, import_path60.join)(HUD_DIR, "omc-hud.mjs").replace(/\\/g, "/");
+      hudScriptPath = (0, import_path60.join)(HUD_DIR, "omcp-hud.mjs").replace(/\\/g, "/");
       const hudScript = buildHudWrapper(getPackageDir3());
       (0, import_fs47.writeFileSync)(hudScriptPath, hudScript);
       if (!isWindows()) {
         (0, import_fs47.chmodSync)(hudScriptPath, 493);
       }
-      log3("  Installed omc-hud.mjs");
+      log3("  Installed omcp-hud.mjs");
     } catch (_e) {
       log3("  Warning: Could not install HUD statusline script (non-fatal)");
       hudScriptPath = null;
@@ -44949,7 +44949,7 @@ function install(options = {}) {
         runningAsPlugin
       });
       try {
-        const configPath = (0, import_path60.join)(CLAUDE_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+        const configPath = (0, import_path60.join)(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
         let omcConfig = {};
         if ((0, import_fs47.existsSync)(configPath)) {
           omcConfig = JSON.parse((0, import_fs47.readFileSync)(configPath, "utf-8"));
@@ -45051,7 +45051,7 @@ function getInstallInfo() {
     return null;
   }
 }
-var import_fs47, import_crypto17, import_path60, import_url10, import_os12, import_child_process18, CLAUDE_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, PLUGIN_FULL_SKILL_BODIES_DIR, PLUGIN_COMPACT_SKILL_SHIM_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, HISTORICAL_AGENT_HASHES_BY_FILENAME, OMC_HOOK_FILENAMES, OMC_HOOK_EXTRA_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, OMC_PLUGIN_IDS, OMC_PLUGIN_MANIFEST_NAME, PLUGIN_SYNC_PAYLOAD, REQUIRED_PLUGIN_PAYLOAD_FILES, REQUIRED_PLUGIN_COMMAND_FILES;
+var import_fs47, import_crypto17, import_path60, import_url10, import_os12, import_child_process18, COPILOT_CONFIG_DIR, AGENTS_DIR, COMMANDS_DIR, SKILLS_DIR, HOOKS_DIR, HUD_DIR, SETTINGS_FILE, VERSION_FILE, OMC_MANAGED_SKILL_MARKER, PLUGIN_FULL_SKILL_BODIES_DIR, PLUGIN_COMPACT_SKILL_SHIM_MARKER, CORE_COMMANDS, VERSION, OMC_VERSION_MARKER_PATTERN, CC_NATIVE_COMMANDS, SKININTHEGAMEBROS_ONLY_SKILLS, HISTORICAL_AGENT_HASHES_BY_FILENAME, OMC_HOOK_FILENAMES, OMC_HOOK_EXTRA_FILENAMES, STANDALONE_HOOK_TEMPLATE_FILES, OMC_PLUGIN_IDS, OMC_PLUGIN_MANIFEST_NAME, PLUGIN_SYNC_PAYLOAD, REQUIRED_PLUGIN_PAYLOAD_FILES, REQUIRED_PLUGIN_COMMAND_FILES;
 var init_installer = __esm({
   "src/installer/index.ts"() {
     "use strict";
@@ -45077,14 +45077,14 @@ var init_installer = __esm({
     init_claude_md_transaction();
     init_historical_agent_ownership();
     init_builtin_skill_entitlements();
-    CLAUDE_CONFIG_DIR = getClaudeConfigDir();
-    AGENTS_DIR = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "agents");
-    COMMANDS_DIR = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "commands");
-    SKILLS_DIR = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "skills");
-    HOOKS_DIR = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "hooks");
-    HUD_DIR = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "hud");
-    SETTINGS_FILE = (0, import_path60.join)(CLAUDE_CONFIG_DIR, "settings.json");
-    VERSION_FILE = (0, import_path60.join)(CLAUDE_CONFIG_DIR, ".omc-version.json");
+    COPILOT_CONFIG_DIR = getCopilotConfigDir();
+    AGENTS_DIR = (0, import_path60.join)(COPILOT_CONFIG_DIR, "agents");
+    COMMANDS_DIR = (0, import_path60.join)(COPILOT_CONFIG_DIR, "commands");
+    SKILLS_DIR = (0, import_path60.join)(COPILOT_CONFIG_DIR, "skills");
+    HOOKS_DIR = (0, import_path60.join)(COPILOT_CONFIG_DIR, "hooks");
+    HUD_DIR = (0, import_path60.join)(COPILOT_CONFIG_DIR, "hud");
+    SETTINGS_FILE = (0, import_path60.join)(COPILOT_CONFIG_DIR, "settings.json");
+    VERSION_FILE = (0, import_path60.join)(COPILOT_CONFIG_DIR, ".omc-version.json");
     OMC_MANAGED_SKILL_MARKER = ".omc-managed";
     PLUGIN_FULL_SKILL_BODIES_DIR = "skill-bodies";
     PLUGIN_COMPACT_SKILL_SHIM_MARKER = "<!-- OMC:COMPACT-PLUGIN-SKILL -->";
@@ -45136,8 +45136,8 @@ var init_installer = __esm({
       "persistent-mode.mjs",
       "code-simplifier.mjs"
     ];
-    OMC_PLUGIN_IDS = /* @__PURE__ */ new Set(["oh-my-claudecode", "oh-my-claudecode@omc", "oh-my-claudecode@oh-my-claudecode"]);
-    OMC_PLUGIN_MANIFEST_NAME = "oh-my-claudecode";
+    OMC_PLUGIN_IDS = /* @__PURE__ */ new Set(["oh-my-copilot", "oh-my-copilot@omc", "oh-my-copilot@oh-my-copilot"]);
+    OMC_PLUGIN_MANIFEST_NAME = "oh-my-copilot";
     PLUGIN_SYNC_PAYLOAD = [
       "dist",
       "bridge",
@@ -45171,8 +45171,8 @@ var init_installer = __esm({
 // src/features/auto-update.ts
 var auto_update_exports = {};
 __export(auto_update_exports, {
-  CLAUDE_CONFIG_DIR: () => CLAUDE_CONFIG_DIR2,
   CONFIG_FILE: () => CONFIG_FILE,
+  COPILOT_CONFIG_DIR: () => COPILOT_CONFIG_DIR2,
   GITHUB_API_URL: () => GITHUB_API_URL,
   GITHUB_RAW_URL: () => GITHUB_RAW_URL,
   REPO_NAME: () => REPO_NAME,
@@ -45345,7 +45345,7 @@ function restoreGlobalClaudeCodeIfNeeded(beforeUpdate, verbose = false) {
   return { restored: true };
 }
 function syncMarketplaceClone(verbose = false) {
-  const marketplacePath = (0, import_path61.join)(getClaudeConfigDir(), "plugins", "marketplaces", "omc");
+  const marketplacePath = (0, import_path61.join)(getCopilotConfigDir(), "plugins", "marketplaces", "omc");
   if (!(0, import_fs48.existsSync)(marketplacePath)) {
     return { ok: true, message: "Marketplace clone not found; skipping" };
   }
@@ -45433,7 +45433,7 @@ function replaceLastPathSegmentPreservingSeparators(pathValue, nextSegment) {
 function deriveUpdatedPluginInstallPath(existingInstallPath, fallbackInstallPath, newVersion) {
   if (existingInstallPath?.trim()) {
     const normalized = existingInstallPath.replace(/\\/g, "/").toLowerCase();
-    if (normalized.includes("/plugins/cache/") && normalized.includes("/oh-my-claudecode/")) {
+    if (normalized.includes("/plugins/cache/") && normalized.includes("/oh-my-copilot/")) {
       return replaceLastPathSegmentPreservingSeparators(existingInstallPath, newVersion);
     }
   }
@@ -45454,7 +45454,7 @@ function writeJsonAtomically(path27, value) {
   }
 }
 function syncInstalledPluginRegistryVersion(newVersion, fallbackInstallPath) {
-  const installedPluginsPath = (0, import_path61.join)(getClaudeConfigDir(), "plugins", "installed_plugins.json");
+  const installedPluginsPath = (0, import_path61.join)(getCopilotConfigDir(), "plugins", "installed_plugins.json");
   if (!(0, import_fs48.existsSync)(installedPluginsPath)) {
     return { updated: false, errors: [] };
   }
@@ -45473,7 +45473,7 @@ function syncInstalledPluginRegistryVersion(newVersion, fallbackInstallPath) {
     let updated = false;
     for (const [pluginId, entriesValue] of Object.entries(plugins)) {
       const normalizedPluginId = pluginId.toLowerCase();
-      const isOmcPlugin = normalizedPluginId === "oh-my-claudecode@omc" || normalizedPluginId === "oh-my-claudecode";
+      const isOmcPlugin = normalizedPluginId === "oh-my-copilot@omc" || normalizedPluginId === "oh-my-copilot";
       if (!isOmcPlugin || !Array.isArray(entriesValue)) {
         continue;
       }
@@ -45522,7 +45522,7 @@ function shouldBlockStandaloneUpdateInCurrentSession() {
   return false;
 }
 function syncPluginCache(verbose = false) {
-  const pluginCacheRoot = (0, import_path61.join)(getClaudeConfigDir(), "plugins", "cache", "omc", "oh-my-claudecode");
+  const pluginCacheRoot = (0, import_path61.join)(getCopilotConfigDir(), "plugins", "cache", "omc", "oh-my-copilot");
   if (!(0, import_fs48.existsSync)(pluginCacheRoot)) {
     return { synced: false, skipped: true, errors: [] };
   }
@@ -45536,7 +45536,7 @@ function syncPluginCache(verbose = false) {
     if (!npmRoot) {
       throw new Error("npm root -g returned an empty path");
     }
-    const sourceRoot = (0, import_path61.join)(npmRoot, "oh-my-claude-sisyphus");
+    const sourceRoot = (0, import_path61.join)(npmRoot, "oh-my-copilot");
     const packageJsonPath = (0, import_path61.join)(sourceRoot, "package.json");
     const packageJsonRaw = String((0, import_fs48.readFileSync)(packageJsonPath, "utf-8") ?? "");
     const packageMetadata = JSON.parse(packageJsonRaw);
@@ -45608,7 +45608,7 @@ function isAutoUpgradePromptEnabled() {
 }
 function isTeamEnabled() {
   try {
-    const settingsPath = (0, import_path61.join)(CLAUDE_CONFIG_DIR2, "settings.json");
+    const settingsPath = (0, import_path61.join)(COPILOT_CONFIG_DIR2, "settings.json");
     if ((0, import_fs48.existsSync)(settingsPath)) {
       const settings = JSON.parse((0, import_fs48.readFileSync)(settingsPath, "utf-8"));
       const val = settings.env?.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS;
@@ -45624,15 +45624,15 @@ function isTeamEnabled() {
 function getInstalledVersion() {
   if (!(0, import_fs48.existsSync)(VERSION_FILE2)) {
     try {
-      const result = (0, import_child_process19.execSync)("npm list -g oh-my-claude-sisyphus --json", {
+      const result = (0, import_child_process19.execSync)("npm list -g oh-my-copilot --json", {
         encoding: "utf-8",
         timeout: 5e3,
         stdio: "pipe"
       });
       const data = JSON.parse(result);
-      if (data.dependencies?.["oh-my-claude-sisyphus"]?.version) {
+      if (data.dependencies?.["oh-my-copilot"]?.version) {
         return {
-          version: data.dependencies["oh-my-claude-sisyphus"].version,
+          version: data.dependencies["oh-my-copilot"].version,
           installedAt: (/* @__PURE__ */ new Date()).toISOString(),
           installMethod: "npm"
         };
@@ -45670,7 +45670,7 @@ function getGitHubUpdateToken() {
 function getGitHubReleaseHeaders() {
   const headers = {
     "Accept": "application/vnd.github.v3+json",
-    "User-Agent": "oh-my-claudecode-updater"
+    "User-Agent": "oh-my-copilot-updater"
   };
   const token = getGitHubUpdateToken();
   if (token) {
@@ -45717,7 +45717,7 @@ async function fetchLatestRelease() {
   if (response.status === 404) {
     const pkgResponse = await fetch(`${GITHUB_RAW_URL}/main/package.json`, {
       headers: {
-        "User-Agent": "oh-my-claudecode-updater"
+        "User-Agent": "oh-my-copilot-updater"
       }
     });
     if (pkgResponse.ok) {
@@ -45786,7 +45786,7 @@ function reconcileUpdateRuntime(options) {
     const installResult = install({
       force: true,
       verbose: options?.verbose ?? false,
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       forceHooks: shouldRefreshPluginHooks,
       refreshHooksInPlugin: shouldRefreshPluginHooks
     });
@@ -45866,14 +45866,14 @@ async function performUpdate(options) {
         success: false,
         previousVersion,
         newVersion: "unknown",
-        message: 'Running inside an active Claude Code plugin session. Use "/plugin install oh-my-claudecode" to update, or pass --standalone to force npm update.'
+        message: 'Running inside an active Claude Code plugin session. Use "/plugin install oh-my-copilot" to update, or pass --standalone to force npm update.'
       };
     }
     const release = await fetchLatestRelease();
     const newVersion = release.tag_name.replace(/^v/, "");
     const claudeCodeBeforeUpdate = detectGlobalClaudeCodeInstall();
     try {
-      (0, import_child_process19.execSync)("npm install -g oh-my-claude-sisyphus@latest", npmExecOptions(options?.verbose ?? false));
+      (0, import_child_process19.execSync)("npm install -g oh-my-copilot@latest", npmExecOptions(options?.verbose ?? false));
       try {
         restoreGlobalClaudeCodeIfNeeded(claudeCodeBeforeUpdate, options?.verbose ?? false);
       } catch (restoreError) {
@@ -45948,8 +45948,8 @@ async function performUpdate(options) {
     } catch (npmError) {
       throw new Error(
         `Auto-update via npm failed. Please run manually:
-  npm install -g oh-my-claude-sisyphus@latest
-Or use: /plugin install oh-my-claudecode
+  npm install -g oh-my-copilot@latest
+Or use: /plugin install oh-my-copilot
 Error: ${npmError instanceof Error ? npmError.message : npmError}`
       );
     }
@@ -45966,18 +45966,18 @@ Error: ${npmError instanceof Error ? npmError.message : npmError}`
 }
 function formatUpdateNotification(checkResult) {
   if (!checkResult.updateAvailable) {
-    return `oh-my-claudecode is up to date (v${checkResult.currentVersion ?? "unknown"})`;
+    return `oh-my-copilot is up to date (v${checkResult.currentVersion ?? "unknown"})`;
   }
   const lines = [
     "\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557",
-    "\u2551           oh-my-claudecode Update Available!              \u2551",
+    "\u2551           oh-my-copilot Update Available!              \u2551",
     "\u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D",
     "",
     `  Current version: ${checkResult.currentVersion ?? "unknown"}`,
     `  Latest version:  ${checkResult.latestVersion}`,
     "",
     "  To update, run: /update",
-    "  Or reinstall via: /plugin install oh-my-claudecode",
+    "  Or reinstall via: /plugin install oh-my-copilot",
     ""
   ];
   if (checkResult.releaseNotes && checkResult.releaseNotes !== "No release notes available.") {
@@ -46081,7 +46081,7 @@ async function silentAutoUpdate(config2 = {}) {
   const {
     checkIntervalHours = 24,
     autoApply = true,
-    logFile = (0, import_path61.join)(CLAUDE_CONFIG_DIR2, ".omc-update.log"),
+    logFile = (0, import_path61.join)(COPILOT_CONFIG_DIR2, ".omc-update.log"),
     maxRetries = 3
   } = config2;
   if (!isSilentAutoUpdateEnabled()) {
@@ -46166,7 +46166,7 @@ function initSilentAutoUpdate(config2 = {}) {
   silentAutoUpdate(config2).catch(() => {
   });
 }
-var import_fs48, import_path61, import_child_process19, REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, CLAUDE_CODE_NPM_PACKAGE, CLAUDE_CONFIG_DIR2, VERSION_FILE2, CONFIG_FILE, SILENT_UPDATE_STATE_FILE;
+var import_fs48, import_path61, import_child_process19, REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, CLAUDE_CODE_NPM_PACKAGE, COPILOT_CONFIG_DIR2, VERSION_FILE2, CONFIG_FILE, SILENT_UPDATE_STATE_FILE;
 var init_auto_update = __esm({
   "src/features/auto-update.ts"() {
     "use strict";
@@ -46179,14 +46179,14 @@ var init_auto_update = __esm({
     init_security_config();
     init_paths3();
     REPO_OWNER = "Yeachan-Heo";
-    REPO_NAME = "oh-my-claudecode";
+    REPO_NAME = "oh-my-copilot";
     GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
     GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
     CLAUDE_CODE_NPM_PACKAGE = "@anthropic-ai/claude-code";
-    CLAUDE_CONFIG_DIR2 = getClaudeConfigDir();
-    VERSION_FILE2 = (0, import_path61.join)(CLAUDE_CONFIG_DIR2, ".omc-version.json");
-    CONFIG_FILE = (0, import_path61.join)(CLAUDE_CONFIG_DIR2, OMC_CONFIG_FILE_REL);
-    SILENT_UPDATE_STATE_FILE = (0, import_path61.join)(CLAUDE_CONFIG_DIR2, ".omc-silent-update.json");
+    COPILOT_CONFIG_DIR2 = getCopilotConfigDir();
+    VERSION_FILE2 = (0, import_path61.join)(COPILOT_CONFIG_DIR2, ".omc-version.json");
+    CONFIG_FILE = (0, import_path61.join)(COPILOT_CONFIG_DIR2, OMC_CONFIG_FILE_REL);
+    SILENT_UPDATE_STATE_FILE = (0, import_path61.join)(COPILOT_CONFIG_DIR2, ".omc-silent-update.json");
   }
 });
 
@@ -46322,7 +46322,7 @@ function isExplicitCancelCommand(context) {
   if (!context) return false;
   const prompt = (context.prompt ?? "").trim();
   if (prompt) {
-    const slashCancelPattern = /^\/(?:oh-my-claudecode:)?cancel(?:\s+--force)?\s*$/i;
+    const slashCancelPattern = /^\/(?:oh-my-copilot:)?cancel(?:\s+--force)?\s*$/i;
     const keywordCancelPattern = /^(?:cancelomc|stopomc)\s*$/i;
     if (slashCancelPattern.test(prompt) || keywordCancelPattern.test(prompt)) {
       return true;
@@ -46345,7 +46345,7 @@ function isExplicitCancelCommand(context) {
   const toolInput = context.tool_input ?? context.toolInput;
   if (toolName.includes("skill") && toolInput && typeof toolInput.skill === "string") {
     const skill = toolInput.skill.toLowerCase();
-    if (skill === "oh-my-claudecode:cancel" || skill.endsWith(":cancel")) {
+    if (skill === "oh-my-copilot:cancel" || skill.endsWith(":cancel")) {
       return true;
     }
   }
@@ -46415,7 +46415,7 @@ function isAuthenticationError(context) {
   return AUTHENTICATION_ERROR_PATTERNS.some((pattern) => reason.includes(pattern) || endTurnReason.includes(pattern));
 }
 function getTodoFilePaths(sessionId, directory) {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const paths = [];
   if (sessionId) {
     paths.push((0, import_path62.join)(claudeDir, "sessions", sessionId, "todos.json"));
@@ -46457,7 +46457,7 @@ function getTaskDirectory(sessionId) {
   if (!isValidSessionId(identity)) {
     return "";
   }
-  return (0, import_path62.join)(getClaudeConfigDir(), "tasks", identity);
+  return (0, import_path62.join)(getCopilotConfigDir(), "tasks", identity);
 }
 function isValidTask(data) {
   if (data === null || typeof data !== "object") return false;
@@ -46980,7 +46980,7 @@ function latest(...values) {
   return values.filter((value) => Boolean(value)).sort((left, right) => parseTime(right) - parseTime(left))[0];
 }
 function shortAgentType(agentType) {
-  return agentType.replace(/^oh-my-claudecode:/, "").trim() || "agent";
+  return agentType.replace(/^oh-my-copilot:/, "").trim() || "agent";
 }
 function sessionAgentName(agentType, agentId) {
   return `${shortAgentType(agentType)}:${agentId.slice(0, 7)}`;
@@ -47447,7 +47447,7 @@ var init_types7 = __esm({
         // Disabled by default
         hostname: false,
         profile: true,
-        // Show profile name when CLAUDE_CONFIG_DIR is set
+        // Show profile name when COPILOT_CONFIG_DIR is set
         missionBoard: false,
         // Opt-in mission board for whole-run progress tracking
         promptTime: true,
@@ -47822,10 +47822,10 @@ function getStateFilePath2(directory, sessionId) {
   return getLocalStateFilePath(baseDir);
 }
 function getSettingsFilePath() {
-  return (0, import_path64.join)(getClaudeConfigDir(), "settings.json");
+  return (0, import_path64.join)(getCopilotConfigDir(), "settings.json");
 }
 function getConfigFilePath() {
-  return (0, import_path64.join)(getClaudeConfigDir(), ".omc", "hud-config.json");
+  return (0, import_path64.join)(getCopilotConfigDir(), ".omc", "hud-config.json");
 }
 function readJsonFile(filePath) {
   if (!(0, import_fs52.existsSync)(filePath)) {
@@ -49119,7 +49119,7 @@ function getAgentDashboard(directory, sessionId) {
     const elapsed = Math.round(
       (now - new Date(agent.started_at).getTime()) / 1e3
     );
-    const shortType = agent.agent_type.replace("oh-my-claudecode:", "");
+    const shortType = agent.agent_type.replace("oh-my-copilot:", "");
     const toolCount = agent.tool_usage?.length || 0;
     const lastTool = agent.tool_usage?.[agent.tool_usage.length - 1]?.tool_name || "-";
     const desc = agent.description ? ` "${agent.description.substring(0, 60)} (${agent.agent_id.substring(0, 7)})"` : agent.task_description ? ` "${agent.task_description.substring(0, 60)}"` : "";
@@ -49145,7 +49145,7 @@ function getAgentObservatory(directory, sessionId) {
     const elapsed = Math.round(
       (now - new Date(agent.started_at).getTime()) / 1e3
     );
-    const shortType = agent.agent_type.replace("oh-my-claudecode:", "");
+    const shortType = agent.agent_type.replace("oh-my-copilot:", "");
     const toolCount = agent.tool_usage?.length || 0;
     const cost = agent.token_usage?.cost_usd || 0;
     totalCost += cost;
@@ -49169,7 +49169,7 @@ function getAgentObservatory(directory, sessionId) {
     lines.push(line);
   }
   for (const intervention of interventions.slice(0, 3)) {
-    const shortType = intervention.agent_type.replace("oh-my-claudecode:", "");
+    const shortType = intervention.agent_type.replace("oh-my-copilot:", "");
     lines.push(`\u26A0 ${shortType}: ${intervention.reason}`);
   }
   const header = `Agent Observatory (${running.length} active, ${efficiency.score}% efficiency)`;
@@ -49231,7 +49231,7 @@ function suggestInterventions(directory, sessionId) {
           type: "file_conflict",
           agent_id: agents[i].id,
           agent_type: agents[i].type,
-          reason: `File conflict on ${file} with ${agents[0].type.replace("oh-my-claudecode:", "")}`,
+          reason: `File conflict on ${file} with ${agents[0].type.replace("oh-my-copilot:", "")}`,
           suggested_action: "warn",
           auto_execute: false
         });
@@ -49284,7 +49284,7 @@ function detectFileConflicts(directory, sessionId) {
       if (!fileToAgents.has(file)) {
         fileToAgents.set(file, []);
       }
-      fileToAgents.get(file).push(agent.agent_type.replace("oh-my-claudecode:", ""));
+      fileToAgents.get(file).push(agent.agent_type.replace("oh-my-copilot:", ""));
     }
   }
   const conflicts = [];
@@ -49300,7 +49300,7 @@ function getFileOwnershipMap(directory, sessionId) {
   const running = state.agents.filter((a) => a.status === "running");
   const map = /* @__PURE__ */ new Map();
   for (const agent of running) {
-    const shortType = agent.agent_type.replace("oh-my-claudecode:", "");
+    const shortType = agent.agent_type.replace("oh-my-copilot:", "");
     for (const file of agent.file_ownership || []) {
       map.set(file, shortType);
     }
@@ -49460,14 +49460,14 @@ __export(skill_state_exports, {
   writeSkillActiveStateCopies: () => writeSkillActiveStateCopies
 });
 function isCanonicalWorkflowSkill(skillName) {
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   return CANONICAL_WORKFLOW_SKILLS.includes(normalized);
 }
 function getSkillProtection(skillName, rawSkillName) {
-  if (rawSkillName != null && !rawSkillName.toLowerCase().startsWith("oh-my-claudecode:")) {
+  if (rawSkillName != null && !rawSkillName.toLowerCase().startsWith("oh-my-copilot:")) {
     return "none";
   }
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   if (RETIRED_SKILL_NAMES.has(normalized)) return "none";
   return SKILL_PROTECTION[normalized] ?? "none";
 }
@@ -49528,7 +49528,7 @@ function normalizeToV2(raw) {
   return emptySkillActiveStateV2();
 }
 function upsertWorkflowSkillSlot(state, skillName, slotData = {}) {
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   const existing = state.active_skills[normalized];
   const now = (/* @__PURE__ */ new Date()).toISOString();
   const base = {
@@ -49559,7 +49559,7 @@ function upsertWorkflowSkillSlot(state, skillName, slotData = {}) {
   };
 }
 function markWorkflowSkillCompleted(state, skillName, now = (/* @__PURE__ */ new Date()).toISOString()) {
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   const existing = state.active_skills[normalized];
   if (!existing) return state;
   const updated = { ...existing, completed_at: now };
@@ -49569,7 +49569,7 @@ function markWorkflowSkillCompleted(state, skillName, now = (/* @__PURE__ */ new
   };
 }
 function clearWorkflowSkillSlot(state, skillName) {
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   if (!(normalized in state.active_skills)) return state;
   const next = { ...state.active_skills };
   delete next[normalized];
@@ -49616,13 +49616,13 @@ function resolveAuthoritativeWorkflowSkill(state) {
   return pool[0] ?? null;
 }
 function isWorkflowSkillLive(state, skillName) {
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   if (!isCanonicalWorkflowSkill(normalized)) return false;
   const slot = state.active_skills[normalized];
   return !!slot && !slot.completed_at;
 }
 function isWorkflowSkillTombstoned(state, skillName, ttlMs = WORKFLOW_TOMBSTONE_TTL_MS, now = Date.now()) {
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   const slot = state.active_skills[normalized];
   if (!slot || !slot.completed_at) return false;
   const tombstonedAt = new Date(slot.completed_at).getTime();
@@ -49732,7 +49732,7 @@ function writeSkillActiveState(directory, skillName, sessionId, rawSkillName) {
   if (protection === "none") return null;
   const config2 = PROTECTION_CONFIGS[protection];
   const now = (/* @__PURE__ */ new Date()).toISOString();
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   const existingV2 = readSkillActiveStateNormalized(directory, sessionId);
   const existing = existingV2.support_skill;
   if (existing && existing.active && existing.skill_name !== normalized) {
@@ -49774,7 +49774,7 @@ function checkSkillActiveState(directory, sessionId) {
   if (sessionId && state.session_id && state.session_id !== sessionId) {
     return { shouldBlock: false, message: "" };
   }
-  const normalizedSupportSkill = typeof state.skill_name === "string" ? state.skill_name.toLowerCase().replace(/^oh-my-claudecode:/, "") : "";
+  const normalizedSupportSkill = typeof state.skill_name === "string" ? state.skill_name.toLowerCase().replace(/^oh-my-copilot:/, "") : "";
   if (RETIRED_SKILL_NAMES.has(normalizedSupportSkill)) {
     return { shouldBlock: false, message: "", skillName: state.skill_name };
   }
@@ -49909,8 +49909,8 @@ var permission_handler_exports = {};
 __export(permission_handler_exports, {
   getBackgroundBashPermissionFallback: () => getBackgroundBashPermissionFallback,
   getBackgroundTaskPermissionFallback: () => getBackgroundTaskPermissionFallback,
-  getClaudePermissionAllowEntries: () => getClaudePermissionAllowEntries,
-  getClaudePermissionAskEntries: () => getClaudePermissionAskEntries,
+  getCopilotPermissionAllowEntries: () => getCopilotPermissionAllowEntries,
+  getCopilotPermissionAskEntries: () => getCopilotPermissionAskEntries,
   handlePermissionRequest: () => handlePermissionRequest,
   hasClaudePermissionApproval: () => hasClaudePermissionApproval,
   hasClaudePermissionAsk: () => hasClaudePermissionAsk,
@@ -49934,9 +49934,9 @@ function readPermissionStringEntries(filePath, key) {
     return [];
   }
 }
-function getClaudePermissionAllowEntries(directory) {
+function getCopilotPermissionAllowEntries(directory) {
   const projectSettingsPath = path15.join(directory, ".claude", "settings.local.json");
-  const globalConfigDir = getClaudeConfigDir();
+  const globalConfigDir = getCopilotConfigDir();
   const candidatePaths = [
     projectSettingsPath,
     path15.join(globalConfigDir, "settings.local.json"),
@@ -49954,7 +49954,7 @@ function hasGenericToolPermission(allowEntries, toolName) {
   return allowEntries.some((entry2) => entry2 === toolName || entry2.startsWith(`${toolName}(`));
 }
 function hasClaudePermissionApproval(directory, toolName, command) {
-  const allowEntries = getClaudePermissionAllowEntries(directory);
+  const allowEntries = getCopilotPermissionAllowEntries(directory);
   if (toolName !== "Bash") {
     return hasGenericToolPermission(allowEntries, toolName);
   }
@@ -49967,9 +49967,9 @@ function hasClaudePermissionApproval(directory, toolName, command) {
   }
   return allowEntries.includes(`Bash(${trimmedCommand})`);
 }
-function getClaudePermissionAskEntries(directory) {
+function getCopilotPermissionAskEntries(directory) {
   const projectSettingsPath = path15.join(directory, ".claude", "settings.local.json");
-  const globalConfigDir = getClaudeConfigDir();
+  const globalConfigDir = getCopilotConfigDir();
   const candidatePaths = [
     projectSettingsPath,
     path15.join(globalConfigDir, "settings.local.json"),
@@ -50002,7 +50002,7 @@ function commandMatchesPermissionPattern(command, pattern) {
   return nextChar === "" || /[\s:=(["']/.test(nextChar);
 }
 function hasClaudePermissionAsk(directory, toolName, command) {
-  const askEntries = getClaudePermissionAskEntries(directory);
+  const askEntries = getCopilotPermissionAskEntries(directory);
   if (toolName !== "Bash") {
     return hasGenericToolPermission(askEntries, toolName);
   }
@@ -50532,7 +50532,7 @@ Spawn all three validation architects in parallel to review the implementation:
 \`\`\`
 // 1. Functional Completeness Review
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="FUNCTIONAL COMPLETENESS REVIEW
 
@@ -50549,7 +50549,7 @@ Output: APPROVED or REJECTED with specific gaps"
 
 // 2. Security Review
 Task(
-  subagent_type="oh-my-claudecode:security-reviewer",
+  subagent_type="oh-my-copilot:security-reviewer",
   model="opus",
   prompt="SECURITY REVIEW
 
@@ -50566,7 +50566,7 @@ Output: APPROVED or REJECTED with specific issues"
 
 // 3. Code Quality Review
 Task(
-  subagent_type="oh-my-claudecode:code-reviewer",
+  subagent_type="oh-my-copilot:code-reviewer",
   model="opus",
   prompt="CODE QUALITY REVIEW
 
@@ -51578,7 +51578,7 @@ function isAwaitingConfirmation(state) {
   return Date.now() - setAtMs < AWAITING_CONFIRMATION_TTL_MS;
 }
 function checkArchitectApprovalInTranscript(sessionId, verificationState) {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const possiblePaths = [(0, import_path69.join)(claudeDir, "sessions", sessionId, "messages.json")];
   for (const transcriptPath of possiblePaths) {
     if (!(0, import_fs59.existsSync)(transcriptPath)) {
@@ -51595,7 +51595,7 @@ function checkArchitectApprovalInTranscript(sessionId, verificationState) {
   return false;
 }
 function checkArchitectRejectionInTranscript(sessionId) {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const possiblePaths = [
     (0, import_path69.join)(claudeDir, "sessions", sessionId, "transcript.md"),
     (0, import_path69.join)(claudeDir, "sessions", sessionId, "messages.json"),
@@ -51859,7 +51859,7 @@ async function checkRalphLoop(sessionId, directory, cancelInProgress) {
     writeRalphState(workingDir, state, sessionId);
     return {
       shouldBlock: true,
-      message: `[RALPH - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-claudecode:ralph if needed.`,
+      message: `[RALPH - HARD LIMIT] Reached hard max iterations (${hardMax}). Mode auto-disabled. Restart with /oh-my-copilot:ralph if needed.`,
       mode: "ralph",
       metadata: { iteration: state.iteration, maxIterations: state.max_iterations }
     };
@@ -51894,7 +51894,7 @@ CRITICAL INSTRUCTIONS:
 1. Review your progress and the original task
 ${prdInstruction}
 3. Continue from where you left off
-4. When FULLY complete (after ${state.critic_mode === "codex" ? "Codex critic" : state.critic_mode === "critic" ? "Critic" : "Architect"} verification), run \`/oh-my-claudecode:cancel\` to cleanly exit and clean up state files. If cancel fails, retry with \`/oh-my-claudecode:cancel --force\`.
+4. When FULLY complete (after ${state.critic_mode === "codex" ? "Codex critic" : state.critic_mode === "critic" ? "Critic" : "Architect"} verification), run \`/oh-my-copilot:cancel\` to cleanly exit and clean up state files. If cancel fails, retry with \`/oh-my-copilot:cancel --force\`.
 5. Do NOT stop until the task is truly done
 
 ${newState.prompt ? `Original task: ${truncatePromptForEcho(newState.prompt)}` : ""}
@@ -52106,7 +52106,7 @@ async function checkTeamPipeline(sessionId, directory, cancelInProgress) {
 
 The team pipeline is active in phase "${phase}". Continue working on the team workflow.
 Do not stop until the pipeline reaches a terminal state (complete/failed/cancelled).
-When done, run \`/oh-my-claudecode:cancel\` to cleanly exit.
+When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 
 </team-pipeline-continuation>
 
@@ -52301,7 +52301,7 @@ async function checkRalplan(sessionId, directory, cancelInProgress) {
 The ralplan consensus workflow is active. Continue the Planner/Architect/Critic planning loop only.
 Ralplan is read-only/planning mode: do not implement, invoke execution skills, edit source, commit, push, or open PRs from this continuation.
 When consensus is reached, stop at a pending-approval handoff and require explicit user approval before execution.
-When done, run \`/oh-my-claudecode:cancel\` to cleanly exit.
+When done, run \`/oh-my-copilot:cancel\` to cleanly exit.
 
 </ralplan-continuation>
 
@@ -52587,7 +52587,7 @@ var init_persistent_mode = __esm({
 
 // src/hooks/autopilot/enforcement.ts
 function detectSignal(sessionId, signal) {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const possiblePaths = [
     (0, import_path70.join)(claudeDir, "sessions", sessionId, "transcript.md"),
     (0, import_path70.join)(claudeDir, "sessions", sessionId, "messages.json"),
@@ -53038,7 +53038,7 @@ IMPORTANT: When this stage is complete, output the signal: ${currentAdapter.comp
   };
 }
 function detectPipelineSignal(sessionId, signal) {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const possiblePaths = [
     (0, import_path70.join)(claudeDir, "sessions", sessionId, "transcript.md"),
     (0, import_path70.join)(claudeDir, "sessions", sessionId, "messages.json"),
@@ -54458,7 +54458,7 @@ function openClawRoutingEnvironment(payload) {
   return Object.fromEntries(values.flatMap(([property, environment]) => typeof snapshot[property] === "string" ? [[environment, snapshot[property]]] : []));
 }
 function runnerEnvironment(context) {
-  const baseKeys = ["PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "LANG", "LC_ALL", "NODE_ENV", "CLAUDE_CONFIG_DIR", "OMC_STATE_DIR", "OMC_HOOK_CONFIG", "OMC_CONFIG_PATH", "OMC_NOTIFY", "OMC_NOTIFY_PROFILE", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"];
+  const baseKeys = ["PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "LANG", "LC_ALL", "NODE_ENV", "COPILOT_CONFIG_DIR", "OMC_STATE_DIR", "OMC_HOOK_CONFIG", "OMC_CONFIG_PATH", "OMC_NOTIFY", "OMC_NOTIFY_PROFILE", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"];
   const notificationKeys = ["OMC_TELEGRAM", "OMC_DISCORD", "OMC_SLACK", "OMC_WEBHOOK", "OMC_DISCORD_MENTION", "OMC_DISCORD_NOTIFIER_BOT_TOKEN", "OMC_DISCORD_NOTIFIER_CHANNEL", "OMC_DISCORD_WEBHOOK_URL", "OMC_TELEGRAM_BOT_TOKEN", "OMC_TELEGRAM_NOTIFIER_BOT_TOKEN", "OMC_TELEGRAM_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_UID", "OMC_SLACK_WEBHOOK_URL", "OMC_SLACK_MENTION", "OMC_SLACK_BOT_TOKEN", "OMC_SLACK_APP_TOKEN", "OMC_SLACK_BOT_CHANNEL"];
   const keys = context.actionName === "callback" || context.actionName === "notification" ? [...baseKeys, ...notificationKeys] : baseKeys;
   const exact = Object.fromEntries(keys.flatMap((key) => process.env[key] === void 0 ? [] : [[key, process.env[key]]]));
@@ -54692,7 +54692,7 @@ var init_hook_config = __esm({
     import_fs61 = require("fs");
     import_path71 = require("path");
     init_config_dir();
-    DEFAULT_CONFIG_PATH = (0, import_path71.join)(getClaudeConfigDir(), "omc_config.hook.json");
+    DEFAULT_CONFIG_PATH = (0, import_path71.join)(getCopilotConfigDir(), "omc_config.hook.json");
   }
 });
 
@@ -55404,7 +55404,7 @@ var init_config = __esm({
     init_config_dir();
     init_hook_config();
     init_validation2();
-    CONFIG_FILE2 = (0, import_path72.join)(getClaudeConfigDir(), ".omc-config.json");
+    CONFIG_FILE2 = (0, import_path72.join)(getCopilotConfigDir(), ".omc-config.json");
     DEFAULT_TMUX_TAIL_LINES = 15;
     VALID_VERBOSITY_LEVELS = /* @__PURE__ */ new Set([
       "verbose",
@@ -55425,7 +55425,7 @@ var init_config = __esm({
       "session-idle",
       "session-end"
     ];
-    LEGACY_OPENCLAW_CONFIG = (0, import_path72.join)(getClaudeConfigDir(), "omc_config.openclaw.json");
+    LEGACY_OPENCLAW_CONFIG = (0, import_path72.join)(getCopilotConfigDir(), "omc_config.openclaw.json");
   }
 });
 
@@ -56742,7 +56742,7 @@ function isTmuxAvailable() {
     return false;
   }
 }
-function isClaudeAvailable() {
+function isCopilotAvailable() {
   try {
     (0, import_child_process24.execFileSync)("claude", ["--version"], {
       stdio: "ignore",
@@ -57849,7 +57849,7 @@ function capturePaneContent(paneId, lines = 15) {
 function analyzePaneContent(content) {
   if (!content.trim()) {
     return {
-      hasClaudeCode: false,
+      hasCopilotCode: false,
       hasRateLimitMessage: false,
       isBlocked: false,
       confidence: 0
@@ -57858,7 +57858,7 @@ function analyzePaneContent(content) {
   const cleanedContent = stripGitOutputLines(content);
   const hasClaudeText = CLAUDE_CODE_PATTERNS.some((pattern) => pattern.test(cleanedContent));
   const hasLiveOmcHud = hasLiveOmcHudEvidence(cleanedContent);
-  const hasClaudeCode = hasClaudeText || hasLiveOmcHud && hasOmcRateLimitScreenText(cleanedContent);
+  const hasCopilotCode = hasClaudeText || hasLiveOmcHud && hasOmcRateLimitScreenText(cleanedContent);
   const rateLimitMatches = RATE_LIMIT_PATTERNS.filter(
     (pattern) => pattern.test(cleanedContent)
   );
@@ -57875,13 +57875,13 @@ function analyzePaneContent(content) {
     }
   }
   let confidence = 0;
-  if (hasClaudeCode) confidence += 0.4;
+  if (hasCopilotCode) confidence += 0.4;
   if (hasRateLimitMessage) confidence += 0.4;
   if (isWaiting) confidence += 0.2;
   if (rateLimitMatches.length > 1) confidence += 0.1;
-  const isBlocked = hasClaudeCode && hasRateLimitMessage && confidence >= 0.6;
+  const isBlocked = hasCopilotCode && hasRateLimitMessage && confidence >= 0.6;
   return {
-    hasClaudeCode,
+    hasCopilotCode,
     hasRateLimitMessage,
     isBlocked,
     rateLimitType,
@@ -58594,7 +58594,7 @@ var init_config2 = __esm({
     import_fs65 = require("fs");
     import_path79 = require("path");
     init_config_dir();
-    CONFIG_FILE3 = process.env.OMC_OPENCLAW_CONFIG || (0, import_path79.join)(getClaudeConfigDir(), "omc_config.openclaw.json");
+    CONFIG_FILE3 = process.env.OMC_OPENCLAW_CONFIG || (0, import_path79.join)(getCopilotConfigDir(), "omc_config.openclaw.json");
     _cachedConfig = null;
   }
 });
@@ -59493,7 +59493,7 @@ function captureFilename(sessionId, capturedAt) {
 function loadWikiConfig(root2) {
   try {
     const configPath = (0, import_path83.join)(getOmcRoot(root2), ".omc-config.json");
-    const activeConfigPath = (0, import_path83.join)(getClaudeConfigDir(), ".omc-config.json");
+    const activeConfigPath = (0, import_path83.join)(getCopilotConfigDir(), ".omc-config.json");
     for (const path27 of [configPath, activeConfigPath]) {
       if ((0, import_fs68.existsSync)(path27)) {
         const raw = JSON.parse((0, import_fs68.readFileSync)(path27, "utf-8"));
@@ -62556,7 +62556,7 @@ function normalizeSkillReference(value) {
   if (!value) return void 0;
   const trimmed = stripOptionalQuotes(value).trim();
   if (!trimmed) return void 0;
-  return trimmed.replace(/^\/oh-my-claudecode:/i, "").replace(/^oh-my-claudecode:/i, "").replace(/^\//, "").trim().toLowerCase() || void 0;
+  return trimmed.replace(/^\/oh-my-copilot:/i, "").replace(/^oh-my-copilot:/i, "").replace(/^\//, "").trim().toLowerCase() || void 0;
 }
 function uniqueStrings(values) {
   const seen = /* @__PURE__ */ new Set();
@@ -62602,7 +62602,7 @@ function renderSkillPipelineGuidance(skillName, pipeline) {
     ...pipeline.nextSkill ? [pipeline.nextSkill] : []
   ]);
   const nextInvocation = pipeline.nextSkill ? [
-    `Skill("oh-my-claudecode:${pipeline.nextSkill}")`,
+    `Skill("oh-my-copilot:${pipeline.nextSkill}")`,
     pipeline.nextSkillArgs ? `with arguments \`${pipeline.nextSkillArgs}\`` : void 0,
     "using the handoff context from this stage"
   ].filter(Boolean).join(" ") : void 0;
@@ -62832,7 +62832,7 @@ function readDeepInterviewThresholdFromSettings(path27) {
   return typeof threshold === "number" && Number.isFinite(threshold) && threshold >= 0 && threshold <= 1 ? threshold : null;
 }
 function getDeepInterviewAmbiguityThresholdResolution() {
-  const profileSettingsPath = (0, import_path91.join)(getClaudeConfigDir(), "settings.json");
+  const profileSettingsPath = (0, import_path91.join)(getCopilotConfigDir(), "settings.json");
   const projectSettingsPath = (0, import_path91.join)(process.cwd(), ".claude", "settings.json");
   const profileThreshold2 = readDeepInterviewThresholdFromSettings(profileSettingsPath);
   const projectThreshold = readDeepInterviewThresholdFromSettings(projectSettingsPath);
@@ -62840,7 +62840,7 @@ function getDeepInterviewAmbiguityThresholdResolution() {
     return { threshold: projectThreshold, source: "./.claude/settings.json" };
   }
   if (profileThreshold2 !== null) {
-    return { threshold: profileThreshold2, source: "[$CLAUDE_CONFIG_DIR|~/.claude]/settings.json" };
+    return { threshold: profileThreshold2, source: "[$COPILOT_CONFIG_DIR|~/.claude]/settings.json" };
   }
   return { threshold: DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD, source: "default" };
 }
@@ -62895,7 +62895,7 @@ function applyDeepInterviewRuntimeSettings(template) {
   ).replace("(default: 20%)", `(default: ${percent})`).replace("(default 0.2)", `(default ${threshold})`).replace('"ambiguityThreshold": 0.2,', `"ambiguityThreshold": ${threshold},`).replace("Gate: \u226420% ambiguity", `Gate: \u2264${percent} ambiguity`).replace("(threshold: 20%).", `(threshold: ${percent}).`).replace("ambiguity \u2264 20%", `ambiguity \u2264 ${percent}`);
 }
 function normalizeSkillNameForRuntimeRendering(skillName) {
-  return skillName.trim().toLowerCase().replace(/^oh-my-claudecode:/, "").replace(/^omc:/, "");
+  return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, "").replace(/^omc:/, "");
 }
 function renderBundledSkillBody(skillName, body) {
   const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);
@@ -76746,7 +76746,7 @@ __export(worker_exports, {
   workerEnvironment: () => workerEnvironment
 });
 function workerEnvironment() {
-  const keys = ["PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "LANG", "LC_ALL", "NODE_ENV", "CLAUDE_CONFIG_DIR", "OMC_STATE_DIR", "OMC_HOOK_CONFIG", "OMC_CONFIG_PATH", "OMC_NOTIFY", "OMC_NOTIFY_PROFILE", "OMC_TELEGRAM", "OMC_DISCORD", "OMC_SLACK", "OMC_WEBHOOK", "OMC_DISCORD_MENTION", "OMC_DISCORD_NOTIFIER_BOT_TOKEN", "OMC_DISCORD_NOTIFIER_CHANNEL", "OMC_DISCORD_WEBHOOK_URL", "OMC_TELEGRAM_BOT_TOKEN", "OMC_TELEGRAM_NOTIFIER_BOT_TOKEN", "OMC_TELEGRAM_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_UID", "OMC_SLACK_WEBHOOK_URL", "OMC_SLACK_MENTION", "OMC_SLACK_BOT_TOKEN", "OMC_SLACK_APP_TOKEN", "OMC_SLACK_BOT_CHANNEL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", ...process.env.NODE_ENV === "test" ? ["OMC_SESSION_END_TEST_PRODUCER_GRACE_MS"] : []];
+  const keys = ["PATH", "HOME", "USERPROFILE", "TMPDIR", "TEMP", "TMP", "SystemRoot", "COMSPEC", "LANG", "LC_ALL", "NODE_ENV", "COPILOT_CONFIG_DIR", "OMC_STATE_DIR", "OMC_HOOK_CONFIG", "OMC_CONFIG_PATH", "OMC_NOTIFY", "OMC_NOTIFY_PROFILE", "OMC_TELEGRAM", "OMC_DISCORD", "OMC_SLACK", "OMC_WEBHOOK", "OMC_DISCORD_MENTION", "OMC_DISCORD_NOTIFIER_BOT_TOKEN", "OMC_DISCORD_NOTIFIER_CHANNEL", "OMC_DISCORD_WEBHOOK_URL", "OMC_TELEGRAM_BOT_TOKEN", "OMC_TELEGRAM_NOTIFIER_BOT_TOKEN", "OMC_TELEGRAM_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_CHAT_ID", "OMC_TELEGRAM_NOTIFIER_UID", "OMC_SLACK_WEBHOOK_URL", "OMC_SLACK_MENTION", "OMC_SLACK_BOT_TOKEN", "OMC_SLACK_APP_TOKEN", "OMC_SLACK_BOT_CHANNEL", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy", "NODE_EXTRA_CA_CERTS", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE", ...process.env.NODE_ENV === "test" ? ["OMC_SESSION_END_TEST_PRODUCER_GRACE_MS"] : []];
   return Object.fromEntries(keys.flatMap((key) => process.env[key] === void 0 ? [] : [[key, process.env[key]]]));
 }
 function spawnSessionEndWorker(payload) {
@@ -77939,7 +77939,7 @@ function patchHooksJsonForWindows(pluginRoot) {
   }
 }
 function ensureStdinSymlink(pluginRoot) {
-  const libDstDir = (0, import_path109.join)(getClaudeConfigDir(), "hooks/lib");
+  const libDstDir = (0, import_path109.join)(getCopilotConfigDir(), "hooks/lib");
   const libSrc = (0, import_path109.join)(pluginRoot, "templates/hooks/lib");
   const stdinSrc = (0, import_path109.join)(libSrc, "stdin.mjs");
   const stdinDst = (0, import_path109.join)(libDstDir, "stdin.mjs");
@@ -78241,7 +78241,7 @@ function buildSimplifierMessage(files) {
 
 ${fileList}
 
-Use: Task(subagent_type="oh-my-claudecode:code-simplifier", prompt="Simplify the recently modified files:\\n${fileArgs}")`;
+Use: Task(subagent_type="oh-my-copilot:code-simplifier", prompt="Simplify the recently modified files:\\n${fileArgs}")`;
 }
 function processCodeSimplifier(cwd2, stateDir) {
   if (!isCodeSimplifierEnabled()) {
@@ -84103,10 +84103,10 @@ function isKimiHost(urlString) {
   }
 }
 function getLegacyCachePath() {
-  return (0, import_path138.join)(getClaudeConfigDir(), "plugins", "oh-my-claudecode", ".usage-cache.json");
+  return (0, import_path138.join)(getCopilotConfigDir(), "plugins", "oh-my-copilot", ".usage-cache.json");
 }
 function getCachePath(source) {
-  return (0, import_path138.join)(getClaudeConfigDir(), "plugins", "oh-my-claudecode", `.usage-cache-${source}.json`);
+  return (0, import_path138.join)(getCopilotConfigDir(), "plugins", "oh-my-copilot", `.usage-cache-${source}.json`);
 }
 function migrateLegacyCache(source) {
   try {
@@ -84323,7 +84323,7 @@ function createRateLimitedCacheEntry(source, data, pollIntervalMs, previousCount
   };
 }
 function getKeychainServiceName() {
-  const configDir = process.env.CLAUDE_CONFIG_DIR;
+  const configDir = process.env.COPILOT_CONFIG_DIR;
   if (configDir) {
     const hash = (0, import_crypto36.createHash)("sha256").update(configDir).digest("hex").slice(0, 8);
     return `Claude Code-credentials-${hash}`;
@@ -84383,7 +84383,7 @@ function readKeychainCredentials() {
 }
 function readFileCredentials() {
   try {
-    const credPath = (0, import_path138.join)(getClaudeConfigDir(), ".credentials.json");
+    const credPath = (0, import_path138.join)(getCopilotConfigDir(), ".credentials.json");
     if (!(0, import_fs117.existsSync)(credPath)) return null;
     const content = (0, import_fs117.readFileSync)(credPath, "utf-8");
     const parsed = JSON.parse(content);
@@ -84639,7 +84639,7 @@ function writeBackCredentials(creds) {
     return;
   }
   try {
-    const credPath = (0, import_path138.join)(getClaudeConfigDir(), ".credentials.json");
+    const credPath = (0, import_path138.join)(getCopilotConfigDir(), ".credentials.json");
     if (!(0, import_fs117.existsSync)(credPath)) return;
     const content = (0, import_fs117.readFileSync)(credPath, "utf-8");
     const parsed = JSON.parse(content);
@@ -89745,9 +89745,9 @@ var init_omc_state = __esm({
 // src/hud/custom-rate-provider.ts
 function getCachePath2() {
   return (0, import_path156.join)(
-    getClaudeConfigDir(),
+    getCopilotConfigDir(),
     "plugins",
-    "oh-my-claudecode",
+    "oh-my-copilot",
     ".custom-rate-cache.json"
   );
 }
@@ -91466,7 +91466,7 @@ function detectApiKeySource(cwd2) {
     const projectSettings = (0, import_path157.join)(cwd2, ".claude", "settings.local.json");
     if (settingsFileHasApiKey(projectSettings)) return "project";
   }
-  const globalSettings = (0, import_path157.join)(getClaudeConfigDir(), "settings.json");
+  const globalSettings = (0, import_path157.join)(getCopilotConfigDir(), "settings.json");
   if (settingsFileHasApiKey(globalSettings)) return "global";
   if (process.env.ANTHROPIC_API_KEY) return "env";
   return null;
@@ -92290,8 +92290,8 @@ async function calculateSessionHealth(sessionStart, contextPercent) {
 }
 function showDiagnostic() {
   const version3 = getRuntimePackageVersion();
-  const configDir = getClaudeConfigDir();
-  const hudScript = (0, import_path158.join)(configDir, "hud", "omc-hud.mjs");
+  const configDir = getCopilotConfigDir();
+  const hudScript = (0, import_path158.join)(configDir, "hud", "omcp-hud.mjs");
   const settingsFile = (0, import_path158.join)(configDir, "settings.json");
   const hudExists = (0, import_fs136.existsSync)(hudScript);
   let statusLineOk = false;
@@ -92299,9 +92299,9 @@ function showDiagnostic() {
     const settings = JSON.parse((0, import_fs136.readFileSync)(settingsFile, "utf-8"));
     const sl = settings.statusLine;
     if (sl && typeof sl === "object" && typeof sl.command === "string") {
-      statusLineOk = sl.command.includes("omc-hud");
+      statusLineOk = sl.command.includes("omcp-hud");
     } else if (typeof sl === "string") {
-      statusLineOk = sl.includes("omc-hud");
+      statusLineOk = sl.includes("omcp-hud");
     }
   } catch {
   }
@@ -92311,7 +92311,7 @@ function showDiagnostic() {
   console.log(`  HUD script:  ${hudExists ? "installed" : "MISSING"}`);
   console.log(`  statusLine:  ${statusLineOk ? "configured" : "NOT configured"}`);
   if (!hudExists || !statusLineOk) {
-    console.log("  Run /oh-my-claudecode:hud setup to fix.");
+    console.log("  Run /oh-my-copilot:hud setup to fix.");
   } else {
     console.log("  HUD renders automatically inside Claude Code sessions.");
   }
@@ -92470,7 +92470,7 @@ async function main2(watchMode = false, skipInit = false) {
       apiKeyMode: detectApiKeySource(cwd2) !== null,
       subscriptionType: subscriptionInfo.subscriptionType,
       rateLimitTier: subscriptionInfo.rateLimitTier,
-      profileName: process.env.CLAUDE_CONFIG_DIR ? (0, import_path158.basename)(process.env.CLAUDE_CONFIG_DIR).replace(/^\./, "") : null,
+      profileName: process.env.COPILOT_CONFIG_DIR ? (0, import_path158.basename)(process.env.COPILOT_CONFIG_DIR).replace(/^\./, "") : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,
       payloadEstimate
@@ -96822,7 +96822,7 @@ ${formatSkillOutput(projectSkills)}`
 };
 var loadGlobalTool = {
   name: "load_omc_skills_global",
-  description: "Load and list skills from global user directories (~/.omc/skills/ and [$CLAUDE_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
+  description: "Load and list skills from global user directories (~/.omc/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
   schema: loadGlobalSchema,
   handler: async (_args) => {
     const allSkills = loadAllSkills(null);
@@ -96868,7 +96868,7 @@ No skill files were discovered in any searched directories.
 Searched:
 - Project: .omc/skills/
 - Global: ~/.omc/skills/
-- Claude config: ${getClaudeConfigDir()}/skills/omc-learned/`;
+- Claude config: ${getCopilotConfigDir()}/skills/omc-learned/`;
     }
     return {
       content: [{
@@ -97157,7 +97157,7 @@ function collectMergeReadinessEvidence(directory, baseRef, sessionId) {
   return { changedFiles: trackedChangedFiles, untrackedFiles, status, diffStat, sourceArtifacts, testEvidence, reviewEvidence, missingEvidence, base_ref: resolvedBase };
 }
 function extractChangeSummary(promptText) {
-  return promptText.replace(/^\s*\/(?:oh-my-claudecode:|omc:)?merge-readiness\b/i, "").replace(/\B--(?:quick|standard|deep|from-diff|from-artifacts)\b/gi, "").trim();
+  return promptText.replace(/^\s*\/(?:oh-my-copilot:|omc:)?merge-readiness\b/i, "").replace(/\B--(?:quick|standard|deep|from-diff|from-artifacts)\b/gi, "").trim();
 }
 function hasMinimalEvidence(evidence) {
   return evidence.changedFiles.length > 0 || Boolean(evidence.status) || Boolean(evidence.diffStat) || evidence.sourceArtifacts.length > 0;
@@ -100813,7 +100813,7 @@ function uniqueSortedTargets(targets) {
   });
 }
 function buildCurrentProjectTargets(projectRoot, transcriptProjectRoots = [projectRoot]) {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const projectRoots = new Set(transcriptProjectRoots);
   for (const root2 of transcriptProjectRoots) {
     const mainRepoRoot = getMainRepoRoot(root2);
@@ -100848,7 +100848,7 @@ function buildCurrentProjectTargets(projectRoot, transcriptProjectRoots = [proje
   return uniqueSortedTargets(targets);
 }
 function buildAllProjectTargets() {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const targets = [];
   for (const filePath of listJsonlFiles((0, import_path48.join)(claudeDir, "projects"))) {
     targets.push({ filePath, sourceType: "project-transcript" });
@@ -101553,7 +101553,7 @@ init_config_dir();
 var CONFIG_FILE_NAME = ".omc-config.json";
 function isSharedMemoryEnabled() {
   try {
-    const configPath = (0, import_path50.join)(getClaudeConfigDir(), CONFIG_FILE_NAME);
+    const configPath = (0, import_path50.join)(getCopilotConfigDir(), CONFIG_FILE_NAME);
     if (!(0, import_fs37.existsSync)(configPath)) return true;
     const raw = JSON.parse((0, import_fs37.readFileSync)(configPath, "utf-8"));
     const enabled = raw?.agents?.sharedMemory?.enabled;
@@ -101764,7 +101764,7 @@ function listNamespaces(worktreeRoot) {
 }
 
 // src/tools/shared-memory-tools.ts
-var DISABLED_MSG = `Shared memory is disabled. Set agents.sharedMemory.enabled = true in ${getClaudeConfigDir()}/.omc-config.json to enable.`;
+var DISABLED_MSG = `Shared memory is disabled. Set agents.sharedMemory.enabled = true in ${getCopilotConfigDir()}/.omc-config.json to enable.`;
 function disabledResponse() {
   return {
     content: [{ type: "text", text: DISABLED_MSG }],
@@ -104526,7 +104526,7 @@ If ANY box is unchecked, CONTINUE WORKING.
 You may ONLY stop when:
 1. **100% Complete**: Every single task is marked 'completed'
 2. **User Override**: User explicitly says "stop", "cancel", or "that's enough"
-3. **Clean Exit**: You run \`/oh-my-claudecode:cancel\` to properly exit the active mode and clean up state files
+3. **Clean Exit**: You run \`/oh-my-copilot:cancel\` to properly exit the active mode and clean up state files
 
 ### ANTI-STOPPING MECHANISMS
 
@@ -104805,7 +104805,7 @@ var KEYWORD_PRIORITY = [
   "cursor",
   "antigravity"
 ];
-var RETIRED_WORKFLOW_SLASH_PATTERN = /^\s*\/(?:oh-my-claudecode:|omc:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i;
+var RETIRED_WORKFLOW_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i;
 function isRetiredWorkflowSlashInvocation(text) {
   return RETIRED_WORKFLOW_SLASH_PATTERN.test(text);
 }
@@ -104826,7 +104826,7 @@ var SLASH_SKILL_TO_KEYWORD_TYPE = {
   ralplan: "ralplan"
 };
 var WORKFLOW_SLASH_PATTERN = new RegExp(
-  "^\\s*/(?:oh-my-claudecode:|omc:)?(" + CANONICAL_WORKFLOW_SLASH_SKILLS.map((skill) => skill.replace(/-/g, "\\-")).join("|") + ")(?=\\s|$|[?!.,;:])",
+  "^\\s*/(?:oh-my-copilot:|omc:)?(" + CANONICAL_WORKFLOW_SLASH_SKILLS.map((skill) => skill.replace(/-/g, "\\-")).join("|") + ")(?=\\s|$|[?!.,;:])",
   "i"
 );
 function parseExplicitWorkflowSlashInvocation(promptText) {
@@ -104846,7 +104846,7 @@ function removeCodeBlocks2(text) {
 }
 var PASTED_MAGIC_KEYWORD_HEADER_PATTERN = /^\s*\[MAGIC KEYWORDS?(?: DETECTED)?:.*$/i;
 var ROLE_BOUNDARY_PATTERN = /^<\s*\/?\s*(system|human|assistant|user|tool_use|tool_result)\b[^>]*>/i;
-var SKILL_TRANSCRIPT_LINE_PATTERN = /^\s*Skill:\s+oh-my-(?:claudecode|codex):/i;
+var SKILL_TRANSCRIPT_LINE_PATTERN = /^\s*Skill:\s+oh-my-(?:copilot|claudecode|codex):/i;
 var USER_REQUEST_LINE_PATTERN = /^\s*User request(?:\s*\([^)]*\))?:\s*$/i;
 var SHELL_TRANSCRIPT_LINE_PATTERN = /^\s*[$%❯]\s+/;
 var GIT_DIFF_START_PATTERNS = [
@@ -105065,7 +105065,7 @@ function hasActivationIntentNearKeyword(context, keyword) {
 }
 function hasDirectInvocationPrefix(text, position) {
   const prefix = text.slice(0, position);
-  return /^\s*(?:[$/!]\s*|force:\s*|oh-my-(?:claudecode|codex):\s*)?$/i.test(prefix);
+  return /^\s*(?:[$/!]\s*|force:\s*|oh-my-(?:copilot|claudecode|codex):\s*)?$/i.test(prefix);
 }
 function hasConversationalInvocationNearKeyword(text, position, _keywordLength, _keywordText) {
   if (isWithinQuotedSpan(text, position)) {
@@ -105559,7 +105559,7 @@ As an ORCHESTRATOR, you MUST:
 
 **ALLOWED direct file operations:**
 - Files inside \`.omc/\` (plans, notepads, drafts)
-- Files inside \`[$CLAUDE_CONFIG_DIR|~/.claude]/\`
+- Files inside \`[$COPILOT_CONFIG_DIR|~/.claude]/\`
 - \`CLAUDE.md\` and \`AGENTS.md\` files
 - Reading files for verification
 - Running diagnostics/tests
@@ -105634,7 +105634,7 @@ function getEnforcementLevel(directory) {
     return enforcementCache.level;
   }
   const localConfig = path14.join(getOmcRoot(directory), "config.json");
-  const globalConfig2 = path14.join(getClaudeConfigDir(), ".omc-config.json");
+  const globalConfig2 = path14.join(getCopilotConfigDir(), ".omc-config.json");
   let level = "warn";
   for (const configPath of [localConfig, globalConfig2]) {
     if ((0, import_fs51.existsSync)(configPath)) {
@@ -105659,7 +105659,7 @@ function isAllowedPath(filePath, directory) {
   if (normalized.startsWith("../") || normalized === "..") return false;
   if (ALLOWED_PATH_PATTERNS.some((pattern) => pattern.test(normalized))) return true;
   if (path14.isAbsolute(filePath)) {
-    const relToConfigDir = path14.relative(getClaudeConfigDir(), filePath);
+    const relToConfigDir = path14.relative(getCopilotConfigDir(), filePath);
     if (!relToConfigDir || !relToConfigDir.startsWith("..") && !path14.isAbsolute(relToConfigDir)) {
       return true;
     }
@@ -106548,9 +106548,9 @@ function isWarningOptedOut() {
 function normalizeWorkflowInput(raw) {
   if (typeof raw !== "string") return "";
   let s = raw.trim().toLowerCase();
-  s = s.replace(/^\/(?:oh-my-claudecode:|omc:)?/i, "");
+  s = s.replace(/^\/(?:oh-my-copilot:|omc:)?/i, "");
   s = s.replace(/^omc:/i, "");
-  s = s.replace(/^oh-my-claudecode:/i, "");
+  s = s.replace(/^oh-my-copilot:/i, "");
   s = s.replace(/[?!.,;:]+$/g, "");
   s = s.trim();
   return s;
@@ -108179,7 +108179,7 @@ function getPromptText(input) {
   return "";
 }
 function isExplicitAskSlashInvocation(promptText) {
-  return /^\s*\/(?:oh-my-claudecode:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor)\b/i.test(promptText);
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor)\b/i.test(promptText);
 }
 function activateRalplanStartupState(directory, sessionId) {
   const now = (/* @__PURE__ */ new Date()).toISOString();
@@ -108204,7 +108204,7 @@ function resolveWorkflowSlotModeStatePath(directory, skillName, sessionId) {
 }
 function seedWorkflowSlotForSkill(directory, skillName, sessionId, source, parentSkill) {
   if (!isCanonicalWorkflowSkill(skillName)) return false;
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   try {
     const current = readSkillActiveStateNormalized(directory, sessionId);
     const pruned = pruneExpiredWorkflowSkillTombstones(current);
@@ -108234,7 +108234,7 @@ function seedWorkflowSlotForSkill(directory, skillName, sessionId, source, paren
 }
 function confirmWorkflowSlot(directory, skillName, sessionId) {
   if (!isCanonicalWorkflowSkill(skillName)) return false;
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   try {
     const current = readSkillActiveStateNormalized(directory, sessionId);
     const slot = current.active_skills[normalized];
@@ -108249,7 +108249,7 @@ function confirmWorkflowSlot(directory, skillName, sessionId) {
 }
 function tombstoneWorkflowSlot(directory, skillName, sessionId) {
   if (!isCanonicalWorkflowSkill(skillName)) return false;
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   try {
     const current = readSkillActiveStateNormalized(directory, sessionId);
     if (!current.active_skills[normalized]) return false;
@@ -109213,7 +109213,7 @@ async function processPostToolUse(input) {
     }
     const { clearSkillActiveState: clearSkillActiveState2, readSkillActiveState: readSkillActiveState2 } = await Promise.resolve().then(() => (init_skill_state(), skill_state_exports));
     const currentState = readSkillActiveState2(directory, input.sessionId);
-    const completingSkill = (getInvokedSkillName(input.toolInput) ?? "").toLowerCase().replace(/^oh-my-claudecode:/, "");
+    const completingSkill = (getInvokedSkillName(input.toolInput) ?? "").toLowerCase().replace(/^oh-my-copilot:/, "");
     if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
       clearSkillActiveState2(directory, input.sessionId);
     }
@@ -109763,9 +109763,9 @@ var THINK_PATTERNS = [...ENGLISH_PATTERNS, ...MULTILINGUAL_PATTERNS];
 init_models();
 var HIGH_VARIANT_MAP = {
   // Claude canonical families
-  [CLAUDE_FAMILY_DEFAULTS.SONNET]: CLAUDE_FAMILY_HIGH_VARIANTS.SONNET,
-  [CLAUDE_FAMILY_DEFAULTS.OPUS]: CLAUDE_FAMILY_HIGH_VARIANTS.OPUS,
-  [CLAUDE_FAMILY_DEFAULTS.HAIKU]: CLAUDE_FAMILY_HIGH_VARIANTS.HAIKU,
+  [COPILOT_FAMILY_DEFAULTS.SONNET]: CLAUDE_FAMILY_HIGH_VARIANTS.SONNET,
+  [COPILOT_FAMILY_DEFAULTS.OPUS]: CLAUDE_FAMILY_HIGH_VARIANTS.OPUS,
+  [COPILOT_FAMILY_DEFAULTS.HAIKU]: CLAUDE_FAMILY_HIGH_VARIANTS.HAIKU,
   // GPT-4
   "gpt-4": "gpt-4-high",
   "gpt-4-turbo": "gpt-4-turbo-high",
@@ -109813,7 +109813,7 @@ init_skill_pipeline();
 init_skill_resources();
 init_runtime_guidance();
 init_skills();
-var CLAUDE_CONFIG_DIR3 = getClaudeConfigDir();
+var COPILOT_CONFIG_DIR3 = getCopilotConfigDir();
 
 // src/hooks/comment-checker/index.ts
 var fs17 = __toESM(require("fs"), 1);
@@ -109855,7 +109855,7 @@ var import_fs97 = require("fs");
 var import_path117 = require("path");
 init_config_dir();
 var DEFAULT_TASK_TTL_MS = 30 * 60 * 1e3;
-var BACKGROUND_TASKS_DIR = (0, import_path117.join)(getClaudeConfigDir(), ".omc", "background-tasks");
+var BACKGROUND_TASKS_DIR = (0, import_path117.join)(getCopilotConfigDir(), ".omc", "background-tasks");
 
 // src/hooks/directory-readme-injector/constants.ts
 var import_node_path21 = require("node:path");
@@ -109961,7 +109961,7 @@ var import_fs100 = require("fs");
 var import_path121 = require("path");
 init_config_dir();
 init_constants();
-var CONFIG_PATH = (0, import_path121.join)(getClaudeConfigDir(), "omc", "learner.json");
+var CONFIG_PATH = (0, import_path121.join)(getCopilotConfigDir(), "omc", "learner.json");
 
 // src/hooks/learner/index.ts
 init_constants();
@@ -110134,7 +110134,7 @@ var DEFAULT_FACTCHECK_POLICY = {
   enabled: false,
   mode: "quick",
   strict_project_patterns: [],
-  forbidden_path_prefixes: ["${CLAUDE_CONFIG_DIR}/plugins/cache/omc/"],
+  forbidden_path_prefixes: ["${COPILOT_CONFIG_DIR}/plugins/cache/omc/"],
   forbidden_path_substrings: ["/.omc/", ".omc-config.json"],
   readonly_command_prefixes: [
     "ls ",
@@ -111535,7 +111535,7 @@ function uniqueSortedTargets2(targets) {
   });
 }
 function buildTargets(projectRoot, projectRoots, scopeMode) {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const targets = [];
   if (scopeMode === "all") {
     for (const filePath of listJsonFiles((0, import_path135.join)(claudeDir, "projects"))) {
@@ -112161,7 +112161,7 @@ var DAEMON_ENV_ALLOWLIST2 = [
   "USERPROFILE",
   // OMC state/profile context (non-secret paths)
   "OMC_STATE_DIR",
-  "CLAUDE_CONFIG_DIR",
+  "COPILOT_CONFIG_DIR",
   // User identification
   "USER",
   "USERNAME",
@@ -112854,7 +112854,7 @@ function collectHooksFromSettings(settingsPath) {
   return conflicts;
 }
 function checkHookConflicts() {
-  const profileSettingsPath = (0, import_path141.join)(getClaudeConfigDir(), "settings.json");
+  const profileSettingsPath = (0, import_path141.join)(getCopilotConfigDir(), "settings.json");
   const projectSettingsPath = (0, import_path141.join)(process.cwd(), ".claude", "settings.json");
   const profileHooks = collectHooksFromSettings(profileSettingsPath);
   const projectHooks = collectHooksFromSettings(projectSettingsPath);
@@ -112999,7 +112999,7 @@ function genericClaudeMdFiles(configDir) {
   }
 }
 function checkClaudeMdStatus() {
-  const configDir = getClaudeConfigDir();
+  const configDir = getCopilotConfigDir();
   const claudeMdPath = (0, import_path141.join)(configDir, "CLAUDE.md");
   const activePath = (0, import_path141.join)(configDir, "CLAUDE-omc.md");
   const genericPaths = genericClaudeMdFiles(configDir);
@@ -113061,7 +113061,7 @@ function isValidSetupPluginRoot(pluginRoot) {
   return (0, import_fs120.existsSync)((0, import_path141.join)(pluginRoot, "docs", "CLAUDE.md"));
 }
 function readInstalledPluginRoots() {
-  const installedPluginsPath = (0, import_path141.join)(getClaudeConfigDir(), "plugins", "installed_plugins.json");
+  const installedPluginsPath = (0, import_path141.join)(getCopilotConfigDir(), "plugins", "installed_plugins.json");
   if (!(0, import_fs120.existsSync)(installedPluginsPath)) {
     return [];
   }
@@ -113071,7 +113071,7 @@ function readInstalledPluginRoots() {
       return [];
     }
     const plugins = "plugins" in parsed && parsed.plugins && typeof parsed.plugins === "object" && !Array.isArray(parsed.plugins) ? parsed.plugins : parsed;
-    return Object.entries(plugins).filter(([key]) => key.startsWith("oh-my-claudecode")).flatMap(([, value]) => Array.isArray(value) ? value : []).map((entry2) => entry2 && typeof entry2 === "object" && "installPath" in entry2 ? entry2.installPath : null).filter((installPath) => typeof installPath === "string" && installPath.length > 0);
+    return Object.entries(plugins).filter(([key]) => key.startsWith("oh-my-copilot")).flatMap(([, value]) => Array.isArray(value) ? value : []).map((entry2) => entry2 && typeof entry2 === "object" && "installPath" in entry2 ? entry2.installPath : null).filter((installPath) => typeof installPath === "string" && installPath.length > 0);
   } catch {
     return [];
   }
@@ -113132,7 +113132,7 @@ function isSupportedSetupFallbackSkill(legacySkillsDir, entry2, baseName) {
   }
 }
 function checkLegacySkills() {
-  const legacySkillsDir = (0, import_path141.join)(getClaudeConfigDir(), "skills");
+  const legacySkillsDir = (0, import_path141.join)(getCopilotConfigDir(), "skills");
   if (!(0, import_fs120.existsSync)(legacySkillsDir)) return [];
   const collisions = [];
   try {
@@ -113155,7 +113155,7 @@ function checkLegacySkills() {
 }
 function checkConfigIssues() {
   const unknownFields = [];
-  const configPath = (0, import_path141.join)(getClaudeConfigDir(), ".omc-config.json");
+  const configPath = (0, import_path141.join)(getCopilotConfigDir(), ".omc-config.json");
   if (!(0, import_fs120.existsSync)(configPath)) {
     return { unknownFields };
   }
@@ -113245,7 +113245,7 @@ function formatReport2(report, json) {
   }
   const lines = [];
   lines.push("");
-  lines.push(colors.bold("\u{1F50D} Oh-My-ClaudeCode Conflict Diagnostic"));
+  lines.push(colors.bold("\u{1F50D} Oh-My-Copilot Conflict Diagnostic"));
   lines.push(colors.gray("\u2501".repeat(60)));
   lines.push("");
   if (report.hookConflicts.length > 0) {
@@ -113277,7 +113277,7 @@ function formatReport2(report, json) {
       }
     } else {
       lines.push(`  ${colors.yellow("\u26A0")} No OMC markers found`);
-      lines.push(`    ${colors.gray("Run /oh-my-claudecode:omc-setup to add markers to the selected guide")}`);
+      lines.push(`    ${colors.gray("Run /oh-my-copilot:omc-setup to add markers to the selected guide")}`);
       if (report.claudeMdStatus.dirtyFiles.length > 0) {
         lines.push(`  ${colors.blue("\u2139")} User content present: ${report.claudeMdStatus.dirtyFiles.join(", ")}`);
       }
@@ -113285,7 +113285,7 @@ function formatReport2(report, json) {
     lines.push(`  ${colors.gray(`Path: ${report.claudeMdStatus.path}`)}`);
     if (report.claudeMdStatus.exactLegacyPaths.length > 0) {
       lines.push(`  ${colors.yellow("\u26A0")} Exact legacy guide content: ${report.claudeMdStatus.exactLegacyPaths.join(", ")}`);
-      lines.push(`    ${colors.gray("Run /oh-my-claudecode:omc-setup for coordinator-backed cleanup with a verified backup.")}`);
+      lines.push(`    ${colors.gray("Run /oh-my-copilot:omc-setup for coordinator-backed cleanup with a verified backup.")}`);
     }
     if (report.claudeMdStatus.manualReviewPaths.length > 0) {
       lines.push(`  ${colors.yellow("\u26A0")} Inspection-only review required: ${report.claudeMdStatus.manualReviewPaths.join(", ")}`);
@@ -113328,7 +113328,7 @@ function formatReport2(report, json) {
       lines.push(`    - ${hook.event} ${colors.gray(`(${hook.pluginRoot})`)}`);
       lines.push(`      ${colors.gray(hook.command)}`);
     }
-    lines.push(`    ${colors.gray("Run /oh-my-claudecode:omc-setup or update/reinstall the plugin to rewrite hooks to direct node run.cjs commands.")}`);
+    lines.push(`    ${colors.gray("Run /oh-my-copilot:omc-setup or update/reinstall the plugin to rewrite hooks to direct node run.cjs commands.")}`);
     lines.push("");
   }
   if (report.configIssues.unknownFields.length > 0) {
@@ -113392,7 +113392,7 @@ function formatReport2(report, json) {
   lines.push(colors.gray("\u2501".repeat(60)));
   if (report.hasConflicts) {
     lines.push(`${colors.yellow("\u26A0")} Potential conflicts detected`);
-    lines.push(`${colors.gray("Review the issues above and run /oh-my-claudecode:omc-setup if needed")}`);
+    lines.push(`${colors.gray("Review the issues above and run /oh-my-copilot:omc-setup if needed")}`);
   } else {
     lines.push(`${colors.green("\u2713")} No conflicts detected`);
     lines.push(`${colors.gray("OMC is properly configured")}`);
@@ -117962,7 +117962,7 @@ function swapRuntimeConfigDir(runtimeConfigDir, nextConfigDir) {
   } catch {
   }
 }
-function prepareOmcLaunchConfigDir(baseConfigDir = getClaudeConfigDir()) {
+function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
   const companionPath = (0, import_path146.join)(baseConfigDir, "CLAUDE-omc.md");
   if (!hasOmcMarkers(companionPath)) {
     return baseConfigDir;
@@ -118262,7 +118262,7 @@ function runClaudeInsideTmux(cwd2, args) {
   }
 }
 var TMUX_ENV_FORWARD = [
-  "CLAUDE_CONFIG_DIR",
+  "COPILOT_CONFIG_DIR",
   "OMC_NOTIFY",
   "OMC_OPENCLAW",
   "OMC_TELEGRAM",
@@ -118400,16 +118400,16 @@ async function launchCommand(args) {
     console.error("[omc] Error: Already inside a Claude Code session. Nested launches are not supported.");
     process.exit(1);
   }
-  if (!isClaudeAvailable()) {
+  if (!isCopilotAvailable()) {
     console.error("[omc] Error: claude CLI not found. Install Claude Code first:");
     console.error("  https://code.claude.com/docs/en/setup");
     process.exit(1);
   }
   const launchConfigDir = prepareOmcLaunchConfigDir();
   if (isDefaultClaudeConfigDirPath2(launchConfigDir)) {
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
   } else {
-    process.env.CLAUDE_CONFIG_DIR = launchConfigDir;
+    process.env.COPILOT_CONFIG_DIR = launchConfigDir;
   }
   const normalizedArgs = normalizeClaudeLaunchArgs(argsAfterWebhook);
   const sessionId = `omc-${Date.now()}-${crypto.randomUUID().replace(/-/g, "").slice(0, 8)}`;
@@ -118470,7 +118470,7 @@ function launchInteropSession(cwd2 = process.cwd()) {
     process.exit(1);
   }
   const hasCodex = isCodexAvailable();
-  const hasClaude = isClaudeAvailable();
+  const hasClaude = isCopilotAvailable();
   if (!hasClaude) {
     console.error("Error: claude CLI is not available. Install Claude Code CLI first.");
     process.exit(1);
@@ -119424,7 +119424,7 @@ This command is no longer the authoritative autoresearch workflow.
 Use this flow instead:
   1. /deep-interview --autoresearch "<mission idea>"
      - use deep-interview to generate/setup the mission and evaluator
-  2. /oh-my-claudecode:autoresearch
+  2. /oh-my-copilot:autoresearch
      - run the stateful single-mission autoresearch skill
 
 Key behavior:
@@ -119664,7 +119664,7 @@ Profile types (use with --profile):
   webhook      Generic webhook (POST with JSON body)
 
 Examples:
-  $ omc config-stop-callback file --enable --path ${(0, import_path159.join)(getClaudeConfigDir(), "logs/{date}.md")}
+  $ omc config-stop-callback file --enable --path ${(0, import_path159.join)(getCopilotConfigDir(), "logs/{date}.md")}
   $ omc config-stop-callback telegram --enable --token <token> --chat <id>
   $ omc config-stop-callback discord --enable --webhook <url>
   $ omc config-stop-callback file --disable
@@ -119849,7 +119849,7 @@ Examples:
       const current = config2.stopHookCallbacks.file;
       config2.stopHookCallbacks.file = {
         enabled: enabled ?? current?.enabled ?? false,
-        path: options.path ?? current?.path ?? (0, import_path159.join)(getClaudeConfigDir(), "session-logs/{session_id}.md"),
+        path: options.path ?? current?.path ?? (0, import_path159.join)(getCopilotConfigDir(), "session-logs/{session_id}.md"),
         format: options.format ?? current?.format ?? "markdown"
       };
       break;
@@ -119985,7 +119985,7 @@ program2.command("info").description("Show system and agent information").addHel
 Examples:
   $ omc info                     Show agents, features, and MCP servers`).action(async () => {
   const session = createOmcSession();
-  console.log(source_default.blue.bold("\nOh-My-ClaudeCode System Information\n"));
+  console.log(source_default.blue.bold("\nOh-My-Copilot System Information\n"));
   console.log(source_default.gray("\u2501".repeat(50)));
   console.log(source_default.blue("\nAvailable Agents:"));
   const agents = session.queryOptions.options.agents;
@@ -120035,7 +120035,7 @@ Examples:
   $ omc update --force           Force reinstall
   $ omc update --standalone      Force npm update in plugin context`).action(async (options) => {
   if (!options.quiet) {
-    console.log(source_default.blue("Oh-My-ClaudeCode Update\n"));
+    console.log(source_default.blue("Oh-My-Copilot Update\n"));
   }
   try {
     const installed = getInstalledVersion();
@@ -120112,7 +120112,7 @@ program2.command("version").description("Show detailed version information").add
 Examples:
   $ omc version                  Show version, install method, and commit hash`).action(async () => {
   const installed = getInstalledVersion();
-  console.log(source_default.blue.bold("\nOh-My-ClaudeCode Version Information\n"));
+  console.log(source_default.blue.bold("\nOh-My-Copilot Version Information\n"));
   console.log(source_default.gray("\u2501".repeat(50)));
   console.log(`
   Package version:   ${source_default.green(version2)}`);
@@ -120131,17 +120131,17 @@ Examples:
     console.log(source_default.gray("  (Run the install script to create version metadata)"));
   }
   console.log(source_default.gray("\n\u2501".repeat(50)));
-  console.log(source_default.gray("\nTo check for updates, run: oh-my-claudecode update --check"));
+  console.log(source_default.gray("\nTo check for updates, run: oh-my-copilot update --check"));
 });
 program2.command("install").description("Install OMC agents and commands to Claude Code config directory (default: ~/.claude/)").option("-f, --force", "Overwrite existing files").option("-q, --quiet", "Suppress output except for errors").option("--skip-claude-check", "Skip checking if Claude Code is installed").addHelpText("after", `
 Examples:
   $ omc install                  Install to config directory (default: ~/.claude/)
   $ omc install --force          Reinstall, overwriting existing files
   $ omc install --quiet          Silent install for scripts
-  $ CLAUDE_CONFIG_DIR=$HOME/.claude-isolated-workspace omc install  Isolated config directory`).action(async (options) => {
+  $ COPILOT_CONFIG_DIR=$HOME/.claude-isolated-workspace omc install  Isolated config directory`).action(async (options) => {
   if (!options.quiet) {
     console.log(source_default.blue("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557"));
-    console.log(source_default.blue("\u2551         Oh-My-ClaudeCode Installer                        \u2551"));
+    console.log(source_default.blue("\u2551         Oh-My-Copilot Installer                        \u2551"));
     console.log(source_default.blue("\u2551   Multi-Agent Orchestration for Claude Code               \u2551"));
     console.log(source_default.blue("\u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D"));
     console.log("");
@@ -120161,7 +120161,7 @@ Examples:
   const result = install({
     force: options.force,
     verbose: !options.quiet,
-    skipClaudeCheck: options.skipClaudeCheck
+    skipCopilotCheck: options.skipCopilotCheck
   });
   if (result.success) {
     if (!options.quiet) {
@@ -120170,7 +120170,7 @@ Examples:
       console.log(source_default.green("\u2551         Installation Complete!                            \u2551"));
       console.log(source_default.green("\u255A\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u255D"));
       console.log("");
-      console.log(source_default.gray(`Installed to: ${getClaudeConfigDir()}`));
+      console.log(source_default.gray(`Installed to: ${getCopilotConfigDir()}`));
       console.log("");
       console.log(source_default.yellow("Usage:"));
       console.log("  claude                        # Start Claude Code normally");
@@ -120388,7 +120388,7 @@ Examples:
   $ omc setup --skip-hooks        Install without hooks
   $ omc setup --force-hooks       Force reinstall hooks`).action(async (options) => {
   if (!options.quiet) {
-    console.log(source_default.blue("Oh-My-ClaudeCode Setup\n"));
+    console.log(source_default.blue("Oh-My-Copilot Setup\n"));
   }
   if (!options.quiet) {
     console.log(source_default.gray("Syncing OMC components..."));
@@ -120413,7 +120413,7 @@ Examples:
   const result = install({
     force: !!options.force,
     verbose: !options.quiet,
-    skipClaudeCheck: true,
+    skipCopilotCheck: true,
     forceHooks: !!options.forceHooks,
     noPlugin: useLocalBundledSkills,
     pluginDirMode
@@ -120455,22 +120455,22 @@ Examples:
     if (reportedVersion !== version2) {
       console.log(source_default.gray(`CLI package version: ${version2}`));
     }
-    console.log(source_default.gray("Start Claude Code and use /oh-my-claudecode:omc-setup for interactive setup."));
+    console.log(source_default.gray("Start Claude Code and use /oh-my-copilot:omc-setup for interactive setup."));
   }
 });
 program2.command("postinstall", { hidden: true }).description("Run post-install setup (called automatically by npm)").action(async () => {
   const result = install({
     force: false,
     verbose: false,
-    skipClaudeCheck: true
+    skipCopilotCheck: true
   });
   if (result.success) {
-    console.log(source_default.green("\u2713 Oh-My-ClaudeCode installed successfully!"));
-    console.log(source_default.gray('  Run "oh-my-claudecode info" to see available agents.'));
+    console.log(source_default.green("\u2713 Oh-My-Copilot installed successfully!"));
+    console.log(source_default.gray('  Run "oh-my-copilot info" to see available agents.'));
     console.log(source_default.yellow('  Run "/omc-default" (project) or "/omc-default-global" (global) in Claude Code.'));
   } else {
     console.warn(source_default.yellow("\u26A0 Could not complete OMC setup:"), result.message);
-    console.warn(source_default.gray('  Run "oh-my-claudecode install" manually to complete setup.'));
+    console.warn(source_default.gray('  Run "oh-my-copilot install" manually to complete setup.'));
   }
 });
 program2.command("hud").description("Run the OMC HUD statusline renderer").option("--watch", "Run in watch mode (continuous polling for tmux pane)").option("--interval <ms>", "Poll interval in milliseconds", "1000").action(async (options) => {

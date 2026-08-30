@@ -9,9 +9,9 @@ function stripTrailingSep(p) {
   return p === parse(p).root ? p : p.slice(0, -1);
 }
 
-export function getClaudeConfigDir() {
+export function getCopilotConfigDir() {
   const home = homedir();
-  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  const configured = process.env.COPILOT_CONFIG_DIR?.trim();
 
   if (!configured) {
     return stripTrailingSep(normalize(join(home, '.claude')));
@@ -29,7 +29,7 @@ export function getClaudeConfigDir() {
 }
 
 export function getOmcConfigDir() {
-  return join(getClaudeConfigDir(), '.omc');
+  return join(getCopilotConfigDir(), '.omc');
 }
 
 export function getUpdateCheckCachePath() {

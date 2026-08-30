@@ -6,7 +6,7 @@
  *
  * Ported from oh-my-opencode's think-mode hook.
  */
-import { CLAUDE_FAMILY_DEFAULTS, CLAUDE_FAMILY_HIGH_VARIANTS, getClaudeHighVariantFromModel, } from '../../config/models.js';
+import { COPILOT_FAMILY_DEFAULTS, CLAUDE_FAMILY_HIGH_VARIANTS, getClaudeHighVariantFromModel, } from '../../config/models.js';
 /**
  * Extract provider prefix from model ID.
  * Custom providers may use prefixes like vertex_ai/, openai/.
@@ -34,9 +34,9 @@ function normalizeModelId(modelId) {
  */
 const HIGH_VARIANT_MAP = {
     // Claude canonical families
-    [CLAUDE_FAMILY_DEFAULTS.SONNET]: CLAUDE_FAMILY_HIGH_VARIANTS.SONNET,
-    [CLAUDE_FAMILY_DEFAULTS.OPUS]: CLAUDE_FAMILY_HIGH_VARIANTS.OPUS,
-    [CLAUDE_FAMILY_DEFAULTS.HAIKU]: CLAUDE_FAMILY_HIGH_VARIANTS.HAIKU,
+    [COPILOT_FAMILY_DEFAULTS.SONNET]: CLAUDE_FAMILY_HIGH_VARIANTS.SONNET,
+    [COPILOT_FAMILY_DEFAULTS.OPUS]: CLAUDE_FAMILY_HIGH_VARIANTS.OPUS,
+    [COPILOT_FAMILY_DEFAULTS.HAIKU]: CLAUDE_FAMILY_HIGH_VARIANTS.HAIKU,
     // GPT-4
     'gpt-4': 'gpt-4-high',
     'gpt-4-turbo': 'gpt-4-turbo-high',

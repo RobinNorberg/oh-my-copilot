@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import { runRecoverySaga } from '../recovery-saga.js';
 import { readRecoveryOutcome, reserveRecoveryRequest } from '../recovery-request-store.js';
 let cwd;
+let previousHome;
+let previousUserProfile;
+let previousOmcStateDir;
 const input = {
     requestId: 'request-a',
     recoveryId: 'recovery-a',
@@ -24,10 +27,30 @@ const task = {
 };
 beforeEach(() => {
     cwd = mkdtempSync(join(tmpdir(), 'omc-recovery-saga-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
     reserveRecoveryRequest(cwd, input.requestId, { operation: 'recover-worker', workspaceHash: 'a'.repeat(64),
         teamName: input.teamName, workerName: input.workerName }, input.recoveryId);
 });
-afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+afterEach(() => {
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousOmcStateDir;
+    rmSync(cwd, { recursive: true, force: true });
+});
 function dependencies(order, overrides = {}) {
     return {
         cwd,

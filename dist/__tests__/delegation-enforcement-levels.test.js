@@ -37,25 +37,47 @@ vi.mock('../hooks/notepad/index.js', () => ({
     addWorkingMemoryEntry: vi.fn(),
     setPriorityContext: vi.fn(),
 }));
+// Keep bridge integration focused on delegation and task tracking. The bridge's
+// prompt-prerequisite reader resolves runtime state roots through git, which is
+// intentionally unavailable in this suite's mocked filesystem. Stub that
+// unrelated stateful surface so each integration case observes only its own
+// enforcement/task inputs.
+vi.mock('../hooks/prompt-prerequisites/index.js', () => ({
+    activatePromptPrerequisiteState: vi.fn(),
+    buildPromptPrerequisiteDenyReason: vi.fn(() => ''),
+    buildPromptPrerequisiteReminder: vi.fn(() => ''),
+    clearPromptPrerequisiteState: vi.fn(),
+    getPromptPrerequisiteConfig: vi.fn(() => ({
+        enabled: false,
+        blockingTools: [],
+        executionKeywords: [],
+        sectionNames: {},
+    })),
+    isPromptPrerequisiteBlockingTool: vi.fn(() => false),
+    parsePromptPrerequisiteSections: vi.fn(),
+    readPromptPrerequisiteState: vi.fn(() => null),
+    recordPromptPrerequisiteProgress: vi.fn(() => null),
+    shouldEnforcePromptPrerequisites: vi.fn(() => false),
+}));
 import { existsSync, readFileSync } from 'fs';
 const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);
 describe('delegation-enforcement-levels', () => {
-    const savedConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
     beforeEach(() => {
         vi.clearAllMocks();
         clearEnforcementCache();
-        // Ensure tests use the mocked homedir, not a custom CLAUDE_CONFIG_DIR
-        delete process.env.CLAUDE_CONFIG_DIR;
+        // Ensure tests use the mocked homedir, not a custom COPILOT_CONFIG_DIR
+        delete process.env.COPILOT_CONFIG_DIR;
         // Default: no config files exist
         mockExistsSync.mockReturnValue(false);
     });
     afterEach(() => {
         if (savedConfigDir !== undefined) {
-            process.env.CLAUDE_CONFIG_DIR = savedConfigDir;
+            process.env.COPILOT_CONFIG_DIR = savedConfigDir;
         }
         else {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
     });
     // ─── 1. suggestAgentForFile (tested indirectly via warning messages) ───
@@ -112,7 +134,7 @@ describe('delegation-enforcement-levels', () => {
         const sourceFileInput = {
             toolName: 'Write',
             toolInput: { filePath: 'src/app.ts' },
-            directory: '/tmp/test-project',
+            directory: '/home/test-project',
         };
         it('defaults to warn when no config file exists', () => {
             mockExistsSync.mockReturnValue(false);
@@ -126,7 +148,7 @@ describe('delegation-enforcement-levels', () => {
             // Local config exists with 'off', global has 'strict'
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s))
+                if (s.endsWith('/.omc/config.json'))
                     return true;
                 if (/[\\/]mock[\\/]home[\\/]\.claude[\\/]\.omc-config\.json$/.test(s))
                     return true;
@@ -134,7 +156,7 @@ describe('delegation-enforcement-levels', () => {
             });
             mockReadFileSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s)) {
+                if (s.endsWith('/.omc/config.json')) {
                     return JSON.stringify({ delegationEnforcementLevel: 'off' });
                 }
                 if (/[\\/]mock[\\/]home[\\/]\.claude[\\/]\.omc-config\.json$/.test(s)) {
@@ -199,7 +221,7 @@ describe('delegation-enforcement-levels', () => {
         it('supports enforcementLevel key as alternative', () => {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (/[\\/]tmp[\\/]test-project[\\/]\.omc[\\/]config\.json$/.test(s))
+                if (s.endsWith('/.omc/config.json'))
                     return true;
                 return false;
             });
@@ -435,7 +457,6 @@ describe('delegation-enforcement-levels', () => {
                 formatCompactSummary: vi.fn(),
             }));
             vi.mock('../installer/hooks.js', () => ({
-                ULTRAWORK_MESSAGE: 'ultrawork',
                 ULTRATHINK_MESSAGE: 'ultrathink',
                 SEARCH_MESSAGE: 'search',
                 ANALYZE_MESSAGE: 'analyze',
@@ -519,35 +540,35 @@ describe('delegation-enforcement-levels', () => {
         it('returns true for .claude/ paths', () => {
             expect(isAllowedPath('.claude/settings.json')).toBe(true);
         });
-        it('returns true for absolute paths under CLAUDE_CONFIG_DIR', () => {
-            const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-            process.env.CLAUDE_CONFIG_DIR = '/custom/claude-config';
+        it('returns true for absolute paths under COPILOT_CONFIG_DIR', () => {
+            const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+            process.env.COPILOT_CONFIG_DIR = '/custom/claude-config';
             try {
                 expect(isAllowedPath('/custom/claude-config/settings.json')).toBe(true);
                 expect(isAllowedPath('/custom/claude-config/agents/test.md')).toBe(true);
             }
             finally {
                 if (originalConfigDir === undefined) {
-                    delete process.env.CLAUDE_CONFIG_DIR;
+                    delete process.env.COPILOT_CONFIG_DIR;
                 }
                 else {
-                    process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+                    process.env.COPILOT_CONFIG_DIR = originalConfigDir;
                 }
             }
         });
-        it('returns true for absolute paths under a ~-prefixed CLAUDE_CONFIG_DIR', () => {
-            const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-            process.env.CLAUDE_CONFIG_DIR = '~/.claude-alt';
+        it('returns true for absolute paths under a ~-prefixed COPILOT_CONFIG_DIR', () => {
+            const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+            process.env.COPILOT_CONFIG_DIR = '~/.claude-alt';
             try {
                 expect(isAllowedPath(join('/mock/home', '.claude-alt', 'settings.json'))).toBe(true);
                 expect(isAllowedPath(join('/mock/home', '.claude-alt', 'agents', 'test.md'))).toBe(true);
             }
             finally {
                 if (originalConfigDir === undefined) {
-                    delete process.env.CLAUDE_CONFIG_DIR;
+                    delete process.env.COPILOT_CONFIG_DIR;
                 }
                 else {
-                    process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+                    process.env.COPILOT_CONFIG_DIR = originalConfigDir;
                 }
             }
         });

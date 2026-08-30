@@ -134,7 +134,7 @@ export function isTmuxAvailable() {
 /**
  * Check if claude CLI is available on the system
  */
-export function isClaudeAvailable() {
+export function isCopilotAvailable() {
     try {
         execFileSync('claude', ['--version'], {
             stdio: 'ignore',

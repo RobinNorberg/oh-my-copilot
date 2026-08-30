@@ -10,8 +10,8 @@ import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const { getClaudeConfigDir, getUpdateCheckCachePath } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
-const configDir = getClaudeConfigDir();
+const { getCopilotConfigDir, getUpdateCheckCachePath } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
+const configDir = getCopilotConfigDir();
 const { resolveSessionStatePathsForHook, resolveOmcStateRoot } = await import(pathToFileURL(join(__dirname, 'lib', 'state-root.mjs')).href);
 const { publishCacheOccupancy } = await import(pathToFileURL(join(__dirname, 'lib', 'cache-occupancy.mjs')).href);
 
@@ -95,7 +95,7 @@ async function checkForUpdates(currentVersion) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 2000);
   try {
-    const response = await fetch('https://registry.npmjs.org/oh-my-claude-sisyphus/latest', {
+    const response = await fetch('https://registry.npmjs.org/oh-my-copilot/latest', {
       signal: controller.signal
     });
 
@@ -218,7 +218,7 @@ function looksLikeOmcGuidance(content) {
   return (
     typeof content === 'string' &&
     content.includes('<guidance_schema_contract>') &&
-    /oh-my-(claudecode|codex)/i.test(content) &&
+    /oh-my-(copilot|claudecode|codex)/i.test(content) &&
     OMC_STARTUP_COMPACTABLE_SECTIONS.some(
       section => content.includes(`<${section}>`) && content.includes(`</${section}>`),
     )
@@ -256,8 +256,8 @@ function formatUpdateNoticeForUser(updateInfo, options = {}) {
   const currentVersion = updateInfo?.currentVersion || 'unknown';
   const action = options.autoUpgradePrompt === false
     ? 'To update later, run: omc update'
-    : 'Run /update to upgrade now, or use /plugin install oh-my-claudecode';
-  return `[OMC UPDATE AVAILABLE] oh-my-claudecode v${latestVersion} is available (current: v${currentVersion}). ${action}`;
+    : 'Run /update to upgrade now, or use /plugin install oh-my-copilot';
+  return `[OMC UPDATE AVAILABLE] oh-my-copilot v${latestVersion} is available (current: v${currentVersion}). ${action}`;
 }
 
 function buildSessionStartAdditionalContext(messages) {
@@ -474,7 +474,7 @@ async function main() {
     for (let i = 1; i <= 4; i++) {
       const candidate = join(__dirname, ...Array(i).fill('..'), 'package.json');
       const pkg = readJsonFile(candidate);
-      if ((pkg?.name === 'oh-my-claude-sisyphus' || pkg?.name === 'oh-my-claudecode') && pkg?.version) {
+      if ((pkg?.name === 'oh-my-copilot' || pkg?.name === 'oh-my-copilot') && pkg?.version) {
         currentVersion = pkg.version;
         break;
       }
@@ -490,7 +490,7 @@ async function main() {
           const stamp = readJsonFile(stampPath);
           if (stamp?.version && stamp.version !== currentVersion) {
             process.stderr.write(
-              `[omc] template version drift: installed=${stamp.version}, plugin=${currentVersion} — run /oh-my-claudecode:omc-setup to refresh\n`
+              `[omc] template version drift: installed=${stamp.version}, plugin=${currentVersion} — run /oh-my-copilot:omc-setup to refresh\n`
             );
             mkdirSync(join(driftMarkerPath, '..'), { recursive: true });
             writeFileSync(driftMarkerPath, JSON.stringify({ warnedAt: new Date().toISOString() }));
@@ -501,7 +501,7 @@ async function main() {
 
     const updateInfo = currentVersion ? await checkForUpdates(currentVersion) : null;
     if (updateInfo) {
-      const configPath = join(getClaudeConfigDir(), '.omc-config.json');
+      const configPath = join(getCopilotConfigDir(), '.omc-config.json');
       const omcConfig = readJsonFile(configPath) || {};
       userMessages.push(formatUpdateNoticeForUser(updateInfo, {
         autoUpgradePrompt: omcConfig.autoUpgradePrompt !== false,
@@ -513,9 +513,9 @@ async function main() {
     }
 
     // Check for incomplete todos (project-local only, not global
-    // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/)
+    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/)
     // NOTE: We intentionally do NOT scan the global
-    // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/ directory.
+    // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
     // That directory accumulates todo files from ALL past sessions across all
     // projects, causing phantom task counts in fresh sessions (see issue #354).
     const omcRootForTodos = await resolveOmcStateRoot(directory);

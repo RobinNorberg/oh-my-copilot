@@ -9,16 +9,16 @@ describe('install() user-skill compatibility shims', () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'omc-installer-user-skill-compat-'));
-    originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    process.env.CLAUDE_CONFIG_DIR = tempDir;
+    originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+    process.env.COPILOT_CONFIG_DIR = tempDir;
     vi.resetModules();
   });
 
   afterEach(() => {
     if (originalConfigDir === undefined) {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.COPILOT_CONFIG_DIR;
     } else {
-      process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+      process.env.COPILOT_CONFIG_DIR = originalConfigDir;
     }
     rmSync(tempDir, { recursive: true, force: true });
     vi.resetModules();
@@ -33,7 +33,7 @@ describe('install() user-skill compatibility shims', () => {
     );
 
     const installer = await import('../index.js');
-    const result = installer.install({ force: true, skipClaudeCheck: true, noPlugin: true, verbose: false });
+    const result = installer.install({ force: true, skipCopilotCheck: true, noPlugin: true, verbose: false });
 
     expect(result.success).toBe(true);
 

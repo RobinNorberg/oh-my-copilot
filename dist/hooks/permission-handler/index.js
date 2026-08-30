@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getOmcRoot, getGitTopLevel } from '../../lib/worktree-paths.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const SAFE_PATTERNS = [
     /^git (status|diff|log|branch|show|fetch)/,
     /^npm run (lint|build|check|typecheck)/,
@@ -65,9 +65,9 @@ function readPermissionStringEntries(filePath, key) {
         return [];
     }
 }
-export function getClaudePermissionAllowEntries(directory) {
+export function getCopilotPermissionAllowEntries(directory) {
     const projectSettingsPath = path.join(directory, '.claude', 'settings.local.json');
-    const globalConfigDir = getClaudeConfigDir();
+    const globalConfigDir = getCopilotConfigDir();
     const candidatePaths = [
         projectSettingsPath,
         path.join(globalConfigDir, 'settings.local.json'),
@@ -85,7 +85,7 @@ function hasGenericToolPermission(allowEntries, toolName) {
     return allowEntries.some(entry => entry === toolName || entry.startsWith(`${toolName}(`));
 }
 export function hasClaudePermissionApproval(directory, toolName, command) {
-    const allowEntries = getClaudePermissionAllowEntries(directory);
+    const allowEntries = getCopilotPermissionAllowEntries(directory);
     if (toolName !== 'Bash') {
         return hasGenericToolPermission(allowEntries, toolName);
     }
@@ -98,9 +98,9 @@ export function hasClaudePermissionApproval(directory, toolName, command) {
     }
     return allowEntries.includes(`Bash(${trimmedCommand})`);
 }
-export function getClaudePermissionAskEntries(directory) {
+export function getCopilotPermissionAskEntries(directory) {
     const projectSettingsPath = path.join(directory, '.claude', 'settings.local.json');
-    const globalConfigDir = getClaudeConfigDir();
+    const globalConfigDir = getCopilotConfigDir();
     const candidatePaths = [
         projectSettingsPath,
         path.join(globalConfigDir, 'settings.local.json'),
@@ -133,7 +133,7 @@ function commandMatchesPermissionPattern(command, pattern) {
     return nextChar === '' || /[\s:=(["']/.test(nextChar);
 }
 export function hasClaudePermissionAsk(directory, toolName, command) {
-    const askEntries = getClaudePermissionAskEntries(directory);
+    const askEntries = getCopilotPermissionAskEntries(directory);
     if (toolName !== 'Bash') {
         return hasGenericToolPermission(askEntries, toolName);
     }

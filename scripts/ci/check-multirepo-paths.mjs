@@ -67,7 +67,7 @@ function isWhitelisted(filePath) {
 
 /**
  * A match is benign when the first argument resolves to a known GLOBAL config root
- * (homedir(), os.homedir(), getClaudeConfigDir(), CLAUDE_CONFIG_DIR). These are
+ * (homedir(), os.homedir(), getCopilotConfigDir(), COPILOT_CONFIG_DIR). These are
  * NOT workspace state — they're per-user installs of the OMC binary itself.
  * The multi-repo enforcement applies only to workspace-scoped `.omc/`.
  */
@@ -76,8 +76,8 @@ function isWhitelisted(filePath) {
 const GLOBAL_FIRST_ARG_PATTERNS = [
   /^(?:path\.)?join\(\s*homedir\(\)\s*,/,
   /^(?:path\.)?join\(\s*os\.homedir\(\)\s*,/,
-  /^(?:path\.)?join\(\s*getClaudeConfigDir\(\)\s*,/,
-  /^(?:path\.)?join\(\s*CLAUDE_CONFIG_DIR\s*,/,
+  /^(?:path\.)?join\(\s*getCopilotConfigDir\(\)\s*,/,
+  /^(?:path\.)?join\(\s*COPILOT_CONFIG_DIR\s*,/,
   /^(?:path\.)?join\(\s*configDir\s*,/,
 ];
 function isGlobalConfigMatch(matchText) {
@@ -164,7 +164,7 @@ for (const filePath of walkFiles(searchRoot)) {
       const line = pos?.line ?? '?';
       const fullText = match.text();
       const text = fullText.trim().slice(0, 80);
-      // Skip global-config constructions: homedir()/.omc, getClaudeConfigDir()/.omc, etc.
+      // Skip global-config constructions: homedir()/.omc, getCopilotConfigDir()/.omc, etc.
       if (isGlobalConfigMatch(fullText)) continue;
       hitLines.push(`  ${rel}:${line}  ${text}`);
       totalHits++;

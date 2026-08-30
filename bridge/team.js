@@ -4270,15 +4270,107 @@ function ensureDirSync(dir) {
     throw err;
   }
 }
-async function atomicWriteJson2(filePath, data) {
+function verifyPrivateTempFile(fd, tempPath, label) {
+  const fdStats = fsSync.fstatSync(fd);
+  let pathStats;
+  try {
+    pathStats = fsSync.lstatSync(tempPath);
+  } catch {
+    throw new Error(`${label} temporary file was replaced before rename`);
+  }
+  const isWindows = process.platform === "win32";
+  const isPrivateRegularSingleLink = (stats) => stats.isFile() && (isWindows ? stats.nlink <= 1 : stats.nlink === 1) && (isWindows || (stats.mode & 511) === 384);
+  if (!isPrivateRegularSingleLink(fdStats) || !isPrivateRegularSingleLink(pathStats)) {
+    throw new Error(
+      `${label} temporary file must be a private regular single-link file`
+    );
+  }
+  if (fdStats.dev !== pathStats.dev || fdStats.ino !== pathStats.ino) {
+    throw new Error(`${label} temporary file was replaced before rename`);
+  }
+}
+function verifyPublishedFile(fd, filePath, label) {
+  const fdStats = fsSync.fstatSync(fd);
+  let pathStats;
+  try {
+    pathStats = fsSync.lstatSync(filePath);
+  } catch {
+    throw new Error(`${label} target was replaced at publication`);
+  }
+  if (!pathStats.isFile() || fdStats.dev !== pathStats.dev || fdStats.ino !== pathStats.ino) {
+    throw new Error(`${label} target was replaced at publication`);
+  }
+}
+function preservePriorTarget(filePath) {
+  const backupPath = `${filePath}.rollback.${crypto.randomUUID()}`;
+  try {
+    const stats = fsSync.lstatSync(filePath);
+    const isWindows = process.platform === "win32";
+    if (!stats.isFile() || (isWindows ? stats.nlink > 1 : stats.nlink !== 1)) {
+      return null;
+    }
+    fsSync.linkSync(filePath, backupPath);
+    return backupPath;
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      try {
+        fsSync.unlinkSync(backupPath);
+      } catch {
+      }
+    }
+    return null;
+  }
+}
+function currentFileIdentity(filePath) {
+  try {
+    const stats = fsSync.lstatSync(filePath);
+    return { dev: stats.dev, ino: stats.ino };
+  } catch {
+    return null;
+  }
+}
+function descriptorIdentity(fd) {
+  try {
+    const stats = fsSync.fstatSync(fd);
+    return { dev: stats.dev, ino: stats.ino };
+  } catch {
+    return null;
+  }
+}
+function rollbackPriorTarget(filePath, backupPath, expectedIdentity) {
+  if (expectedIdentity === null) return;
+  const current = currentFileIdentity(filePath);
+  if (current === null) return;
+  if (expectedIdentity !== null && (current.dev !== expectedIdentity.dev || current.ino !== expectedIdentity.ino)) {
+    return;
+  }
+  try {
+    if (backupPath === null) {
+      fsSync.unlinkSync(filePath);
+    } else {
+      fsSync.renameSync(backupPath, filePath);
+    }
+  } catch {
+  }
+}
+function removeBackup(backupPath) {
+  if (backupPath === null) return;
+  try {
+    fsSync.unlinkSync(backupPath);
+  } catch {
+  }
+}
+async function atomicWriteJson2(filePath, data, hooks) {
   const dir = path.dirname(filePath);
   const base = path.basename(filePath);
   const tempPath = path.join(dir, `.${base}.tmp.${crypto.randomUUID()}`);
   let success = false;
+  let backupPath = null;
+  let fd = null;
   try {
     ensureDirSync(dir);
     const jsonContent = Buffer.from(JSON.stringify(data, null, 2), "utf-8");
-    const fd = await fs.open(tempPath, "wx", 384);
+    fd = await fs.open(tempPath, "wx", 384);
     try {
       let offset = 0;
       while (offset < jsonContent.length) {
@@ -4294,11 +4386,30 @@ async function atomicWriteJson2(filePath, data) {
         offset += bytesWritten;
       }
       await fd.sync();
+      verifyPrivateTempFile(fd.fd, tempPath, "atomic JSON write");
+      backupPath = preservePriorTarget(filePath);
+      hooks?.beforeRename?.();
+      await fs.rename(tempPath, filePath);
+      let publishedIdentity = null;
+      try {
+        verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
+        publishedIdentity = descriptorIdentity(fd.fd);
+        hooks?.afterRename?.();
+        verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
+      } catch (error) {
+        rollbackPriorTarget(
+          filePath,
+          backupPath,
+          publishedIdentity
+        );
+        throw error;
+      }
     } finally {
       await fd.close();
+      fd = null;
     }
-    await fs.rename(tempPath, filePath);
     success = true;
+    removeBackup(backupPath);
     try {
       const dirFd = await fs.open(dir, "r");
       try {
@@ -4312,6 +4423,7 @@ async function atomicWriteJson2(filePath, data) {
     if (!success) {
       await fs.unlink(tempPath).catch(() => {
       });
+      removeBackup(backupPath);
     }
   }
 }
@@ -7641,7 +7753,7 @@ var OMC_CLI_BINARY, OMC_PLUGIN_BRIDGE_PREFIX;
 var init_omc_cli_rendering = __esm({
   "src/utils/omc-cli-rendering.ts"() {
     "use strict";
-    OMC_CLI_BINARY = "omc";
+    OMC_CLI_BINARY = "omcp";
     OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
   }
 });
@@ -7660,7 +7772,7 @@ var init_cache_occupancy = __esm({
 
 // src/utils/paths.ts
 import { join as join16, dirname as dirname15 } from "path";
-import { existsSync as existsSync12, readFileSync as readFileSync9, readdirSync as readdirSync5, statSync as statSync3, lstatSync, unlinkSync as unlinkSync7, rmSync, renameSync as renameSync3, symlinkSync } from "fs";
+import { existsSync as existsSync12, readFileSync as readFileSync9, readdirSync as readdirSync5, statSync as statSync3, lstatSync as lstatSync2, unlinkSync as unlinkSync7, rmSync, renameSync as renameSync3, symlinkSync } from "fs";
 import { homedir as homedir3 } from "os";
 function getConfigDir() {
   if (process.platform === "win32") {
@@ -8068,7 +8180,7 @@ function shouldAutoForceInherit() {
   }
   return false;
 }
-var DIRECT_MODEL_ENV_KEYS, INHERIT_TIER_PRIORITY, CLAUDE_TIER_ALIASES, TIER_ENV_KEYS, CLAUDE_FAMILY_DEFAULTS, BUILTIN_TIER_MODEL_DEFAULTS, CLAUDE_FAMILY_HIGH_VARIANTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS;
+var DIRECT_MODEL_ENV_KEYS, INHERIT_TIER_PRIORITY, CLAUDE_TIER_ALIASES, TIER_ENV_KEYS, COPILOT_FAMILY_DEFAULTS, BUILTIN_TIER_MODEL_DEFAULTS, CLAUDE_FAMILY_HIGH_VARIANTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS;
 var init_models = __esm({
   "src/config/models.ts"() {
     "use strict";
@@ -8093,22 +8205,22 @@ var init_models = __esm({
         "ANTHROPIC_DEFAULT_OPUS_MODEL"
       ]
     };
-    CLAUDE_FAMILY_DEFAULTS = {
+    COPILOT_FAMILY_DEFAULTS = {
       HAIKU: "claude-haiku-4-5",
       SONNET: "claude-sonnet-5",
       OPUS: "claude-opus-4-8",
       FABLE: "claude-fable-5"
     };
     BUILTIN_TIER_MODEL_DEFAULTS = {
-      LOW: CLAUDE_FAMILY_DEFAULTS.HAIKU,
-      MEDIUM: CLAUDE_FAMILY_DEFAULTS.SONNET,
-      HIGH: CLAUDE_FAMILY_DEFAULTS.OPUS
+      LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
+      MEDIUM: COPILOT_FAMILY_DEFAULTS.SONNET,
+      HIGH: COPILOT_FAMILY_DEFAULTS.OPUS
     };
     CLAUDE_FAMILY_HIGH_VARIANTS = {
-      HAIKU: `${CLAUDE_FAMILY_DEFAULTS.HAIKU}-high`,
-      SONNET: `${CLAUDE_FAMILY_DEFAULTS.SONNET}-high`,
-      OPUS: `${CLAUDE_FAMILY_DEFAULTS.OPUS}-high`,
-      FABLE: `${CLAUDE_FAMILY_DEFAULTS.FABLE}-high`
+      HAIKU: `${COPILOT_FAMILY_DEFAULTS.HAIKU}-high`,
+      SONNET: `${COPILOT_FAMILY_DEFAULTS.SONNET}-high`,
+      OPUS: `${COPILOT_FAMILY_DEFAULTS.OPUS}-high`,
+      FABLE: `${COPILOT_FAMILY_DEFAULTS.FABLE}-high`
     };
     BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
       codexModel: "gpt-5.3-codex",
@@ -10283,7 +10395,7 @@ var init_worker_bootstrap = __esm({
 });
 
 // src/lib/worktree-cleanup-safety.ts
-import { existsSync as existsSync18, lstatSync as lstatSync2, realpathSync as realpathSync4 } from "node:fs";
+import { existsSync as existsSync18, lstatSync as lstatSync3, realpathSync as realpathSync4 } from "node:fs";
 import { homedir as homedir4 } from "node:os";
 import { isAbsolute as isAbsolute8, join as join22, parse as parse3, relative as relative7, resolve as resolve7 } from "node:path";
 function realpathOrResolve(path4) {
@@ -10337,7 +10449,7 @@ function validateWorktreeRemovalTarget(options) {
       throw new Error(`worktree_path_missing:${lexicalPath}`);
     }
   } else {
-    const stat2 = lstatSync2(lexicalPath);
+    const stat2 = lstatSync3(lexicalPath);
     if (stat2.isSymbolicLink()) {
       throw new Error(`worktree_path_is_symlink:${lexicalPath}`);
     }
@@ -10358,7 +10470,7 @@ function validateWorktreeRemovalTarget(options) {
     }
   }
   if (existsSync18(join22(resolvedPath, ".git"))) {
-    const gitStat = lstatSync2(join22(resolvedPath, ".git"));
+    const gitStat = lstatSync3(join22(resolvedPath, ".git"));
     if (gitStat.isDirectory()) {
       throw new Error(`worktree_path_is_main_repo:${resolvedPath}`);
     }
@@ -12665,7 +12777,7 @@ var init_merge_orchestrator = __esm({
 
 // src/team/recovery-request-store.ts
 import { createHash as createHash9, randomUUID as randomUUID10 } from "crypto";
-import { existsSync as existsSync27, linkSync as linkSync3, mkdirSync as mkdirSync7, readFileSync as readFileSync17, readdirSync as readdirSync10, renameSync as renameSync4, unlinkSync as unlinkSync10, writeFileSync as writeFileSync6 } from "fs";
+import { existsSync as existsSync27, linkSync as linkSync4, mkdirSync as mkdirSync7, readFileSync as readFileSync17, readdirSync as readdirSync10, renameSync as renameSync4, unlinkSync as unlinkSync10, writeFileSync as writeFileSync6 } from "fs";
 import { dirname as dirname24, join as join31 } from "path";
 function isSafeRecoveryRequestId(requestId) {
   return requestId.length > 0 && requestId.length <= 128 && requestId !== "." && requestId !== ".." && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(requestId);
@@ -12710,7 +12822,7 @@ function publishImmutable(target, value) {
   const temp = join31(dirname24(target), `.${randomUUID10()}.tmp`);
   writeFileSync6(temp, bytes, { encoding: "utf8", mode: 384, flush: true });
   try {
-    linkSync3(temp, target);
+    linkSync4(temp, target);
   } catch (error) {
     const existing = parseCanonical(target);
     try {

@@ -32,20 +32,20 @@ describe('ensureStdinSymlink', () => {
         // Create a fake stdin.mjs in the source location
         stdinSrcPath = join(templatesDir, 'stdin.mjs');
         writeFileSync(stdinSrcPath, '// fake stdin.mjs content\n');
-        // Create a fake config directory and set CLAUDE_CONFIG_DIR env var
+        // Create a fake config directory and set COPILOT_CONFIG_DIR env var
         configDir = mkdtempSync(join(tmpdir(), 'omc-config-'));
         hooksLibDir = join(configDir, 'hooks/lib');
-        originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-        process.env.CLAUDE_CONFIG_DIR = configDir;
+        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+        process.env.COPILOT_CONFIG_DIR = configDir;
     });
     afterEach(() => {
         rmSync(pluginRoot, { recursive: true, force: true });
         rmSync(configDir, { recursive: true, force: true });
         if (originalConfigDir !== undefined) {
-            process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
         }
         else {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         vi.restoreAllMocks();
     });
@@ -165,11 +165,11 @@ describe('ensureStdinSymlink', () => {
         const stdinDst = join(hooksLibDir, 'stdin.mjs');
         expect(existsSync(stdinDst)).toBe(false);
     });
-    it('uses CLAUDE_CONFIG_DIR when set', () => {
+    it('uses COPILOT_CONFIG_DIR when set', () => {
         // Set a custom config dir
         const customConfigDir = mkdtempSync(join(tmpdir(), 'omc-custom-config-'));
         const customHooksLib = join(customConfigDir, 'hooks/lib');
-        process.env.CLAUDE_CONFIG_DIR = customConfigDir;
+        process.env.COPILOT_CONFIG_DIR = customConfigDir;
         try {
             ensureStdinSymlink(pluginRoot);
             const stdinDst = join(customHooksLib, 'stdin.mjs');

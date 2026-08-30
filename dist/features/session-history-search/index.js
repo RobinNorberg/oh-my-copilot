@@ -3,7 +3,7 @@ import { createReadStream, existsSync, readdirSync, statSync } from 'fs';
 import { dirname, join, normalize, resolve } from 'path';
 import { createInterface } from 'readline';
 import { resolveToWorktreeRoot, validateSessionId, validateWorkingDirectory, getOmcRoot, } from '../../lib/worktree-paths.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { encodeProjectPath } from '../../utils/encode-project-path.js';
 const DEFAULT_LIMIT = 10;
 const DEFAULT_CONTEXT_CHARS = 120;
@@ -105,7 +105,7 @@ function uniqueSortedTargets(targets) {
     });
 }
 function buildCurrentProjectTargets(projectRoot, transcriptProjectRoots = [projectRoot]) {
-    const claudeDir = getClaudeConfigDir();
+    const claudeDir = getCopilotConfigDir();
     const projectRoots = new Set(transcriptProjectRoots);
     for (const root of transcriptProjectRoots) {
         const mainRepoRoot = getMainRepoRoot(root);
@@ -142,7 +142,7 @@ function buildCurrentProjectTargets(projectRoot, transcriptProjectRoots = [proje
     return uniqueSortedTargets(targets);
 }
 function buildAllProjectTargets() {
-    const claudeDir = getClaudeConfigDir();
+    const claudeDir = getCopilotConfigDir();
     const targets = [];
     for (const filePath of listJsonlFiles(join(claudeDir, 'projects'))) {
         targets.push({ filePath, sourceType: 'project-transcript' });

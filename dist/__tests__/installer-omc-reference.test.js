@@ -34,7 +34,7 @@ vi.mock('fs', async () => {
 });
 async function loadInstallerWithEnv(claudeConfigDir, homeDir) {
     vi.resetModules();
-    process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+    process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
     process.env.HOME = homeDir;
     return import('../installer/index.js');
 }
@@ -42,13 +42,13 @@ function writeInstalledPluginRegistry(claudeConfigDir, pluginRoot) {
     const pluginsDir = join(claudeConfigDir, 'plugins');
     mkdirSync(pluginsDir, { recursive: true });
     writeFileSync(join(pluginsDir, 'installed_plugins.json'), JSON.stringify({
-        'oh-my-claudecode': [
+        'oh-my-copilot': [
             { installPath: pluginRoot },
         ],
     }, null, 2));
 }
 function writeEnabledPluginSettings(claudeConfigDir) {
-    writeFileSync(join(claudeConfigDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }, null, 2));
+    writeFileSync(join(claudeConfigDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }, null, 2));
 }
 function writeMinimallyCompletePluginPayload(pluginRoot) {
     mkdirSync(join(pluginRoot, 'dist', 'hooks'), { recursive: true });
@@ -64,11 +64,11 @@ function writeMinimallyCompletePluginPayload(pluginRoot) {
     writeFileSync(join(pluginRoot, 'skills', 'ultragoal', 'SKILL.md'), 'name: ultragoal\n');
     mkdirSync(join(pluginRoot, '.claude-plugin'), { recursive: true });
     writeFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), JSON.stringify({
-        name: 'oh-my-claudecode',
+        name: 'oh-my-copilot',
         commands: './commands/',
         skills: ['./skills/ultragoal/'],
     }, null, 2));
-    writeFileSync(join(pluginRoot, 'package.json'), JSON.stringify({ name: 'oh-my-claude-sisyphus', version: '4.10.2' }, null, 2));
+    writeFileSync(join(pluginRoot, 'package.json'), JSON.stringify({ name: 'oh-my-copilot', version: '4.10.2' }, null, 2));
 }
 function getBundledSkillNames() {
     const entitlementManifest = JSON.parse(readFileSync(join(process.cwd(), 'src', 'config', 'builtin-skill-entitlements.json'), 'utf-8'));
@@ -92,15 +92,15 @@ describe('installer bundled + standalone skill sync', () => {
         claudeConfigDir = join(homeDir, '.claude');
         mkdirSync(homeDir, { recursive: true });
         mkdirSync(claudeConfigDir, { recursive: true });
-        originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+        originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
         originalHome = process.env.HOME;
     });
     afterEach(() => {
         if (originalClaudeConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         else {
-            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
         }
         if (originalHome === undefined) {
             delete process.env.HOME;
@@ -114,7 +114,7 @@ describe('installer bundled + standalone skill sync', () => {
     it('installs standalone slash skills into ~/.claude/skills during legacy install', async () => {
         const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
         });
         expect(result.success).toBe(true);
@@ -135,13 +135,13 @@ describe('installer bundled + standalone skill sync', () => {
         expect(existsSync(join(claudeConfigDir, 'skills', 'plan', 'SKILL.md'))).toBe(false);
     });
     it('installs bundled skills when no enabled OMC plugin is configured', async () => {
-        const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-claudecode', '4.10.2');
+        const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-copilot', '4.10.2');
         mkdirSync(join(pluginRoot, 'skills', 'ultragoal'), { recursive: true });
         writeFileSync(join(pluginRoot, 'skills', 'ultragoal', 'SKILL.md'), 'name: ultragoal\n');
         writeInstalledPluginRegistry(claudeConfigDir, pluginRoot);
         const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
         });
         expect(result.success).toBe(true);
@@ -156,13 +156,13 @@ describe('installer bundled + standalone skill sync', () => {
         expect(existsSync(join(claudeConfigDir, 'skills', 'omc-setup', 'phases', '04-welcome.md'))).toBe(true);
     });
     it('skips bundled skill sync when an installed plugin already provides skills', async () => {
-        const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-claudecode', '4.10.2');
+        const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-copilot', '4.10.2');
         writeMinimallyCompletePluginPayload(pluginRoot);
         writeInstalledPluginRegistry(claudeConfigDir, pluginRoot);
         writeEnabledPluginSettings(claudeConfigDir);
         const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
         });
         expect(result.success).toBe(true);
@@ -170,14 +170,14 @@ describe('installer bundled + standalone skill sync', () => {
         expect(existsSync(join(claudeConfigDir, 'skills', 'ultragoal', 'SKILL.md'))).toBe(false);
     });
     it('forces bundled skill sync with noPlugin even when plugin skills exist', async () => {
-        const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-claudecode', '4.10.2');
+        const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-copilot', '4.10.2');
         mkdirSync(join(pluginRoot, 'skills', 'ultragoal'), { recursive: true });
         writeFileSync(join(pluginRoot, 'skills', 'ultragoal', 'SKILL.md'), 'name: ultragoal\n');
         writeInstalledPluginRegistry(claudeConfigDir, pluginRoot);
         writeEnabledPluginSettings(claudeConfigDir);
         const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
             noPlugin: true,
         });
@@ -186,13 +186,13 @@ describe('installer bundled + standalone skill sync', () => {
         expect(readFileSync(join(claudeConfigDir, 'skills', 'ultragoal', 'SKILL.md'), 'utf-8')).toContain('name: ultragoal');
     });
     it('falls back to bundled skills when plugin is enabled but skill files are unavailable', async () => {
-        const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-claudecode', '4.10.2');
+        const pluginRoot = join(tempRoot, 'plugin-cache', 'oh-my-copilot', '4.10.2');
         mkdirSync(pluginRoot, { recursive: true });
         writeInstalledPluginRegistry(claudeConfigDir, pluginRoot);
         writeEnabledPluginSettings(claudeConfigDir);
         const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
         });
         expect(result.success).toBe(true);
@@ -204,7 +204,7 @@ describe('installer bundled + standalone skill sync', () => {
         writeFileSync(join(installedSkillDir, 'SKILL.md'), 'name: ultragoal\n\nstale content\n');
         const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
             noPlugin: true,
         });
@@ -222,7 +222,7 @@ describe('installer bundled + standalone skill sync', () => {
         try {
             const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
             const result = installer.install({
-                skipClaudeCheck: true,
+                skipCopilotCheck: true,
                 skipHud: true,
                 verbose: true,
             });

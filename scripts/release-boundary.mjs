@@ -13,8 +13,8 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'nod
 import { createHash } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 
-const PACKAGE_NAME = 'oh-my-claude-sisyphus';
-const PLUGIN_NAME = 'oh-my-claudecode';
+const PACKAGE_NAME = 'oh-my-copilot';
+const PLUGIN_NAME = 'oh-my-copilot';
 const REGISTRY_URL_ENV = 'RELEASE_BOUNDARY_REGISTRY_URL';
 const FETCH_TIMEOUT_ENV = 'RELEASE_BOUNDARY_FETCH_TIMEOUT_MS';
 const DEFAULT_REGISTRY_URL = 'https://registry.npmjs.org';
@@ -25,15 +25,15 @@ const GITHUB_ACTIONS_WORKFLOW_V1_BUILD_TYPE = 'https://slsa-framework.github.io/
 
 const GITHUB_HOSTED_BUILDER_ID = 'https://github.com/actions/runner/github-hosted';
 
-const REPOSITORY_URL = 'https://github.com/Yeachan-Heo/oh-my-claudecode';
+const REPOSITORY_URL = 'https://github.com/Yeachan-Heo/oh-my-copilot';
 const WORKFLOW_PATH = '.github/workflows/ci.yml';
 const EXPECTED_BINS = Object.freeze({
-  'oh-my-claudecode': 'bin/oh-my-claudecode.js',
-  omc: 'bin/oh-my-claudecode.js',
+  'oh-my-copilot': 'bin/oh-my-copilot.js',
+  omc: 'bin/oh-my-copilot.js',
   'omc-cli': 'bridge/cli.cjs',
 });
 const REQUIRED_ENTRYPOINTS = Object.freeze([
-  'bin/oh-my-claudecode.js',
+  'bin/oh-my-copilot.js',
   'bridge/cli.cjs',
   'bridge/claude-md-coordinator.cjs',
   'bridge/mcp-server.cjs',
@@ -870,7 +870,7 @@ function assertRunMetadata(predicate, tag) {
       fail('SLSA invocation metadata does not identify the expected repository');
     }
     const invocationId = invocationMetadata.invocationId;
-    if (invocationId !== undefined && (typeof invocationId !== 'string' || !invocationId.includes('Yeachan-Heo/oh-my-claudecode'))) {
+    if (invocationId !== undefined && (typeof invocationId !== 'string' || !invocationId.includes('Yeachan-Heo/oh-my-copilot'))) {
       fail('SLSA invocation metadata does not identify the expected repository');
     }
   }

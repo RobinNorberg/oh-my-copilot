@@ -4,7 +4,7 @@
  * A Ralph PRD can diverge from reality with no detection: work lands outside the
  * loop (campaign branches + PRs + coordinator merges) while prd.json still
  * records `passes: false`, and abnormal exits (crash, force-kill, cancel before
- * Step 8, session end without `/oh-my-claudecode:cancel`) leave the divergence
+ * Step 8, session end without `/oh-my-copilot:cancel`) leave the divergence
  * invisible. Anyone resuming the session then reads an authoritative-looking but
  * false record and either redoes landed work or spends effort disproving it.
  *
@@ -23,7 +23,7 @@
  * - Step 7 (reviewer verification): `src/hooks/ralph/verifier.ts`
  *   `startVerification()` + architect/critic approval; approval clears the
  *   verification state.
- * - Step 8 (`/oh-my-claudecode:cancel`): `createRalphLoopHook().cancelLoop()`
+ * - Step 8 (`/oh-my-copilot:cancel`): `createRalphLoopHook().cancelLoop()`
  *   clears ralph state (`clearRalphState`) plus linked ultrawork state. Step 8
  *   is the ONLY clean exit; every other end leaves ralph state active and/or
  *   the PRD unfinished.
@@ -370,7 +370,7 @@ export function detectStalePrd(
   const stalePointers: string[] = [];
 
   // Abnormal exit: the ralph loop state for this session is still active, so
-  // Step 8 (`/oh-my-claudecode:cancel`) never ran.
+  // Step 8 (`/oh-my-copilot:cancel`) never ran.
   const ralphState = readModeState<{ active?: boolean }>('ralph', directory, sessionId);
   const abnormalExit = includeAbnormalExit && ralphState?.active === true;
   if (abnormalExit) {

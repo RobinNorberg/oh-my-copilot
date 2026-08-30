@@ -100,12 +100,12 @@ describe('isOmcHook()', () => {
     it('recognises custom-profile hook paths by known filename', () => {
         expect(isOmcHook('node "/tmp/custom-claude/hooks/keyword-detector.mjs"')).toBe(true);
     });
-    it('recognises CLAUDE_CONFIG_DIR-aware hook commands', () => {
-        expect(isOmcHook('node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/keyword-detector.mjs"')).toBe(true);
-        expect(isOmcHook('node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"')).toBe(true);
+    it('recognises COPILOT_CONFIG_DIR-aware hook commands', () => {
+        expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/keyword-detector.mjs"')).toBe(true);
+        expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"')).toBe(true);
     });
-    it('recognises oh-my-claudecode in command path', () => {
-        expect(isOmcHook('/path/to/oh-my-claudecode/hook.mjs')).toBe(true);
+    it('recognises oh-my-copilot in command path', () => {
+        expect(isOmcHook('/path/to/oh-my-copilot/hook.mjs')).toBe(true);
     });
     it('recognises omc as a path segment', () => {
         expect(isOmcHook('/usr/local/bin/omc-hook.sh')).toBe(true);

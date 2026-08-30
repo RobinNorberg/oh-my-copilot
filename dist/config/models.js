@@ -23,7 +23,7 @@ const TIER_ENV_KEYS = {
  * Canonical Claude family defaults.
  * Keep these date-less so version bumps are a one-line edit per family.
  */
-export const CLAUDE_FAMILY_DEFAULTS = {
+export const COPILOT_FAMILY_DEFAULTS = {
     HAIKU: 'claude-haiku-4-5',
     SONNET: 'claude-sonnet-5',
     OPUS: 'claude-opus-4-8',
@@ -31,16 +31,16 @@ export const CLAUDE_FAMILY_DEFAULTS = {
 };
 /** Canonical tier->model mapping used as built-in defaults */
 export const BUILTIN_TIER_MODEL_DEFAULTS = {
-    LOW: CLAUDE_FAMILY_DEFAULTS.HAIKU,
-    MEDIUM: CLAUDE_FAMILY_DEFAULTS.SONNET,
-    HIGH: CLAUDE_FAMILY_DEFAULTS.OPUS,
+    LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
+    MEDIUM: COPILOT_FAMILY_DEFAULTS.SONNET,
+    HIGH: COPILOT_FAMILY_DEFAULTS.OPUS,
 };
 /** Canonical Claude high-reasoning variants by family */
 export const CLAUDE_FAMILY_HIGH_VARIANTS = {
-    HAIKU: `${CLAUDE_FAMILY_DEFAULTS.HAIKU}-high`,
-    SONNET: `${CLAUDE_FAMILY_DEFAULTS.SONNET}-high`,
-    OPUS: `${CLAUDE_FAMILY_DEFAULTS.OPUS}-high`,
-    FABLE: `${CLAUDE_FAMILY_DEFAULTS.FABLE}-high`,
+    HAIKU: `${COPILOT_FAMILY_DEFAULTS.HAIKU}-high`,
+    SONNET: `${COPILOT_FAMILY_DEFAULTS.SONNET}-high`,
+    OPUS: `${COPILOT_FAMILY_DEFAULTS.OPUS}-high`,
+    FABLE: `${COPILOT_FAMILY_DEFAULTS.FABLE}-high`,
 };
 /** Built-in defaults for external provider models */
 export const BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
@@ -313,7 +313,7 @@ function hasNonClaudeModelId(modelIds) {
  * - A non-Claude model ID is detected (CC Switch, LiteLLM, etc.)
  * - A custom ANTHROPIC_BASE_URL points to a non-Anthropic endpoint
  */
-export function isNonClaudeProvider() {
+export function isNonCopilotProvider() {
     // Explicit opt-in: user has already set forceInherit via env var
     if (process.env.OMC_ROUTING_FORCE_INHERIT === 'true') {
         return true;

@@ -1,7 +1,7 @@
 import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, } from 'fs';
 import { basename, join } from 'path';
-import { getClaudeConfigDir } from './config-dir.js';
-const CLAUDE_SKILLS_DIR = join(getClaudeConfigDir(), 'skills');
+import { getCopilotConfigDir } from './config-dir.js';
+const CLAUDE_SKILLS_DIR = join(getCopilotConfigDir(), 'skills');
 const OMC_LEARNED_DIR = join(CLAUDE_SKILLS_DIR, 'omc-learned');
 const CLAUDE_SKILL_FILENAME = 'SKILL.md';
 function getCompatSkillDir(skillName) {

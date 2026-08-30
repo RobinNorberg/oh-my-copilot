@@ -8,7 +8,7 @@
  * .github/instructions directories were treated as project rules. With no
  * project root, only the current file's own directory's project-rule
  * subdirectories are in scope; the explicit user-level
- * [$CLAUDE_CONFIG_DIR|~/.claude]/rules lookup is separate and unchanged.
+ * [$COPILOT_CONFIG_DIR|~/.claude]/rules lookup is separate and unchanged.
  */
 export {};
 //# sourceMappingURL=finder.test.d.ts.map

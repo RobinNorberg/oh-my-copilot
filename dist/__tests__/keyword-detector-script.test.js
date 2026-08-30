@@ -4,25 +4,46 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'keyword-detector.mjs');
+const TEMPLATE_PATH = join(process.cwd(), 'templates', 'hooks', 'keyword-detector.mjs');
 const NODE = process.execPath;
-function runKeywordDetector(prompt, cwd = process.cwd(), sessionId = 'session-2053', env = {}) {
-    const raw = execFileSync(NODE, [SCRIPT_PATH], {
-        input: JSON.stringify({
-            hook_event_name: 'UserPromptSubmit',
+function runKeywordDetector(prompt, cwd = process.cwd(), sessionId = 'session-2053', env = {}, detectorPath = SCRIPT_PATH) {
+    const homeDir = mkdtempSync(join(tmpdir(), 'keyword-detector-home-'));
+    const isFixtureCwd = cwd !== process.cwd();
+    if (isFixtureCwd && !existsSync(join(cwd, '.git'))) {
+        execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
+    }
+    const effectiveHome = env.HOME || homeDir;
+    const childEnv = {
+        ...process.env,
+        NODE_ENV: 'test',
+        DISABLE_OMC: '',
+        OMC_SKIP_HOOKS: '',
+        OMC_TEAM_WORKER: '',
+        OMC_STATE_DIR: cwd === process.cwd() ? join(homeDir, 'omc-state') : '',
+        CLAUDE_PLUGIN_ROOT: '',
+        HOME: effectiveHome,
+        USERPROFILE: env.USERPROFILE || effectiveHome,
+        COPILOT_CONFIG_DIR: env.COPILOT_CONFIG_DIR || join(effectiveHome, '.claude'),
+        ...env,
+    };
+    try {
+        const raw = execFileSync(NODE, [detectorPath], {
             cwd,
-            session_id: sessionId,
-            prompt,
-        }),
-        encoding: 'utf-8',
-        env: {
-            ...process.env,
-            NODE_ENV: 'test',
-            OMC_SKIP_HOOKS: '',
-            ...env,
-        },
-        timeout: 15000,
-    }).trim();
-    return JSON.parse(raw);
+            input: JSON.stringify({
+                hook_event_name: 'UserPromptSubmit',
+                cwd,
+                session_id: sessionId,
+                prompt,
+            }),
+            encoding: 'utf-8',
+            env: childEnv,
+            timeout: 15000,
+        }).trim();
+        return JSON.parse(raw);
+    }
+    finally {
+        rmSync(homeDir, { recursive: true, force: true });
+    }
 }
 function getRalplanStatePath(cwd, sessionId) {
     return join(cwd, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
@@ -36,7 +57,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
         expect(context).toContain('<search-mode>');
         expect(context).toContain('MAXIMIZE SEARCH EFFORT');
         expect(context).not.toContain('[MAGIC KEYWORD: DEEPSEARCH]');
-        expect(context).not.toContain('Skill: oh-my-claudecode:deepsearch');
+        expect(context).not.toContain('Skill: oh-my-copilot:deepsearch');
     });
     it.each([
         ['ultrathink', '<think-mode>'],
@@ -65,11 +86,75 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
     });
     it.each([
         ['ディープインタビューしたい', '[MAGIC KEYWORD: DEEP-INTERVIEW]'],
-        ['シーシージーで実装して', '[MAGIC KEYWORD: CCG]'],
     ])('emits magic keyword invocation for Japanese skill keyword %s', (prompt, marker) => {
         const output = runKeywordDetector(prompt);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
         expect(context).toContain(marker);
+    });
+    it.each([
+        ['ultrawork fix parser', 'ultrawork'],
+        ['ulw fix parser', 'ultrawork'],
+        ['uw fix parser', 'ultrawork'],
+        ['/ultrawork fix parser', 'ultrawork'],
+        ['/ulw fix parser', 'ultrawork'],
+        ['/uw fix parser', 'ultrawork'],
+        ['울트라워크 돌려', 'ultrawork'],
+        ['ウルトラワークで並列実行して', 'ultrawork'],
+        ['ccg review this change', 'ccg'],
+        ['claude-codex-gemini review this change', 'ccg'],
+        ['/ccg review this change', 'ccg'],
+        ['/claude-codex-gemini review this change', 'ccg'],
+        ['씨씨지로 구현해', 'ccg'],
+        ['シーシージーで実装して', 'ccg'],
+    ])('passes through retired workflow route %s in both detector copies', (prompt, stateName) => {
+        for (const detectorPath of [SCRIPT_PATH, TEMPLATE_PATH]) {
+            const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-retired-route-'));
+            const sessionId = `session-retired-route-${stateName}`;
+            const output = runKeywordDetector(prompt, cwd, sessionId, {}, detectorPath);
+            const context = output.hookSpecificOutput?.additionalContext ?? '';
+            expect(output.continue).toBe(true);
+            expect(context).toBe('');
+            expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, `${stateName}-state.json`))).toBe(false);
+        }
+    });
+    it.each([
+        '/ultrawork build me an app',
+        '/ulw build me an app',
+        '/uw build me an app',
+        '/ccg deep interview this task',
+        '/claude-codex-gemini deep interview this task',
+        '/ccg ask codex to review',
+        '/울트라워크 build me an app',
+        '/ウルトラワーク build me an app',
+        '/씨씨지 deep interview this task',
+        '/シーシージー deep interview this task',
+        '/omc:ultrawork build me an app',
+        '/omc:ulw build me an app',
+        '/omc:uw build me an app',
+        '/omc:ccg deep interview this task',
+        '/omc:claude-codex-gemini deep interview this task',
+        '/omc:울트라워크 build me an app',
+        '/oh-my-copilot:ウルトラワーク build me an app',
+        '/omc:씨씨지 deep interview this task',
+        '/oh-my-copilot:シーシージー deep interview this task',
+        '/oh-my-copilot:ultrawork build me an app',
+        '/oh-my-copilot:ulw build me an app',
+        '/oh-my-copilot:uw build me an app',
+        '/oh-my-copilot:ccg deep interview this task',
+        '/oh-my-copilot:claude-codex-gemini deep interview this task',
+    ])('passes through retired slash route before dispatching arguments: %s', (prompt) => {
+        for (const detectorPath of [SCRIPT_PATH, TEMPLATE_PATH]) {
+            const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-retired-slash-'));
+            const sessionId = `session-retired-slash-${detectorPath.includes('templates') ? 'template' : 'script'}`;
+            const output = runKeywordDetector(prompt, cwd, sessionId, {}, detectorPath);
+            const context = output.hookSpecificOutput?.additionalContext ?? '';
+            const stateDir = join(cwd, '.omc', 'state', 'sessions', sessionId);
+            expect(output.continue).toBe(true);
+            expect(context).toBe('');
+            for (const stateName of ['autopilot', 'deep-interview', 'ralplan', 'ultrawork', 'ccg']) {
+                expect(existsSync(join(stateDir, `${stateName}-state.json`))).toBe(false);
+            }
+        }
     });
     it.each([
         ['コードレビューとは何ですか', '<code-review-mode>'],
@@ -104,7 +189,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
         const output = runKeywordDetector('ralplan fix issue #2053');
         const context = output.hookSpecificOutput?.additionalContext ?? '';
         expect(context).toContain('[MAGIC KEYWORD: RALPLAN]');
-        expect(context).toContain('Preferred invocation: /oh-my-claudecode:ralplan');
+        expect(context).toContain('Preferred invocation: /oh-my-copilot:ralplan');
         expect(context).not.toContain('name: ralplan');
     });
     it('does not emit or activate ralplan for informational/question mentions', () => {
@@ -289,7 +374,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
         const tempDir = mkdtempSync(join(tmpdir(), 'keyword-detector-ralplan-slash-'));
         try {
             const sessionId = 'slash-ralplan-session';
-            const output = runKeywordDetector('/oh-my-claudecode:ralplan issue #2622', tempDir, sessionId);
+            const output = runKeywordDetector('/oh-my-copilot:ralplan issue #2622', tempDir, sessionId);
             const context = output.hookSpecificOutput?.additionalContext ?? '';
             expect(output.continue).toBe(true);
             expect(output.hookSpecificOutput?.hookEventName).toBe('UserPromptSubmit');
@@ -302,7 +387,7 @@ describe('keyword-detector.mjs mode-message dispatch', () => {
             expect(state.current_phase).toBe('ralplan');
             expect(state.awaiting_confirmation).toBe(true);
             expect(typeof state.awaiting_confirmation_set_at).toBe('string');
-            expect(state.original_prompt).toBe('/oh-my-claudecode:ralplan issue #2622');
+            expect(state.original_prompt).toBe('/oh-my-copilot:ralplan issue #2622');
         }
         finally {
             rmSync(tempDir, { recursive: true, force: true });
@@ -357,7 +442,7 @@ OMC Ultrawork = "특수부대 작전 반"
         const output = runKeywordDetector(`Investigate why this pasted transcript branched sessions:
 
 [MAGIC KEYWORD: RALPH]
-Skill: oh-my-claudecode:ralph
+Skill: oh-my-copilot:ralph
 User request:
 ralph fix parser`);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
@@ -437,7 +522,7 @@ diff --git a/a b/b
         expect(existsSync(ralphStatePath)).toBe(false);
     });
     it.each([
-        '/oh-my-claudecode:ralph issue #3411',
+        '/oh-my-copilot:ralph issue #3411',
         'ralph this',
     ])('still activates ralph for issue #3411 explicit invocation: %s', (prompt) => {
         const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-ralph-3411-positive-'));
@@ -471,13 +556,11 @@ diff --git a/a b/b
         expect(existsSync(join(stateDir, 'ralph-state.json'))).toBe(false);
         expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(false);
     });
-    it('still activates ralph and ultrawork for explicit imperative prompts from issue #3162', () => {
+    it('still activates ralph for explicit imperative prompts from issue #3162', () => {
         const cases = [
             { prompt: '/ralph fix parser', mode: 'ralph' },
             { prompt: 'run ralph on this issue', mode: 'ralph' },
             { prompt: '랄프 켜', mode: 'ralph' },
-            { prompt: 'start ultrawork on this issue', mode: 'ultrawork' },
-            { prompt: '울트라워크 돌려', mode: 'ultrawork' },
         ];
         for (const { prompt, mode } of cases) {
             const cwd = mkdtempSync(join(tmpdir(), `keyword-detector-${mode}-positive-`));
@@ -488,23 +571,42 @@ diff --git a/a b/b
             expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, `${mode}-state.json`))).toBe(true);
         }
     });
-    it('only activates the explicitly commanded mode in mixed Korean meta-plus-imperative prompts', () => {
+    it('keeps Ralph state independent from retired ultrawork in both detector copies', () => {
+        for (const detectorPath of [SCRIPT_PATH, TEMPLATE_PATH]) {
+            const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-ralph-independent-'));
+            const sessionId = `session-ralph-independent-${detectorPath.includes('templates') ? 'template' : 'script'}`;
+            const output = runKeywordDetector('ralph fix parser', cwd, sessionId, {}, detectorPath);
+            const context = output.hookSpecificOutput?.additionalContext ?? '';
+            const stateDir = join(cwd, '.omc', 'state', 'sessions', sessionId);
+            const ralphStatePath = join(stateDir, 'ralph-state.json');
+            expect(output.continue).toBe(true);
+            expect(context).toContain('[MAGIC KEYWORD: RALPH]');
+            expect(existsSync(ralphStatePath)).toBe(true);
+            expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(false);
+            const state = JSON.parse(readFileSync(ralphStatePath, 'utf-8'));
+            expect(Object.prototype.hasOwnProperty.call(state, 'linked_ultrawork')).toBe(false);
+        }
+    });
+    it('passes through retired ultrawork in mixed Korean meta-plus-imperative prompts', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-mixed-intent-'));
         const sessionId = 'session-3162-mixed-intent';
         const output = runKeywordDetector('랄프랑 울트라워크는 무슨 관계야? 울트라워크 돌려', cwd, sessionId);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
         const stateDir = join(cwd, '.omc', 'state', 'sessions', sessionId);
         expect(context).not.toContain('[MAGIC KEYWORD: RALPH]');
-        expect(context).toContain('[MAGIC KEYWORD: ULTRAWORK]');
+        expect(context).not.toContain('[MAGIC KEYWORD: ULTRAWORK]');
+        expect(context).toBe('');
         expect(existsSync(join(stateDir, 'ralph-state.json'))).toBe(false);
-        expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(true);
+        expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(false);
     });
-    it('does not activate script-only uw alias for Korean banter/question wording', () => {
+    it('passes through retired uw alias in Korean banter/question wording', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-uw-banter-'));
         const sessionId = 'session-3162-uw-banter';
         const output = runKeywordDetector('너도 uw라도 쥐어줘야해?ㅋㅋ', cwd, sessionId);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
+        expect(output.continue).toBe(true);
         expect(context).not.toContain('[MAGIC KEYWORD: ULTRAWORK]');
+        expect(context).toBe('');
         expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json'))).toBe(false);
     });
     // Regression: "autonomous" appearing in technical / research prose must not
@@ -753,19 +855,18 @@ diff --git a/a b/b
         expect(context).toContain('[MAGIC KEYWORD: AUTOPILOT]');
         expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, 'autopilot-state.json'))).toBe(true);
     });
-    it('still activates ultrawork when the mode name alone is quoted for emphasis after an activation verb', () => {
+    it('passes through retired ultrawork when the mode name is quoted for emphasis after an activation verb', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-quoted-activation-verb-ultrawork-'));
         const sessionId = 'session-quoted-activation-verb-ultrawork-3380';
         const output = runKeywordDetector('start "ultrawork" on this repo', cwd, sessionId);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
         expect(output.continue).toBe(true);
-        expect(context).toContain('[MAGIC KEYWORD: ULTRAWORK]');
-        expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json'))).toBe(true);
+        expect(context).not.toContain('[MAGIC KEYWORD: ULTRAWORK]');
+        expect(context).toBe('');
+        expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json'))).toBe(false);
     });
-    // Japanese full-width katakana variants must fire on the deployed runtime
-    // hook (scripts/keyword-detector.mjs), not just the TS source. Mirrors the
-    // existing Korean positive controls above and guards the standalone copy
-    // against drift from src/hooks/keyword-detector/index.ts.
+    // Japanese full-width katakana variants must continue routing surviving
+    // workflows while retired names pass through on the deployed runtime hook.
     it('activates ralph for "ラルフ 起動" katakana invocation', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-ralph-katakana-'));
         const sessionId = 'session-katakana-ralph';
@@ -775,14 +876,15 @@ diff --git a/a b/b
         expect(context).toContain('[MAGIC KEYWORD: RALPH]');
         expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, 'ralph-state.json'))).toBe(true);
     });
-    it('activates ultrawork for "ウルトラワークで並列実行して" katakana invocation', () => {
+    it('passes through retired "ウルトラワークで並列実行して" katakana invocation', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-ultrawork-katakana-'));
         const sessionId = 'session-katakana-ultrawork';
         const output = runKeywordDetector('ウルトラワークで並列実行して', cwd, sessionId);
         const context = output.hookSpecificOutput?.additionalContext ?? '';
         expect(output.continue).toBe(true);
-        expect(context).toContain('[MAGIC KEYWORD: ULTRAWORK]');
-        expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json'))).toBe(true);
+        expect(context).not.toContain('[MAGIC KEYWORD: ULTRAWORK]');
+        expect(context).toBe('');
+        expect(existsSync(join(cwd, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json'))).toBe(false);
     });
     it('activates ralplan for bare "ラルプラン" katakana invocation', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'keyword-detector-ralplan-katakana-'));

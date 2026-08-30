@@ -20,7 +20,7 @@ import {
 } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 
 // --- task-file-ops imports ---
 import {
@@ -327,7 +327,7 @@ describe('inbox-outbox edge cases', () => {
   beforeEach(() => {
     inboxFixtureRoot = mkdtempSync(join(realpathSync(tmpdir()), 'omc-edge-io-'));
     restoreInboxFixtureEnv = isolateFixtureRoot(inboxFixtureRoot);
-    TEAMS_IO_DIR = join(getClaudeConfigDir(), 'teams', EDGE_TEAM_IO);
+    TEAMS_IO_DIR = join(getCopilotConfigDir(), 'teams', EDGE_TEAM_IO);
     mkdirSync(join(TEAMS_IO_DIR, 'inbox'), { recursive: true });
     mkdirSync(join(TEAMS_IO_DIR, 'outbox'), { recursive: true });
     mkdirSync(join(TEAMS_IO_DIR, 'signals'), { recursive: true });
@@ -777,7 +777,7 @@ describe('team-registration edge cases', () => {
   beforeEach(() => {
     REG_DIR = mkdtempSync(join(realpathSync(tmpdir()), 'test-edge-reg-'));
     restoreRegistrationFixtureEnv = isolateFixtureRoot(REG_DIR);
-    CONFIG_DIR = join(getClaudeConfigDir(), 'teams', REG_TEAM);
+    CONFIG_DIR = join(getCopilotConfigDir(), 'teams', REG_TEAM);
     mkdirSync(REG_DIR, { recursive: true });
     mkdirSync(join(REG_DIR, '.omc', 'state'), { recursive: true });
     mkdirSync(CONFIG_DIR, { recursive: true });

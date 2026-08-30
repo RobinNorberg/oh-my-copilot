@@ -4,7 +4,7 @@ description: ""
 
 # OMC release
 
-This compatibility command keeps `/oh-my-claudecode:release` available without loading the full `release` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:release` available without loading the full `release` skill description in every Claude Code session.
 
 ## Dispatch
 

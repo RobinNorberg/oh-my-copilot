@@ -25,7 +25,7 @@ Your task: Expand this product idea into detailed requirements and technical spe
 
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:analyst",
+  subagent_type="oh-my-copilot:analyst",
   model="opus",
   prompt="REQUIREMENTS ANALYSIS for: ${escapeForPrompt(idea)}
 
@@ -47,7 +47,7 @@ After Analyst completes, spawn Architect:
 
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="TECHNICAL SPECIFICATION for: ${escapeForPrompt(idea)}
 
@@ -103,7 +103,7 @@ Spawn Architect to create the implementation plan:
 
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="CREATE IMPLEMENTATION PLAN
 
@@ -141,7 +141,7 @@ After Architect creates the plan:
 
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:critic",
+  subagent_type="oh-my-copilot:critic",
   model="opus",
   prompt="REVIEW IMPLEMENTATION PLAN
 
@@ -191,13 +191,13 @@ Ralph persistence is active. Delegate independent tasks to executor agents or a 
 
 \`\`\`
 // For simple tasks (single file, straightforward logic)
-Task(subagent_type="oh-my-claudecode:executor-low", model="haiku", prompt="...")
+Task(subagent_type="oh-my-copilot:executor-low", model="haiku", prompt="...")
 
 // For standard implementation (feature, multiple methods)
-Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")
+Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="...")
 
 // For complex work (architecture, debugging, refactoring)
-Task(subagent_type="oh-my-claudecode:executor-high", model="opus", prompt="...")
+Task(subagent_type="oh-my-copilot:executor-high", model="opus", prompt="...")
 \`\`\`
 
 ### Progress Tracking
@@ -247,7 +247,7 @@ For each failure:
 1. **Diagnose** - Understand the error
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:architect-low",
+  subagent_type="oh-my-copilot:architect-low",
   model="haiku",
   prompt="Diagnose this error and suggest fix: [ERROR]"
 )
@@ -256,7 +256,7 @@ Task(
 2. **Fix** - Apply the fix
 \`\`\`
 Task(
-  subagent_type="oh-my-claudecode:debugger",
+  subagent_type="oh-my-copilot:debugger",
   model="sonnet",
   prompt="Fix this error with minimal changes: [ERROR]"
 )
@@ -291,7 +291,7 @@ Each reviewer must return ONLY a concise review summary under 100 words with ver
 \`\`\`
 // Functional Completeness Review
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="FUNCTIONAL COMPLETENESS REVIEW
 
@@ -308,7 +308,7 @@ Verdict: APPROVED (all requirements met) or REJECTED (with specific gaps)"
 
 // Security Review
 Task(
-  subagent_type="oh-my-claudecode:security-reviewer",
+  subagent_type="oh-my-copilot:security-reviewer",
   model="opus",
   prompt="SECURITY REVIEW
 
@@ -325,7 +325,7 @@ Verdict: APPROVED (no vulnerabilities) or REJECTED (with specific issues)"
 
 // Code Quality Review
 Task(
-  subagent_type="oh-my-claudecode:code-reviewer",
+  subagent_type="oh-my-copilot:code-reviewer",
   model="opus",
   prompt="CODE QUALITY REVIEW
 

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { chmodSync, existsSync, linkSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, readlinkSync, rmSync, statSync, unlinkSync, writeFileSync, } from 'fs';
 import { join } from 'path';
 import { randomUUID } from 'crypto';
 // @ts-expect-error Hook runtime source is intentionally JavaScript-only.
@@ -26,7 +26,7 @@ vi.mock('fs/promises', async (importOriginal) => {
         },
     };
 });
-import { atomicWriteJson } from '../atomic-write.js';
+import { atomicWriteBatchSync, atomicWriteFileSync, atomicWriteJson, } from '../atomic-write.js';
 function deferred() {
     let resolve;
     return { promise: new Promise(done => { resolve = done; }), resolve };
@@ -131,6 +131,83 @@ describe('atomicWriteJson', () => {
         await atomicWriteJson(filePath, { status: 'new' });
         expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
         expect(statSync(filePath).mode & 0o777).toBe(0o600);
+    });
+    it('publishes a normal atomic write under Windows stat semantics', async () => {
+        const directory = mkdtempSync(join(tmpdir(), 'atomic-write-win32-'));
+        directories.push(directory);
+        const filePath = join(directory, 'state.json');
+        const originalPlatform = process.platform;
+        Object.defineProperty(process, 'platform', { configurable: true, value: 'win32' });
+        try {
+            await atomicWriteJson(filePath, { status: 'new' });
+        }
+        finally {
+            Object.defineProperty(process, 'platform', { configurable: true, value: originalPlatform });
+        }
+        expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'new' });
+    });
+    it.each(['hardlink', 'special', 'replacement', 'permissions'])('rejects an untrusted temporary generation (%s) before rename', async (kind) => {
+        const directory = mkdtempSync(join(tmpdir(), `atomic-write-${kind}-`));
+        directories.push(directory);
+        const filePath = join(directory, 'state.json');
+        const oldValue = { status: 'old' };
+        writeFileSync(filePath, JSON.stringify(oldValue));
+        let extraPath;
+        fsPromisesControl.writeHook = fd => {
+            const tempPath = readlinkSync(`/proc/self/fd/${fd.fd}`);
+            if (kind === 'hardlink') {
+                extraPath = `${tempPath}.link`;
+                linkSync(tempPath, extraPath);
+            }
+            else if (kind === 'special') {
+                unlinkSync(tempPath);
+                mkdirSync(tempPath);
+            }
+            else if (kind === 'replacement') {
+                unlinkSync(tempPath);
+                writeFileSync(tempPath, 'attacker replacement');
+            }
+            else {
+                chmodSync(tempPath, 0o644);
+            }
+        };
+        await expect(atomicWriteJson(filePath, { status: 'new' })).rejects.toThrow(/private regular single-link|replaced before rename/);
+        expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual(oldValue);
+        if (extraPath !== undefined)
+            rmSync(extraPath, { force: true });
+    });
+    it('rejects a temp replacement at rename without overwriting the foreign target', async () => {
+        const directory = mkdtempSync(join(tmpdir(), 'atomic-write-publication-race-'));
+        directories.push(directory);
+        const filePath = join(directory, 'state.json');
+        const oldValue = { status: 'old' };
+        writeFileSync(filePath, JSON.stringify(oldValue));
+        let raced = false;
+        fsPromisesControl.renameHook = async (from) => {
+            if (raced)
+                return;
+            raced = true;
+            unlinkSync(from.toString());
+            writeFileSync(from.toString(), JSON.stringify({ status: 'attacker' }));
+        };
+        await expect(atomicWriteJson(filePath, { status: 'new' })).rejects.toThrow('target was replaced at publication');
+        expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({ status: 'attacker' });
+        expect(readdirSync(directory)).toEqual(['state.json']);
+    });
+    it.each(['sync', 'batch'])('rolls back the prior target when %s publication loses its ownership hook', kind => {
+        const directory = mkdtempSync(join(tmpdir(), `atomic-write-${kind}-boundary-`));
+        directories.push(directory);
+        const filePath = join(directory, 'state.json');
+        writeFileSync(filePath, 'old', 'utf8');
+        const hooks = { afterRename: () => { throw new Error('publication fenced'); } };
+        if (kind === 'sync') {
+            expect(() => atomicWriteFileSync(filePath, 'new', hooks)).toThrow('publication fenced');
+        }
+        else {
+            expect(() => atomicWriteBatchSync([{ path: filePath, content: 'new' }], hooks)).toThrow('publication fenced');
+        }
+        expect(readFileSync(filePath, 'utf8')).toBe('old');
+        expect(readdirSync(directory)).toEqual(['state.json']);
     });
     it('propagates temp write failures without publishing a target', async () => {
         const directory = mkdtempSync(join(tmpdir(), 'atomic-write-write-error-'));

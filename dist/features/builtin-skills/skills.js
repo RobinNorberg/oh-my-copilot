@@ -17,7 +17,7 @@ import { parseSkillPipelineMetadata, renderSkillPipelineGuidance } from '../../u
 import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
 import { renderSkillRuntimeGuidance } from './runtime-guidance.js';
 import { isSkininthegamebrosUser } from '../../utils/skininthegamebros-user.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import entitlementManifest from '../../config/builtin-skill-entitlements.json' with { type: 'json' };
 function getPackageDir() {
     if (typeof __dirname !== 'undefined' && __dirname) {
@@ -98,7 +98,7 @@ function readDeepInterviewThresholdFromSettings(path) {
         : null;
 }
 function getDeepInterviewAmbiguityThresholdResolution() {
-    const profileSettingsPath = join(getClaudeConfigDir(), 'settings.json');
+    const profileSettingsPath = join(getCopilotConfigDir(), 'settings.json');
     const projectSettingsPath = join(process.cwd(), '.claude', 'settings.json');
     const profileThreshold = readDeepInterviewThresholdFromSettings(profileSettingsPath);
     const projectThreshold = readDeepInterviewThresholdFromSettings(projectSettingsPath);
@@ -106,7 +106,7 @@ function getDeepInterviewAmbiguityThresholdResolution() {
         return { threshold: projectThreshold, source: './.claude/settings.json' };
     }
     if (profileThreshold !== null) {
-        return { threshold: profileThreshold, source: '[$CLAUDE_CONFIG_DIR|~/.claude]/settings.json' };
+        return { threshold: profileThreshold, source: '[$COPILOT_CONFIG_DIR|~/.claude]/settings.json' };
     }
     return { threshold: DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD, source: 'default' };
 }
@@ -171,7 +171,7 @@ function applyDeepInterviewRuntimeSettings(template) {
         .replace('ambiguity ≤ 20%', `ambiguity ≤ ${percent}`);
 }
 function normalizeSkillNameForRuntimeRendering(skillName) {
-    return skillName.trim().toLowerCase().replace(/^oh-my-claudecode:/, '').replace(/^omc:/, '');
+    return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^omc:/, '');
 }
 export function renderBundledSkillBody(skillName, body) {
     const normalizedSkillName = normalizeSkillNameForRuntimeRendering(skillName);

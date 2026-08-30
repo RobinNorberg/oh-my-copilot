@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { createWorkerWorktree } from '../../team/git-worktree.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 const tmuxMocks = vi.hoisted(() => ({
     killWorkerPanes: vi.fn(async () => undefined),
     killTeamSession: vi.fn(async () => undefined),
@@ -34,12 +35,27 @@ async function importTeamServerWithJobsDir(jobsDir) {
 describe('team-server artifact convergence + scoped cleanup', () => {
     let testRoot;
     let jobsDir;
+    let previousHome;
+    let previousUserProfile;
+    const teamStateDir = (cwd, teamName) => join(getOmcRoot(cwd), 'state', 'team', teamName);
     beforeEach(() => {
         testRoot = join(tmpdir(), `omc-team-server-test-${process.pid}-${Date.now()}`);
         jobsDir = join(testRoot, 'jobs');
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testRoot;
+        process.env.USERPROFILE = testRoot;
         mkdirSync(jobsDir, { recursive: true });
     });
     afterEach(() => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         rmSync(testRoot, { recursive: true, force: true });
         process.env = { ...originalEnv };
         vi.clearAllMocks();
@@ -86,8 +102,8 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art3';
         const cwd = join(testRoot, 'workspace');
-        const teamOneDir = join(cwd, '.omc', 'state', 'team', 'team-one');
-        const teamTwoDir = join(cwd, '.omc', 'state', 'team', 'team-two');
+        const teamOneDir = teamStateDir(cwd, 'team-one');
+        const teamTwoDir = teamStateDir(cwd, 'team-two');
         mkdirSync(teamOneDir, { recursive: true });
         mkdirSync(teamTwoDir, { recursive: true });
         writeFileSync(join(teamOneDir, 'a.json'), '{}', 'utf-8');
@@ -103,7 +119,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art5';
         const cwd = join(testRoot, 'workspace-live-pane');
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = teamStateDir(cwd, 'team-one');
         mkdirSync(teamDir, { recursive: true });
         writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({ status: 'running', startedAt: Date.now(), cwd, teamName: 'team-one' }), 'utf-8');
         writeFileSync(join(jobsDir, `${jobId}-panes.json`), JSON.stringify({ paneIds: ['%2'], leaderPaneId: '%1' }), 'utf-8');
@@ -119,7 +135,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art9';
         const cwd = join(testRoot, 'workspace-unknown-probe');
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = teamStateDir(cwd, 'team-one');
         mkdirSync(teamDir, { recursive: true });
         writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({ status: 'running', startedAt: Date.now(), cwd, teamName: 'team-one' }), 'utf-8');
         writeFileSync(join(jobsDir, `${jobId}-panes.json`), JSON.stringify({ paneIds: ['%9'], leaderPaneId: '%1' }), 'utf-8');
@@ -142,7 +158,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         writeFileSync(join(cwd, 'README.md'), 'hello\n', 'utf-8');
         execFileSync('git', ['add', 'README.md'], { cwd, stdio: 'pipe' });
         execFileSync('git', ['commit', '-m', 'init'], { cwd, stdio: 'pipe' });
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = teamStateDir(cwd, 'team-one');
         mkdirSync(teamDir, { recursive: true });
         const worktree = createWorkerWorktree('team-one', 'worker1', cwd);
         writeFileSync(join(worktree.path, 'dirty.txt'), 'uncommitted\n', 'utf-8');
@@ -160,7 +176,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art7';
         const cwd = join(testRoot, 'workspace-unknown-liveness');
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = teamStateDir(cwd, 'team-one');
         mkdirSync(teamDir, { recursive: true });
         writeFileSync(join(teamDir, 'config.json'), JSON.stringify({
             name: 'team-one',
@@ -191,7 +207,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art8';
         const cwd = join(testRoot, 'workspace-backup-only');
-        const teamDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamDir = teamStateDir(cwd, 'team-one');
         const backupPath = join(teamDir, 'workers', 'worker-1', 'worktree-root-agents.json');
         mkdirSync(join(teamDir, 'workers', 'worker-1'), { recursive: true });
         writeFileSync(backupPath, JSON.stringify({
@@ -222,7 +238,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         writeFileSync(join(cwd, 'README.md'), 'hello\n', 'utf-8');
         execFileSync('git', ['add', 'README.md'], { cwd, stdio: 'pipe' });
         execFileSync('git', ['commit', '-m', 'init'], { cwd, stdio: 'pipe' });
-        const teamOneDir = join(cwd, '.omc', 'state', 'team', 'team-one');
+        const teamOneDir = teamStateDir(cwd, 'team-one');
         mkdirSync(teamOneDir, { recursive: true });
         const worktree = createWorkerWorktree('team-one', 'worker1', cwd);
         expect(existsSync(worktree.path)).toBe(true);

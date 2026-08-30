@@ -43,9 +43,9 @@ function writePluginRoot(root: string, content: string): void {
   writeFileSync(join(root, 'skills', 'omc-reference', 'SKILL.md'), content);
 }
 
-// Mock getClaudeConfigDir before importing the module under test
+// Mock getCopilotConfigDir before importing the module under test
 vi.mock('../utils/config-dir.js', () => ({
-  getClaudeConfigDir: () => TEST_DIRS.claudeDir,
+  getCopilotConfigDir: () => TEST_DIRS.claudeDir,
 }));
 
 // Mock builtin skills to return a known list for testing
@@ -83,7 +83,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.CLAUDE_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_HOME = join(TEST_PROJECT_DIR, '.omc-home');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -92,7 +92,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_HOME;
     delete process.env.CODEX_HOME;
@@ -238,7 +238,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
       mkdirSync(join(TEST_CLAUDE_DIR, 'plugins'), { recursive: true });
       writeFileSync(join(TEST_CLAUDE_DIR, 'plugins', 'installed_plugins.json'), JSON.stringify({
         plugins: {
-          'oh-my-claudecode': [{ installPath: pluginRoot }],
+          'oh-my-copilot': [{ installPath: pluginRoot }],
         },
       }));
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
@@ -515,7 +515,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.CLAUDE_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_MCP_REGISTRY_PATH = join(TEST_PROJECT_DIR, '.omc-home', 'mcp-registry.json');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -524,7 +524,7 @@ describe('doctor-conflicts: CLAUDE.md companion file detection (issue #1101)', (
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_MCP_REGISTRY_PATH;
     delete process.env.CODEX_HOME;
@@ -801,7 +801,7 @@ describe('doctor-conflicts: legacy skills collision check (issue #1101)', () => 
   it('does NOT flag setup-installed omc-reference fallback when setup resolved a newer active cache root (issue #2992)', () => {
     const oldContent = '# Old omc-reference skill\n';
     const newerContent = '# Newer setup-installed omc-reference skill\n';
-    const cacheBase = join(TEST_PROJECT_DIR, 'plugin-cache', 'oh-my-claudecode');
+    const cacheBase = join(TEST_PROJECT_DIR, 'plugin-cache', 'oh-my-copilot');
     const oldPluginRoot = join(cacheBase, '4.8.2');
     const newerPluginRoot = join(cacheBase, '4.9.0');
     TEST_DIRS.builtinSkillsDir = join(oldPluginRoot, 'skills');
@@ -809,7 +809,7 @@ describe('doctor-conflicts: legacy skills collision check (issue #1101)', () => 
     writePluginRoot(newerPluginRoot, newerContent);
     mkdirSync(join(TEST_CLAUDE_DIR, 'plugins'), { recursive: true });
     writeFileSync(join(TEST_CLAUDE_DIR, 'plugins', 'installed_plugins.json'), JSON.stringify({
-      'oh-my-claudecode@omc': [{ installPath: oldPluginRoot, version: '4.8.2' }],
+      'oh-my-copilot@omc': [{ installPath: oldPluginRoot, version: '4.8.2' }],
     }));
     const skillsDir = join(TEST_CLAUDE_DIR, 'skills');
     mkdirSync(join(skillsDir, 'omc-reference'), { recursive: true });
@@ -894,7 +894,7 @@ describe('doctor-conflicts: config known fields (issue #1499)', () => {
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
     mkdirSync(join(TEST_PROJECT_DIR, '.omc'), { recursive: true });
     mkdirSync(join(TEST_PROJECT_DIR, '.codex'), { recursive: true });
-    process.env.CLAUDE_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     process.env.OMC_HOME = join(TEST_PROJECT_DIR, '.omc');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
@@ -903,7 +903,7 @@ describe('doctor-conflicts: config known fields (issue #1499)', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     delete process.env.OMC_HOME;
     delete process.env.CODEX_HOME;
@@ -983,7 +983,7 @@ describe('doctor-conflicts: workspace marker check (Wave F.2)', () => {
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    process.env.CLAUDE_CONFIG_DIR = TEST_CLAUDE_DIR;
+    process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
     cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(TEST_PROJECT_DIR);
     savedOmcStateDir = process.env.OMC_STATE_DIR;
@@ -993,7 +993,7 @@ describe('doctor-conflicts: workspace marker check (Wave F.2)', () => {
 
   afterEach(() => {
     cwdSpy?.mockRestore();
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
     delete process.env.CLAUDE_MCP_CONFIG_PATH;
     if (savedOmcStateDir === undefined) {
       delete process.env.OMC_STATE_DIR;

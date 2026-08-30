@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import { getClaudeConfigDir } from "../../utils/config-dir.js";
+import { getCopilotConfigDir } from "../../utils/config-dir.js";
 import { getHardMaxIterations } from "../../lib/security-config.js";
 import { resolveAutopilotPlanPath, resolveOpenQuestionsPlanPath, } from "../../config/plan-output.js";
 import { readAutopilotState, writeAutopilotState, updateAutopilotStateIfExact, transitionPhase, transitionRalphToUltraQA, transitionUltraQAToValidation, transitionToComplete, } from "./state.js";
@@ -38,7 +38,7 @@ const SIGNAL_PATTERNS = {
  * Detect a specific signal in the session transcript
  */
 export function detectSignal(sessionId, signal) {
-    const claudeDir = getClaudeConfigDir();
+    const claudeDir = getCopilotConfigDir();
     const possiblePaths = [
         join(claudeDir, "sessions", sessionId, "transcript.md"),
         join(claudeDir, "sessions", sessionId, "messages.json"),
@@ -548,7 +548,7 @@ IMPORTANT: When this stage is complete, output the signal: ${currentAdapter.comp
  * Detect a pipeline-specific signal in the session transcript.
  */
 function detectPipelineSignal(sessionId, signal) {
-    const claudeDir = getClaudeConfigDir();
+    const claudeDir = getCopilotConfigDir();
     const possiblePaths = [
         join(claudeDir, "sessions", sessionId, "transcript.md"),
         join(claudeDir, "sessions", sessionId, "messages.json"),

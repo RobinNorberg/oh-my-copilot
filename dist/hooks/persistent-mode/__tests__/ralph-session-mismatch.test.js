@@ -5,10 +5,9 @@
  * a long Ralph session, even though the Stop hook fires many times. The
  * iteration counter never increments past 1.
  *
- * Root cause: `checkRalphLoop` and `checkUltrawork` in
- * `src/hooks/persistent-mode/index.ts` re-applied a strict session-id
- * check on top of the lenient check already done by `readRalphState` /
- * `readUltraworkState`. The strict check `state.session_id !== sessionId`
+ * Root cause: `checkRalphLoop` in `src/hooks/persistent-mode/index.ts`
+ * re-applied a strict session-id check on top of the lenient check already
+ * done by `readRalphState`. The strict check `state.session_id !== sessionId`
  * rejected the legitimate case where ONE side is undefined and the other
  * is a UUID, causing the entire ralph/ultrawork loop to bail out before
  * `incrementRalphIteration()` could fire.

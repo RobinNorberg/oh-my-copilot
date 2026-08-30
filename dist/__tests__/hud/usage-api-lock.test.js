@@ -1,11 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
-const CLAUDE_CONFIG_DIR = '/tmp/test-claude';
-const CACHE_PATH = `${CLAUDE_CONFIG_DIR}/plugins/oh-my-claudecode/.usage-cache-zai.json`;
+const COPILOT_CONFIG_DIR = '/tmp/test-claude';
+const CACHE_PATH = `${COPILOT_CONFIG_DIR}/plugins/oh-my-copilot/.usage-cache-zai.json`;
 const LOCK_PATH = `${CACHE_PATH}.lock`;
 function createFsMock(initialFiles) {
     const files = new Map(Object.entries(initialFiles));
-    const directories = new Set([CLAUDE_CONFIG_DIR]);
+    const directories = new Set([COPILOT_CONFIG_DIR]);
     const existsSync = vi.fn((path) => files.has(String(path)) || directories.has(String(path)));
     const readFileSync = vi.fn((path) => {
         const content = files.get(String(path));
@@ -97,7 +97,7 @@ describe('getUsage lock failure fallback', () => {
             return originalKill.call(process, pid, signal);
         });
         vi.doMock('../../utils/config-dir.js', () => ({
-            getClaudeConfigDir: () => CLAUDE_CONFIG_DIR,
+            getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
         }));
         vi.doMock('../../utils/ssrf-guard.js', () => ({
             validateAnthropicBaseUrl: () => ({ allowed: true }),
@@ -138,7 +138,7 @@ describe('getUsage lock failure fallback', () => {
             return originalKill.call(process, pid, signal);
         });
         vi.doMock('../../utils/config-dir.js', () => ({
-            getClaudeConfigDir: () => CLAUDE_CONFIG_DIR,
+            getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
         }));
         vi.doMock('../../utils/ssrf-guard.js', () => ({
             validateAnthropicBaseUrl: () => ({ allowed: true }),
@@ -190,7 +190,7 @@ describe('getUsage lock behavior', () => {
         const { files, fsModule } = createFsMock({ [CACHE_PATH]: expiredCache });
         let requestSawLock = false;
         vi.doMock('../../utils/config-dir.js', () => ({
-            getClaudeConfigDir: () => CLAUDE_CONFIG_DIR,
+            getCopilotConfigDir: () => COPILOT_CONFIG_DIR,
         }));
         vi.doMock('../../utils/ssrf-guard.js', () => ({
             validateAnthropicBaseUrl: () => ({ allowed: true }),

@@ -5,7 +5,7 @@ import { tmpdir } from 'os';
 import { routeMessage, broadcastToTeam } from '../message-router.js';
 import { registerMcpWorker } from '../team-registration.js';
 import { writeHeartbeat } from '../heartbeat.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 
 describe('message-router', () => {
   let testDir: string;
@@ -22,11 +22,11 @@ describe('message-router', () => {
     previousHome = process.env.HOME;
     previousUserProfile = process.env.USERPROFILE;
     previousStateDir = process.env.OMC_STATE_DIR;
-    previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    previousClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
     delete process.env.OMC_STATE_DIR;
-    process.env.CLAUDE_CONFIG_DIR = fixtureClaudeConfigDir;
+    process.env.COPILOT_CONFIG_DIR = fixtureClaudeConfigDir;
   });
 
   afterEach(() => {
@@ -41,8 +41,8 @@ describe('message-router', () => {
     else process.env.USERPROFILE = previousUserProfile;
     if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
     else process.env.OMC_STATE_DIR = previousStateDir;
-    if (previousClaudeConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
-    else process.env.CLAUDE_CONFIG_DIR = previousClaudeConfigDir;
+    if (previousClaudeConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
+    else process.env.COPILOT_CONFIG_DIR = previousClaudeConfigDir;
     rmSync(testDir, { recursive: true, force: true });
   });
 
@@ -70,7 +70,7 @@ describe('message-router', () => {
       expect(result.details).toContain('inbox');
 
       // Verify inbox file was written
-      const inboxPath = join(getClaudeConfigDir(), 'teams', teamName, 'inbox', 'codex-1.jsonl');
+      const inboxPath = join(getCopilotConfigDir(), 'teams', teamName, 'inbox', 'codex-1.jsonl');
       expect(existsSync(inboxPath)).toBe(true);
       const content = readFileSync(inboxPath, 'utf-8').trim();
       const msg = JSON.parse(content);
@@ -96,8 +96,8 @@ describe('message-router', () => {
       expect(result.nativeRecipients).toEqual([]);
 
       // Verify both inbox files were written
-      const inbox1 = join(getClaudeConfigDir(), 'teams', teamName, 'inbox', 'worker1.jsonl');
-      const inbox2 = join(getClaudeConfigDir(), 'teams', teamName, 'inbox', 'worker2.jsonl');
+      const inbox1 = join(getCopilotConfigDir(), 'teams', teamName, 'inbox', 'worker1.jsonl');
+      const inbox2 = join(getCopilotConfigDir(), 'teams', teamName, 'inbox', 'worker2.jsonl');
       expect(existsSync(inbox1)).toBe(true);
       expect(existsSync(inbox2)).toBe(true);
     });

@@ -7,7 +7,7 @@
  *
  * Root cause chain:
  * 1. buildDefaultConfig() → config.agents.executor.model = 'claude-sonnet-5'
- *    (from CLAUDE_FAMILY_DEFAULTS.SONNET, because no Bedrock env vars found)
+ *    (from COPILOT_FAMILY_DEFAULTS.SONNET, because no Bedrock env vars found)
  * 2. getAgentDefinitions() resolves executor.model = 'claude-sonnet-5'
  *    (configuredModel from config takes precedence over agent's defaultModel)
  * 3. enforceModel() injects 'claude-sonnet-5' into Task calls

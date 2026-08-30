@@ -4,6 +4,28 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { teamListMailbox, teamReadCanonicalMailboxMessageStrict, } from '../team-ops.js';
 import { evaluateMailboxNotificationGuard, mailboxNotificationSecurityTupleEquals, readCurrentMailboxNotificationGuard, } from '../mailbox-notification-guard.js';
+function isolateFixtureRoot(root) {
+    const home = process.env.HOME;
+    const userProfile = process.env.USERPROFILE;
+    const stateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return () => {
+        if (home === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = home;
+        if (userProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = userProfile;
+        if (stateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = stateDir;
+    };
+}
 const teamName = 'dispatch-team';
 const timestamp = '2026-07-13T00:00:00.000Z';
 const input = {
@@ -86,6 +108,7 @@ function validState(overrides = {}) {
 }
 describe('teamReadCanonicalMailboxMessageStrict', () => {
     let cwd;
+    let restoreFixtureEnv;
     async function writeMailbox(value, workerName = input.recipient) {
         const path = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', `${workerName}.json`);
         await mkdir(join(cwd, '.omc', 'state', 'team', teamName, 'mailbox'), { recursive: true });
@@ -98,9 +121,17 @@ describe('teamReadCanonicalMailboxMessageStrict', () => {
     }
     beforeEach(async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-mailbox-strict-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
     });
     afterEach(async () => {
-        await rm(cwd, { recursive: true, force: true });
+        const restore = restoreFixtureEnv;
+        restoreFixtureEnv = undefined;
+        try {
+            restore?.();
+        }
+        finally {
+            await rm(cwd, { recursive: true, force: true });
+        }
     });
     it('never falls back to legacy JSONL while compatibility reads still do', async () => {
         const legacyPath = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', 'worker-1.jsonl');

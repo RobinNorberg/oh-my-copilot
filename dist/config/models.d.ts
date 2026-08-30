@@ -4,7 +4,7 @@ export type ClaudeModelFamily = 'HAIKU' | 'SONNET' | 'OPUS' | 'FABLE';
  * Canonical Claude family defaults.
  * Keep these date-less so version bumps are a one-line edit per family.
  */
-export declare const CLAUDE_FAMILY_DEFAULTS: Record<ClaudeModelFamily, string>;
+export declare const COPILOT_FAMILY_DEFAULTS: Record<ClaudeModelFamily, string>;
 /** Canonical tier->model mapping used as built-in defaults */
 export declare const BUILTIN_TIER_MODEL_DEFAULTS: Record<ModelTier, string>;
 /** Canonical Claude high-reasoning variants by family */
@@ -105,7 +105,7 @@ export declare function isVertexAI(): boolean;
  * - A non-Claude model ID is detected (CC Switch, LiteLLM, etc.)
  * - A custom ANTHROPIC_BASE_URL points to a non-Anthropic endpoint
  */
-export declare function isNonClaudeProvider(): boolean;
+export declare function isNonCopilotProvider(): boolean;
 /**
  * Detect whether provider state should globally force Agent/Task calls to
  * inherit the parent session model. Tier model env overrides intentionally do

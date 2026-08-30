@@ -5,6 +5,9 @@ import { join } from 'node:path';
 import { aliasActiveRecoveryRequest, readRecoveryOutcome, readRecoveryResult, readRecoveryFinalState, reserveRecoveryRequest, writeRecoveryFinal, writeRecoveryPhase, } from '../recovery-request-store.js';
 import { absPath, TeamPaths } from '../state-paths.js';
 let cwd;
+let previousHome;
+let previousUserProfile;
+let previousOmcStateDir;
 const payload = { operation: 'recover-worker', workspaceHash: 'a'.repeat(64), teamName: 'team-a', workerName: 'worker-a' };
 const pending = (phase) => ({ schema_version: 1, kind: 'phase', request_id: 'request-a', recovery_id: 'recovery-a', team_name: 'team-a', worker_name: 'worker-a', phase, continuation: 'reserved', adoption: 'pending', services: 'pending', manifest: 'repair_required', updated_at: new Date().toISOString() });
 const successResult = (requestId, recoveryId) => ({ outcome: 'already_running', committed: true,
@@ -28,8 +31,30 @@ const corruptNewestPhase = (from, to) => {
     const path = join(directory, readdirSync(directory).sort().reverse()[0]);
     writeFileSync(path, readFileSync(path, 'utf8').replace(from, to));
 };
-beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'omc-recovery-request-')); });
-afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'omc-recovery-request-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
+});
+afterEach(() => {
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousOmcStateDir;
+    rmSync(cwd, { recursive: true, force: true });
+});
 describe('global recovery request store', () => {
     it('joins a repeated request with the same canonical payload and rejects a reused ID before a new recovery is reserved', () => {
         const first = reserveRecoveryRequest(cwd, 'request-a', payload, 'recovery-a');

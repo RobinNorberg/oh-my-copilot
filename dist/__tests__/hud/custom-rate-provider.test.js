@@ -7,7 +7,7 @@ import { executeCustomProvider } from '../../hud/custom-rate-provider.js';
 import { existsSync, readFileSync } from 'fs';
 import { spawn } from 'child_process';
 vi.mock('../../utils/paths.js', () => ({
-    getClaudeConfigDir: () => '/tmp/test-claude',
+    getCopilotConfigDir: () => '/tmp/test-claude',
 }));
 vi.mock('fs', async (importOriginal) => {
     const actual = await importOriginal();

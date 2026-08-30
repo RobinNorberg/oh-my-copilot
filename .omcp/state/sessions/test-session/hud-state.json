@@ -1,0 +1,83 @@
+{
+  "timestamp": "2026-04-13T20:40:15.868Z",
+  "backgroundTasks": [
+    {
+      "id": "task-1776109271328-emfki9",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T19:41:11.332Z",
+      "status": "failed",
+      "completedAt": "2026-04-13T20:21:01.208Z"
+    },
+    {
+      "id": "task-1776109271360-mfmzv5",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T19:41:11.362Z",
+      "status": "failed",
+      "completedAt": "2026-04-13T20:21:01.210Z"
+    },
+    {
+      "id": "task-1776110078076-wka6jf",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T19:54:38.080Z",
+      "status": "failed",
+      "completedAt": "2026-04-13T20:40:15.854Z"
+    },
+    {
+      "id": "task-1776110078093-fd6nvs",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T19:54:38.094Z",
+      "status": "failed",
+      "completedAt": "2026-04-13T20:40:15.856Z"
+    },
+    {
+      "id": "task-1776110908641-ntcuvp",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T20:08:28.643Z",
+      "status": "failed",
+      "completedAt": "2026-04-13T20:40:15.856Z"
+    },
+    {
+      "id": "task-1776110908656-n4jlcv",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T20:08:28.657Z",
+      "status": "failed",
+      "completedAt": "2026-04-13T20:40:15.856Z"
+    },
+    {
+      "id": "task-1776111661206-3wdwtn",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T20:21:01.210Z",
+      "status": "running"
+    },
+    {
+      "id": "task-1776111661223-xt91tw",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T20:21:01.224Z",
+      "status": "running"
+    },
+    {
+      "id": "task-1776112815852-0jg11g",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T20:40:15.856Z",
+      "status": "running"
+    },
+    {
+      "id": "task-1776112815867-np69sr",
+      "description": "Implement feature",
+      "agentType": "oh-my-copilot:executor",
+      "startedAt": "2026-04-13T20:40:15.868Z",
+      "status": "running"
+    }
+  ],
+  "lastPromptTimestamp": "2026-04-13T20:40:03.446Z",
+  "sessionId": "test-session"
+}

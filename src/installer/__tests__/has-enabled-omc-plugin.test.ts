@@ -34,7 +34,7 @@ function writeSettings(content: object): void {
 
 beforeEach(() => {
   testDir = mkdtempSync(join(tmpdir(), 'omc-has-enabled-'));
-  process.env.CLAUDE_CONFIG_DIR = testDir;
+  process.env.COPILOT_CONFIG_DIR = testDir;
   delete process.env.CLAUDE_PLUGIN_ROOT;
   delete process.env.OMC_PLUGIN_ROOT;
 });
@@ -59,10 +59,10 @@ describe('hasEnabledOmcPlugin', () => {
   });
 
   describe('Modern Claude Code 1.x format (`enabledPlugins`)', () => {
-    it('returns true when enabledPlugins.oh-my-claudecode@omc is true', async () => {
+    it('returns true when enabledPlugins.oh-my-copilot@omc is true', async () => {
       writeSettings({
         enabledPlugins: {
-          'oh-my-claudecode@omc': true,
+          'oh-my-copilot@omc': true,
           'unrelated-plugin@foo': true,
         },
       });
@@ -70,27 +70,27 @@ describe('hasEnabledOmcPlugin', () => {
       expect(hasEnabledOmcPlugin()).toBe(true);
     });
 
-    it('returns true for any pluginId substring matching oh-my-claudecode', async () => {
+    it('returns true for any pluginId substring matching oh-my-copilot', async () => {
       writeSettings({
         enabledPlugins: {
-          'oh-my-claudecode-fork@somerepo': true,
+          'oh-my-copilot-fork@somerepo': true,
         },
       });
       const { hasEnabledOmcPlugin } = await freshInstaller();
       expect(hasEnabledOmcPlugin()).toBe(true);
     });
 
-    it('returns false when enabledPlugins.oh-my-claudecode@omc is explicitly false', async () => {
+    it('returns false when enabledPlugins.oh-my-copilot@omc is explicitly false', async () => {
       writeSettings({
         enabledPlugins: {
-          'oh-my-claudecode@omc': false,
+          'oh-my-copilot@omc': false,
         },
       });
       const { hasEnabledOmcPlugin } = await freshInstaller();
       expect(hasEnabledOmcPlugin()).toBe(false);
     });
 
-    it('returns false when enabledPlugins has no oh-my-claudecode entry', async () => {
+    it('returns false when enabledPlugins has no oh-my-copilot entry', async () => {
       writeSettings({
         enabledPlugins: {
           'unrelated-plugin@foo': true,
@@ -102,7 +102,7 @@ describe('hasEnabledOmcPlugin', () => {
 
     it('handles enabledPlugins as an array of plugin id strings', async () => {
       writeSettings({
-        enabledPlugins: ['oh-my-claudecode@omc', 'other'],
+        enabledPlugins: ['oh-my-copilot@omc', 'other'],
       });
       const { hasEnabledOmcPlugin } = await freshInstaller();
       expect(hasEnabledOmcPlugin()).toBe(true);
@@ -110,19 +110,19 @@ describe('hasEnabledOmcPlugin', () => {
   });
 
   describe('Legacy `plugins` field (backward compatibility)', () => {
-    it('returns true when plugins.oh-my-claudecode@omc is true', async () => {
+    it('returns true when plugins.oh-my-copilot@omc is true', async () => {
       writeSettings({
         plugins: {
-          'oh-my-claudecode@omc': true,
+          'oh-my-copilot@omc': true,
         },
       });
       const { hasEnabledOmcPlugin } = await freshInstaller();
       expect(hasEnabledOmcPlugin()).toBe(true);
     });
 
-    it('returns true when plugins is an array with oh-my-claudecode entry', async () => {
+    it('returns true when plugins is an array with oh-my-copilot entry', async () => {
       writeSettings({
-        plugins: ['oh-my-claudecode'],
+        plugins: ['oh-my-copilot'],
       });
       const { hasEnabledOmcPlugin } = await freshInstaller();
       expect(hasEnabledOmcPlugin()).toBe(true);
@@ -131,7 +131,7 @@ describe('hasEnabledOmcPlugin', () => {
     it('returns false when legacy plugins entry is explicitly false', async () => {
       writeSettings({
         plugins: {
-          'oh-my-claudecode@omc': false,
+          'oh-my-copilot@omc': false,
         },
       });
       const { hasEnabledOmcPlugin } = await freshInstaller();
@@ -140,11 +140,11 @@ describe('hasEnabledOmcPlugin', () => {
   });
 
   describe('Mixed format support', () => {
-    it('matches oh-my-claudecode in EITHER enabledPlugins or plugins', async () => {
+    it('matches oh-my-copilot in EITHER enabledPlugins or plugins', async () => {
       // settings has both fields; enabledPlugins is empty, plugins has the entry
       writeSettings({
         enabledPlugins: { 'unrelated@foo': true },
-        plugins: { 'oh-my-claudecode@omc': true },
+        plugins: { 'oh-my-copilot@omc': true },
       });
       const { hasEnabledOmcPlugin } = await freshInstaller();
       expect(hasEnabledOmcPlugin()).toBe(true);
@@ -152,7 +152,7 @@ describe('hasEnabledOmcPlugin', () => {
 
     it('returns true when modern enabledPlugins has the entry but legacy plugins does not', async () => {
       writeSettings({
-        enabledPlugins: { 'oh-my-claudecode@omc': true },
+        enabledPlugins: { 'oh-my-copilot@omc': true },
         plugins: { 'unrelated@foo': true },
       });
       const { hasEnabledOmcPlugin } = await freshInstaller();

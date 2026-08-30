@@ -128,9 +128,9 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
 
     it('hud SKILL.md keeps Unix statusLine guidance portable while preserving Windows-safe paths', () => {
       const content = readFileSync(join(REPO_ROOT, 'skills', 'hud', 'SKILL.md'), 'utf-8');
-      expect(content).toContain('"command": "node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs"');
-      expect(content).toContain('"command": "node C:/Users/username/.claude/hud/omc-hud.mjs"');
-      expect(content).not.toContain('"command": "node /home/username/.claude/hud/omc-hud.mjs"');
+      expect(content).toContain('"command": "node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs"');
+      expect(content).toContain('"command": "node C:/Users/username/.claude/hud/omcp-hud.mjs"');
+      expect(content).not.toContain('"command": "node /home/username/.claude/hud/omcp-hud.mjs"');
       expect(content).not.toContain('The command must use an absolute path, not `~`');
     });
 
@@ -138,11 +138,11 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
       const content = readFileSync(join(REPO_ROOT, 'skills', 'hud', 'SKILL.md'), 'utf-8');
       const cleanupLine = content
         .split('\n')
-        .find(l => l.includes('Removed legacy omc-hud.js') && l.startsWith('node -e'));
+        .find(l => l.includes('Removed legacy omcp-hud.js') && l.startsWith('node -e'));
 
       expect(cleanupLine).toBeDefined();
-      expect(cleanupLine).toContain("t=p.join(d,'hud','omc-hud.js')");
-      expect(cleanupLine).not.toContain("t=p.join(d,'hud','omc-hud.mjs')");
+      expect(cleanupLine).toContain("t=p.join(d,'hud','omcp-hud.js')");
+      expect(cleanupLine).not.toContain("t=p.join(d,'hud','omcp-hud.mjs')");
     });
 
     it("omc-setup version-detect script uses v==='' not !v", () => {
@@ -165,7 +165,7 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
       ].filter(f => f.endsWith('.md') || f.endsWith('.sh'));
       const combined = files.map(f => readFileSync(f, 'utf-8')).join('\n');
       expect(combined).toContain("grep -m1 'OMC:VERSION:'");
-      expect(combined).not.toContain('grep -m1 "^# oh-my-claudecode"');
+      expect(combined).not.toContain('grep -m1 "^# oh-my-copilot"');
     });
 
     it('omc-setup SKILL.md explicitly tells the agent to execute immediately', () => {

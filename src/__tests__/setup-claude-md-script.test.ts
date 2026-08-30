@@ -221,7 +221,7 @@ describe('setup-claude-md.sh committed plugin shipping surface (issue #3476)', (
     const root = mkdtempSync(join(tmpdir(), 'omc-committed-root-coherence-'));
     tempRoots.push(root);
 
-    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const staleRoot = join(cacheBase, '0.0.1');
     const activeRoot = join(cacheBase, '0.0.2');
     const projectRoot = join(root, 'project');
@@ -356,7 +356,7 @@ else process.stdout.write(JSON.stringify({ ok: false, exitCode: 0, error: "rejec
   });
 
   it('refuses to install a canonical source that lacks OMC markers', () => {
-    const fixture = createPluginFixture(`# oh-my-claudecode (OMC) v9.9.9 Summary
+    const fixture = createPluginFixture(`# oh-my-copilot (OMC) v9.9.9 Summary
 
 This is a summarized CLAUDE.md without markers.
 `);
@@ -673,7 +673,7 @@ Use the real docs file.
     expect(readFileSync(targetPath, 'utf-8')).toBe(installed);
   });
 
-  it('uses CLAUDE_CONFIG_DIR for global setup targets and plugin verification', () => {
+  it('uses COPILOT_CONFIG_DIR for global setup targets and plugin verification', () => {
     const fixture = createPluginFixture(`<!-- OMC:START -->
 <!-- OMC:VERSION:9.9.9 -->
 
@@ -685,14 +685,14 @@ Use the real docs file.
     const configDir = join(fixture.homeRoot, 'custom-profile');
     mkdirSync(join(configDir, 'hooks'), { recursive: true });
     writeFileSync(join(configDir, 'hooks', 'keyword-detector.sh'), 'legacy');
-    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }));
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
 
     const result = spawnSync('bash', [fixture.scriptPath, 'global'], {
       cwd: fixture.projectRoot,
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
       },
       encoding: 'utf-8',
     });
@@ -719,7 +719,7 @@ Use the real docs file.
     writeFileSync(
       join(configDir, 'settings.json'),
       JSON.stringify({
-        plugins: ['oh-my-claudecode'],
+        plugins: ['oh-my-copilot'],
         hooks: {
           Stop: [
             {
@@ -736,7 +736,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
       },
       encoding: 'utf-8',
     });
@@ -759,7 +759,7 @@ Use the real docs file.
     writeFileSync(
       join(configDir, 'settings.json'),
       JSON.stringify({
-        plugins: ['oh-my-claudecode'],
+        plugins: ['oh-my-copilot'],
         hooks: {
           UserPromptSubmit: [
             {
@@ -776,7 +776,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
       },
       encoding: 'utf-8',
     });
@@ -799,7 +799,7 @@ Use the real docs file.
     writeFileSync(
       join(configDir, 'settings.json'),
       JSON.stringify({
-        plugins: ['oh-my-claudecode'],
+        plugins: ['oh-my-copilot'],
         hooks: {
           Stop: [
             {
@@ -819,7 +819,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
       },
       encoding: 'utf-8',
     });
@@ -843,14 +843,14 @@ Use the real docs file.
     const configDir = join(fixture.homeRoot, 'custom-profile');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'CLAUDE.md'), '# User CLAUDE\nKeep my base config.\n');
-    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }));
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
 
     const result = spawnSync('bash', [fixture.scriptPath, 'global'], {
       cwd: fixture.projectRoot,
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
       },
       encoding: 'utf-8',
     });
@@ -877,14 +877,14 @@ Use the real docs file.
     const configDir = join(fixture.homeRoot, 'custom-profile');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'CLAUDE.md'), '# User CLAUDE\nKeep my base config.\n');
-    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }));
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
 
     const result = spawnSync('bash', [fixture.scriptPath, 'global', 'preserve'], {
       cwd: fixture.projectRoot,
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
       },
       encoding: 'utf-8',
     });
@@ -919,12 +919,12 @@ Use the real docs file.
     const configDir = join(fixture.homeRoot, 'custom-profile');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'CLAUDE.md'), '# User CLAUDE\nKeep my base config.\n');
-    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }));
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
 
     const env = {
       ...process.env,
       HOME: fixture.homeRoot,
-      CLAUDE_CONFIG_DIR: configDir,
+      COPILOT_CONFIG_DIR: configDir,
     };
 
     const first = spawnSync('bash', [fixture.scriptPath, 'global', 'preserve'], {
@@ -959,12 +959,12 @@ Use the real docs file.
     const configDir = join(fixture.homeRoot, 'custom-profile');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'CLAUDE.md'), '# User CLAUDE\nKeep my base config.\n');
-    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }));
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
 
     const env = {
       ...process.env,
       HOME: fixture.homeRoot,
-      CLAUDE_CONFIG_DIR: configDir,
+      COPILOT_CONFIG_DIR: configDir,
     };
 
     // Run 1: preserve mode — creates companion + import block
@@ -1011,7 +1011,7 @@ Use the real docs file.
     const configDir = join(fixture.homeRoot, 'custom-profile');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'CLAUDE.md'), '# User CLAUDE\nKeep my base config.\n');
-    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }));
+    writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
 
     const realTarget = join(fixture.homeRoot, 'outside-target.md');
     writeFileSync(realTarget, 'outside target');
@@ -1022,7 +1022,7 @@ Use the real docs file.
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
       },
       encoding: 'utf-8',
     });
@@ -1038,7 +1038,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-stale-invalid-newer-cache-'));
     tempRoots.push(root);
 
-    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const oldVersion = join(cacheBase, '4.8.2');
     const newerInvalid = join(cacheBase, '4.9.0');
     const projectRoot = join(root, 'project');
@@ -1062,7 +1062,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     writeFileSync(
       join(homeRoot, '.claude', 'plugins', 'installed_plugins.json'),
       JSON.stringify({
-        'oh-my-claudecode@omc': [
+        'oh-my-copilot@omc': [
           {
             installPath: oldVersion,
             version: '4.8.2',
@@ -1073,14 +1073,14 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
 
     mkdirSync(projectRoot, { recursive: true });
     mkdirSync(join(homeRoot, '.claude'), { recursive: true });
-    writeFileSync(join(homeRoot, '.claude', 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }));
+    writeFileSync(join(homeRoot, '.claude', 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
 
     const result = spawnSync('bash', [join(oldVersion, 'scripts', 'setup-claude-md.sh'), 'local'], {
       cwd: projectRoot,
       env: {
         ...process.env,
         HOME: homeRoot,
-        CLAUDE_CONFIG_DIR: join(homeRoot, '.claude'),
+        COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
       },
       encoding: 'utf-8',
     });
@@ -1096,7 +1096,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-stale-ignore-non-semver-'));
     tempRoots.push(root);
 
-    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const oldVersion = join(cacheBase, '4.8.2');
     const newVersion = join(cacheBase, '4.9.0');
     const suffixedInvalid = join(cacheBase, '4.10.0.tmp');
@@ -1122,7 +1122,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
 
     mkdirSync(join(homeRoot, '.claude'), { recursive: true });
     mkdirSync(projectRoot, { recursive: true });
-    writeFileSync(join(homeRoot, '.claude', 'settings.json'), JSON.stringify({ plugins: ['oh-my-claudecode'] }));
+    writeFileSync(join(homeRoot, '.claude', 'settings.json'), JSON.stringify({ plugins: ['oh-my-copilot'] }));
 
     // No installed_plugins.json => fallback scan path
     const result = spawnSync('bash', [join(oldVersion, 'scripts', 'setup-claude-md.sh'), 'local'], {
@@ -1130,7 +1130,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
       env: {
         ...process.env,
         HOME: homeRoot,
-        CLAUDE_CONFIG_DIR: join(homeRoot, '.claude'),
+        COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
       },
       encoding: 'utf-8',
     });
@@ -1146,7 +1146,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-stale-json-old-version-'));
     tempRoots.push(root);
 
-    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const oldVersion = join(cacheBase, '4.8.2');
     const newVersion = join(cacheBase, '4.9.0');
     const projectRoot = join(root, 'project');
@@ -1187,7 +1187,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     writeFileSync(
       join(homeRoot, '.claude', 'plugins', 'installed_plugins.json'),
       JSON.stringify({
-        'oh-my-claudecode@omc': [
+        'oh-my-copilot@omc': [
           {
             installPath: oldVersion,
             version: '4.8.2',
@@ -1200,7 +1200,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     mkdirSync(join(homeRoot, '.claude'), { recursive: true });
     writeFileSync(
       join(homeRoot, '.claude', 'settings.json'),
-      JSON.stringify({ plugins: ['oh-my-claudecode'] }),
+      JSON.stringify({ plugins: ['oh-my-copilot'] }),
     );
 
     const result = spawnSync(
@@ -1211,7 +1211,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         env: {
           ...process.env,
           HOME: homeRoot,
-          CLAUDE_CONFIG_DIR: join(homeRoot, '.claude'),
+          COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
         },
         encoding: 'utf-8',
       },
@@ -1231,7 +1231,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-stale-root-'));
     tempRoots.push(root);
 
-    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const oldVersion = join(cacheBase, '4.8.2');
     const newVersion = join(cacheBase, '4.9.0');
     const projectRoot = join(root, 'project');
@@ -1263,7 +1263,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     writeFileSync(
       join(homeRoot, '.claude', 'plugins', 'installed_plugins.json'),
       JSON.stringify({
-        'oh-my-claudecode@omc': [
+        'oh-my-copilot@omc': [
           {
             installPath: newVersion,
             version: '4.9.0',
@@ -1277,7 +1277,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     mkdirSync(join(homeRoot, '.claude'), { recursive: true });
     writeFileSync(
       join(homeRoot, '.claude', 'settings.json'),
-      JSON.stringify({ plugins: ['oh-my-claudecode'] }),
+      JSON.stringify({ plugins: ['oh-my-copilot'] }),
     );
 
     // Run the OLD version's script — it should resolve to the NEW version's docs/CLAUDE.md
@@ -1289,7 +1289,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         env: {
           ...process.env,
           HOME: homeRoot,
-          CLAUDE_CONFIG_DIR: join(homeRoot, '.claude'),
+          COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
         },
         encoding: 'utf-8',
       },
@@ -1308,7 +1308,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-stale-wrapped-root-'));
     tempRoots.push(root);
 
-    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const oldVersion = join(cacheBase, '4.8.2');
     const newVersion = join(cacheBase, '4.9.0');
     const projectRoot = join(root, 'project');
@@ -1338,7 +1338,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
       join(homeRoot, '.claude', 'plugins', 'installed_plugins.json'),
       JSON.stringify({
         plugins: {
-          'oh-my-claudecode@omc': [
+          'oh-my-copilot@omc': [
             {
               installPath: newVersion,
               version: '4.9.0',
@@ -1352,7 +1352,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     mkdirSync(join(homeRoot, '.claude'), { recursive: true });
     writeFileSync(
       join(homeRoot, '.claude', 'settings.json'),
-      JSON.stringify({ plugins: ['oh-my-claudecode'] }),
+      JSON.stringify({ plugins: ['oh-my-copilot'] }),
     );
 
     const result = spawnSync(
@@ -1363,7 +1363,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         env: {
           ...process.env,
           HOME: homeRoot,
-          CLAUDE_CONFIG_DIR: join(homeRoot, '.claude'),
+          COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
         },
         encoding: 'utf-8',
       },
@@ -1381,7 +1381,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-stale-fallback-'));
     tempRoots.push(root);
 
-    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const oldVersion = join(cacheBase, '4.8.2');
     const newVersion = join(cacheBase, '4.9.0');
     const projectRoot = join(root, 'project');
@@ -1413,7 +1413,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
     mkdirSync(projectRoot, { recursive: true });
     writeFileSync(
       join(homeRoot, '.claude', 'settings.json'),
-      JSON.stringify({ plugins: ['oh-my-claudecode'] }),
+      JSON.stringify({ plugins: ['oh-my-copilot'] }),
     );
 
     const result = spawnSync(
@@ -1424,7 +1424,7 @@ describe('setup-claude-md.sh stale CLAUDE_PLUGIN_ROOT resolution', () => {
         env: {
           ...process.env,
           HOME: homeRoot,
-          CLAUDE_CONFIG_DIR: join(homeRoot, '.claude'),
+          COPILOT_CONFIG_DIR: join(homeRoot, '.claude'),
         },
         encoding: 'utf-8',
       },
@@ -1446,10 +1446,10 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
     const root = mkdtempSync(join(tmpdir(), 'omc-3743-volta-'));
     tempRoots.push(root);
 
-    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    const cacheBase = join(root, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     const projectRoot = join(root, 'project');
     const homeRoot = join(root, 'home');
-    const checkoutRoot = join(root, 'checkout', 'oh-my-claudecode');
+    const checkoutRoot = join(root, 'checkout', 'oh-my-copilot');
     mkdirSync(projectRoot, { recursive: true });
     mkdirSync(join(homeRoot, '.claude', 'plugins'), { recursive: true });
 
@@ -1472,7 +1472,7 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
   function writeInstalledPlugins(homeRoot: string, installPath: string) {
     writeFileSync(
       join(homeRoot, '.claude', 'plugins', 'installed_plugins.json'),
-      JSON.stringify({ plugins: { 'oh-my-claudecode@omc': [{ installPath, version: '9.9.9' }] } }),
+      JSON.stringify({ plugins: { 'oh-my-copilot@omc': [{ installPath, version: '9.9.9' }] } }),
     );
   }
 
@@ -1507,12 +1507,12 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
     const fixture = createIssue3743Fixture();
     // Double-slash variant of the checkout root: same physical directory,
     // never string-equal — the Windows-vs-MSYS stand-in on POSIX.
-    const grammarMismatched = `${fixture.root}//checkout/oh-my-claudecode//`;
+    const grammarMismatched = `${fixture.root}//checkout/oh-my-copilot//`;
     writeInstalledPlugins(fixture.homeRoot, grammarMismatched);
 
     const result = spawnSync('bash', [join(fixture.checkoutRoot, 'scripts', 'setup-claude-md.sh'), 'local'], {
       cwd: fixture.projectRoot,
-      env: { ...process.env, HOME: fixture.homeRoot, CLAUDE_CONFIG_DIR: join(fixture.homeRoot, '.claude') },
+      env: { ...process.env, HOME: fixture.homeRoot, COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude') },
       encoding: 'utf-8',
       timeout: 10_000,
     });
@@ -1548,7 +1548,7 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
         env: {
           ...process.env,
           HOME: fixture.homeRoot,
-          CLAUDE_CONFIG_DIR: join(fixture.homeRoot, '.claude'),
+          COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude'),
           OMC_SETUP_REEXEC_DEPTH: '2',
         },
         encoding: 'utf-8',
@@ -1583,7 +1583,7 @@ describe('setup-claude-md.sh Volta shim + re-exec loop regression (issue #3743)'
       env: {
         ...process.env,
         HOME: fixture.homeRoot,
-        CLAUDE_CONFIG_DIR: join(fixture.homeRoot, '.claude'),
+        COPILOT_CONFIG_DIR: join(fixture.homeRoot, '.claude'),
         PATH: `${shimDir}:${process.env.PATH}`,
       },
       encoding: 'utf-8',

@@ -4,7 +4,7 @@ description: ""
 
 # OMC omc-doctor
 
-This compatibility command keeps `/oh-my-claudecode:omc-doctor` available without loading the full `omc-doctor` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:omc-doctor` available without loading the full `omc-doctor` skill description in every Claude Code session.
 
 ## Dispatch
 

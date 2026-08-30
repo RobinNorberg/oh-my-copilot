@@ -19,7 +19,7 @@ vi.mock("node:os", () => ({
 }));
 
 vi.mock("../../utils/config-dir.js", () => ({
-  getClaudeConfigDir: () => "/Users/testuser/.claude",
+  getCopilotConfigDir: () => "/Users/testuser/.claude",
 }));
 
 import { existsSync, readFileSync } from "node:fs";

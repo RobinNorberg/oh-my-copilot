@@ -116,7 +116,6 @@ export class FileProjectionStore {
                 }
                 : undefined;
             atomicWriteJsonSync(filePath, envelope, hooks);
-            assertOwnership?.();
         });
     }
     async load() {

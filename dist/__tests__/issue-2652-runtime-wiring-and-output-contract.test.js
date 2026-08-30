@@ -3,8 +3,6 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
-import { ULTRAWORK_MESSAGE } from '../installer/hooks.js';
-import { getUltraworkMessage } from '../hooks/keyword-detector/ultrawork/index.js';
 describe('issue #2652 runtime wiring and output contract', () => {
     it('ships the Stop hook through persistent-mode.mjs', () => {
         const hooksJsonPath = join(process.cwd(), 'hooks', 'hooks.json');
@@ -58,13 +56,6 @@ describe('issue #2652 runtime wiring and output contract', () => {
         finally {
             rmSync(tempRoot, { recursive: true, force: true });
         }
-    });
-    it('ultrawork mode instructs spawned agents to keep outputs concise', () => {
-        expect(ULTRAWORK_MESSAGE).toBe(getUltraworkMessage());
-        expect(ULTRAWORK_MESSAGE).toContain('CONCISE OUTPUTS');
-        expect(ULTRAWORK_MESSAGE).toContain('under 100 words');
-        expect(ULTRAWORK_MESSAGE).toContain('files touched');
-        expect(ULTRAWORK_MESSAGE).toContain('verification status');
     });
 });
 //# sourceMappingURL=issue-2652-runtime-wiring-and-output-contract.test.js.map

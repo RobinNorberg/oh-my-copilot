@@ -5,7 +5,7 @@ argument-hint: "[optional compaction note]"
 
 # OMC Manual Context Compaction Helper
 
-This command intentionally uses the plugin-scoped name `/oh-my-claudecode:compact` instead of the bare `/compact` command. Bare `/compact` is reserved for Claude Code's native compaction command and must not be shadowed by OMC.
+This command intentionally uses the plugin-scoped name `/oh-my-copilot:compact` instead of the bare `/compact` command. Bare `/compact` is reserved for Claude Code's native compaction command and must not be shadowed by OMC.
 
 OMC cannot invoke Claude Code's built-in `/compact` from a plugin command: `/compact` is a native slash command, not a prompt skill, and a prompt-skill call for `compact` is not a supported handoff. This helper is instruction-only and must not claim that OMC triggers compaction itself.
 

@@ -59,7 +59,7 @@ export interface TmuxPane {
 
 export interface PaneAnalysisResult {
   /** Whether this pane appears to have Claude Code */
-  hasClaudeCode: boolean;
+  hasCopilotCode: boolean;
   /** Whether rate limit message is visible */
   hasRateLimitMessage: boolean;
   /** Whether the pane appears blocked (waiting for input) */

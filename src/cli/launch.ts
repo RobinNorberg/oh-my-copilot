@@ -24,7 +24,7 @@ import { atomicWriteJsonSync } from '../lib/atomic-write.js';
 import { lockPathFor, withFileLockSync } from '../lib/file-lock.js';
 import { resolvePluginDirArg } from '../lib/plugin-dir.js';
 import { stripRetiredTeamMcpServers } from '../installer/mcp-registry.js';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import {
   resolveLaunchPolicy,
   buildTmuxSessionName,
@@ -32,7 +32,7 @@ import {
   buildTmuxShellCommandWithEnv,
   isNativeWindowsShell,
   wrapWithLoginShell,
-  isClaudeAvailable,
+  isCopilotAvailable,
   isTmuxAvailable,
   quoteShellArg,
   tmuxExec,
@@ -502,7 +502,7 @@ function swapRuntimeConfigDir(runtimeConfigDir: string, nextConfigDir: string): 
   }
 }
 
-export function prepareOmcLaunchConfigDir(baseConfigDir = getClaudeConfigDir()): string {
+export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()): string {
   const companionPath = join(baseConfigDir, 'CLAUDE-omc.md');
   if (!hasOmcMarkers(companionPath)) {
     return baseConfigDir;
@@ -952,13 +952,13 @@ function runClaudeInsideTmux(cwd: string, args: string[]): void {
 /**
  * Env vars that must be forwarded into tmux sessions.
  * tmux new-session inherits the *server's* environment, not the calling
- * process's, so vars set on process.env (e.g. CLAUDE_CONFIG_DIR at launch)
+ * process's, so vars set on process.env (e.g. COPILOT_CONFIG_DIR at launch)
  * are silently lost.  We inject them as `export` statements into the shell
  * command that runs inside the tmux pane, *after* .zshrc/.bashrc sourcing
  * so our values take precedence.
  */
 export const TMUX_ENV_FORWARD = [
-  'CLAUDE_CONFIG_DIR',
+  'COPILOT_CONFIG_DIR',
   'OMC_NOTIFY',
   'OMC_OPENCLAW',
   'OMC_TELEGRAM',
@@ -1180,7 +1180,7 @@ export async function launchCommand(args: string[]): Promise<void> {
   }
 
   // Pre-flight: check claude CLI availability
-  if (!isClaudeAvailable()) {
+  if (!isCopilotAvailable()) {
     console.error('[omc] Error: claude CLI not found. Install Claude Code first:');
     console.error('  https://code.claude.com/docs/en/setup');
     process.exit(1);
@@ -1188,9 +1188,9 @@ export async function launchCommand(args: string[]): Promise<void> {
 
   const launchConfigDir = prepareOmcLaunchConfigDir();
   if (isDefaultClaudeConfigDirPath(launchConfigDir)) {
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
   } else {
-    process.env.CLAUDE_CONFIG_DIR = launchConfigDir;
+    process.env.COPILOT_CONFIG_DIR = launchConfigDir;
   }
 
   const normalizedArgs = normalizeClaudeLaunchArgs(argsAfterWebhook);

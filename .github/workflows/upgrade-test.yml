@@ -103,10 +103,10 @@ jobs:
       # ENOTEMPTY hardening: the global node_modules dir is reused across runs on
       # GitHub-hosted runners (and within the GitHub-hosted tool cache). A
       # previously interrupted `npm install -g` can leave behind the resolved
-      # package dir and/or npm's staging temp dirs (`.oh-my-claude-sisyphus-*`),
+      # package dir and/or npm's staging temp dirs (`.oh-my-copilot-*`),
       # which makes the next install fail with
-      #   npm ERR! ENOTEMPTY: directory not empty, rename '.../oh-my-claude-sisyphus'
-      #     -> '.../.oh-my-claude-sisyphus-XXXXXXXX'
+      #   npm ERR! ENOTEMPTY: directory not empty, rename '.../oh-my-copilot'
+      #     -> '.../.oh-my-copilot-XXXXXXXX'
       # and, on rerun, appear to hang. Remove any stale global package + npm
       # staging dirs before installing, then retry the install a few times so a
       # transient rename race does not fail the run. Persistent install failures
@@ -116,7 +116,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          PKG=oh-my-claude-sisyphus
+          PKG=oh-my-copilot
           GLOBAL_ROOT="$(npm root -g)"
 
           clean_stale_global_pkg() {
@@ -207,13 +207,13 @@ jobs:
             echo "OMC_UPGRADE_TEST_TARBALL=$RUNNER_TEMP/$TARBALL_NAME"
           } >> "$GITHUB_ENV"
 
-          if npm view "oh-my-claude-sisyphus@$CURRENT_PACKAGE_VERSION" version >/dev/null 2>&1; then
+          if npm view "oh-my-copilot@$CURRENT_PACKAGE_VERSION" version >/dev/null 2>&1; then
             set +e
             GITHUB_LATEST_VERSION="$(node -e '
               const headers = { "User-Agent": "omc-upgrade-test" };
               if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
 
-              fetch("https://api.github.com/repos/Yeachan-Heo/oh-my-claudecode/releases/latest", { headers })
+              fetch("https://api.github.com/repos/Yeachan-Heo/oh-my-copilot/releases/latest", { headers })
                 .then(async response => {
                   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
                   const release = await response.json();
@@ -348,9 +348,9 @@ jobs:
         run: |
           set -o pipefail
 
-          CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-          SESSION_HOOK="$CLAUDE_CONFIG_DIR/hooks/session-start.mjs"
-          SETTINGS_PATH="$CLAUDE_CONFIG_DIR/settings.json"
+          COPILOT_CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
+          SESSION_HOOK="$COPILOT_CONFIG_DIR/hooks/session-start.mjs"
+          SETTINGS_PATH="$COPILOT_CONFIG_DIR/settings.json"
 
           if [ ! -f "$SESSION_HOOK" ]; then
             echo "FAIL: missing SessionStart hook script at $SESSION_HOOK"

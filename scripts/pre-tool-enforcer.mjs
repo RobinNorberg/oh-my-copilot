@@ -12,7 +12,7 @@ import { dirname, join, resolve, basename } from 'path';
 import { homedir } from 'os';
 import { execFileSync } from 'child_process';
 import { fileURLToPath, pathToFileURL } from 'url';
-import { getClaudeConfigDir } from './lib/config-dir.mjs';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { evaluateAgentHeavyPreflight } from './lib/pre-tool-enforcer-preflight.mjs';
 import { evaluateForceAgentDelegation } from './lib/force-agent-delegation-preflight.mjs';
@@ -68,7 +68,7 @@ function isConfigForceInheritProxyEnv() {
   const config = loadOmcConfig();
   return config.routing?.forceInherit === true && !hasNormalClaudeActiveModel();
 }
-function isNonClaudeProviderEnv() {
+function isNonCopilotProviderEnv() {
   if (isBedrockProviderEnv() || isVertexProviderEnv()) return true;
   const modelId = process.env.CLAUDE_MODEL || process.env.ANTHROPIC_MODEL || '';
   if (modelId && !modelId.toLowerCase().includes('claude')) return true;
@@ -79,7 +79,7 @@ function isNonClaudeProviderEnv() {
 function acceptsProxyAnthropicDefaultTierValue(key, value) {
   return key.startsWith('ANTHROPIC_DEFAULT_')
     && Boolean(value)
-    && isNonClaudeProviderEnv()
+    && isNonCopilotProviderEnv()
     && !isBedrockProviderEnv()
     && !isVertexProviderEnv();
 }
@@ -134,7 +134,7 @@ function normalizeToCcAlias(model) {
 function readAgentDefinitionModel(subagentType) {
   // Guard: subagent_type must be a string — non-string payloads would throw on .replace()
   // and the catch block would silently return {continue:true}, bypassing enforcement.
-  const agentType = (typeof subagentType === 'string' ? subagentType : '').replace(/^oh-my-claudecode:/, '');
+  const agentType = (typeof subagentType === 'string' ? subagentType : '').replace(/^oh-my-copilot:/, '');
   if (!agentType) return null;
   // Reject path traversal: agent names are simple identifiers; no path separators allowed.
   if (!/^[a-zA-Z0-9_-]+$/.test(agentType)) return null;
@@ -169,7 +169,7 @@ function readAgentDefinitionModel(subagentType) {
 // Skill vs agent namespace guard (issue #3667)
 //
 // Task/Agent subagent_type identifiers and bundled skills share the same
-// `oh-my-claudecode:` namespace, so a caller can hand a skill name to
+// `oh-my-copilot:` namespace, so a caller can hand a skill name to
 // Task(subagent_type=...) and receive only Claude Code's generic native
 // "Agent type not found". OMC owns both registries (agents/*.md and
 // skills/*/SKILL.md), so the PreToolUse hook denies the call BEFORE the
@@ -177,7 +177,7 @@ function readAgentDefinitionModel(subagentType) {
 // identifier, and forbids closest-match substitution.
 // ---------------------------------------------------------------------------
 
-const SKILL_AGENT_NAMESPACE_PREFIXES = ['oh-my-claudecode:', 'omc:'];
+const SKILL_AGENT_NAMESPACE_PREFIXES = ['oh-my-copilot:', 'omc:'];
 const SKILL_IDENTIFIER_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function splitAgentNamespace(subagentType) {
@@ -204,7 +204,7 @@ function getPluginSkillsDirs() {
 
 /**
  * Whether an agent definition resolves for the given identifier.
- * Namespaced identifiers (oh-my-claudecode:X / omc:X) resolve only against
+ * Namespaced identifiers (oh-my-copilot:X / omc:X) resolve only against
  * plugin agents; bare identifiers resolve through the full native chain
  * (plugin, project .claude/agents, user config agents). A real agent always
  * wins over a bundled skill with the same name (collision rule).
@@ -213,7 +213,7 @@ function agentDefinitionExists(agentType, directory, namespaced) {
   const agentDirs = getPluginAgentDirs();
   if (!namespaced) {
     agentDirs.push(join(directory, '.claude', 'agents'));
-    agentDirs.push(join(getClaudeConfigDir(), 'agents'));
+    agentDirs.push(join(getCopilotConfigDir(), 'agents'));
   }
   return agentDirs.some((agentsDir) => existsSync(join(agentsDir, `${agentType}.md`)));
 }
@@ -342,8 +342,8 @@ function buildCanonicalSkillRegistry() {
  * agents are not visible to file-based plugin/project/user agent discovery,
  * yet `skills/plan` exists (registering `omc-plan`). Bare names therefore
  * never consult the directory shortcut; explicitly namespaced identifiers
- * (`oh-my-claudecode:` / `omc:`) are pinned to the OMC plugin namespace and
- * keep the full canonical + shortcut resolution (e.g. `oh-my-claudecode:plan`
+ * (`oh-my-copilot:` / `omc:`) are pinned to the OMC plugin namespace and
+ * keep the full canonical + shortcut resolution (e.g. `oh-my-copilot:plan`
  * -> `omc-plan`).
  */
 function resolveBundledSkill(subagentType, directory) {
@@ -402,10 +402,10 @@ function evaluateSkillAsAgentCall(toolName, toolInput, directory) {
   const { name } = splitAgentNamespace(subagentType);
   // Always suggest the canonical plugin-namespaced identifier. A bare skill
   // name can resolve to a different project/user skill or fail: bundled
-  // skills are exposed under the `oh-my-claudecode:` namespace (issue #3667
+  // skills are exposed under the `oh-my-copilot:` namespace (issue #3667
   // review), so the recovery must be unambiguous regardless of the caller's
   // input namespace form.
-  const skillIdentifier = `oh-my-claudecode:${skill.primary}`;
+  const skillIdentifier = `oh-my-copilot:${skill.primary}`;
   const isPrimaryMatch = name.toLowerCase() === skill.primary.toLowerCase();
   const queriedName = isPrimaryMatch
     ? `"${subagentType}"`
@@ -795,7 +795,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
     if (mainRepoRoot !== worktreeTop) {
       const sessionFile = basename(transcriptPath);
       if (sessionFile) {
-        const configDir = getClaudeConfigDir();
+        const configDir = getCopilotConfigDir();
         const projectsDir = join(configDir, 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = encodeProjectPath(mainRepoRoot);
@@ -915,7 +915,7 @@ async function getTodoStatus(directory) {
   }
 
   // NOTE: We intentionally do NOT scan the global
-  // [$CLAUDE_CONFIG_DIR|~/.claude]/todos/ directory.
+  // [$COPILOT_CONFIG_DIR|~/.claude]/todos/ directory.
   // That directory accumulates todo files from ALL past sessions across all
   // projects, causing phantom task counts in fresh sessions (see issue #354).
 
@@ -1206,10 +1206,10 @@ function isCancelSkillBootstrapTool(toolName, toolInput) {
   const command = typeof toolInput.command === 'string' ? toolInput.command : '';
   if (!isSingleShellCommand(command)) return false;
   // Bare CLI names (PATH installs) or trusted plugin entrypoint via node/nodejs.
-  // Basename is constrained to oh-my-claudecode.js; arbitrary node scripts stay denied.
+  // Basename is constrained to oh-my-copilot.js; arbitrary node scripts stay denied.
   // isSingleShellCommand above rejects chaining/expansion so a recognized token cannot
   // smuggle other commands past the guard (e.g. `... cancel && npm test`).
-  return /^(?:(?:node|nodejs)\s+(?:"[^"\n]*[/\\]oh-my-claudecode\.js"|'[^'\n]*[/\\]oh-my-claudecode\.js'|[^\s;|&`]*[/\\]oh-my-claudecode\.js)\s+|(?:omc|oh-my-claudecode|gjc)\s+)(?:state\s+(?:clear|read|write|list-active|get-status)|cancel)\b/.test(command.trim());
+  return /^(?:(?:node|nodejs)\s+(?:"[^"\n]*[/\\]oh-my-copilot\.js"|'[^'\n]*[/\\]oh-my-copilot\.js'|[^\s;|&`]*[/\\]oh-my-copilot\.js)\s+|(?:omc|oh-my-copilot|gjc)\s+)(?:state\s+(?:clear|read|write|list-active|get-status)|cancel)\b/.test(command.trim());
 }
 
 function isUltragoalBootstrapTool(toolName, toolInput) {
@@ -1217,7 +1217,7 @@ function isUltragoalBootstrapTool(toolName, toolInput) {
   if (toolName !== 'Bash') return false;
   const command = typeof toolInput.command === 'string' ? toolInput.command : '';
   if (!isSingleShellCommand(command)) return false;
-  return /^(?:omc|oh-my-claudecode)\s+ultragoal\s+(?:create(?:-goals)?|complete(?:-goals)?|next|start-next|status|checkpoint|record-review-blockers)\b/.test(command.trim());
+  return /^(?:omc|oh-my-copilot)\s+ultragoal\s+(?:create(?:-goals)?|complete(?:-goals)?|next|start-next|status|checkpoint|record-review-blockers)\b/.test(command.trim());
 }
 
 function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data) {
@@ -1502,19 +1502,19 @@ const SKILL_PROTECTION_MAP = {
 function getSkillProtectionLevel(skillName, rawSkillName) {
   // When rawSkillName is provided, only apply protection to OMC-prefixed skills.
   // Non-prefixed skills are project custom skills or other plugins — no protection.
-  // See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1581
+  // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1581
   if (rawSkillName != null && typeof rawSkillName === 'string' &&
-      !rawSkillName.toLowerCase().startsWith('oh-my-claudecode:')) {
+      !rawSkillName.toLowerCase().startsWith('oh-my-copilot:')) {
     return 'none';
   }
-  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
   return SKILL_PROTECTION_MAP[normalized] || 'none';
 }
 
 // Load OMC config to check forceInherit setting (issues #1135, #1201)
 function loadOmcConfig() {
   const configPaths = [
-    join(getClaudeConfigDir(), '.omc-config.json'),
+    join(getCopilotConfigDir(), '.omc-config.json'),
     join(process.cwd(), '.omc', 'config.json'),
   ];
   for (const configPath of configPaths) {
@@ -1548,7 +1548,7 @@ function writeSkillActiveState(stateDir, skillName, sessionId, rawSkillName) {
 
   const config = SKILL_PROTECTION_CONFIGS[protection];
   const now = new Date().toISOString();
-  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
 
   const safeSessionId = sessionId && SESSION_ID_PATTERN.test(sessionId) ? sessionId : '';
   const targetDir = safeSessionId
@@ -1823,7 +1823,7 @@ async function main() {
           if (agentDefModel && !isSubagentSafeModelId(agentDefModel) && !isTierAlias(agentDefModel)
               && hasSafeRouting) {
             const guidance = `Add model="${defTierAlias}" to this ${toolName} call — tier aliases resolve to configured provider models (${resolvedModel}).`;
-            const agentType = (toolInput.subagent_type).replace(/^oh-my-claudecode:/, '');
+            const agentType = (toolInput.subagent_type).replace(/^oh-my-copilot:/, '');
             console.log(JSON.stringify({
               continue: true,
               hookSpecificOutput: {

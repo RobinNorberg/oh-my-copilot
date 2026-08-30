@@ -32,7 +32,7 @@ const __dirname = dirname(__filename);
 // Dynamic import for the shared stdin module (use pathToFileURL for Windows compatibility, #524)
 const { readStdin } = await import(pathToFileURL(join(__dirname, 'lib', 'stdin.mjs')).href);
 const { atomicWriteFileSync, recoverEmergencyStateFile, withStateFileLockSync } = await import(pathToFileURL(join(__dirname, 'lib', 'atomic-write.mjs')).href);
-const { getClaudeConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
+const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, 'lib', 'config-dir.mjs')).href);
 const { resolveSessionStatePathsForHook } = await import(pathToFileURL(join(__dirname, 'lib', 'state-root.mjs')).href);
 const { parseWorkflowInvocation, selectWorkflowProfile, createWorkflowState, isValidWorkflowTrackingState, isWorkflowRuntimeSupported, resolveWorkflowStagePrompt, takeWorkflowTranscriptFailure } = await import(pathToFileURL(join(__dirname, 'lib', 'workflow-profile-runtime.mjs')).href);
 
@@ -145,11 +145,11 @@ function extractPrompt(input) {
 }
 
 function isExplicitAskSlashInvocation(prompt) {
-  return /^\s*\/(?:oh-my-claudecode:)?ask\s+(?:claude|codex|gemini|grok)\b/i.test(prompt);
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|grok)\b/i.test(prompt);
 }
 
 function isRetiredSlashInvocation(prompt) {
-  return /^\s*\/(?:omc:|oh-my-claudecode:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i.test(prompt);
+  return /^\s*\/(?:omc:|oh-my-copilot:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i.test(prompt);
 }
 
 // Sanitize text to prevent false positives from code blocks, XML tags, URLs, and file paths
@@ -216,7 +216,7 @@ const PASTED_MAGIC_KEYWORD_HEADER_PATTERN =
 const ROLE_BOUNDARY_PATTERN =
   /^<\s*\/?\s*(system|human|assistant|user|tool_use|tool_result)\b[^>]*>/i;
 const SKILL_TRANSCRIPT_LINE_PATTERN =
-  /^\s*Skill:\s+oh-my-(?:claudecode|codex):/i;
+  /^\s*Skill:\s+oh-my-(?:copilot|claudecode|codex):/i;
 const USER_REQUEST_LINE_PATTERN = /^\s*User request(?:\s*\([^)]*\))?:\s*$/i;
 const SHELL_TRANSCRIPT_LINE_PATTERN = /^\s*[$%❯]\s+/;
 const GIT_DIFF_START_PATTERNS = [
@@ -374,7 +374,7 @@ const QUESTION_FOLLOWUP_PATTERNS = [
 // recognized block header. They must be stripped only in that context —
 // never standalone — because a user might legitimately start a prompt with
 // "Task: …" or similar (Codex automated review P1/P2 on #2795).
-const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-claudecode:cancel).*)*';
+const ECHO_CONTINUATION = '(?:\\r?\\n[ \\t]*(?:Task:\\s|When FULLY complete \\(after Architect verification\\)|run\\s+\\/oh-my-copilot:cancel).*)*';
 
 // Each pattern is a single logical block: the block header line + zero or
 // more continuation lines emitted right after it. The whole match is
@@ -402,7 +402,7 @@ const SYSTEM_ECHO_BLOCK_PATTERNS = [
 
 const SYSTEM_ECHO_SIGNATURES = [
   /\bWhen FULLY complete \(after Architect verification\)\b/i,
-  /\brun\s+\/oh-my-claudecode:cancel\b/i,
+  /\brun\s+\/oh-my-copilot:cancel\b/i,
   /\[RALPH LOOP\s*-\s*ITERATION\b/i,
 ];
 
@@ -548,7 +548,7 @@ function hasActivationIntentNearKeyword(context, keyword) {
 
 function hasDirectInvocationPrefix(text, position) {
   const prefix = text.slice(0, position);
-  return /^\s*(?:[$/!]\s*|force:\s*|oh-my-(?:claudecode|codex):\s*)?$/i.test(prefix);
+  return /^\s*(?:[$/!]\s*|force:\s*|oh-my-(?:copilot|claudecode|codex):\s*)?$/i.test(prefix);
 }
 
 function hasConversationalInvocationNearKeyword(text, position, _keywordLength, _keywordText) {
@@ -588,7 +588,7 @@ function hasExplicitRalphInvocationContext(text, position, keywordLength, keywor
   const prefix = text.slice(0, position);
   const suffix = text.slice(position + keywordLength);
 
-  if (/^\s*(?:[$/!]\s*|force:\s*|\/?oh-my-(?:claudecode|codex):\s*)$/i.test(prefix)) {
+  if (/^\s*(?:[$/!]\s*|force:\s*|\/?oh-my-(?:copilot|claudecode|codex):\s*)$/i.test(prefix)) {
     return true;
   }
 
@@ -1103,13 +1103,13 @@ Arguments: ${args}` : '';
   const skillPath = resolveSkillPath(skillName);
   const pathStatus = existsSync(skillPath)
     ? `Read fallback: open ${skillPath} and follow its SKILL.md instructions.`
-    : `Read fallback: locate skills/${skillName}/SKILL.md in the active oh-my-claudecode plugin/install and follow it.`;
+    : `Read fallback: locate skills/${skillName}/SKILL.md in the active oh-my-copilot plugin/install and follow it.`;
   const ralphLoopNotice = skillName === 'ralph' ? findOfficialRalphLoopNotice(directory) : '';
 
   return `[MAGIC KEYWORD: ${skillName.toUpperCase()}]
 
 Skill routing detected: ${skillName}
-Preferred invocation: /oh-my-claudecode:${skillName}${args ? ` ${args}` : ''}
+Preferred invocation: /oh-my-copilot:${skillName}${args ? ` ${args}` : ''}
 ${pathStatus}${argsSection}${ralphLoopNotice ? `
 
 ${ralphLoopNotice}` : ''}
@@ -1134,9 +1134,9 @@ function createMultiSkillInvocation(skills, originalPrompt, directory = '') {
     const argsText = s.args ? ` ${s.args}` : '';
     const pathStatus = existsSync(skillPath)
       ? `Read fallback: ${skillPath}`
-      : `Read fallback: locate skills/${s.name}/SKILL.md in the active oh-my-claudecode plugin/install`;
+      : `Read fallback: locate skills/${s.name}/SKILL.md in the active oh-my-copilot plugin/install`;
     return `### Skill ${i + 1}: ${s.name.toUpperCase()}
-Preferred invocation: /oh-my-claudecode:${s.name}${argsText}
+Preferred invocation: /oh-my-copilot:${s.name}${argsText}
 ${pathStatus}`;
   }).join('\n\n');
 
@@ -1199,14 +1199,14 @@ function createHookOutput(additionalContext) {
 
 /**
  * Check if the team feature is enabled in Claude Code settings.
- * Reads settings.json from [$CLAUDE_CONFIG_DIR|~/.claude] and checks for
+ * Reads settings.json from [$COPILOT_CONFIG_DIR|~/.claude] and checks for
  * CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS env var.
  * @returns {boolean} true if team feature is enabled
  */
 function isTeamEnabled() {
   try {
     // Check settings.json first (authoritative, user-controlled)
-    const cfgDir = getClaudeConfigDir();
+    const cfgDir = getCopilotConfigDir();
     const settingsPath = join(cfgDir, 'settings.json');
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
@@ -1232,7 +1232,7 @@ function isTeamEnabled() {
  * (`hasEnabledOmcPlugin` in src/installer/index.ts):
  *
  * 1. INSTALLED: the machine-readable plugin registry
- *    `[$CLAUDE_CONFIG_DIR|~/.claude]/plugins/installed_plugins.json` contains
+ *    `[$COPILOT_CONFIG_DIR|~/.claude]/plugins/installed_plugins.json` contains
  *    the official id `ralph-loop@claude-plugins-official` with a real
  *    `commands/ralph-loop.md` payload under its installPath. The registry's
  *    own `enabled` flag is deliberately NOT consulted: it does not
@@ -1241,7 +1241,7 @@ function isTeamEnabled() {
  * 2. ENABLED: the official id is enabled by the effective Claude Code settings
  *    for the active project, resolved highest-precedence-first across
  *    `<project>/.claude/settings.local.json`, `<project>/.claude/settings.json`
- *    and `[$CLAUDE_CONFIG_DIR|~/.claude]/settings.json`. Within a file the
+ *    and `[$COPILOT_CONFIG_DIR|~/.claude]/settings.json`. Within a file the
  *    canonical `enabledPlugins` field decides (legacy `plugins` field accepted
  *    for backward compatibility), as an array of plugin ids or a map whose
  *    value is not `false`. Missing or malformed settings are treated as not
@@ -1316,7 +1316,7 @@ function isOfficialRalphLoopEnabledForProject(directory) {
   const settingsPaths = [
     join(projectRoot, '.claude', 'settings.local.json'),
     join(projectRoot, '.claude', 'settings.json'),
-    join(getClaudeConfigDir(), 'settings.json'),
+    join(getCopilotConfigDir(), 'settings.json'),
   ];
   for (const settingsPath of settingsPaths) {
     if (!existsSync(settingsPath)) continue;
@@ -1337,7 +1337,7 @@ function findOfficialRalphLoopNotice(directory) {
     return '';
   }
 
-  const installedPluginsPath = join(getClaudeConfigDir(), 'plugins', 'installed_plugins.json');
+  const installedPluginsPath = join(getCopilotConfigDir(), 'plugins', 'installed_plugins.json');
   if (!existsSync(installedPluginsPath)) {
     return '';
   }

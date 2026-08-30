@@ -16,7 +16,7 @@ describe('session friction report', () => {
     beforeEach(() => {
         tempRoot = mkdtempSync(join(tmpdir(), 'omc-session-friction-'));
         claudeDir = join(tempRoot, 'claude');
-        process.env.CLAUDE_CONFIG_DIR = claudeDir;
+        process.env.COPILOT_CONFIG_DIR = claudeDir;
         process.env.OMC_STATE_DIR = join(tempRoot, 'omc-state');
         const currentProjectDir = join(claudeDir, 'projects', encodeProjectPath(repoRoot));
         writeJsonl(join(currentProjectDir, 'session-current.jsonl'), [
@@ -51,7 +51,7 @@ describe('session friction report', () => {
         ]);
     });
     afterEach(() => {
-        delete process.env.CLAUDE_CONFIG_DIR;
+        delete process.env.COPILOT_CONFIG_DIR;
         delete process.env.OMC_STATE_DIR;
         rmSync(tempRoot, { recursive: true, force: true });
     });
@@ -86,7 +86,7 @@ describe('session friction report', () => {
         expect(session?.replayAgentsFailed).toBe(1);
     });
     it('keeps project-local OMC replay artifacts when entries have no cwd', async () => {
-        const report = await generateSessionFrictionReport({ workingDirectory: repoRoot, project: 'oh-my-claudecode' });
+        const report = await generateSessionFrictionReport({ workingDirectory: repoRoot, project: 'oh-my-copilot' });
         const session = report.sessions.find((candidate) => candidate.sessionId === 'session-current');
         expect(session?.sources).toContain('omc-session-replay');
         expect(session?.replayToolCalls).toBe(1);

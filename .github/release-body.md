@@ -2,7 +2,7 @@
 
 v5.0.2 is the patch release from v5.0.1 through the final release candidate.
 
-Install the release globally with `npm install -g oh-my-claude-sisyphus@5.0.2`.
+Install the release globally with `npm install -g oh-my-copilot@5.0.2`.
 
 ### Highlights
 

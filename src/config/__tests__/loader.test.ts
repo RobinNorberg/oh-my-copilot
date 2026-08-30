@@ -223,7 +223,7 @@ describe("startup context compaction", () => {
 
     try {
       const omcAgentsPath = join(tempDir, "AGENTS.md");
-      const omcGuidance = `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+      const omcGuidance = `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>
 schema
@@ -275,7 +275,7 @@ schema
       const fileA = join(tempDir, "AGENTS.md");
       const fileB = join(tempDir, "nested", "CLAUDE.md");
       require("node:fs").mkdirSync(join(tempDir, "nested"), { recursive: true });
-      const largeSection = `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+      const largeSection = `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>schema</guidance_schema_contract>
 
@@ -300,7 +300,7 @@ ${"- keep this\n".repeat(900)}
   });
 
   it("caps very large OMC guidance after preserving high-value sections", () => {
-    const largeOmc = `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+    const largeOmc = `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>
 schema

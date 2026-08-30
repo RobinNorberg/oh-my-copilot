@@ -1,7 +1,7 @@
 /**
  * Notification System - Public API
  *
- * Multi-platform lifecycle notifications for oh-my-claudecode.
+ * Multi-platform lifecycle notifications for oh-my-copilot.
  * Sends notifications to Discord, Telegram, Slack, and generic webhooks
  * on session lifecycle events.
  *

@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { getOmcRoot, getGitTopLevel } from '../../lib/worktree-paths.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 
 export interface PermissionRequestInput {
   session_id: string;
@@ -104,9 +104,9 @@ function readPermissionStringEntries(filePath: string, key: 'allow' | 'ask'): st
   }
 }
 
-export function getClaudePermissionAllowEntries(directory: string): string[] {
+export function getCopilotPermissionAllowEntries(directory: string): string[] {
   const projectSettingsPath = path.join(directory, '.claude', 'settings.local.json');
-  const globalConfigDir = getClaudeConfigDir();
+  const globalConfigDir = getCopilotConfigDir();
   const candidatePaths = [
     projectSettingsPath,
     path.join(globalConfigDir, 'settings.local.json'),
@@ -132,7 +132,7 @@ export function hasClaudePermissionApproval(
   toolName: 'Edit' | 'Write' | 'Bash',
   command?: string,
 ): boolean {
-  const allowEntries = getClaudePermissionAllowEntries(directory);
+  const allowEntries = getCopilotPermissionAllowEntries(directory);
 
   if (toolName !== 'Bash') {
     return hasGenericToolPermission(allowEntries, toolName);
@@ -151,9 +151,9 @@ export function hasClaudePermissionApproval(
 }
 
 
-export function getClaudePermissionAskEntries(directory: string): string[] {
+export function getCopilotPermissionAskEntries(directory: string): string[] {
   const projectSettingsPath = path.join(directory, '.claude', 'settings.local.json');
-  const globalConfigDir = getClaudeConfigDir();
+  const globalConfigDir = getCopilotConfigDir();
   const candidatePaths = [
     projectSettingsPath,
     path.join(globalConfigDir, 'settings.local.json'),
@@ -198,7 +198,7 @@ export function hasClaudePermissionAsk(
   toolName: 'Edit' | 'Write' | 'Bash',
   command?: string,
 ): boolean {
-  const askEntries = getClaudePermissionAskEntries(directory);
+  const askEntries = getCopilotPermissionAskEntries(directory);
 
   if (toolName !== 'Bash') {
     return hasGenericToolPermission(askEntries, toolName);

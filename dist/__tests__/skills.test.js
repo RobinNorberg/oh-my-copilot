@@ -7,7 +7,7 @@ describe('Builtin Skills', () => {
     const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
     const originalPath = process.env.PATH;
     const originalUserType = process.env.USER_TYPE;
-    const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
     const originalCwd = process.cwd();
     let tempDirs = [];
     // Clear cache before each test to ensure fresh loads
@@ -31,10 +31,10 @@ describe('Builtin Skills', () => {
             process.env.USER_TYPE = originalUserType;
         }
         if (originalClaudeConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         else {
-            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
         }
         process.chdir(originalCwd);
         tempDirs = [];
@@ -60,10 +60,10 @@ describe('Builtin Skills', () => {
             process.env.USER_TYPE = originalUserType;
         }
         if (originalClaudeConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         else {
-            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
         }
         process.chdir(originalCwd);
         for (const dir of tempDirs) {
@@ -73,10 +73,10 @@ describe('Builtin Skills', () => {
         clearSkillsCache();
     });
     describe('createBuiltinSkills()', () => {
-        it('should return correct number of skills (31 canonical + 2 aliases)', () => {
+        it('should return correct number of skills (32 canonical + 2 aliases)', () => {
             const skills = createBuiltinSkills();
-            // 33 entries: 31 canonical skills + 2 aliases (cancel-ralph, psm)
-            expect(skills).toHaveLength(33);
+            // 34 entries: 32 canonical skills + 2 aliases (cancel-ralph, psm)
+            expect(skills).toHaveLength(34);
         });
         it('should return an array of BuiltinSkill objects', () => {
             const skills = createBuiltinSkills();
@@ -133,6 +133,7 @@ describe('Builtin Skills', () => {
                 'deepinit',
                 'execute',
                 'external-context',
+                'graph',
                 'hud',
                 'omc-doctor',
                 'omc-plan',
@@ -242,8 +243,8 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('unless the user explicitly approves that next step');
             expect(skill?.template).not.toContain('Pipeline: `deep-interview → plan → autopilot`');
             expect(skill?.template).not.toContain('Next skill: `plan`');
-            expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-claudecode:plan")');
-            expect(skill?.template).toContain('Only after the user selects this option, invoke `Skill("oh-my-claudecode:plan")`');
+            expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-copilot:plan")');
+            expect(skill?.template).toContain('Only after the user selects this option, invoke `Skill("oh-my-copilot:plan")`');
             expect(skill?.template).toContain('do not automatically invoke autopilot or any other execution skill');
             expect(skill?.template).toContain('`.omc/specs/deep-interview-{slug}.md`');
             expect(skill?.template).toContain('Why now: {one_sentence_targeting_rationale}');
@@ -252,7 +253,7 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('Every round explicitly names the weakest dimension and why it is the next target');
             expect(skill?.argumentHint).toContain('--autoresearch');
             expect(skill?.template).toContain('zero-learning-curve setup lane for the stateful `autoresearch` skill');
-            expect(skill?.template).toContain('Skill("oh-my-claudecode:autoresearch")');
+            expect(skill?.template).toContain('Skill("oh-my-copilot:autoresearch")');
         });
         it('documents deep-interview Round 0 topology locking and multi-component scoring (issue #2919)', () => {
             const skill = getBuiltinSkill('deep-interview');
@@ -289,7 +290,7 @@ describe('Builtin Skills', () => {
             const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-profile-'));
             const projectDir = mkdtempSync(join(tmpdir(), 'omc-skill-project-'));
             tempDirs.push(profileDir, projectDir);
-            process.env.CLAUDE_CONFIG_DIR = profileDir;
+            process.env.COPILOT_CONFIG_DIR = profileDir;
             writeFileSync(join(profileDir, 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }));
             mkdirSync(join(projectDir, '.claude'), { recursive: true });
             writeFileSync(join(projectDir, '.claude', 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.12 } } }));
@@ -328,16 +329,16 @@ describe('Builtin Skills', () => {
         it('replaces all hardcoded 20%/0.2 threshold references in deep-interview template (issue #2545)', () => {
             const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-2545-'));
             tempDirs.push(profileDir);
-            process.env.CLAUDE_CONFIG_DIR = profileDir;
+            process.env.COPILOT_CONFIG_DIR = profileDir;
             writeFileSync(join(profileDir, 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }));
             clearSkillsCache();
             const skill = getBuiltinSkill('deep-interview');
             expect(skill).toBeDefined();
             const t = skill.template;
             // Previously-fixed references (regression guard)
-            expect(t).toContain('Deep Interview threshold: 15% (source: [$CLAUDE_CONFIG_DIR|~/.claude]/settings.json)');
+            expect(t).toContain('Deep Interview threshold: 15% (source: [$COPILOT_CONFIG_DIR|~/.claude]/settings.json)');
             expect(t).toContain('"threshold": 0.15,');
-            expect(t).toContain('"threshold_source": "[$CLAUDE_CONFIG_DIR|~/.claude]/settings.json",');
+            expect(t).toContain('"threshold_source": "[$COPILOT_CONFIG_DIR|~/.claude]/settings.json",');
             expect(t).toContain('drops below 15%.');
             expect(t).toContain('resolved threshold for this run'); // Purpose/Execution_Policy
             expect(t).toContain('Gate: ≤15% ambiguity'); // ASCII pipeline diagram
@@ -355,13 +356,13 @@ describe('Builtin Skills', () => {
         it('ships a config-aware deep-interview SKILL.md for native skill-loader paths (issues #2723, #3030)', () => {
             const raw = readFileSync(join(originalCwd, 'skills', 'deep-interview', 'SKILL.md'), 'utf-8');
             expect(raw).toContain('Native Plugin Invocation Guard (Issue #3030)');
-            expect(raw).toContain('`/oh-my-claudecode:deep-interview` or `Skill("oh-my-claudecode:deep-interview")`');
+            expect(raw).toContain('`/oh-my-copilot:deep-interview` or `Skill("oh-my-copilot:deep-interview")`');
             expect(raw).toContain('The user-facing preferred invocation is `/deep-interview`');
-            expect(raw).toContain('do not recommend or advertise `/oh-my-claudecode:deep-interview`');
+            expect(raw).toContain('do not recommend or advertise `/oh-my-copilot:deep-interview`');
             expect(raw).toContain('Phase 0 below remains blocking');
             expect(raw).toContain('must resolve `omc.deepInterview.ambiguityThreshold` from settings');
             expect(raw).toContain('Phase 0: Resolve Ambiguity Threshold (blocking prerequisite)');
-            expect(raw).toContain('User settings: `[$CLAUDE_CONFIG_DIR|~/.claude]/settings.json`');
+            expect(raw).toContain('User settings: `[$COPILOT_CONFIG_DIR|~/.claude]/settings.json`');
             expect(raw).toContain('Project settings: `./.claude/settings.json`');
             expect(raw).toContain('"threshold": <resolvedThreshold>,');
             expect(raw).toContain('"threshold_source": "<resolvedThresholdSource>",');
@@ -413,10 +414,10 @@ describe('Builtin Skills', () => {
         it('applies deep-interview runtime settings for plugin-qualified rendered skill names (issue #3030)', () => {
             const profileDir = mkdtempSync(join(tmpdir(), 'omc-skill-3030-'));
             tempDirs.push(profileDir);
-            process.env.CLAUDE_CONFIG_DIR = profileDir;
+            process.env.COPILOT_CONFIG_DIR = profileDir;
             writeFileSync(join(profileDir, 'settings.json'), JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.17 } } }));
             clearSkillsCache();
-            const rendered = renderBundledSkillBody('oh-my-claudecode:deep-interview', [
+            const rendered = renderBundledSkillBody('oh-my-copilot:deep-interview', [
                 'State:',
                 '"threshold": 0.2,',
                 'Announcement: We\'ll proceed to execution once ambiguity drops below 20%.',
@@ -466,7 +467,7 @@ describe('Builtin Skills', () => {
                 expect(deepInterviewSkill?.template)
                     .toContain('zero-learning-curve setup lane for the stateful `autoresearch` skill');
                 expect(deepInterviewSkill?.template)
-                    .toContain('Skill("oh-my-claudecode:autoresearch")');
+                    .toContain('Skill("oh-my-copilot:autoresearch")');
                 expect(askSkill?.template)
                     .toContain('node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask {{ARGUMENTS}}');
             }
@@ -509,8 +510,8 @@ describe('Builtin Skills', () => {
             expect(skill?.template).toContain('This stage is approval-gated');
             expect(skill?.template).toContain('unless the user explicitly approves that next step');
             expect(skill?.template).not.toContain('Next skill: `autopilot`');
-            expect(skill?.template).not.toContain('Skill("oh-my-claudecode:autopilot")');
-            expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-claudecode:autopilot")');
+            expect(skill?.template).not.toContain('Skill("oh-my-copilot:autopilot")');
+            expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-copilot:autopilot")');
             expect(skill?.template).toContain('`.omc/plans/ralplan-*.md`');
         });
         it('should expose review mode guidance for ai-slop-cleaner', () => {
@@ -573,7 +574,7 @@ describe('Builtin Skills', () => {
     describe('listBuiltinSkillNames()', () => {
         it('should return canonical skill names by default', () => {
             const names = listBuiltinSkillNames();
-            expect(names).toHaveLength(31);
+            expect(names).toHaveLength(32);
             expect(names).toContain('ai-slop-cleaner');
             expect(names).toContain('ask');
             expect(names).toContain('autopilot');
@@ -604,7 +605,7 @@ describe('Builtin Skills', () => {
         it('should include aliases when explicitly requested', () => {
             const names = listBuiltinSkillNames({ includeAliases: true });
             // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-            expect(names).toHaveLength(33);
+            expect(names).toHaveLength(34);
             expect(names).toContain('ai-slop-cleaner');
             expect(names).toContain('autoresearch');
             expect(names).toContain('self-improve');

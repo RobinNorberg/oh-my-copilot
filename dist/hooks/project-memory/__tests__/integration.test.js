@@ -11,9 +11,15 @@ import { loadProjectMemory, saveProjectMemory, getMemoryPath } from "../storage.
 import { learnFromToolOutput } from "../learner.js";
 describe("Project Memory Integration", () => {
     let tempDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(async () => {
         delete process.env.OMC_STATE_DIR;
         tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "integration-test-"));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = tempDir;
+        process.env.USERPROFILE = tempDir;
     });
     afterEach(async () => {
         delete process.env.OMC_STATE_DIR;
@@ -28,6 +34,14 @@ describe("Project Memory Integration", () => {
         contextCollector.clear("test-session-8");
         contextCollector.clear("test-session-scope");
         await fs.rm(tempDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     describe("End-to-end SessionStart flow", () => {
         it("should detect, persist, and inject context on first session", async () => {

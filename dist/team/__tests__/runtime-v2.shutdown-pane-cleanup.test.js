@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { isProcessAlive } from '../../platform/process-utils.js';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 import { resolveRuntimeCliPath } from '../runtime-owner-client.js';
 import { awaitWorkerLaunchAcknowledgement, awaitWorkerLaunchProviderStarted, buildWorkerLaunchBootstrapSpec, prepareWorkerLaunchAttempt, runWorkerLaunchBootstrap } from '../worker-launch-ack.js';
 const execFileMock = vi.hoisted(() => vi.fn());
@@ -17,14 +18,23 @@ vi.mock('child_process', async (importOriginal) => {
     };
 });
 async function writeJson(cwd, relativePath, value) {
-    const fullPath = join(cwd, relativePath);
+    const fullPath = isAbsolute(relativePath) ? relativePath : join(cwd, relativePath);
     await mkdir(dirname(fullPath), { recursive: true });
     await writeFile(fullPath, JSON.stringify(value, null, 2), 'utf-8');
 }
 describe('shutdownTeamV2 split-pane pane cleanup', () => {
     let cwd = '';
+    let originalHome;
+    let originalUserProfile;
+    let originalStateDir;
     beforeEach(async () => {
+        originalHome = process.env.HOME;
+        originalUserProfile = process.env.USERPROFILE;
+        originalStateDir = process.env.OMC_STATE_DIR;
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-pane-cleanup-'));
+        process.env.HOME = cwd;
+        process.env.USERPROFILE = cwd;
+        delete process.env.OMC_STATE_DIR;
         tmuxCalls.length = 0;
         execFileMock.mockReset();
         execMock.mockReset();
@@ -72,6 +82,18 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
         tmuxCalls.length = 0;
         execFileMock.mockReset();
         execMock.mockReset();
+        if (originalHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = originalHome;
+        if (originalUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = originalUserProfile;
+        if (originalStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = originalStateDir;
         if (cwd) {
             await rm(cwd, { recursive: true, force: true });
             cwd = '';
@@ -79,7 +101,7 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
     });
     it('preserves the owned pane and state when provider launch identity is missing', async () => {
         const teamName = 'pane-cleanup-team';
-        const teamRoot = `.omc/state/team/${teamName}`;
+        const teamRoot = join(getOmcRoot(cwd), 'state', 'team', teamName);
         await writeJson(cwd, `${teamRoot}/config.json`, {
             name: teamName,
             task: 'demo',
@@ -109,11 +131,11 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
             .map((args) => args[2]);
         expect(killPaneTargets).toEqual([]);
         expect(tmuxCalls.some(args => args[0] === 'kill-window' || args[0] === 'kill-session')).toBe(false);
-        await expect(readFile(join(cwd, teamRoot, 'config.json'), 'utf-8')).resolves.toContain('pane-cleanup-team');
+        await expect(readFile(join(teamRoot, 'config.json'), 'utf-8')).resolves.toContain('pane-cleanup-team');
     });
     it('retires and terminates the exact provider while accepting a proven-dead pane', async () => {
         const teamName = 'provider-cleanup-team';
-        const teamRoot = `.omc/state/team/${teamName}`;
+        const teamRoot = join(getOmcRoot(cwd), 'state', 'team', teamName);
         const attempt = await prepareWorkerLaunchAttempt({ cwd, teamName, workerName: 'worker-1', paneId: '%2',
             provider: 'claude', runtimeCliPath: resolveRuntimeCliPath(), context: { kind: 'initial' } });
         const bootstrap = runWorkerLaunchBootstrap(buildWorkerLaunchBootstrapSpec(attempt, [process.execPath, '-e', 'setInterval(()=>{},1000)'], cwd));
@@ -135,7 +157,7 @@ describe('shutdownTeamV2 split-pane pane cleanup', () => {
         await expect(bootstrap).resolves.toMatchObject({ outcome: 'ran' });
         expect(isProcessAlive(providerPid)).toBe(false);
         expect(tmuxCalls.some(args => args[0] === 'kill-pane' && args[2] === '%2')).toBe(false);
-        await expect(readFile(join(cwd, teamRoot, 'config.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+        await expect(readFile(join(teamRoot, 'config.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
     });
 });
 //# sourceMappingURL=runtime-v2.shutdown-pane-cleanup.test.js.map

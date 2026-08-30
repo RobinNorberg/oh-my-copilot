@@ -3,13 +3,44 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { tmpdir } from 'os';
 import { maybeNudgeLeader } from '../../hooks/team-leader-nudge-hook.js';
+function isolateFixtureRoot(root) {
+    const home = process.env.HOME;
+    const userProfile = process.env.USERPROFILE;
+    const stateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return () => {
+        if (home === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = home;
+        if (userProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = userProfile;
+        if (stateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = stateDir;
+    };
+}
 describe('team leader nudge hook', () => {
     let cwd;
+    let restoreFixtureEnv;
     beforeEach(async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-team-leader-nudge-'));
+        restoreFixtureEnv = isolateFixtureRoot(cwd);
     });
     afterEach(async () => {
-        await rm(cwd, { recursive: true, force: true });
+        const restore = restoreFixtureEnv;
+        restoreFixtureEnv = undefined;
+        try {
+            restore?.();
+        }
+        finally {
+            await rm(cwd, { recursive: true, force: true });
+        }
         vi.restoreAllMocks();
     });
     async function writeJson(relativePath, value) {

@@ -4,7 +4,7 @@ description: ""
 
 # OMC remember
 
-This compatibility command keeps `/oh-my-claudecode:remember` available without loading the full `remember` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:remember` available without loading the full `remember` skill description in every Claude Code session.
 
 ## Dispatch
 

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
 const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
 const originalHome = process.env.HOME;
 let testClaudeDir;
@@ -26,11 +26,11 @@ function writeCompletePluginPayload(root) {
     writePluginFile(join(root, 'skills', 'plan', 'SKILL.md'), '# plan\n');
     writePluginFile(join(root, 'commands', 'omc-setup.md'), 'Read skills/omc-setup/SKILL.md and pass $ARGUMENTS.\n');
     writePluginFile(join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({
-        name: 'oh-my-claudecode',
+        name: 'oh-my-copilot',
         commands: './commands/',
         skills: ['./skills/plan/'],
     }, null, 2));
-    writePluginFile(join(root, 'package.json'), JSON.stringify({ name: 'oh-my-claude-sisyphus', version: '9.9.9' }, null, 2));
+    writePluginFile(join(root, 'package.json'), JSON.stringify({ name: 'oh-my-copilot', version: '9.9.9' }, null, 2));
     writePluginFile(join(root, 'docs', 'CLAUDE.md'), readFileSync(join(process.cwd(), 'docs', 'CLAUDE.md'), 'utf-8'));
 }
 function shippedStandaloneHookPayload(filename, location) {
@@ -57,7 +57,7 @@ describe('install() standalone hook reconciliation', () => {
         testHomeDir = mkdtempSync(join(tmpdir(), 'omc-home-'));
         mkdirSync(testHomeDir, { recursive: true });
         writeFileSync(join(testHomeDir, 'CLAUDE.md'), '# test home claude');
-        process.env.CLAUDE_CONFIG_DIR = testClaudeDir;
+        process.env.COPILOT_CONFIG_DIR = testClaudeDir;
         process.env.HOME = testHomeDir;
         delete process.env.CLAUDE_PLUGIN_ROOT;
     });
@@ -65,10 +65,10 @@ describe('install() standalone hook reconciliation', () => {
         rmSync(testClaudeDir, { recursive: true, force: true });
         rmSync(testHomeDir, { recursive: true, force: true });
         if (originalClaudeConfigDir !== undefined) {
-            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
         }
         else {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         if (originalPluginRoot !== undefined) {
             process.env.CLAUDE_PLUGIN_ROOT = originalPluginRoot;
@@ -90,19 +90,19 @@ describe('install() standalone hook reconciliation', () => {
         const { install } = await loadInstaller();
         const result = install({
             force: true,
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
         });
         const writtenSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
         expect(result.success).toBe(true);
         expect(result.hooksConfigured).toBe(true);
         expect(writtenSettings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0]?.command).toBe(`node "${join(testClaudeDir, 'hooks', 'keyword-detector.mjs').replace(/\\/g, '/')}"`);
         expect(writtenSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toBe(`node "${join(testClaudeDir, 'hooks', 'session-start.mjs').replace(/\\/g, '/')}"`);
-        expect(writtenSettings.statusLine?.command).toContain(`${join(testClaudeDir, 'hud', 'omc-hud.mjs').replace(/\\/g, '/')}`);
-        expect(writtenSettings.statusLine?.command).toContain('omc-hud-cache.sh');
-        expect(readFileSync(join(testClaudeDir, 'hud', 'omc-hud-cache.sh'), 'utf-8')).toContain('HUD cached statusLine launcher');
-        expect(readFileSync(join(testClaudeDir, 'hud', 'omc-hud.mjs'), 'utf-8')).toContain('const { getClaudeConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);');
-        expect(readFileSync(join(testClaudeDir, 'hud', 'lib', 'config-dir.mjs'), 'utf-8')).toContain('export function getClaudeConfigDir()');
-        expect(readFileSync(join(testClaudeDir, 'hooks', 'lib', 'config-dir.mjs'), 'utf-8')).toContain('export function getClaudeConfigDir()');
+        expect(writtenSettings.statusLine?.command).toContain(`${join(testClaudeDir, 'hud', 'omcp-hud.mjs').replace(/\\/g, '/')}`);
+        expect(writtenSettings.statusLine?.command).toContain('omcp-hud-cache.sh');
+        expect(readFileSync(join(testClaudeDir, 'hud', 'omcp-hud-cache.sh'), 'utf-8')).toContain('HUD cached statusLine launcher');
+        expect(readFileSync(join(testClaudeDir, 'hud', 'omcp-hud.mjs'), 'utf-8')).toContain('const { getCopilotConfigDir } = await import(pathToFileURL(join(__dirname, "lib", "config-dir.mjs")).href);');
+        expect(readFileSync(join(testClaudeDir, 'hud', 'lib', 'config-dir.mjs'), 'utf-8')).toContain('export function getCopilotConfigDir()');
+        expect(readFileSync(join(testClaudeDir, 'hooks', 'lib', 'config-dir.mjs'), 'utf-8')).toContain('export function getCopilotConfigDir()');
         expect(readFileSync(join(testClaudeDir, 'hooks', 'keyword-detector.mjs'), 'utf-8')).toContain('Ralph keywords');
         expect(readFileSync(join(testClaudeDir, 'hooks', 'pre-tool-use.mjs'), 'utf-8')).toContain('PreToolUse');
         expect(readFileSync(join(testClaudeDir, 'hooks', 'code-simplifier.mjs'), 'utf-8')).toContain('Code Simplifier');
@@ -116,7 +116,7 @@ describe('install() standalone hook reconciliation', () => {
             const { install } = await loadInstaller();
             const result = install({
                 force: true,
-                skipClaudeCheck: true,
+                skipCopilotCheck: true,
             });
             expect(result.success).toBe(true);
             for (const filename of listTemplateHookLibPayload()) {
@@ -132,18 +132,18 @@ describe('install() standalone hook reconciliation', () => {
         const hooksDir = join(testClaudeDir, 'hooks');
         const hooksLibDir = join(hooksDir, 'lib');
         mkdirSync(hooksLibDir, { recursive: true });
-        writeFileSync(join(hooksLibDir, 'config-dir.mjs'), 'export function getClaudeConfigDir() { return "/stale"; }\n');
+        writeFileSync(join(hooksLibDir, 'config-dir.mjs'), 'export function getCopilotConfigDir() { return "/stale"; }\n');
         writeFileSync(join(hooksDir, 'keyword-detector.mjs'), 'import "./lib/stdin.mjs";\n');
         const { install } = await loadInstaller();
         const result = install({
             force: true,
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
         });
         expect(result.success).toBe(true);
         for (const filename of ['stdin.mjs', 'atomic-write.mjs', 'config-dir.mjs', 'state-root.mjs', 'model-routing-override-message.mjs']) {
             expect(existsSync(join(hooksLibDir, filename)), filename).toBe(true);
         }
-        expect(readFileSync(join(hooksLibDir, 'config-dir.mjs'), 'utf-8')).toContain('export function getClaudeConfigDir()');
+        expect(readFileSync(join(hooksLibDir, 'config-dir.mjs'), 'utf-8')).toContain('export function getCopilotConfigDir()');
         expect(readFileSync(join(hooksLibDir, 'config-dir.mjs'), 'utf-8')).not.toContain('/stale');
     });
     it('installs standalone hooks with all runtime helper imports', async () => {
@@ -153,7 +153,7 @@ describe('install() standalone hook reconciliation', () => {
             const { install } = await loadInstaller();
             const result = install({
                 force: true,
-                skipClaudeCheck: true,
+                skipCopilotCheck: true,
             });
             expect(result.success).toBe(true);
             expect(existsSync(join(testClaudeDir, 'hooks', 'lib', 'state-root.mjs'))).toBe(true);
@@ -194,7 +194,7 @@ describe('install() standalone hook reconciliation', () => {
                     encoding: 'utf-8',
                     env: {
                         ...process.env,
-                        CLAUDE_CONFIG_DIR: testClaudeDir,
+                        COPILOT_CONFIG_DIR: testClaudeDir,
                         HOME: testHomeDir,
                         USERPROFILE: testHomeDir,
                     },
@@ -228,7 +228,7 @@ describe('install() standalone hook reconciliation', () => {
         const { install } = await loadInstaller();
         const result = install({
             force: true,
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
         });
         const writtenSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
         const commands = writtenSettings.hooks.UserPromptSubmit.map(group => group.hooks[0]?.command);
@@ -238,7 +238,7 @@ describe('install() standalone hook reconciliation', () => {
     });
     it('removes legacy OMC settings hooks in plugin mode without re-injecting them', async () => {
         const settingsPath = join(testClaudeDir, 'settings.json');
-        const pluginRoot = join(testClaudeDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.1.5');
+        const pluginRoot = join(testClaudeDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.1.5');
         writeCompletePluginPayload(pluginRoot);
         mkdirSync(testClaudeDir, { recursive: true });
         writeFileSync(settingsPath, JSON.stringify({
@@ -267,7 +267,7 @@ describe('install() standalone hook reconciliation', () => {
         const { install } = await loadInstaller();
         const result = install({
             force: true,
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
         });
         const writtenSettings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
         const commands = writtenSettings.hooks?.UserPromptSubmit?.map(group => group.hooks[0]?.command) ?? [];
@@ -275,14 +275,14 @@ describe('install() standalone hook reconciliation', () => {
         expect(result.hooksConfigured).toBe(true);
         expect(commands).toEqual(['node $HOME/.claude/hooks/other-plugin.mjs']);
         expect(commands).not.toContain(`node "${join(testClaudeDir, 'hooks', 'keyword-detector.mjs').replace(/\\/g, '/')}"`);
-        expect(writtenSettings.statusLine?.command).toContain(`${join(testClaudeDir, 'hud', 'omc-hud.mjs').replace(/\\/g, '/')}`);
+        expect(writtenSettings.statusLine?.command).toContain(`${join(testClaudeDir, 'hud', 'omcp-hud.mjs').replace(/\\/g, '/')}`);
     });
     it('reconciles the workflow profile runtime helper before persistent-mode is used', async () => {
         const hooksLibDir = join(testClaudeDir, 'hooks', 'lib');
         mkdirSync(hooksLibDir, { recursive: true });
         writeFileSync(join(hooksLibDir, 'workflow-profile-runtime.mjs'), 'export const stale = true;\n');
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const shipped = shippedStandaloneHookPayload('workflow-profile-runtime.mjs', 'hooks/lib');
         expect(result.success).toBe(true);
         expect(readFileSync(join(hooksLibDir, 'workflow-profile-runtime.mjs'), 'utf-8')).toBe(shipped);
@@ -297,7 +297,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         testHomeDir = mkdtempSync(join(tmpdir(), 'omc-home-dedup-'));
         mkdirSync(testHomeDir, { recursive: true });
         writeFileSync(join(testHomeDir, 'CLAUDE.md'), '# test home claude');
-        process.env.CLAUDE_CONFIG_DIR = testClaudeDir;
+        process.env.COPILOT_CONFIG_DIR = testClaudeDir;
         process.env.HOME = testHomeDir;
         delete process.env.CLAUDE_PLUGIN_ROOT;
     });
@@ -308,10 +308,10 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         rmSync(testClaudeDir, { recursive: true, force: true });
         rmSync(testHomeDir, { recursive: true, force: true });
         if (originalClaudeConfigDir !== undefined) {
-            process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
         }
         else {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         if (originalPluginRoot !== undefined) {
             process.env.CLAUDE_PLUGIN_ROOT = originalPluginRoot;
@@ -335,12 +335,12 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         const pluginsDir = join(testClaudeDir, 'plugins');
         mkdirSync(pluginsDir, { recursive: true });
         writeFileSync(join(pluginsDir, 'installed_plugins.json'), JSON.stringify({
-            'oh-my-claudecode': [{ installPath: fakePluginRoot }],
+            'oh-my-copilot': [{ installPath: fakePluginRoot }],
         }));
         // Mark plugin as enabled in settings.json
         mkdirSync(testClaudeDir, { recursive: true });
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
         }, null, 2));
     }
     it('hasPluginProvidedHookFiles returns true when hooks.json exists in plugin root', async () => {
@@ -355,7 +355,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
     it('skips standalone hook scripts when plugin provides hooks.json', async () => {
         setupPluginWithHooks();
         const { install } = await loadInstaller();
-        install({ force: true, skipClaudeCheck: true });
+        install({ force: true, skipCopilotCheck: true });
         // Standalone hook scripts should NOT be copied to ~/.claude/hooks/
         expect(existsSync(join(testClaudeDir, 'hooks', 'keyword-detector.mjs'))).toBe(false);
         expect(existsSync(join(testClaudeDir, 'hooks', 'pre-tool-use.mjs'))).toBe(false);
@@ -364,7 +364,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
     it('does not write OMC hook entries to settings.json when plugin provides hooks', async () => {
         setupPluginWithHooks();
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         expect(result.success).toBe(true);
         // OMC hooks should NOT be in settings.json — plugin handles them via hooks.json
@@ -374,7 +374,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         // Pre-populate settings.json with stale OMC hook entries (simulating prior standalone install)
         mkdirSync(testClaudeDir, { recursive: true });
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: {
                 UserPromptSubmit: [
                     {
@@ -396,7 +396,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         }, null, 2));
         setupPluginWithHooks();
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         expect(result.success).toBe(true);
         // Stale OMC hook entries should be cleaned up by legacy cleanup,
@@ -431,7 +431,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         writeFileSync(join(hooksLibDir, 'user-helper.mjs'), 'user helper');
         writeFileSync(join(hooksDir, 'attention', 'notify.mjs'), 'user nested hook');
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         expect(result.success).toBe(true);
         for (const filename of legacyFiles) {
             expect(existsSync(join(hooksDir, filename)), filename).toBe(false);
@@ -454,14 +454,14 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             writeFileSync(join(hooksLibDir, filename), shippedStandaloneHookPayload(filename, 'hooks/lib'));
         }
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: {
                 Stop: [
                     {
                         hooks: [
                             {
                                 type: 'command',
-                                command: 'node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"',
+                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"',
                             },
                             {
                                 type: 'command',
@@ -473,11 +473,11 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             },
         }, null, 2));
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         const commands = writtenSettings.hooks?.Stop?.[0]?.hooks.map(hook => hook.command) ?? [];
         expect(result.success).toBe(true);
-        expect(commands).toContain('node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"');
+        expect(commands).toContain('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"');
         expect(commands).toContain('node $HOME/.claude/hooks/user-stop-hook.mjs');
         expect(existsSync(join(hooksDir, 'persistent-mode.mjs'))).toBe(true);
         expect(existsSync(join(hooksDir, 'keyword-detector.mjs'))).toBe(false);
@@ -492,13 +492,13 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         writeFileSync(join(hooksLibDir, 'config-dir.mjs'), shippedStandaloneHookPayload('config-dir.mjs', 'hooks/lib'));
         writeFileSync(join(hooksLibDir, 'state-root.mjs'), shippedStandaloneHookPayload('state-root.mjs', 'hooks/lib'));
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: {
                 UserPromptSubmit: [
                     {
                         hooks: [{
                                 type: 'command',
-                                command: 'node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/keyword-detector.mjs"',
+                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/keyword-detector.mjs"',
                             }],
                     },
                 ],
@@ -506,14 +506,14 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
                     {
                         hooks: [{
                                 type: 'command',
-                                command: 'node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/code-simplifier.mjs"',
+                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/code-simplifier.mjs"',
                             }],
                     },
                 ],
             },
         }, null, 2));
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         expect(result.success).toBe(true);
         expect(writtenSettings.hooks).toBeUndefined();
@@ -527,14 +527,14 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         mkdirSync(hooksLibDir, { recursive: true });
         writeFileSync(join(hooksDir, 'keyword-detector.mjs'), 'console.log("user-owned keyword detector");\n');
         writeFileSync(join(hooksDir, 'session-start.mjs'), shippedStandaloneHookPayload('session-start.mjs', 'hooks'));
-        writeFileSync(join(hooksLibDir, 'config-dir.mjs'), 'export function getClaudeConfigDir() { return "/user"; }\n');
+        writeFileSync(join(hooksLibDir, 'config-dir.mjs'), 'export function getCopilotConfigDir() { return "/user"; }\n');
         writeFileSync(join(hooksLibDir, 'state-root.mjs'), shippedStandaloneHookPayload('state-root.mjs', 'hooks/lib'));
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         expect(result.success).toBe(true);
         expect(readFileSync(join(hooksDir, 'keyword-detector.mjs'), 'utf-8')).toBe('console.log("user-owned keyword detector");\n');
         expect(existsSync(join(hooksDir, 'session-start.mjs'))).toBe(false);
-        expect(readFileSync(join(hooksLibDir, 'config-dir.mjs'), 'utf-8')).toBe('export function getClaudeConfigDir() { return "/user"; }\n');
+        expect(readFileSync(join(hooksLibDir, 'config-dir.mjs'), 'utf-8')).toBe('export function getCopilotConfigDir() { return "/user"; }\n');
         expect(existsSync(join(hooksLibDir, 'state-root.mjs'))).toBe(false);
     });
     it('does not prune standalone hook files when plugin is not handling hooks', async () => {
@@ -542,7 +542,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         mkdirSync(hooksDir, { recursive: true });
         writeFileSync(join(hooksDir, 'keyword-detector.mjs'), 'legacy omc payload');
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         expect(result.success).toBe(true);
         expect(readFileSync(join(hooksDir, 'keyword-detector.mjs'), 'utf-8')).toContain('Ralph keywords');
     });
@@ -551,7 +551,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         setupPluginWithHooks();
         // Then overwrite settings.json with mixed OMC + non-OMC hooks
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: {
                 UserPromptSubmit: [
                     {
@@ -570,7 +570,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             },
         }, null, 2));
         const { install } = await loadInstaller();
-        install({ force: true, skipClaudeCheck: true });
+        install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         // Non-OMC hook should be preserved
         const commands = writtenSettings.hooks?.UserPromptSubmit?.map(g => g.hooks[0]?.command) ?? [];
@@ -590,7 +590,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             },
         }, null, 2));
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: {
                 SessionStart: [{
                         matcher: '*',
@@ -607,7 +607,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             },
         }, null, 2));
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         expect(result.success).toBe(true);
         expect(writtenSettings.hooks?.SessionStart).toEqual([{
@@ -619,7 +619,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             { type: 'command', command: pluginCommand },
         ]);
         const firstWrittenSettings = readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8');
-        const secondResult = install({ force: true, skipClaudeCheck: true });
+        const secondResult = install({ force: true, skipCopilotCheck: true });
         expect(secondResult.success).toBe(true);
         expect(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8')).toBe(firstWrittenSettings);
     });
@@ -630,7 +630,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             hooks: { SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }] },
         }));
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: {
                 SessionStart: [{ hooks: [
                             { type: 'command', command: pluginCommand },
@@ -639,10 +639,10 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             },
         }, null, 2));
         const { install } = await loadInstaller();
-        const firstResult = install({ force: true, skipClaudeCheck: true });
+        const firstResult = install({ force: true, skipCopilotCheck: true });
         const firstWrittenSettings = readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8');
         const firstSettings = JSON.parse(firstWrittenSettings);
-        const secondResult = install({ force: true, skipClaudeCheck: true });
+        const secondResult = install({ force: true, skipCopilotCheck: true });
         expect(firstResult.success).toBe(true);
         expect(secondResult.success).toBe(true);
         expect(firstSettings.hooks).toBeUndefined();
@@ -655,13 +655,13 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             hooks: { SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }] },
         }));
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: { SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }] },
         }, null, 2));
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
         try {
             const { install } = await loadInstaller();
-            const result = install({ force: true, skipClaudeCheck: true, verbose: true });
+            const result = install({ force: true, skipCopilotCheck: true, verbose: true });
             const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
             expect(result.success).toBe(true);
             expect(writtenSettings.hooks).toBeUndefined();
@@ -678,17 +678,17 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             hooks: { SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }] },
         }));
         writeFileSync(join(testClaudeDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
-            'oh-my-claudecode': [{ installPath: fakePluginRoot }],
-            'oh-my-claudecode-lookalike': [],
+            'oh-my-copilot': [{ installPath: fakePluginRoot }],
+            'oh-my-copilot-lookalike': [],
         }));
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: { SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }] },
         }, null, 2));
         const logSpy = vi.spyOn(console, 'log').mockImplementation(() => { });
         try {
             const { install } = await loadInstaller();
-            const result = install({ force: true, skipClaudeCheck: true, verbose: true });
+            const result = install({ force: true, skipCopilotCheck: true, verbose: true });
             const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
             expect(result.success).toBe(true);
             expect(writtenSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toBe(pluginCommand);
@@ -714,17 +714,17 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         writeCompletePluginPayload(secondPluginRoot);
         writeFileSync(join(secondPluginRoot, 'hooks', 'hooks.json'), manifest);
         writeFileSync(join(testClaudeDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
-            'oh-my-claudecode': [
+            'oh-my-copilot': [
                 { installPath: fakePluginRoot },
                 { installPath: secondPluginRoot },
             ],
         }));
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: { SessionStart: [{ matcher: 'custom', hooks: [{ type: 'command', command: pluginCommand }] }] },
         }, null, 2));
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         expect(result.success).toBe(true);
         expect(writtenSettings.hooks).toBeUndefined();
@@ -736,7 +736,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             hooks: { SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }] },
         }));
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: { SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }] },
         }, null, 2));
         vi.resetModules();
@@ -751,13 +751,13 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         const pluginCommand = 'node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/session-start.mjs';
         writeFileSync(join(fakePluginRoot, 'hooks', 'hooks.json'), '{');
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: {
                 SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }],
             },
         }, null, 2));
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         expect(result.success).toBe(true);
         expect(writtenSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toBe(pluginCommand);
@@ -774,19 +774,19 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
             hooks: { SessionStart: [{ hooks: [{ type: 'command', command: 'node different-plugin-hook.mjs' }] }] },
         }));
         writeFileSync(join(testClaudeDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
-            'oh-my-claudecode': [
+            'oh-my-copilot': [
                 { installPath: fakePluginRoot },
                 { installPath: secondPluginRoot },
             ],
         }));
         writeFileSync(join(testClaudeDir, 'settings.json'), JSON.stringify({
-            enabledPlugins: { 'oh-my-claudecode': true },
+            enabledPlugins: { 'oh-my-copilot': true },
             hooks: {
                 SessionStart: [{ hooks: [{ type: 'command', command: pluginCommand }] }],
             },
         }, null, 2));
         const { install } = await loadInstaller();
-        const result = install({ force: true, skipClaudeCheck: true });
+        const result = install({ force: true, skipCopilotCheck: true });
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         expect(result.success).toBe(true);
         expect(writtenSettings.hooks?.SessionStart?.[0]?.hooks?.[0]?.command).toBe(pluginCommand);

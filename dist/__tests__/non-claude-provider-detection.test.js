@@ -8,9 +8,9 @@
  * names (sonnet/opus/haiku) that cause 400 errors.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { isNonClaudeProvider, isBedrock, isVertexAI } from '../config/models.js';
+import { isNonCopilotProvider, isBedrock, isVertexAI } from '../config/models.js';
 import { loadConfig } from '../config/loader.js';
-describe('isNonClaudeProvider (issue #1201)', () => {
+describe('isNonCopilotProvider (issue #1201)', () => {
     const savedEnv = {};
     const envKeys = [
         'CLAUDE_MODEL',
@@ -46,77 +46,77 @@ describe('isNonClaudeProvider (issue #1201)', () => {
         }
     });
     it('returns false when no env vars are set (default Claude provider)', () => {
-        expect(isNonClaudeProvider()).toBe(false);
+        expect(isNonCopilotProvider()).toBe(false);
     });
     it('returns true when CLAUDE_MODEL is a non-Claude model', () => {
         process.env.CLAUDE_MODEL = 'glm-5';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns true when ANTHROPIC_MODEL is a non-Claude model', () => {
         process.env.ANTHROPIC_MODEL = 'MiniMax-Text-01';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns false when CLAUDE_MODEL contains "claude"', () => {
         process.env.CLAUDE_MODEL = 'claude-sonnet-4-6';
-        expect(isNonClaudeProvider()).toBe(false);
+        expect(isNonCopilotProvider()).toBe(false);
     });
     it('returns true when ANTHROPIC_BASE_URL is a non-Anthropic URL', () => {
         process.env.ANTHROPIC_BASE_URL = 'https://my-proxy.example.com/v1';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns false when ANTHROPIC_BASE_URL is anthropic.com', () => {
         process.env.ANTHROPIC_BASE_URL = 'https://api.anthropic.com/v1';
-        expect(isNonClaudeProvider()).toBe(false);
+        expect(isNonCopilotProvider()).toBe(false);
     });
     it('returns true when OMC_ROUTING_FORCE_INHERIT is already true', () => {
         process.env.OMC_ROUTING_FORCE_INHERIT = 'true';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('detects kimi model as non-Claude', () => {
         process.env.CLAUDE_MODEL = 'kimi-k2';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('is case-insensitive for Claude detection in model name', () => {
         process.env.CLAUDE_MODEL = 'Claude-Sonnet-4-6';
-        expect(isNonClaudeProvider()).toBe(false);
+        expect(isNonCopilotProvider()).toBe(false);
     });
     it('returns true when ANTHROPIC_DEFAULT_SONNET_MODEL is non-Claude', () => {
         process.env.ANTHROPIC_DEFAULT_SONNET_MODEL = 'kimi-k2.6:cloud';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns true when OMC_MODEL_MEDIUM is non-Claude', () => {
         process.env.OMC_MODEL_MEDIUM = 'glm-5.1:cloud';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     // --- Bedrock detection ---
     it('returns true when CLAUDE_CODE_USE_BEDROCK=1', () => {
         process.env.CLAUDE_CODE_USE_BEDROCK = '1';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns true for Bedrock model ID with us.anthropic prefix', () => {
         process.env.CLAUDE_MODEL = 'us.anthropic.claude-sonnet-4-6-v1:0';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns true for Bedrock model ID with global.anthropic prefix', () => {
         process.env.CLAUDE_MODEL = 'global.anthropic.claude-3-5-sonnet-20241022-v2:0';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns true for Bedrock model ID with bare anthropic prefix', () => {
         process.env.ANTHROPIC_MODEL = 'anthropic.claude-3-haiku-20240307-v1:0';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns true for Bedrock model ID with eu.anthropic prefix', () => {
         process.env.CLAUDE_MODEL = 'eu.anthropic.claude-sonnet-4-6-v1:0';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     // --- Vertex AI detection ---
     it('returns true when CLAUDE_CODE_USE_VERTEX=1', () => {
         process.env.CLAUDE_CODE_USE_VERTEX = '1';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
     it('returns true for Vertex model ID with vertex_ai/ prefix', () => {
         process.env.CLAUDE_MODEL = 'vertex_ai/claude-sonnet-4-5';
-        expect(isNonClaudeProvider()).toBe(true);
+        expect(isNonCopilotProvider()).toBe(true);
     });
 });
 describe('isBedrock()', () => {

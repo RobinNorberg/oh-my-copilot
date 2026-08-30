@@ -110,7 +110,7 @@ export const DEFAULT_HUD_CONFIG = {
         thinkingFormat: 'text', // Text format for backward compatibility
         apiKeySource: false, // Disabled by default
         hostname: false,
-        profile: true, // Show profile name when CLAUDE_CONFIG_DIR is set
+        profile: true, // Show profile name when COPILOT_CONFIG_DIR is set
         missionBoard: false, // Opt-in mission board for whole-run progress tracking
         promptTime: true, // Show last prompt time by default
         sessionHealth: true,

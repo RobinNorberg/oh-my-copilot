@@ -66,9 +66,15 @@ const STATE_DIR = join(PROJECT_PATH, ".omc", "state");
 describe("dead-pane guard in wakeOpenClaw (issue #2562)", () => {
     let origTmux;
     let origTmuxPane;
+    let origHome;
+    let origUserProfile;
     beforeEach(() => {
         origTmux = process.env.TMUX;
         origTmuxPane = process.env.TMUX_PANE;
+        origHome = process.env.HOME;
+        origUserProfile = process.env.USERPROFILE;
+        process.env.HOME = PROJECT_PATH;
+        process.env.USERPROFILE = PROJECT_PATH;
         process.env.TMUX = "/tmp/tmux-1000/default,12345,0";
         process.env.TMUX_PANE = "%42";
         vi.mocked(getOpenClawConfig).mockReturnValue(TEST_CONFIG);
@@ -87,6 +93,14 @@ describe("dead-pane guard in wakeOpenClaw (issue #2562)", () => {
             delete process.env.TMUX_PANE;
         else
             process.env.TMUX_PANE = origTmuxPane;
+        if (origHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = origHome;
+        if (origUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = origUserProfile;
         vi.clearAllMocks();
     });
     it("skips capture when pane has no new lines — no stale tmuxTail in payload", async () => {

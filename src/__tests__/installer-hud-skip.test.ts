@@ -10,7 +10,7 @@ vi.mock('fs', async () => {
 });
 
 import { existsSync, readFileSync } from 'fs';
-import { isHudEnabledInConfig, isOmcStatusLine, CLAUDE_CONFIG_DIR } from '../installer/index.js';
+import { isHudEnabledInConfig, isOmcStatusLine, COPILOT_CONFIG_DIR } from '../installer/index.js';
 import type { InstallOptions } from '../installer/index.js';
 import { join } from 'path';
 
@@ -18,7 +18,7 @@ const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 
 describe('isHudEnabledInConfig', () => {
-  const configPath = join(CLAUDE_CONFIG_DIR, '.omc-config.json');
+  const configPath = join(COPILOT_CONFIG_DIR, '.omc-config.json');
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -90,14 +90,14 @@ describe('isOmcStatusLine', () => {
   it('should return true for OMC HUD statusLine', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'node /home/user/.claude/hud/omc-hud.mjs'
+      command: 'node /home/user/.claude/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 
-  it('should return true for any command containing omc-hud', () => {
+  it('should return true for any command containing omcp-hud', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: '/usr/local/bin/node /some/path/omc-hud.mjs'
+      command: '/usr/local/bin/node /some/path/omcp-hud.mjs'
     })).toBe(true);
   });
 
@@ -117,12 +117,12 @@ describe('isOmcStatusLine', () => {
   });
 
   // Legacy string format tests (pre-v4.5 compatibility)
-  it('should return true for legacy string containing omc-hud', () => {
-    expect(isOmcStatusLine('~/.claude/hud/omc-hud.mjs')).toBe(true);
+  it('should return true for legacy string containing omcp-hud', () => {
+    expect(isOmcStatusLine('~/.claude/hud/omcp-hud.mjs')).toBe(true);
   });
 
-  it('should return true for legacy string with absolute path to omc-hud', () => {
-    expect(isOmcStatusLine('/home/user/.claude/hud/omc-hud.mjs')).toBe(true);
+  it('should return true for legacy string with absolute path to omcp-hud', () => {
+    expect(isOmcStatusLine('/home/user/.claude/hud/omcp-hud.mjs')).toBe(true);
   });
 
   it('should return false for non-OMC string', () => {
@@ -144,28 +144,28 @@ describe('isOmcStatusLine', () => {
   it('should recognize portable $HOME statusLine as OMC', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'node $HOME/.claude/hud/omc-hud.mjs'
+      command: 'node $HOME/.claude/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 
   it('should recognize find-node.sh statusLine as OMC', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omc-hud.mjs'
+      command: 'sh $HOME/.claude/hud/find-node.sh $HOME/.claude/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 
-  it('should recognize CLAUDE_CONFIG_DIR-aware statusLine as OMC', () => {
+  it('should recognize COPILOT_CONFIG_DIR-aware statusLine as OMC', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs'
+      command: 'node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 
-  it('should recognize CLAUDE_CONFIG_DIR-aware find-node.sh statusLine as OMC', () => {
+  it('should recognize COPILOT_CONFIG_DIR-aware find-node.sh statusLine as OMC', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs'
+      command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 
@@ -173,7 +173,7 @@ describe('isOmcStatusLine', () => {
   it('should recognize cached HUD statusLine as OMC', () => {
     expect(isOmcStatusLine({
       type: 'command',
-      command: 'sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud-cache.sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs'
+      command: 'sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs'
     })).toBe(true);
   });
 });

@@ -121,7 +121,7 @@ function latest(...values) {
         .sort((left, right) => parseTime(right) - parseTime(left))[0];
 }
 function shortAgentType(agentType) {
-    return agentType.replace(/^oh-my-claudecode:/, '').trim() || 'agent';
+    return agentType.replace(/^oh-my-copilot:/, '').trim() || 'agent';
 }
 function sessionAgentName(agentType, agentId) {
     return `${shortAgentType(agentType)}:${agentId.slice(0, 7)}`;

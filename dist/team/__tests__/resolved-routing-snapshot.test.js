@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildResolvedRoutingSnapshot } from '../stage-router.js';
 import { CANONICAL_TEAM_ROLES } from '../../shared/types.js';
-import { CLAUDE_FAMILY_DEFAULTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS } from '../../config/models.js';
+import { COPILOT_FAMILY_DEFAULTS, BUILTIN_EXTERNAL_MODEL_DEFAULTS } from '../../config/models.js';
 const ENV_KEYS = [
     'OMC_MODEL_HIGH',
     'OMC_MODEL_MEDIUM',
@@ -74,7 +74,7 @@ describe('buildResolvedRoutingSnapshot', () => {
         // primary is the explicit codex model
         expect(snap.critic.primary.model).toBe('gpt-5.3-codex');
         // fallback is claude — must NOT echo the codex id; resolves to claude tier default for critic (HIGH = opus)
-        expect(snap.critic.fallback.model).toBe(CLAUDE_FAMILY_DEFAULTS.OPUS);
+        expect(snap.critic.fallback.model).toBe(COPILOT_FAMILY_DEFAULTS.OPUS);
     });
     it('fallback respects tier when primary spec uses a tier name', () => {
         const cfg = {
@@ -84,7 +84,7 @@ describe('buildResolvedRoutingSnapshot', () => {
         // primary on codex: tier maps to codex builtin (tiers are claude-centric)
         expect(snap.executor.primary.model).toBe(BUILTIN_EXTERNAL_MODEL_DEFAULTS.codexModel);
         // fallback on claude with same tier "HIGH" → claude opus
-        expect(snap.executor.fallback.model).toBe(CLAUDE_FAMILY_DEFAULTS.OPUS);
+        expect(snap.executor.fallback.model).toBe(COPILOT_FAMILY_DEFAULTS.OPUS);
     });
     it('orchestrator primary AND fallback are both claude (provider pinned)', () => {
         const cfg = {

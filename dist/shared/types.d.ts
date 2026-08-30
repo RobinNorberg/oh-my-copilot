@@ -1,5 +1,5 @@
 /**
- * Shared types for Oh-My-ClaudeCode
+ * Shared types for Oh-My-Copilot
  */
 export type ModelType = "sonnet" | "opus" | "haiku" | "fable" | "inherit";
 export interface AgentConfig {

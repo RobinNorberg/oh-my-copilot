@@ -1,4 +1,4 @@
-# oh-my-claudecode v5.0.2
+# oh-my-copilot v5.0.2
 
 ## Release Notes
 

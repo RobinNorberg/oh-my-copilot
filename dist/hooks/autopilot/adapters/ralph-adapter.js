@@ -37,7 +37,7 @@ Each reviewer must return ONLY a concise review summary under 100 words covering
 \`\`\`
 // Functional Completeness Review
 Task(
-  subagent_type="oh-my-claudecode:architect",
+  subagent_type="oh-my-copilot:architect",
   model="opus",
   prompt="FUNCTIONAL COMPLETENESS REVIEW
 
@@ -54,7 +54,7 @@ Verdict: APPROVED (all requirements met) or REJECTED (with specific gaps)"
 
 // Security Review
 Task(
-  subagent_type="oh-my-claudecode:security-reviewer",
+  subagent_type="oh-my-copilot:security-reviewer",
   model="opus",
   prompt="SECURITY REVIEW
 
@@ -71,7 +71,7 @@ Verdict: APPROVED (no vulnerabilities) or REJECTED (with specific issues)"
 
 // Code Quality Review
 Task(
-  subagent_type="oh-my-claudecode:code-reviewer",
+  subagent_type="oh-my-copilot:code-reviewer",
   model="opus",
   prompt="CODE QUALITY REVIEW
 

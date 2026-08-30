@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdirSync, mkdtempSync as createTempDir, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { executeTeamApiOperation as executeSecondaryTeamApiOperation } from '../../cli/team.js';
@@ -7,6 +7,7 @@ import { executeTeamApiOperation } from '../api-interop.js';
 import { readRecoveryOutcome, reserveRecoveryRequest, writeRecoveryFinal } from '../recovery-request-store.js';
 import { readRecoverDeadWorkerV2Result as readRootRecoverDeadWorkerV2Result } from '../../index.js';
 import { finalizeRecoveryOwnerResult, recoverDeadWorkerV2, readRecoverDeadWorkerV2Outcome, readRecoverDeadWorkerV2Result, setRuntimeOwnerRecoveryClient } from '../runtime-v2.js';
+import { absPath, TeamPaths } from '../state-paths.js';
 const recovered = {
     outcome: 'recovered',
     committed: true,
@@ -25,9 +26,36 @@ const recovered = {
     workerName: 'worker-1',
     updatedAt: '2026-07-10T00:00:00.000Z',
 };
+let previousHome;
+let previousUserProfile;
+let previousOmcStateDir;
+beforeEach(() => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+});
+function mkdtempSync(prefix) {
+    const root = createTempDir(prefix);
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return root;
+}
 afterEach(() => {
     vi.useRealTimers();
     setRuntimeOwnerRecoveryClient(undefined);
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousOmcStateDir;
 });
 describe('public dead-worker recovery facade', () => {
     it('classifies authoritative config independently of any manifest before dispatching recovery effects', async () => {
@@ -36,7 +64,7 @@ describe('public dead-worker recovery facade', () => {
             await expect(recoverDeadWorkerV2('missing-team', cwd, {
                 workerName: 'worker-1', requestId: 'missing-request', timeoutMs: 180_000,
             })).resolves.toMatchObject({ outcome: 'failed', committed: false, error: 'team_not_found' });
-            const configPath = join(cwd, '.omc', 'state', 'team', 'legacy-team', 'config.json');
+            const configPath = absPath(cwd, TeamPaths.config('legacy-team'));
             mkdirSync(join(configPath, '..'), { recursive: true });
             writeFileSync(configPath, JSON.stringify({ name: 'legacy-team', task: 'legacy', agent_type: 'claude',
                 worker_launch_mode: 'interactive', worker_count: 0, max_workers: 20, workers: [],
@@ -44,19 +72,19 @@ describe('public dead-worker recovery facade', () => {
             await expect(executeTeamApiOperation('recover-worker', {
                 team_name: 'legacy-team', worker: 'worker-1', request_id: 'legacy-request', timeout_ms: 180_000,
             }, cwd)).resolves.toMatchObject({ ok: true, data: { result: { outcome: 'failed', error: 'runtime_v2_required' } } });
-            const malformedConfigPath = join(cwd, '.omc', 'state', 'team', 'malformed-team', 'config.json');
+            const malformedConfigPath = absPath(cwd, TeamPaths.config('malformed-team'));
             mkdirSync(join(malformedConfigPath, '..'), { recursive: true });
             writeFileSync(malformedConfigPath, '{"state_revision":');
             await expect(recoverDeadWorkerV2('malformed-team', cwd, {
                 workerName: 'worker-1', requestId: 'malformed-request', timeoutMs: 180_000,
             })).resolves.toMatchObject({ outcome: 'failed', committed: false, error: 'invalid_persisted_state' });
-            const malformedRevisionPath = join(cwd, '.omc', 'state', 'team', 'malformed-revision-team', 'config.json');
+            const malformedRevisionPath = absPath(cwd, TeamPaths.config('malformed-revision-team'));
             mkdirSync(join(malformedRevisionPath, '..'), { recursive: true });
             writeFileSync(malformedRevisionPath, JSON.stringify({ name: 'malformed-revision-team', state_revision: 'one' }));
             await expect(recoverDeadWorkerV2('malformed-revision-team', cwd, {
                 workerName: 'worker-1', requestId: 'malformed-revision-request', timeoutMs: 180_000,
             })).resolves.toMatchObject({ outcome: 'failed', committed: false, error: 'invalid_persisted_state' });
-            const manifestOnlyPath = join(cwd, '.omc', 'state', 'team', 'manifest-only-team', 'manifest.json');
+            const manifestOnlyPath = absPath(cwd, TeamPaths.manifest('manifest-only-team'));
             mkdirSync(join(manifestOnlyPath, '..'), { recursive: true });
             writeFileSync(manifestOnlyPath, '{not authoritative config}');
             await expect(recoverDeadWorkerV2('manifest-only-team', cwd, {

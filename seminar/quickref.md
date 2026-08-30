@@ -1,11 +1,11 @@
-# oh-my-claudecode Quick Reference Card
-**v3.6.3 | github.com/Yeachan-Heo/oh-my-claudecode**
+# oh-my-copilot Quick Reference Card
+**v3.6.3 | github.com/Yeachan-Heo/oh-my-copilot**
 
 ## Install
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-claudecode
-/plugin install oh-my-claudecode
-/oh-my-claudecode:omc-setup
+/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin install oh-my-copilot
+/oh-my-copilot:omc-setup
 ```
 
 ## Execution Modes
@@ -59,17 +59,17 @@
 ## Key Commands
 | Command | Purpose |
 |---------|---------|
-| `/oh-my-claudecode:omc-setup` | Initial setup wizard |
-| `/oh-my-claudecode:hud setup` | Enable HUD statusline |
-| `/oh-my-claudecode:omc-doctor` | Diagnose issues |
-| `/oh-my-claudecode:omc-help` | Show usage guide |
-| `/oh-my-claudecode:cancel` | Stop current operation |
-| `/oh-my-claudecode:note` | Save compaction-resilient note |
-| `/oh-my-claudecode:learner` | Extract reusable skill |
-| `/oh-my-claudecode:analyze` | Deep analysis/debugging |
-| `/oh-my-claudecode:deepsearch` | Thorough codebase search |
-| `/oh-my-claudecode:ultraqa` | QA cycling (test/fix/repeat) |
-| `/oh-my-claudecode:tdd` | Test-driven development mode |
+| `/oh-my-copilot:omc-setup` | Initial setup wizard |
+| `/oh-my-copilot:hud setup` | Enable HUD statusline |
+| `/oh-my-copilot:omc-doctor` | Diagnose issues |
+| `/oh-my-copilot:omc-help` | Show usage guide |
+| `/oh-my-copilot:cancel` | Stop current operation |
+| `/oh-my-copilot:note` | Save compaction-resilient note |
+| `/oh-my-copilot:learner` | Extract reusable skill |
+| `/oh-my-copilot:analyze` | Deep analysis/debugging |
+| `/oh-my-copilot:deepsearch` | Thorough codebase search |
+| `/oh-my-copilot:ultraqa` | QA cycling (test/fix/repeat) |
+| `/oh-my-copilot:tdd` | Test-driven development mode |
 
 ## Natural Language (No Commands Needed)
 - "build me a todo app" → Autopilot activates
@@ -129,10 +129,10 @@ Before claiming completion:
 - **LSP diagnostics:** Full project type checking with `lsp_diagnostics_directory`
 
 ## Resources
-- **GitHub:** github.com/Yeachan-Heo/oh-my-claudecode
+- **GitHub:** github.com/Yeachan-Heo/oh-my-copilot
 - **Docs:** /docs/REFERENCE.md
-- **Website:** yeachan-heo.github.io/oh-my-claudecode-website
-- **NPM:** `npm i -g oh-my-claudecode`
+- **Website:** yeachan-heo.github.io/oh-my-copilot-website
+- **NPM:** `npm i -g oh-my-copilot`
 - **Discord:** (community support - link in GitHub)
 
 ---

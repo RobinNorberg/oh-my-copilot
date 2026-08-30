@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Oh-My-ClaudeCode CLI
+ * Oh-My-Copilot CLI
  *
  * Command-line interface for the OMC multi-agent system.
  *

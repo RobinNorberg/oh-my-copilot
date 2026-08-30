@@ -19,6 +19,7 @@ import { buildWorkerStartCommand } from '../tmux-session.js';
 import { awaitWorkerLaunchAcknowledgement, cleanupWorkerLaunchTransport, materializeWorkerLaunchTransport, prepareWorkerLaunchAttempt, readAndConsumeWorkerLaunchDescriptor, } from '../worker-launch-ack.js';
 import { runWorkerLaunchFromEnvironment } from '../runtime-cli.js';
 let cwd = '';
+let restoreFixtureEnv;
 let originalPlatform;
 let exitSpy;
 /** Undo the writer's single-quote shell escaping for one env assignment. */
@@ -39,6 +40,7 @@ function applyEnvAssignments(command, keys) {
 }
 async function makeAttempt() {
     cwd = await mkdtemp(join(tmpdir(), 'worker-launch-posix-transport-'));
+    restoreFixtureEnv = isolateFixtureEnv(cwd);
     return prepareWorkerLaunchAttempt({
         cwd,
         teamName: 'posix-team',
@@ -47,6 +49,28 @@ async function makeAttempt() {
         provider: 'codex',
         runtimeCliPath: '/runtime-cli.cjs',
     });
+}
+function isolateFixtureEnv(root) {
+    const home = process.env.HOME;
+    const userProfile = process.env.USERPROFILE;
+    const stateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+    return () => {
+        if (home === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = home;
+        if (userProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = userProfile;
+        if (stateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = stateDir;
+    };
 }
 afterEach(async () => {
     if (originalPlatform)
@@ -58,16 +82,22 @@ afterEach(async () => {
         delete process.env[key];
     }
     vi.unstubAllEnvs();
-    if (cwd)
-        await rm(cwd, { recursive: true, force: true });
-    cwd = '';
+    const restore = restoreFixtureEnv;
+    restoreFixtureEnv = undefined;
+    try {
+        restore?.();
+    }
+    finally {
+        if (cwd)
+            await rm(cwd, { recursive: true, force: true });
+        cwd = '';
+    }
 });
 describe('POSIX supervised worker-launch transport (issue #3655)', () => {
     it('supervised POSIX writer materializes a descriptor the runtime CLI reader accepts and executes', async () => {
         originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
         Object.defineProperty(process, 'platform', { value: 'linux' });
         vi.stubEnv('SHELL', '/bin/bash');
-        vi.stubEnv('HOME', '/home/tester');
         const attempt = await makeAttempt();
         const providerMarker = join(cwd, 'provider-ran.json');
         const providerScript = `require('node:fs').writeFileSync(${JSON.stringify(providerMarker)},JSON.stringify({attempt:process.env.OMC_WORKER_LAUNCH_ATTEMPT_ID,transport:process.env.OMC_WORKER_LAUNCH_SPEC_FILE??null}));setTimeout(()=>process.exit(0),200)`;
@@ -155,7 +185,6 @@ describe('POSIX supervised worker-launch transport (issue #3655)', () => {
         originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
         Object.defineProperty(process, 'platform', { value: 'linux' });
         vi.stubEnv('SHELL', '/bin/bash');
-        vi.stubEnv('HOME', '/home/tester');
         const attempt = await makeAttempt();
         const longValue = `long-${'x'.repeat(12_000)}`;
         // A large provider argv/env is written into the attempt descriptor, exactly

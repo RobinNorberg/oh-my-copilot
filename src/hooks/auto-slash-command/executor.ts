@@ -8,7 +8,7 @@
 
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import { join, basename } from 'path';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { getOmcRoot } from '../../lib/worktree-paths.js';
 import type {
   ParsedSlashCommand,
@@ -30,7 +30,7 @@ import { renderSkillRuntimeGuidance } from '../../features/builtin-skills/runtim
 import { getSkillsDir, renderBundledSkillBody } from '../../features/builtin-skills/skills.js';
 
 /** Claude config directory */
-const CLAUDE_CONFIG_DIR = getClaudeConfigDir();
+const COPILOT_CONFIG_DIR = getCopilotConfigDir();
 
 /**
  * Claude Code native commands that must not be shadowed by user skills.
@@ -194,12 +194,12 @@ function discoverSkillsFromDir(skillsDir: string): CommandInfo[] {
  * Discover all available commands from multiple sources
  */
 export function discoverAllCommands(): CommandInfo[] {
-  const userCommandsDir = join(CLAUDE_CONFIG_DIR, 'commands');
+  const userCommandsDir = join(COPILOT_CONFIG_DIR, 'commands');
   const projectCommandsDir = join(process.cwd(), '.claude', 'commands');
   const projectClaudeSkillsDir = join(process.cwd(), '.claude', 'skills');
   const projectOmcSkillsDir = join(getOmcRoot(), 'skills');
   const projectAgentSkillsDir = join(process.cwd(), '.agents', 'skills');
-  const userSkillsDir = join(CLAUDE_CONFIG_DIR, 'skills');
+  const userSkillsDir = join(COPILOT_CONFIG_DIR, 'skills');
 
   const userCommands = discoverCommandsFromDir(userCommandsDir, 'user');
   const projectCommands = discoverCommandsFromDir(projectCommandsDir, 'project');
@@ -281,7 +281,7 @@ function renderDeepInterviewAutoresearchGuidance(args: string): string {
     '- If the mission is not already clear, start by asking: "What should autoresearch improve or prove for this repo?"',
     '- Treat evaluator clarity as a required readiness gate before launch.',
     '- When the mission and evaluator are ready, write setup artifacts and hand off with:',
-    '  `Skill("oh-my-claudecode:autoresearch")`',
+    '  `Skill("oh-my-copilot:autoresearch")`',
     '- Do **not** hand off to `omc-plan`, `autopilot`, `ralph`, `team`, or the hard-deprecated `omc autoresearch` CLI in this mode.',
   ];
 
@@ -392,7 +392,7 @@ export function executeSlashCommand(parsed: ParsedSlashCommand): ExecuteResult {
   if (!command) {
     return {
       success: false,
-      error: `Command "/${parsed.command}" not found. Available commands are in ${CLAUDE_CONFIG_DIR}/commands/ or .claude/commands/`,
+      error: `Command "/${parsed.command}" not found. Available commands are in ${COPILOT_CONFIG_DIR}/commands/ or .claude/commands/`,
     };
   }
 

@@ -18153,9 +18153,9 @@ function stripTrailingSep(p) {
   }
   return p === (0, import_path.parse)(p).root ? p : p.slice(0, -1);
 }
-function getClaudeConfigDir() {
+function getCopilotConfigDir() {
   const home = (0, import_os.homedir)();
-  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  const configured = process.env.COPILOT_CONFIG_DIR?.trim();
   if (!configured) {
     return stripTrailingSep((0, import_path.normalize)((0, import_path.join)(home, ".claude")));
   }
@@ -18296,15 +18296,107 @@ function writeAllSync(fd, content, label) {
     throw new Error(`${label} size verification failed`);
   }
 }
-async function atomicWriteJson(filePath, data) {
+function verifyPrivateTempFile(fd, tempPath, label) {
+  const fdStats = fsSync.fstatSync(fd);
+  let pathStats;
+  try {
+    pathStats = fsSync.lstatSync(tempPath);
+  } catch {
+    throw new Error(`${label} temporary file was replaced before rename`);
+  }
+  const isWindows = process.platform === "win32";
+  const isPrivateRegularSingleLink = (stats) => stats.isFile() && (isWindows ? stats.nlink <= 1 : stats.nlink === 1) && (isWindows || (stats.mode & 511) === 384);
+  if (!isPrivateRegularSingleLink(fdStats) || !isPrivateRegularSingleLink(pathStats)) {
+    throw new Error(
+      `${label} temporary file must be a private regular single-link file`
+    );
+  }
+  if (fdStats.dev !== pathStats.dev || fdStats.ino !== pathStats.ino) {
+    throw new Error(`${label} temporary file was replaced before rename`);
+  }
+}
+function verifyPublishedFile(fd, filePath, label) {
+  const fdStats = fsSync.fstatSync(fd);
+  let pathStats;
+  try {
+    pathStats = fsSync.lstatSync(filePath);
+  } catch {
+    throw new Error(`${label} target was replaced at publication`);
+  }
+  if (!pathStats.isFile() || fdStats.dev !== pathStats.dev || fdStats.ino !== pathStats.ino) {
+    throw new Error(`${label} target was replaced at publication`);
+  }
+}
+function preservePriorTarget(filePath) {
+  const backupPath = `${filePath}.rollback.${crypto2.randomUUID()}`;
+  try {
+    const stats = fsSync.lstatSync(filePath);
+    const isWindows = process.platform === "win32";
+    if (!stats.isFile() || (isWindows ? stats.nlink > 1 : stats.nlink !== 1)) {
+      return null;
+    }
+    fsSync.linkSync(filePath, backupPath);
+    return backupPath;
+  } catch (error2) {
+    if (error2.code !== "ENOENT") {
+      try {
+        fsSync.unlinkSync(backupPath);
+      } catch {
+      }
+    }
+    return null;
+  }
+}
+function currentFileIdentity(filePath) {
+  try {
+    const stats = fsSync.lstatSync(filePath);
+    return { dev: stats.dev, ino: stats.ino };
+  } catch {
+    return null;
+  }
+}
+function descriptorIdentity(fd) {
+  try {
+    const stats = fsSync.fstatSync(fd);
+    return { dev: stats.dev, ino: stats.ino };
+  } catch {
+    return null;
+  }
+}
+function rollbackPriorTarget(filePath, backupPath, expectedIdentity) {
+  if (expectedIdentity === null) return;
+  const current = currentFileIdentity(filePath);
+  if (current === null) return;
+  if (expectedIdentity !== null && (current.dev !== expectedIdentity.dev || current.ino !== expectedIdentity.ino)) {
+    return;
+  }
+  try {
+    if (backupPath === null) {
+      fsSync.unlinkSync(filePath);
+    } else {
+      fsSync.renameSync(backupPath, filePath);
+    }
+  } catch {
+  }
+}
+function removeBackup(backupPath) {
+  if (backupPath === null) return;
+  try {
+    fsSync.unlinkSync(backupPath);
+  } catch {
+  }
+}
+async function atomicWriteJson(filePath, data, hooks) {
   const dir = path2.dirname(filePath);
   const base = path2.basename(filePath);
   const tempPath = path2.join(dir, `.${base}.tmp.${crypto2.randomUUID()}`);
   let success = false;
+  let backupPath = null;
+  let fd = null;
   try {
     ensureDirSync(dir);
     const jsonContent = Buffer.from(JSON.stringify(data, null, 2), "utf-8");
-    const fd = await fs2.open(tempPath, "wx", 384);
+    fd = await fs2.open(tempPath, "wx", 384);
     try {
       let offset = 0;
       while (offset < jsonContent.length) {
@@ -18320,11 +18412,30 @@ async function atomicWriteJson(filePath, data) {
         offset += bytesWritten;
       }
       await fd.sync();
+      verifyPrivateTempFile(fd.fd, tempPath, "atomic JSON write");
+      backupPath = preservePriorTarget(filePath);
+      hooks?.beforeRename?.();
+      await fs2.rename(tempPath, filePath);
+      let publishedIdentity = null;
+      try {
+        verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
+        publishedIdentity = descriptorIdentity(fd.fd);
+        hooks?.afterRename?.();
+        verifyPublishedFile(fd.fd, filePath, "atomic JSON write");
+      } catch (error2) {
+        rollbackPriorTarget(
+          filePath,
+          backupPath,
+          publishedIdentity
+        );
+        throw error2;
+      }
     } finally {
       await fd.close();
+      fd = null;
     }
-    await fs2.rename(tempPath, filePath);
     success = true;
+    removeBackup(backupPath);
     try {
       const dirFd = await fs2.open(dir, "r");
       try {
@@ -18338,24 +18449,44 @@ async function atomicWriteJson(filePath, data) {
     if (!success) {
       await fs2.unlink(tempPath).catch(() => {
       });
+      removeBackup(backupPath);
     }
   }
 }
-function atomicWriteFileSync(filePath, content) {
+function atomicWriteFileSync(filePath, content, hooks) {
   const dir = path2.dirname(filePath);
   const base = path2.basename(filePath);
   const tempPath = path2.join(dir, `.${base}.tmp.${crypto2.randomUUID()}`);
   let fd = null;
   let success = false;
+  let backupPath = null;
   try {
     ensureDirSync(dir);
     fd = fsSync.openSync(tempPath, "wx", 384);
     writeAllSync(fd, content, "atomic write");
     fsSync.fsyncSync(fd);
+    verifyPrivateTempFile(fd, tempPath, "atomic write");
+    backupPath = preservePriorTarget(filePath);
+    hooks?.beforeRename?.();
+    fsSync.renameSync(tempPath, filePath);
+    let publishedIdentity = null;
+    try {
+      verifyPublishedFile(fd, filePath, "atomic write");
+      publishedIdentity = descriptorIdentity(fd);
+      hooks?.afterRename?.();
+      verifyPublishedFile(fd, filePath, "atomic write");
+    } catch (error2) {
+      rollbackPriorTarget(
+        filePath,
+        backupPath,
+        publishedIdentity
+      );
+      throw error2;
+    }
     fsSync.closeSync(fd);
     fd = null;
-    fsSync.renameSync(tempPath, filePath);
     success = true;
+    removeBackup(backupPath);
     try {
       const dirFd = fsSync.openSync(dir, "r");
       try {
@@ -18377,12 +18508,13 @@ function atomicWriteFileSync(filePath, content) {
         fsSync.unlinkSync(tempPath);
       } catch {
       }
+      removeBackup(backupPath);
     }
   }
 }
-function atomicWriteJsonSync(filePath, data) {
+function atomicWriteJsonSync(filePath, data, hooks) {
   const jsonContent = JSON.stringify(data, null, 2);
-  atomicWriteFileSync(filePath, jsonContent);
+  atomicWriteFileSync(filePath, jsonContent, hooks);
 }
 var ATOMIC_BATCH_MAX_CONTENT_BYTES = 1024 * 1024;
 async function safeReadJson(filePath) {
@@ -24914,22 +25046,22 @@ var TIER_ENV_KEYS = {
     "ANTHROPIC_DEFAULT_OPUS_MODEL"
   ]
 };
-var CLAUDE_FAMILY_DEFAULTS = {
+var COPILOT_FAMILY_DEFAULTS = {
   HAIKU: "claude-haiku-4-5",
   SONNET: "claude-sonnet-5",
   OPUS: "claude-opus-4-8",
   FABLE: "claude-fable-5"
 };
 var BUILTIN_TIER_MODEL_DEFAULTS = {
-  LOW: CLAUDE_FAMILY_DEFAULTS.HAIKU,
-  MEDIUM: CLAUDE_FAMILY_DEFAULTS.SONNET,
-  HIGH: CLAUDE_FAMILY_DEFAULTS.OPUS
+  LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
+  MEDIUM: COPILOT_FAMILY_DEFAULTS.SONNET,
+  HIGH: COPILOT_FAMILY_DEFAULTS.OPUS
 };
 var CLAUDE_FAMILY_HIGH_VARIANTS = {
-  HAIKU: `${CLAUDE_FAMILY_DEFAULTS.HAIKU}-high`,
-  SONNET: `${CLAUDE_FAMILY_DEFAULTS.SONNET}-high`,
-  OPUS: `${CLAUDE_FAMILY_DEFAULTS.OPUS}-high`,
-  FABLE: `${CLAUDE_FAMILY_DEFAULTS.FABLE}-high`
+  HAIKU: `${COPILOT_FAMILY_DEFAULTS.HAIKU}-high`,
+  SONNET: `${COPILOT_FAMILY_DEFAULTS.SONNET}-high`,
+  OPUS: `${COPILOT_FAMILY_DEFAULTS.OPUS}-high`,
+  FABLE: `${COPILOT_FAMILY_DEFAULTS.FABLE}-high`
 };
 var BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
   codexModel: "gpt-5.3-codex",
@@ -25581,7 +25713,7 @@ function collectMergeReadinessEvidence(directory, baseRef, sessionId) {
   return { changedFiles: trackedChangedFiles, untrackedFiles, status, diffStat, sourceArtifacts, testEvidence, reviewEvidence, missingEvidence, base_ref: resolvedBase };
 }
 function extractChangeSummary(promptText) {
-  return promptText.replace(/^\s*\/(?:oh-my-claudecode:|omc:)?merge-readiness\b/i, "").replace(/\B--(?:quick|standard|deep|from-diff|from-artifacts)\b/gi, "").trim();
+  return promptText.replace(/^\s*\/(?:oh-my-copilot:|omc:)?merge-readiness\b/i, "").replace(/\B--(?:quick|standard|deep|from-diff|from-artifacts)\b/gi, "").trim();
 }
 function hasMinimalEvidence(evidence) {
   return evidence.changedFiles.length > 0 || Boolean(evidence.status) || Boolean(evidence.diffStat) || evidence.sourceArtifacts.length > 0;
@@ -29673,7 +29805,7 @@ function uniqueSortedTargets(targets) {
   });
 }
 function buildCurrentProjectTargets(projectRoot, transcriptProjectRoots = [projectRoot]) {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const projectRoots = new Set(transcriptProjectRoots);
   for (const root of transcriptProjectRoots) {
     const mainRepoRoot = getMainRepoRoot(root);
@@ -29708,7 +29840,7 @@ function buildCurrentProjectTargets(projectRoot, transcriptProjectRoots = [proje
   return uniqueSortedTargets(targets);
 }
 function buildAllProjectTargets() {
-  const claudeDir = getClaudeConfigDir();
+  const claudeDir = getCopilotConfigDir();
   const targets = [];
   for (const filePath of listJsonlFiles((0, import_path38.join)(claudeDir, "projects"))) {
     targets.push({ filePath, sourceType: "project-transcript" });
@@ -30405,7 +30537,7 @@ var import_path40 = require("path");
 var CONFIG_FILE_NAME = ".omc-config.json";
 function isSharedMemoryEnabled() {
   try {
-    const configPath = (0, import_path40.join)(getClaudeConfigDir(), CONFIG_FILE_NAME);
+    const configPath = (0, import_path40.join)(getCopilotConfigDir(), CONFIG_FILE_NAME);
     if (!(0, import_fs32.existsSync)(configPath)) return true;
     const raw = JSON.parse((0, import_fs32.readFileSync)(configPath, "utf-8"));
     const enabled = raw?.agents?.sharedMemory?.enabled;
@@ -30616,7 +30748,7 @@ function listNamespaces(worktreeRoot) {
 }
 
 // src/tools/shared-memory-tools.ts
-var DISABLED_MSG = `Shared memory is disabled. Set agents.sharedMemory.enabled = true in ${getClaudeConfigDir()}/.omc-config.json to enable.`;
+var DISABLED_MSG = `Shared memory is disabled. Set agents.sharedMemory.enabled = true in ${getCopilotConfigDir()}/.omc-config.json to enable.`;
 function disabledResponse() {
   return {
     content: [{ type: "text", text: DISABLED_MSG }],
@@ -32141,7 +32273,7 @@ var import_path43 = require("path");
 // src/hooks/learner/constants.ts
 var import_path42 = require("path");
 var import_os6 = require("os");
-var USER_SKILLS_DIR = (0, import_path42.join)(getClaudeConfigDir(), "skills", "omc-learned");
+var USER_SKILLS_DIR = (0, import_path42.join)(getCopilotConfigDir(), "skills", "omc-learned");
 var GLOBAL_SKILLS_DIR = (0, import_path42.join)((0, import_os6.homedir)(), ".omc", "skills");
 var PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
 var PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path42.join)(".agents", "skills");
@@ -32491,7 +32623,7 @@ ${formatSkillOutput(projectSkills)}`
 };
 var loadGlobalTool = {
   name: "load_omc_skills_global",
-  description: "Load and list skills from global user directories (~/.omc/skills/ and [$CLAUDE_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
+  description: "Load and list skills from global user directories (~/.omc/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
   schema: loadGlobalSchema,
   handler: async (_args) => {
     const allSkills = loadAllSkills(null);
@@ -32537,7 +32669,7 @@ No skill files were discovered in any searched directories.
 Searched:
 - Project: .omc/skills/
 - Global: ~/.omc/skills/
-- Claude config: ${getClaudeConfigDir()}/skills/omc-learned/`;
+- Claude config: ${getCopilotConfigDir()}/skills/omc-learned/`;
     }
     return {
       content: [{

@@ -11,7 +11,7 @@ vi.mock('fs', async () => {
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { install, CLAUDE_CONFIG_DIR, VERSION_FILE } from '../installer/index.js';
+import { install, COPILOT_CONFIG_DIR, VERSION_FILE } from '../installer/index.js';
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 const mockedWriteFileSync = vi.mocked(writeFileSync);
@@ -19,7 +19,7 @@ function withUnixPaths(pathLike) {
     return String(pathLike).replace(/\\/g, '/');
 }
 describe('install downgrade protection (issue #1382)', () => {
-    const claudeMdPath = join(CLAUDE_CONFIG_DIR, 'CLAUDE.md');
+    const claudeMdPath = join(COPILOT_CONFIG_DIR, 'CLAUDE.md');
     const homeClaudeMdPath = join(homedir(), 'CLAUDE.md');
     beforeEach(() => {
         vi.clearAllMocks();
@@ -41,7 +41,7 @@ describe('install downgrade protection (issue #1382)', () => {
         });
         const result = install({
             version: '4.5.1',
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
         });
         expect(result.success).toBe(true);
         expect(result.message).toContain('Skipping install');
@@ -63,7 +63,7 @@ describe('install downgrade protection (issue #1382)', () => {
         });
         const result = install({
             version: '4.5.1',
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
         });
         expect(result.success).toBe(true);
         expect(result.message).toContain('Skipping install');

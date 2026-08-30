@@ -26,7 +26,7 @@ import { parseTranscript } from "../../hud/transcript.js";
 const tempDirs: string[] = [];
 
 function createTempTranscript(lines: unknown[]): string {
-  const dir = mkdtempSync(join(tmpdir(), "omc-hud-agent-lifecycle-"));
+  const dir = mkdtempSync(join(tmpdir(), "omcp-hud-agent-lifecycle-"));
   tempDirs.push(dir);
   const p = join(dir, "transcript.jsonl");
   writeFileSync(p, `${lines.map((l) => JSON.stringify(l)).join("\n")}\n`, "utf8");

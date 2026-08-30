@@ -253,7 +253,7 @@ describe('daemon', () => {
             paneIndex: 0,
             isActive: true,
             analysis: {
-              hasClaudeCode: true,
+              hasCopilotCode: true,
               hasRateLimitMessage: true,
               isBlocked: true,
               confidence: 0.9,

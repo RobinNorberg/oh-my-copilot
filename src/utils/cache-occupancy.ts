@@ -3,7 +3,7 @@ import { mkdir, writeFile, rename, rm } from 'fs/promises';
 import { createHash, randomUUID } from 'crypto';
 import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'path';
-import { getClaudeConfigDir } from './config-dir.js';
+import { getCopilotConfigDir } from './config-dir.js';
 
 const REGISTRY_VERSION = 1;
 const RECORD_PATTERN = /^[a-f0-9]{64}\.json$/;
@@ -51,7 +51,7 @@ export interface CacheOccupancyRecord {
   updatedAt: string;
 }
 
-export function getCacheOccupancyDir(configDir = getClaudeConfigDir()): string {
+export function getCacheOccupancyDir(configDir = getCopilotConfigDir()): string {
   return join(configDir, '.omc', 'cache-occupancy');
 }
 
@@ -96,7 +96,7 @@ function validRecord(value: unknown): value is CacheOccupancyRecord {
     && typeof record.updatedAt === 'string' && Number.isFinite(Date.parse(record.updatedAt));
 }
 
-export function readOccupiedPluginRoots(configDir = getClaudeConfigDir()): { roots: Set<string>; unavailable: boolean } {
+export function readOccupiedPluginRoots(configDir = getCopilotConfigDir()): { roots: Set<string>; unavailable: boolean } {
   const directory = getCacheOccupancyDir(configDir);
   let names: string[];
   try {

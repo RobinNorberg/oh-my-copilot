@@ -133,10 +133,31 @@ describe('formatRebaseConflictForWorker', () => {
 // ---------------------------------------------------------------------------
 const TEST_CWD = join(tmpdir(), `omc-test-conflict-mailbox-${process.pid}`);
 const TEST_TEAM = 'test-team-mailbox';
+let previousHome;
+let previousUserProfile;
+let previousStateDir;
 beforeEach(() => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = TEST_CWD;
+    process.env.USERPROFILE = TEST_CWD;
+    delete process.env.OMC_STATE_DIR;
     mkdirSync(TEST_CWD, { recursive: true });
 });
 afterEach(() => {
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousStateDir;
     rmSync(TEST_CWD, { recursive: true, force: true });
 });
 describe('deliverMergeConflictToLeader', () => {

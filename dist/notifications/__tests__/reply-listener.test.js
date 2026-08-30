@@ -154,7 +154,7 @@ describe("reply-listener", () => {
     describe("Pane verification", () => {
         it("skips injection when confidence < 0.4", () => {
             const analysis = {
-                hasClaudeCode: false,
+                hasCopilotCode: false,
                 hasRateLimitMessage: false,
                 isBlocked: false,
                 confidence: 0.3,
@@ -163,7 +163,7 @@ describe("reply-listener", () => {
         });
         it("proceeds with injection when confidence >= 0.4", () => {
             const analysis = {
-                hasClaudeCode: true,
+                hasCopilotCode: true,
                 hasRateLimitMessage: false,
                 isBlocked: false,
                 confidence: 0.5,

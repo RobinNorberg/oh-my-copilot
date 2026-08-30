@@ -9,7 +9,7 @@ The npm CLI and the Claude Code marketplace/plugin are separate install tracks, 
 **CLI / runtime:**
 
 ```bash
-npm i -g oh-my-claude-sisyphus@5.0.2
+npm i -g oh-my-copilot@5.0.2
 ```
 
 **Claude Code plugin:**
@@ -18,4 +18,4 @@ npm i -g oh-my-claude-sisyphus@5.0.2
 /plugin marketplace update omc
 ```
 
-> **Package naming note:** the repo, plugin, and commands are branded **oh-my-claudecode**, but the published npm package name remains [`oh-my-claude-sisyphus`](https://www.npmjs.com/package/oh-my-claude-sisyphus).
+> **Package naming note:** the repo, plugin, and commands are branded **oh-my-copilot**, but the published npm package name remains [`oh-my-copilot`](https://www.npmjs.com/package/oh-my-copilot).

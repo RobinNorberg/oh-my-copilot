@@ -64,7 +64,7 @@ describe('AutopilotCancel', () => {
     delete process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64;
     delete process.env.OMC_TEST_FLOCK_AVAILABLE;
     delete process.env.OMC_TEST_EMERGENCY_CRASH_PHASE;
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
     delete process.env.OMC_TEST_EMERGENCY_REPLACEMENT_PATH;
     delete process.env.OMC_TEST_EMERGENCY_REPLACEMENT_BASE64;
   });
@@ -732,7 +732,7 @@ describe('AutopilotCancel', () => {
     it('rejects a named traversal boundary without mutating paused bytes', () => {
       const sessionId = 'resume-auth-session';
       const root = join(testDir, 'claude-config', 'projects');
-      process.env.CLAUDE_CONFIG_DIR = join(testDir, 'claude-config');
+      process.env.COPILOT_CONFIG_DIR = join(testDir, 'claude-config');
       mkdirSync(root, { recursive: true });
       const encodedProject = join(root, '-workspace-project');
       mkdirSync(encodedProject);
@@ -785,7 +785,7 @@ describe('AutopilotCancel', () => {
       const root = join(testDir, 'claude-config', 'projects');
       const project = join(root, '-workspace-project');
       const transcript = join(project, `${sessionId}.jsonl`);
-      process.env.CLAUDE_CONFIG_DIR = join(testDir, 'claude-config');
+      process.env.COPILOT_CONFIG_DIR = join(testDir, 'claude-config');
       mkdirSync(project, { recursive: true });
       writeFileSync(transcript, '');
       const initial = statSync(transcript);

@@ -35,8 +35,8 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
     previousUserProfile = process.env.USERPROFILE;
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
-    process.env.CLAUDE_CONFIG_DIR = join(testDir, "claude-config");
-    mkdirSync(join(process.env.CLAUDE_CONFIG_DIR, "projects"), {
+    process.env.COPILOT_CONFIG_DIR = join(testDir, "claude-config");
+    mkdirSync(join(process.env.COPILOT_CONFIG_DIR, "projects"), {
       recursive: true,
     });
   });
@@ -47,7 +47,7 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
     else process.env.HOME = previousHome;
     if (previousUserProfile === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = previousUserProfile;
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
     delete process.env.OMC_TEST_FLOCK_AVAILABLE;
 
   });

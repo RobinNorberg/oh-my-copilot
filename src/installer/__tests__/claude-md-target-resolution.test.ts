@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
 const originalPluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
 const originalHome = process.env.HOME;
 
@@ -25,7 +25,7 @@ describe('install() CLAUDE.md target resolution', () => {
     mkdirSync(testClaudeDir, { recursive: true });
     mkdirSync(testHomeDir, { recursive: true });
 
-    process.env.CLAUDE_CONFIG_DIR = testClaudeDir;
+    process.env.COPILOT_CONFIG_DIR = testClaudeDir;
     process.env.HOME = testHomeDir;
     delete process.env.CLAUDE_PLUGIN_ROOT;
   });
@@ -34,9 +34,9 @@ describe('install() CLAUDE.md target resolution', () => {
     rmSync(tempRoot, { recursive: true, force: true });
 
     if (originalClaudeConfigDir !== undefined) {
-      process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+      process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
     } else {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.COPILOT_CONFIG_DIR;
     }
 
     if (originalPluginRoot !== undefined) {
@@ -65,7 +65,7 @@ describe('install() CLAUDE.md target resolution', () => {
     const { install, VERSION } = await loadInstaller();
     const result = install({
       force: true,
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 
@@ -81,13 +81,13 @@ describe('install() CLAUDE.md target resolution', () => {
   });
 
   it('preserves project-scoped behavior by skipping global CLAUDE.md writes', async () => {
-    process.env.CLAUDE_PLUGIN_ROOT = join(tempRoot, 'project', '.claude', 'plugins', 'oh-my-claudecode');
+    process.env.CLAUDE_PLUGIN_ROOT = join(tempRoot, 'project', '.claude', 'plugins', 'oh-my-copilot');
     writeFileSync(join(testHomeDir, 'CLAUDE.md'), '# Home CLAUDE\nkeep me\n');
 
     const { install } = await loadInstaller();
     const result = install({
       force: true,
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 

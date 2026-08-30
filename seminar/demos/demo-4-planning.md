@@ -398,7 +398,7 @@ ralplan the authentication system
 
 ### Variation 2: Review Existing Plan
 ```
-/oh-my-claudecode:review auth-system
+/oh-my-copilot:review auth-system
 ```
 
 "Review skill spawns Critic to analyze an existing plan and suggest improvements."

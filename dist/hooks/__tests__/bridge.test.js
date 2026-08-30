@@ -206,7 +206,7 @@ describe('processHook - Environment Kill-Switches', () => {
                 toolInput: {
                     description: 'Test agent',
                     prompt: 'Do something',
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                     model: 'sonnet',
                 },
             };
@@ -227,7 +227,7 @@ describe('processHook - Environment Kill-Switches', () => {
                 toolInput: {
                     description: 'Test task',
                     prompt: 'Do something',
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                     model: 'opus',
                 },
             };
@@ -248,7 +248,7 @@ describe('processHook - Environment Kill-Switches', () => {
                 toolInput: {
                     description: 'Test agent',
                     prompt: 'Do something',
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                 },
             };
             const result = await processHook('pre-tool-use', input);
@@ -265,7 +265,7 @@ describe('processHook - Environment Kill-Switches', () => {
                 toolInput: {
                     description: 'Test agent',
                     prompt: 'Do something',
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                     model: 'sonnet',
                 },
             };
@@ -286,7 +286,7 @@ describe('processHook - Environment Kill-Switches', () => {
                 toolInput: {
                     description: 'Test agent',
                     prompt: 'Do something',
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                 },
                 toolOutput: 'done',
             };
@@ -343,7 +343,7 @@ describe('processHook - Environment Kill-Switches', () => {
                     hookEventName: 'UserPromptSubmit',
                     additionalContext: '[RALPLAN INIT] Explicit /ralplan invoke detected during UserPromptSubmit.\n' +
                         'Proceed immediately with the consensus planning workflow for:\n' +
-                        '/oh-my-claudecode:ralplan issue #2622',
+                        '/oh-my-copilot:ralplan issue #2622',
                 },
             })).toEqual({
                 continue: true,
@@ -351,7 +351,7 @@ describe('processHook - Environment Kill-Switches', () => {
                     hookEventName: 'UserPromptSubmit',
                     additionalContext: '[RALPLAN INIT] Explicit /ralplan invoke detected during UserPromptSubmit.\n' +
                         'Proceed immediately with the consensus planning workflow for:\n' +
-                        '/oh-my-claudecode:ralplan issue #2622',
+                        '/oh-my-copilot:ralplan issue #2622',
                 },
             });
         });

@@ -59,8 +59,8 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "287d4091749263fc4a646321f6586ad9080c34b8c78503c47f17dabd12a28f77",
     "lineCount": 411,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
-    "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+    "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
     "normalizedSha256": "287d4091749263fc4a646321f6586ad9080c34b8c78503c47f17dabd12a28f77"
   },
   {
@@ -72,8 +72,8 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "b052a9b9be4aeb4bcd012839e212332213100d24d565ca57f0d7f128e6fe7477",
     "lineCount": 395,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
-    "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+    "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
     "normalizedSha256": "b052a9b9be4aeb4bcd012839e212332213100d24d565ca57f0d7f128e6fe7477"
   },
   {
@@ -85,8 +85,8 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "e7f081c220adf8e57f1c0bbc97ab6c7caa8b928bb02c95fa7306db3c64f1ad6e",
     "lineCount": 718,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
-    "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+    "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
     "normalizedSha256": "e7f081c220adf8e57f1c0bbc97ab6c7caa8b928bb02c95fa7306db3c64f1ad6e"
   },
   {
@@ -98,7 +98,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "29392870c7a6b6f06f93f2877cae448825498bb5e438c81b0dad3c96b8fc2ac5",
     "lineCount": 720,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
     "normalizedSha256": "29392870c7a6b6f06f93f2877cae448825498bb5e438c81b0dad3c96b8fc2ac5"
   },
@@ -111,7 +111,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "b046b3b3cb97b347386fff48f4d84e5af64e5f4194b676e04369012f91bb23f4",
     "lineCount": 680,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
     "normalizedSha256": "b046b3b3cb97b347386fff48f4d84e5af64e5f4194b676e04369012f91bb23f4"
   },
@@ -124,7 +124,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "e2f01b2570ef9a8f0ca2ed5b33352fa1f35126c4061583e8799b13729fa13610",
     "lineCount": 680,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
     "normalizedSha256": "e2f01b2570ef9a8f0ca2ed5b33352fa1f35126c4061583e8799b13729fa13610"
   },
@@ -137,7 +137,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "e7137b0f9fb77753b782910834c8ca23ad2db83d8942f14868be7eccbaa462ed",
     "lineCount": 659,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
     "normalizedSha256": "e7137b0f9fb77753b782910834c8ca23ad2db83d8942f14868be7eccbaa462ed"
   },
@@ -150,7 +150,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "8354f803febe3ee1c4fc719596ebb1aa096bb3f8b344dcd640ac1c792445aad9",
     "lineCount": 576,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
     "normalizedSha256": "8354f803febe3ee1c4fc719596ebb1aa096bb3f8b344dcd640ac1c792445aad9"
   },
@@ -163,7 +163,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "f78fe8182ba2bb94b345477f25fe5da8b10950f486d97dfe08c5cf4725a923a7",
     "lineCount": 583,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
     "normalizedSha256": "f78fe8182ba2bb94b345477f25fe5da8b10950f486d97dfe08c5cf4725a923a7"
   },
@@ -176,7 +176,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "7590ed845e49d05d772ecbc3de4b0ae1a20fd4d026ad5572b647ca665c3da128",
     "lineCount": 576,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
     "normalizedSha256": "7590ed845e49d05d772ecbc3de4b0ae1a20fd4d026ad5572b647ca665c3da128"
   },
@@ -189,7 +189,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "44dcb8243c81521372e5b05ed4a6c2070a70eab2cac463c77fdde729432428b8",
     "lineCount": 534,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
     "normalizedSha256": "44dcb8243c81521372e5b05ed4a6c2070a70eab2cac463c77fdde729432428b8"
   },
@@ -202,7 +202,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "4fc8628543dbea375e0108cc44ed3cd7243b757d1a2ac58cb0086984b8f6a119",
     "lineCount": 457,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
     "normalizedSha256": "4fc8628543dbea375e0108cc44ed3cd7243b757d1a2ac58cb0086984b8f6a119"
   },
@@ -215,7 +215,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "ac274106313706b880e2f2d98d7dd9d264dfe86bba8c27fd421c0702c15abdfd",
     "lineCount": 457,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
     "normalizedSha256": "ac274106313706b880e2f2d98d7dd9d264dfe86bba8c27fd421c0702c15abdfd"
   },
@@ -228,7 +228,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "bdf21db37ead6784352d1f8e82129b82080f84a48ab86bdc2db78c6d79d7ec3b",
     "lineCount": 431,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
     "normalizedSha256": "bdf21db37ead6784352d1f8e82129b82080f84a48ab86bdc2db78c6d79d7ec3b"
   },
@@ -241,7 +241,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "fd53d1ee2ee96ade4372e00a21b0bcf079c1d46d9ba0e5a599f0eb2c8fddb2a0",
     "lineCount": 424,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
     "normalizedSha256": "fd53d1ee2ee96ade4372e00a21b0bcf079c1d46d9ba0e5a599f0eb2c8fddb2a0"
   },
@@ -254,7 +254,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "684738ecf9ecbe7273f06b0935ad22f01ec622fdd933add02276b078e97b29c4",
     "lineCount": 417,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
     "normalizedSha256": "684738ecf9ecbe7273f06b0935ad22f01ec622fdd933add02276b078e97b29c4"
   },
@@ -267,7 +267,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "f50ebdb7bf4753ee2d14d403feda4b734c55039c3cbad211c3e8bde4c54e2d39",
     "lineCount": 386,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
     "normalizedSha256": "f50ebdb7bf4753ee2d14d403feda4b734c55039c3cbad211c3e8bde4c54e2d39"
   },
@@ -280,7 +280,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "32ed686cf8a071bafab679e196590160a7add0757918bf332a2455bca97eb2f9",
     "lineCount": 304,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
     "normalizedSha256": "32ed686cf8a071bafab679e196590160a7add0757918bf332a2455bca97eb2f9"
   },
@@ -293,7 +293,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "393c02f244aa1033d542e1b0d1ae17a9188eedd23ae262c3d69d1ca0676d3710",
     "lineCount": 304,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
     "normalizedSha256": "393c02f244aa1033d542e1b0d1ae17a9188eedd23ae262c3d69d1ca0676d3710"
   },
@@ -306,7 +306,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "1b164df10e9a1f621288a501592470206e2af7ec10a13f85ca5faef22418d6cc",
     "lineCount": 292,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
     "normalizedSha256": "1b164df10e9a1f621288a501592470206e2af7ec10a13f85ca5faef22418d6cc"
   },
@@ -319,7 +319,7 @@ var LEGACY_CLAUDE_MD_VARIANTS = [
     "rawSha256": "5001bd4e3be7801b26e2961f11ea237719a098b624ed20c9767763aee3958b3a",
     "lineCount": 292,
     "terminalEolPolicy": "required",
-    "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+    "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
     "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
     "normalizedSha256": "5001bd4e3be7801b26e2961f11ea237719a098b624ed20c9767763aee3958b3a"
   },
@@ -875,8 +875,8 @@ function executeClaudeMdTransaction(request) {
 
 // src/cli/claude-md-coordinator.ts
 var CLAUDE_MD_COORDINATOR_SCHEMA_VERSION = 1;
-var COMPILED_ENGINE_VERSION = true ? "5.0.2" : "";
-var COMPILED_SOURCE_SHA256 = true ? "2b0e738c80ede1fe1ae04360ca048154590f84afd5d0f2701c8aec871286e1d3" : "";
+var COMPILED_ENGINE_VERSION = true ? "5.0.0" : "";
+var COMPILED_SOURCE_SHA256 = true ? "31bbbfb203ad6d81a4173feb28fbe43596a1fc5434020530e28d2119b7f03092" : "";
 function runClaudeMdCoordinatorHandshake() {
   if (!COMPILED_ENGINE_VERSION || !COMPILED_SOURCE_SHA256) {
     return { exitCode: 2, response: coordinatorError(2, "Coordinator build handshake is unavailable") };

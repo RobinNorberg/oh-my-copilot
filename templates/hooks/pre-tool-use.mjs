@@ -10,7 +10,7 @@ import { dirname } from 'path';
 import { existsSync, readdirSync, mkdirSync, writeFileSync, renameSync, readFileSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { homedir } from 'os';
-import { getClaudeConfigDir } from './lib/config-dir.mjs';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { isSkillVisibleToUser } from './lib/skill-entitlements.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -62,7 +62,7 @@ const SKILL_PROTECTION = {
 const RETIRED_SKILL_NAMES = new Set(['ultrawork', 'ccg']);
 
 function getSkillProtection(skillName) {
-  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
   if (RETIRED_SKILL_NAMES.has(normalized)) return 'none';
   return SKILL_PROTECTION[normalized] || 'light';
 }
@@ -83,7 +83,7 @@ async function writeSkillActiveState(directory, skillName, sessionId) {
 
   const config = PROTECTION_CONFIGS[protection];
   const now = new Date().toISOString();
-  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-claudecode:/, '');
+  const normalized = (skillName || '').toLowerCase().replace(/^oh-my-copilot:/, '');
 
   const state = {
     active: true,
@@ -162,12 +162,12 @@ async function confirmSkillModeStates(directory, skillName, sessionId) {
 // Skill vs agent namespace guard (issue #3667)
 //
 // Task/Agent subagent_type identifiers and bundled skills share the same
-// `oh-my-claudecode:` namespace. Deny skill names before Claude Code's native
+// `oh-my-copilot:` namespace. Deny skill names before Claude Code's native
 // agent boundary so callers receive actionable Skill-tool guidance instead of
 // a generic "Agent type not found" error.
 // ---------------------------------------------------------------------------
 
-const SKILL_AGENT_NAMESPACE_PREFIXES = ['oh-my-claudecode:', 'omc:'];
+const SKILL_AGENT_NAMESPACE_PREFIXES = ['oh-my-copilot:', 'omc:'];
 const SKILL_IDENTIFIER_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function splitAgentNamespace(subagentType) {
@@ -189,7 +189,7 @@ function getPluginAgentDirs() {
   const packageAgentsDir = path.join(getTemplatePackageRoot(), 'agents');
   return pluginRoot
     ? [path.join(pluginRoot, 'agents'), packageAgentsDir]
-    : [path.join(getClaudeConfigDir(), 'agents')];
+    : [path.join(getCopilotConfigDir(), 'agents')];
 }
 
 function getPluginSkillsDirs() {
@@ -197,7 +197,7 @@ function getPluginSkillsDirs() {
   const packageSkillsDir = path.join(getTemplatePackageRoot(), 'skills');
   return pluginRoot
     ? [path.join(pluginRoot, 'skills'), packageSkillsDir]
-    : [path.join(getClaudeConfigDir(), 'skills')];
+    : [path.join(getCopilotConfigDir(), 'skills')];
 }
 
 /** Whether an agent definition resolves for the given identifier. */
@@ -205,7 +205,7 @@ function agentDefinitionExists(agentType, directory, namespaced) {
   const agentDirs = getPluginAgentDirs();
   if (!namespaced) {
     agentDirs.push(path.join(directory, '.claude', 'agents'));
-    agentDirs.push(path.join(getClaudeConfigDir(), 'agents'));
+    agentDirs.push(path.join(getCopilotConfigDir(), 'agents'));
   }
   return agentDirs.some((agentsDir) => existsSync(path.join(agentsDir, `${agentType}.md`)));
 }
@@ -333,7 +333,7 @@ function evaluateSkillAsAgentCall(toolName, toolInput, directory) {
   if (!skill) return null;
 
   const { name } = splitAgentNamespace(subagentType);
-  const skillIdentifier = `oh-my-claudecode:${skill.primary}`;
+  const skillIdentifier = `oh-my-copilot:${skill.primary}`;
   const isPrimaryMatch = name.toLowerCase() === skill.primary.toLowerCase();
   const queriedName = isPrimaryMatch
     ? `"${subagentType}"`
@@ -468,7 +468,7 @@ function checkBashCommand(command) {
     return `[DELEGATION NOTICE] Bash command may modify source files: ${summarizeCommand(command)}
 
 Recommended: Delegate to executor agent instead:
-  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")
+  Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="...")
 
 This is a soft warning. Operation will proceed.`;
   }
@@ -592,7 +592,7 @@ async function main() {
     const warning = `[DELEGATION NOTICE] Direct ${toolName} on source file: ${filePath}
 
 Recommended: Delegate to executor agent instead:
-  Task(subagent_type="oh-my-claudecode:executor", model="sonnet", prompt="...")
+  Task(subagent_type="oh-my-copilot:executor", model="sonnet", prompt="...")
 
 This is a soft warning. Operation will proceed.`;
 

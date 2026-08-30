@@ -21,11 +21,11 @@
 import { spawn } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 const CACHE_TTL_MS = 30_000;
 const DEFAULT_TIMEOUT_MS = 800;
 function getCachePath() {
-    return join(getClaudeConfigDir(), 'plugins', 'oh-my-claudecode', '.custom-rate-cache.json');
+    return join(getCopilotConfigDir(), 'plugins', 'oh-my-copilot', '.custom-rate-cache.json');
 }
 function readCache() {
     try {

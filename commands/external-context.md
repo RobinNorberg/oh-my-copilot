@@ -4,7 +4,7 @@ description: ""
 
 # OMC external-context
 
-This compatibility command keeps `/oh-my-claudecode:external-context` available without loading the full `external-context` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:external-context` available without loading the full `external-context` skill description in every Claude Code session.
 
 ## Dispatch
 

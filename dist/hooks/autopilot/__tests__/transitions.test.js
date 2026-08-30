@@ -15,11 +15,25 @@ import { tmpdir } from 'os';
 import { readAutopilotState, writeAutopilotState, clearAutopilotState, isAutopilotActive, initAutopilot, transitionPhase, updateExpansion, updatePlanning, updateExecution, updateQA, updateValidation, transitionToComplete, transitionToFailed, } from '../state.js';
 describe('Autopilot State Machine Transitions', () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'autopilot-transition-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     // --------------------------------------------------------------------------
     // Valid Phase Transitions

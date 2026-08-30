@@ -447,7 +447,7 @@ exit 0
 
 describe("buildDirtyWorktreeNotice", () => {
   const agentId = "agent-abcdef123456789";
-  const agentType = "oh-my-claudecode:executor";
+  const agentType = "oh-my-copilot:executor";
 
   it("builds a bounded notice for dirty evidence", () => {
     const evidence: WorktreeDirtyEvidence = {

@@ -1256,7 +1256,7 @@ function getPromptText(input: HookInput): string {
 }
 
 function isExplicitAskSlashInvocation(promptText: string): boolean {
-  return /^\s*\/(?:oh-my-claudecode:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor)\b/i.test(promptText);
+  return /^\s*\/(?:oh-my-copilot:)?ask\s+(?:claude|codex|gemini|antigravity|agy|grok|cursor)\b/i.test(promptText);
 }
 
 function activateRalplanStartupState(directory: string, sessionId?: string): void {
@@ -1305,7 +1305,7 @@ function seedWorkflowSlotForSkill(
   parentSkill?: string | null,
 ): boolean {
   if (!isCanonicalWorkflowSkill(skillName)) return false;
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
 
   try {
     const current = readSkillActiveStateNormalized(directory, sessionId);
@@ -1352,7 +1352,7 @@ function confirmWorkflowSlot(
   sessionId?: string,
 ): boolean {
   if (!isCanonicalWorkflowSkill(skillName)) return false;
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
 
   try {
     const current = readSkillActiveStateNormalized(directory, sessionId);
@@ -1378,7 +1378,7 @@ function tombstoneWorkflowSlot(
   sessionId?: string,
 ): boolean {
   if (!isCanonicalWorkflowSkill(skillName)) return false;
-  const normalized = skillName.toLowerCase().replace(/^oh-my-claudecode:/, "");
+  const normalized = skillName.toLowerCase().replace(/^oh-my-copilot:/, "");
   try {
     const current = readSkillActiveStateNormalized(directory, sessionId);
     if (!current.active_skills[normalized]) return false;
@@ -2799,9 +2799,9 @@ function getInvokedSkillName(toolInput: unknown): string | null {
 
 /**
  * Extract the raw (un-normalized) skill name from Skill tool input.
- * Used to distinguish OMC built-in skills (prefixed with 'oh-my-claudecode:')
+ * Used to distinguish OMC built-in skills (prefixed with 'oh-my-copilot:')
  * from project custom skills or other plugin skills with the same bare name.
- * See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1581
+ * See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/1581
  */
 function getRawSkillName(toolInput: unknown): string | undefined {
   if (!toolInput || typeof toolInput !== "object") return undefined;
@@ -2815,7 +2815,7 @@ async function processPostToolUse(input: HookInput): Promise<HookOutput> {
   const messages: string[] = [];
 
   // Ensure mode state activation also works when execution starts via Skill tool
-  // (e.g., ralplan consensus handoff into Skill("oh-my-claudecode:ralph")).
+  // (e.g., ralplan consensus handoff into Skill("oh-my-copilot:ralph")).
   const toolName = (input.toolName || "").toLowerCase();
   if (toolName === "skill") {
     const skillName = getInvokedSkillName(input.toolInput);
@@ -2852,7 +2852,7 @@ async function processPostToolUse(input: HookInput): Promise<HookOutput> {
     const currentState = readSkillActiveState(directory, input.sessionId);
     const completingSkill = (getInvokedSkillName(input.toolInput) ?? "")
       .toLowerCase()
-      .replace(/^oh-my-claudecode:/, "");
+      .replace(/^oh-my-copilot:/, "");
     if (!currentState || !currentState.active || currentState.skill_name === completingSkill) {
       clearSkillActiveState(directory, input.sessionId);
     }

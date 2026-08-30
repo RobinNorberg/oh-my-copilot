@@ -39,7 +39,7 @@ function invoke(hook: string, directory: string, prompt: string) {
         ...process.env,
         HOME: directory,
         USERPROFILE: directory,
-        CLAUDE_CONFIG_DIR: join(directory, '.claude'),
+        COPILOT_CONFIG_DIR: join(directory, '.claude'),
       },
       stdio: ['pipe', 'pipe', 'pipe'],
     });

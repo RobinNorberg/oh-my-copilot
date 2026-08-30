@@ -10,8 +10,8 @@ import { PLUGIN_JSON_PATH, listSourceControlledPackageFiles, readMcpServersFromP
 import { collectPluginRuntimeClosure } from "../../scripts/plugin-shipping-surface.mjs";
 const PACKAGE_ROOT = process.cwd();
 const PACKAGE_JSON_PATH = join(PACKAGE_ROOT, "package.json");
-const CLI_BIN_TARGET = "bin/oh-my-claudecode.js";
-const SUPPORTED_CLI_ALIASES = ["oh-my-claudecode", "omc"];
+const CLI_BIN_TARGET = "bin/oh-my-copilot.js";
+const SUPPORTED_CLI_ALIASES = ["oh-my-copilot", "omc"];
 const GENERATED_RUNTIME_ENTRYPOINTS = new Set([
     "bridge/claude-md-coordinator.cjs",
     "bridge/cli.cjs",
@@ -263,10 +263,10 @@ describe("npm package bin surface regression", () => {
             .sort();
         expect(binNames).toEqual([...SUPPORTED_CLI_ALIASES].sort());
         expect(Object.fromEntries(binNames.map((name) => [name, expectedNpmShimNames(name)]))).toEqual({
-            "oh-my-claudecode": [
-                "oh-my-claudecode",
-                "oh-my-claudecode.cmd",
-                "oh-my-claudecode.ps1",
+            "oh-my-copilot": [
+                "oh-my-copilot",
+                "oh-my-copilot.cmd",
+                "oh-my-copilot.ps1",
             ],
             omc: ["omc", "omc.cmd", "omc.ps1"],
         });
@@ -282,10 +282,10 @@ describe("npm package bin surface regression", () => {
             .sort();
         expect(packedBinNames).toEqual([...SUPPORTED_CLI_ALIASES].sort());
         expect(Object.fromEntries(packedBinNames.map((name) => [name, expectedNpmShimNames(name)]))).toEqual({
-            "oh-my-claudecode": [
-                "oh-my-claudecode",
-                "oh-my-claudecode.cmd",
-                "oh-my-claudecode.ps1",
+            "oh-my-copilot": [
+                "oh-my-copilot",
+                "oh-my-copilot.cmd",
+                "oh-my-copilot.ps1",
             ],
             omc: ["omc", "omc.cmd", "omc.ps1"],
         });

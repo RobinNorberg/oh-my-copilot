@@ -12,7 +12,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { clearWorktreeCache } from '../../lib/worktree-paths.js';
 import { logAuditEvent, readAuditLog } from '../audit-log.js';
@@ -26,7 +26,7 @@ describe('multi-repo workspace team writes', () => {
     beforeEach(() => {
         clearWorktreeCache();
         // Non-git parent holding the workspace marker, with a git sub-repo inside.
-        parent = mkdtempSync(join(tmpdir(), 'omc-multirepo-team-'));
+        parent = mkdtempSync(join(homedir(), 'omc-multirepo-team-'));
         writeFileSync(join(parent, '.omc-workspace'), '{}');
         api = join(parent, 'api');
         mkdirSync(api, { recursive: true });

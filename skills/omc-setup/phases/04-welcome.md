@@ -5,7 +5,7 @@
 Check if user has existing 2.x configuration:
 
 ```bash
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
@@ -45,18 +45,18 @@ Just include these words naturally in your request:
 | cancelomc | Stop active OMC modes | "cancelomc" |
 
 CANONICAL WORKFLOWS (Tier-0):
-omc-plan -> execute -> omc-review -> verify, invoked as /oh-my-claudecode:omc-plan and /oh-my-claudecode:omc-review.
+omc-plan -> execute -> omc-review -> verify, invoked as /oh-my-copilot:omc-plan and /oh-my-copilot:omc-review.
 /deep-interview and /ralplan are independent planning workflows.
 /research and /team are internal lanes; /autopilot, /autoresearch, /ralph, /ultragoal stay directly invocable.
 
 TEAMS:
 Spawn coordinated agents with shared task lists and real-time messaging:
-- /oh-my-claudecode:team 3:executor "fix all TypeScript errors"
-- /oh-my-claudecode:team 5:debugger "fix build errors in src/"
+- /oh-my-copilot:team 3:executor "fix all TypeScript errors"
+- /oh-my-copilot:team 5:debugger "fix build errors in src/"
 Teams use Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+). Team orchestration is explicit via /team — there is no bare "team" keyword.
 
 MCP SERVERS:
-Register extra MCP servers (web search, GitHub, etc.) through Claude Code's native MCP config (`claude mcp add ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`; by default, the sibling `.claude.json` next to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`). OMC's bundled MCP server is already registered via the plugin's .mcp.json.
+Register extra MCP servers (web search, GitHub, etc.) through Claude Code's native MCP config (`claude mcp add ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`; by default, the sibling `.claude.json` next to `${COPILOT_CONFIG_DIR:-$HOME/.claude}`). OMC's bundled MCP server is already registered via the plugin's .mcp.json.
 
 HUD STATUSLINE:
 The status bar now shows OMC state. Restart Claude Code to see it.
@@ -106,7 +106,7 @@ MAGIC KEYWORDS (power-user shortcuts):
 
 TEAMS (NEW!):
 Spawn coordinated agents with shared task lists and real-time messaging:
-- /oh-my-claudecode:team 3:executor "fix all TypeScript errors"
+- /oh-my-copilot:team 3:executor "fix all TypeScript errors"
 - Uses Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+)
 
 HUD STATUSLINE:
@@ -155,7 +155,7 @@ gh auth status &>/dev/null
 **Before prompting, check if the repository is already starred:**
 
 ```bash
-gh api user/starred/Yeachan-Heo/oh-my-claudecode &>/dev/null
+gh api user/starred/Yeachan-Heo/oh-my-copilot &>/dev/null
 ```
 
 **If already starred (exit code 0):**
@@ -166,7 +166,7 @@ gh api user/starred/Yeachan-Heo/oh-my-claudecode &>/dev/null
 
 Use AskUserQuestion:
 
-**Question:** "If you're enjoying oh-my-claudecode, would you like to support the project by starring it on GitHub?"
+**Question:** "If you're enjoying oh-my-copilot, would you like to support the project by starring it on GitHub?"
 
 **Options:**
 1. **Yes, star it!** - Star the repository
@@ -176,7 +176,7 @@ Use AskUserQuestion:
 If user chooses "Yes, star it!":
 
 ```bash
-gh api -X PUT /user/starred/Yeachan-Heo/oh-my-claudecode 2>/dev/null && echo "Thanks for starring!" || true
+gh api -X PUT /user/starred/Yeachan-Heo/oh-my-copilot 2>/dev/null && echo "Thanks for starring!" || true
 ```
 
 **Note:** Fail silently if the API call doesn't work - never block setup completion.
@@ -185,8 +185,8 @@ gh api -X PUT /user/starred/Yeachan-Heo/oh-my-claudecode 2>/dev/null && echo "Th
 
 ```bash
 echo ""
-echo "If you enjoy oh-my-claudecode, consider starring the repo:"
-echo "  https://github.com/Yeachan-Heo/oh-my-claudecode"
+echo "If you enjoy oh-my-copilot, consider starring the repo:"
+echo "  https://github.com/Yeachan-Heo/oh-my-copilot"
 echo ""
 ```
 
@@ -197,7 +197,7 @@ Get the current OMC version and mark setup complete:
 ```bash
 # Get current OMC version from CLAUDE.md
 OMC_VERSION=""
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;

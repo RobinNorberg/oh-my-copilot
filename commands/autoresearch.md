@@ -4,7 +4,7 @@ description: ""
 
 # OMC autoresearch
 
-This compatibility command keeps `/oh-my-claudecode:autoresearch` available without loading the full `autoresearch` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:autoresearch` available without loading the full `autoresearch` skill description in every Claude Code session.
 
 ## Dispatch
 

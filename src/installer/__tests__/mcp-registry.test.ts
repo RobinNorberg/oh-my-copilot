@@ -32,7 +32,7 @@ describe('unified MCP registry sync', () => {
     mkdirSync(claudeDir, { recursive: true });
     mkdirSync(codexDir, { recursive: true });
     mkdirSync(omcDir, { recursive: true });
-    process.env.CLAUDE_CONFIG_DIR = claudeDir;
+    process.env.COPILOT_CONFIG_DIR = claudeDir;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(testRoot, '.claude.json');
     process.env.CODEX_HOME = codexDir;
     process.env.OMC_HOME = omcDir;

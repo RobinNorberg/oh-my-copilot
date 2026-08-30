@@ -28,7 +28,7 @@ describe('tmux-detector', () => {
         [2] Exit
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(true);
+            expect(result.hasCopilotCode).toBe(true);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(true);
             expect(result.confidence).toBeGreaterThan(0.5);
@@ -59,7 +59,7 @@ describe('tmux-detector', () => {
         Hello World
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.isBlocked).toBe(false);
         });
         it('should not flag rate limit messages in non-Claude contexts', () => {
@@ -68,13 +68,13 @@ describe('tmux-detector', () => {
         Error: rate limit exceeded
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false); // No Claude context
         });
         it('should handle empty content', () => {
             const result = analyzePaneContent('');
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(false);
             expect(result.isBlocked).toBe(false);
             expect(result.confidence).toBe(0);
@@ -101,7 +101,7 @@ describe('tmux-detector', () => {
         Enter to confirm · Esc to cancel
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(true);
+            expect(result.hasCopilotCode).toBe(true);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(true);
             expect(result.confidence).toBeGreaterThanOrEqual(0.6);
@@ -116,7 +116,7 @@ describe('tmux-detector', () => {
           ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(true);
+            expect(result.hasCopilotCode).toBe(true);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(true);
             expect(result.rateLimitType).toBe('unknown');
@@ -133,7 +133,7 @@ describe('tmux-detector', () => {
           ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -148,7 +148,7 @@ describe('tmux-detector', () => {
           ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -163,7 +163,7 @@ describe('tmux-detector', () => {
           ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -175,7 +175,7 @@ describe('tmux-detector', () => {
         unrelated API response: Error: rate limit exceeded
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -187,7 +187,7 @@ describe('tmux-detector', () => {
         unrelated API response: Error: rate limit exceeded
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -199,7 +199,7 @@ describe('tmux-detector', () => {
         ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -213,7 +213,7 @@ describe('tmux-detector', () => {
         [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -227,7 +227,7 @@ describe('tmux-detector', () => {
         [OMC#4.15.1L] | Model: Opus 4.8 | 5h:100% wk:14% | thinking | session:80m | ctx:14%
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -240,7 +240,7 @@ describe('tmux-detector', () => {
         *154aa|          Error: rate limit exceeded
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -251,7 +251,7 @@ describe('tmux-detector', () => {
         stderr | api-client.test.ts > retries after rate limit exceeded
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -264,7 +264,7 @@ describe('tmux-detector', () => {
         nothing to commit, working tree clean
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(false);
             expect(result.isBlocked).toBe(false);
         });
@@ -275,7 +275,7 @@ describe('tmux-detector', () => {
         Error: rate limit exceeded
       `;
             const result = analyzePaneContent(content);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false);
         });
@@ -447,7 +447,7 @@ describe('tmux-detector', () => {
                     paneIndex: 0,
                     isActive: true,
                     analysis: {
-                        hasClaudeCode: true,
+                        hasCopilotCode: true,
                         hasRateLimitMessage: true,
                         isBlocked: true,
                         rateLimitType: 'five_hour',
@@ -473,7 +473,7 @@ describe('tmux-detector', () => {
                     paneIndex: 0,
                     isActive: true,
                     analysis: {
-                        hasClaudeCode: true,
+                        hasCopilotCode: true,
                         hasRateLimitMessage: true,
                         isBlocked: true,
                         confidence: 0.8,

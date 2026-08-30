@@ -28,11 +28,25 @@ function makePage(overrides = {}) {
 }
 describe('Wiki Storage', () => {
     let tempDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(async () => {
-        tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wiki-storage-test-'));
+        tempDir = await fsp.mkdtemp(path.join(os.homedir(), 'wiki-storage-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = tempDir;
+        process.env.USERPROFILE = tempDir;
     });
     afterEach(async () => {
         await fsp.rm(tempDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     describe('getWikiDir', () => {
         it('should return .omc/wiki path', () => {

@@ -7,7 +7,7 @@
 
 ## Purpose
 
-This directory defines all agents available in oh-my-claudecode:
+This directory defines all agents available in oh-my-copilot:
 
 - **18 base agents** with default model assignments
 - **Tiered variants** (LOW/MEDIUM/HIGH) for smart routing

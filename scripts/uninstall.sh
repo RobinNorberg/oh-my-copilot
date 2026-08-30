@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Oh-My-ClaudeCode Uninstaller
+# Oh-My-Copilot Uninstaller
 # Completely removes all OMC-installed files and configurations
 
 set -e
@@ -10,17 +10,17 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-echo -e "${BLUE}Oh-My-ClaudeCode Uninstaller${NC}"
+echo -e "${BLUE}Oh-My-Copilot Uninstaller${NC}"
 echo ""
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/config-dir.sh"
 
 # Claude Code config directory (defaults to ~/.claude)
-CLAUDE_CONFIG_DIR="$(resolve_claude_config_dir)"
+COPILOT_CONFIG_DIR="$(resolve_claude_config_dir)"
 
 echo "This will remove ALL OMC components from:"
-echo "  $CLAUDE_CONFIG_DIR"
+echo "  $COPILOT_CONFIG_DIR"
 echo ""
 echo "Components to be removed:"
 echo "  - Agents (architect, document-specialist, explore, etc. + legacy aliases)"
@@ -52,51 +52,51 @@ fi
 
 # Remove agents
 echo -e "${BLUE}Removing agents...${NC}"
-rm -f "$CLAUDE_CONFIG_DIR/agents/architect.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/document-specialist.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/explore.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/designer.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/writer.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/vision.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/critic.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/analyst.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/executor.md"
-rm -f "$CLAUDE_CONFIG_DIR/agents/planner.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/architect.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/document-specialist.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/explore.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/designer.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/writer.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/vision.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/critic.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/analyst.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/executor.md"
+rm -f "$COPILOT_CONFIG_DIR/agents/planner.md"
 
 # Remove commands
 echo -e "${BLUE}Removing commands...${NC}"
-rm -f "$CLAUDE_CONFIG_DIR/commands/coordinator.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/omc.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/ultrawork.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/deepsearch.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/analyze.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/plan.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/review.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/planner.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/orchestrator.md"
-rm -f "$CLAUDE_CONFIG_DIR/commands/update.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/coordinator.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/omc.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/ultrawork.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/deepsearch.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/analyze.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/plan.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/review.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/planner.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/orchestrator.md"
+rm -f "$COPILOT_CONFIG_DIR/commands/update.md"
 
 # Remove skills
 echo -e "${BLUE}Removing skills...${NC}"
-rm -rf "$CLAUDE_CONFIG_DIR/skills/ultrawork"
-rm -rf "$CLAUDE_CONFIG_DIR/skills/git-master"
-rm -rf "$CLAUDE_CONFIG_DIR/skills/frontend-ui-ux"
+rm -rf "$COPILOT_CONFIG_DIR/skills/ultrawork"
+rm -rf "$COPILOT_CONFIG_DIR/skills/git-master"
+rm -rf "$COPILOT_CONFIG_DIR/skills/frontend-ui-ux"
 
 # Remove hooks
 echo -e "${BLUE}Removing hooks...${NC}"
-rm -f "$CLAUDE_CONFIG_DIR/hooks/keyword-detector.sh"
-rm -f "$CLAUDE_CONFIG_DIR/hooks/stop-continuation.sh"
-rm -f "$CLAUDE_CONFIG_DIR/hooks/silent-auto-update.sh"
+rm -f "$COPILOT_CONFIG_DIR/hooks/keyword-detector.sh"
+rm -f "$COPILOT_CONFIG_DIR/hooks/stop-continuation.sh"
+rm -f "$COPILOT_CONFIG_DIR/hooks/silent-auto-update.sh"
 
 # Remove version, state, and config files
 echo -e "${BLUE}Removing state and config files...${NC}"
-rm -f "$CLAUDE_CONFIG_DIR/.omc-version.json"
-rm -f "$CLAUDE_CONFIG_DIR/.omc-silent-update.json"
-rm -f "$CLAUDE_CONFIG_DIR/.omc-update.log"
-rm -f "$CLAUDE_CONFIG_DIR/.omc-config.json"
+rm -f "$COPILOT_CONFIG_DIR/.omc-version.json"
+rm -f "$COPILOT_CONFIG_DIR/.omc-silent-update.json"
+rm -f "$COPILOT_CONFIG_DIR/.omc-update.log"
+rm -f "$COPILOT_CONFIG_DIR/.omc-config.json"
 
 # Remove hook configurations from settings.json
-SETTINGS_FILE="$CLAUDE_CONFIG_DIR/settings.json"
+SETTINGS_FILE="$COPILOT_CONFIG_DIR/settings.json"
 if [ -f "$SETTINGS_FILE" ] && command -v jq &> /dev/null; then
     echo -e "${BLUE}Removing hook configurations from settings.json...${NC}"
 
@@ -155,7 +155,7 @@ else
 fi
 
 # Remove .omc directory if it exists (plans, notepads, drafts)
-if [ -d "$CLAUDE_CONFIG_DIR/../.omc" ] || [ -d ".omc" ]; then
+if [ -d "$COPILOT_CONFIG_DIR/../.omc" ] || [ -d ".omc" ]; then
     echo -e "${YELLOW}Note: .omc directory (plans/notepads) was not removed.${NC}"
     echo "  To remove project plans and notepads, run:"
     echo "    rm -rf .omc"
@@ -165,8 +165,8 @@ echo ""
 echo -e "${GREEN}Uninstallation complete!${NC}"
 echo ""
 echo -e "${YELLOW}Items NOT removed (manual cleanup if desired):${NC}"
-echo "  - CLAUDE.md: rm $CLAUDE_CONFIG_DIR/CLAUDE.md"
-echo "  - settings.json backup: rm $CLAUDE_CONFIG_DIR/settings.json.bak"
+echo "  - CLAUDE.md: rm $COPILOT_CONFIG_DIR/CLAUDE.md"
+echo "  - settings.json backup: rm $COPILOT_CONFIG_DIR/settings.json.bak"
 echo ""
 echo "To verify complete removal, check:"
-echo "  ls -la $CLAUDE_CONFIG_DIR/"
+echo "  ls -la $COPILOT_CONFIG_DIR/"

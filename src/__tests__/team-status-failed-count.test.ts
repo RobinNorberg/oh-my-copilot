@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock all dependencies before importing the module under test
 vi.mock('../utils/paths.js', () => ({
-  getClaudeConfigDir: vi.fn(() => '/tmp/test-claude-config'),
+  getCopilotConfigDir: vi.fn(() => '/tmp/test-claude-config'),
 }));
 
 vi.mock('../team/team-registration.js', () => ({

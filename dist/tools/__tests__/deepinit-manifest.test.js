@@ -1,7 +1,7 @@
 /**
  * Tests for deepinit-manifest tool
  *
- * @see https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1719
+ * @see https://github.com/Yeachan-Heo/oh-my-copilot/issues/1719
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, writeFileSync, rmSync, existsSync, readFileSync, symlinkSync } from 'node:fs';
@@ -342,11 +342,25 @@ describe('ancestor cascading', () => {
 // TESTS: Tool handler (integration via deepinitManifestTool)
 // =============================================================================
 describe('deepinitManifestTool handler', () => {
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         TEST_DIR = createTestDir();
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = TEST_DIR;
+        process.env.USERPROFILE = TEST_DIR;
         vi.mocked(worktreePaths.validateWorkingDirectory).mockReturnValue(TEST_DIR);
     });
     afterEach(() => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         rmSync(TEST_DIR, { recursive: true, force: true });
     });
     describe('diff action', () => {

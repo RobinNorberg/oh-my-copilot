@@ -124,9 +124,9 @@ function stripTrailingSep(p) {
   }
   return p === (0, import_path2.parse)(p).root ? p : p.slice(0, -1);
 }
-function getClaudeConfigDir() {
+function getCopilotConfigDir() {
   const home = (0, import_os.homedir)();
-  const configured = process.env.CLAUDE_CONFIG_DIR?.trim();
+  const configured = process.env.COPILOT_CONFIG_DIR?.trim();
   if (!configured) {
     return stripTrailingSep((0, import_path2.normalize)((0, import_path2.join)(home, ".claude")));
   }
@@ -1123,7 +1123,7 @@ function canonicalTasksDir(teamName, cwd) {
   return dir;
 }
 function legacyTasksDir(teamName) {
-  const claudeConfigDir = getClaudeConfigDir();
+  const claudeConfigDir = getCopilotConfigDir();
   const dir = getLegacyTaskStoragePath(claudeConfigDir, sanitizeName(teamName));
   validateResolvedPath(dir, (0, import_path7.join)(claudeConfigDir, "tasks"));
   return dir;
@@ -1282,8 +1282,8 @@ var import_fs8 = require("fs");
 var import_path8 = require("path");
 var MAX_INBOX_READ_SIZE = 10 * 1024 * 1024;
 function teamsDir(teamName) {
-  const result = (0, import_path8.join)(getClaudeConfigDir(), "teams", sanitizeName(teamName));
-  validateResolvedPath(result, (0, import_path8.join)(getClaudeConfigDir(), "teams"));
+  const result = (0, import_path8.join)(getCopilotConfigDir(), "teams", sanitizeName(teamName));
+  validateResolvedPath(result, (0, import_path8.join)(getCopilotConfigDir(), "teams"));
   return result;
 }
 function inboxPath(teamName, workerName) {
@@ -1448,8 +1448,8 @@ function deleteDrainSignal(teamName, workerName) {
 var import_fs9 = require("fs");
 var import_path9 = require("path");
 function configPath(teamName) {
-  const result = (0, import_path9.join)(getClaudeConfigDir(), "teams", sanitizeName(teamName), "config.json");
-  validateResolvedPath(result, (0, import_path9.join)(getClaudeConfigDir(), "teams"));
+  const result = (0, import_path9.join)(getCopilotConfigDir(), "teams", sanitizeName(teamName), "config.json");
+  validateResolvedPath(result, (0, import_path9.join)(getCopilotConfigDir(), "teams"));
   return result;
 }
 function shadowRegistryPath(workingDirectory) {
@@ -1692,22 +1692,22 @@ function findPermissionViolations(changedPaths, permissions, cwd) {
 }
 
 // src/config/models.ts
-var CLAUDE_FAMILY_DEFAULTS = {
+var COPILOT_FAMILY_DEFAULTS = {
   HAIKU: "claude-haiku-4-5",
   SONNET: "claude-sonnet-5",
   OPUS: "claude-opus-4-8",
   FABLE: "claude-fable-5"
 };
 var BUILTIN_TIER_MODEL_DEFAULTS = {
-  LOW: CLAUDE_FAMILY_DEFAULTS.HAIKU,
-  MEDIUM: CLAUDE_FAMILY_DEFAULTS.SONNET,
-  HIGH: CLAUDE_FAMILY_DEFAULTS.OPUS
+  LOW: COPILOT_FAMILY_DEFAULTS.HAIKU,
+  MEDIUM: COPILOT_FAMILY_DEFAULTS.SONNET,
+  HIGH: COPILOT_FAMILY_DEFAULTS.OPUS
 };
 var CLAUDE_FAMILY_HIGH_VARIANTS = {
-  HAIKU: `${CLAUDE_FAMILY_DEFAULTS.HAIKU}-high`,
-  SONNET: `${CLAUDE_FAMILY_DEFAULTS.SONNET}-high`,
-  OPUS: `${CLAUDE_FAMILY_DEFAULTS.OPUS}-high`,
-  FABLE: `${CLAUDE_FAMILY_DEFAULTS.FABLE}-high`
+  HAIKU: `${COPILOT_FAMILY_DEFAULTS.HAIKU}-high`,
+  SONNET: `${COPILOT_FAMILY_DEFAULTS.SONNET}-high`,
+  OPUS: `${COPILOT_FAMILY_DEFAULTS.OPUS}-high`,
+  FABLE: `${COPILOT_FAMILY_DEFAULTS.FABLE}-high`
 };
 var BUILTIN_EXTERNAL_MODEL_DEFAULTS = {
   codexModel: "gpt-5.3-codex",
@@ -1880,7 +1880,7 @@ function emptyUsageReport(teamName) {
 function peekRecentOutboxMessages(teamName, workerName, maxMessages = 10) {
   const safeName = sanitizeName(teamName);
   const safeWorker = sanitizeName(workerName);
-  const outboxPath2 = (0, import_path13.join)(getClaudeConfigDir(), "teams", safeName, "outbox", `${safeWorker}.jsonl`);
+  const outboxPath2 = (0, import_path13.join)(getCopilotConfigDir(), "teams", safeName, "outbox", `${safeWorker}.jsonl`);
   if (!(0, import_fs13.existsSync)(outboxPath2)) return [];
   try {
     const content = (0, import_fs13.readFileSync)(outboxPath2, "utf-8");
@@ -2789,7 +2789,7 @@ function main() {
   }
   const configPath2 = (0, import_path15.resolve)(process.argv[configIdx + 1]);
   const home = (0, import_os3.homedir)();
-  const claudeConfigDir = getClaudeConfigDir();
+  const claudeConfigDir = getCopilotConfigDir();
   if (!validateConfigPath(configPath2, home, claudeConfigDir)) {
     console.error(`Config path must be under ~/ with ${claudeConfigDir} or ~/.omc/ subpath: ${configPath2}`);
     process.exit(1);

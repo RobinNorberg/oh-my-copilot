@@ -7,7 +7,7 @@ level: 2
 
 # Skill Management CLI
 
-Meta-skill for managing oh-my-claudecode skills via CLI-like commands.
+Meta-skill for managing oh-my-copilot skills via CLI-like commands.
 
 ## Subcommands
 
@@ -17,13 +17,13 @@ Show all available skills organized by scope.
 
 **Behavior:**
 1. Scan bundled built-in skills in the plugin `skills/` directory (read-only)
-2. Scan user skills at `${CLAUDE_CONFIG_DIR:-~/.claude}/skills/omc-learned/`
+2. Scan user skills at `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/`
 3. Scan project skills at `.omc/skills/`
 4. Parse YAML frontmatter for metadata
 5. Display in organized table format:
 
 ```
-BUILT-IN SKILLS (bundled with oh-my-claudecode):
+BUILT-IN SKILLS (bundled with oh-my-copilot):
 | Name              | Description                    | Scope    |
 |-------------------|--------------------------------|----------|
 | visual-verdict    | Structured visual QA verdicts  | built-in |
@@ -43,7 +43,7 @@ PROJECT SKILLS (.omc/skills/):
 
 **Fallback:** If quality/usage stats not available, show "N/A"
 
-**Built-in skill note:** Built-in skills are bundled with oh-my-claudecode and are discoverable/readable, but not removed or edited through `/skill remove` or `/skill edit`.
+**Built-in skill note:** Built-in skills are bundled with oh-my-copilot and are discoverable/readable, but not removed or edited through `/skill remove` or `/skill edit`.
 
 ---
 
@@ -61,7 +61,7 @@ Interactive wizard for creating a new skill.
 4. **Ask for argument hint** (optional)
    - Example: "<file> [options]"
 5. **Ask for scope:**
-   - `user` → `${CLAUDE_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/SKILL.md`
+   - `user` → `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/SKILL.md`
    - `project` → `.omc/skills/<name>/SKILL.md`
 6. **Create skill file** with template:
 
@@ -94,7 +94,7 @@ argument-hint: "<args>"
 ## Examples
 
 ```
-/oh-my-claudecode:<name> example-arg
+/oh-my-copilot:<name> example-arg
 ```
 
 ## Notes
@@ -127,13 +127,13 @@ Remove a skill by name.
 
 **Behavior:**
 1. **Search for skill** in both scopes:
-   - `${CLAUDE_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/SKILL.md`
+   - `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/SKILL.md`
    - `.omc/skills/<name>/SKILL.md`
 2. **If found:**
    - Display skill info (name, description, scope)
    - **Ask for confirmation:** "Delete '<name>' skill from <scope>? (yes/no)"
 3. **If confirmed:**
-   - Delete entire skill directory (e.g., `${CLAUDE_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/`)
+   - Delete entire skill directory (e.g., `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/<name>/`)
    - Report: "✓ Removed skill '<name>' from <scope>"
 4. **If not found:**
    - Report: "✗ Skill '<name>' not found in user or project scope"
@@ -300,7 +300,7 @@ Sync skills between user and project scopes.
 
 **Behavior:**
 1. **Scan both scopes:**
-   - User skills: `${CLAUDE_CONFIG_DIR:-~/.claude}/skills/omc-learned/`
+   - User skills: `${COPILOT_CONFIG_DIR:-~/.claude}/skills/omc-learned/`
    - Project skills: `.omc/skills/`
 2. **Compare and categorize:**
    - User-only skills (not in project)
@@ -370,7 +370,7 @@ First, check if skill directories exist and create them if needed:
 
 ```bash
 # Check and create user-level skills directory
-USER_SKILLS_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned"
+USER_SKILLS_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned"
 if [ -d "$USER_SKILLS_DIR" ]; then
   echo "User skills directory exists: $USER_SKILLS_DIR"
 else
@@ -395,14 +395,14 @@ Scan both directories and show a comprehensive inventory:
 ```bash
 # Scan user-level skills
 echo "=== USER-LEVEL SKILLS (~/.claude/skills/omc-learned/) ==="
-if [ -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" ]; then
-  USER_COUNT=$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
+if [ -d "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" ]; then
+  USER_COUNT=$(find "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" -name "*.md" 2>/dev/null | wc -l)
   echo "Total skills: $USER_COUNT"
 
   if [ $USER_COUNT -gt 0 ]; then
     echo ""
     echo "Skills found:"
-    find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" -name "*.md" -type f -exec sh -c '
+    find "${COPILOT_CONFIG_DIR:-$HOME/.claude}/skills/omc-learned" -name "*.md" -type f -exec sh -c '
       FILE="$1"
       NAME=$(grep -m1 "^name:" "$FILE" 2>/dev/null | sed "s/name: //")
       DESC=$(grep -m1 "^description:" "$FILE" 2>/dev/null | sed "s/description: //")
@@ -711,9 +711,9 @@ How to work with this integration correctly:
 
 When invoked with an argument, skip the interactive wizard:
 
-- `/oh-my-claudecode:skill list` - Show detailed skill inventory
-- `/oh-my-claudecode:skill add` - Start skill creation (invoke skillify)
-- `/oh-my-claudecode:skill scan` - Scan both skill directories
+- `/oh-my-copilot:skill list` - Show detailed skill inventory
+- `/oh-my-copilot:skill add` - Start skill creation (invoke skillify)
+- `/oh-my-copilot:skill scan` - Scan both skill directories
 
 ### Interactive Mode
 
@@ -759,16 +759,16 @@ Good skills are:
 
 ## Related Skills
 
-- `/oh-my-claudecode:skillify` - Extract a skill from current conversation (`/oh-my-claudecode:learner` is a deprecated alias)
-- `/oh-my-claudecode:note` - Save quick notes (less formal than skills)
-- `/oh-my-claudecode:deepinit` - Generate AGENTS.md codebase hierarchy
+- `/oh-my-copilot:skillify` - Extract a skill from current conversation (`/oh-my-copilot:learner` is a deprecated alias)
+- `/oh-my-copilot:note` - Save quick notes (less formal than skills)
+- `/oh-my-copilot:deepinit` - Generate AGENTS.md codebase hierarchy
 
 ---
 
 ## Example Session
 
 ```
-> /oh-my-claudecode:skill list
+> /oh-my-copilot:skill list
 
 Checking skill directories...
 ✓ User skills directory exists: ~/.claude/skills/omc-learned/
@@ -811,7 +811,7 @@ What would you like to do?
 
 ## Tips for Users
 
-- Run `/oh-my-claudecode:skill list` periodically to review your skill library
+- Run `/oh-my-copilot:skill list` periodically to review your skill library
 - After solving a tricky bug, immediately run skillify to capture it
 - Use project-level skills for codebase-specific knowledge
 - Use user-level skills for general patterns that apply everywhere
@@ -832,9 +832,9 @@ What would you like to do?
 
 ## Related Skills
 
-- `/oh-my-claudecode:skillify` - Extract a skill from current conversation (`/oh-my-claudecode:learner` is a deprecated alias)
-- `/oh-my-claudecode:note` - Save quick notes (less formal than skills)
-- `/oh-my-claudecode:deepinit` - Generate AGENTS.md codebase hierarchy
+- `/oh-my-copilot:skillify` - Extract a skill from current conversation (`/oh-my-copilot:learner` is a deprecated alias)
+- `/oh-my-copilot:note` - Save quick notes (less formal than skills)
+- `/oh-my-copilot:deepinit` - Generate AGENTS.md codebase hierarchy
 
 ---
 

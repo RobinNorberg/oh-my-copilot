@@ -173,7 +173,7 @@ describe('inventory-graph drift enforcement (#3702)', () => {
     expect(manifest).not.toBeNull();
     const m = manifest!;
     expect(m.schemaVersion).toBe(2);
-    expect(m.repository).toBe('Yeachan-Heo/oh-my-claudecode');
+    expect(m.repository).toBe('Yeachan-Heo/oh-my-copilot');
     expect(m.provenance.base).toBe(EXPECTED_BASE);
     expect(m.provenance.planningHead).toBe(EXPECTED_PLANNING_HEAD);
     expect(m.base).toBe(EXPECTED_BASE);

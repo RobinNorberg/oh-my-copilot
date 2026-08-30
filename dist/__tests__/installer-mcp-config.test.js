@@ -23,7 +23,7 @@ vi.mock('fs', async () => {
 });
 async function loadInstallerWithEnv(claudeConfigDir, homeDir, codexHome, omcHome) {
     vi.resetModules();
-    process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+    process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
     process.env.HOME = homeDir;
     process.env.CODEX_HOME = codexHome;
     process.env.OMC_HOME = omcHome;
@@ -89,7 +89,7 @@ describe('installer MCP config ownership (issue #1802)', () => {
         }, null, 2));
         const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir, codexHome, omcHome);
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
         });
         expect(result.success).toBe(true);
@@ -150,7 +150,7 @@ describe('installer MCP config ownership (issue #1802)', () => {
 // That mirror test only proves its own copy of the merge logic is correct; it
 // would keep passing even if the production fix were reverted. This test would
 // not: it runs the actual `install()` entry point against a fresh, empty
-// CLAUDE_CONFIG_DIR with no force flags and reads back the real settings.json.
+// COPILOT_CONFIG_DIR with no force flags and reads back the real settings.json.
 // ---------------------------------------------------------------------------
 describe('installer hook merge — first install writes non-empty hook groups', () => {
     let tempRoot;
@@ -182,7 +182,7 @@ describe('installer hook merge — first install writes non-empty hook groups', 
         // into a config dir that has never had OMC hooks configured.
         const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir, codexHome, omcHome);
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
         });
         expect(result.success).toBe(true);

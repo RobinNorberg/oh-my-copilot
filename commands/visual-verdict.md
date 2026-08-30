@@ -4,7 +4,7 @@ description: ""
 
 # OMC visual-verdict
 
-This compatibility command keeps `/oh-my-claudecode:visual-verdict` available without loading the full `visual-verdict` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:visual-verdict` available without loading the full `visual-verdict` skill description in every Claude Code session.
 
 ## Dispatch
 

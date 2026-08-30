@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-const DEFAULT_REPO_URL = 'https://github.com/Yeachan-Heo/oh-my-claudecode';
+const DEFAULT_REPO_URL = 'https://github.com/Yeachan-Heo/oh-my-copilot';
 const CONVENTIONAL_RE = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?:\s*(?<desc>.+)$/;
 function parseConventionalSubject(raw) {
     const match = raw.match(CONVENTIONAL_RE);
@@ -184,7 +184,7 @@ export function generateChangelog(version, categories, prCount) {
     const secCount = categories.get('security')?.length ?? 0;
     const otherCount = categories.get('other')?.length ?? 0;
     const statsLine = `- **${pluralize(prCount, 'PR merged', 'PRs merged')}** | **${pluralize(featCount, 'new feature')}** | **${pluralize(fixCount, 'bug fix', 'bug fixes')}** | **${pluralize(secCount, 'security/hardening improvement')}** | **${pluralize(otherCount, 'other change')}**`;
-    let md = `# oh-my-claudecode v${version}: ${title}\n\n`;
+    let md = `# oh-my-copilot v${version}: ${title}\n\n`;
     md += `## Release Notes\n\n${summary}\n`;
     for (const section of sections) {
         md += `\n### ${section.title}\n\n`;
@@ -199,7 +199,7 @@ export function generateReleaseBody(version, changelog, contributors, prevTag, r
     body += 'The npm CLI and the Claude Code marketplace/plugin are separate install tracks, not either/or replacements. Update whichever track you use; if you have both installed, update both. CLI-dependent skill paths such as `ask` and CLI-backed `team` require the `omc` CLI from the npm package.\n\n';
     body += '**CLI / runtime:**\n\n';
     body += '```bash\n';
-    body += `npm install -g oh-my-claude-sisyphus@${version}\n`;
+    body += `npm install -g oh-my-copilot@${version}\n`;
     body += '```\n\n';
     body += '**Claude Code plugin:**\n\n';
     body += '```text\n';

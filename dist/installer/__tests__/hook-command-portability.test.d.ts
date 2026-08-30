@@ -9,7 +9,7 @@
  * Tests the exported getHooksSettingsConfig() function which is the public API
  * for standalone hook configuration. Uses vi.resetModules() + dynamic import
  * because HOOKS_SETTINGS_CONFIG_NODE is a module-level constant evaluated at
- * import time based on CLAUDE_CONFIG_DIR.
+ * import time based on COPILOT_CONFIG_DIR.
  */
 export {};
 //# sourceMappingURL=hook-command-portability.test.d.ts.map

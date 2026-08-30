@@ -12,7 +12,7 @@
  *   5. Real OMC plugin enabled → existing skip behavior unchanged (independent
  *      of pluginDirMode).
  *
- * These tests run install() against a throwaway CLAUDE_CONFIG_DIR and assert on
+ * These tests run install() against a throwaway COPILOT_CONFIG_DIR and assert on
  * the resulting filesystem layout. Module imports are reset between tests so
  * each call picks up the isolated config dir.
  */

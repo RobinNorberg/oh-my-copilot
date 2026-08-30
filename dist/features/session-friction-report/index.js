@@ -3,7 +3,7 @@ import { createReadStream, existsSync, readdirSync, statSync } from 'fs';
 import { dirname, join, normalize, resolve } from 'path';
 import { createInterface } from 'readline';
 import { getOmcRoot, resolveToWorktreeRoot, validateSessionId, validateWorkingDirectory } from '../../lib/worktree-paths.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import { encodeProjectPath } from '../../utils/encode-project-path.js';
 const DEFAULT_LIMIT = 10;
 const DEFAULT_CONTEXT_WINDOW = 200_000;
@@ -129,7 +129,7 @@ function uniqueSortedTargets(targets) {
     });
 }
 function buildTargets(projectRoot, projectRoots, scopeMode) {
-    const claudeDir = getClaudeConfigDir();
+    const claudeDir = getCopilotConfigDir();
     const targets = [];
     if (scopeMode === 'all') {
         for (const filePath of listJsonFiles(join(claudeDir, 'projects'))) {

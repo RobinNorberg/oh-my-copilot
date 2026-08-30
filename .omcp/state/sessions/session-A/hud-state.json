@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-04-13T20:37:59.571Z",
+  "backgroundTasks": [
+    {
+      "id": "bg-1",
+      "description": "verify scoped runtime insight",
+      "status": "running",
+      "startedAt": "2026-04-13T20:37:59.571Z",
+      "agentType": "executor"
+    }
+  ],
+  "sessionId": "session-A"
+}

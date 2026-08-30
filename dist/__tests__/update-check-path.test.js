@@ -2,18 +2,18 @@ import { describe, expect, it, afterEach } from 'vitest';
 import { join } from 'path';
 import { readFileSync } from 'fs';
 import { getUpdateCheckCachePath } from '../utils/config-dir.js';
-const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
 afterEach(() => {
     if (originalClaudeConfigDir === undefined) {
-        delete process.env.CLAUDE_CONFIG_DIR;
+        delete process.env.COPILOT_CONFIG_DIR;
     }
     else {
-        process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+        process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
     }
 });
 describe('update-check cache path', () => {
     it('uses the active Claude config dir as the canonical OMC cache root', () => {
-        process.env.CLAUDE_CONFIG_DIR = join('/tmp', 'omc-custom-claude');
+        process.env.COPILOT_CONFIG_DIR = join('/tmp', 'omc-custom-claude');
         expect(getUpdateCheckCachePath()).toBe(join('/tmp', 'omc-custom-claude', '.omc', 'update-check.json'));
     });
     it('keeps the hook updater writer and HUD reader on the shared helper path', () => {

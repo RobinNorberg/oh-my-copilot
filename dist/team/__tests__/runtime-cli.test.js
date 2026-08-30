@@ -1,11 +1,47 @@
-import { describe, it, expect, vi } from 'vitest';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync, mkdirSync } from 'fs';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { existsSync, mkdtempSync as rawMkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync, mkdirSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createHash } from 'node:crypto';
 import { assertAutoMergeRuntimeSupported, buildCliOutput, buildTerminalCliResult, handleRecoverDeadWorkerV2Owner, fenceAllDeadRecoveryExpiry, hasPendingRecoveryAdmissionBeforeDeadline, hasPendingRecoveryIntentBeforeDeadline, updateAllDeadRecoveryGrace, checkWatchdogFailedMarker, getTerminalStatus, isTerseFinalSummary, processPendingRecoveryIntents, refreshRuntimeWorkerPaneIds, areAllAuthoritativeWorkersDead, classifyAllDeadRecoveryEvidence, readTaskOutputFallback, writeResultArtifact, runPersistentRecoveryOwnerLoop, finalizeRuntimeShutdown, createRuntimeStartupShutdownBarrier, runWorkerLaunchFromEnvironment, selectRuntimeCliMode, } from '../runtime-cli.js';
 import { aliasActiveRecoveryRequest, canonicalRecoveryPayloadHash, readRecoveryOutcome, reserveRecoveryRequest, writeRecoveryFinal } from '../recovery-request-store.js';
 import { absPath, TeamPaths } from '../state-paths.js';
+let fixtureRoot;
+let previousHome;
+let previousUserProfile;
+let previousStateDir;
+function mkdtempSync(prefix) {
+    const root = rawMkdtempSync(prefix);
+    if (!fixtureRoot) {
+        fixtureRoot = root;
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = root;
+        process.env.USERPROFILE = root;
+        delete process.env.OMC_STATE_DIR;
+    }
+    return root;
+}
+beforeEach(() => { fixtureRoot = undefined; });
+afterEach(() => {
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousStateDir;
+    fixtureRoot = undefined;
+    previousHome = undefined;
+    previousUserProfile = undefined;
+    previousStateDir = undefined;
+});
 describe('runtime-cli legacy watchdog shutdown', () => {
     it('quiesces v1 before snapshotting, shutdown, and publication', async () => {
         const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-shutdown-order-'));

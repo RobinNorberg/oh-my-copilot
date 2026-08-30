@@ -176,7 +176,7 @@ describe("startup context compaction", () => {
         const tempDir = mkdtempSync(join(tmpdir(), "omc-loader-context-"));
         try {
             const omcAgentsPath = join(tempDir, "AGENTS.md");
-            const omcGuidance = `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+            const omcGuidance = `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>
 schema
@@ -222,7 +222,7 @@ schema
             const fileA = join(tempDir, "AGENTS.md");
             const fileB = join(tempDir, "nested", "CLAUDE.md");
             require("node:fs").mkdirSync(join(tempDir, "nested"), { recursive: true });
-            const largeSection = `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+            const largeSection = `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>schema</guidance_schema_contract>
 
@@ -245,7 +245,7 @@ ${"- keep this\n".repeat(900)}
         }
     });
     it("caps very large OMC guidance after preserving high-value sections", () => {
-        const largeOmc = `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+        const largeOmc = `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>
 schema
@@ -436,7 +436,7 @@ describe("team.roleRouting (Option E)", () => {
             rmSync(tempDir, { recursive: true, force: true });
         }
     });
-    it("rejects cursor for non-executor team roleRouting providers", () => {
+    it("accepts cursor for reviewer team roleRouting providers (issue #3880)", () => {
         const tempDir = mkdtempSync(join(tmpdir(), "omc-team-routing-cursor-reviewer-"));
         try {
             const claudeDir = join(tempDir, ".claude");
@@ -444,12 +444,18 @@ describe("team.roleRouting (Option E)", () => {
             writeFileSync(join(claudeDir, "omc.jsonc"), JSON.stringify({
                 team: {
                     roleRouting: {
-                        "code-reviewer": { provider: "cursor" },
+                        "code-reviewer": { provider: "cursor", model: "cursor-grok-4.6-high" },
+                        "critic": { provider: "cursor" },
                     },
                 },
             }));
             process.chdir(tempDir);
-            expect(() => loadConfig()).toThrow(/cursor is only supported for executor-style roles/);
+            const config = loadConfig();
+            expect(config.team?.roleRouting?.["code-reviewer"]).toEqual({
+                provider: "cursor",
+                model: "cursor-grok-4.6-high",
+            });
+            expect(config.team?.roleRouting?.critic).toEqual({ provider: "cursor" });
         }
         finally {
             rmSync(tempDir, { recursive: true, force: true });

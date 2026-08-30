@@ -73,7 +73,7 @@ function createPluginRoot(dir, agentContents) {
     }
     mkdirSync(join(dir, '.claude-plugin'), { recursive: true });
     writeFileSync(join(dir, '.claude-plugin', 'plugin.json'), JSON.stringify({
-        name: 'oh-my-claudecode',
+        name: 'oh-my-copilot',
         commands: 'commands',
         skills: ['skills/test'],
     }));
@@ -89,16 +89,16 @@ describe('cleanupStaleAgents', () => {
     const log = vi.fn();
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-stale-agents-'));
-        originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-        process.env.CLAUDE_CONFIG_DIR = tempDir;
+        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+        process.env.COPILOT_CONFIG_DIR = tempDir;
         log.mockClear();
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         else {
-            process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
         }
         rmSync(tempDir, { recursive: true, force: true });
     });
@@ -268,7 +268,7 @@ describe('cleanupStaleAgents', () => {
             const pluginRoot = join(tempDir, 'lookalike-plugin-root');
             createPluginRoot(pluginRoot, { 'architect.md': historicalAgent('architect.md') });
             writeFileSync(join(pluginRoot, '.claude-plugin', 'plugin.json'), JSON.stringify({
-                name: 'oh-my-claudecode-lookalike', commands: 'commands', skills: ['skills/test'],
+                name: 'oh-my-copilot-lookalike', commands: 'commands', skills: ['skills/test'],
             }));
             process.env.OMC_PLUGIN_ROOT = pluginRoot;
             delete process.env.CLAUDE_PLUGIN_ROOT;
@@ -298,7 +298,7 @@ describe('cleanupStaleAgents', () => {
             createPluginRoot(pluginRoot, { 'build-fixer.md': historicalAgent('build-fixer.md') });
             mkdirSync(join(tempDir, 'plugins'), { recursive: true });
             writeFileSync(join(tempDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
-                plugins: { 'oh-my-claudecode-lookalike@omc': [{ installPath: pluginRoot }] },
+                plugins: { 'oh-my-copilot-lookalike@omc': [{ installPath: pluginRoot }] },
             }));
             delete process.env.OMC_PLUGIN_ROOT;
             delete process.env.CLAUDE_PLUGIN_ROOT;
@@ -415,16 +415,16 @@ describe('cleanupStaleSkills', () => {
     const log = vi.fn();
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-stale-skills-'));
-        originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-        process.env.CLAUDE_CONFIG_DIR = tempDir;
+        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+        process.env.COPILOT_CONFIG_DIR = tempDir;
         log.mockClear();
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         else {
-            process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
         }
         rmSync(tempDir, { recursive: true, force: true });
     });
@@ -546,16 +546,16 @@ describe('prunePluginDuplicateSkills', () => {
     const log = vi.fn();
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-prune-dupes-'));
-        originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-        process.env.CLAUDE_CONFIG_DIR = tempDir;
+        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+        process.env.COPILOT_CONFIG_DIR = tempDir;
         log.mockClear();
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         else {
-            process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
         }
         rmSync(tempDir, { recursive: true, force: true });
     });
@@ -661,16 +661,16 @@ describe('prunePluginDuplicateAgents', () => {
     const log = vi.fn();
     beforeEach(() => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-prune-agent-dupes-'));
-        originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-        process.env.CLAUDE_CONFIG_DIR = tempDir;
+        originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+        process.env.COPILOT_CONFIG_DIR = tempDir;
         log.mockClear();
     });
     afterEach(() => {
         if (originalConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         else {
-            process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
         }
         rmSync(tempDir, { recursive: true, force: true });
     });
@@ -713,7 +713,7 @@ describe('prunePluginDuplicateAgents', () => {
             mkdirSync(join(tempDir, 'plugins'), { recursive: true });
             writeFileSync(join(tempDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
                 plugins: {
-                    'oh-my-claudecode': [{ installPath: firstRoot }, { installPath: secondRoot }],
+                    'oh-my-copilot': [{ installPath: firstRoot }, { installPath: secondRoot }],
                 },
             }));
             vi.resetModules();

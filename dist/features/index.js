@@ -5,7 +5,7 @@ export { createMagicKeywordProcessor, detectMagicKeywords, builtInMagicKeywords 
 export { createContinuationHook, continuationSystemPromptAddition, detectCompletionSignals, generateVerificationPrompt } from './continuation-enforcement.js';
 export { 
 // Constants
-REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, CLAUDE_CONFIG_DIR, VERSION_FILE, 
+REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, COPILOT_CONFIG_DIR, VERSION_FILE, 
 // Functions
 getInstalledVersion, saveVersionMetadata, updateLastCheckTime, fetchLatestRelease, compareVersions, checkForUpdates, performUpdate, formatUpdateNotification, shouldCheckForUpdates, backgroundUpdateCheck, interactiveUpdate, 
 // Silent auto-update

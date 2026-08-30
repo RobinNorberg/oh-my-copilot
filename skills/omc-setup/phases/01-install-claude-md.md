@@ -7,7 +7,7 @@ If `--global` flag was passed, set `CONFIG_TARGET=global`.
 
 Otherwise (initial setup wizard), use AskUserQuestion to prompt:
 
-**Question:** "Where should I configure oh-my-claudecode?"
+**Question:** "Where should I configure oh-my-copilot?"
 
 **Options:**
 1. **Local (this project)** - Creates `.claude/CLAUDE.md` in current project directory. Best for project-specific configurations.

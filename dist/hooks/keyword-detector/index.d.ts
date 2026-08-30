@@ -23,7 +23,7 @@ export declare function isRetiredWorkflowSlashInvocation(text: string): boolean;
 declare const CANONICAL_WORKFLOW_SLASH_SKILLS: readonly ["autopilot", "ralph", "team", "ultraqa", "deep-interview", "ralplan", "self-improve"];
 export type CanonicalWorkflowSlashSkill = (typeof CANONICAL_WORKFLOW_SLASH_SKILLS)[number];
 export interface ExplicitWorkflowSlashInvocation {
-    /** Canonical workflow skill name (lowercase, no `oh-my-claudecode:` prefix). */
+    /** Canonical workflow skill name (lowercase, no `oh-my-copilot:` prefix). */
     skill: CanonicalWorkflowSlashSkill;
     /** Trailing arguments after the slash command. */
     args: string;
@@ -33,7 +33,7 @@ export interface ExplicitWorkflowSlashInvocation {
 /**
  * Parse an explicit workflow slash invocation at the start of a prompt.
  *
- * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-claudecode:<skill>` for
+ * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-copilot:<skill>` for
  * the canonical workflow skill list. Code fences and inline backticks are
  * stripped first so quoted commands do not match. The trailing lookahead
  * (whitespace, end-of-text, or punctuation) prevents file paths like

@@ -10,17 +10,17 @@ Use OMC's canonical advisor skill to route a prompt through the local Claude, Co
 ## Usage
 
 ```bash
-/oh-my-claudecode:ask <claude|codex|gemini|antigravity|grok|cursor> <question or task>
+/oh-my-copilot:ask <claude|codex|gemini|antigravity|grok|cursor> <question or task>
 ```
 
 Examples:
 
 ```bash
-/oh-my-claudecode:ask codex "review this patch from a security perspective"
-/oh-my-claudecode:ask gemini "suggest UX improvements for this flow"
-/oh-my-claudecode:ask antigravity "suggest UX improvements for this flow"
-/oh-my-claudecode:ask claude "draft an implementation plan for issue #123"
-/oh-my-claudecode:ask cursor "apply this implementation plan"
+/oh-my-copilot:ask codex "review this patch from a security perspective"
+/oh-my-copilot:ask gemini "suggest UX improvements for this flow"
+/oh-my-copilot:ask antigravity "suggest UX improvements for this flow"
+/oh-my-copilot:ask claude "draft an implementation plan for issue #123"
+/oh-my-copilot:ask cursor "apply this implementation plan"
 ```
 
 ## Routing

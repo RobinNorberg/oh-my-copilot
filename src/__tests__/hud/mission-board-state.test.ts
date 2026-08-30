@@ -41,7 +41,7 @@ describe('mission board state tracking', () => {
     recordMissionAgentStart(cwd, {
       sessionId: 'sess-1234',
       agentId: 'agent-1',
-      agentType: 'oh-my-claudecode:executor',
+      agentType: 'oh-my-copilot:executor',
       parentMode: 'ultrawork',
       taskDescription: 'Implement mission board renderer',
       at: '2026-03-09T07:00:00.000Z',
@@ -75,7 +75,7 @@ describe('mission board state tracking', () => {
     recordMissionAgentStart(cwd, {
       sessionId: mergeSessionId,
       agentId: 'agent-9',
-      agentType: 'oh-my-claudecode:architect',
+      agentType: 'oh-my-copilot:architect',
       parentMode: 'ralph',
       taskDescription: 'Review mission board architecture',
       at: '2026-03-09T07:00:00.000Z',
@@ -219,7 +219,7 @@ describe('mission board state tracking', () => {
     recordMissionAgentStart(cwd, {
       sessionId: sessionA,
       agentId: 'agent-a1',
-      agentType: 'oh-my-claudecode:executor',
+      agentType: 'oh-my-copilot:executor',
       parentMode: 'ultrawork',
       taskDescription: 'Task for session A',
       at: '2026-03-09T10:00:00.000Z',
@@ -228,7 +228,7 @@ describe('mission board state tracking', () => {
     recordMissionAgentStart(cwd, {
       sessionId: sessionB,
       agentId: 'agent-b1',
-      agentType: 'oh-my-claudecode:architect',
+      agentType: 'oh-my-copilot:architect',
       parentMode: 'ralph',
       taskDescription: 'Task for session B',
       at: '2026-03-09T10:01:00.000Z',
@@ -307,7 +307,7 @@ describe('mission board state tracking', () => {
     recordMissionAgentStart(cwd, {
       sessionId: sessionZ,
       agentId: 'session-agent',
-      agentType: 'oh-my-claudecode:executor',
+      agentType: 'oh-my-copilot:executor',
       parentMode: 'ralph',
       taskDescription: 'Task for session Z',
       at: '2026-05-01T10:00:00.000Z',

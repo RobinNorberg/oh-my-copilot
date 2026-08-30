@@ -58,7 +58,7 @@ const KEYWORD_PRIORITY = [
     'ralplan', 'tdd', 'code-review', 'security-review',
     'ultrathink', 'deepsearch', 'analyze', 'deep-interview', 'codex', 'gemini', 'cursor', 'antigravity'
 ];
-const RETIRED_WORKFLOW_SLASH_PATTERN = /^\s*\/(?:oh-my-claudecode:|omc:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i;
+const RETIRED_WORKFLOW_SLASH_PATTERN = /^\s*\/(?:oh-my-copilot:|omc:)?(?:ultrawork|ulw|uw|울트라워크|ウルトラワーク|ccg|claude-codex-gemini|씨씨지|シーシージー)(?=\s|$|[?!.,;:])/i;
 export function isRetiredWorkflowSlashInvocation(text) {
     return RETIRED_WORKFLOW_SLASH_PATTERN.test(text);
 }
@@ -91,7 +91,7 @@ const SLASH_SKILL_TO_KEYWORD_TYPE = {
     'deep-interview': 'deep-interview',
     ralplan: 'ralplan',
 };
-const WORKFLOW_SLASH_PATTERN = new RegExp('^\\s*/(?:oh-my-claudecode:|omc:)?(' +
+const WORKFLOW_SLASH_PATTERN = new RegExp('^\\s*/(?:oh-my-copilot:|omc:)?(' +
     CANONICAL_WORKFLOW_SLASH_SKILLS
         .map((skill) => skill.replace(/-/g, '\\-'))
         .join('|') +
@@ -99,7 +99,7 @@ const WORKFLOW_SLASH_PATTERN = new RegExp('^\\s*/(?:oh-my-claudecode:|omc:)?(' +
 /**
  * Parse an explicit workflow slash invocation at the start of a prompt.
  *
- * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-claudecode:<skill>` for
+ * Recognizes `/<skill>`, `/omc:<skill>`, and `/oh-my-copilot:<skill>` for
  * the canonical workflow skill list. Code fences and inline backticks are
  * stripped first so quoted commands do not match. The trailing lookahead
  * (whitespace, end-of-text, or punctuation) prevents file paths like
@@ -132,7 +132,7 @@ export function removeCodeBlocks(text) {
 }
 const PASTED_MAGIC_KEYWORD_HEADER_PATTERN = /^\s*\[MAGIC KEYWORDS?(?: DETECTED)?:.*$/i;
 const ROLE_BOUNDARY_PATTERN = /^<\s*\/?\s*(system|human|assistant|user|tool_use|tool_result)\b[^>]*>/i;
-const SKILL_TRANSCRIPT_LINE_PATTERN = /^\s*Skill:\s+oh-my-(?:claudecode|codex):/i;
+const SKILL_TRANSCRIPT_LINE_PATTERN = /^\s*Skill:\s+oh-my-(?:copilot|claudecode|codex):/i;
 const USER_REQUEST_LINE_PATTERN = /^\s*User request(?:\s*\([^)]*\))?:\s*$/i;
 const SHELL_TRANSCRIPT_LINE_PATTERN = /^\s*[$%❯]\s+/;
 const GIT_DIFF_START_PATTERNS = [
@@ -404,7 +404,7 @@ function hasActivationIntentNearKeyword(context, keyword) {
 }
 function hasDirectInvocationPrefix(text, position) {
     const prefix = text.slice(0, position);
-    return /^\s*(?:[$/!]\s*|force:\s*|oh-my-(?:claudecode|codex):\s*)?$/i.test(prefix);
+    return /^\s*(?:[$/!]\s*|force:\s*|oh-my-(?:copilot|claudecode|codex):\s*)?$/i.test(prefix);
 }
 function hasConversationalInvocationNearKeyword(text, position, _keywordLength, _keywordText) {
     if (isWithinQuotedSpan(text, position)) {
@@ -635,7 +635,7 @@ export function detectKeywordsWithType(text, _agentName) {
     // The general sanitizer strips bare `/word` tokens as file paths, so bare
     // commands like `/ralph fix auth` would otherwise never match. This must be
     // robust to surrounding whitespace, namespace prefixes (`/omc:`,
-    // `/oh-my-claudecode:`), and code-fence/backtick wrapping (handled inside
+    // `/oh-my-copilot:`), and code-fence/backtick wrapping (handled inside
     // the parser via removeCodeBlocks).
     const explicitSlash = parseExplicitWorkflowSlashInvocation(text);
     const explicitSlashType = explicitSlash

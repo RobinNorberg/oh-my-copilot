@@ -17,17 +17,31 @@ import { findSkillFiles, parseSkillFile, matchSkillsForInjection, getInjectedSki
 describe("Skill Bridge Module", () => {
     let testProjectRoot;
     let originalCwd;
+    let originalHome;
+    let originalUserProfile;
     beforeEach(() => {
         clearSkillMetadataCache();
         clearSkillSession("emitted-learner-session");
         contextCollector.clear("emitted-learner-session");
         originalCwd = process.cwd();
         testProjectRoot = join(tmpdir(), `omc-bridge-test-${Date.now()}`);
+        originalHome = process.env.HOME;
+        originalUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testProjectRoot;
+        process.env.USERPROFILE = testProjectRoot;
         mkdirSync(testProjectRoot, { recursive: true });
         process.chdir(testProjectRoot);
     });
     afterEach(() => {
         process.chdir(originalCwd);
+        if (originalHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = originalHome;
+        if (originalUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = originalUserProfile;
         contextCollector.clear("emitted-learner-session");
         clearSkillSession("emitted-learner-session");
         if (existsSync(testProjectRoot)) {

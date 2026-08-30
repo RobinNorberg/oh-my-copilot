@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdirSync, mkdtempSync as createTempDir, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
@@ -9,10 +9,40 @@ import { createRecoveryOwnerClient, isExpectedRecoveryOwnerSuccessor, recoveryOw
 import { absPath, TeamPaths } from '../state-paths.js';
 import { currentProcessStartIdentity, publishOwnerEpoch } from '../team-owner-epoch.js';
 import { executeRecoverDeadWorkerV2Owner, prepareRecoveryOwnerBootstrap } from '../runtime-v2.js';
+let previousHome;
+let previousUserProfile;
+let previousOmcStateDir;
+beforeEach(() => {
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+});
+function setFixtureEnv(root) {
+    process.env.HOME = root;
+    process.env.USERPROFILE = root;
+    delete process.env.OMC_STATE_DIR;
+}
+function mkdtempSync(prefix) {
+    const root = createTempDir(prefix);
+    setFixtureEnv(root);
+    return root;
+}
 afterEach(() => {
     vi.useRealTimers();
     setRuntimeOwnerDispatch(undefined);
     recoveryOwnerBootstrapTestHooks.spawn(undefined);
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousOmcStateDir;
 });
 function publishSuccess(cwd, requestId) {
     const reservation = readRecoveryRequestReservation(cwd, requestId);
@@ -366,6 +396,7 @@ describe('runtime owner durable request admission', () => {
         const legacyCwd = mkdtempSync(join(tmpdir(), 'runtime-owner-legacy-config-'));
         const absentCwd = mkdtempSync(join(tmpdir(), 'runtime-owner-absent-config-'));
         try {
+            setFixtureEnv(legacyCwd);
             const configPath = absPath(legacyCwd, TeamPaths.config('recovery-team'));
             mkdirSync(join(configPath, '..'), { recursive: true });
             const legacy = validV2Config('recovery-team');
@@ -375,6 +406,7 @@ describe('runtime owner durable request admission', () => {
                 minTimeoutMs: 100, maxTimeoutMs: 100, pollIntervalMs: 10 });
             await expect(client.recoverDeadWorker({ teamName: 'recovery-team', cwd: legacyCwd, workerName: 'worker-1',
                 requestId: 'legacy-config', timeoutMs: 100 })).resolves.toMatchObject({ error: 'runtime_v2_required' });
+            setFixtureEnv(absentCwd);
             await expect(client.recoverDeadWorker({ teamName: 'recovery-team', cwd: absentCwd, workerName: 'worker-1',
                 requestId: 'absent-config', timeoutMs: 100 })).resolves.toMatchObject({ error: 'team_not_found' });
         }

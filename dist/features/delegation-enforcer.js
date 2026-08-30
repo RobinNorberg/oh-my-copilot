@@ -32,7 +32,7 @@ import entitlementManifest from '../config/builtin-skill-entitlements.json' with
 // ---------------------------------------------------------------------------
 /** All env var names that affect the output of loadConfig(). */
 const CONFIG_ENV_KEYS = [
-    // forceInherit auto-detection (isNonClaudeProvider)
+    // forceInherit auto-detection (isNonCopilotProvider)
     'ANTHROPIC_BASE_URL',
     'CLAUDE_MODEL',
     'ANTHROPIC_MODEL',
@@ -99,16 +99,16 @@ function isDelegationToolName(toolName) {
     return normalizedToolName === 'agent' || normalizedToolName === 'task';
 }
 function canonicalizeSubagentType(subagentType) {
-    const hasPrefix = subagentType.startsWith('oh-my-claudecode:');
-    const rawAgentType = subagentType.replace(/^oh-my-claudecode:/, '');
+    const hasPrefix = subagentType.startsWith('oh-my-copilot:');
+    const rawAgentType = subagentType.replace(/^oh-my-copilot:/, '');
     const canonicalAgentType = normalizeDelegationRole(rawAgentType);
-    return hasPrefix ? `oh-my-claudecode:${canonicalAgentType}` : canonicalAgentType;
+    return hasPrefix ? `oh-my-copilot:${canonicalAgentType}` : canonicalAgentType;
 }
 /**
  * Bundled-skill guidance for an unknown agent identifier (issue #3667).
  *
  * Task/Agent subagent_type identifiers and bundled skills share the
- * `oh-my-claudecode:` namespace. When an identifier resolves to a bundled
+ * `oh-my-copilot:` namespace. When an identifier resolves to a bundled
  * skill rather than an agent, the error names the Skill tool and the correct
  * identifier instead of a generic "Unknown agent type", so the caller cannot
  * mistake the failure for a typo and substitute a closest-match agent.
@@ -119,7 +119,7 @@ function skillInvocationHint(agentType, originalSubagentType) {
     if (!primary) {
         return null;
     }
-    return ` "${agentType}" is a bundled Skill, not an agent — invoke it with the Skill tool (Skill(skill="oh-my-claudecode:${primary}")) instead of Task/Agent subagent_type, and do NOT substitute a similarly-named agent`;
+    return ` "${agentType}" is a bundled Skill, not an agent — invoke it with the Skill tool (Skill(skill="oh-my-copilot:${primary}")) instead of Task/Agent subagent_type, and do NOT substitute a similarly-named agent`;
 }
 const SKININTHEGAMEBROS_ONLY_SKILLS = new Set(entitlementManifest.skininthegamebrosOnlySkills.map((skill) => skill.trim().toLowerCase()));
 /**
@@ -149,8 +149,8 @@ function resolveBundledSkillPrimary(agentType, originalSubagentType) {
     // must agree even on case-insensitive filesystems (Windows/macOS), where a
     // case-variant identifier resolves the same directory.
     const foldedInput = agentType.toLowerCase();
-    const stripped = foldedInput.startsWith('oh-my-claudecode:')
-        ? foldedInput.slice('oh-my-claudecode:'.length)
+    const stripped = foldedInput.startsWith('oh-my-copilot:')
+        ? foldedInput.slice('oh-my-copilot:'.length)
         : foldedInput.startsWith('omc:')
             ? foldedInput.slice('omc:'.length)
             : foldedInput;
@@ -164,7 +164,7 @@ function resolveBundledSkillPrimary(agentType, originalSubagentType) {
     // (e.g. Claude Code's built-in `Plan` vs the skills/plan dir registering
     // omc-plan) are never mistaken for skills (issue #3667 P1, JS/TS parity).
     const wasNamespaced = typeof originalSubagentType === 'string'
-        && /^(?:oh-my-claudecode|omc):/i.test(originalSubagentType.trim());
+        && /^(?:oh-my-copilot|omc):/i.test(originalSubagentType.trim());
     if (!wasNamespaced) {
         return null;
     }
@@ -206,7 +206,7 @@ function resolveBundledSkillPrimary(agentType, originalSubagentType) {
  */
 export function enforceModel(agentInput) {
     const canonicalSubagentType = canonicalizeSubagentType(agentInput.subagent_type);
-    const agentType = canonicalSubagentType.replace(/^oh-my-claudecode:/, '');
+    const agentType = canonicalSubagentType.replace(/^oh-my-copilot:/, '');
     // Validate the agent BEFORE any routing early-return so the unknown-agent
     // error and Skill-tool guidance fire even when an explicit model or
     // forceInherit would otherwise short-circuit (issue #3667 P2).
@@ -330,7 +330,7 @@ export function processPreToolUse(toolName, toolInput) {
  * Get model for an agent type (for testing/debugging)
  */
 export function getModelForAgent(agentType) {
-    const normalizedType = normalizeDelegationRole(agentType.replace(/^oh-my-claudecode:/, ''));
+    const normalizedType = normalizeDelegationRole(agentType.replace(/^oh-my-copilot:/, ''));
     const agentDefs = getAgentDefinitions({ config: getCachedConfig() });
     const agentDef = agentDefs[normalizedType];
     if (!agentDef) {

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const REPO_ROOT = process.cwd();
@@ -14,13 +14,15 @@ const COMMAND_CEILING_MS = 500;
 const SEQUENTIAL_CEILING_MS = 1_000;
 const HAS_GENERATED_DIST = existsSync(join(REPO_ROOT, 'dist', 'hooks', 'session-end', 'worker.js'));
 const TEST_PRODUCER_GRACE_MS = '25';
-const DETACHED_WORKER_CEILING_MS = 5_000;
+// The worker's required actions have a 9s budget; allow that bounded contract
+// plus process-startup/runner contention under the full suite.
+const DETACHED_WORKER_CEILING_MS = 15_000;
 function runUntilClose(script, cwd, input, ceilingMs = COMMAND_CEILING_MS, extraEnv = {}) {
     return new Promise((resolve) => {
         const startedAt = Date.now();
         const child = spawn(process.execPath, [RUN_CJS, script], {
             cwd,
-            env: { ...process.env, ...extraEnv, CLAUDE_PLUGIN_ROOT: REPO_ROOT, CLAUDE_CONFIG_DIR: join(cwd, '.claude') },
+            env: { ...process.env, HOME: cwd, USERPROFILE: cwd, ...extraEnv, CLAUDE_PLUGIN_ROOT: REPO_ROOT, COPILOT_CONFIG_DIR: join(cwd, '.claude') },
             stdio: ['pipe', 'ignore', 'ignore'],
             windowsHide: true,
         });
@@ -89,7 +91,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
         }
     });
     function createProject() {
-        const cwd = mkdtempSync(join(tmpdir(), 'omc-session-end-process-exit-'));
+        const cwd = mkdtempSync(join(homedir(), 'omc-session-end-process-exit-'));
         tempDirs.push(cwd);
         writeFileSync(join(cwd, 'transcript.jsonl'), '');
         return cwd;
@@ -125,7 +127,11 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
         const cwd = createProject();
         const sessionId = 'detached-worker-producer-grace';
         configureDeferredAdapters(cwd);
-        expectPromptExit(await runUntilClose(join(REPO_ROOT, 'scripts', 'session-end.mjs'), cwd, validSessionEndInput(cwd, sessionId), COMMAND_CEILING_MS, { NODE_ENV: 'test', OMC_SESSION_END_TEST_PRODUCER_GRACE_MS: TEST_PRODUCER_GRACE_MS }));
+        expectPromptExit(await runUntilClose(join(REPO_ROOT, 'scripts', 'session-end.mjs'), cwd, validSessionEndInput(cwd, sessionId), COMMAND_CEILING_MS, {
+            NODE_ENV: 'test',
+            OMC_SESSION_END_TEST_FOREGROUND_TIMEOUT_MS: '450',
+            OMC_SESSION_END_TEST_PRODUCER_GRACE_MS: TEST_PRODUCER_GRACE_MS,
+        }));
         await waitForTerminalCallback(cwd, sessionId);
     });
     it.skipIf(!HAS_GENERATED_DIST)('uses the generated dist closure: the shipped worker imports and can execute', async () => {

@@ -31,7 +31,7 @@ vi.mock('../tmux-utils.js', () => ({
   isNativeWindowsShell: vi.fn(() => false),
   wrapWithLoginShell: vi.fn((cmd: string) => cmd),
   quoteShellArg: vi.fn((s: string) => s),
-  isClaudeAvailable: vi.fn(() => true),
+  isCopilotAvailable: vi.fn(() => true),
   isTmuxAvailable: vi.fn(() => true),
   tmuxExec: vi.fn(),
 }));
@@ -903,7 +903,7 @@ describe('launchCommand — env var propagation', () => {
 });
 
 describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () => {
-  const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
   const originalHome = process.env.HOME;
   let tempRoot: string | null = null;
 
@@ -931,9 +931,9 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
       process.env.HOME = originalHome;
     }
     if (originalClaudeConfigDir === undefined) {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.COPILOT_CONFIG_DIR;
     } else {
-      process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+      process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
     }
     if (originalClaudecode === undefined) {
       delete process.env.CLAUDECODE;
@@ -949,12 +949,12 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
     writeFileSync(join(configDir, 'CLAUDE-omc.md'), '<!-- OMC:START -->\n# OMC companion\n<!-- OMC:END -->\n');
     writeFileSync(join(configDir, 'settings.json'), '{"hooks":{}}');
 
-    process.env.CLAUDE_CONFIG_DIR = configDir;
+    process.env.COPILOT_CONFIG_DIR = configDir;
 
     await launchCommand(['--print']);
 
     const runtimeDir = join(configDir, '.omc-launch');
-    expect(process.env.CLAUDE_CONFIG_DIR).toBe(runtimeDir);
+    expect(process.env.COPILOT_CONFIG_DIR).toBe(runtimeDir);
     expect(existsSync(join(runtimeDir, 'CLAUDE.md'))).toBe(true);
     expect(readFileSync(join(runtimeDir, 'CLAUDE.md'), 'utf-8')).toContain('# OMC companion');
     expect(readFileSync(join(configDir, 'CLAUDE.md'), 'utf-8')).toBe('# User base config\n');
@@ -1687,7 +1687,7 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
     expect(existsSync(join(rebuiltRuntimeDir, 'junk-dir'))).toBe(false);
   });
 
-  it('leaves CLAUDE_CONFIG_DIR unchanged when no preserved companion exists', () => {
+  it('leaves COPILOT_CONFIG_DIR unchanged when no preserved companion exists', () => {
     const configDir = join(tempRoot!, '.claude');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'CLAUDE.md'), '<!-- OMC:START -->\n# OMC base\n<!-- OMC:END -->\n');
@@ -1696,26 +1696,26 @@ describe('prepareOmcLaunchConfigDir / launchCommand OMC companion loading', () =
     expect(existsSync(join(configDir, '.omc-launch'))).toBe(false);
   });
 
-  it('does not keep CLAUDE_CONFIG_DIR set when it resolves to the default ~/.claude path', async () => {
+  it('does not keep COPILOT_CONFIG_DIR set when it resolves to the default ~/.claude path', async () => {
     const configDir = join(tempRoot!, 'home', '.claude');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'CLAUDE.md'), '# User config\n');
-    process.env.CLAUDE_CONFIG_DIR = configDir;
+    process.env.COPILOT_CONFIG_DIR = configDir;
 
     await launchCommand(['--print']);
 
-    expect(process.env.CLAUDE_CONFIG_DIR).toBeUndefined();
+    expect(process.env.COPILOT_CONFIG_DIR).toBeUndefined();
   });
 
-  it('preserves explicit non-default CLAUDE_CONFIG_DIR values when no companion exists', async () => {
+  it('preserves explicit non-default COPILOT_CONFIG_DIR values when no companion exists', async () => {
     const configDir = join(tempRoot!, 'custom-claude');
     mkdirSync(configDir, { recursive: true });
     writeFileSync(join(configDir, 'CLAUDE.md'), '# Custom user config\n');
-    process.env.CLAUDE_CONFIG_DIR = configDir;
+    process.env.COPILOT_CONFIG_DIR = configDir;
 
     await launchCommand(['--print']);
 
-    expect(process.env.CLAUDE_CONFIG_DIR).toBe(configDir);
+    expect(process.env.COPILOT_CONFIG_DIR).toBe(configDir);
   });
 });
 
@@ -1888,8 +1888,8 @@ describe('buildEnvExportPrefix — quoting delegation', () => {
 // TMUX_ENV_FORWARD — allowlist contract
 // ---------------------------------------------------------------------------
 describe('TMUX_ENV_FORWARD allowlist', () => {
-  it('includes CLAUDE_CONFIG_DIR', () => {
-    expect(TMUX_ENV_FORWARD).toContain('CLAUDE_CONFIG_DIR');
+  it('includes COPILOT_CONFIG_DIR', () => {
+    expect(TMUX_ENV_FORWARD).toContain('COPILOT_CONFIG_DIR');
   });
 
   it('includes all OMC launch flags', () => {
@@ -1903,7 +1903,7 @@ describe('TMUX_ENV_FORWARD allowlist', () => {
 // runClaude outside-tmux — env forwarding into tmux command
 // ---------------------------------------------------------------------------
 describe('runClaude outside-tmux — env forwarding', () => {
-  const savedConfigDir = process.env.CLAUDE_CONFIG_DIR;
+  const savedConfigDir = process.env.COPILOT_CONFIG_DIR;
 
   beforeEach(() => {
     vi.resetAllMocks();
@@ -1913,38 +1913,38 @@ describe('runClaude outside-tmux — env forwarding', () => {
 
   afterEach(() => {
     if (savedConfigDir !== undefined) {
-      process.env.CLAUDE_CONFIG_DIR = savedConfigDir;
+      process.env.COPILOT_CONFIG_DIR = savedConfigDir;
     } else {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.COPILOT_CONFIG_DIR;
     }
   });
 
-  it('injects CLAUDE_CONFIG_DIR export into the tmux shell command', () => {
-    process.env.CLAUDE_CONFIG_DIR = '/custom/config';
+  it('injects COPILOT_CONFIG_DIR export into the tmux shell command', () => {
+    process.env.COPILOT_CONFIG_DIR = '/custom/config';
     vi.mocked(isNativeWindowsShell).mockReturnValue(false);
 
     runClaude('/tmp', [], 'sid');
 
     const wrapCall = vi.mocked(wrapWithLoginShell).mock.calls[0];
     expect(wrapCall).toBeDefined();
-    expect(wrapCall[0]).toContain('export CLAUDE_CONFIG_DIR=/custom/config');
+    expect(wrapCall[0]).toContain('export COPILOT_CONFIG_DIR=/custom/config');
   });
 
   it('places env exports before the sleep/claude command', () => {
-    process.env.CLAUDE_CONFIG_DIR = '/custom/config';
+    process.env.COPILOT_CONFIG_DIR = '/custom/config';
     vi.mocked(isNativeWindowsShell).mockReturnValue(false);
 
     runClaude('/tmp', [], 'sid');
 
     const cmdString = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
-    const exportIdx = cmdString.indexOf('export CLAUDE_CONFIG_DIR');
+    const exportIdx = cmdString.indexOf('export COPILOT_CONFIG_DIR');
     const sleepIdx = cmdString.indexOf('sleep 0.3');
     expect(exportIdx).toBeGreaterThanOrEqual(0);
     expect(sleepIdx).toBeGreaterThan(exportIdx);
   });
 
   it('does not inject exports when no forwarded vars are set', () => {
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
     delete process.env.OMC_NOTIFY;
     delete process.env.OMC_OPENCLAW;
     delete process.env.OMC_TELEGRAM;
@@ -1963,7 +1963,7 @@ describe('runClaude outside-tmux — env forwarding', () => {
   it('passes a cmd-friendly raw command string into login-shell wrapping on native Windows', () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-    process.env.CLAUDE_CONFIG_DIR = 'C:\\Users\\bellman\\config dir';
+    process.env.COPILOT_CONFIG_DIR = 'C:\\Users\\bellman\\config dir';
     vi.mocked(isNativeWindowsShell).mockReturnValue(true);
 
     runClaude('/tmp', ['--print-system-prompt', 'hello world'], 'sid');
@@ -1971,10 +1971,10 @@ describe('runClaude outside-tmux — env forwarding', () => {
     expect(vi.mocked(buildTmuxShellCommandWithEnv)).toHaveBeenCalledWith(
       'claude',
       ['--print-system-prompt', 'hello world'],
-      { CLAUDE_CONFIG_DIR: 'C:\\Users\\bellman\\config dir' },
+      { COPILOT_CONFIG_DIR: 'C:\\Users\\bellman\\config dir' },
     );
     const rawCommand = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
-    expect(rawCommand).toContain('CLAUDE_CONFIG_DIR=C:\\Users\\bellman\\config dir');
+    expect(rawCommand).toContain('COPILOT_CONFIG_DIR=C:\\Users\\bellman\\config dir');
     expect(rawCommand).toContain('claude --print-system-prompt hello world');
     expect(rawCommand).not.toContain('sleep 0.3');
     expect(rawCommand).not.toContain('tcflush');
@@ -1985,13 +1985,13 @@ describe('runClaude outside-tmux — env forwarding', () => {
   it('keeps POSIX preflight commands on MSYS2 Windows shells', () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-    process.env.CLAUDE_CONFIG_DIR = '/custom/config';
+    process.env.COPILOT_CONFIG_DIR = '/custom/config';
     vi.mocked(isNativeWindowsShell).mockReturnValue(false);
 
     runClaude('/tmp', ['--print-system-prompt', 'hello world'], 'sid');
 
     const rawCommand = vi.mocked(wrapWithLoginShell).mock.calls[0][0];
-    expect(rawCommand).toContain('export CLAUDE_CONFIG_DIR=/custom/config');
+    expect(rawCommand).toContain('export COPILOT_CONFIG_DIR=/custom/config');
     expect(rawCommand).toContain('sleep 0.3');
     expect(rawCommand).toContain("perl -e 'use POSIX;tcflush(0,TCIFLUSH)' 2>/dev/null;");
 

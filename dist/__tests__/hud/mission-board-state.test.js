@@ -1,12 +1,16 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { readMissionBoardState, recordMissionAgentStart, recordMissionAgentStop, refreshMissionBoardState, } from '../../hud/mission-board.js';
 import { resolveSessionStatePaths } from '../../lib/worktree-paths.js';
 const tempDirs = [];
+const originalHome = process.env.HOME;
+const originalUserProfile = process.env.USERPROFILE;
 function makeTempDir() {
-    const dir = mkdtempSync(join(tmpdir(), 'omc-mission-board-'));
+    const dir = mkdtempSync(join(homedir(), 'omc-mission-board-'));
+    process.env.HOME = dir;
+    process.env.USERPROFILE = dir;
     tempDirs.push(dir);
     mkdirSync(join(dir, '.omc', 'state'), { recursive: true });
     return dir;
@@ -17,6 +21,14 @@ afterEach(() => {
         if (dir)
             rmSync(dir, { recursive: true, force: true });
     }
+    if (originalHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = originalHome;
+    if (originalUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = originalUserProfile;
 });
 describe('mission board state tracking', () => {
     it('records session-scoped agent starts and completions', () => {
@@ -24,7 +36,7 @@ describe('mission board state tracking', () => {
         recordMissionAgentStart(cwd, {
             sessionId: 'sess-1234',
             agentId: 'agent-1',
-            agentType: 'oh-my-claudecode:executor',
+            agentType: 'oh-my-copilot:executor',
             parentMode: 'ultrawork',
             taskDescription: 'Implement mission board renderer',
             at: '2026-03-09T07:00:00.000Z',
@@ -54,7 +66,7 @@ describe('mission board state tracking', () => {
         recordMissionAgentStart(cwd, {
             sessionId: mergeSessionId,
             agentId: 'agent-9',
-            agentType: 'oh-my-claudecode:architect',
+            agentType: 'oh-my-copilot:architect',
             parentMode: 'ralph',
             taskDescription: 'Review mission board architecture',
             at: '2026-03-09T07:00:00.000Z',
@@ -178,7 +190,7 @@ describe('mission board state tracking', () => {
         recordMissionAgentStart(cwd, {
             sessionId: sessionA,
             agentId: 'agent-a1',
-            agentType: 'oh-my-claudecode:executor',
+            agentType: 'oh-my-copilot:executor',
             parentMode: 'ultrawork',
             taskDescription: 'Task for session A',
             at: '2026-03-09T10:00:00.000Z',
@@ -186,7 +198,7 @@ describe('mission board state tracking', () => {
         recordMissionAgentStart(cwd, {
             sessionId: sessionB,
             agentId: 'agent-b1',
-            agentType: 'oh-my-claudecode:architect',
+            agentType: 'oh-my-copilot:architect',
             parentMode: 'ralph',
             taskDescription: 'Task for session B',
             at: '2026-03-09T10:01:00.000Z',
@@ -254,7 +266,7 @@ describe('mission board state tracking', () => {
         recordMissionAgentStart(cwd, {
             sessionId: sessionZ,
             agentId: 'session-agent',
-            agentType: 'oh-my-claudecode:executor',
+            agentType: 'oh-my-copilot:executor',
             parentMode: 'ralph',
             taskDescription: 'Task for session Z',
             at: '2026-05-01T10:00:00.000Z',

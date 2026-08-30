@@ -85,7 +85,7 @@ resolve_active_plugin_root() {
   done | select_latest_semver)
 
   if [ -f "$installed_plugins" ] && command -v jq >/dev/null 2>&1; then
-    active_path=$(jq -r '(.plugins // .) | to_entries[] | select(.key | startswith("oh-my-claudecode")) | .value[0].installPath // empty' "$installed_plugins" 2>/dev/null || true)
+    active_path=$(jq -r '(.plugins // .) | to_entries[] | select(.key | startswith("oh-my-copilot")) | .value[0].installPath // empty' "$installed_plugins" 2>/dev/null || true)
     if [ -n "$active_path" ] && is_valid_plugin_root "$active_path"; then
       newest=$(printf '%s\n%s\n' "$(basename "$active_path")" "$latest" | select_latest_semver)
       if [ -n "$latest" ] && [ "$newest" = "$latest" ]; then
@@ -294,8 +294,8 @@ if [ "$MODE" = "global" ]; then
   fi
 fi
 
-if [ -f "$CONFIG_DIR/settings.json" ] && grep -q 'oh-my-claudecode' "$CONFIG_DIR/settings.json"; then
+if [ -f "$CONFIG_DIR/settings.json" ] && grep -q 'oh-my-copilot' "$CONFIG_DIR/settings.json"; then
   echo "Plugin verified"
 else
-  echo "Plugin NOT found - run: claude /install-plugin oh-my-claudecode"
+  echo "Plugin NOT found - run: claude /install-plugin oh-my-copilot"
 fi

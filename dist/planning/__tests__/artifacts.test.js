@@ -7,12 +7,26 @@ import { planningArtifactTimestamp, selectMatchingTestSpecsForPrd, } from "../ar
 describe("planning/artifacts", () => {
     let testDir;
     let plansDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), "artifacts-test-"));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
         plansDir = join(testDir, ".omc", "plans");
         mkdirSync(plansDir, { recursive: true });
     });
     afterEach(() => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         rmSync(testDir, { recursive: true, force: true });
     });
     function writeValidArtifacts(prdName = "prd-feature.md", specName = "test-spec-feature.md") {

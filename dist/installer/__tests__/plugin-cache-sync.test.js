@@ -20,11 +20,11 @@ function writePayloadTree(root, version = '9.9.9-test') {
     writeFile(join(root, 'commands', 'omc-setup.md'), 'Read skills/omc-setup/SKILL.md and pass $ARGUMENTS.\n');
     writeFile(join(root, 'templates', 'deliverables.json'), '{}\n');
     writeFile(join(root, 'docs', 'CLAUDE.md'), '# docs\n');
-    writeFile(join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'oh-my-claudecode', commands: './commands/', skills: ['./skills/plan/'] }, null, 2));
+    writeFile(join(root, '.claude-plugin', 'plugin.json'), JSON.stringify({ name: 'oh-my-copilot', commands: './commands/', skills: ['./skills/plan/'] }, null, 2));
     writeFile(join(root, '.mcp.json'), '{}\n');
     writeFile(join(root, 'README.md'), '# readme\n');
     writeFile(join(root, 'LICENSE'), 'MIT\n');
-    writeFile(join(root, 'package.json'), JSON.stringify({ name: 'oh-my-claude-sisyphus', version }, null, 2));
+    writeFile(join(root, 'package.json'), JSON.stringify({ name: 'oh-my-copilot', version }, null, 2));
 }
 async function freshInstaller() {
     vi.resetModules();
@@ -34,7 +34,7 @@ describe('syncInstalledPluginPayload', () => {
     let tempRoot;
     beforeEach(() => {
         tempRoot = mkdtempSync(join(tmpdir(), 'omc-plugin-cache-sync-'));
-        process.env.CLAUDE_CONFIG_DIR = join(tempRoot, '.claude');
+        process.env.COPILOT_CONFIG_DIR = join(tempRoot, '.claude');
         delete process.env.CLAUDE_PLUGIN_ROOT;
         delete process.env.OMC_PLUGIN_ROOT;
     });
@@ -48,8 +48,8 @@ describe('syncInstalledPluginPayload', () => {
         rmSync(tempRoot, { recursive: true, force: true });
     });
     it('repairs incomplete cache installs from the known marketplace source instead of reusing the installed root', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.12.0');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.12.0');
         const sourceRoot = join(tempRoot, 'marketplace-source');
         writePayloadTree(sourceRoot);
         mkdirSync(join(cacheRoot, 'agents'), { recursive: true });
@@ -58,7 +58,7 @@ describe('syncInstalledPluginPayload', () => {
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: cacheRoot, version: '4.12.0' }],
+                'oh-my-copilot@omc': [{ installPath: cacheRoot, version: '4.12.0' }],
             },
         }, null, 2));
         writeFileSync(join(configDir, 'plugins', 'known_marketplaces.json'), JSON.stringify({
@@ -81,8 +81,8 @@ describe('syncInstalledPluginPayload', () => {
         expect(JSON.parse(readFileSync(join(cacheRoot, 'package.json'), 'utf-8')).version).toBe('9.9.9-test');
     });
     it('excludes marketplace sources that canonicalize to an installed cache target', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.12.0');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.12.0');
         const samePhysicalSourceRoot = `${cacheRoot}/../${basename(cacheRoot)}`;
         const sourceRoot = join(tempRoot, 'alternate-marketplace-source');
         writePayloadTree(sourceRoot);
@@ -92,7 +92,7 @@ describe('syncInstalledPluginPayload', () => {
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: cacheRoot, version: '4.12.0' }],
+                'oh-my-copilot@omc': [{ installPath: cacheRoot, version: '4.12.0' }],
             },
         }, null, 2));
         writeFileSync(join(configDir, 'plugins', 'known_marketplaces.json'), JSON.stringify({
@@ -100,7 +100,7 @@ describe('syncInstalledPluginPayload', () => {
                 installLocation: samePhysicalSourceRoot,
                 source: { source: 'directory', path: samePhysicalSourceRoot },
             },
-            'oh-my-claudecode-local': {
+            'oh-my-copilot-local': {
                 installLocation: sourceRoot,
                 source: { source: 'directory', path: sourceRoot },
             },
@@ -117,8 +117,8 @@ describe('syncInstalledPluginPayload', () => {
         expect(selfCopyResult).toEqual({ synced: false, errors: [] });
     });
     it('repairs incomplete cache installs during setup before plugin-provided file detection runs', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.12.0');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.12.0');
         const sourceRoot = join(tempRoot, 'marketplace-source-install');
         writePayloadTree(sourceRoot, '4.12.0');
         mkdirSync(join(cacheRoot, 'agents'), { recursive: true });
@@ -127,7 +127,7 @@ describe('syncInstalledPluginPayload', () => {
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: cacheRoot, version: '4.12.0' }],
+                'oh-my-copilot@omc': [{ installPath: cacheRoot, version: '4.12.0' }],
             },
         }, null, 2));
         writeFileSync(join(configDir, 'plugins', 'known_marketplaces.json'), JSON.stringify({
@@ -136,10 +136,10 @@ describe('syncInstalledPluginPayload', () => {
                 source: { source: 'directory', path: sourceRoot },
             },
         }, null, 2));
-        writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ enabledPlugins: ['oh-my-claudecode@omc'] }, null, 2));
+        writeFileSync(join(configDir, 'settings.json'), JSON.stringify({ enabledPlugins: ['oh-my-copilot@omc'] }, null, 2));
         const installer = await freshInstaller();
         const result = installer.install({
-            skipClaudeCheck: true,
+            skipCopilotCheck: true,
             skipHud: true,
         });
         expect(result.success).toBe(true);
@@ -155,15 +155,15 @@ describe('syncInstalledPluginPayload', () => {
         expect(existsSync(join(cacheRoot, 'commands', 'omc-setup.md'))).toBe(true);
     });
     it('does not accept a cache root as plugin-provided when required commands are missing', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.14.4');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
         writePayloadTree(cacheRoot, '4.14.4');
         rmSync(join(cacheRoot, 'commands'), { recursive: true, force: true });
         mkdirSync(join(configDir, 'plugins'), { recursive: true });
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
+                'oh-my-copilot@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
             },
         }, null, 2));
         const installer = await freshInstaller();
@@ -174,15 +174,15 @@ describe('syncInstalledPluginPayload', () => {
         expect(installer.hasPluginProvidedHookFiles()).toBe(false);
     });
     it('rejects malformed plugin manifests instead of treating sentinel files as complete', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.14.4');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
         writePayloadTree(cacheRoot, '4.14.4');
         writeFileSync(join(cacheRoot, '.claude-plugin', 'plugin.json'), '{not valid json');
         mkdirSync(join(configDir, 'plugins'), { recursive: true });
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
+                'oh-my-copilot@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
             },
         }, null, 2));
         const installer = await freshInstaller();
@@ -194,8 +194,8 @@ describe('syncInstalledPluginPayload', () => {
         expect(installer.hasPluginProvidedAgentFiles()).toBe(false);
     });
     it('rejects partial command and manifest-declared skill surfaces', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.14.4');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
         writePayloadTree(cacheRoot, '4.14.4');
         rmSync(join(cacheRoot, 'commands', 'omc-setup.md'), { force: true });
         writeFile(join(cacheRoot, 'commands', 'unrelated.md'), '# unrelated\n');
@@ -204,7 +204,7 @@ describe('syncInstalledPluginPayload', () => {
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
+                'oh-my-copilot@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
             },
         }, null, 2));
         const installer = await freshInstaller();
@@ -218,11 +218,11 @@ describe('syncInstalledPluginPayload', () => {
         expect(installer.hasPluginProvidedAgentFiles()).toBe(false);
     });
     it('rejects schema-malformed plugin manifests even when payload files exist', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.14.4');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
         writePayloadTree(cacheRoot, '4.14.4');
         writeFileSync(join(cacheRoot, '.claude-plugin', 'plugin.json'), JSON.stringify({
-            name: 'oh-my-claudecode',
+            name: 'oh-my-copilot',
             commands: 17,
             skills: './skills/plan/',
         }));
@@ -235,11 +235,11 @@ describe('syncInstalledPluginPayload', () => {
         ]));
     });
     it('rejects manifest-declared skill paths that escape the plugin root', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.14.4');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
         writePayloadTree(cacheRoot, '4.14.4');
         writeFileSync(join(cacheRoot, '.claude-plugin', 'plugin.json'), JSON.stringify({
-            name: 'oh-my-claudecode',
+            name: 'oh-my-copilot',
             commands: './commands/',
             skills: ['../outside/'],
         }));
@@ -249,8 +249,8 @@ describe('syncInstalledPluginPayload', () => {
         expect(validation.errors).toContain('Invalid plugin skill declaration outside plugin root: ../outside/');
     });
     it('rejects required plugin file paths that exist only as directories', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.14.4');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
         writePayloadTree(cacheRoot, '4.14.4');
         rmSync(join(cacheRoot, 'dist', 'hooks', 'skill-bridge.cjs'), { force: true });
         mkdirSync(join(cacheRoot, 'dist', 'hooks', 'skill-bridge.cjs'), { recursive: true });
@@ -271,8 +271,8 @@ describe('syncInstalledPluginPayload', () => {
         ]));
     });
     it('repairs cache roots missing commands, runtime dist hook, and bridge coordinator from a complete source', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.14.4');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
         const sourceRoot = join(tempRoot, 'complete-marketplace-source');
         writePayloadTree(sourceRoot, '4.14.4');
         writePayloadTree(cacheRoot, '4.14.4');
@@ -283,7 +283,7 @@ describe('syncInstalledPluginPayload', () => {
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
+                'oh-my-copilot@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
             },
         }, null, 2));
         writeFileSync(join(configDir, 'plugins', 'known_marketplaces.json'), JSON.stringify({
@@ -303,8 +303,8 @@ describe('syncInstalledPluginPayload', () => {
         expect(existsSync(join(cacheRoot, 'bridge', 'claude-md-coordinator.cjs'))).toBe(true);
     });
     it('rejects package sources missing runtime-critical dist hook or bridge payload files', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
-        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.14.4');
+        const configDir = process.env.COPILOT_CONFIG_DIR;
+        const cacheRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.14.4');
         const incompleteSourceRoot = join(tempRoot, 'incomplete-marketplace-source');
         writePayloadTree(incompleteSourceRoot, '4.14.4');
         rmSync(join(incompleteSourceRoot, 'dist', 'hooks'), { recursive: true, force: true });
@@ -314,7 +314,7 @@ describe('syncInstalledPluginPayload', () => {
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
+                'oh-my-copilot@omc': [{ installPath: cacheRoot, version: '4.14.4' }],
             },
         }, null, 2));
         writeFileSync(join(configDir, 'plugins', 'known_marketplaces.json'), JSON.stringify({
@@ -334,7 +334,7 @@ describe('syncInstalledPluginPayload', () => {
         expect(existsSync(join(cacheRoot, 'package.json'))).toBe(false);
     });
     it('rejects cache install roots that escape the cache directory via .. segments', async () => {
-        const configDir = process.env.CLAUDE_CONFIG_DIR;
+        const configDir = process.env.COPILOT_CONFIG_DIR;
         const cacheBase = join(configDir, 'plugins', 'cache');
         const escapedInstallPath = `${cacheBase}/../../../escaped-target`;
         const escapedResolvedRoot = join(tempRoot, 'escaped-target');
@@ -346,7 +346,7 @@ describe('syncInstalledPluginPayload', () => {
         writeFileSync(join(configDir, 'plugins', 'installed_plugins.json'), JSON.stringify({
             version: 2,
             plugins: {
-                'oh-my-claudecode@omc': [{ installPath: escapedInstallPath, version: '4.12.0' }],
+                'oh-my-copilot@omc': [{ installPath: escapedInstallPath, version: '4.12.0' }],
             },
         }, null, 2));
         writeFileSync(join(configDir, 'plugins', 'known_marketplaces.json'), JSON.stringify({

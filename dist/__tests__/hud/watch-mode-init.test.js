@@ -47,7 +47,6 @@ describe('HUD watch mode initialization', () => {
     const originalIsTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
     let initializeHUDState;
     let readRalphStateForHud;
-    let readUltraworkStateForHud;
     let readAutopilotStateForHud;
     let getUsage;
     let render;
@@ -59,7 +58,6 @@ describe('HUD watch mode initialization', () => {
         const config = overrides.config ?? makeConfig();
         initializeHUDState = vi.fn(async () => { });
         readRalphStateForHud = vi.fn(() => null);
-        readUltraworkStateForHud = vi.fn(() => null);
         readAutopilotStateForHud = vi.fn(() => null);
         getUsage = vi.fn(async () => overrides.getUsageResult ?? null);
         render = vi.fn(async () => '[HUD] ok');
@@ -107,7 +105,6 @@ describe('HUD watch mode initialization', () => {
         }));
         vi.doMock('../../hud/omc-state.js', () => ({
             readRalphStateForHud,
-            readUltraworkStateForHud,
             readPrdStateForHud: vi.fn(() => null),
             readAutopilotStateForHud,
         }));
@@ -184,7 +181,6 @@ describe('HUD watch mode initialization', () => {
         const hud = await importHudModule({ stdin });
         await hud.main(true, false);
         expect(readRalphStateForHud).toHaveBeenCalledWith('/tmp/worktree', '123e4567-e89b-12d3-a456-426614174000');
-        expect(readUltraworkStateForHud).toHaveBeenCalledWith('/tmp/worktree', '123e4567-e89b-12d3-a456-426614174000');
         expect(readAutopilotStateForHud).toHaveBeenCalledWith('/tmp/worktree', '123e4567-e89b-12d3-a456-426614174000');
     });
     it('merges stdin generic rate limits over usage API data when available', async () => {

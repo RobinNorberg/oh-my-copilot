@@ -31,6 +31,29 @@ vi.mock('../tmux-session.js', async (importOriginal) => {
 });
 describe('monitorTeamV2 pane-based stall inference', () => {
     let cwd;
+    let restoreFixtureEnv;
+    function isolateFixtureRoot(root) {
+        const previousHome = process.env.HOME;
+        const previousUserProfile = process.env.USERPROFILE;
+        const previousOmcStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = root;
+        process.env.USERPROFILE = root;
+        delete process.env.OMC_STATE_DIR;
+        restoreFixtureEnv = () => {
+            if (previousHome === undefined)
+                delete process.env.HOME;
+            else
+                process.env.HOME = previousHome;
+            if (previousUserProfile === undefined)
+                delete process.env.USERPROFILE;
+            else
+                process.env.USERPROFILE = previousUserProfile;
+            if (previousOmcStateDir === undefined)
+                delete process.env.OMC_STATE_DIR;
+            else
+                process.env.OMC_STATE_DIR = previousOmcStateDir;
+        };
+    }
     beforeEach(() => {
         vi.resetModules();
         mocks.getWorkerLiveness.mockReset();
@@ -52,6 +75,8 @@ describe('monitorTeamV2 pane-based stall inference', () => {
         });
     });
     afterEach(async () => {
+        restoreFixtureEnv?.();
+        restoreFixtureEnv = undefined;
         if (cwd)
             await rm(cwd, { recursive: true, force: true });
     });
@@ -95,6 +120,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     }
     it('flags pane-idle workers with assigned work but no work-start evidence', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('pending');
         const { monitorTeamV2 } = await import('../runtime-v2.js');
         const snapshot = await monitorTeamV2('demo-team', cwd);
@@ -103,6 +129,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('surfaces missing blocker task ids in monitor recommendations', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-missing-blocker-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('pending');
         const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
         await writeFile(join(teamRoot, 'tasks', '1.json'), JSON.stringify({
@@ -123,6 +150,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('does not flag a worker when pane evidence shows active work despite missing reports', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-active-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('in_progress');
         mocks.execFile.mockImplementation((_cmd, args, cb) => {
             if (args[0] === 'capture-pane') {
@@ -143,6 +171,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('does not mark unknown pane liveness as dead or recommend reassignment', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-unknown-liveness-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('in_progress');
         const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
         await writeFile(join(teamRoot, 'monitor-snapshot.json'), JSON.stringify({
@@ -167,6 +196,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('does not flag a worker when pane evidence shows startup bootstrapping instead of idle readiness', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-bootstrap-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('pending');
         mocks.execFile.mockImplementation((_cmd, args, cb) => {
             if (args[0] === 'capture-pane') {
@@ -187,6 +217,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     });
     it('monitors a valid config canonicalized from duplicate legacy worker rows', async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-dedup-'));
+        isolateFixtureRoot(cwd);
         await writeConfigAndTask('pending');
         const root = join(cwd, '.omc', 'state', 'team', 'demo-team');
         const config = canonicalizeTeamConfigWorkers({

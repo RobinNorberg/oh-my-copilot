@@ -7,7 +7,7 @@
  * - MCP workers: appends to worker's inbox JSONL file
  */
 import { join } from 'node:path';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { appendFileWithMode, ensureDirWithMode, validateResolvedPath } from './fs-utils.js';
 import { getTeamMembers } from './unified-team.js';
 import { sanitizeName } from './tmux-session.js';
@@ -25,14 +25,14 @@ export function routeMessage(teamName, recipientName, content, workingDirectory)
             details: `Unknown recipient "${recipientName}". Use SendMessage tool to attempt delivery.`,
         };
     }
-    if (member.backend === 'claude-native') {
+    if (member.backend === 'copilot-native') {
         return {
             method: 'native',
             details: `Use SendMessage tool to send to "${recipientName}".`,
         };
     }
     // MCP worker: write to inbox
-    const teamsBase = join(getClaudeConfigDir(), 'teams');
+    const teamsBase = join(getCopilotConfigDir(), 'teams');
     const inboxDir = join(teamsBase, sanitizeName(teamName), 'inbox');
     ensureDirWithMode(inboxDir);
     const inboxPath = join(inboxDir, `${sanitizeName(recipientName)}.jsonl`);
@@ -58,12 +58,12 @@ export function broadcastToTeam(teamName, content, workingDirectory) {
     const nativeRecipients = [];
     const inboxRecipients = [];
     for (const member of members) {
-        if (member.backend === 'claude-native') {
+        if (member.backend === 'copilot-native') {
             nativeRecipients.push(member.name);
         }
         else {
             // Write to each MCP worker's inbox
-            const teamsBase = join(getClaudeConfigDir(), 'teams');
+            const teamsBase = join(getCopilotConfigDir(), 'teams');
             const inboxDir = join(teamsBase, sanitizeName(teamName), 'inbox');
             ensureDirWithMode(inboxDir);
             const inboxPath = join(inboxDir, `${sanitizeName(member.name)}.jsonl`);

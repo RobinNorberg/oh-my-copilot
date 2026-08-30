@@ -66,7 +66,7 @@ await writeFile(file, JSON.stringify(descriptor, null, 2), "utf8");
 
 console.log(`Demo descriptor written to:\n  ${file}\n`);
 console.log("Run it with:");
-console.log(`  node bin/oh-my-claudecode.js graph run ${file}`);
+console.log(`  node bin/oh-my-copilot.js graph run ${file}`);
 console.log(`
 Flow: agent node analyzes "${topic}", then a human-approval gate pauses the
 run until you approve/deny, then a terminal command node verifies.`);

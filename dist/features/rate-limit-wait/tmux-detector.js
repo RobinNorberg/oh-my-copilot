@@ -261,7 +261,7 @@ export function capturePaneContent(paneId, lines = 15) {
 export function analyzePaneContent(content) {
     if (!content.trim()) {
         return {
-            hasClaudeCode: false,
+            hasCopilotCode: false,
             hasRateLimitMessage: false,
             isBlocked: false,
             confidence: 0,
@@ -275,7 +275,7 @@ export function analyzePaneContent(content) {
     // next to unrelated API/log rate-limit text must not impersonate a blocked pane.
     const hasClaudeText = CLAUDE_CODE_PATTERNS.some((pattern) => pattern.test(cleanedContent));
     const hasLiveOmcHud = hasLiveOmcHudEvidence(cleanedContent);
-    const hasClaudeCode = hasClaudeText || (hasLiveOmcHud && hasOmcRateLimitScreenText(cleanedContent));
+    const hasCopilotCode = hasClaudeText || (hasLiveOmcHud && hasOmcRateLimitScreenText(cleanedContent));
     // Check for rate limit messages
     const rateLimitMatches = RATE_LIMIT_PATTERNS.filter((pattern) => pattern.test(cleanedContent));
     const hasRateLimitMessage = rateLimitMatches.length > 0;
@@ -296,7 +296,7 @@ export function analyzePaneContent(content) {
     }
     // Calculate confidence
     let confidence = 0;
-    if (hasClaudeCode)
+    if (hasCopilotCode)
         confidence += 0.4;
     if (hasRateLimitMessage)
         confidence += 0.4;
@@ -305,9 +305,9 @@ export function analyzePaneContent(content) {
     if (rateLimitMatches.length > 1)
         confidence += 0.1; // Multiple matches = higher confidence
     // Determine if blocked
-    const isBlocked = hasClaudeCode && hasRateLimitMessage && confidence >= 0.6;
+    const isBlocked = hasCopilotCode && hasRateLimitMessage && confidence >= 0.6;
     return {
-        hasClaudeCode,
+        hasCopilotCode,
         hasRateLimitMessage,
         isBlocked,
         rateLimitType,

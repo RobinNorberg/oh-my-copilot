@@ -6,8 +6,8 @@
  */
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
-import { getClaudeConfigDir } from "../utils/config-dir.js";
-const DEFAULT_CONFIG_PATH = join(getClaudeConfigDir(), "omc_config.hook.json");
+import { getCopilotConfigDir } from "../utils/config-dir.js";
+const DEFAULT_CONFIG_PATH = join(getCopilotConfigDir(), "omc_config.hook.json");
 /** Cached hook config. `undefined` = not yet read, `null` = read but absent/disabled. */
 let cachedConfig;
 /**

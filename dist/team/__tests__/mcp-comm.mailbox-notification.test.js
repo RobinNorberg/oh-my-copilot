@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -6,8 +6,34 @@ import { queueBroadcastMailboxMessage, runMailboxNotificationAttempt, } from '..
 import { TeamPaths } from '../state-paths.js';
 let sequence = 0;
 const temporaryDirectories = [];
+let suiteHome;
+let previousHome;
+let previousUserProfile;
+let previousStateDir;
+beforeEach(async () => {
+    suiteHome = await mkdtemp(join(tmpdir(), 'omc-mcp-comm-home-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = suiteHome;
+    process.env.USERPROFILE = suiteHome;
+    delete process.env.OMC_STATE_DIR;
+});
 afterEach(async () => {
     await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousStateDir;
+    await rm(suiteHome, { recursive: true, force: true });
 });
 function params(overrides = {}) {
     const id = ++sequence;
@@ -162,7 +188,7 @@ function harness(input = params(), overrides = {}) {
         markMailbox: (marked) => { mailboxMarked = marked; },
     };
 }
-describe('direct mailbox notification orchestration', () => {
+describe.sequential('direct mailbox notification orchestration', () => {
     it('hashes the per-request lock name so opaque request text cannot traverse dispatch state', () => {
         const lock = TeamPaths.mailboxNotificationLock('dispatch-team', '../foreign/request');
         expect(lock).toMatch(/^\.omc\/state\/team\/dispatch-team\/dispatch\/\.mailbox-notification-[a-f0-9]{64}\.lock$/);
@@ -372,9 +398,8 @@ describe('direct mailbox notification orchestration', () => {
         expect(maximumLockDepth).toBe(1);
     });
     it('uses the broadcast recipient snapshot 1:1 and surfaces a persisted recipient divergence', async () => {
-        const cwd = await mkdtemp(join(tmpdir(), 'omc-mcp-broadcast-'));
-        temporaryDirectories.push(cwd);
-        await mkdir(join(cwd, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
+        const cwd = suiteHome;
+        await mkdir(join(suiteHome, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
         let nextMessage = 0;
         const effects = [];
         const outcomes = await queueBroadcastMailboxMessage({
@@ -409,9 +434,8 @@ describe('direct mailbox notification orchestration', () => {
         expect(effects).toEqual(['persist:worker-1', 'persist:worker-2', 'notify']);
     });
     it('does not notify a broadcast when persisting the second recipient fails', async () => {
-        const cwd = await mkdtemp(join(tmpdir(), 'omc-mcp-broadcast-'));
-        temporaryDirectories.push(cwd);
-        await mkdir(join(cwd, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
+        const cwd = suiteHome;
+        await mkdir(join(suiteHome, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
         const notify = vi.fn(async () => ({ ok: true, transport: 'hook', reason: 'queued_for_hook_dispatch' }));
         await expect(queueBroadcastMailboxMessage({
             teamName: 'dispatch-team',

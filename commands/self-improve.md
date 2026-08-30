@@ -4,7 +4,7 @@ description: ""
 
 # OMC self-improve
 
-This compatibility command keeps `/oh-my-claudecode:self-improve` available without loading the full `self-improve` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:self-improve` available without loading the full `self-improve` skill description in every Claude Code session.
 
 ## Dispatch
 

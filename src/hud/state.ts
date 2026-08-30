@@ -7,7 +7,7 @@
 
 import { existsSync, readFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
-import { getClaudeConfigDir } from "../utils/config-dir.js";
+import { getCopilotConfigDir } from "../utils/config-dir.js";
 import {
   validateWorkingDirectory,
   getOmcRoot,
@@ -71,14 +71,14 @@ function getStateFilePath(directory?: string, sessionId?: string): string {
  * Get Claude Code settings.json path
  */
 function getSettingsFilePath(): string {
-  return join(getClaudeConfigDir(), "settings.json");
+  return join(getCopilotConfigDir(), "settings.json");
 }
 
 /**
  * Get the HUD config file path (legacy)
  */
 function getConfigFilePath(): string {
-  return join(getClaudeConfigDir(), ".omc", "hud-config.json");
+  return join(getCopilotConfigDir(), ".omc", "hud-config.json");
 }
 
 function readJsonFile<T>(filePath: string): T | null {

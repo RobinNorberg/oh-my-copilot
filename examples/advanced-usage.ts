@@ -1,7 +1,7 @@
 /**
  * Advanced Usage Example
  *
- * This example demonstrates advanced features of Oh-My-ClaudeCode:
+ * This example demonstrates advanced features of Oh-My-Copilot:
  * - Custom agent configuration
  * - Custom system prompts
  * - Context file injection
@@ -16,7 +16,7 @@ import {
 } from '../src/index.js';
 
 async function main() {
-  console.log('=== Advanced Oh-My-ClaudeCode Example ===\n');
+  console.log('=== Advanced Oh-My-Copilot Example ===\n');
 
   // Example 1: Custom agent configuration
   console.log('Example 1: Custom Agents');
@@ -153,7 +153,7 @@ Always:
 
 import { createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import { z } from 'zod';
-import { createOmcSession } from 'oh-my-claudecode';
+import { createOmcSession } from 'oh-my-copilot';
 
 // Create custom MCP server with your tools
 const customTools = createSdkMcpServer({

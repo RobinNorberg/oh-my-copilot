@@ -4,7 +4,7 @@ description: ""
 
 # OMC trace
 
-This compatibility command keeps `/oh-my-claudecode:trace` available without loading the full `trace` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:trace` available without loading the full `trace` skill description in every Claude Code session.
 
 ## Dispatch
 

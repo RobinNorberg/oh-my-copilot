@@ -1,6 +1,6 @@
 ---
 name: omc-setup
-description: Install or refresh oh-my-claudecode for plugin, npm, and local-dev setups from the canonical setup flow
+description: Install or refresh oh-my-copilot for plugin, npm, and local-dev setups from the canonical setup flow
 level: 2
 ---
 
@@ -10,14 +10,14 @@ This is the **only command you need to learn**. After running this, everything e
 
 **When this skill is invoked, immediately execute the workflow below. Do not only restate or summarize these instructions back to the user.**
 
-Note: All `~/.claude/...` paths in this guide respect `CLAUDE_CONFIG_DIR` when that environment variable is set.
+Note: All `~/.claude/...` paths in this guide respect `COPILOT_CONFIG_DIR` when that environment variable is set.
 
 ## Best-Fit Use
 
 Choose this setup flow when the user wants to **install, refresh, or repair OMC itself**.
 
-- Marketplace/plugin install users should land here after `/plugin install oh-my-claudecode`
-- npm users should land here after `npm i -g oh-my-claude-sisyphus@latest`
+- Marketplace/plugin install users should land here after `/plugin install oh-my-copilot`
+- npm users should land here after `npm i -g oh-my-copilot@latest`
 - local-dev and worktree users should land here after updating the checked-out repo and rerunning setup
 
 ## Flag Parsing
@@ -34,14 +34,14 @@ Check for flags in the user's invocation:
 When user runs with `--help`, display this and stop:
 
 ```
-OMC Setup - Configure oh-my-claudecode
+OMC Setup - Configure oh-my-copilot
 
 USAGE:
-  /oh-my-claudecode:omc-setup           Run initial setup wizard (or update if already configured)
-  /oh-my-claudecode:omc-setup --local   Configure local project (.claude/CLAUDE.md)
-  /oh-my-claudecode:omc-setup --global  Configure global settings (~/.claude/CLAUDE.md)
-  /oh-my-claudecode:omc-setup --force   Force full setup wizard even if already configured
-  /oh-my-claudecode:omc-setup --help    Show this help
+  /oh-my-copilot:omc-setup           Run initial setup wizard (or update if already configured)
+  /oh-my-copilot:omc-setup --local   Configure local project (.claude/CLAUDE.md)
+  /oh-my-copilot:omc-setup --global  Configure global settings (~/.claude/CLAUDE.md)
+  /oh-my-copilot:omc-setup --force   Force full setup wizard even if already configured
+  /oh-my-copilot:omc-setup --help    Show this help
 
 MODES:
   Initial Setup (no flags)
@@ -74,12 +74,12 @@ MODES:
     - Use when you want to reconfigure preferences
 
 EXAMPLES:
-  /oh-my-claudecode:omc-setup           # First time setup (or update CLAUDE.md if configured)
-  /oh-my-claudecode:omc-setup --local   # Update this project
-  /oh-my-claudecode:omc-setup --global  # Update all projects
-  /oh-my-claudecode:omc-setup --force   # Re-run full setup wizard
+  /oh-my-copilot:omc-setup           # First time setup (or update CLAUDE.md if configured)
+  /oh-my-copilot:omc-setup --local   # Update this project
+  /oh-my-copilot:omc-setup --global  # Update all projects
+  /oh-my-copilot:omc-setup --force   # Re-run full setup wizard
 
-For more info: https://github.com/Yeachan-Heo/oh-my-claudecode
+For more info: https://github.com/Yeachan-Heo/oh-my-copilot
 ```
 
 
@@ -99,7 +99,7 @@ The script is the sole cache resolver. It accepts only complete plugin roots (ca
 
 ```bash
 # Check if setup was already completed
-CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
 case "$CONFIG_DIR" in
   "~") CONFIG_DIR="$HOME" ;;
   "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
@@ -201,15 +201,15 @@ Execute phases sequentially. For each phase, read the corresponding file and fol
 
 ## Keeping Up to Date
 
-After installing oh-my-claudecode updates (via npm or plugin update):
+After installing oh-my-copilot updates (via npm or plugin update):
 
-**Automatic**: Just run `/oh-my-claudecode:omc-setup` - it will detect you've already configured and offer a quick "Update CLAUDE.md and clear retired setup values" option that skips the rest of the wizard.
+**Automatic**: Just run `/oh-my-copilot:omc-setup` - it will detect you've already configured and offer a quick "Update CLAUDE.md and clear retired setup values" option that skips the rest of the wizard.
 
 The quick update path must still perform Phase 2 Step 2.4 so upgrades remove the retired `defaultExecutionMode` value; it must not write any replacement execution-mode setting.
 
 **Manual options**:
-- `/oh-my-claudecode:omc-setup --local` to update project config only
-- `/oh-my-claudecode:omc-setup --global` to update global config only
-- `/oh-my-claudecode:omc-setup --force` to re-run the full wizard (reconfigure preferences)
+- `/oh-my-copilot:omc-setup --local` to update project config only
+- `/oh-my-copilot:omc-setup --global` to update global config only
+- `/oh-my-copilot:omc-setup --force` to re-run the full wizard (reconfigure preferences)
 
 This ensures you have the newest features and agent configurations without the token cost of repeating the full setup.

@@ -8,6 +8,7 @@ const HOOKS_PATH = join(process.cwd(), 'hooks', 'hooks.json');
 const tempDirs = [];
 function makeTempDir() {
     const dir = mkdtempSync(join(tmpdir(), 'omc-preemptive-hook-'));
+    execFileSync('git', ['init', '--quiet', dir], { stdio: 'ignore' });
     tempDirs.push(dir);
     return dir;
 }

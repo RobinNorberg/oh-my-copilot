@@ -9,7 +9,7 @@
 
 import type { ThinkingConfig } from './types.js';
 import {
-  CLAUDE_FAMILY_DEFAULTS,
+  COPILOT_FAMILY_DEFAULTS,
   CLAUDE_FAMILY_HIGH_VARIANTS,
   getClaudeHighVariantFromModel,
 } from '../../config/models.js';
@@ -43,9 +43,9 @@ function normalizeModelId(modelId: string): string {
  */
 const HIGH_VARIANT_MAP: Record<string, string> = {
   // Claude canonical families
-  [CLAUDE_FAMILY_DEFAULTS.SONNET]: CLAUDE_FAMILY_HIGH_VARIANTS.SONNET,
-  [CLAUDE_FAMILY_DEFAULTS.OPUS]: CLAUDE_FAMILY_HIGH_VARIANTS.OPUS,
-  [CLAUDE_FAMILY_DEFAULTS.HAIKU]: CLAUDE_FAMILY_HIGH_VARIANTS.HAIKU,
+  [COPILOT_FAMILY_DEFAULTS.SONNET]: CLAUDE_FAMILY_HIGH_VARIANTS.SONNET,
+  [COPILOT_FAMILY_DEFAULTS.OPUS]: CLAUDE_FAMILY_HIGH_VARIANTS.OPUS,
+  [COPILOT_FAMILY_DEFAULTS.HAIKU]: CLAUDE_FAMILY_HIGH_VARIANTS.HAIKU,
   // GPT-4
   'gpt-4': 'gpt-4-high',
   'gpt-4-turbo': 'gpt-4-turbo-high',

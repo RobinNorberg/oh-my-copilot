@@ -1,14 +1,19 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { basename, dirname, join } from 'path';
-import { createHash } from 'crypto';
+import { dirname, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 vi.unmock('child_process');
 vi.unmock('node:child_process');
 import { execFileSync } from 'child_process';
 // @ts-expect-error Local hook helper is a JS module loaded directly by the tests.
 import { evaluateAgentHeavyPreflight } from '../../scripts/lib/pre-tool-enforcer-preflight.mjs';
+import { clearWorktreeCache, getOmcRoot } from '../lib/worktree-paths.js';
 const SCRIPT_PATH = join(process.cwd(), 'scripts', 'pre-tool-enforcer.mjs');
+function makeGitTemp(prefix) {
+    const directory = mkdtempSync(join(tmpdir(), prefix));
+    execFileSync('git', ['init'], { cwd: directory, stdio: 'pipe' });
+    return directory;
+}
 function runPreToolEnforcer(input) {
     return runPreToolEnforcerWithEnv(input);
 }
@@ -23,10 +28,13 @@ function runPreToolEnforcerWithEnv(input, env = {}) {
         env: {
             ...process.env,
             HOME: homeDir,
-            CLAUDE_CONFIG_DIR: join(homeDir, '.claude'),
+            USERPROFILE: homeDir,
+            COPILOT_CONFIG_DIR: join(homeDir, '.claude'),
             NODE_ENV: 'test',
             DISABLE_OMC: '',
             OMC_SKIP_HOOKS: '',
+            OMC_STATE_DIR: '',
+            CLAUDE_PLUGIN_ROOT: '',
             // Advisory verbosity: unset it so a contributor running with OMC_QUIET
             // exported does not silence the advisories these tests assert on.
             // The OMC_QUIET suites pass their own value via `env`, which wins below.
@@ -74,7 +82,7 @@ function writeTranscriptWithContext(filePath, contextWindow, inputTokens) {
 describe('pre-tool-enforcer advisory throttling (issue #3163)', () => {
     let tempDir;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-advisory-throttle-'));
+        tempDir = makeGitTemp('pre-tool-enforcer-advisory-throttle-');
     });
     afterEach(() => {
         rmSync(tempDir, { recursive: true, force: true });
@@ -178,7 +186,7 @@ describe('pre-tool-enforcer advisory throttling (issue #3163)', () => {
 describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     let tempDir;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-'));
+        tempDir = makeGitTemp('pre-tool-enforcer-');
     });
     afterEach(() => {
         rmSync(tempDir, { recursive: true, force: true });
@@ -219,7 +227,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         expect(output).toEqual({ continue: true, suppressOutput: true });
     });
     it('uses legacy mode files when session_id is not provided', () => {
-        writeJson(join(tempDir, '.omc', 'state', 'ultrawork-state.json'), {
+        writeJson(join(tempDir, '.omc', 'state', 'ralph-state.json'), {
             active: true,
         });
         const output = runPreToolEnforcer({
@@ -241,7 +249,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
             },
@@ -270,7 +278,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 name: 'worker-1',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
@@ -294,7 +302,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
             },
@@ -322,7 +330,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 name: 'worker-1',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
@@ -353,7 +361,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
             },
@@ -393,7 +401,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
             },
@@ -402,7 +410,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         });
         const hookSpecificOutput = output.hookSpecificOutput;
         expect(output.continue).toBe(true);
-        expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent: oh-my-claudecode:executor');
+        expect(String(hookSpecificOutput.additionalContext)).toContain('Spawning agent: oh-my-copilot:executor');
     });
     it('reads team state from legacy path when session_id is absent', () => {
         writeJson(join(tempDir, '.omc', 'state', 'team-state.json'), {
@@ -412,7 +420,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix something',
                 prompt: 'Fix it',
             },
@@ -445,7 +453,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
             },
@@ -466,7 +474,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix something',
                 prompt: 'Fix it',
             },
@@ -524,7 +532,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const taskOutput = runPreToolEnforcerWithEnv({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
             },
@@ -538,7 +546,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Fix type errors',
                 prompt: 'Fix all type errors in src/auth/',
             },
@@ -551,7 +559,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Implement a fallback',
                 prompt: 'Add a workaround if the normal architecture is hard.',
             },
@@ -625,7 +633,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Implement fallback routing',
                 prompt: 'Please implement a fallback layer for the flaky API.',
             },
@@ -640,7 +648,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Skip architecture for flaky API failures',
                 prompt: 'Please work around flaky API failures by skipping the normal architecture.',
             },
@@ -655,7 +663,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Add API fallback',
                 prompt: 'If the API fails, fall back on cached responses.',
             },
@@ -670,7 +678,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Add API fallback',
                 prompt: 'If the API fails, fallback to cached responses.',
             },
@@ -685,7 +693,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Implement fallback routing',
                 prompt: [
                     '## Implementation',
@@ -743,7 +751,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
             const output = runPreToolEnforcer({
                 tool_name: 'Task',
                 toolInput: {
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                     description: 'Handle benign fallback documentation',
                     prompt,
                 },
@@ -759,7 +767,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Preserve benign fallback and reject risky routing fallback',
                 prompt: 'Preserve the fail-soft fallback value, and fallback to weaker model if the preferred agent is unavailable.',
             },
@@ -774,7 +782,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Review quoted technical phrases',
                 prompt: [
                     'Review the quoted phrase "fallback to default config" in the migration notes.',
@@ -821,7 +829,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Implement primary dual-secret token fetch',
                 prompt: [
                     'Implement the primary dual-secret path using extraSecretFetch.',
@@ -845,7 +853,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
             const output = runPreToolEnforcer({
                 tool_name: 'Task',
                 toolInput: {
-                    subagent_type: 'oh-my-claudecode:executor',
+                    subagent_type: 'oh-my-copilot:executor',
                     description: 'Implement risky fallback',
                     prompt,
                 },
@@ -911,7 +919,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcer({
             tool_name: 'Skill',
             toolInput: {
-                skill: 'oh-my-claudecode:ralph',
+                skill: 'oh-my-copilot:ralph',
             },
             cwd: tempDir,
             session_id: sessionId,
@@ -919,13 +927,13 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         expect(output.continue).toBe(true);
         expect(output.hookSpecificOutput.additionalContext).toContain('The boulder never stops');
         expect(JSON.parse(readFileSync(join(sessionStateDir, 'ralph-state.json'), 'utf-8')).awaiting_confirmation).toBeUndefined();
-        expect(JSON.parse(readFileSync(join(sessionStateDir, 'ultrawork-state.json'), 'utf-8')).awaiting_confirmation).toBeUndefined();
+        expect(JSON.parse(readFileSync(join(sessionStateDir, 'ultrawork-state.json'), 'utf-8')).awaiting_confirmation).toBe(true);
     });
     // === Model routing / forceInherit tests (issue #1868 catch-22) ===
     it('allows tier alias "sonnet" through when OMC_SUBAGENT_MODEL is set and forceInherit is enabled', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:architect', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-alias',
         }, {
@@ -940,7 +948,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('allows tier alias "sonnet" via ANTHROPIC_DEFAULT_SONNET_MODEL without OMC_SUBAGENT_MODEL', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:architect', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-default-sonnet',
         }, {
@@ -954,7 +962,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('allows tier alias "opus" via ANTHROPIC_DEFAULT_OPUS_MODEL without OMC_SUBAGENT_MODEL', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:architect', model: 'opus' },
+            toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'opus' },
             cwd: tempDir,
             session_id: 'session-tier-default-opus',
         }, {
@@ -968,7 +976,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('allows tier alias "haiku" via ANTHROPIC_DEFAULT_HAIKU_MODEL without OMC_SUBAGENT_MODEL', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'haiku' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'haiku' },
             cwd: tempDir,
             session_id: 'session-tier-default-haiku',
         }, {
@@ -982,7 +990,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('allows tier alias "fable" via ANTHROPIC_DEFAULT_FABLE_MODEL without OMC_SUBAGENT_MODEL (issue #3246)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:architect', model: 'fable' },
+            toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'fable' },
             cwd: tempDir,
             session_id: 'session-tier-default-fable',
         }, {
@@ -996,7 +1004,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('resolves tier alias "fable" via CLAUDE_CODE_BEDROCK_FABLE_MODEL (issue #3246)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'fable' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'fable' },
             cwd: tempDir,
             session_id: 'session-tier-fable-cc-bedrock-env',
         }, {
@@ -1010,7 +1018,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('blocks tier alias "fable" when no fable model env is configured (issue #3246)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:architect', model: 'fable' },
+            toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'fable' },
             cwd: tempDir,
             session_id: 'session-tier-fable-no-env',
         }, {
@@ -1028,7 +1036,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     ])('allows tier alias %s via proxy ANTHROPIC_DEFAULT_*_MODEL when non-Claude routing is active', (tier, envKey, proxyModel, sessionId) => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: tier },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: tier },
             cwd: tempDir,
             session_id: sessionId,
         }, {
@@ -1043,7 +1051,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('blocks tier alias when proxy ANTHROPIC_DEFAULT_*_MODEL is only whitespace', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-proxy-empty',
         }, {
@@ -1057,7 +1065,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('preserves provider-specific validation for CLAUDE_CODE_BEDROCK_*_MODEL in proxy mode', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-proxy-invalid-bedrock-var',
         }, {
@@ -1075,7 +1083,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         writeFileSync(join(configDir, 'config.json'), JSON.stringify({ routing: { forceInherit: true } }));
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-config-proxy-default',
         }, {
@@ -1089,7 +1097,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('rejects proxy ANTHROPIC_DEFAULT_*_MODEL when env force-inherit runs under a normal Claude active model', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-env-force-normal-claude-proxy-default',
         }, {
@@ -1104,7 +1112,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('OMC_SUBAGENT_MODEL takes priority over ANTHROPIC_DEFAULT_*_MODEL when both set', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:architect', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-priority',
         }, {
@@ -1124,7 +1132,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         // so [1m]-suffixed provider IDs are valid routing targets.
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-default-lm',
         }, {
@@ -1138,7 +1146,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('resolves via CLAUDE_CODE_BEDROCK_SONNET_MODEL as sole configured env var', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-cc-bedrock-env',
         }, {
@@ -1155,7 +1163,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         // since CC handles that suffix correctly for explicit model= calls.
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-omc-model-fallback',
         }, {
@@ -1173,7 +1181,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         // and the downstream Agent/Task call would fail — so the hook must deny.
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-omc-model-only',
         }, {
@@ -1189,7 +1197,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('blocks tier alias when NO safe model env is configured at all', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:architect', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:architect', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-alias-no-env',
         }, {
@@ -1208,7 +1216,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 description: 'Review spec',
                 prompt: 'Review this spec',
             },
@@ -1229,7 +1237,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('blocks tier alias when OMC_SUBAGENT_MODEL is itself a bare Anthropic model ID', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'sonnet' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'sonnet' },
             cwd: tempDir,
             session_id: 'session-tier-alias-bare',
         }, {
@@ -1242,7 +1250,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('blocks tier alias when OMC_SUBAGENT_MODEL has a [1m] extended-context suffix', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'opus' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'opus' },
             cwd: tempDir,
             session_id: 'session-tier-alias-lm',
         }, {
@@ -1255,7 +1263,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
     it('still blocks bare Anthropic model ID even when OMC_SUBAGENT_MODEL is set', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', model: 'claude-sonnet-4-6' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', model: 'claude-sonnet-4-6' },
             cwd: tempDir,
             session_id: 'session-bare-anthropic',
         }, {
@@ -1274,7 +1282,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 description: 'Review spec',
                 prompt: 'Review this spec',
             },
@@ -1299,7 +1307,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Task',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'Implement feature',
                 prompt: 'Do the thing',
             },
@@ -1323,7 +1331,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 description: 'Review spec',
                 prompt: 'Review this spec',
             },
@@ -1343,7 +1351,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 model: 'opus',
                 description: 'Review spec',
                 prompt: 'Review this spec',
@@ -1361,7 +1369,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 model: 'opus',
                 description: 'Review spec',
                 prompt: 'Review this spec',
@@ -1380,7 +1388,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 description: 'Review spec',
                 prompt: 'Review this spec',
             },
@@ -1397,7 +1405,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 description: 'Review spec',
                 prompt: 'Review this spec',
             },
@@ -1431,7 +1439,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:../docs/CLAUDE',
+                subagent_type: 'oh-my-copilot:../docs/CLAUDE',
                 description: 'Some task',
                 prompt: 'Do something',
             },
@@ -1448,7 +1456,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 description: 'Review spec',
                 prompt: 'Review this spec',
             },
@@ -1472,7 +1480,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:critic',
+                subagent_type: 'oh-my-copilot:critic',
                 description: 'Review spec',
                 prompt: 'Review this spec',
             },
@@ -1495,7 +1503,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:body-hr-agent',
+                subagent_type: 'oh-my-copilot:body-hr-agent',
                 description: 'Some task',
                 prompt: 'Do something',
             },
@@ -1519,7 +1527,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:body-model-agent',
+                subagent_type: 'oh-my-copilot:body-model-agent',
                 description: 'Some task',
                 prompt: 'Do something',
             },
@@ -1543,7 +1551,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:quoted-model-agent',
+                subagent_type: 'oh-my-copilot:quoted-model-agent',
                 description: 'Review spec',
                 prompt: 'Review this spec',
             },
@@ -1570,7 +1578,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:bedrock-quoted-agent',
+                subagent_type: 'oh-my-copilot:bedrock-quoted-agent',
                 description: 'Do something',
                 prompt: 'Do it',
             },
@@ -1593,7 +1601,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:bom-agent',
+                subagent_type: 'oh-my-copilot:bom-agent',
                 description: 'BOM test',
                 prompt: 'Test BOM handling',
             },
@@ -1631,7 +1639,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
         const output = runPreToolEnforcerWithEnv({
             tool_name: 'Agent',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:nonexistent-agent-xyz',
+                subagent_type: 'oh-my-copilot:nonexistent-agent-xyz',
                 description: 'Some task',
                 prompt: 'Do something',
             },
@@ -1662,7 +1670,7 @@ describe('pre-tool-enforcer fallback gating (issue #970)', () => {
 describe('pre-tool-enforcer force-agent-delegation enforcement', () => {
     let tempDir;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-fad-'));
+        tempDir = makeGitTemp('pre-tool-enforcer-fad-');
     });
     afterEach(() => {
         rmSync(tempDir, { recursive: true, force: true });
@@ -1717,7 +1725,7 @@ describe('pre-tool-enforcer force-agent-delegation enforcement', () => {
         }
     });
     it('blocks the call that crosses the threshold and surfaces the configured deny message', () => {
-        const denyMessage = 'Too many Reads — spawn Agent(subagent_type=\'oh-my-claudecode:explore\', model=\'haiku\'). Bypass: ALLOW_RAW_READ=1.';
+        const denyMessage = 'Too many Reads — spawn Agent(subagent_type=\'oh-my-copilot:explore\', model=\'haiku\'). Bypass: ALLOW_RAW_READ=1.';
         writeDelegationConfig([
             {
                 pattern: 'Read',
@@ -1800,7 +1808,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
     let tempDir;
     let xdgConfigHome;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-agent-model-'));
+        tempDir = makeGitTemp('pre-tool-enforcer-agent-model-');
         xdgConfigHome = join(tempDir, 'xdg-config');
         mkdirSync(join(xdgConfigHome, 'claude-omc'), { recursive: true });
     });
@@ -1827,7 +1835,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeUserConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
         const output = run({
             tool_name: 'Task',
-            toolInput: { subagent_type: 'oh-my-claudecode:explore', prompt: 'x', description: 'find files' },
+            toolInput: { subagent_type: 'oh-my-copilot:explore', prompt: 'x', description: 'find files' },
             session_id: 'session-3242-inject',
         });
         expect(updatedModel(output)).toBe('sonnet');
@@ -1836,7 +1844,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeUserConfig('{ "agents": {} }');
         const output = run({
             tool_name: 'Task',
-            toolInput: { subagent_type: 'oh-my-claudecode:architect', prompt: 'x', description: 'design' },
+            toolInput: { subagent_type: 'oh-my-copilot:architect', prompt: 'x', description: 'design' },
             session_id: 'session-3242-noop',
         });
         expect(updatedModel(output)).toBeUndefined();
@@ -1845,7 +1853,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeUserConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
         const output = run({
             tool_name: 'Task',
-            toolInput: { subagent_type: 'oh-my-claudecode:explore', model: 'opus', prompt: 'x', description: 'd' },
+            toolInput: { subagent_type: 'oh-my-copilot:explore', model: 'opus', prompt: 'x', description: 'd' },
             session_id: 'session-3242-explicit',
         });
         expect(updatedModel(output)).toBeUndefined();
@@ -1854,7 +1862,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeUserConfig('{ "agents": { "executor": { "model": "claude-opus-4-6" } } }');
         const output = run({
             tool_name: 'Task',
-            toolInput: { subagent_type: 'oh-my-claudecode:executor', prompt: 'x', description: 'd' },
+            toolInput: { subagent_type: 'oh-my-copilot:executor', prompt: 'x', description: 'd' },
             session_id: 'session-3242-normalize',
         });
         expect(updatedModel(output)).toBe('opus');
@@ -1864,7 +1872,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeProjectConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
         const output = run({
             tool_name: 'Task',
-            toolInput: { subagent_type: 'oh-my-claudecode:explore', prompt: 'x', description: 'd' },
+            toolInput: { subagent_type: 'oh-my-copilot:explore', prompt: 'x', description: 'd' },
             session_id: 'session-3242-precedence',
         });
         expect(updatedModel(output)).toBe('sonnet');
@@ -1873,7 +1881,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeUserConfig('{ "agents": { "codeReviewer": { "model": "opus" } } }');
         const output = run({
             tool_name: 'Task',
-            toolInput: { subagent_type: 'oh-my-claudecode:reviewer', prompt: 'x', description: 'd' },
+            toolInput: { subagent_type: 'oh-my-copilot:reviewer', prompt: 'x', description: 'd' },
             session_id: 'session-3242-alias',
         });
         expect(updatedModel(output)).toBe('opus');
@@ -1882,7 +1890,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeUserConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
         const output = run({
             tool_name: 'Task',
-            toolInput: { subagent_type: 'oh-my-claudecode:explore', prompt: 'x', description: 'd' },
+            toolInput: { subagent_type: 'oh-my-copilot:explore', prompt: 'x', description: 'd' },
             session_id: 'session-3242-force-inherit',
         }, { OMC_ROUTING_FORCE_INHERIT: 'true' });
         expect(updatedModel(output)).toBeUndefined();
@@ -1891,7 +1899,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
         writeUserConfig('{ "agents": { "explore": { "model": "sonnet" } } }');
         const input = {
             tool_name: 'Task',
-            toolInput: { subagent_type: 'oh-my-claudecode:explore', prompt: 'x', description: 'find files' },
+            toolInput: { subagent_type: 'oh-my-copilot:explore', prompt: 'x', description: 'find files' },
             session_id: 'session-3242-throttle',
         };
         // Pin the throttle clock so the second identical call lands inside the cooldown
@@ -1913,7 +1921,7 @@ describe('pre-tool-enforcer agents.<name>.model injection (issue #3242)', () => 
 describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () => {
     let tempDir;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-skill-agent-'));
+        tempDir = makeGitTemp('pre-tool-enforcer-skill-agent-');
     });
     afterEach(() => {
         rmSync(tempDir, { recursive: true, force: true });
@@ -1936,15 +1944,15 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
         const hookOutput = output.hookSpecificOutput;
         return String(hookOutput.permissionDecisionReason ?? '');
     }
-    it('denies Task call whose subagent_type names a bundled skill (oh-my-claudecode:ai-slop-cleaner)', () => {
-        const output = runTask('oh-my-claudecode:ai-slop-cleaner');
+    it('denies Task call whose subagent_type names a bundled skill (oh-my-copilot:ai-slop-cleaner)', () => {
+        const output = runTask('oh-my-copilot:ai-slop-cleaner');
         const hookOutput = output.hookSpecificOutput;
         expect(output.continue).toBe(true);
         expect(hookOutput.permissionDecision).toBe('deny');
         expect(hookOutput.permissionDecisionReason).toContain('[SKILL vs AGENT]');
         expect(hookOutput.permissionDecisionReason).toContain('ai-slop-cleaner');
         // Names the correct tool and identifier — no generic "Agent type not found".
-        expect(hookOutput.permissionDecisionReason).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+        expect(hookOutput.permissionDecisionReason).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
         // Forbids closest-match substitution (code-simplifier is the attractive wrong answer).
         expect(hookOutput.permissionDecisionReason).toContain('closest match');
         expect(hookOutput.permissionDecisionReason).not.toContain('code-simplifier');
@@ -1955,57 +1963,57 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
         expect(hookOutput.permissionDecision).toBe('deny');
         // Recovery must be unambiguous: always the plugin-namespaced form, never a
         // bare skill name that could resolve to a different project/user skill.
-        expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+        expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
         expect(denyReason(output)).not.toContain('Skill(skill="ai-slop-cleaner")');
     });
-    it('recognizes the omc: namespace alias and suggests the canonical oh-my-claudecode: identifier', () => {
+    it('recognizes the omc: namespace alias and suggests the canonical oh-my-copilot: identifier', () => {
         const output = runTask('omc:ai-slop-cleaner');
         const hookOutput = output.hookSpecificOutput;
         expect(hookOutput.permissionDecision).toBe('deny');
-        expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+        expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
     });
     it('denies skill-as-agent even when an explicit model is present (guard precedes model routing)', () => {
-        const output = runTask('oh-my-claudecode:ai-slop-cleaner', 'Task', { model: 'sonnet' });
+        const output = runTask('oh-my-copilot:ai-slop-cleaner', 'Task', { model: 'sonnet' });
         const hookOutput = output.hookSpecificOutput;
         expect(hookOutput.permissionDecision).toBe('deny');
         expect(denyReason(output)).toContain('[SKILL vs AGENT]');
     });
     it('denies skill-as-agent even under force-inherit routing', () => {
-        const output = runTask('oh-my-claudecode:ai-slop-cleaner', 'Task', {}, { OMC_ROUTING_FORCE_INHERIT: 'true' });
+        const output = runTask('oh-my-copilot:ai-slop-cleaner', 'Task', {}, { OMC_ROUTING_FORCE_INHERIT: 'true' });
         const hookOutput = output.hookSpecificOutput;
         expect(hookOutput.permissionDecision).toBe('deny');
         expect(denyReason(output)).toContain('[SKILL vs AGENT]');
     });
     it('maps a skill alias to its primary name in the Skill-tool identifier', () => {
-        const output = runTask('oh-my-claudecode:cancel-ralph');
+        const output = runTask('oh-my-copilot:cancel-ralph');
         const hookOutput = output.hookSpecificOutput;
         expect(hookOutput.permissionDecision).toBe('deny');
         expect(denyReason(output)).toContain('alias of "cancel"');
-        expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:cancel")');
+        expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:cancel")');
     });
     it('recognizes the renamed plan skill dir through its registered name omc-plan', () => {
-        const output = runTask('oh-my-claudecode:plan');
+        const output = runTask('oh-my-copilot:plan');
         const hookOutput = output.hookSpecificOutput;
         expect(hookOutput.permissionDecision).toBe('deny');
         expect(denyReason(output)).toContain('omc-plan');
-        expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+        expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
     });
     it('does NOT deny a real agent identifier (code-simplifier passes through)', () => {
-        const output = runTask('oh-my-claudecode:code-simplifier');
+        const output = runTask('oh-my-copilot:code-simplifier');
         const hookOutput = output.hookSpecificOutput;
         expect(output.continue).toBe(true);
         expect(hookOutput.permissionDecision).toBeUndefined();
         expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
     });
     it('does NOT deny a genuinely unknown agent identifier', () => {
-        const output = runTask('oh-my-claudecode:nonexistent-agent-xyz');
+        const output = runTask('oh-my-copilot:nonexistent-agent-xyz');
         const hookOutput = output.hookSpecificOutput;
         expect(output.continue).toBe(true);
         expect(hookOutput.permissionDecision).toBeUndefined();
         expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
     });
     it('does NOT fuzzy-match a typo to a skill (no unsafe closest-match substitution)', () => {
-        const output = runTask('oh-my-claudecode:ai-slop-cleanr');
+        const output = runTask('oh-my-copilot:ai-slop-cleanr');
         const hookOutput = output.hookSpecificOutput;
         expect(output.continue).toBe(true);
         expect(hookOutput.permissionDecision).toBeUndefined();
@@ -2023,7 +2031,7 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
             session_id: 'session-3667-collision',
             transcript_path: '',
             toolInput: {
-                subagent_type: 'oh-my-claudecode:wiki',
+                subagent_type: 'oh-my-copilot:wiki',
                 description: 'Some task',
                 prompt: 'Do something',
             },
@@ -2047,7 +2055,7 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
         const output = runTask('wiki');
         const hookOutput = output.hookSpecificOutput;
         expect(hookOutput.permissionDecision).toBe('deny');
-        expect(denyReason(output)).toContain('Skill(skill="oh-my-claudecode:wiki")');
+        expect(denyReason(output)).toContain('Skill(skill="oh-my-copilot:wiki")');
     });
     it('does NOT deny non-string or empty subagent_type values', () => {
         const numeric = runTask(42);
@@ -2056,22 +2064,22 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
         expect(empty.hookSpecificOutput).not.toHaveProperty('permissionDecision');
     });
     it.each(['remember', 'verify', 'debug'])('denies the namespaced %s skill for a non-skininthegamebros user (USER_TYPE != ant)', (skill) => {
-        const output = runTask(`oh-my-claudecode:${skill}`, 'Task', {}, { USER_TYPE: '' });
+        const output = runTask(`oh-my-copilot:${skill}`, 'Task', {}, { USER_TYPE: '' });
         expect(output.continue).toBe(true);
         expect(output.hookSpecificOutput.permissionDecision).toBe('deny');
-        expect(denyReason(output)).toContain(`Skill(skill="oh-my-claudecode:${skill}")`);
+        expect(denyReason(output)).toContain(`Skill(skill="oh-my-copilot:${skill}")`);
     });
     it.each(['remember', 'verify', 'debug'])('denies the %s skill for a skininthegamebros user (USER_TYPE=ant)', (hiddenSkill) => {
-        const output = runTask(`oh-my-claudecode:${hiddenSkill}`, 'Task', {}, { USER_TYPE: 'ant' });
+        const output = runTask(`oh-my-copilot:${hiddenSkill}`, 'Task', {}, { USER_TYPE: 'ant' });
         const hookOutput = output.hookSpecificOutput;
         expect(hookOutput.permissionDecision).toBe('deny');
-        expect(denyReason(output)).toContain(`Skill(skill="oh-my-claudecode:${hiddenSkill}")`);
+        expect(denyReason(output)).toContain(`Skill(skill="oh-my-copilot:${hiddenSkill}")`);
     });
     it('denies every visible skill for a non-skininthegamebros user', () => {
-        const visible = runTask('oh-my-claudecode:plan', 'Task', {}, { USER_TYPE: '' });
-        const remember = runTask('oh-my-claudecode:remember', 'Task', {}, { USER_TYPE: '' });
+        const visible = runTask('oh-my-copilot:plan', 'Task', {}, { USER_TYPE: '' });
+        const remember = runTask('oh-my-copilot:remember', 'Task', {}, { USER_TYPE: '' });
         expect(visible.hookSpecificOutput.permissionDecision).toBe('deny');
-        expect(denyReason(visible)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+        expect(denyReason(visible)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
         expect(remember.hookSpecificOutput.permissionDecision).toBe('deny');
     });
     describe('case-insensitive identifier folding (Windows/macOS semantics, issue #3667)', () => {
@@ -2089,21 +2097,21 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
                 transcript_path: '',
                 toolInput: { subagent_type: subagentType, description: 'd', prompt: 'p' },
             }, { CLAUDE_PLUGIN_ROOT: pluginRoot, USER_TYPE: '', ...env });
-            const nonAnt = run('oh-my-claudecode:Remember', {});
-            const nonAntLower = run('oh-my-claudecode:remember', {});
-            const ant = run('oh-my-claudecode:Remember', { USER_TYPE: 'ant' });
+            const nonAnt = run('oh-my-copilot:Remember', {});
+            const nonAntLower = run('oh-my-copilot:remember', {});
+            const ant = run('oh-my-copilot:Remember', { USER_TYPE: 'ant' });
             expect(nonAnt.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(nonAnt)).toContain('Skill(skill="oh-my-claudecode:remember")');
+            expect(denyReason(nonAnt)).toContain('Skill(skill="oh-my-copilot:remember")');
             expect(nonAntLower.hookSpecificOutput.permissionDecision).toBe('deny');
             // Canonical lowercase output spelling is preserved for every user.
             expect(ant.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(ant)).toContain('Skill(skill="oh-my-claudecode:remember")');
+            expect(denyReason(ant)).toContain('Skill(skill="oh-my-copilot:remember")');
         });
         it.each([
-            ['oh-my-claudecode:Plan', 'oh-my-claudecode:omc-plan'],
-            ['oh-my-claudecode:AI-Slop-Cleaner', 'oh-my-claudecode:ai-slop-cleaner'],
-            ['oh-my-claudecode:Cancel-Ralph', 'oh-my-claudecode:cancel'],
-            ['oh-my-claudecode:PSM', 'oh-my-claudecode:project-session-manager'],
+            ['oh-my-copilot:Plan', 'oh-my-copilot:omc-plan'],
+            ['oh-my-copilot:AI-Slop-Cleaner', 'oh-my-copilot:ai-slop-cleaner'],
+            ['oh-my-copilot:Cancel-Ralph', 'oh-my-copilot:cancel'],
+            ['oh-my-copilot:PSM', 'oh-my-copilot:project-session-manager'],
         ])('denies mixed-case %s with the canonical namespaced identifier %s', (input, expected) => {
             const output = runTask(input, 'Task', {}, { USER_TYPE: '' });
             const hookOutput = output.hookSpecificOutput;
@@ -2111,28 +2119,28 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
             expect(denyReason(output)).toContain(`Skill(skill="${expected}")`);
         });
         it.each(['Remember', 'VERIFY', 'Debug'])('denies the mixed-case visible %s skill for a non-ant user', (skill) => {
-            const output = runTask(`oh-my-claudecode:${skill}`, 'Task', {}, { USER_TYPE: '' });
+            const output = runTask(`oh-my-copilot:${skill}`, 'Task', {}, { USER_TYPE: '' });
             expect(output.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(output)).toContain(`Skill(skill="oh-my-claudecode:${skill.toLowerCase()}")`);
+            expect(denyReason(output)).toContain(`Skill(skill="oh-my-copilot:${skill.toLowerCase()}")`);
         });
-        it('recognizes case-variant namespace aliases (OMC: / OH-MY-CLAUDECODE:)', () => {
+        it('recognizes case-variant namespace aliases (OMC: / OH-MY-COPILOT:)', () => {
             const omcUpper = runTask('OMC:ai-slop-cleaner', 'Task', {}, { USER_TYPE: '' });
-            const fullUpper = runTask('OH-MY-CLAUDECODE:Remember', 'Task', {}, { USER_TYPE: '' });
+            const fullUpper = runTask('OH-MY-COPILOT:Remember', 'Task', {}, { USER_TYPE: '' });
             expect(omcUpper.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(omcUpper)).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+            expect(denyReason(omcUpper)).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
             expect(fullUpper.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(fullUpper)).toContain('Skill(skill="oh-my-claudecode:remember")');
+            expect(denyReason(fullUpper)).toContain('Skill(skill="oh-my-copilot:remember")');
         });
         it('applies case folding before explicit-model and force-inherit routing', () => {
-            const withModel = runTask('oh-my-claudecode:Plan', 'Task', { model: 'sonnet' }, { USER_TYPE: '' });
+            const withModel = runTask('oh-my-copilot:Plan', 'Task', { model: 'sonnet' }, { USER_TYPE: '' });
             expect(withModel.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(withModel)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
-            const forceInheritVisible = runTask('oh-my-claudecode:Plan', 'Task', {}, { USER_TYPE: '', OMC_ROUTING_FORCE_INHERIT: 'true' });
+            expect(denyReason(withModel)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+            const forceInheritVisible = runTask('oh-my-copilot:Plan', 'Task', {}, { USER_TYPE: '', OMC_ROUTING_FORCE_INHERIT: 'true' });
             expect(forceInheritVisible.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(forceInheritVisible)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
-            const forceInheritRemember = runTask('oh-my-claudecode:Remember', 'Task', {}, { USER_TYPE: '', OMC_ROUTING_FORCE_INHERIT: 'true' });
+            expect(denyReason(forceInheritVisible)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
+            const forceInheritRemember = runTask('oh-my-copilot:Remember', 'Task', {}, { USER_TYPE: '', OMC_ROUTING_FORCE_INHERIT: 'true' });
             expect(forceInheritRemember.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(forceInheritRemember)).toContain('Skill(skill="oh-my-claudecode:remember")');
+            expect(denyReason(forceInheritRemember)).toContain('Skill(skill="oh-my-copilot:remember")');
         });
     });
     describe('native/session-defined bare agent boundary (issue #3667 P1)', () => {
@@ -2142,19 +2150,19 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
             expect(JSON.stringify(output)).not.toContain('[SKILL vs AGENT]');
         });
         it('denies the plugin-namespaced plan identifier while preserving bare plan', () => {
-            const namespaced = runTask('oh-my-claudecode:plan', 'Task', {}, { USER_TYPE: '' });
+            const namespaced = runTask('oh-my-copilot:plan', 'Task', {}, { USER_TYPE: '' });
             const omcAlias = runTask('omc:plan', 'Task', {}, { USER_TYPE: '' });
             const bare = runTask('plan', 'Task', {}, { USER_TYPE: '' });
             expect(namespaced.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(namespaced)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+            expect(denyReason(namespaced)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
             expect(omcAlias.hookSpecificOutput.permissionDecision).toBe('deny');
-            expect(denyReason(omcAlias)).toContain('Skill(skill="oh-my-claudecode:omc-plan")');
+            expect(denyReason(omcAlias)).toContain('Skill(skill="oh-my-copilot:omc-plan")');
             expect(bare.hookSpecificOutput.permissionDecision).toBeUndefined();
         });
         it('still denies bare canonical-registry skill claims (omc-plan, ai-slop-cleaner)', () => {
             for (const [input, expected] of [
-                ['omc-plan', 'oh-my-claudecode:omc-plan'],
-                ['ai-slop-cleaner', 'oh-my-claudecode:ai-slop-cleaner'],
+                ['omc-plan', 'oh-my-copilot:omc-plan'],
+                ['ai-slop-cleaner', 'oh-my-copilot:ai-slop-cleaner'],
             ]) {
                 const output = runTask(input, 'Task', {}, { USER_TYPE: '' });
                 const hookOutput = output.hookSpecificOutput;
@@ -2175,7 +2183,7 @@ describe('pre-tool-enforcer skill vs agent namespace guard (issue #3667)', () =>
 describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => {
     let tempDir;
     beforeEach(() => {
-        tempDir = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-session-tracking-'));
+        tempDir = makeGitTemp('pre-tool-enforcer-session-tracking-');
     });
     afterEach(() => {
         rmSync(tempDir, { recursive: true, force: true });
@@ -2186,7 +2194,7 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
             cwd: tempDir,
             session_id: sessionId,
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'issue #3732 regression',
             },
         });
@@ -2195,8 +2203,8 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
         const sessionId = 'session-3732-scoped';
         writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
             agents: [
-                { agent_id: 'a1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
-                { agent_id: 'a2', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'a1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+                { agent_id: 'a2', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 203,
             total_completed: 185,
@@ -2211,7 +2219,7 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
         const sessionId = 'session-3732-precedence';
         writeJson(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
             agents: [
-                { agent_id: 'a1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'a1', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 203,
             total_completed: 185,
@@ -2234,7 +2242,7 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
         const sessionId = 'session-3732-legacy';
         writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
             agents: [
-                { agent_id: 'b1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'b1', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 7,
             total_completed: 2,
@@ -2253,7 +2261,7 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
         // resolveSessionStatePathsForHook and honor this name too.
         writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
             agents: [
-                { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'c1', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 11,
             total_completed: 10,
@@ -2267,26 +2275,40 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
     it('resolves the session-scoped tracking read through OMC_STATE_DIR centralized state', () => {
         const sessionId = 'session-3732-centralized';
         const centralRoot = mkdtempSync(join(tmpdir(), 'pre-tool-enforcer-central-'));
-        const stateRoot = join(centralRoot, `${basename(tempDir)}-${createHash('sha256').update(tempDir).digest('hex').slice(0, 16)}`);
-        writeJson(join(stateRoot, 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
-            agents: [
-                { agent_id: 'z1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
-            ],
-            total_spawned: 4,
-            total_completed: 3,
-            total_failed: 0,
-            last_updated: new Date().toISOString(),
-        });
-        const output = runPreToolEnforcerWithEnv({
-            tool_name: 'Task',
-            cwd: tempDir,
-            session_id: sessionId,
-            toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
-                description: 'issue #3732 centralized regression',
-            },
-        }, { OMC_STATE_DIR: centralRoot });
-        rmSync(centralRoot, { recursive: true, force: true });
+        const previousStateDir = process.env.OMC_STATE_DIR;
+        let output;
+        try {
+            process.env.OMC_STATE_DIR = centralRoot;
+            clearWorktreeCache();
+            const stateRoot = getOmcRoot(centralRoot);
+            writeJson(join(stateRoot, 'state', 'sessions', sessionId, 'subagent-tracking-state.json'), {
+                session_id: sessionId,
+                agents: [
+                    { agent_id: 'z1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+                ],
+                total_spawned: 4,
+                total_completed: 3,
+                total_failed: 0,
+                last_updated: new Date().toISOString(),
+            });
+            output = runPreToolEnforcerWithEnv({
+                tool_name: 'Task',
+                cwd: centralRoot,
+                session_id: sessionId,
+                toolInput: {
+                    subagent_type: 'oh-my-copilot:executor',
+                    description: 'issue #3732 centralized regression',
+                },
+            }, { OMC_STATE_DIR: centralRoot });
+        }
+        finally {
+            if (previousStateDir === undefined)
+                delete process.env.OMC_STATE_DIR;
+            else
+                process.env.OMC_STATE_DIR = previousStateDir;
+            clearWorktreeCache();
+            rmSync(centralRoot, { recursive: true, force: true });
+        }
         const advisory = output.hookSpecificOutput.additionalContext;
         // The canonical resolver (not manual join(stateDir, ...)) routes the read
         // into the centralized state root; a manual stateDir join would miss it.
@@ -2300,15 +2322,15 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
         // and reported counters from the unrelated file below.
         writeJson(join(tempDir, '.omc', 'state', 'evil', 'subagent-tracking-state.json'), {
             agents: [
-                { agent_id: 'x1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
-                { agent_id: 'x2', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'x1', agent_type: 'oh-my-copilot:executor', status: 'running' },
+                { agent_id: 'x2', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 99,
             last_updated: new Date().toISOString(),
         });
         writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
             agents: [
-                { agent_id: 'l1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'l1', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 7,
             last_updated: new Date().toISOString(),
@@ -2330,7 +2352,7 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
         });
         writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking.json'), {
             agents: [
-                { agent_id: 'l1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'l1', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 7,
             last_updated: new Date().toISOString(),
@@ -2350,7 +2372,7 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
         });
         writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
             agents: [
-                { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'c1', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 11,
             last_updated: new Date().toISOString(),
@@ -2366,7 +2388,7 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
         // `-state.json` name and silently skipped it).
         writeJson(join(tempDir, '.omc', 'state', 'subagent-tracking-state.json'), {
             agents: [
-                { agent_id: 'c1', agent_type: 'oh-my-claudecode:executor', status: 'running' },
+                { agent_id: 'c1', agent_type: 'oh-my-copilot:executor', status: 'running' },
             ],
             total_spawned: 11,
             last_updated: new Date().toISOString(),
@@ -2375,7 +2397,7 @@ describe('pre-tool-enforcer session-scoped agent tracking (issue #3732)', () => 
             tool_name: 'Task',
             cwd: tempDir,
             toolInput: {
-                subagent_type: 'oh-my-claudecode:executor',
+                subagent_type: 'oh-my-copilot:executor',
                 description: 'issue #3732 no-session regression',
             },
         });

@@ -26,6 +26,9 @@ function request(overrides = {}) {
 }
 describe('readDispatchRequestStrict', () => {
     let cwd;
+    let previousHome;
+    let previousUserProfile;
+    let previousOmcStateDir;
     async function writeStore(value) {
         const path = join(cwd, '.omc', 'state', 'team', teamName, 'dispatch', 'requests.json');
         await mkdir(join(cwd, '.omc', 'state', 'team', teamName, 'dispatch'), { recursive: true });
@@ -34,8 +37,26 @@ describe('readDispatchRequestStrict', () => {
     }
     beforeEach(async () => {
         cwd = await mkdtemp(join(tmpdir(), 'omc-dispatch-strict-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousOmcStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = cwd;
+        process.env.USERPROFILE = cwd;
+        delete process.env.OMC_STATE_DIR;
     });
     afterEach(async () => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousOmcStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousOmcStateDir;
         await rm(cwd, { recursive: true, force: true });
     });
     it('returns a fresh valid exact mailbox request', async () => {

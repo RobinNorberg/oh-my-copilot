@@ -66,23 +66,23 @@ describe('skill-state', () => {
             expect(getSkillProtection('unknown-skill')).toBe('none');
             expect(getSkillProtection('my-custom-skill')).toBe('none');
         });
-        it('strips oh-my-claudecode: prefix', () => {
-            expect(getSkillProtection('oh-my-claudecode:plan')).toBe('medium');
-            expect(getSkillProtection('oh-my-claudecode:ralph')).toBe('none');
+        it('strips oh-my-copilot: prefix', () => {
+            expect(getSkillProtection('oh-my-copilot:plan')).toBe('medium');
+            expect(getSkillProtection('oh-my-copilot:ralph')).toBe('none');
         });
         it('is case-insensitive', () => {
             expect(getSkillProtection('SKILL')).toBe('light');
             expect(getSkillProtection('Plan')).toBe('medium');
         });
         it('returns none for project custom skills with same name as OMC skills (issue #1581)', () => {
-            // rawSkillName without oh-my-claudecode: prefix → project custom skill
+            // rawSkillName without oh-my-copilot: prefix → project custom skill
             expect(getSkillProtection('plan', 'plan')).toBe('none');
             expect(getSkillProtection('review', 'review')).toBe('none');
             expect(getSkillProtection('tdd', 'tdd')).toBe('none');
         });
         it('returns protection for OMC skills when rawSkillName has prefix', () => {
-            expect(getSkillProtection('plan', 'oh-my-claudecode:plan')).toBe('medium');
-            expect(getSkillProtection('deepinit', 'oh-my-claudecode:deepinit')).toBe('heavy');
+            expect(getSkillProtection('plan', 'oh-my-copilot:plan')).toBe('medium');
+            expect(getSkillProtection('deepinit', 'oh-my-copilot:deepinit')).toBe('heavy');
         });
         it('returns none for other plugin skills with rawSkillName', () => {
             // ouroboros:plan, claude-mem:make-plan etc. should not get OMC protection
@@ -150,7 +150,7 @@ describe('skill-state', () => {
             expect(files).toBe(true);
         });
         it('strips namespace prefix from skill name', () => {
-            const state = writeSkillActiveState(tempDir, 'oh-my-claudecode:plan', 'session-1');
+            const state = writeSkillActiveState(tempDir, 'oh-my-copilot:plan', 'session-1');
             expect(state.skill_name).toBe('plan');
         });
         it('does not write state for project custom skills with same name as OMC skills (issue #1581)', () => {
@@ -160,7 +160,7 @@ describe('skill-state', () => {
             expect(readSkillActiveState(tempDir, 'session-1')).toBeNull();
         });
         it('writes state for OMC skills when rawSkillName has prefix', () => {
-            const state = writeSkillActiveState(tempDir, 'plan', 'session-1', 'oh-my-claudecode:plan');
+            const state = writeSkillActiveState(tempDir, 'plan', 'session-1', 'oh-my-copilot:plan');
             expect(state).not.toBeNull();
             expect(state.skill_name).toBe('plan');
             expect(state.max_reinforcements).toBe(5);
@@ -877,8 +877,8 @@ describe('skill-state', () => {
             expect(confirmed.active_skills['ralph']?.started_at).toBe('2026-01-01T00:00:00Z');
             expect(confirmed.active_skills['ralph']?.last_confirmed_at).toBe('2026-04-17T00:00:00Z');
         });
-        it('strips oh-my-claudecode: prefix from skill name', () => {
-            const state = upsertWorkflowSkillSlot(emptySkillActiveStateV2(), 'oh-my-claudecode:ralph', {
+        it('strips oh-my-copilot: prefix from skill name', () => {
+            const state = upsertWorkflowSkillSlot(emptySkillActiveStateV2(), 'oh-my-copilot:ralph', {
                 session_id: 's1',
                 mode_state_path: 'r.json',
                 initialized_mode: 'ralph',
@@ -886,7 +886,7 @@ describe('skill-state', () => {
                 initialized_session_state_path: '',
             });
             expect(state.active_skills['ralph']).toBeDefined();
-            expect(state.active_skills['oh-my-claudecode:ralph']).toBeUndefined();
+            expect(state.active_skills['oh-my-copilot:ralph']).toBeUndefined();
         });
         it('does not mutate the original state object', () => {
             const original = emptySkillActiveStateV2();

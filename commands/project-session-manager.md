@@ -4,7 +4,7 @@ description: ""
 
 # OMC project-session-manager
 
-This compatibility command keeps `/oh-my-claudecode:project-session-manager` available without loading the full `project-session-manager` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:project-session-manager` available without loading the full `project-session-manager` skill description in every Claude Code session.
 
 ## Dispatch
 

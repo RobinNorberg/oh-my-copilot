@@ -18,12 +18,12 @@ import { publishCacheOccupancy } from '../utils/cache-occupancy.js';
 
 let configDir: string;
 vi.mock('../utils/config-dir.js', () => ({
-  getClaudeConfigDir: vi.fn(() => configDir),
+  getCopilotConfigDir: vi.fn(() => configDir),
 }));
 
 const { purgeStalePluginCacheVersions } = await import('../utils/paths.js');
 
-const PLUGIN = 'omc/oh-my-claudecode';
+const PLUGIN = 'omc/oh-my-copilot';
 const STALE = '4.15.6';
 const ACTIVE = '4.15.10';
 /** Older versions OMC leaves behind as symlinks pointing at the demoted one. */
@@ -52,7 +52,7 @@ function installedPlugins() {
     join(configDir, 'plugins', 'installed_plugins.json'),
     JSON.stringify({
       version: 2,
-      plugins: { 'oh-my-claudecode@omc': [{ installPath: join(pluginDir, ACTIVE), version: ACTIVE }] },
+      plugins: { 'oh-my-copilot@omc': [{ installPath: join(pluginDir, ACTIVE), version: ACTIVE }] },
     }),
   );
 }

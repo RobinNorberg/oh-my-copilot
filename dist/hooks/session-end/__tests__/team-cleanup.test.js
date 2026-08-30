@@ -56,11 +56,25 @@ vi.mock('../../../lib/worktree-paths.js', async () => {
 import { cleanupSessionOwnedTeams } from '../index.js';
 describe('processSessionEnd team cleanup (#1632)', () => {
     let tmpDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'omc-session-end-team-cleanup-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = tmpDir;
+        process.env.USERPROFILE = tmpDir;
     });
     afterEach(() => {
         fs.rmSync(tmpDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         vi.clearAllMocks();
         teamCleanupMocks.teamReadManifest.mockReset();
         teamCleanupMocks.teamReadConfig.mockReset();

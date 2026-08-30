@@ -1,10 +1,10 @@
 English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](README.ja.md) | [Español](README.es.md) | [Tiếng Việt](README.vi.md) | [Português](README.pt.md)
 
-# oh-my-claudecode
+# oh-my-copilot
 
-[![npm version](https://img.shields.io/npm/v/oh-my-claude-sisyphus?color=cb3837)](https://www.npmjs.com/package/oh-my-claude-sisyphus)
-[![npm downloads](https://img.shields.io/npm/dm/oh-my-claude-sisyphus?color=blue)](https://www.npmjs.com/package/oh-my-claude-sisyphus)
-[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-claudecode?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-claudecode/stargazers)
+[![npm version](https://img.shields.io/npm/v/oh-my-copilot?color=cb3837)](https://www.npmjs.com/package/oh-my-copilot)
+[![npm downloads](https://img.shields.io/npm/dm/oh-my-copilot?color=blue)](https://www.npmjs.com/package/oh-my-copilot)
+[![GitHub stars](https://img.shields.io/github/stars/Yeachan-Heo/oh-my-copilot?style=flat&color=yellow)](https://github.com/Yeachan-Heo/oh-my-copilot/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 [![Sponsor](https://img.shields.io/badge/Sponsor-❤️-red?style=flat&logo=github)](https://github.com/sponsors/Yeachan-Heo)
 [![Discord](https://img.shields.io/discord/1452487457085063218?color=5865F2&logo=discord&logoColor=white&label=Discord)](https://discord.gg/wSyUQYfhAw)
@@ -18,7 +18,7 @@ English | [한국어](README.ko.md) | [中文](README.zh.md) | [日本語](READM
 
 _Don't learn Claude Code. Just use OMC._
 
-[Get Started](#quick-start) • [Documentation](https://yeachan-heo.github.io/oh-my-claudecode-website) • [CLI Reference](https://yeachan-heo.github.io/oh-my-claudecode-website/docs/#cli-reference) • [Workflows](https://yeachan-heo.github.io/oh-my-claudecode-website/docs/#workflows) • [Migration Guide](docs/MIGRATION.md) • [Discord](https://discord.gg/wSyUQYfhAw)
+[Get Started](#quick-start) • [Documentation](https://yeachan-heo.github.io/oh-my-copilot-website) • [CLI Reference](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#cli-reference) • [Workflows](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#workflows) • [Migration Guide](docs/MIGRATION.md) • [Discord](https://discord.gg/wSyUQYfhAw)
 
 ---
 
@@ -58,26 +58,26 @@ Marketplace/plugin install (recommended for most Claude Code users).
 These are Claude Code slash commands — enter them **one at a time** (pasting both lines at once will fail):
 
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-claudecode
+/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
 ```
 
 Then:
 
 ```bash
-/plugin install oh-my-claudecode
+/plugin install oh-my-copilot
 ```
 
 If you prefer the npm CLI/runtime path instead of the marketplace flow:
 
 ```bash
-npm i -g oh-my-claude-sisyphus@latest
+npm i -g oh-my-copilot@latest
 ```
 
 > **Known npm warning:** npm may print `deprecated prebuild-install@7.1.3` during the CLI install.
 > This currently comes from the upstream `better-sqlite3` native-addon dependency
 > (`better-sqlite3 -> prebuild-install`); `prebuild-install@7.1.3` is still the latest
 > published version, so there is no safe repo-side dependency bump or override to remove
-> the warning yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
+> the warning yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-copilot/issues/2913)
 > and does not by itself mean the OMC CLI install failed.
 
 **Step 2: Setup**
@@ -138,7 +138,7 @@ That's it. Everything else is automatic.
 
 OMC exposes two different surfaces:
 
-- **Terminal CLI commands**: run `omc ...` from your shell after installing the npm/runtime path (`npm i -g oh-my-claude-sisyphus@latest`) or from a local checkout.
+- **Terminal CLI commands**: run `omc ...` from your shell after installing the npm/runtime path (`npm i -g oh-my-copilot@latest`) or from a local checkout.
 - **In-session skills**: run `/...` inside a Claude Code session after installing the plugin/setup flow.
 
 | Feature                                        | Terminal CLI                                  | In-session skill                                                        | Notes                                                                                                                                |
@@ -147,7 +147,7 @@ OMC exposes two different surfaces:
 | Ask providers                                  | `omc ask codex "review this patch"`           | `/ask codex "review this patch"`                                        | Both route through the same advisor flow. Providers: `claude`, `codex`, `gemini`, `antigravity`, `grok`, `cursor`.                                            |
 | Team orchestration                             | `omc team 2:codex "review auth flow"`         | `/team 3:executor "fix all TypeScript errors"`                          | Both exist, but they are different runtimes: `omc team` launches tmux CLI workers; `/team` runs the in-session native team workflow. |
 | Autopilot / Ralph / Execute / Deep Interview   | —                                             | `/autopilot ...`, `/ralph ...`, `/execute ...`, `/deep-interview ...`   | These are in-session skills. There is no `omc autopilot` / `omc ralph` / `omc execute` CLI subcommand in this repo.                  |
-| Autoresearch                                   | `omc autoresearch` (**hard-deprecated shim**) | `/deep-interview --autoresearch ...` + `/oh-my-claudecode:autoresearch` | Setup stays in deep-interview; execution now belongs to the stateful skill.                                                          |
+| Autoresearch                                   | `omc autoresearch` (**hard-deprecated shim**) | `/deep-interview --autoresearch ...` + `/oh-my-copilot:autoresearch` | Setup stays in deep-interview; execution now belongs to the stateful skill.                                                          |
 
 ### VS Code, Agent SDK, and automation scope
 
@@ -239,17 +239,17 @@ This config makes the autopilot execution stage use `omc team 1:cursor "..."` or
 
 Native team worker worktrees are being added behind an opt-in/config gate. See [Native Team Worktree Mode](docs/TEAM-WORKTREE-MODE.md) for the workspace contract, canonical state-root rules, dirty-worktree preservation policy, and verification checklist.
 
-> **Note: Package naming** — The project is branded as **oh-my-claudecode** (repo, plugin, commands), but the npm package is published as [`oh-my-claude-sisyphus`](https://www.npmjs.com/package/oh-my-claude-sisyphus). If you install or upgrade the CLI tools via npm/bun, use `npm i -g oh-my-claude-sisyphus@latest`; the package installs both `oh-my-claudecode` and the short `omc` command aliases.
+> **Note: Package naming** — The project is branded as **oh-my-copilot** (repo, plugin, commands), but the npm package is published as [`oh-my-copilot`](https://www.npmjs.com/package/oh-my-copilot). If you install or upgrade the CLI tools via npm/bun, use `npm i -g oh-my-copilot@latest`; the package installs both `oh-my-copilot` and the short `omc` command aliases.
 
 ### Updating
 
 If you installed OMC via npm, upgrade with the published package name:
 
 ```bash
-npm i -g oh-my-claude-sisyphus@latest
+npm i -g oh-my-copilot@latest
 ```
 
-> **Package naming note:** the repo, plugin, and commands are branded **oh-my-claudecode**, but the published npm package name remains `oh-my-claude-sisyphus`. npm installs expose both `oh-my-claudecode` and `omc`; examples prefer `omc` for brevity.
+> **Package naming note:** the repo, plugin, and commands are branded **oh-my-copilot**, but the published npm package name remains `oh-my-copilot`. npm installs expose both `oh-my-copilot` and `omc`; examples prefer `omc` for brevity.
 
 If you installed OMC via the Claude Code marketplace/plugin flow, update with:
 
@@ -274,12 +274,12 @@ If you experience issues after updating, clear the old plugin cache:
 <h1 align="center">Your Claude Just Have been Steroided.</h1>
 
 <p align="center">
-  <img src="assets/omc-character.jpg" alt="oh-my-claudecode" width="400" />
+  <img src="assets/omc-character.jpg" alt="oh-my-copilot" width="400" />
 </p>
 
 ---
 
-## Why oh-my-claudecode?
+## Why oh-my-copilot?
 
 - **Zero configuration required** - Works out of the box with intelligent defaults
 - **Team-first orchestration** - Team is the canonical multi-agent surface
@@ -296,7 +296,7 @@ If you experience issues after updating, clear the old plugin cache:
 
 ### Orchestration Modes
 
-Multiple strategies for different use cases — from Team-backed orchestration to token-efficient refactoring. [Learn more →](https://yeachan-heo.github.io/oh-my-claudecode-website/docs/#execution-modes)
+Multiple strategies for different use cases — from Team-backed orchestration to token-efficient refactoring. [Learn more →](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#execution-modes)
 
 | Mode                        | What it is                                                                              | Use For                                                                 |
 | --------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
@@ -408,7 +408,7 @@ These shortcuts run **inside a Claude Code / OMC session**, not as terminal CLI 
 
 - **Parallel work uses Team or executor delegation**: choose `/team` for coordinated lanes or delegate implementation tasks to executors; use Ralph when persistence until verified completion is the priority.
 - `swarm` compatibility alias has been removed; migrate existing prompts to `/team` syntax.
-- `plan this` / `plan the` keyword triggers were removed; use `ralplan` or explicit `/oh-my-claudecode:plan`.
+- `plan this` / `plan the` keyword triggers were removed; use `ralplan` or explicit `/oh-my-copilot:plan`.
 
 ## Utilities
 
@@ -446,7 +446,7 @@ Phase-1 aliases `OMX_ASK_ADVISOR_SCRIPT` and `OMX_ASK_ORIGINAL_TASK` are accepte
 
 ```bash
 /deep-interview --autoresearch improve startup performance
-/oh-my-claudecode:autoresearch
+/oh-my-copilot:autoresearch
 ```
 
 - `deep-interview --autoresearch` generates/sets up the mission and evaluator
@@ -471,7 +471,7 @@ omc wait --stop   # Disable daemon
 
 Use the HUD for live observability and the current session/replay artifacts for post-session inspection:
 
-- HUD preset: `/oh-my-claudecode:hud setup` then use a supported preset such as `"omcHud": { "preset": "focused" }`
+- HUD preset: `/oh-my-copilot:hud setup` then use a supported preset such as `"omcHud": { "preset": "focused" }`
 - Session summaries: `.omc/sessions/*.json`
 - Replay logs: `.omc/state/agent-replay-*.jsonl`
 - Live HUD rendering: `omc hud`
@@ -507,7 +507,7 @@ Forward Claude Code session events to an [OpenClaw](https://openclaw.ai/) gatewa
 **Quick setup (recommended):**
 
 ```bash
-/oh-my-claudecode:configure-notifications
+/oh-my-copilot:configure-notifications
 # → When prompted, type "openclaw" → choose "OpenClaw Gateway"
 ```
 
@@ -573,11 +573,11 @@ See `scripts/openclaw-gateway-demo.mjs` for a reference gateway that relays Open
 ## Documentation
 
 - **[Full Reference](docs/REFERENCE.md)** - Complete feature documentation
-- **[CLI Reference](https://yeachan-heo.github.io/oh-my-claudecode-website/docs/#cli-reference)** - All `omc` commands, flags, and tools
-- **[Notifications Guide](https://yeachan-heo.github.io/oh-my-claudecode-website/docs/#notifications)** - Discord, Telegram, Slack, and webhook setup
-- **[Recommended Workflows](https://yeachan-heo.github.io/oh-my-claudecode-website/docs/#workflows)** - Battle-tested skill chains for common tasks
-- **[Release Notes](https://yeachan-heo.github.io/oh-my-claudecode-website/docs/#release-notes)** - What's new in each version
-- **[Website](https://yeachan-heo.github.io/oh-my-claudecode-website)** - Interactive guides and examples
+- **[CLI Reference](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#cli-reference)** - All `omc` commands, flags, and tools
+- **[Notifications Guide](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#notifications)** - Discord, Telegram, Slack, and webhook setup
+- **[Recommended Workflows](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#workflows)** - Battle-tested skill chains for common tasks
+- **[Release Notes](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#release-notes)** - What's new in each version
+- **[Website](https://yeachan-heo.github.io/oh-my-copilot-website)** - Interactive guides and examples
 - **[Migration Guide](docs/MIGRATION.md)** - Upgrade from v2.x
 - **[Architecture](docs/ARCHITECTURE.md)** - How it works under the hood
 - **[Performance Monitoring](docs/PERFORMANCE-MONITORING.md)** - Agent tracking, debugging, and optimization
@@ -642,7 +642,7 @@ MIT
 
 Top personal non-fork, non-archived repos from all-time OMC contributors (100+ GitHub stars).
 
-- [@Yeachan-Heo](https://github.com/Yeachan-Heo) — [oh-my-claudecode](https://github.com/Yeachan-Heo/oh-my-claudecode) (⭐ 38k)
+- [@Yeachan-Heo](https://github.com/Yeachan-Heo) — [oh-my-copilot](https://github.com/Yeachan-Heo/oh-my-copilot) (⭐ 38k)
 - [@junhoyeo](https://github.com/junhoyeo) — [tokscale](https://github.com/junhoyeo/tokscale) (⭐ 4.8k)
 - [@psmux](https://github.com/psmux) — [psmux](https://github.com/psmux/psmux) (⭐ 3.2k)
 - [@MeroZemory](https://github.com/MeroZemory) — [ida-multi-mcp](https://github.com/MeroZemory/ida-multi-mcp) (⭐ 375)
@@ -662,11 +662,11 @@ Top personal non-fork, non-archived repos from all-time OMC contributors (100+ G
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-claudecode&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-claudecode&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/svg?repos=Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)](https://www.star-history.com/#Yeachan-Heo/oh-my-copilot&type=date&legend=top-left)
 
 ## 💖 Support This Project
 
-If Oh-My-ClaudeCode helps your workflow, consider sponsoring:
+If Oh-My-Copilot helps your workflow, consider sponsoring:
 
 [![Sponsor on GitHub](https://img.shields.io/badge/Sponsor-❤️-red?style=for-the-badge&logo=github)](https://github.com/sponsors/Yeachan-Heo)
 
@@ -688,5 +688,5 @@ If Oh-My-ClaudeCode helps your workflow, consider sponsoring:
 
 OmC includes a [`geobench`](https://github.com/NomaDamas/geobench) product spec for measuring LLM hit rate, MRR, share of voice, and citations.
 
-- Spec: [`geobench/oh-my-claudecode.yaml`](geobench/oh-my-claudecode.yaml)
+- Spec: [`geobench/oh-my-copilot.yaml`](geobench/oh-my-copilot.yaml)
 - Runbook: [`docs/geobench.md`](docs/geobench.md)

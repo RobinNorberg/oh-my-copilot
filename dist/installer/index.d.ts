@@ -8,7 +8,7 @@
  * Bash hook scripts were removed in v3.9.0.
  */
 /** Claude Code configuration directory */
-export declare const CLAUDE_CONFIG_DIR: string;
+export declare const COPILOT_CONFIG_DIR: string;
 export declare const AGENTS_DIR: string;
 export declare const COMMANDS_DIR: string;
 export declare const SKILLS_DIR: string;
@@ -43,7 +43,7 @@ export interface InstallOptions {
     force?: boolean;
     version?: string;
     verbose?: boolean;
-    skipClaudeCheck?: boolean;
+    skipCopilotCheck?: boolean;
     forceHooks?: boolean;
     refreshHooksInPlugin?: boolean;
     skipHud?: boolean;
@@ -64,7 +64,7 @@ export interface InstallOptions {
  */
 export declare function isHudEnabledInConfig(): boolean;
 /**
- * Detect whether a statusLine config belongs to oh-my-claudecode.
+ * Detect whether a statusLine config belongs to oh-my-copilot.
  *
  * Checks the command string for known OMC HUD paths so that custom
  * (non-OMC) statusLine configurations are preserved during forced
@@ -75,11 +75,11 @@ export declare function isHudEnabledInConfig(): boolean;
  */
 export declare function isOmcStatusLine(statusLine: unknown): boolean;
 /**
- * Detect whether a hook command belongs to oh-my-claudecode.
+ * Detect whether a hook command belongs to oh-my-copilot.
  *
  * Recognition strategy (any match is sufficient):
  * 1. Command path contains "omc" as a path/word segment (e.g. `omc-hook.mjs`, `/omc/`)
- * 2. Command path contains "oh-my-claudecode"
+ * 2. Command path contains "oh-my-copilot"
  * 3. Command references a known OMC hook filename inside .claude/hooks/
  *
  * @param command - The hook command string
@@ -98,7 +98,7 @@ export declare function checkNodeVersion(): {
  * Check if Claude Code is installed
  * Uses 'where' on Windows, 'which' on Unix
  */
-export declare function isClaudeInstalled(): boolean;
+export declare function isCopilotInstalled(): boolean;
 /**
  * Check if we're running in Claude Code plugin context
  *

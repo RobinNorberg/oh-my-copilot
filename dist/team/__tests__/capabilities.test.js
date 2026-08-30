@@ -14,8 +14,8 @@ function makeMember(name, backend, capabilities, status = 'active') {
 }
 describe('capabilities', () => {
     describe('getDefaultCapabilities', () => {
-        it('returns capabilities for claude-native', () => {
-            const caps = getDefaultCapabilities('claude-native');
+        it('returns capabilities for copilot-native', () => {
+            const caps = getDefaultCapabilities('copilot-native');
             expect(caps).toContain('code-edit');
             expect(caps).toContain('testing');
             expect(caps).toContain('general');
@@ -33,8 +33,8 @@ describe('capabilities', () => {
             expect(caps).toContain('research');
         });
         it('returns a copy, not a reference', () => {
-            const caps1 = getDefaultCapabilities('claude-native');
-            const caps2 = getDefaultCapabilities('claude-native');
+            const caps1 = getDefaultCapabilities('copilot-native');
+            const caps2 = getDefaultCapabilities('copilot-native');
             caps1.push('research');
             expect(caps2).not.toContain('research');
         });
@@ -56,12 +56,12 @@ describe('capabilities', () => {
             expect(score).toBe(0);
         });
         it('gives partial credit for general capability', () => {
-            const worker = makeMember('w1', 'claude-native', ['general']);
+            const worker = makeMember('w1', 'copilot-native', ['general']);
             const score = scoreWorkerFitness(worker, ['architecture']);
             expect(score).toBe(0.5); // 0.5 from general wildcard / 1 required
         });
         it('returns 1.0 when no capabilities required', () => {
-            const worker = makeMember('w1', 'claude-native', ['code-edit']);
+            const worker = makeMember('w1', 'copilot-native', ['code-edit']);
             const score = scoreWorkerFitness(worker, []);
             expect(score).toBe(1.0);
         });
@@ -70,7 +70,7 @@ describe('capabilities', () => {
         it('ranks workers by fitness score descending', () => {
             const w1 = makeMember('codex', 'mcp-codex', ['code-review', 'security-review']);
             const w2 = makeMember('gemini', 'mcp-gemini', ['ui-design', 'documentation']);
-            const w3 = makeMember('claude', 'claude-native', ['code-edit', 'testing', 'general']);
+            const w3 = makeMember('claude', 'copilot-native', ['code-edit', 'testing', 'general']);
             const ranked = rankWorkersForTask([w1, w2, w3], ['code-review', 'security-review']);
             expect(ranked[0].name).toBe('codex'); // perfect match
             expect(ranked.length).toBeGreaterThanOrEqual(1);
@@ -87,7 +87,7 @@ describe('capabilities', () => {
             expect(ranked).toEqual([]);
         });
         it('respects custom capabilities over defaults', () => {
-            const w1 = makeMember('custom', 'claude-native', ['security-review', 'architecture']);
+            const w1 = makeMember('custom', 'copilot-native', ['security-review', 'architecture']);
             const w2 = makeMember('default', 'mcp-codex', ['code-review']);
             const ranked = rankWorkersForTask([w1, w2], ['security-review', 'architecture']);
             expect(ranked[0].name).toBe('custom');

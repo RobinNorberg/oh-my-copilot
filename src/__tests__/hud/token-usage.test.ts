@@ -9,7 +9,7 @@ import { renderTokenUsage } from "../../hud/elements/token-usage.js";
 const tempDirs: string[] = [];
 
 function createTempTranscript(lines: unknown[]): string {
-  const dir = mkdtempSync(join(tmpdir(), "omc-hud-token-usage-"));
+  const dir = mkdtempSync(join(tmpdir(), "omcp-hud-token-usage-"));
   tempDirs.push(dir);
 
   const transcriptPath = join(dir, "transcript.jsonl");

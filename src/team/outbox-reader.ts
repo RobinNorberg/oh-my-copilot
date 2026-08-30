@@ -12,7 +12,7 @@ import {
   statSync, existsSync, readdirSync
 } from 'fs';
 import { join } from 'path';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { validateResolvedPath, writeFileWithMode, atomicWriteJson, ensureDirWithMode } from './fs-utils.js';
 import { sanitizeName } from './tmux-session.js';
 import type { OutboxMessage } from './types.js';
@@ -25,7 +25,7 @@ export interface OutboxCursor {
 const MAX_OUTBOX_READ_SIZE = 10 * 1024 * 1024; // 10MB cap per read
 
 function teamsDir(): string {
-  return join(getClaudeConfigDir(), 'teams');
+  return join(getCopilotConfigDir(), 'teams');
 }
 
 /**

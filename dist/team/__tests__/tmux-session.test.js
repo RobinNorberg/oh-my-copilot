@@ -330,6 +330,15 @@ describe('buildWorkerStartCommand', () => {
         expect(cmd).not.toContain('100% ready %USERPROFILE%');
         expect(cmd).not.toContain('pane_id=%%2');
     });
+    it('rejects CRLF injection in native Windows provider argv', () => {
+        vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
+        vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
+        expect(() => buildWorkerStartCommand({
+            teamName: 't', workerName: 'w', envVars: {},
+            launchBinary: 'C:\\Program Files\\Cursor\\cursor-agent.exe',
+            launchArgs: ['--model', 'safe\r\nset PWNED=1'], cwd: 'C:\\repo',
+        })).toThrow('contains CR, LF, or NUL');
+    });
     it('escapes psmux cmd.exe env vars and quoted launch args without PowerShell syntax', () => {
         vi.spyOn(process, 'platform', 'get').mockReturnValue('win32');
         vi.stubEnv('PSMUX_SESSION', 'psmux-session-1');
@@ -638,6 +647,39 @@ describe('pane readiness startup banners', () => {
         expect(paneHasTrustPrompt(capture)).toBe(true);
         expect(paneLooksReady(capture)).toBe(true);
         expect(paneHasActiveTask(capture)).toBe(false);
+    });
+    it('detects the cursor-agent workspace-trust banner and refuses to call it ready', () => {
+        // Verbatim capture from `cursor-agent` launched in tmux on an untrusted
+        // directory. It offers no numbered choice and the process exits, unlike
+        // the dismissible Claude/Codex prompts above.
+        const capture = [
+            '⚠ Workspace Trust Required',
+            '',
+            '  Cursor Agent can execute code and access files in this directory.',
+            '  Do you trust the contents of this directory?',
+            '',
+            '    /private/tmp/ct-nf2',
+            '',
+            '  To proceed, you can either:',
+            "    • Run 'agent' interactively to decide",
+            '    • Pass --trust, --yolo, or -f if you trust this directory',
+        ].join('\n');
+        expect(paneHasTrustPrompt(capture)).toBe(true);
+        // The pane is dead: treating it as ready would hand work to a gone process.
+        expect(paneLooksReady(capture, 'cursor')).toBe(false);
+        expect(paneHasActiveTask(capture, 'cursor')).toBe(false);
+    });
+    it('gives the Cursor trust banner precedence and keeps it provider-scoped', () => {
+        const capture = [
+            '⚠ Workspace Trust Required',
+            'Do you trust the contents of this directory?',
+            '› 1. Yes, continue',
+            '  2. No, quit',
+            "  • Pass --trust, --yolo, or -f if you trust this directory",
+        ].join('\n');
+        expect(paneHasTrustPrompt(capture, 'cursor')).toBe(true);
+        expect(paneLooksReady(capture, 'cursor')).toBe(false);
+        expect(paneLooksReady(capture, 'claude')).toBe(true);
     });
     it('still treats actual prompt lines as ready', () => {
         expect(paneLooksReady('Welcome\n❯ ')).toBe(true);

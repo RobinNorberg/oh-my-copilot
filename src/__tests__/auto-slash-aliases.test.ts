@@ -24,7 +24,7 @@ describe('auto slash aliases + skill guidance', () => {
     tempProjectDir = join(tmpdir(), `omc-auto-slash-project-${Date.now()}-${Math.random().toString(36).slice(2)}`);
     mkdirSync(tempConfigDir, { recursive: true });
     mkdirSync(tempProjectDir, { recursive: true });
-    process.env.CLAUDE_CONFIG_DIR = tempConfigDir;
+    process.env.COPILOT_CONFIG_DIR = tempConfigDir;
     process.chdir(tempProjectDir);
   });
 
@@ -32,7 +32,7 @@ describe('auto slash aliases + skill guidance', () => {
     process.chdir(originalCwd);
     rmSync(tempConfigDir, { recursive: true, force: true });
     rmSync(tempProjectDir, { recursive: true, force: true });
-    delete process.env.CLAUDE_CONFIG_DIR;
+    delete process.env.COPILOT_CONFIG_DIR;
     if (originalPluginRoot === undefined) {
       delete process.env.CLAUDE_PLUGIN_ROOT;
     } else {
@@ -56,9 +56,9 @@ description: Setup router
 
 ## Routing
 
-- doctor -> /oh-my-claudecode:omc-doctor with remaining args
-- mcp -> /oh-my-claudecode:mcp-setup with remaining args
-- otherwise -> /oh-my-claudecode:omc-setup with remaining args`
+- doctor -> /oh-my-copilot:omc-doctor with remaining args
+- mcp -> /oh-my-copilot:mcp-setup with remaining args
+- otherwise -> /oh-my-copilot:omc-setup with remaining args`
     );
 
     const { executeSlashCommand } = await loadExecutor();
@@ -69,7 +69,7 @@ description: Setup router
     });
 
     expect(result.success).toBe(true);
-    expect(result.replacementText).toContain('doctor -> /oh-my-claudecode:omc-doctor with remaining args');
+    expect(result.replacementText).toContain('doctor -> /oh-my-copilot:omc-doctor with remaining args');
     expect(result.replacementText).not.toContain('{{ARGUMENTS_AFTER_DOCTOR}}');
     expect(result.replacementText).not.toContain('{{ARGUMENTS_AFTER_MCP}}');
   });
@@ -205,7 +205,7 @@ Deep interview body`
     expect(result.replacementText).toContain('## Skill Pipeline');
     expect(result.replacementText).toContain('Pipeline: `deep-interview → plan → autopilot`');
     expect(result.replacementText).toContain('Next skill arguments: `--consensus --direct`');
-    expect(result.replacementText).toContain('Skill("oh-my-claudecode:plan")');
+    expect(result.replacementText).toContain('Skill("oh-my-copilot:plan")');
     expect(result.replacementText).toContain('`.omc/specs/deep-interview-{slug}.md`');
   });
 
@@ -349,7 +349,7 @@ Deep interview body`
 
     expect(result.success).toBe(true);
     expect(result.replacementText).toContain('## Autoresearch Setup Mode');
-    expect(result.replacementText).toContain('Skill("oh-my-claudecode:autoresearch")');
+    expect(result.replacementText).toContain('Skill("oh-my-copilot:autoresearch")');
     expect(result.replacementText).toContain('Mission seed from invocation: `improve startup performance`');
     expect(result.replacementText).not.toContain('## Skill Pipeline');
   });
@@ -378,7 +378,7 @@ Deep interview body`
 
     expect(result.success).toBe(true);
     expect(result.replacementText)
-      .toContain('Skill("oh-my-claudecode:autoresearch")');
+      .toContain('Skill("oh-my-copilot:autoresearch")');
   });
 
 });

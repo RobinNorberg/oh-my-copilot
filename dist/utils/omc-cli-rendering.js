@@ -1,5 +1,5 @@
 import { spawnSync } from 'child_process';
-const OMC_CLI_BINARY = 'omc';
+const OMC_CLI_BINARY = 'omcp';
 const OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
 function commandExists(command, env) {
     const lookupCommand = process.platform === 'win32' ? 'where' : 'which';

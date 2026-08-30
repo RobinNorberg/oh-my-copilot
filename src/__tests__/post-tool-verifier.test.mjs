@@ -55,7 +55,7 @@ function scopedHookEnvironment(cwd, env) {
     CLAUDE_PLUGIN_ROOT: '',
     HOME: effectiveHome,
     USERPROFILE: env.USERPROFILE || effectiveHome,
-    CLAUDE_CONFIG_DIR: env.CLAUDE_CONFIG_DIR || join(effectiveHome, '.claude'),
+    COPILOT_CONFIG_DIR: env.COPILOT_CONFIG_DIR || join(effectiveHome, '.claude'),
     ...env,
   };
 
@@ -936,7 +936,7 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       writeFileSync(
         join(tempDir, '.omc', 'state', 'subagent-tracking.json'),
         JSON.stringify({
-          agents: [{ status: 'running', agent_type: 'oh-my-claudecode:executor' }],
+          agents: [{ status: 'running', agent_type: 'oh-my-copilot:executor' }],
           total_completed: 1,
           total_failed: 0,
         }),
@@ -965,7 +965,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
 
       const out = runPostToolVerifier({
         tool_name: 'Skill',
-        tool_input: { skill: 'oh-my-claudecode:plan' },
+        tool_input: { skill: 'oh-my-copilot:plan' },
         tool_response: { ok: true },
         session_id: sessionId,
         cwd: tempDir,
@@ -984,7 +984,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
 
       const out = runPostToolVerifier({
         tool_name: 'Skill',
-        tool_input: { skill: 'oh-my-claudecode:mcp-setup' },
+        tool_input: { skill: 'oh-my-copilot:mcp-setup' },
         tool_response: { ok: true },
         session_id: sessionId,
         cwd: tempDir,
@@ -1003,7 +1003,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
 
       const out = runHookScript(TEMPLATE_HOOK_PATH, {
         tool_name: 'Skill',
-        tool_input: { skill: 'oh-my-claudecode:plan' },
+        tool_input: { skill: 'oh-my-copilot:plan' },
         tool_response: { ok: true },
         session_id: sessionId,
         cwd: tempDir,
@@ -1026,7 +1026,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
       mkdirSync(homeDir, { recursive: true });
       const out = runHookScript(TEMPLATE_HOOK_PATH, {
         tool_name: 'Skill',
-        tool_input: { skill: 'oh-my-claudecode:ralph' },
+        tool_input: { skill: 'oh-my-copilot:ralph' },
         tool_response: { ok: true },
         session_id: sessionId,
         cwd: tempDir,
@@ -1046,7 +1046,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
 
       const out = runPostToolVerifier({
         tool_name: 'Skill',
-        tool_input: { skill: 'oh-my-claudecode:ralplan' },
+        tool_input: { skill: 'oh-my-copilot:ralplan' },
         tool_response: { ok: true },
         session_id: sessionId,
         cwd: tempDir,
@@ -1070,7 +1070,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
       const out = runHookScript(TEMPLATE_HOOK_PATH, {
         tool_name: 'Skill',
         tool_input: {
-          skill: 'oh-my-claudecode:plan',
+          skill: 'oh-my-copilot:plan',
           args: '--consensus issue #2368',
         },
         tool_response: { ok: true },
@@ -1095,7 +1095,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
 
       const out = runPostToolVerifier({
         tool_name: 'Skill',
-        tool_input: { skill: 'oh-my-claudecode:deep-interview' },
+        tool_input: { skill: 'oh-my-copilot:deep-interview' },
         tool_response: { ok: true },
         session_id: sessionId,
         cwd: tempDir,
@@ -1114,7 +1114,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
 
       const out = runPostToolVerifier({
         tool_name: 'Skill',
-        tool_input: { skill: 'oh-my-claudecode:self-improve' },
+        tool_input: { skill: 'oh-my-copilot:self-improve' },
         tool_response: { ok: true },
         session_id: sessionId,
         cwd: tempDir,

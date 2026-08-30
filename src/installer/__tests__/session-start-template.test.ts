@@ -84,7 +84,7 @@ describe('session-start template retired-state handling', () => {
     );
     writeFileSync(
       join(fakeProject, 'AGENTS.md'),
-      `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+      `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>schema</guidance_schema_contract>
 
@@ -107,7 +107,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
   it('compacts large OMC AGENTS guidance and caps aggregate session context', () => {
     mkdirSync(fakeProject, { recursive: true });
     const largeAgents = [
-      '# oh-my-claudecode - Intelligent Multi-Agent Orchestration',
+      '# oh-my-copilot - Intelligent Multi-Agent Orchestration',
       '<guidance_schema_contract>schema details</guidance_schema_contract>',
       '<operating_principles>keep this high value section</operating_principles>',
       '<agent_catalog>' + 'agent '.repeat(5000) + '</agent_catalog>',
@@ -187,7 +187,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
   it('keeps model routing override under budget for non-standard providers', () => {
     writeFileSync(
       join(fakeProject, 'AGENTS.md'),
-      `# oh-my-claudecode - Intelligent Multi-Agent Orchestration
+      `# oh-my-copilot - Intelligent Multi-Agent Orchestration
 
 <guidance_schema_contract>schema</guidance_schema_contract>
 

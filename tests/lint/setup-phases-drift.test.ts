@@ -9,7 +9,7 @@
  *
  * This test locks the setup phases to the shipped surface so they cannot
  * drift again:
- *  - every `/oh-my-claudecode:<skill>` reference in the setup phases must
+ *  - every `/oh-my-copilot:<skill>` reference in the setup phases must
  *    resolve to a skill the plugin actually ships (`.claude-plugin/plugin.json`)
  *  - no setup phase may reference a name retired in 5.0.0 (the canonical
  *    retired list in docs/CLAUDE.md, kept byte-identical to CLAUDE.md)
@@ -96,16 +96,16 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     }
   });
 
-  it("every referenced /oh-my-claudecode:<skill> exists in the shipped plugin", () => {
+  it("every referenced /oh-my-copilot:<skill> exists in the shipped plugin", () => {
     for (const file of PHASE_FILES) {
       const content = readPhase(file);
-      const referenced = [...content.matchAll(/\/oh-my-claudecode:([a-z0-9-]+)/g)].map(
+      const referenced = [...content.matchAll(/\/oh-my-copilot:([a-z0-9-]+)/g)].map(
         (m) => m[1],
       );
       for (const name of referenced) {
         expect(
           skills.has(name),
-          `${file} references /oh-my-claudecode:${name}, but the plugin does not ship a skill with that name`,
+          `${file} references /oh-my-copilot:${name}, but the plugin does not ship a skill with that name`,
         ).toBe(true);
       }
     }
@@ -115,7 +115,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     for (const file of PHASE_FILES) {
       const content = readPhase(file);
       // An invocation-shaped reference is any of:
-      //   /oh-my-claudecode:<name>   <name>: <task>   "invoke the <name> skill"
+      //   /oh-my-copilot:<name>   <name>: <task>   "invoke the <name> skill"
       // Plain-prose retirement notices (a dedicated block listing removed
       // names, or a "removed in 5.0.0" sentence) are allowed — users and the
       // setup agent must still be told what no longer exists.
@@ -124,7 +124,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
         .replace(/[^.\n]*removed in 5\.0\.0[^.\n]*\.?/gi, "");
       for (const name of retired) {
         const invocationPatterns = [
-          new RegExp(`/oh-my-claudecode:${name}\\b`),
+          new RegExp(`/oh-my-copilot:${name}\\b`),
           new RegExp(`^#{1,6}.*\\b${name}\\b.*(step|skill|invoke)`, "im"),
           new RegExp(`invoke (?:the )?.{0,20}\\b${name}\\b (?:skill|workflow)`, "i"),
         ];
@@ -176,7 +176,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     try {
       const config = join(root, ".omc-config.json");
       writeFileSync(config, original);
-      execFileSync("bash", ["-c", snippet!], { env: { ...process.env, CLAUDE_CONFIG_DIR: root } });
+      execFileSync("bash", ["-c", snippet!], { env: { ...process.env, COPILOT_CONFIG_DIR: root } });
       const cleaned = JSON.parse(readFileSync(config, "utf8")) as Record<string, unknown>;
       expect(cleaned).toEqual({ silentAutoUpdate: false });
 
@@ -185,19 +185,19 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       mkdirSync(tildeConfigDir, { recursive: true });
       writeFileSync(tildeConfig, original);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: "~/nested" },
+        env: { ...process.env, HOME: root, COPILOT_CONFIG_DIR: "~/nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
       writeFileSync(tildeConfig, original);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: "~\\nested" },
+        env: { ...process.env, HOME: root, COPILOT_CONFIG_DIR: "~\\nested" },
       });
       expect(JSON.parse(readFileSync(tildeConfig, "utf8"))).toEqual({ silentAutoUpdate: false });
 
       const malformed = "{ \"defaultExecutionMode\":";
       writeFileSync(config, malformed);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, CLAUDE_CONFIG_DIR: root },
+        env: { ...process.env, COPILOT_CONFIG_DIR: root },
         stdio: "ignore",
       });
       expect(readFileSync(config, "utf8")).toBe(malformed);
@@ -209,7 +209,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
       writeFileSync(fakeMv, "#!/bin/sh\nexit 1\n");
       chmodSync(fakeMv, 0o755);
       execFileSync("bash", ["-c", snippet!], {
-        env: { ...process.env, CLAUDE_CONFIG_DIR: root, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
+        env: { ...process.env, COPILOT_CONFIG_DIR: root, PATH: `${fakeBin}:${process.env.PATH ?? ""}` },
         stdio: "ignore",
       });
       expect(readFileSync(config, "utf8")).toBe(original);
@@ -240,10 +240,10 @@ describe("setup phases drift enforcement (issue #3871)", () => {
 
   it("uses the installed plan and review skill names in the welcome text", () => {
     const welcome = readPhase("04-welcome.md");
-    expect(welcome).toContain("/oh-my-claudecode:omc-plan");
-    expect(welcome).toContain("/oh-my-claudecode:omc-review");
-    expect(welcome).not.toContain("/oh-my-claudecode:plan");
-    expect(welcome).not.toContain("/oh-my-claudecode:review");
+    expect(welcome).toContain("/oh-my-copilot:omc-plan");
+    expect(welcome).toContain("/oh-my-copilot:omc-review");
+    expect(welcome).not.toContain("/oh-my-copilot:plan");
+    expect(welcome).not.toContain("/oh-my-copilot:review");
   });
 
   it("executes the team config normalizer for a backslash-tilde path", () => {
@@ -255,7 +255,7 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     try {
       const output = execFileSync("bash", ["-c", `${preamble}\nprintf '%s\\n' "$CONFIG_FILE"`], {
         cwd: root,
-        env: { ...process.env, HOME: root, CLAUDE_CONFIG_DIR: "~\\claude" },
+        env: { ...process.env, HOME: root, COPILOT_CONFIG_DIR: "~\\claude" },
       });
       expect(output.toString().trim()).toBe(join(root, "claude", ".omc-config.json"));
     } finally {

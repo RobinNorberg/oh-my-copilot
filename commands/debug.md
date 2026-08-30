@@ -4,7 +4,7 @@ description: ""
 
 # OMC debug
 
-This compatibility command keeps `/oh-my-claudecode:debug` available without loading the full `debug` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:debug` available without loading the full `debug` skill description in every Claude Code session.
 
 ## Dispatch
 

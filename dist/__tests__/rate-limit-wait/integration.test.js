@@ -161,7 +161,7 @@ What would you like to do?
 
 > `;
             const result = analyzePaneContent(realWorldContent);
-            expect(result.hasClaudeCode).toBe(true);
+            expect(result.hasCopilotCode).toBe(true);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(true);
             expect(result.rateLimitType).toBe('five_hour');
@@ -182,7 +182,7 @@ Options:
 
 Enter choice: `;
             const result = analyzePaneContent(weeklyLimitContent);
-            expect(result.hasClaudeCode).toBe(true);
+            expect(result.hasCopilotCode).toBe(true);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(true);
             expect(result.rateLimitType).toBe('weekly');
@@ -202,7 +202,7 @@ I can help you with:
 Just describe what you need!
 `;
             const result = analyzePaneContent(normalContent);
-            expect(result.hasClaudeCode).toBe(true);
+            expect(result.hasCopilotCode).toBe(true);
             expect(result.hasRateLimitMessage).toBe(false);
             expect(result.isBlocked).toBe(false);
         });
@@ -215,7 +215,7 @@ $ curl https://api.github.com/users/test
 }
 $ `;
             const result = analyzePaneContent(unrelatedContent);
-            expect(result.hasClaudeCode).toBe(false);
+            expect(result.hasCopilotCode).toBe(false);
             expect(result.hasRateLimitMessage).toBe(true);
             expect(result.isBlocked).toBe(false); // No Claude context
         });
@@ -267,7 +267,7 @@ Assistant: I can help with more tasks.
                         paneIndex: 0,
                         isActive: true,
                         analysis: {
-                            hasClaudeCode: true,
+                            hasCopilotCode: true,
                             hasRateLimitMessage: true,
                             isBlocked: true,
                             rateLimitType: 'five_hour',

@@ -19,7 +19,7 @@ import { parseSkillPipelineMetadata, renderSkillPipelineGuidance } from '../../u
 import { renderSkillResourcesGuidance } from '../../utils/skill-resources.js';
 import { renderSkillRuntimeGuidance } from './runtime-guidance.js';
 import { isSkininthegamebrosUser } from '../../utils/skininthegamebros-user.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import entitlementManifest from '../../config/builtin-skill-entitlements.json' with { type: 'json' };
 
 function getPackageDir(): string {
@@ -122,7 +122,7 @@ type DeepInterviewThresholdResolution = {
 };
 
 function getDeepInterviewAmbiguityThresholdResolution(): DeepInterviewThresholdResolution {
-  const profileSettingsPath = join(getClaudeConfigDir(), 'settings.json');
+  const profileSettingsPath = join(getCopilotConfigDir(), 'settings.json');
   const projectSettingsPath = join(process.cwd(), '.claude', 'settings.json');
   const profileThreshold = readDeepInterviewThresholdFromSettings(profileSettingsPath);
   const projectThreshold = readDeepInterviewThresholdFromSettings(projectSettingsPath);
@@ -132,7 +132,7 @@ function getDeepInterviewAmbiguityThresholdResolution(): DeepInterviewThresholdR
   }
 
   if (profileThreshold !== null) {
-    return { threshold: profileThreshold, source: '[$CLAUDE_CONFIG_DIR|~/.claude]/settings.json' };
+    return { threshold: profileThreshold, source: '[$COPILOT_CONFIG_DIR|~/.claude]/settings.json' };
   }
 
   return { threshold: DEFAULT_DEEP_INTERVIEW_AMBIGUITY_THRESHOLD, source: 'default' };
@@ -216,7 +216,7 @@ function applyDeepInterviewRuntimeSettings(template: string): string {
 }
 
 function normalizeSkillNameForRuntimeRendering(skillName: string): string {
-  return skillName.trim().toLowerCase().replace(/^oh-my-claudecode:/, '').replace(/^omc:/, '');
+  return skillName.trim().toLowerCase().replace(/^oh-my-copilot:/, '').replace(/^omc:/, '');
 }
 
 export function renderBundledSkillBody(skillName: string, body: string): string {

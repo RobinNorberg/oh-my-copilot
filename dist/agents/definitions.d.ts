@@ -1,5 +1,5 @@
 /**
- * Agent Definitions for Oh-My-ClaudeCode
+ * Agent Definitions for Oh-My-Copilot
  *
  * This module provides:
  * 1. Re-exports of base agents from individual files

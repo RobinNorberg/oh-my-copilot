@@ -331,7 +331,7 @@ jobs:
           echo "📦 Creating tarball..."
           npm pack
 
-          TARBALL=$(ls -t oh-my-claude-sisyphus-*.tgz | head -1)
+          TARBALL=$(ls -t oh-my-copilot-*.tgz | head -1)
           echo "📦 Tarball: $TARBALL"
 
           echo "🔎 Verifying the packaged MCP bridge registers every merge-readiness tool..."
@@ -347,14 +347,14 @@ jobs:
           # the global node_modules dir is reused across runs on GitHub-hosted
           # runners and inside the GitHub-hosted tool cache. A previously
           # interrupted `npm install -g` can leave the resolved package dir
-          # and/or npm's staging temp dirs (`.oh-my-claude-sisyphus-*`) behind,
+          # and/or npm's staging temp dirs (`.oh-my-copilot-*`) behind,
           # so the next install fails with
           #   npm ERR! ENOTEMPTY: directory not empty, rename
-          #     '.../oh-my-claude-sisyphus' -> '.../.oh-my-claude-sisyphus-XXXX'
+          #     '.../oh-my-copilot' -> '.../.oh-my-copilot-XXXX'
           # Remove any stale global package + npm staging dirs before
           # installing, then retry a few times so a transient rename race does
           # not fail the run. A persistent install failure still exits non-zero.
-          PKG=oh-my-claude-sisyphus
+          PKG=oh-my-copilot
           GLOBAL_ROOT="$(npm root -g)"
 
           clean_stale_global_pkg() {
@@ -449,7 +449,7 @@ jobs:
           RELEASE_SHA=$(git rev-parse --verify "refs/tags/$GITHUB_REF_NAME^{}")
           test "$RELEASE_SHA" = "$GITHUB_SHA"
           node scripts/release-boundary.mjs assert-trigger --tag "$GITHUB_REF_NAME" --sha "$RELEASE_SHA"
-          node scripts/release-boundary.mjs assert-npm-absent --package oh-my-claude-sisyphus --version "$VERSION"
+          node scripts/release-boundary.mjs assert-npm-absent --package oh-my-copilot --version "$VERSION"
 
       - name: Validate release notes
         run: |
@@ -513,22 +513,22 @@ jobs:
           SMOKE_ROOT="$RUNNER_TEMP/release-smoke"
           SMOKE_PREFIX="$SMOKE_ROOT/package"
           SMOKE_HOME="$SMOKE_ROOT/home"
-          SMOKE_CLAUDE_CONFIG_DIR="$SMOKE_HOME/.claude"
+          SMOKE_COPILOT_CONFIG_DIR="$SMOKE_HOME/.claude"
           SMOKE_GJC_CONFIG_DIR="$SMOKE_HOME/.gjc"
           SMOKE_PROJECT="$SMOKE_ROOT/project"
           rm -rf "$SMOKE_ROOT"
-          mkdir -p "$SMOKE_HOME" "$SMOKE_PROJECT" "$SMOKE_CLAUDE_CONFIG_DIR" "$SMOKE_GJC_CONFIG_DIR"
+          mkdir -p "$SMOKE_HOME" "$SMOKE_PROJECT" "$SMOKE_COPILOT_CONFIG_DIR" "$SMOKE_GJC_CONFIG_DIR"
           npm install --ignore-scripts --prefix "$SMOKE_PREFIX" "$FINAL_TARBALL"
-          SMOKE_PACKAGE_ROOT="$SMOKE_PREFIX/node_modules/oh-my-claude-sisyphus"
+          SMOKE_PACKAGE_ROOT="$SMOKE_PREFIX/node_modules/oh-my-copilot"
           test -f "$SMOKE_PACKAGE_ROOT/bridge/claude-md-coordinator.cjs"
           test -f "$SMOKE_PACKAGE_ROOT/scripts/setup-claude-md.sh"
           test -f "$SMOKE_PACKAGE_ROOT/scripts/lib/config-dir.sh"
           test -s "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md"
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/SKILL.md"
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/phases/01-install-claude-md.md"
-          test "$(env -i PATH="$PATH" HOME="$SMOKE_HOME" CLAUDE_CONFIG_DIR="$SMOKE_CLAUDE_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omc" --version)" = "$VERSION"
-          env -i PATH="$PATH" HOME="$SMOKE_HOME" CLAUDE_CONFIG_DIR="$SMOKE_CLAUDE_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omc" --help
-          API_HELP=$(env -i PATH="$PATH" HOME="$SMOKE_HOME" CLAUDE_CONFIG_DIR="$SMOKE_CLAUDE_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omc-cli" team api --help)
+          test "$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omc" --version)" = "$VERSION"
+          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omc" --help
+          API_HELP=$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omc-cli" team api --help)
           case "$API_HELP" in
             *recover-worker*write-task-checkpoint*read-recovery-result*) ;;
             *)
@@ -537,7 +537,7 @@ jobs:
               ;;
           esac
           cd "$SMOKE_PROJECT"
-          env -i PATH="$PATH" HOME="$SMOKE_HOME" CLAUDE_CONFIG_DIR="$SMOKE_CLAUDE_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" bash -c 'bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.sh" local'
+          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" bash -c 'bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.sh" local'
           cmp "$SMOKE_PACKAGE_ROOT/docs/CLAUDE.md" "$SMOKE_PROJECT/.claude/CLAUDE.md"
           cmp "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md" "$SMOKE_PROJECT/.claude/skills/wiki/SKILL.md"
           COORDINATOR_SHA256=$(sha256sum "$SMOKE_PACKAGE_ROOT/bridge/claude-md-coordinator.cjs" | cut -d ' ' -f 1)
@@ -570,7 +570,7 @@ jobs:
           BACKOFF_SECONDS=10
           while [ "$ATTEMPT" -le "$MAX_PROPAGATION_ATTEMPTS" ]; do
             rm -rf "$VERIFICATION_PREFIX"
-            if npm install --ignore-scripts --no-audit --no-fund --prefix "$VERIFICATION_PREFIX" "oh-my-claude-sisyphus@$VERSION" && npm audit signatures --json --include-attestations --prefix "$VERIFICATION_PREFIX" > "$AUDIT_JSON" && test -s "$AUDIT_JSON"; then
+            if npm install --ignore-scripts --no-audit --no-fund --prefix "$VERIFICATION_PREFIX" "oh-my-copilot@$VERSION" && npm audit signatures --json --include-attestations --prefix "$VERIFICATION_PREFIX" > "$AUDIT_JSON" && test -s "$AUDIT_JSON"; then
               break
             fi
             if [ "$ATTEMPT" -eq "$MAX_PROPAGATION_ATTEMPTS" ]; then
@@ -584,7 +584,7 @@ jobs:
               BACKOFF_SECONDS=60
             fi
           done
-          node scripts/release-boundary.mjs verify-registry --package oh-my-claude-sisyphus --version "$VERSION" --tag "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --evidence "$EVIDENCE_JSON" --tarball "$FINAL_TARBALL" --provenance required --audit "$AUDIT_JSON"
+          node scripts/release-boundary.mjs verify-registry --package oh-my-copilot --version "$VERSION" --tag "$GITHUB_REF_NAME" --sha "$GITHUB_SHA" --evidence "$EVIDENCE_JSON" --tarball "$FINAL_TARBALL" --provenance required --audit "$AUDIT_JSON"
 
       - name: Upload finalized release evidence
         uses: actions/upload-artifact@v4

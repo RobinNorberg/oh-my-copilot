@@ -1,7 +1,7 @@
 /**
  * Auto-Update System
  *
- * Provides version checking and auto-update functionality for oh-my-claudecode.
+ * Provides version checking and auto-update functionality for oh-my-copilot.
  *
  * Features:
  * - Check for new versions from GitHub releases
@@ -13,17 +13,17 @@ import { TaskTool } from '../hooks/beads-context/types.js';
 import type { NotificationConfig } from '../notifications/types.js';
 /** GitHub repository information */
 export declare const REPO_OWNER = "Yeachan-Heo";
-export declare const REPO_NAME = "oh-my-claudecode";
-export declare const GITHUB_API_URL = "https://api.github.com/repos/Yeachan-Heo/oh-my-claudecode";
-export declare const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode";
+export declare const REPO_NAME = "oh-my-copilot";
+export declare const GITHUB_API_URL = "https://api.github.com/repos/Yeachan-Heo/oh-my-copilot";
+export declare const GITHUB_RAW_URL = "https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot";
 export declare function shouldBlockStandaloneUpdateInCurrentSession(): boolean;
 export declare function syncPluginCache(verbose?: boolean): {
     synced: boolean;
     skipped: boolean;
     errors: string[];
 };
-/** Installation paths (respects CLAUDE_CONFIG_DIR env var) */
-export declare const CLAUDE_CONFIG_DIR: string;
+/** Installation paths (respects COPILOT_CONFIG_DIR env var) */
+export declare const COPILOT_CONFIG_DIR: string;
 export declare const VERSION_FILE: string;
 export declare const CONFIG_FILE: string;
 /**

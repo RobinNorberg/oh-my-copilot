@@ -186,7 +186,7 @@ export declare function readSkillActiveState(directory: string, sessionId?: stri
  * copies together via `writeSkillActiveStateCopies()`.
  *
  * @param rawSkillName - Original skill name as invoked. When provided without
- *   the `oh-my-claudecode:` prefix, protection returns 'none' to avoid
+ *   the `oh-my-copilot:` prefix, protection returns 'none' to avoid
  *   confusion with user-defined project skills of the same name (#1581).
  */
 export declare function writeSkillActiveState(directory: string, skillName: string, sessionId?: string, rawSkillName?: string): SkillActiveState | null;

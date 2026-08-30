@@ -8,7 +8,7 @@
  * .github/instructions directories were treated as project rules. With no
  * project root, only the current file's own directory's project-rule
  * subdirectories are in scope; the explicit user-level
- * [$CLAUDE_CONFIG_DIR|~/.claude]/rules lookup is separate and unchanged.
+ * [$COPILOT_CONFIG_DIR|~/.claude]/rules lookup is separate and unchanged.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync } from 'fs';
@@ -82,8 +82,8 @@ describe('findRuleFiles with no project root (issue #3653)', () => {
         expect(projectRules[0].isGlobal).toBe(false);
         expect(projectRules[0].distance).toBe(0);
     });
-    it('preserves explicit user-level CLAUDE_CONFIG_DIR/rules discovery', () => {
-        const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    it('preserves explicit user-level COPILOT_CONFIG_DIR/rules discovery', () => {
+        const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
         try {
             // Unrelated ancestor .claude/rules that must NOT be treated as project
             // rules when no project root exists.
@@ -91,7 +91,7 @@ describe('findRuleFiles with no project root (issue #3653)', () => {
             const currentFile = addFile(base, 'sub/no-marker/src/current.ts');
             const configDir = join(base, 'config');
             const userRule = addRule(configDir, '.', 'rules', 'user-rule.md');
-            process.env.CLAUDE_CONFIG_DIR = configDir;
+            process.env.COPILOT_CONFIG_DIR = configDir;
             expect(findProjectRoot(currentFile)).toBeNull();
             const candidates = findRuleFiles(null, currentFile);
             const globalRules = candidates.filter((c) => c.isGlobal);
@@ -101,10 +101,10 @@ describe('findRuleFiles with no project root (issue #3653)', () => {
         }
         finally {
             if (originalConfigDir === undefined) {
-                delete process.env.CLAUDE_CONFIG_DIR;
+                delete process.env.COPILOT_CONFIG_DIR;
             }
             else {
-                process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+                process.env.COPILOT_CONFIG_DIR = originalConfigDir;
             }
         }
     });

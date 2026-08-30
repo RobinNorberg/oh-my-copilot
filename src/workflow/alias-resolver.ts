@@ -146,9 +146,9 @@ export function normalizeWorkflowInput(raw: string): string {
   if (typeof raw !== 'string') return '';
   let s = raw.trim().toLowerCase();
   // strip leading slash/command prefixes
-  s = s.replace(/^\/(?:oh-my-claudecode:|omc:)?/i, '');
+  s = s.replace(/^\/(?:oh-my-copilot:|omc:)?/i, '');
   s = s.replace(/^omc:/i, '');
-  s = s.replace(/^oh-my-claudecode:/i, '');
+  s = s.replace(/^oh-my-copilot:/i, '');
   // strip trailing punctuation that sometimes follows a bare alias token
   s = s.replace(/[?!.,;:]+$/g, '');
   s = s.trim();

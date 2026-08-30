@@ -11,6 +11,9 @@ const taskId = '1';
 const workerName = 'worker-1';
 const claimToken = 'claim-token';
 let cwd;
+let previousHome;
+let previousUserProfile;
+let previousOmcStateDir;
 function task() {
     return {
         id: taskId, subject: 'Recover', description: 'Recover safely', status: 'in_progress',
@@ -24,8 +27,30 @@ const access = (current) => ({
 function input(sequence = 1, resumePayload = { cursor: 4 }) {
     return { teamName, taskId, workerName, taskVersion: 3, claimToken, sequence, resumePayload, updatedAt: '2026-01-01T00:00:00.000Z' };
 }
-beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'omc-checkpoint-')); });
-afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'omc-checkpoint-'));
+    previousHome = process.env.HOME;
+    previousUserProfile = process.env.USERPROFILE;
+    previousOmcStateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
+});
+afterEach(() => {
+    if (previousHome === undefined)
+        delete process.env.HOME;
+    else
+        process.env.HOME = previousHome;
+    if (previousUserProfile === undefined)
+        delete process.env.USERPROFILE;
+    else
+        process.env.USERPROFILE = previousUserProfile;
+    if (previousOmcStateDir === undefined)
+        delete process.env.OMC_STATE_DIR;
+    else
+        process.env.OMC_STATE_DIR = previousOmcStateDir;
+    rmSync(cwd, { recursive: true, force: true });
+});
 describe('task recovery checkpoints', () => {
     it('authenticates publication against the exact live claim and stores it under the claim-scoped path', async () => {
         const denied = await publishTaskRecoveryCheckpoint(input(), cwd, access({ ...task(), claim: { ...task().claim, token: 'other' } }));

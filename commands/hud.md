@@ -4,7 +4,7 @@ description: ""
 
 # OMC hud
 
-This compatibility command keeps `/oh-my-claudecode:hud` available without loading the full `hud` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:hud` available without loading the full `hud` skill description in every Claude Code session.
 
 ## Dispatch
 

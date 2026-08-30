@@ -5,9 +5,9 @@
  * Plan: binary-weaving-mountain.
  *
  * Strategy: write the wrapper template (which is the same byte-for-byte string
- * the installer would write to <configDir>/hud/omc-hud.mjs) into a tmp dir,
+ * the installer would write to <configDir>/hud/omcp-hud.mjs) into a tmp dir,
  * stage a sibling `lib/config-dir.mjs` and a fake `dist/hud/index.js` marker,
- * then spawn `node <tmp>/omc-hud.mjs` with controlled env + stdin and assert
+ * then spawn `node <tmp>/omcp-hud.mjs` with controlled env + stdin and assert
  * which resolution branch fired (via stdout marker).
  */
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
@@ -20,15 +20,15 @@ import { OMC_PLUGIN_ROOT_ENV } from '../../lib/env-vars.js';
 const CACHE_STUB_MARKER = 'FROM_CACHE_TEST_STUB';
 const CACHE_STUB_VERSION = '0.0.0-test-stub';
 /**
- * Build an isolated CLAUDE_CONFIG_DIR with a stub HUD at
- * `<configDir>/plugins/cache/omc/oh-my-claudecode/0.0.0-test-stub/dist/hud/index.js`.
+ * Build an isolated COPILOT_CONFIG_DIR with a stub HUD at
+ * `<configDir>/plugins/cache/omc/oh-my-copilot/0.0.0-test-stub/dist/hud/index.js`.
  * Used to pin the cache-fallback step (step 2 in the wrapper) so tests can
  * assert the wrapper actually executed that branch instead of accidentally
  * matching a globally-installed npm fallback (step 4).
  */
 function makeStubConfigDir(rootDir) {
     const configDir = join(rootDir, 'isolated-config');
-    const stubDir = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', CACHE_STUB_VERSION, 'dist', 'hud');
+    const stubDir = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', CACHE_STUB_VERSION, 'dist', 'hud');
     mkdirSync(stubDir, { recursive: true });
     writeFileSync(join(stubDir, 'index.js'), `process.stdout.write(${JSON.stringify(CACHE_STUB_MARKER + '\n')});\n`, 'utf8');
     return configDir;
@@ -36,7 +36,7 @@ function makeStubConfigDir(rootDir) {
 /**
  * Minimal env that scrubs PATH/NODE_PATH so the wrapper's
  * `getGlobalNodeModuleRoots()` cannot reach a globally-installed
- * `oh-my-claude-sisyphus` and silently satisfy the npm fallback step.
+ * `oh-my-copilot` and silently satisfy the npm fallback step.
  */
 function scrubbedEnv(extra) {
     return {
@@ -57,13 +57,13 @@ const STDIN_PAYLOAD = JSON.stringify({
     context_window: 200000,
 });
 function stage() {
-    const dir = mkdtempSync(join(tmpdir(), 'omc-hud-wrapper-'));
+    const dir = mkdtempSync(join(tmpdir(), 'omcp-hud-wrapper-'));
     const libDir = join(dir, 'lib');
     mkdirSync(libDir, { recursive: true });
     // Stage the sibling config-dir.mjs that the wrapper imports.
     copyFileSync(CONFIG_DIR_MJS, join(libDir, 'config-dir.mjs'));
     // Write the wrapper itself (same content the installer emits).
-    const wrapperPath = join(dir, 'omc-hud.mjs');
+    const wrapperPath = join(dir, 'omcp-hud.mjs');
     const body = readFileSync(TEMPLATE_TXT, 'utf8');
     writeFileSync(wrapperPath, body, 'utf8');
     // Build a fake plugin root with a marker dist/hud/index.js.
@@ -100,11 +100,11 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
     });
     it('case 1: OMC_PLUGIN_ROOT set + dist/hud/index.js exists → loads from there', () => {
         const s = staged;
-        // Point CLAUDE_CONFIG_DIR at a non-existent dir so cache/marketplace branches
+        // Point COPILOT_CONFIG_DIR at a non-existent dir so cache/marketplace branches
         // cannot accidentally fire.
         const isolatedConfig = join(s.dir, 'isolated-config');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            CLAUDE_CONFIG_DIR: isolatedConfig,
+            COPILOT_CONFIG_DIR: isolatedConfig,
             [OMC_PLUGIN_ROOT_ENV]: s.fakePluginRoot,
         }));
         expect(result.status).toBe(0);
@@ -119,7 +119,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         const emptyRoot = join(s.dir, 'empty-root');
         mkdirSync(emptyRoot, { recursive: true });
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            CLAUDE_CONFIG_DIR: isolatedConfig,
+            COPILOT_CONFIG_DIR: isolatedConfig,
             [OMC_PLUGIN_ROOT_ENV]: emptyRoot,
         }));
         expect(result.status).toBe(0);
@@ -132,7 +132,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         const s = staged;
         const isolatedConfig = makeStubConfigDir(s.dir);
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            CLAUDE_CONFIG_DIR: isolatedConfig,
+            COPILOT_CONFIG_DIR: isolatedConfig,
             // OMC_PLUGIN_ROOT intentionally omitted
         }));
         expect(result.status).toBe(0);
@@ -146,7 +146,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         const isolatedConfig = makeStubConfigDir(s.dir);
         const ghostRoot = join(s.dir, 'does-not-exist-anywhere');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            CLAUDE_CONFIG_DIR: isolatedConfig,
+            COPILOT_CONFIG_DIR: isolatedConfig,
             [OMC_PLUGIN_ROOT_ENV]: ghostRoot,
         }));
         expect(result.status).toBe(0);
@@ -158,7 +158,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
     it('case 6: cache step is semver-aware — stable beats prerelease with same [M.m.p]', () => {
         const s = staged;
         const configDir = join(s.dir, 'isolated-config-semver');
-        const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+        const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
         // Two versions: 1.0.0-alpha (should lose) and 1.0.0 (should win).
         // A naive localeCompare(numeric) sort places "1.0.0-alpha" > "1.0.0" and picks the prerelease.
         const stableDir = join(cacheBase, '1.0.0', 'dist', 'hud');
@@ -168,7 +168,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         writeFileSync(join(stableDir, 'index.js'), 'process.stdout.write("FROM_STABLE_1_0_0\\n");\n', 'utf8');
         writeFileSync(join(preDir, 'index.js'), 'process.stdout.write("FROM_PRERELEASE_1_0_0_ALPHA\\n");\n', 'utf8');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            CLAUDE_CONFIG_DIR: configDir,
+            COPILOT_CONFIG_DIR: configDir,
             // OMC_PLUGIN_ROOT intentionally omitted → cache step fires
         }));
         expect(result.status).toBe(0);
@@ -178,7 +178,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
     it('case 7: cache step orders prerelease tags numerically — rc.10 beats rc.2', () => {
         const s = staged;
         const configDir = join(s.dir, 'isolated-config-pre-numeric');
-        const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+        const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
         // Two prerelease-only versions with the same [M.m.p]. A naive localeCompare
         // without { numeric: true } places "rc.2" above "rc.10".
         const rc10Dir = join(cacheBase, '1.0.0-rc.10', 'dist', 'hud');
@@ -188,7 +188,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         writeFileSync(join(rc10Dir, 'index.js'), 'process.stdout.write("FROM_RC_10\\n");\n', 'utf8');
         writeFileSync(join(rc2Dir, 'index.js'), 'process.stdout.write("FROM_RC_2\\n");\n', 'utf8');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            CLAUDE_CONFIG_DIR: configDir,
+            COPILOT_CONFIG_DIR: configDir,
         }));
         expect(result.status).toBe(0);
         expect(result.stdout).toContain('FROM_RC_10');
@@ -197,7 +197,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
     it('case 8: cache step falls back to older built version when latest built version fails to import', () => {
         const s = staged;
         const configDir = join(s.dir, 'isolated-config-cache-fallback');
-        const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+        const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
         const latestBrokenDir = join(cacheBase, '4.11.3', 'dist', 'hud');
         const olderWorkingDir = join(cacheBase, '4.11.2', 'dist', 'hud');
         mkdirSync(latestBrokenDir, { recursive: true });
@@ -205,7 +205,7 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         writeFileSync(join(latestBrokenDir, 'index.js'), 'throw new Error("BROKEN_4_11_3");\n', 'utf8');
         writeFileSync(join(olderWorkingDir, 'index.js'), 'process.stdout.write("FROM_OLDER_WORKING_VERSION\\n");\n', 'utf8');
         const result = runWrapper(s.wrapperPath, scrubbedEnv({
-            CLAUDE_CONFIG_DIR: configDir,
+            COPILOT_CONFIG_DIR: configDir,
             // OMC_PLUGIN_ROOT intentionally omitted → cache step fires
         }));
         expect(result.status).toBe(0);
@@ -227,8 +227,8 @@ describe('HUD wrapper — OMC_PLUGIN_ROOT resolution', () => {
         // Spot-check: critical invariants of the new wrapper
         expect(txt).toContain('OMC_PLUGIN_ROOT');
         expect(txt).not.toContain('OMC_DEV');
-        expect(txt).not.toContain('Workspace/oh-my-claudecode');
-        expect(txt).not.toContain('projects/oh-my-claudecode');
+        expect(txt).not.toContain('Workspace/oh-my-copilot');
+        expect(txt).not.toContain('projects/oh-my-copilot');
     });
     it('uses shell:true only for Windows npm root discovery', () => {
         const txt = readFileSync(TEMPLATE_TXT, 'utf8');

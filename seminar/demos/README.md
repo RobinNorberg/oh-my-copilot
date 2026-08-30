@@ -1,6 +1,6 @@
 # OMC Seminar Demo Scripts
 
-This directory contains demo scripts for showcasing Oh-My-ClaudeCode's capabilities.
+This directory contains demo scripts for showcasing Oh-My-Copilot's capabilities.
 
 ## Overview
 
@@ -17,8 +17,8 @@ The seminar includes 5 progressive demos that showcase different aspects of OMC:
 ## Global Pre-requisites
 
 ### Required Setup
-- OMC installed and configured (`/oh-my-claudecode:omc-setup` completed)
-- HUD statusline installed (`/oh-my-claudecode:hud setup`)
+- OMC installed and configured (`/oh-my-copilot:omc-setup` completed)
+- HUD statusline installed (`/oh-my-copilot:hud setup`)
 - Clean workspace directory for demos
 - Terminal with good font size for presentation (16-18pt minimum)
 - Screen recording software running as backup
@@ -30,7 +30,7 @@ mkdir -p ~/demo-workspace
 cd ~/demo-workspace
 
 # Verify OMC is installed
-which omc || echo "Run: /oh-my-claudecode:omc-setup"
+which omc || echo "Run: /oh-my-copilot:omc-setup"
 
 # Check HUD is working
 echo "HUD should display in your terminal prompt"
@@ -38,7 +38,7 @@ echo "HUD should display in your terminal prompt"
 
 ### Pre-Demo Checklist
 - [ ] Terminal font size increased for visibility
-- [ ] No active OMC operations running (`/oh-my-claudecode:cancel --all`)
+- [ ] No active OMC operations running (`/oh-my-copilot:cancel --all`)
 - [ ] Clean state files (`rm -rf .omc/state/*`)
 - [ ] Screen recorder ready
 - [ ] Fallback terminal outputs printed/accessible
@@ -47,7 +47,7 @@ echo "HUD should display in your terminal prompt"
 ## Demo Flow
 
 ### Opening (1 min)
-"Today I'll show you Oh-My-ClaudeCode - a multi-agent orchestration system that transforms Claude from a single assistant into a coordinated team of specialists. Instead of doing everything yourself, you conduct a symphony of AI agents, each optimized for specific tasks."
+"Today I'll show you Oh-My-Copilot - a multi-agent orchestration system that transforms Claude from a single assistant into a coordinated team of specialists. Instead of doing everything yourself, you conduct a symphony of AI agents, each optimized for specific tasks."
 
 ### Demo Sequence (15 min)
 1. **Demo 1: Autopilot** - "The flagship experience - say what you want, get working code"
@@ -57,7 +57,7 @@ echo "HUD should display in your terminal prompt"
 5. **Demo 5: Ralph** - "For mission-critical tasks - never gives up until verified complete"
 
 ### Closing (1 min)
-"OMC transforms how you work with Claude - from manual coding to orchestrating specialized agents. All open source at github.com/Yeachan-Heo/oh-my-claudecode."
+"OMC transforms how you work with Claude - from manual coding to orchestrating specialized agents. All open source at github.com/Yeachan-Heo/oh-my-copilot."
 
 ## Tips for Presenters
 
@@ -71,7 +71,7 @@ echo "HUD should display in your terminal prompt"
 ### Technical Tips
 - **Terminal size**: Ensure output is readable from the back of the room
 - **Timing buffer**: Each demo has 30-60s buffer built in
-- **State cleanup**: Between demos, verify clean state with `/oh-my-claudecode:cancel`
+- **State cleanup**: Between demos, verify clean state with `/oh-my-copilot:cancel`
 - **Error handling**: If a demo fails, acknowledge it and move to fallback output
 - **Q&A prep**: Common questions are in each demo's "Talking Points"
 
@@ -84,7 +84,7 @@ echo "HUD should display in your terminal prompt"
 **Solution**: Mention it verbally ("The HUD would show 3 active agents here...")
 
 ### Issue: Demo taking too long
-**Solution**: Jump to next phase or use `/oh-my-claudecode:cancel` and show fallback
+**Solution**: Jump to next phase or use `/oh-my-copilot:cancel` and show fallback
 
 ### Issue: Terminal output too fast
 **Solution**: Scroll back and explain key sections, or pause recording if pre-recorded

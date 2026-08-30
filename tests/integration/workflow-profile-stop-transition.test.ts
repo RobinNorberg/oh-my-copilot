@@ -157,7 +157,7 @@ function invoke(f, input = {}, extraEnv = {}) {
     cwd: f.project,
     input: JSON.stringify({ hook_event_name: 'Stop', session_id: f.sessionId, cwd: f.project, transcript_path: f.transcript, ...input }),
     encoding: 'utf8',
-    env: { ...process.env, HOME: f.home, USERPROFILE: f.home, CLAUDE_CONFIG_DIR: f.claudeConfigDir, OMC_STATE_DIR: '', OMC_PERSISTENT_MODE_TIMEOUT_MS: '3000', ...extraEnv },
+    env: { ...process.env, HOME: f.home, USERPROFILE: f.home, COPILOT_CONFIG_DIR: f.claudeConfigDir, OMC_STATE_DIR: '', OMC_PERSISTENT_MODE_TIMEOUT_MS: '3000', ...extraEnv },
   });
   return JSON.parse(stdout.trim());
 }
@@ -166,7 +166,7 @@ function invokeAsync(f, input = {}, extraEnv = {}) {
   return new Promise((resolveResult, reject) => {
     const child = spawn(process.execPath, [f.hook], {
       cwd: f.project,
-      env: { ...process.env, HOME: f.home, USERPROFILE: f.home, CLAUDE_CONFIG_DIR: f.claudeConfigDir, OMC_STATE_DIR: '', OMC_PERSISTENT_MODE_TIMEOUT_MS: '3000', ...extraEnv },
+      env: { ...process.env, HOME: f.home, USERPROFILE: f.home, COPILOT_CONFIG_DIR: f.claudeConfigDir, OMC_STATE_DIR: '', OMC_PERSISTENT_MODE_TIMEOUT_MS: '3000', ...extraEnv },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let stdout = '';

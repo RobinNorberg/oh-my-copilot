@@ -138,7 +138,7 @@ export interface TaskFailureSidecar {
 }
 
 /** Worker backend type */
-export type WorkerBackend = 'claude-native' | 'mcp-codex' | 'mcp-gemini' | 'tmux-claude' | 'tmux-codex' | 'tmux-gemini' | 'tmux-cursor' | 'tmux-grok' | 'tmux-antigravity';
+export type WorkerBackend = 'copilot-native' | 'mcp-codex' | 'mcp-gemini' | 'tmux-copilot' | 'tmux-codex' | 'tmux-gemini' | 'tmux-cursor' | 'tmux-grok' | 'tmux-antigravity';
 
 /** Worker capability tag */
 export type WorkerCapability =

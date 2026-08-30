@@ -13,7 +13,7 @@ vi.mock('fs', async () => {
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
-import { install, CLAUDE_CONFIG_DIR, VERSION_FILE } from '../installer/index.js';
+import { install, COPILOT_CONFIG_DIR, VERSION_FILE } from '../installer/index.js';
 
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
@@ -24,7 +24,7 @@ function withUnixPaths(pathLike: Parameters<typeof existsSync>[0] | Parameters<t
 }
 
 describe('install downgrade protection (issue #1382)', () => {
-  const claudeMdPath = join(CLAUDE_CONFIG_DIR, 'CLAUDE.md');
+  const claudeMdPath = join(COPILOT_CONFIG_DIR, 'CLAUDE.md');
   const homeClaudeMdPath = join(homedir(), 'CLAUDE.md');
 
   beforeEach(() => {
@@ -50,7 +50,7 @@ describe('install downgrade protection (issue #1382)', () => {
 
     const result = install({
       version: '4.5.1',
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
     });
 
     expect(result.success).toBe(true);
@@ -76,7 +76,7 @@ describe('install downgrade protection (issue #1382)', () => {
 
     const result = install({
       version: '4.5.1',
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
     });
 
     expect(result.success).toBe(true);

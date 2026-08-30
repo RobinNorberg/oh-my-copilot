@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile, readFile } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { getOmcRoot } from '../../lib/worktree-paths.js';
 const tmuxUtilsMocks = vi.hoisted(() => ({
     tmuxExecAsync: vi.fn(async (_args) => ({ stdout: '', stderr: '' })),
     tmuxCmdAsync: vi.fn(async (_args) => ({ stdout: '0\n', stderr: '' })),
@@ -25,14 +26,26 @@ function mockOwnedTmuxPanes(...paneIds) {
         return { stdout: '', stderr: '' };
     });
 }
+function teamStatePath(cwd, teamName, ...segments) {
+    return join(getOmcRoot(cwd), 'state', 'team', teamName, ...segments);
+}
 describe('team api dispatch-aware messaging', () => {
     let cwd;
+    let previousHome;
+    let previousUserProfile;
+    let previousOmcStateDir;
     const teamName = 'dispatch-team';
     beforeEach(async () => {
         tmuxUtilsMocks.tmuxExecAsync.mockReset().mockResolvedValue({ stdout: '', stderr: '' });
         tmuxUtilsMocks.tmuxCmdAsync.mockReset().mockResolvedValue({ stdout: '0\n', stderr: '' });
         cwd = await mkdtemp(join(tmpdir(), 'omc-team-api-dispatch-'));
-        const base = join(cwd, '.omc', 'state', 'team', teamName);
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        previousOmcStateDir = process.env.OMC_STATE_DIR;
+        process.env.HOME = cwd;
+        process.env.USERPROFILE = cwd;
+        delete process.env.OMC_STATE_DIR;
+        const base = teamStatePath(cwd, teamName);
         await mkdir(join(base, 'tasks'), { recursive: true });
         await mkdir(join(base, 'mailbox'), { recursive: true });
         await mkdir(join(base, 'events'), { recursive: true });
@@ -49,6 +62,18 @@ describe('team api dispatch-aware messaging', () => {
         }, null, 2));
     });
     afterEach(async () => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
+        if (previousOmcStateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = previousOmcStateDir;
         await rm(cwd, { recursive: true, force: true });
     });
     it('returns the top-level operation failure for an unknown broadcast team', async () => {
@@ -76,7 +101,7 @@ describe('team api dispatch-aware messaging', () => {
         const data = result.data;
         expect(data.message?.body).toBe('ACK: worker-1 initialized');
         expect(typeof data.message?.message_id).toBe('string');
-        const mailboxPath = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', 'leader-fixed.json');
+        const mailboxPath = teamStatePath(cwd, teamName, 'mailbox', 'leader-fixed.json');
         expect(existsSync(mailboxPath)).toBe(true);
         const mailbox = JSON.parse(await readFile(mailboxPath, 'utf-8'));
         expect(mailbox.messages).toHaveLength(1);
@@ -112,7 +137,7 @@ describe('team api dispatch-aware messaging', () => {
             message_id: messageId,
         }, cwd);
         expect(notified.ok).toBe(true);
-        const mailboxPath = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', 'worker-1.json');
+        const mailboxPath = teamStatePath(cwd, teamName, 'mailbox', 'worker-1.json');
         const mailbox = JSON.parse(await readFile(mailboxPath, 'utf-8'));
         const message = mailbox.messages.find((entry) => entry.message_id === messageId);
         expect(typeof message?.delivered_at).toBe('string');
@@ -125,7 +150,7 @@ describe('team api dispatch-aware messaging', () => {
         expect(typeof requests[0]?.delivered_at).toBe('string');
     });
     it('uses OMC_TEAM_STATE_ROOT placeholder in mailbox triggers for worktree-backed workers', async () => {
-        const configPath = join(cwd, '.omc', 'state', 'team', teamName, 'config.json');
+        const configPath = teamStatePath(cwd, teamName, 'config.json');
         await writeFile(configPath, JSON.stringify({
             name: teamName,
             task: 'dispatch',
@@ -138,7 +163,7 @@ describe('team api dispatch-aware messaging', () => {
                     index: 1,
                     role: 'executor',
                     assigned_tasks: [],
-                    worktree_path: join(cwd, '.omc', 'worktrees', teamName, 'worker-1'),
+                    worktree_path: join(getOmcRoot(cwd), 'worktrees', teamName, 'worker-1'),
                 }],
             created_at: '2026-03-06T00:00:00.000Z',
             next_task_id: 2,
@@ -156,7 +181,7 @@ describe('team api dispatch-aware messaging', () => {
         expect(requests[0]?.trigger_message).toContain('report progress');
     });
     it('routes mailbox notifications using config workers when manifest workers are stale', async () => {
-        const base = join(cwd, '.omc', 'state', 'team', teamName);
+        const base = teamStatePath(cwd, teamName);
         await writeFile(join(base, 'manifest.json'), JSON.stringify({
             schema_version: 2,
             name: teamName,
@@ -182,7 +207,7 @@ describe('team api dispatch-aware messaging', () => {
         expect(requests[0]?.message_id).toBe(messageId);
     });
     it('notifies an exactly owned worker pane and commits both replay markers', async () => {
-        const configPath = join(cwd, '.omc', 'state', 'team', teamName, 'config.json');
+        const configPath = teamStatePath(cwd, teamName, 'config.json');
         const config = JSON.parse(await readFile(configPath, 'utf8'));
         await writeFile(configPath, JSON.stringify({
             ...config,
@@ -201,7 +226,7 @@ describe('team api dispatch-aware messaging', () => {
             return;
         const outcome = result.data.notification_outcome;
         expect(outcome.reason).toBe('worker_pane_notified');
-        const mailbox = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', 'worker-1.json'), 'utf8'));
+        const mailbox = JSON.parse(await readFile(teamStatePath(cwd, teamName, 'mailbox', 'worker-1.json'), 'utf8'));
         expect(mailbox.messages.find((message) => message.message_id === outcome.message_id)?.notified_at).toEqual(expect.any(String));
         const requests = await listDispatchRequests(teamName, cwd, { kind: 'mailbox', to_worker: 'worker-1' });
         expect(requests).toHaveLength(1);
@@ -209,7 +234,7 @@ describe('team api dispatch-aware messaging', () => {
         expect(tmuxUtilsMocks.tmuxExecAsync.mock.calls.some(([args]) => args[0] === 'send-keys')).toBe(true);
     });
     it('notifies an exactly owned leader pane and commits both replay markers', async () => {
-        const configPath = join(cwd, '.omc', 'state', 'team', teamName, 'config.json');
+        const configPath = teamStatePath(cwd, teamName, 'config.json');
         const config = JSON.parse(await readFile(configPath, 'utf8'));
         await writeFile(configPath, JSON.stringify({ ...config, leader_pane_id: '%0' }, null, 2));
         mockOwnedTmuxPanes('%0');
@@ -224,14 +249,14 @@ describe('team api dispatch-aware messaging', () => {
             return;
         const outcome = result.data.notification_outcome;
         expect(outcome.reason).toBe('leader_pane_notified');
-        const mailbox = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', 'leader-fixed.json'), 'utf8'));
+        const mailbox = JSON.parse(await readFile(teamStatePath(cwd, teamName, 'mailbox', 'leader-fixed.json'), 'utf8'));
         expect(mailbox.messages.find((message) => message.message_id === outcome.message_id)?.notified_at).toEqual(expect.any(String));
         const requests = await listDispatchRequests(teamName, cwd, { kind: 'mailbox', to_worker: 'leader-fixed' });
         expect(requests).toHaveLength(1);
         expect(requests[0]).toMatchObject({ request_id: outcome.request_id, message_id: outcome.message_id, status: 'notified' });
     });
     it('uses the canonical worker pane when duplicate worker records exist', async () => {
-        const configPath = join(cwd, '.omc', 'state', 'team', teamName, 'config.json');
+        const configPath = teamStatePath(cwd, teamName, 'config.json');
         await writeFile(configPath, JSON.stringify({
             name: teamName,
             task: 'dispatch',

@@ -217,7 +217,7 @@ export function collectMergeReadinessEvidence(directory, baseRef, sessionId) {
 }
 function extractChangeSummary(promptText) {
     return promptText
-        .replace(/^\s*\/(?:oh-my-claudecode:|omc:)?merge-readiness\b/i, "")
+        .replace(/^\s*\/(?:oh-my-copilot:|omc:)?merge-readiness\b/i, "")
         .replace(/\B--(?:quick|standard|deep|from-diff|from-artifacts)\b/gi, "")
         .trim();
 }
@@ -803,7 +803,7 @@ export function handleMergeReadinessPromptSubmit(directory, promptText, sessionI
     if (!state?.active) {
         return { handled: false };
     }
-    const override = /^\/(?:oh-my-claudecode:|omc:)?merge-readiness\s+--override\s+(.+)$/i.exec(promptText.trim());
+    const override = /^\/(?:oh-my-copilot:|omc:)?merge-readiness\s+--override\s+(.+)$/i.exec(promptText.trim());
     if (!override)
         return { handled: false };
     const updated = overrideMergeReadiness(workingDir, override[1], sessionId);

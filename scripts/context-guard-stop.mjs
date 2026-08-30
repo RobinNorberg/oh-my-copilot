@@ -22,7 +22,7 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname, resolve, basename } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { getClaudeConfigDir } from './lib/config-dir.mjs';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { encodeProjectPath } from './lib/encode-project-path.mjs';
 import { readStdin } from './lib/stdin.mjs';
 import { resolveContextPercent } from './lib/context-usage.mjs';
@@ -126,7 +126,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
     if (mainRepoRoot !== worktreeTop) {
       const sessionFile = basename(transcriptPath);
       if (sessionFile) {
-        const configDir = getClaudeConfigDir();
+        const configDir = getCopilotConfigDir();
         const projectsDir = join(configDir, 'projects');
         if (existsSync(projectsDir)) {
           const encodedMain = encodeProjectPath(mainRepoRoot);
@@ -148,7 +148,7 @@ function resolveTranscriptPath(transcriptPath, cwd) {
  * Prevents infinite block loops by capping at MAX_BLOCKS.
  */
 function getGuardFilePath(sessionId) {
-  const configDir = getClaudeConfigDir();
+  const configDir = getCopilotConfigDir();
   const guardDir = join(configDir, 'projects', '.omc-guards');
   try {
     mkdirSync(guardDir, { recursive: true, mode: 0o700 });

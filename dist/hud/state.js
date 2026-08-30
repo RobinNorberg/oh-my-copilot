@@ -6,7 +6,7 @@
  */
 import { existsSync, readFileSync, mkdirSync, unlinkSync } from "fs";
 import { join } from "path";
-import { getClaudeConfigDir } from "../utils/config-dir.js";
+import { getCopilotConfigDir } from "../utils/config-dir.js";
 import { validateWorkingDirectory, getOmcRoot, ensureSessionStateDir, resolveSessionStatePath, } from "../lib/worktree-paths.js";
 import { atomicWriteFileSync, atomicWriteJsonSync, } from "../lib/atomic-write.js";
 import { DEFAULT_HUD_CONFIG, PRESET_CONFIGS, isHudLocale, resolveHudLabels, sanitizeHudLabels, } from "./types.js";
@@ -38,13 +38,13 @@ function getStateFilePath(directory, sessionId) {
  * Get Claude Code settings.json path
  */
 function getSettingsFilePath() {
-    return join(getClaudeConfigDir(), "settings.json");
+    return join(getCopilotConfigDir(), "settings.json");
 }
 /**
  * Get the HUD config file path (legacy)
  */
 function getConfigFilePath() {
-    return join(getClaudeConfigDir(), ".omc", "hud-config.json");
+    return join(getCopilotConfigDir(), ".omc", "hud-config.json");
 }
 function readJsonFile(filePath) {
     if (!existsSync(filePath)) {

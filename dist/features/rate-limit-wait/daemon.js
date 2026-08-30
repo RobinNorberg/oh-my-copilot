@@ -43,7 +43,7 @@ const DAEMON_ENV_ALLOWLIST = [
     // Core system paths
     'PATH', 'HOME', 'USERPROFILE',
     // OMC state/profile context (non-secret paths)
-    'OMC_STATE_DIR', 'CLAUDE_CONFIG_DIR',
+    'OMC_STATE_DIR', 'COPILOT_CONFIG_DIR',
     // User identification
     'USER', 'USERNAME', 'LOGNAME',
     // Locale settings

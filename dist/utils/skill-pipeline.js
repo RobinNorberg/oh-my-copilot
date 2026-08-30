@@ -6,8 +6,8 @@ function normalizeSkillReference(value) {
     if (!trimmed)
         return undefined;
     return trimmed
-        .replace(/^\/oh-my-claudecode:/i, '')
-        .replace(/^oh-my-claudecode:/i, '')
+        .replace(/^\/oh-my-copilot:/i, '')
+        .replace(/^oh-my-copilot:/i, '')
         .replace(/^\//, '')
         .trim()
         .toLowerCase() || undefined;
@@ -59,7 +59,7 @@ export function renderSkillPipelineGuidance(skillName, pipeline) {
     ]);
     const nextInvocation = pipeline.nextSkill
         ? [
-            `Skill("oh-my-claudecode:${pipeline.nextSkill}")`,
+            `Skill("oh-my-copilot:${pipeline.nextSkill}")`,
             pipeline.nextSkillArgs ? `with arguments \`${pipeline.nextSkillArgs}\`` : undefined,
             'using the handoff context from this stage',
         ].filter(Boolean).join(' ')

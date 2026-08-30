@@ -8,7 +8,7 @@ describe('custom rate provider child lifecycle', () => {
   it('terminates a timed-out command process group without retaining pipe handles', async () => {
     if (process.platform === 'win32') return;
 
-    const directory = mkdtempSync(join(tmpdir(), 'omc-hud-provider-'));
+    const directory = mkdtempSync(join(tmpdir(), 'omcp-hud-provider-'));
     const pidFile = join(directory, 'pid');
     try {
       await expect(

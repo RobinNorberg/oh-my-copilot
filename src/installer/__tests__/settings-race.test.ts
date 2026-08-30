@@ -44,7 +44,7 @@ let omcHome: string;
 
 async function loadInstaller() {
   vi.resetModules();
-  process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+  process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
   process.env.HOME = homeDir;
   process.env.CODEX_HOME = codexHome;
   process.env.OMC_HOME = omcHome;
@@ -94,7 +94,7 @@ describe('install() settings.json lost-update protection (issue #2584)', () => {
 
     const installer = await loadInstaller();
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 

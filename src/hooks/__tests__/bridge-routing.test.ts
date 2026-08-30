@@ -140,13 +140,13 @@ describe('processHook - Routing Matrix', () => {
       '/씨씨지 build me an app',
       '/シーシージー ask codex to review',
       '/omc:ultrawork build me an app',
-      '/oh-my-claudecode:ulw ask codex to review',
+      '/oh-my-copilot:ulw ask codex to review',
       '/omc:ccg build me an app',
-      '/oh-my-claudecode:claude-codex-gemini ask codex to review',
+      '/oh-my-copilot:claude-codex-gemini ask codex to review',
       '/omc:울트라워크 build me an app',
-      '/oh-my-claudecode:ウルトラワーク ask codex to review',
+      '/oh-my-copilot:ウルトラワーク ask codex to review',
       '/omc:씨씨지 build me an app',
-      '/oh-my-claudecode:シーシージー ask codex to review',
+      '/oh-my-copilot:シーシージー ask codex to review',
     ])('passes retired slash command %s without guidance', async (prompt) => {
       const result = await processHook('keyword-detector', {
         sessionId: 'test-session',
@@ -176,7 +176,7 @@ describe('processHook - Routing Matrix', () => {
     it('passes through retired CCG gpt model context without routing', async () => {
       const result = await processHook('keyword-detector', {
         sessionId: 'test-session',
-        prompt: '/oh-my-claudecode:ccg ask codex to review while preserving keyword routing, state activation behavior, verification messaging, prompt enhancement flow, bridge wiring, runtime output guarantees, prompt-context propagation, and related test coverage, installer constants, generated bridge artifacts, keyword false-positive behavior, session isolation assumptions, and developer-facing documentation without changing unrelated orchestration behavior elsewhere in this worktree',
+        prompt: '/oh-my-copilot:ccg ask codex to review while preserving keyword routing, state activation behavior, verification messaging, prompt enhancement flow, bridge wiring, runtime output guarantees, prompt-context propagation, and related test coverage, installer constants, generated bridge artifacts, keyword false-positive behavior, session isolation assumptions, and developer-facing documentation without changing unrelated orchestration behavior elsewhere in this worktree',
         directory: '/tmp/test-routing',
         model: 'gpt-5.4',
       } as HookInput & { model: string });
@@ -416,7 +416,7 @@ Read src/hooks/bridge.ts first.`,
           toolInput: {
             description: 'hard deny telemetry',
             prompt: 'exercise protocol deny classification',
-            subagent_type: 'oh-my-claudecode:executor',
+            subagent_type: 'oh-my-copilot:executor',
             model: 'sonnet',
           },
           directory: projectDir,
@@ -531,7 +531,7 @@ Read src/hooks/bridge.ts first.`,
           prompt: `Investigate why this pasted transcript branched sessions:
 
 [MAGIC KEYWORD: RALPH]
-Skill: oh-my-claudecode:ralph
+Skill: oh-my-copilot:ralph
 User request:
 ralph fix parser`,
           directory: tempDir,
@@ -726,7 +726,7 @@ $ ultrawork search the codebase`,
         const input: HookInput = {
           sessionId,
           toolName: 'Skill',
-          toolInput: { skill: 'oh-my-claudecode:ralph' },
+          toolInput: { skill: 'oh-my-copilot:ralph' },
           directory: tempDir,
         };
 
@@ -816,7 +816,7 @@ $ ultrawork search the codebase`,
         const result = await processHook('pre-tool-use', {
           sessionId,
           toolName: 'Skill',
-          toolInput: { skill: 'oh-my-claudecode:ralph' },
+          toolInput: { skill: 'oh-my-copilot:ralph' },
           directory: tempDir,
         });
 
@@ -849,7 +849,7 @@ $ ultrawork search the codebase`,
         const result = await processHook('pre-tool-use', {
           sessionId,
           toolName: 'Skill',
-          toolInput: { skill: 'oh-my-claudecode:ralplan' },
+          toolInput: { skill: 'oh-my-copilot:ralplan' },
           directory: tempDir,
         });
 
@@ -974,7 +974,7 @@ $ ultrawork search the codebase`,
 
         const result = await processHook('keyword-detector', {
           sessionId,
-          prompt: '/oh-my-claudecode:ralplan issue #2622',
+          prompt: '/oh-my-copilot:ralplan issue #2622',
           directory: tempDir,
         });
 
@@ -984,7 +984,7 @@ $ ultrawork search the codebase`,
         expect(result.message).toBeUndefined();
         expect(hookSpecificOutput.hookEventName).toBe('UserPromptSubmit');
         expect(hookSpecificOutput.additionalContext).toContain('[RALPLAN INIT]');
-        expect(hookSpecificOutput.additionalContext).toContain('/oh-my-claudecode:ralplan issue #2622');
+        expect(hookSpecificOutput.additionalContext).toContain('/oh-my-copilot:ralplan issue #2622');
 
         const ralplanPath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
         expect(existsSync(ralplanPath)).toBe(true);
@@ -1089,7 +1089,7 @@ $ ultrawork search the codebase`,
           sessionId,
           toolName: 'Skill',
           toolInput: {
-            skill: 'oh-my-claudecode:plan',
+            skill: 'oh-my-copilot:plan',
             args: '--consensus issue #1926',
           },
           directory: tempDir,
@@ -1123,14 +1123,14 @@ $ ultrawork search the codebase`,
         await processHook('pre-tool-use', {
           sessionId,
           toolName: 'Skill',
-          toolInput: { skill: 'oh-my-claudecode:ralplan' },
+          toolInput: { skill: 'oh-my-copilot:ralplan' },
           directory: tempDir,
         });
 
         const postResult = await processHook('post-tool-use', {
           sessionId,
           toolName: 'Skill',
-          toolInput: { skill: 'oh-my-claudecode:ralplan' },
+          toolInput: { skill: 'oh-my-copilot:ralplan' },
           toolOutput: { ok: true },
           directory: tempDir,
         });
@@ -1171,7 +1171,7 @@ $ ultrawork search the codebase`,
 
         const result = await processHook('keyword-detector', {
           sessionId,
-          prompt: '/oh-my-claudecode:deep-interview explore auth flows',
+          prompt: '/oh-my-copilot:deep-interview explore auth flows',
           directory: tempDir,
         });
 
@@ -1221,7 +1221,7 @@ $ ultrawork search the codebase`,
       }
     });
 
-    it('seeds workflow slot when Skill tool invokes oh-my-claudecode:deep-interview', async () => {
+    it('seeds workflow slot when Skill tool invokes oh-my-copilot:deep-interview', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-di-skill-'));
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
@@ -1230,7 +1230,7 @@ $ ultrawork search the codebase`,
         const result = await processHook('pre-tool-use', {
           sessionId,
           toolName: 'Skill',
-          toolInput: { skill: 'oh-my-claudecode:deep-interview' },
+          toolInput: { skill: 'oh-my-copilot:deep-interview' },
           directory: tempDir,
         });
 
@@ -1251,7 +1251,7 @@ $ ultrawork search the codebase`,
       }
     });
 
-    it('seeds workflow slot when Skill tool invokes oh-my-claudecode:self-improve', async () => {
+    it('seeds workflow slot when Skill tool invokes oh-my-copilot:self-improve', async () => {
       const tempDir = mkdtempSync(join(tmpdir(), 'bridge-routing-si-skill-'));
       try {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
@@ -1260,7 +1260,7 @@ $ ultrawork search the codebase`,
         const result = await processHook('pre-tool-use', {
           sessionId,
           toolName: 'Skill',
-          toolInput: { skill: 'oh-my-claudecode:self-improve' },
+          toolInput: { skill: 'oh-my-copilot:self-improve' },
           directory: tempDir,
         });
 
@@ -1522,7 +1522,7 @@ $ ultrawork search the codebase`,
         await processHook('pre-tool-use', {
           sessionId,
           toolName: 'Skill',
-          toolInput: { skill: 'oh-my-claudecode:ralph' },
+          toolInput: { skill: 'oh-my-copilot:ralph' },
           directory: tempDir,
         });
 

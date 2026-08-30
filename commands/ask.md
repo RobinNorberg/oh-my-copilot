@@ -4,7 +4,7 @@ description: ""
 
 # OMC ask
 
-This compatibility command keeps `/oh-my-claudecode:ask` available without loading the full `ask` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:ask` available without loading the full `ask` skill description in every Claude Code session.
 
 ## Dispatch
 

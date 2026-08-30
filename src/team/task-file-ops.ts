@@ -19,7 +19,7 @@
 import { readFileSync, readdirSync, existsSync, openSync, closeSync, unlinkSync, writeSync, statSync, constants as fsConstants } from 'fs';
 import { join } from 'path';
 import { getOmcRoot } from '../lib/worktree-paths.js';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import type { TaskFile, TaskFileUpdate, TaskFailureSidecar } from './types.js';
 import { sanitizeName } from './tmux-session.js';
 import { atomicWriteJson, validateResolvedPath, ensureDirWithMode } from './fs-utils.js';
@@ -165,7 +165,7 @@ function canonicalTasksDir(teamName: string, cwd?: string): string {
  * Used only for read-fallback: ~/.claude/tasks/{teamName}/
  */
 function legacyTasksDir(teamName: string): string {
-  const claudeConfigDir = getClaudeConfigDir();
+  const claudeConfigDir = getCopilotConfigDir();
   const dir = getLegacyTaskStoragePath(claudeConfigDir, sanitizeName(teamName));
   validateResolvedPath(dir, join(claudeConfigDir, 'tasks'));
   return dir;

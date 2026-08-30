@@ -62,7 +62,7 @@ vi.mock('fs', async () => {
 
 async function loadInstallerWithEnv(claudeConfigDir: string, homeDir: string) {
   vi.resetModules();
-  process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+  process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
   process.env.HOME = homeDir;
   return import('../installer/index.js');
 }
@@ -92,7 +92,7 @@ function writeCompletePluginPayload(root: string): void {
     join(root, '.claude-plugin', 'plugin.json'),
     JSON.stringify(
       {
-        name: 'oh-my-claudecode',
+        name: 'oh-my-copilot',
         commands: './commands/',
         skills: ['./skills/plan/'],
       },
@@ -103,7 +103,7 @@ function writeCompletePluginPayload(root: string): void {
   writePluginFile(
     join(root, 'package.json'),
     JSON.stringify(
-      { name: 'oh-my-claude-sisyphus', version: '9.9.9' },
+      { name: 'oh-my-copilot', version: '9.9.9' },
       null,
       2,
     ),
@@ -127,7 +127,7 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
     mkdirSync(homeDir, { recursive: true });
     mkdirSync(claudeConfigDir, { recursive: true });
 
-    originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+    originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
     originalHome = process.env.HOME;
     originalOmcPluginRoot = process.env.OMC_PLUGIN_ROOT;
     originalClaudePluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
@@ -138,9 +138,9 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
 
   afterEach(() => {
     if (originalClaudeConfigDir === undefined) {
-      delete process.env.CLAUDE_CONFIG_DIR;
+      delete process.env.COPILOT_CONFIG_DIR;
     } else {
-      process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+      process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
     }
 
     if (originalHome === undefined) {
@@ -171,7 +171,7 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
       'plugins',
       'cache',
       'omc',
-      'oh-my-claudecode',
+      'oh-my-copilot',
       '9.9.9',
     );
     const pluginAgentsDir = join(pluginInstallPath, 'agents');
@@ -193,7 +193,7 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
       JSON.stringify(
         {
           plugins: {
-            'oh-my-claudecode@omc': [{ installPath: pluginInstallPath }],
+            'oh-my-copilot@omc': [{ installPath: pluginInstallPath }],
           },
         },
         null,
@@ -207,7 +207,7 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
       errors: [],
     });
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 
@@ -226,8 +226,8 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
       claudeConfigDir,
       'plugins',
       'cache',
-      'oh-my-claudecode',
-      'oh-my-claudecode',
+      'oh-my-copilot',
+      'oh-my-copilot',
       '9.9.9',
     );
     const pluginAgentsDir = join(pluginInstallPath, 'agents');
@@ -244,7 +244,7 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
       JSON.stringify(
         {
           plugins: {
-            'oh-my-claudecode@oh-my-claudecode': [
+            'oh-my-copilot@oh-my-copilot': [
               { installPath: pluginInstallPath },
             ],
           },
@@ -258,14 +258,14 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
     expect(installer.getInstalledOmcPluginRoots()).toEqual([pluginInstallPath]);
     expect(installer.hasPluginProvidedAgentFiles()).toBe(true);
 
-    const result = installer.install({ skipClaudeCheck: true, skipHud: true });
+    const result = installer.install({ skipCopilotCheck: true, skipHud: true });
     expect(result.success).toBe(true);
     expect(result.installedAgents).toEqual([]);
     expect(existsSync(join(claudeConfigDir, 'agents'))).toBe(false);
   });
 
   it('keeps exact-ID availability while fail-closing destructive cleanup beside a lookalike', async () => {
-    const exactRoot = join(claudeConfigDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '9.9.9');
+    const exactRoot = join(claudeConfigDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '9.9.9');
     const lookalikeRoot = join(tempRoot, 'lookalike-plugin');
     writeCompletePluginPayload(exactRoot);
     mkdirSync(join(exactRoot, 'agents'), { recursive: true });
@@ -276,8 +276,8 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
       join(claudeConfigDir, 'plugins', 'installed_plugins.json'),
       JSON.stringify({
         plugins: {
-          'oh-my-claudecode@omc': [{ installPath: exactRoot }],
-          'oh-my-claudecode-local': [{ installPath: lookalikeRoot }],
+          'oh-my-copilot@omc': [{ installPath: exactRoot }],
+          'oh-my-copilot-local': [{ installPath: lookalikeRoot }],
         },
       }, null, 2),
     );
@@ -286,7 +286,7 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
     expect(installer.getInstalledOmcPluginRoots()).toEqual([exactRoot]);
     expect(installer.hasPluginProvidedAgentFiles()).toBe(true);
 
-    const result = installer.install({ skipClaudeCheck: true, skipHud: true });
+    const result = installer.install({ skipCopilotCheck: true, skipHud: true });
     expect(result.success).toBe(true);
     expect(result.installedAgents).toEqual([]);
     expect(existsSync(join(claudeConfigDir, 'agents'))).toBe(false);
@@ -302,7 +302,7 @@ describe('installer legacy agent sync gating (issue #1502)', () => {
   it('still installs legacy agent files when no plugin-provided agent files are available', async () => {
     const installer = await loadInstallerWithEnv(claudeConfigDir, homeDir);
     const result = installer.install({
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       skipHud: true,
     });
 

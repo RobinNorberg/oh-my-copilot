@@ -18,7 +18,7 @@ vi.mock('../lib/worktree-paths.js', () => ({
 const mockedExecSync = vi.mocked(childProcess.execSync);
 const mockedExecFileSync = vi.mocked(childProcess.execFileSync);
 const originalCwd = process.cwd();
-const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
+const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
 let projectDir;
 let configDir;
 describe('auto slash live-data security', () => {
@@ -31,16 +31,16 @@ describe('auto slash live-data security', () => {
         mkdirSync(configDir, { recursive: true });
         writeFileSync(join(projectDir, '.claude', 'commands', 'live-test.md'), '---\ndescription: Security regression fixture\n---\n!git status $ARGUMENTS\n');
         writeFileSync(join(projectDir, '.claude', 'live-data-policy.json'), JSON.stringify({ allowed_commands: ['git'] }));
-        process.env.CLAUDE_CONFIG_DIR = configDir;
+        process.env.COPILOT_CONFIG_DIR = configDir;
         process.chdir(projectDir);
     });
     afterEach(() => {
         process.chdir(originalCwd);
         if (originalConfigDir === undefined) {
-            delete process.env.CLAUDE_CONFIG_DIR;
+            delete process.env.COPILOT_CONFIG_DIR;
         }
         else {
-            process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+            process.env.COPILOT_CONFIG_DIR = originalConfigDir;
         }
         rmSync(projectDir, { recursive: true, force: true });
         rmSync(configDir, { recursive: true, force: true });

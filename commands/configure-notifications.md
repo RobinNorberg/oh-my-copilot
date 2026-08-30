@@ -4,7 +4,7 @@ description: ""
 
 # OMC configure-notifications
 
-This compatibility command keeps `/oh-my-claudecode:configure-notifications` available without loading the full `configure-notifications` skill description in every Claude Code session.
+This compatibility command keeps `/oh-my-copilot:configure-notifications` available without loading the full `configure-notifications` skill description in every Claude Code session.
 
 ## Dispatch
 

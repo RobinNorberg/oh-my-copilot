@@ -248,7 +248,7 @@ describe('plugin-setup.mjs hook command portability', () => {
         cwd: PACKAGE_ROOT,
         env: {
           ...process.env,
-          CLAUDE_CONFIG_DIR: configDir,
+          COPILOT_CONFIG_DIR: configDir,
           HOME: fakeHome,
         },
         stdio: 'pipe',

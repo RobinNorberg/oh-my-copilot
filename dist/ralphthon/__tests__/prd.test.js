@@ -10,12 +10,26 @@ import { RALPHTHON_DEFAULTS } from "../types.js";
 import { DEFAULT_PLANNING_CONTEXT } from "../prd.js";
 describe("Ralphthon PRD", () => {
     let testDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), "ralphthon-prd-test-"));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
         // Create .omc directory for PRD storage
         mkdirSync(join(testDir, ".omc"), { recursive: true });
     });
     afterEach(() => {
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
         rmSync(testDir, { recursive: true, force: true });
     });
     // ============================================================================

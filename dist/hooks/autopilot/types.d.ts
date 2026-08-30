@@ -184,7 +184,7 @@ export interface AutopilotConfig {
      * hard-coded phase sequence. This is the path forward for unifying
      * autopilot and ultrapilot.
      *
-     * @see https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1130
+     * @see https://github.com/Yeachan-Heo/oh-my-copilot/issues/1130
      */
     pipeline?: {
         /** Planning stage: 'ralplan' for consensus, 'direct' for simple, false to skip */

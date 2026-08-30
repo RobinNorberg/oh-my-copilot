@@ -12,7 +12,7 @@ const NODE = process.execPath;
 /**
  * Integration tests for the plugin cache cleanup logic in session-start.mjs.
  *
- * The script's cleanup block scans ~/.claude/plugins/cache/omc/oh-my-claudecode/
+ * The script's cleanup block scans ~/.claude/plugins/cache/omc/oh-my-copilot/
  * for version directories, keeps the latest 2 real directories, and replaces
  * older versions with symlinks pointing to the latest version. This prevents
  * "Cannot find module" errors when a running session's CLAUDE_PLUGIN_ROOT
@@ -27,7 +27,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'omc-cache-test-'));
     fakeHome = join(tmpDir, 'home');
-    fakeCacheBase = join(fakeHome, '.claude', 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+    fakeCacheBase = join(fakeHome, '.claude', 'plugins', 'cache', 'omc', 'oh-my-copilot');
     fakeProject = join(tmpDir, 'project');
 
     // Create fake project directory with .omc
@@ -68,7 +68,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
           ...process.env,
           HOME: fakeHome,
           USERPROFILE: fakeHome, // Windows compat
-          CLAUDE_CONFIG_DIR: join(fakeHome, '.claude'), // Override to use fake home
+          COPILOT_CONFIG_DIR: join(fakeHome, '.claude'), // Override to use fake home
           CLAUDE_PLUGIN_ROOT: join(fakeCacheBase, '4.4.3'),
           ...env,
         },
@@ -245,10 +245,10 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
       plugins: { 'other-plugin@other': [{ installPath: join(tmpDir, 'other-plugin', '1.0.0') }] },
     }));
 
-    const mixedCaseRoot = staleVersion.replace('oh-my-claudecode', 'Oh-My-ClaudeCode');
+    const mixedCaseRoot = staleVersion.replace('oh-my-copilot', 'Oh-My-Copilot');
     const originalPlatform = process.platform;
-    const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    process.env.CLAUDE_CONFIG_DIR = configDir;
+    const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+    process.env.COPILOT_CONFIG_DIR = configDir;
     try {
       // Publish through the real occupancy writer so the record carries this
       // process's live PID/start identity; only the path casing is simulated.
@@ -267,8 +267,8 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
       expect(lstatSync(staleVersion).isSymbolicLink()).toBe(false);
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
-      if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
-      else process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+      if (originalConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
+      else process.env.COPILOT_CONFIG_DIR = originalConfigDir;
     }
   });
 
@@ -284,8 +284,8 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     }));
 
     const originalPlatform = process.platform;
-    const originalConfigDir = process.env.CLAUDE_CONFIG_DIR;
-    process.env.CLAUDE_CONFIG_DIR = configDir;
+    const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
+    process.env.COPILOT_CONFIG_DIR = configDir;
     try {
       Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
       const result = purgeStalePluginCacheVersions({ skipGracePeriod: true });
@@ -294,8 +294,8 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
       expect(result.removedPaths).toContain(staleVersion);
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
-      if (originalConfigDir === undefined) delete process.env.CLAUDE_CONFIG_DIR;
-      else process.env.CLAUDE_CONFIG_DIR = originalConfigDir;
+      if (originalConfigDir === undefined) delete process.env.COPILOT_CONFIG_DIR;
+      else process.env.COPILOT_CONFIG_DIR = originalConfigDir;
     }
   });
 });

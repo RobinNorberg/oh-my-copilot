@@ -17,7 +17,7 @@ Authoritative anchors:
 `package.json` makes generated outputs part of the shipped public package:
 
 - Main/types/exports point at `dist/index.js` and `dist/index.d.ts` (`package.json:6-12`).
-- Published bins `oh-my-claudecode`, `omc`, and `omc-cli` point at `bridge/cli.cjs` (`package.json:14-18`).
+- Published bins `oh-my-copilot`, `omc`, and `omc-cli` point at `bridge/cli.cjs` (`package.json:14-18`).
 - Published file allowlist includes `dist`, `bridge`, specific bridge bundles, `commands`, `hooks`, `scripts`, `skills`, `templates`, and `docs` (`package.json:19-39`).
 - `npm run build` runs `tsc`, builds the skill bridge, MCP server, team bridge entry, composed docs, runtime CLI, team server, and CLI/team entrypoints (`package.json:40-47`).
 - `prepublishOnly` repeats `npm run build && npm run compose-docs`, confirming that generated artifacts are packaging-critical (`package.json:66-68`).
@@ -52,7 +52,7 @@ Rationale:
 | `bridge/team-bridge.cjs` | `scripts/build-bridge-entry.mjs` | Team bridge runtime entry | Commit after changes to `src/team/bridge-entry.ts` or imported team bridge dependencies. |
 | `bridge/runtime-cli.cjs` | `scripts/build-runtime-cli.mjs` | Runtime CLI entry | Commit after runtime CLI source/contract changes. |
 | `bridge/team-mcp.cjs` | `scripts/build-team-server.mjs` | Team MCP/server bridge | Commit after team server/MCP source changes. |
-| `bridge/cli.cjs` | `scripts/build-cli.mjs` | `oh-my-claudecode`, `omc`, `omc-cli` bins | Commit after CLI source, command text, exit-code, or option parsing changes. |
+| `bridge/cli.cjs` | `scripts/build-cli.mjs` | `oh-my-copilot`, `omc`, `omc-cli` bins | Commit after CLI source, command text, exit-code, or option parsing changes. |
 | `bridge/team.js` | `scripts/build-cli.mjs` | Team JS entrypoint | Commit after team CLI/runtime source changes. |
 | `docs/shared/*.md` and composed docs outputs | `scripts/compose-docs.mjs` | Published docs and skill reference material | Commit after docs template/partial changes or source changes that intentionally require composed-doc updates. |
 | `.omx/plans/source-overall-cleanup/*.md` | Human/agent readiness artifacts | Planning evidence only | Commit as readiness artifacts; they are not build products and do not trigger generated output regeneration. |

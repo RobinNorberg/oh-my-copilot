@@ -1,7 +1,7 @@
 /**
  * Auto-Update System
  *
- * Provides version checking and auto-update functionality for oh-my-claudecode.
+ * Provides version checking and auto-update functionality for oh-my-copilot.
  *
  * Features:
  * - Check for new versions from GitHub releases
@@ -22,7 +22,7 @@ import {
   copyPluginSyncPayload,
   syncInstalledPluginPayload,
 } from '../installer/index.js';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { purgeStalePluginCacheVersions } from '../utils/paths.js';
 import type { NotificationConfig } from '../notifications/types.js';
 import { isAutoUpdateDisabled } from '../lib/security-config.js';
@@ -30,7 +30,7 @@ import { OMC_CONFIG_FILE_REL } from '../lib/paths.js';
 
 /** GitHub repository information */
 export const REPO_OWNER = 'Yeachan-Heo';
-export const REPO_NAME = 'oh-my-claudecode';
+export const REPO_NAME = 'oh-my-copilot';
 export const GITHUB_API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}`;
 export const GITHUB_RAW_URL = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}`;
 
@@ -239,7 +239,7 @@ function restoreGlobalClaudeCodeIfNeeded(
  * and cache rebuilds reinstall old versions. (See #506)
  */
 function syncMarketplaceClone(verbose: boolean = false): { ok: boolean; message: string } {
-  const marketplacePath = join(getClaudeConfigDir(), 'plugins', 'marketplaces', 'omc');
+  const marketplacePath = join(getCopilotConfigDir(), 'plugins', 'marketplaces', 'omc');
   if (!existsSync(marketplacePath)) {
     return { ok: true, message: 'Marketplace clone not found; skipping' };
   }
@@ -349,7 +349,7 @@ function deriveUpdatedPluginInstallPath(
 ): string {
   if (existingInstallPath?.trim()) {
     const normalized = existingInstallPath.replace(/\\/g, '/').toLowerCase();
-    if (normalized.includes('/plugins/cache/') && normalized.includes('/oh-my-claudecode/')) {
+    if (normalized.includes('/plugins/cache/') && normalized.includes('/oh-my-copilot/')) {
       return replaceLastPathSegmentPreservingSeparators(existingInstallPath, newVersion);
     }
   }
@@ -376,7 +376,7 @@ function syncInstalledPluginRegistryVersion(
   newVersion: string,
   fallbackInstallPath: string,
 ): { updated: boolean; errors: string[] } {
-  const installedPluginsPath = join(getClaudeConfigDir(), 'plugins', 'installed_plugins.json');
+  const installedPluginsPath = join(getCopilotConfigDir(), 'plugins', 'installed_plugins.json');
   if (!existsSync(installedPluginsPath)) {
     return { updated: false, errors: [] };
   }
@@ -399,8 +399,8 @@ function syncInstalledPluginRegistryVersion(
 
     for (const [pluginId, entriesValue] of Object.entries(plugins)) {
       const normalizedPluginId = pluginId.toLowerCase();
-      const isOmcPlugin = normalizedPluginId === 'oh-my-claudecode@omc'
-        || normalizedPluginId === 'oh-my-claudecode';
+      const isOmcPlugin = normalizedPluginId === 'oh-my-copilot@omc'
+        || normalizedPluginId === 'oh-my-copilot';
       if (!isOmcPlugin || !Array.isArray(entriesValue)) {
         continue;
       }
@@ -460,7 +460,7 @@ export function shouldBlockStandaloneUpdateInCurrentSession(): boolean {
 }
 
 export function syncPluginCache(verbose: boolean = false): { synced: boolean; skipped: boolean; errors: string[] } {
-  const pluginCacheRoot = join(getClaudeConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-claudecode');
+  const pluginCacheRoot = join(getCopilotConfigDir(), 'plugins', 'cache', 'omc', 'oh-my-copilot');
   if (!existsSync(pluginCacheRoot)) {
     return { synced: false, skipped: true, errors: [] };
   }
@@ -477,7 +477,7 @@ export function syncPluginCache(verbose: boolean = false): { synced: boolean; sk
       throw new Error('npm root -g returned an empty path');
     }
 
-    const sourceRoot = join(npmRoot, 'oh-my-claude-sisyphus');
+    const sourceRoot = join(npmRoot, 'oh-my-copilot');
     const packageJsonPath = join(sourceRoot, 'package.json');
     const packageJsonRaw = String(readFileSync(packageJsonPath, 'utf-8') ?? '');
     const packageMetadata = JSON.parse(packageJsonRaw) as { version?: unknown };
@@ -524,10 +524,10 @@ export function syncPluginCache(verbose: boolean = false): { synced: boolean; sk
   }
 }
 
-/** Installation paths (respects CLAUDE_CONFIG_DIR env var) */
-export const CLAUDE_CONFIG_DIR = getClaudeConfigDir();
-export const VERSION_FILE = join(CLAUDE_CONFIG_DIR, '.omc-version.json');
-export const CONFIG_FILE = join(CLAUDE_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+/** Installation paths (respects COPILOT_CONFIG_DIR env var) */
+export const COPILOT_CONFIG_DIR = getCopilotConfigDir();
+export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
+export const CONFIG_FILE = join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
 
 /**
  * Stop hook callback configuration for file logging
@@ -680,7 +680,7 @@ export function isAutoUpgradePromptEnabled(): boolean {
  */
 export function isTeamEnabled(): boolean {
   try {
-    const settingsPath = join(CLAUDE_CONFIG_DIR, 'settings.json');
+    const settingsPath = join(COPILOT_CONFIG_DIR, 'settings.json');
     if (existsSync(settingsPath)) {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
       const val = settings.env?.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS;
@@ -760,15 +760,15 @@ export function getInstalledVersion(): VersionMetadata | null {
     // Try to detect version from package.json if installed via npm
     try {
       // Check if we can find the package in node_modules
-      const result = execSync('npm list -g oh-my-claude-sisyphus --json', {
+      const result = execSync('npm list -g oh-my-copilot --json', {
         encoding: 'utf-8',
         timeout: 5000,
         stdio: 'pipe'
       });
       const data = JSON.parse(result);
-      if (data.dependencies?.['oh-my-claude-sisyphus']?.version) {
+      if (data.dependencies?.['oh-my-copilot']?.version) {
         return {
-          version: data.dependencies['oh-my-claude-sisyphus'].version,
+          version: data.dependencies['oh-my-copilot'].version,
           installedAt: new Date().toISOString(),
           installMethod: 'npm'
         };
@@ -818,7 +818,7 @@ function getGitHubUpdateToken(): string | null {
 function getGitHubReleaseHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Accept': 'application/vnd.github.v3+json',
-    'User-Agent': 'oh-my-claudecode-updater'
+    'User-Agent': 'oh-my-copilot-updater'
   };
 
   const token = getGitHubUpdateToken();
@@ -886,7 +886,7 @@ export async function fetchLatestRelease(): Promise<ReleaseInfo> {
     // No releases found - try to get version from package.json in repo
     const pkgResponse = await fetch(`${GITHUB_RAW_URL}/main/package.json`, {
       headers: {
-        'User-Agent': 'oh-my-claudecode-updater'
+        'User-Agent': 'oh-my-copilot-updater'
       }
     });
 
@@ -997,7 +997,7 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean; skipGraceP
     const installResult = installOmc({
       force: true,
       verbose: options?.verbose ?? false,
-      skipClaudeCheck: true,
+      skipCopilotCheck: true,
       forceHooks: shouldRefreshPluginHooks,
       refreshHooksInPlugin: shouldRefreshPluginHooks,
     });
@@ -1104,7 +1104,7 @@ export async function performUpdate(options?: {
         success: false,
         previousVersion,
         newVersion: 'unknown',
-        message: 'Running inside an active Claude Code plugin session. Use "/plugin install oh-my-claudecode" to update, or pass --standalone to force npm update.',
+        message: 'Running inside an active Claude Code plugin session. Use "/plugin install oh-my-copilot" to update, or pass --standalone to force npm update.',
       };
     }
 
@@ -1115,7 +1115,7 @@ export async function performUpdate(options?: {
 
     // Use npm for updates on all platforms (install.sh was removed)
     try {
-      execSync('npm install -g oh-my-claude-sisyphus@latest', npmExecOptions(options?.verbose ?? false));
+      execSync('npm install -g oh-my-copilot@latest', npmExecOptions(options?.verbose ?? false));
 
       try {
         restoreGlobalClaudeCodeIfNeeded(claudeCodeBeforeUpdate, options?.verbose ?? false);
@@ -1207,8 +1207,8 @@ export async function performUpdate(options?: {
     } catch (npmError) {
       throw new Error(
         'Auto-update via npm failed. Please run manually:\n' +
-        '  npm install -g oh-my-claude-sisyphus@latest\n' +
-        'Or use: /plugin install oh-my-claudecode\n' +
+        '  npm install -g oh-my-copilot@latest\n' +
+        'Or use: /plugin install oh-my-copilot\n' +
         `Error: ${npmError instanceof Error ? npmError.message : npmError}`
       );
     }
@@ -1229,19 +1229,19 @@ export async function performUpdate(options?: {
  */
 export function formatUpdateNotification(checkResult: UpdateCheckResult): string {
   if (!checkResult.updateAvailable) {
-    return `oh-my-claudecode is up to date (v${checkResult.currentVersion ?? 'unknown'})`;
+    return `oh-my-copilot is up to date (v${checkResult.currentVersion ?? 'unknown'})`;
   }
 
   const lines = [
     '╔═══════════════════════════════════════════════════════════╗',
-    '║           oh-my-claudecode Update Available!              ║',
+    '║           oh-my-copilot Update Available!              ║',
     '╚═══════════════════════════════════════════════════════════╝',
     '',
     `  Current version: ${checkResult.currentVersion ?? 'unknown'}`,
     `  Latest version:  ${checkResult.latestVersion}`,
     '',
     '  To update, run: /update',
-    '  Or reinstall via: /plugin install oh-my-claudecode',
+    '  Or reinstall via: /plugin install oh-my-copilot',
     ''
   ];
 
@@ -1352,7 +1352,7 @@ export interface SilentUpdateConfig {
 }
 
 /** State file for tracking silent update status */
-const SILENT_UPDATE_STATE_FILE = join(CLAUDE_CONFIG_DIR, '.omc-silent-update.json');
+const SILENT_UPDATE_STATE_FILE = join(COPILOT_CONFIG_DIR, '.omc-silent-update.json');
 
 interface SilentUpdateState {
   lastAttempt?: string;
@@ -1427,7 +1427,7 @@ export async function silentAutoUpdate(config: SilentUpdateConfig = {}): Promise
   const {
     checkIntervalHours = 24,
     autoApply = true,
-    logFile = join(CLAUDE_CONFIG_DIR, '.omc-update.log'),
+    logFile = join(COPILOT_CONFIG_DIR, '.omc-update.log'),
     maxRetries = 3
   } = config;
 

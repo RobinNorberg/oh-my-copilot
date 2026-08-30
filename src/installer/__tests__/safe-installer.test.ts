@@ -39,12 +39,12 @@ describe('isOmcHook', () => {
     expect(isOmcHook('/usr/bin/omc-tool')).toBe(true);
   });
 
-  it('returns true for commands containing "oh-my-claudecode"', () => {
-    expect(isOmcHook('node ~/.claude/hooks/oh-my-claudecode-hook.mjs')).toBe(true);
-    expect(isOmcHook('bash $HOME/.claude/hooks/oh-my-claudecode.sh')).toBe(true);
+  it('returns true for commands containing "oh-my-copilot"', () => {
+    expect(isOmcHook('node ~/.claude/hooks/oh-my-copilot-hook.mjs')).toBe(true);
+    expect(isOmcHook('bash $HOME/.claude/hooks/oh-my-copilot.sh')).toBe(true);
   });
 
-  it('returns false for commands not containing omc or oh-my-claudecode', () => {
+  it('returns false for commands not containing omc or oh-my-copilot', () => {
     expect(isOmcHook('node ~/.claude/hooks/other-plugin.mjs')).toBe(false);
     expect(isOmcHook('bash $HOME/.claude/hooks/beads-hook.sh')).toBe(false);
     expect(isOmcHook('python /usr/bin/custom-hook.py')).toBe(false);
@@ -52,14 +52,14 @@ describe('isOmcHook', () => {
 
   it('is case-insensitive', () => {
     expect(isOmcHook('node ~/.claude/hooks/OMC-hook.mjs')).toBe(true);
-    expect(isOmcHook('bash $HOME/.claude/hooks/OH-MY-CLAUDECODE.sh')).toBe(true);
+    expect(isOmcHook('bash $HOME/.claude/hooks/OH-MY-COPILOT.sh')).toBe(true);
   });
 });
 
 describe('isOmcHook detection', () => {
   it('detects real OMC hooks correctly', () => {
     expect(isOmcHook('node ~/.claude/hooks/omc-hook.mjs')).toBe(true);
-    expect(isOmcHook('node ~/.claude/hooks/oh-my-claudecode-hook.mjs')).toBe(true);
+    expect(isOmcHook('node ~/.claude/hooks/oh-my-copilot-hook.mjs')).toBe(true);
     expect(isOmcHook('node ~/.claude/hooks/omc-pre-tool-use.mjs')).toBe(true);
     expect(isOmcHook('/usr/local/bin/omc')).toBe(true);
   });
@@ -78,10 +78,10 @@ describe('isOmcHook detection', () => {
     expect(isOmcHook('node "/tmp/custom-claude/hooks/keyword-detector.mjs"')).toBe(true);
   });
 
-  it('detects CLAUDE_CONFIG_DIR-aware hook commands', () => {
-    expect(isOmcHook('node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/keyword-detector.mjs"')).toBe(true);
-    expect(isOmcHook('node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/pre-tool-use.mjs"')).toBe(true);
-    expect(isOmcHook('node "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"')).toBe(true);
+  it('detects COPILOT_CONFIG_DIR-aware hook commands', () => {
+    expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/keyword-detector.mjs"')).toBe(true);
+    expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/pre-tool-use.mjs"')).toBe(true);
+    expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"')).toBe(true);
   });
 
   it('detects Windows-style OMC hook commands (issue #606)', () => {
@@ -98,7 +98,7 @@ describe('isOmcHook detection', () => {
 
   it('uses case-insensitive matching', () => {
     expect(isOmcHook('node ~/.claude/hooks/OMC-hook.mjs')).toBe(true);
-    expect(isOmcHook('OH-MY-CLAUDECODE-detector.sh')).toBe(true);
+    expect(isOmcHook('OH-MY-COPILOT-detector.sh')).toBe(true);
   });
 });
 
@@ -110,8 +110,8 @@ describe('Safe Installer - Hook Conflict Detection', () => {
     }
     mkdirSync(TEST_CLAUDE_DIR, { recursive: true });
 
-    // Mock CLAUDE_CONFIG_DIR for testing
-    process.env.TEST_CLAUDE_CONFIG_DIR = TEST_CLAUDE_DIR;
+    // Mock COPILOT_CONFIG_DIR for testing
+    process.env.TEST_COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
   });
 
   afterEach(() => {
@@ -119,7 +119,7 @@ describe('Safe Installer - Hook Conflict Detection', () => {
     if (existsSync(TEST_CLAUDE_DIR)) {
       rmSync(TEST_CLAUDE_DIR, { recursive: true, force: true });
     }
-    delete process.env.TEST_CLAUDE_CONFIG_DIR;
+    delete process.env.TEST_COPILOT_CONFIG_DIR;
   });
 
   it('detects conflict when PreToolUse is owned by another plugin', () => {
@@ -142,7 +142,7 @@ describe('Safe Installer - Hook Conflict Detection', () => {
 
     const _options: InstallOptions = {
       verbose: true,
-      skipClaudeCheck: true
+      skipCopilotCheck: true
     };
 
     // Simulate install logic (we'd need to mock or refactor install function for full test)

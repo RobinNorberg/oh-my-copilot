@@ -140,7 +140,7 @@ describe("subagent-lock benchmark", () => {
       const state = makeEmptyState();
       state.agents.push({
         agent_id: `agent-${i}`,
-        agent_type: "oh-my-claudecode:executor",
+        agent_type: "oh-my-copilot:executor",
         started_at: new Date().toISOString(),
         parent_mode: "ultrawork",
         status: "running",
@@ -193,7 +193,7 @@ describe("subagent-lock benchmark", () => {
     const state = makeEmptyState();
     state.agents.push({
       agent_id: "agent-0",
-      agent_type: "oh-my-claudecode:executor",
+      agent_type: "oh-my-copilot:executor",
       started_at: new Date().toISOString(),
       parent_mode: "ultrawork",
       status: "running",

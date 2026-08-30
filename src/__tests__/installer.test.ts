@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   VERSION,
-  CLAUDE_CONFIG_DIR,
+  COPILOT_CONFIG_DIR,
   AGENTS_DIR,
   COMMANDS_DIR,
   SKILLS_DIR,
@@ -209,7 +209,7 @@ describe('Installer Constants', () => {
 
         // Detect pattern: command file that tells user to invoke the same-named skill
         const skillInvokePattern = new RegExp(
-          `/oh-my-claudecode:${commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+          `/oh-my-copilot:${commandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
           'i'
         );
 
@@ -357,12 +357,12 @@ describe('Installer Constants', () => {
   describe('extractOmcVersionFromClaudeMd()', () => {
     it('prefers the OMC version marker', () => {
       const content = `<!-- OMC:VERSION:4.7.7 -->
-# oh-my-claudecode - Intelligent Multi-Agent Orchestration`;
+# oh-my-copilot - Intelligent Multi-Agent Orchestration`;
       expect(extractOmcVersionFromClaudeMd(content)).toBe('v4.7.7');
     });
 
     it('falls back to legacy heading versions', () => {
-      const content = '# oh-my-claudecode v4.6.0 - Intelligent Multi-Agent Orchestration';
+      const content = '# oh-my-copilot v4.6.0 - Intelligent Multi-Agent Orchestration';
       expect(extractOmcVersionFromClaudeMd(content)).toBe('v4.6.0');
     });
   });
@@ -405,15 +405,15 @@ describe('Installer Constants', () => {
 
   describe('File Paths', () => {
     it('should define valid directory paths', () => {
-      expect(AGENTS_DIR).toBe(join(CLAUDE_CONFIG_DIR, 'agents'));
-      expect(COMMANDS_DIR).toBe(join(CLAUDE_CONFIG_DIR, 'commands'));
-      expect(SKILLS_DIR).toBe(join(CLAUDE_CONFIG_DIR, 'skills'));
-      expect(HOOKS_DIR).toBe(join(CLAUDE_CONFIG_DIR, 'hooks'));
+      expect(AGENTS_DIR).toBe(join(COPILOT_CONFIG_DIR, 'agents'));
+      expect(COMMANDS_DIR).toBe(join(COPILOT_CONFIG_DIR, 'commands'));
+      expect(SKILLS_DIR).toBe(join(COPILOT_CONFIG_DIR, 'skills'));
+      expect(HOOKS_DIR).toBe(join(COPILOT_CONFIG_DIR, 'hooks'));
     });
 
     it('should use absolute paths', () => {
       const paths = [
-        CLAUDE_CONFIG_DIR,
+        COPILOT_CONFIG_DIR,
         AGENTS_DIR,
         COMMANDS_DIR,
         SKILLS_DIR,
@@ -533,7 +533,7 @@ describe('Installer Constants', () => {
     });
 
     it('should return true when CLAUDE_PLUGIN_ROOT is set', () => {
-      process.env.CLAUDE_PLUGIN_ROOT = '/home/user/.claude/plugins/marketplaces/oh-my-claudecode';
+      process.env.CLAUDE_PLUGIN_ROOT = '/home/user/.claude/plugins/marketplaces/oh-my-copilot';
       expect(isRunningAsPlugin()).toBe(true);
     });
 
@@ -565,13 +565,13 @@ describe('Installer Constants', () => {
 
     it('should return false for global plugin installation', () => {
       // Global plugins are under ~/.claude/plugins/
-      process.env.CLAUDE_PLUGIN_ROOT = join(CLAUDE_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '3.9.0');
+      process.env.CLAUDE_PLUGIN_ROOT = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc', 'oh-my-copilot', '3.9.0');
       expect(isProjectScopedPlugin()).toBe(false);
     });
 
     it('should return true for project-scoped plugin installation', () => {
       // Project-scoped plugins are in the project's .claude/plugins/ directory
-      process.env.CLAUDE_PLUGIN_ROOT = '/home/user/myproject/.claude/plugins/oh-my-claudecode';
+      process.env.CLAUDE_PLUGIN_ROOT = '/home/user/myproject/.claude/plugins/oh-my-copilot';
       expect(isProjectScopedPlugin()).toBe(true);
     });
 
@@ -588,7 +588,7 @@ describe('Installer Constants', () => {
     });
 
     it('should handle trailing slashes in paths', () => {
-      process.env.CLAUDE_PLUGIN_ROOT = join(CLAUDE_CONFIG_DIR, 'plugins', 'cache', 'omc') + '/';
+      process.env.CLAUDE_PLUGIN_ROOT = join(COPILOT_CONFIG_DIR, 'plugins', 'cache', 'omc') + '/';
       expect(isProjectScopedPlugin()).toBe(false);
     });
   });

@@ -54,7 +54,7 @@ Add missing tests first, then refactor/delete. Minimum additions:
    - Add a malformed standard-state JSON test that asserts the current contract explicitly: warning is observable and the result falls through to legacy only when `checkLegacy` is enabled.
    - Add a missing-standard/malformed-legacy test that asserts `exists:false` plus warning evidence rather than silent masking.
 2. `src/config/__tests__/models.test.ts`
-   - Add a precedence-table test for direct Claude session env vs stale non-Claude tier defaults. Existing anchors around `isNonClaudeProvider()` and `resolveInheritedModelFromEnv()` already cover many cases; the new test should lock the exact env priority table before simplifying conditionals.
+   - Add a precedence-table test for direct Claude session env vs stale non-Claude tier defaults. Existing anchors around `isNonCopilotProvider()` and `resolveInheritedModelFromEnv()` already cover many cases; the new test should lock the exact env priority table before simplifying conditionals.
 3. `src/features/delegation-routing/__tests__/resolver.test.ts`
    - Add a test naming the deprecated-provider compatibility contract: deprecated `gemini`/`codex` routes normalize to `claude`, and the result must expose enough fallback-chain evidence for callers to know compatibility was applied.
 4. `src/tools/python-repl/__tests__/tcp-fallback.test.ts`

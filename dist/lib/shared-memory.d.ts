@@ -15,7 +15,7 @@
  * - ttl: optional time-to-live in seconds
  * - expiresAt: optional ISO timestamp (computed from ttl)
  *
- * @see https://github.com/anthropics/oh-my-claudecode/issues/1119
+ * @see https://github.com/anthropics/oh-my-copilot/issues/1119
  */
 export interface SharedMemoryEntry {
     key: string;
@@ -37,7 +37,7 @@ export interface SharedMemoryListItem {
  * Check if shared memory is enabled via config.
  *
  * Reads `agents.sharedMemory.enabled` from
- * `[$CLAUDE_CONFIG_DIR|~/.claude]/.omc-config.json`.
+ * `[$COPILOT_CONFIG_DIR|~/.claude]/.omc-config.json`.
  * Defaults to true when the config key is absent (opt-out rather than opt-in
  * once the feature ships, but tools check this gate).
  */

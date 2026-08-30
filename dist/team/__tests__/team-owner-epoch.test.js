@@ -5,12 +5,44 @@ import { join } from 'node:path';
 import { acquireSuccessorOwnerEpoch, checkOwnerFence, currentProcessStartIdentity, isActiveRecoveryEffect, isProcessIdentityDead, isValidProcessStartIdentity, isFencedServiceMaintenance, isFreshRecoveryElection, isSameAttemptSuccessorRebind, publishOwnerEpoch, processStartIdentityForPlatform, readLatestOwnerEpoch, requireOwnerFence, requireOwnerProcessIdentity, } from '../team-owner-epoch.js';
 import { TeamPaths, absPath } from '../state-paths.js';
 let cwd;
+let restoreFixtureEnv;
 const teamName = 'owner-team';
 const start = currentProcessStartIdentity();
 const otherStart = process.platform === 'darwin' ? 'darwin:1:0' : process.platform === 'win32' ? 'win32:1' : 'linux:1';
 const baseConfig = (overrides = {}) => ({ state_revision: 7, lifecycle_state: 'active', runtime_owner_epoch: { epoch: 1, nonce: 'one' }, ...overrides });
-beforeEach(() => { cwd = mkdtempSync(join(tmpdir(), 'omc-owner-epoch-')); });
-afterEach(() => { rmSync(cwd, { recursive: true, force: true }); });
+beforeEach(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'omc-owner-epoch-'));
+    const home = process.env.HOME;
+    const userProfile = process.env.USERPROFILE;
+    const stateDir = process.env.OMC_STATE_DIR;
+    process.env.HOME = cwd;
+    process.env.USERPROFILE = cwd;
+    delete process.env.OMC_STATE_DIR;
+    restoreFixtureEnv = () => {
+        if (home === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = home;
+        if (userProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = userProfile;
+        if (stateDir === undefined)
+            delete process.env.OMC_STATE_DIR;
+        else
+            process.env.OMC_STATE_DIR = stateDir;
+    };
+});
+afterEach(() => {
+    const restore = restoreFixtureEnv;
+    restoreFixtureEnv = undefined;
+    try {
+        restore?.();
+    }
+    finally {
+        rmSync(cwd, { recursive: true, force: true });
+    }
+});
 describe('runtime owner epochs', () => {
     it('publishes a complete immutable epoch by hard link and removes its temporary publication file', () => {
         expect(start).not.toBeNull();

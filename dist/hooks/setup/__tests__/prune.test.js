@@ -6,13 +6,27 @@ import { pruneOldStateFiles } from '../index.js';
 describe('pruneOldStateFiles', () => {
     let testDir;
     let stateDir;
+    let previousHome;
+    let previousUserProfile;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'prune-test-'));
+        previousHome = process.env.HOME;
+        previousUserProfile = process.env.USERPROFILE;
+        process.env.HOME = testDir;
+        process.env.USERPROFILE = testDir;
         stateDir = join(testDir, '.omc', 'state');
         mkdirSync(stateDir, { recursive: true });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
+        if (previousHome === undefined)
+            delete process.env.HOME;
+        else
+            process.env.HOME = previousHome;
+        if (previousUserProfile === undefined)
+            delete process.env.USERPROFILE;
+        else
+            process.env.USERPROFILE = previousUserProfile;
     });
     function writeStateFile(name, content, ageDays = 0) {
         const filePath = join(stateDir, name);

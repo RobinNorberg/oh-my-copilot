@@ -8,7 +8,7 @@
  * 1. Ralph claims task is complete
  * 2. System enters verification mode
  * 3. Architect agent is invoked to verify the work
- * 4. If architect approves -> truly complete, use /oh-my-claudecode:cancel to exit
+ * 4. If architect approves -> truly complete, use /oh-my-copilot:cancel to exit
  * 5. If architect finds flaws -> continue ralph with architect feedback
  */
 
@@ -323,7 +323,7 @@ ${getVerificationAgentStep(state.critic_mode)}
    - Return ONLY a concise review summary under 100 words with verdict, evidence highlights, files checked, and blockers. Do not paste long logs inline.
 
 3. **Based on ${criticLabel}'s response:**
-   - If APPROVED: Output the exact correlated approval tag \`${approvalTag}\`, then run \`/oh-my-claudecode:cancel\` to cleanly exit
+   - If APPROVED: Output the exact correlated approval tag \`${approvalTag}\`, then run \`/oh-my-copilot:cancel\` to cleanly exit
    - If REJECTED: Continue working on the identified issues
 
 </ralph-verification>
@@ -355,7 +355,7 @@ ${state.original_task}
 1. Address ALL issues identified by ${criticLabel}
 2. Do NOT claim completion again until issues are fixed${state.story_id ? `, and do not progress story ${state.story_id} until it passes review` : ''}
 3. When truly done, another ${criticLabel} verification will be triggered
-4. After ${criticLabel} approves, run \`/oh-my-claudecode:cancel\` to cleanly exit
+4. After ${criticLabel} approves, run \`/oh-my-copilot:cancel\` to cleanly exit
 
 Continue working now.
 

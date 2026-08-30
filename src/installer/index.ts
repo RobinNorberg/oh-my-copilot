@@ -20,7 +20,7 @@ import {
   getHooksSettingsConfig,
 } from './hooks.js';
 import { getRuntimePackageVersion } from '../lib/version.js';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 import { resolveNodeBinary } from '../utils/resolve-node.js';
 import { parseFrontmatter } from '../utils/frontmatter.js';
 import { isSkininthegamebrosUser } from '../utils/skininthegamebros-user.js';
@@ -36,14 +36,14 @@ import { HISTORICAL_AGENT_OWNERSHIP, type HistoricalAgentOwnership } from './his
 import entitlementManifest from '../config/builtin-skill-entitlements.json' with { type: 'json' };
 
 /** Claude Code configuration directory */
-export const CLAUDE_CONFIG_DIR = getClaudeConfigDir();
-export const AGENTS_DIR = join(CLAUDE_CONFIG_DIR, 'agents');
-export const COMMANDS_DIR = join(CLAUDE_CONFIG_DIR, 'commands');
-export const SKILLS_DIR = join(CLAUDE_CONFIG_DIR, 'skills');
-export const HOOKS_DIR = join(CLAUDE_CONFIG_DIR, 'hooks');
-export const HUD_DIR = join(CLAUDE_CONFIG_DIR, 'hud');
-export const SETTINGS_FILE = join(CLAUDE_CONFIG_DIR, 'settings.json');
-export const VERSION_FILE = join(CLAUDE_CONFIG_DIR, '.omc-version.json');
+export const COPILOT_CONFIG_DIR = getCopilotConfigDir();
+export const AGENTS_DIR = join(COPILOT_CONFIG_DIR, 'agents');
+export const COMMANDS_DIR = join(COPILOT_CONFIG_DIR, 'commands');
+export const SKILLS_DIR = join(COPILOT_CONFIG_DIR, 'skills');
+export const HOOKS_DIR = join(COPILOT_CONFIG_DIR, 'hooks');
+export const HUD_DIR = join(COPILOT_CONFIG_DIR, 'hud');
+export const SETTINGS_FILE = join(COPILOT_CONFIG_DIR, 'settings.json');
+export const VERSION_FILE = join(COPILOT_CONFIG_DIR, '.omc-version.json');
 const OMC_MANAGED_SKILL_MARKER = '.omc-managed';
 const PLUGIN_FULL_SKILL_BODIES_DIR = 'skill-bodies';
 const PLUGIN_COMPACT_SKILL_SHIM_MARKER = '<!-- OMC:COMPACT-PLUGIN-SKILL -->';
@@ -132,11 +132,11 @@ function hasUnchangedRegularAgentFile(filepath: string, previous: { content: Buf
 }
 
 function currentAgentsDir(): string {
-  return join(getClaudeConfigDir(), 'agents');
+  return join(getCopilotConfigDir(), 'agents');
 }
 
 function currentSkillsDir(): string {
-  return join(getClaudeConfigDir(), 'skills');
+  return join(getCopilotConfigDir(), 'skills');
 }
 
 /**
@@ -183,7 +183,7 @@ function getNewestInstalledVersionHint(): string | null {
   }
 
   const claudeCandidates = [
-    join(CLAUDE_CONFIG_DIR, 'CLAUDE.md'),
+    join(COPILOT_CONFIG_DIR, 'CLAUDE.md'),
     join(homedir(), 'CLAUDE.md'),
   ];
 
@@ -242,19 +242,19 @@ function buildStatusLineCommand(
   const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, '/');
 
   if (cacheWrapperPath) {
-    if (isDefaultClaudeConfigDirPath(CLAUDE_CONFIG_DIR)) {
-      return 'sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud-cache.sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs';
+    if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
+      return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs';
     }
 
     return `sh ${quoteShellArg(cacheWrapperPath.replace(/\\/g, '/'))} ${quoteShellArg(normalizedHudScriptPath)}`;
   }
 
-  if (isDefaultClaudeConfigDirPath(CLAUDE_CONFIG_DIR)) {
+  if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
     if (findNodePath) {
-      return 'sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs';
+      return 'sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs';
     }
 
-    return 'node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs';
+    return 'node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs';
   }
 
   if (findNodePath) {
@@ -296,7 +296,7 @@ export interface InstallOptions {
   force?: boolean;
   version?: string;
   verbose?: boolean;
-  skipClaudeCheck?: boolean;
+  skipCopilotCheck?: boolean;
   forceHooks?: boolean;
   refreshHooksInPlugin?: boolean;
   skipHud?: boolean;
@@ -317,7 +317,7 @@ export interface InstallOptions {
  * (avoids circular dependency since auto-update imports from installer)
  */
 export function isHudEnabledInConfig(): boolean {
-  const configPath = join(CLAUDE_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+  const configPath = join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
   if (!existsSync(configPath)) {
     return true; // default: enabled
   }
@@ -332,7 +332,7 @@ export function isHudEnabledInConfig(): boolean {
 }
 
 /**
- * Detect whether a statusLine config belongs to oh-my-claudecode.
+ * Detect whether a statusLine config belongs to oh-my-copilot.
  *
  * Checks the command string for known OMC HUD paths so that custom
  * (non-OMC) statusLine configurations are preserved during forced
@@ -343,15 +343,15 @@ export function isHudEnabledInConfig(): boolean {
  */
 export function isOmcStatusLine(statusLine: unknown): boolean {
   if (!statusLine) return false;
-  // Legacy string format (pre-v4.5): "~/.claude/hud/omc-hud.mjs"
+  // Legacy string format (pre-v4.5): "~/.claude/hud/omcp-hud.mjs"
   if (typeof statusLine === 'string') {
-    return statusLine.includes('omc-hud');
+    return statusLine.includes('omcp-hud');
   }
-  // Current object format: { type: "command", command: "node ...omc-hud.mjs" }
+  // Current object format: { type: "command", command: "node ...omcp-hud.mjs" }
   if (typeof statusLine === 'object') {
     const sl = statusLine as Record<string, unknown>;
     if (typeof sl.command === 'string') {
-      return sl.command.includes('omc-hud');
+      return sl.command.includes('omcp-hud');
     }
   }
   return false;
@@ -441,11 +441,11 @@ function isShippedStandaloneHookPayload(targetPath: string, filename: string, lo
 }
 
 /**
- * Detect whether a hook command belongs to oh-my-claudecode.
+ * Detect whether a hook command belongs to oh-my-copilot.
  *
  * Recognition strategy (any match is sufficient):
  * 1. Command path contains "omc" as a path/word segment (e.g. `omc-hook.mjs`, `/omc/`)
- * 2. Command path contains "oh-my-claudecode"
+ * 2. Command path contains "oh-my-copilot"
  * 3. Command references a known OMC hook filename inside .claude/hooks/
  *
  * @param command - The hook command string
@@ -456,7 +456,7 @@ export function isOmcHook(command: string): boolean {
   // Match "omc" as a path segment or word boundary
   // Matches: /omc/, /omc-, omc/, -omc, _omc, omc_
   const omcPattern = /(?:^|[\/\\_-])omc(?:$|[\/\\_-])/;
-  const fullNamePattern = /oh-my-claudecode/;
+  const fullNamePattern = /oh-my-copilot/;
   if (omcPattern.test(lowerCommand) || fullNamePattern.test(lowerCommand)) {
     return true;
   }
@@ -530,7 +530,7 @@ export function checkNodeVersion(): { valid: boolean; current: number; required:
  * Check if Claude Code is installed
  * Uses 'where' on Windows, 'which' on Unix
  */
-export function isClaudeInstalled(): boolean {
+export function isCopilotInstalled(): boolean {
   try {
     const command = isWindows() ? 'where claude' : 'which claude';
     execSync(command, { encoding: 'utf-8', stdio: 'pipe' });
@@ -576,7 +576,7 @@ export function isProjectScopedPlugin(): boolean {
   }
 
   // Global plugins are installed under ~/.claude/plugins/
-  const globalPluginBase = join(CLAUDE_CONFIG_DIR, 'plugins');
+  const globalPluginBase = join(COPILOT_CONFIG_DIR, 'plugins');
 
   // If the plugin root is NOT under the global plugin directory, it's project-scoped
   // Normalize paths for comparison (resolve symlinks, trailing slashes, etc.)
@@ -708,7 +708,7 @@ function pruneLegacyStandaloneHookScripts(log: (msg: string) => void, activeStan
   }
 
   if (removed > 0) {
-    log(`  Removed ${removed} legacy hook script file${removed === 1 ? '' : 's'} from ${basename(CLAUDE_CONFIG_DIR)}/hooks`);
+    log(`  Removed ${removed} legacy hook script file${removed === 1 ? '' : 's'} from ${basename(COPILOT_CONFIG_DIR)}/hooks`);
   }
 }
 
@@ -818,7 +818,7 @@ function configureInstallerSettings(
         const findNodeSrc = join(getPackageDir(), 'scripts', 'find-node.sh');
         const findNodeDest = join(HUD_DIR, 'find-node.sh');
         const cacheWrapperSrc = join(getPackageDir(), 'scripts', 'lib', 'hud-cache-wrapper.sh');
-        const cacheWrapperDest = join(HUD_DIR, 'omc-hud-cache.sh');
+        const cacheWrapperDest = join(HUD_DIR, 'omcp-hud-cache.sh');
         const configDirHelperSrc = join(getPackageDir(), 'scripts', 'lib', 'config-dir.sh');
         const hudLibDir = join(HUD_DIR, 'lib');
         const configDirHelperDest = join(hudLibDir, 'config-dir.sh');
@@ -1318,8 +1318,8 @@ type PluginRootResolution =
 
 type PluginRegistry = Record<string, unknown>;
 
-const OMC_PLUGIN_IDS = new Set(['oh-my-claudecode', 'oh-my-claudecode@omc', 'oh-my-claudecode@oh-my-claudecode']);
-const OMC_PLUGIN_MANIFEST_NAME = 'oh-my-claudecode';
+const OMC_PLUGIN_IDS = new Set(['oh-my-copilot', 'oh-my-copilot@omc', 'oh-my-copilot@oh-my-copilot']);
+const OMC_PLUGIN_MANIFEST_NAME = 'oh-my-copilot';
 
 function isOfficialOmcPluginId(pluginId: string): boolean {
   return OMC_PLUGIN_IDS.has(pluginId.toLowerCase());
@@ -1343,7 +1343,7 @@ function resolveInstalledOmcPluginRoots(): PluginRootResolution {
     return { mode: 'plugin', roots: [explicitRoot], cleanupAllowed: true };
   }
 
-  const installedPluginsPath = join(CLAUDE_CONFIG_DIR, 'plugins', 'installed_plugins.json');
+  const installedPluginsPath = join(COPILOT_CONFIG_DIR, 'plugins', 'installed_plugins.json');
   if (!existsSync(installedPluginsPath)) {
     return { mode: 'legacy', roots: [], cleanupAllowed: true };
   }
@@ -1673,7 +1673,7 @@ function countPluginSyncPayloadEntries(root: string): number {
 }
 
 function getKnownMarketplaceInstallRoots(): string[] {
-  const knownMarketplacesPath = join(CLAUDE_CONFIG_DIR, 'plugins', 'known_marketplaces.json');
+  const knownMarketplacesPath = join(COPILOT_CONFIG_DIR, 'plugins', 'known_marketplaces.json');
   if (!existsSync(knownMarketplacesPath)) {
     return [];
   }
@@ -1687,7 +1687,7 @@ function getKnownMarketplaceInstallRoots(): string[] {
 
     for (const [marketplaceId, entry] of Object.entries(raw)) {
       const isOmcMarketplace = marketplaceId.toLowerCase().includes('omc')
-        || marketplaceId.toLowerCase().includes('oh-my-claudecode');
+        || marketplaceId.toLowerCase().includes('oh-my-copilot');
       if (!isOmcMarketplace) {
         continue;
       }
@@ -1720,7 +1720,7 @@ function getGlobalInstalledPackageRoot(): string | null {
       return null;
     }
 
-    const globalPackageRoot = join(npmRoot, 'oh-my-claude-sisyphus');
+    const globalPackageRoot = join(npmRoot, 'oh-my-copilot');
     return existsSync(globalPackageRoot) ? globalPackageRoot : null;
   } catch {
     return null;
@@ -1729,7 +1729,7 @@ function getGlobalInstalledPackageRoot(): string | null {
 
 function isCacheInstalledPluginRoot(root: string): boolean {
   const normalizedRoot = normalizePath(root);
-  const cacheBase = normalizePath(join(CLAUDE_CONFIG_DIR, 'plugins', 'cache'));
+  const cacheBase = normalizePath(join(COPILOT_CONFIG_DIR, 'plugins', 'cache'));
   if (!(normalizedRoot === cacheBase || normalizedRoot.startsWith(`${cacheBase}/`))) {
     return false;
   }
@@ -2032,13 +2032,13 @@ export function hasEnabledOmcPlugin(): boolean {
     for (const candidate of [settings.enabledPlugins, settings.plugins]) {
       if (Array.isArray(candidate)) {
         if (candidate.some(plugin =>
-          typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-claudecode')
+          typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-copilot')
         )) {
           return true;
         }
       } else if (candidate && typeof candidate === 'object') {
         if (Object.entries(candidate as Record<string, unknown>).some(([pluginId, value]) =>
-          pluginId.toLowerCase().includes('oh-my-claudecode') && value !== false
+          pluginId.toLowerCase().includes('oh-my-copilot') && value !== false
         )) {
           return true;
         }
@@ -2055,13 +2055,13 @@ function isOmcPluginEnabledInSettings(settings: Record<string, unknown>): boolea
   for (const candidate of [settings.enabledPlugins, settings.plugins]) {
     if (Array.isArray(candidate)) {
       if (candidate.some(plugin =>
-        typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-claudecode')
+        typeof plugin === 'string' && plugin.toLowerCase().includes('oh-my-copilot')
       )) {
         return true;
       }
     } else if (candidate && typeof candidate === 'object') {
       if (Object.entries(candidate as Record<string, unknown>).some(([pluginId, value]) =>
-        pluginId.toLowerCase().includes('oh-my-claudecode') && value !== false
+        pluginId.toLowerCase().includes('oh-my-copilot') && value !== false
       )) {
         return true;
       }
@@ -2246,7 +2246,7 @@ export function extractOmcVersionFromClaudeMd(content: string): string | null {
     return markerVersion.startsWith('v') ? markerVersion : `v${markerVersion}`;
   }
 
-  const headingMatch = content.match(/^#\s+oh-my-claudecode.*?\b(v?\d+\.\d+\.\d+(?:[-+][^\s]+)?)\b/m);
+  const headingMatch = content.match(/^#\s+oh-my-copilot.*?\b(v?\d+\.\d+\.\d+(?:[-+][^\s]+)?)\b/m);
   if (headingMatch?.[1]) {
     const headingVersion = headingMatch[1].trim();
     return headingVersion.startsWith('v') ? headingVersion : `v${headingVersion}`;
@@ -2268,7 +2268,7 @@ export function syncPersistedSetupVersion(options?: {
   version?: string;
   onlyIfConfigured?: boolean;
 }): boolean {
-  const configPath = options?.configPath ?? join(CLAUDE_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+  const configPath = options?.configPath ?? join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
   let config: Record<string, unknown> = {};
 
   if (existsSync(configPath)) {
@@ -2286,7 +2286,7 @@ export function syncPersistedSetupVersion(options?: {
 
   let detectedVersion = options?.version?.trim();
   if (!detectedVersion) {
-    const claudeMdPath = options?.claudeMdPath ?? join(CLAUDE_CONFIG_DIR, 'CLAUDE.md');
+    const claudeMdPath = options?.claudeMdPath ?? join(COPILOT_CONFIG_DIR, 'CLAUDE.md');
     if (existsSync(claudeMdPath)) {
       detectedVersion = extractOmcVersionFromClaudeMd(readFileSync(claudeMdPath, 'utf-8')) ?? undefined;
     }
@@ -2453,7 +2453,7 @@ export function install(options: InstallOptions = {}): InstallResult {
   }
 
   // Check Claude installation (optional)
-  if (!options.skipClaudeCheck && !isClaudeInstalled()) {
+  if (!options.skipCopilotCheck && !isCopilotInstalled()) {
     log('Warning: Claude Code not found. Install it first:');
     if (isWindows()) {
       log('  Visit https://docs.anthropic.com/claude-code for Windows installation');
@@ -2465,8 +2465,8 @@ export function install(options: InstallOptions = {}): InstallResult {
 
   try {
     // Ensure base config directory exists (skip for project-scoped plugins)
-    if ((!projectScoped || shouldInstallBundledSkills) && !existsSync(CLAUDE_CONFIG_DIR)) {
-      mkdirSync(CLAUDE_CONFIG_DIR, { recursive: true });
+    if ((!projectScoped || shouldInstallBundledSkills) && !existsSync(COPILOT_CONFIG_DIR)) {
+      mkdirSync(COPILOT_CONFIG_DIR, { recursive: true });
     }
 
     if (shouldInstallBundledSkills && !existsSync(SKILLS_DIR)) {
@@ -2616,7 +2616,7 @@ export function install(options: InstallOptions = {}): InstallResult {
     if (!projectScoped) {
       const transaction = executeClaudeMdTransaction({
         mode: 'global-overwrite',
-        root: CLAUDE_CONFIG_DIR,
+        root: COPILOT_CONFIG_DIR,
         source: join(getPackageDir(), 'docs', 'CLAUDE.md'),
         sourceRoot: getPackageDir(),
         version: targetVersion,
@@ -2651,14 +2651,14 @@ export function install(options: InstallOptions = {}): InstallResult {
       // The wrapper body is read by buildHudWrapper() in src/lib/hud-wrapper-template.ts —
       // the single TS source of truth, mirrored by scripts/lib/hud-wrapper-template.mjs
       // for scripts/plugin-setup.mjs. Drift enforced by hud-wrapper-template-sync.test.ts.
-      hudScriptPath = join(HUD_DIR, 'omc-hud.mjs').replace(/\\/g, '/');
+      hudScriptPath = join(HUD_DIR, 'omcp-hud.mjs').replace(/\\/g, '/');
       const hudScript = buildHudWrapper(getPackageDir());
 
       writeFileSync(hudScriptPath, hudScript);
       if (!isWindows()) {
         chmodSync(hudScriptPath, 0o755);
       }
-      log('  Installed omc-hud.mjs');
+      log('  Installed omcp-hud.mjs');
     } catch (_e) {
       log('  Warning: Could not install HUD statusline script (non-fatal)');
       hudScriptPath = null;
@@ -2694,7 +2694,7 @@ export function install(options: InstallOptions = {}): InstallResult {
       //    find-node.sh (used in hooks/hooks.json) can locate it at hook runtime
       //    even when node is not on PATH (nvm/fnm users, issue #892).
       try {
-        const configPath = join(CLAUDE_CONFIG_DIR, OMC_CONFIG_FILE_REL);
+        const configPath = join(COPILOT_CONFIG_DIR, OMC_CONFIG_FILE_REL);
         let omcConfig: Record<string, unknown> = {};
         if (existsSync(configPath)) {
           omcConfig = JSON.parse(readFileSync(configPath, 'utf-8'));

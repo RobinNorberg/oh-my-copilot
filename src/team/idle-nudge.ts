@@ -8,7 +8,7 @@
  * Idle = pane shows a prompt (paneLooksReady) AND no active task running
  * (paneHasActiveTask is false).
  *
- * @see https://github.com/anthropics/oh-my-claudecode/issues/1047
+ * @see https://github.com/anthropics/oh-my-copilot/issues/1047
  */
 
 import { paneLooksReady, paneHasActiveTask, sendToWorker, captureTeamPane } from './tmux-session.js';

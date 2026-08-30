@@ -13,7 +13,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, openSync, closeSync, unlinkSync, writeSync, constants as fsConstants } from 'fs';
 import { join, basename, dirname } from 'path';
 import { homedir } from 'os';
-import { getClaudeConfigDir } from './lib/config-dir.mjs';
+import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { readStdin } from './lib/stdin.mjs';
 import { createRequire } from 'module';
 import { atomicWriteFileSync, ensureDirSync } from './lib/atomic-write.mjs';
@@ -630,7 +630,7 @@ if (isDisabled) {
     // Bridge not available - use fallback (first run before build, or dist/ missing)
   }
 
-  const cfgDir = getClaudeConfigDir();
+  const cfgDir = getCopilotConfigDir();
   USER_SKILLS_DIR = join(cfgDir, 'skills', 'omc-learned');
   GLOBAL_SKILLS_DIR = join(homedir(), '.omc', 'skills');
   PROJECT_SKILLS_SUBDIR = join('.omc', 'skills');

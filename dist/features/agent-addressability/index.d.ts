@@ -35,7 +35,7 @@ export type AgentStatus = 'running' | 'completed' | 'failed';
 export interface AddressableAgent {
     /** Stable opaque agent id (Claude Code agent_id / tool_use block id). */
     id: string;
-    /** Agent type/role (e.g. "general-purpose", "oh-my-claudecode:executor"). */
+    /** Agent type/role (e.g. "general-purpose", "oh-my-copilot:executor"). */
     type?: string;
     /** Explicit user-chosen name (Agent tool `name`). Authoritative address. */
     name?: string;

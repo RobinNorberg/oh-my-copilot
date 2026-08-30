@@ -42,7 +42,7 @@ describe.skipIf(!isWindows)('cli-detection native Windows integration', () => {
         else
             process.env.OMC_CLI_DETECTION_EXPECTED_LAUNCH = originalSentinelEnv;
         if (fixtureRoot)
-            rmSync(fixtureRoot, { recursive: true, force: true });
+            rmSync(fixtureRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
         fixtureRoot = undefined;
         sentinelPath = undefined;
     });

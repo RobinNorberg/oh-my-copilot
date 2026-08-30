@@ -8,7 +8,7 @@
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { getClaudeConfigDir } from '../utils/config-dir.js';
+import { getCopilotConfigDir } from '../utils/config-dir.js';
 
 const PACKAGED_COMMANDS_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'commands');
 export interface CommandInfo {
@@ -28,7 +28,7 @@ export interface ExpandedCommand {
  * Get the commands directory path
  */
 export function getCommandsDir(): string {
-  return join(getClaudeConfigDir(), 'commands');
+  return join(getCopilotConfigDir(), 'commands');
 }
 
 /**
@@ -128,7 +128,7 @@ export function listCommands(): string[] {
  *
  * @example
  * ```typescript
- * import { expandCommand } from 'oh-my-claudecode';
+ * import { expandCommand } from 'oh-my-copilot';
  *
  * const prompt = expandCommand('ralph', 'Build a REST API');
  * // Returns the full ralph template with "Build a REST API" substituted
@@ -159,7 +159,7 @@ export function expandCommand(name: string, args: string = ''): ExpandedCommand 
  *
  * @example
  * ```typescript
- * import { expandCommandPrompt } from 'oh-my-claudecode';
+ * import { expandCommandPrompt } from 'oh-my-copilot';
  * import { query } from '@anthropic-ai/claude-agent-sdk';
  *
  * const prompt = expandCommandPrompt('team', 'Refactor the auth module');

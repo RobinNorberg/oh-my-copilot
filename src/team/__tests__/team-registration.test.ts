@@ -6,7 +6,7 @@ import {
   readProbeResult, writeProbeResult, getRegistrationStrategy,
   registerMcpWorker, unregisterMcpWorker, isMcpWorker, listMcpWorkers
 } from '../team-registration.js';
-import { getClaudeConfigDir } from '../../utils/config-dir.js';
+import { getCopilotConfigDir } from '../../utils/config-dir.js';
 import type { ConfigProbeResult } from '../types.js';
 
 const TEST_DIR = join(tmpdir(), '__test_team_reg__');
@@ -26,7 +26,7 @@ beforeEach(() => {
 
   mkdirSync(TEST_DIR, { recursive: true });
   mkdirSync(join(TEST_DIR, '.omc', 'state'), { recursive: true });
-  configDir = join(getClaudeConfigDir(), 'teams', TEST_TEAM);
+  configDir = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
   mkdirSync(configDir, { recursive: true });
 });
 

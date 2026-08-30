@@ -108,7 +108,7 @@ describe('plugin skill context budget gate (issues #2943, #2986)', () => {
   });
 
   it('uses platform-safe containment for archived full-body skill paths', () => {
-    const winRoot = 'C:\\Users\\me\\.claude\\plugins\\cache\\omc\\oh-my-claudecode\\4.13.7';
+    const winRoot = 'C:\\Users\\me\\.claude\\plugins\\cache\\omc\\oh-my-copilot\\4.13.7';
     const winArchivedBody = win32.join(winRoot, 'skill-bodies', 'plan', 'SKILL.md');
     const winEscapedBody = win32.join(winRoot, '..', 'other-plugin', 'SKILL.md');
 
@@ -139,7 +139,7 @@ describe('plugin skill context budget gate (issues #2943, #2986)', () => {
     const tempRoot = mkdtempSync(join(tmpdir(), 'omc-plugin-commands-cache-'));
     try {
       const sourceRoot = join(tempRoot, 'source');
-      const targetRoot = join(tempRoot, 'cache', 'omc', 'oh-my-claudecode', '4.14.1');
+      const targetRoot = join(tempRoot, 'cache', 'omc', 'oh-my-copilot', '4.14.1');
       mkdirSync(join(sourceRoot, '.claude-plugin'), { recursive: true });
       mkdirSync(join(sourceRoot, 'commands'), { recursive: true });
       mkdirSync(join(sourceRoot, 'dist', 'hooks'), { recursive: true });
@@ -147,7 +147,7 @@ describe('plugin skill context budget gate (issues #2943, #2986)', () => {
       mkdirSync(join(sourceRoot, 'hooks'), { recursive: true });
       mkdirSync(join(sourceRoot, 'skills', 'plan'), { recursive: true });
       writeFileSync(join(sourceRoot, '.claude-plugin', 'plugin.json'), JSON.stringify({
-        name: 'oh-my-claudecode',
+        name: 'oh-my-copilot',
         commands: './commands/',
         skills: ['./skills/plan/'],
       }, null, 2));
@@ -157,7 +157,7 @@ describe('plugin skill context budget gate (issues #2943, #2986)', () => {
       writeFileSync(join(sourceRoot, 'bridge', 'claude-md-coordinator.cjs'), 'console.log("CLAUDE.md coordinator");\n');
       writeFileSync(join(sourceRoot, 'hooks', 'hooks.json'), '{}\n');
       writeFileSync(join(sourceRoot, 'skills', 'plan', 'SKILL.md'), 'name: plan\n');
-      writeFileSync(join(sourceRoot, 'package.json'), JSON.stringify({ name: 'oh-my-claude-sisyphus', version: '4.14.1' }));
+      writeFileSync(join(sourceRoot, 'package.json'), JSON.stringify({ name: 'oh-my-copilot', version: '4.14.1' }));
 
       const result = copyPluginSyncPayload(sourceRoot, [targetRoot]);
 

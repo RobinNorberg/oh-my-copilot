@@ -103,7 +103,7 @@ describe('keyword-detector packaged artifacts', () => {
       const context = JSON.stringify(result);
 
       expect(context).toContain('[MAGIC KEYWORD: RALPH]');
-      expect(context).toContain('Preferred invocation: /oh-my-claudecode:ralph');
+      expect(context).toContain('Preferred invocation: /oh-my-copilot:ralph');
       expect(context).toContain('Read fallback:');
       expect(context).not.toContain('name: ralph');
       expect(context).not.toContain('[RALPH + ULTRAWORK');
@@ -343,7 +343,7 @@ OMC Ultrawork = "특수부대 작전 반"
     const projectDir = mkdtempSync(join(tmpdir(), 'keyword-hook-ralph-loop-project-'));
     const configDir = join(fakeHome, '.claude');
     const officialRoot = join(configDir, 'plugins', 'cache', 'claude-plugins-official', 'ralph-loop', '1.0.0');
-    const omcRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-claudecode', '4.15.4');
+    const omcRoot = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot', '4.15.4');
     const registryPath = join(configDir, 'plugins', 'installed_plugins.json');
     const settingsPath = join(configDir, 'settings.json');
     const runWithEnv = (scriptPath: string, sessionId: string, prompt: string, env: Record<string, string | undefined>) => JSON.parse(
@@ -353,7 +353,7 @@ OMC Ultrawork = "특수부대 작전 반"
           ...process.env,
           HOME: fakeHome,
           XDG_CONFIG_HOME: join(fakeHome, '.xdg'),
-          CLAUDE_CONFIG_DIR: configDir,
+          COPILOT_CONFIG_DIR: configDir,
           ...env,
         },
         input: JSON.stringify({
@@ -390,7 +390,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         const context = contextOf(runIn(scriptPath, `ralph-both-${basename(scriptPath)}`));
@@ -409,7 +409,7 @@ OMC Ultrawork = "특수부대 작전 반"
       // B. Official plugin absent from registry (even though settings enables it) -> silent.
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-absent-${basename(scriptPath)}`))).not.toContain('ralph-loop');
@@ -420,7 +420,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': false } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-disabled-${basename(scriptPath)}`))).not.toContain('ralph-loop');
@@ -430,7 +430,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ env: {}, model: 'opus' });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-noenable-${basename(scriptPath)}`))).not.toContain('ralph-loop');
@@ -441,7 +441,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': [{ installPath: join(officialRoot, '..', '9.9.9'), version: '9.9.9', enabled: true }],
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-missing-${basename(scriptPath)}`))).not.toContain('ralph-loop');
@@ -452,7 +452,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ enabledPlugins: { 'my-ralph-loop@community': true } });
       writeRegistry({
         'my-ralph-loop@community': [{ installPath: officialRoot, version: '1.0.0', enabled: true }],
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-lookalike-${basename(scriptPath)}`))).not.toContain('ralph-loop');
@@ -469,13 +469,13 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         const result = JSON.parse(
           execFileSync('node', [scriptPath], {
             cwd: packageRoot,
-            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), CLAUDE_CONFIG_DIR: configDir },
+            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_CONFIG_DIR: configDir },
             input: JSON.stringify({ prompt: 'autopilot build me a CLI', cwd: projectDir, directory: projectDir, session_id: `autopilot-${basename(scriptPath)}` }),
             encoding: 'utf-8',
           }),
@@ -489,7 +489,7 @@ OMC Ultrawork = "특수부대 작전 반"
         const result = JSON.parse(
           execFileSync('node', [scriptPath], {
             cwd: packageRoot,
-            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), CLAUDE_CONFIG_DIR: configDir },
+            env: { ...process.env, HOME: fakeHome, XDG_CONFIG_HOME: join(fakeHome, '.xdg'), COPILOT_CONFIG_DIR: configDir },
             input: JSON.stringify({ prompt: '/ralph-loop fix the parser', cwd: projectDir, directory: projectDir, session_id: `ralphloop-cmd-${basename(scriptPath)}` }),
             encoding: 'utf-8',
           }),
@@ -511,7 +511,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(false),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-regflag-${basename(scriptPath)}`))).toContain('ralph-loop');
@@ -522,7 +522,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       rmSync(settingsPath, { recursive: true, force: true });
       for (const scriptPath of [templatePath, pluginPath]) {
@@ -533,7 +533,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ plugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-legacy-${basename(scriptPath)}`))).toContain('ralph-loop');
@@ -544,22 +544,22 @@ OMC Ultrawork = "특수부대 작전 반"
       writeFileSync(settingsPath, '{ this is not valid json');
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-malformed-${basename(scriptPath)}`))).not.toContain('ralph-loop');
       }
 
-      // N. Config-root variant: settings lives at HOME/.claude and CLAUDE_CONFIG_DIR is
+      // N. Config-root variant: settings lives at HOME/.claude and COPILOT_CONFIG_DIR is
       //    unset (HOME-derived root) -> the notice still resolves the same config root.
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         const result = runWithEnv(scriptPath, `ralph-homeroot-${basename(scriptPath)}`, '/ralph fix the parser', {
-          CLAUDE_CONFIG_DIR: undefined,
+          COPILOT_CONFIG_DIR: undefined,
         });
         expect(result.hookSpecificOutput?.additionalContext ?? '').toContain('ralph-loop');
       }
@@ -577,7 +577,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
         'ralph-loop@community': [{ installPath: officialRoot, version: '2.0.0', enabled: true }],
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         expect(contextOf(runIn(scriptPath, `ralph-community-same-name-${basename(scriptPath)}`))).not.toContain('ralph-loop');
@@ -610,7 +610,7 @@ OMC Ultrawork = "특수부대 작전 반"
       writeSettings({ enabledPlugins: { 'ralph-loop@claude-plugins-official': true } });
       writeRegistry({
         'ralph-loop@claude-plugins-official': officialEntry(true),
-        'oh-my-claudecode@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
+        'oh-my-copilot@omc': [{ installPath: omcRoot, version: '4.15.4', enabled: true }],
       });
       for (const scriptPath of [templatePath, pluginPath]) {
         const context = contextOf(runIn(scriptPath, `ralph-multi-${basename(scriptPath)}`, '/ralph deep interview fix the parser'));
@@ -712,7 +712,7 @@ OMC Ultrawork = "특수부대 작전 반"
               ...process.env,
               HOME: fakeHome,
               XDG_CONFIG_HOME: join(fakeHome, '.xdg'),
-              CLAUDE_CONFIG_DIR: configDir,
+              COPILOT_CONFIG_DIR: configDir,
             },
             input: JSON.stringify({
               prompt: '/ralph fix the parser',
@@ -797,7 +797,7 @@ describe('pre-tool-use packaged artifacts', () => {
     const fakeHome = mkdtempSync(join(tmpdir(), 'pre-tool-template-home-'));
     const env = {
       CLAUDE_PLUGIN_ROOT: packageRoot,
-      CLAUDE_CONFIG_DIR: join(fakeHome, '.claude'),
+      COPILOT_CONFIG_DIR: join(fakeHome, '.claude'),
       HOME: fakeHome,
       USER_TYPE: '',
     };
@@ -823,7 +823,7 @@ describe('pre-tool-use packaged artifacts', () => {
         expect(denied.continue).toBe(true);
         expect(deniedHook.permissionDecision).toBe('deny');
         expect(reason).toContain('[SKILL vs AGENT]');
-        expect(reason).toContain('Skill(skill="oh-my-claudecode:ai-slop-cleaner")');
+        expect(reason).toContain('Skill(skill="oh-my-copilot:ai-slop-cleaner")');
         expect(reason).toContain('closest match');
 
         const allowed = runPreToolPayload(
@@ -833,7 +833,7 @@ describe('pre-tool-use packaged artifacts', () => {
             cwd: tempDir,
             directory: tempDir,
             tool_input: {
-              subagent_type: 'oh-my-claudecode:code-simplifier',
+              subagent_type: 'oh-my-copilot:code-simplifier',
               description: 'Simplify the change',
               prompt: 'Review and simplify the changed files',
             },
@@ -852,7 +852,7 @@ describe('pre-tool-use packaged artifacts', () => {
               cwd: tempDir,
               directory: tempDir,
               tool_input: {
-                subagent_type: `oh-my-claudecode:${skill}`,
+                subagent_type: `oh-my-copilot:${skill}`,
                 description: `Run ${skill}`,
                 prompt: `Run the ${skill} skill`,
               },
@@ -863,7 +863,7 @@ describe('pre-tool-use packaged artifacts', () => {
           expect(visible.continue).toBe(true);
           expect(visibleHook.permissionDecision).toBe('deny');
           expect(String(visibleHook.permissionDecisionReason ?? '')).toContain(
-            `Skill(skill="oh-my-claudecode:${skill}")`,
+            `Skill(skill="oh-my-copilot:${skill}")`,
           );
         }
       }
@@ -885,7 +885,7 @@ describe('pre-tool-use packaged artifacts', () => {
     writeFileSync(join(pluginRoot, 'skills', 'wiki', 'SKILL.md'), '---\nname: wiki\n---\nskill body\n');
     const env = {
       CLAUDE_PLUGIN_ROOT: pluginRoot,
-      CLAUDE_CONFIG_DIR: join(fakeHome, '.claude'),
+      COPILOT_CONFIG_DIR: join(fakeHome, '.claude'),
       HOME: fakeHome,
       USER_TYPE: '',
     };
@@ -899,7 +899,7 @@ describe('pre-tool-use packaged artifacts', () => {
             cwd: tempDir,
             directory: tempDir,
             tool_input: {
-              subagent_type: 'oh-my-claudecode:WIKI',
+              subagent_type: 'oh-my-copilot:WIKI',
               description: 'Use the colliding agent',
               prompt: 'Run the agent',
             },
@@ -943,7 +943,7 @@ describe('pre-tool-use packaged artifacts', () => {
 
     try {
       const env = {
-        CLAUDE_CONFIG_DIR: configDir,
+        COPILOT_CONFIG_DIR: configDir,
         CLAUDE_PLUGIN_ROOT: undefined,
         HOME: fakeHome,
         USER_TYPE: '',
@@ -955,7 +955,7 @@ describe('pre-tool-use packaged artifacts', () => {
           cwd: configDir,
           directory: configDir,
           tool_input: {
-            subagent_type: 'oh-my-claudecode:ai-slop-cleaner',
+            subagent_type: 'oh-my-copilot:ai-slop-cleaner',
             description: 'Run the cleaner',
             prompt: 'Clean the changed files',
           },
@@ -966,7 +966,7 @@ describe('pre-tool-use packaged artifacts', () => {
       expect(denied.continue).toBe(true);
       expect(deniedHook.permissionDecision).toBe('deny');
       expect(String(deniedHook.permissionDecisionReason ?? '')).toContain(
-        'Skill(skill="oh-my-claudecode:ai-slop-cleaner")',
+        'Skill(skill="oh-my-copilot:ai-slop-cleaner")',
       );
 
       const allowed = runPreToolPayload(
@@ -976,7 +976,7 @@ describe('pre-tool-use packaged artifacts', () => {
           cwd: configDir,
           directory: configDir,
           tool_input: {
-            subagent_type: 'oh-my-claudecode:executor',
+            subagent_type: 'oh-my-copilot:executor',
             description: 'Implement the change',
             prompt: 'Implement the requested change',
           },

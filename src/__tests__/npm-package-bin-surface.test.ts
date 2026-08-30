@@ -50,8 +50,8 @@ type PluginShippingSurface = {
   requiredPaths: string[];
 };
 
-const CLI_BIN_TARGET = "bin/oh-my-claudecode.js";
-const SUPPORTED_CLI_ALIASES = ["oh-my-claudecode", "omc"] as const;
+const CLI_BIN_TARGET = "bin/oh-my-copilot.js";
+const SUPPORTED_CLI_ALIASES = ["oh-my-copilot", "omc"] as const;
 const GENERATED_RUNTIME_ENTRYPOINTS = new Set([
   "bridge/claude-md-coordinator.cjs",
   "bridge/cli.cjs",
@@ -434,10 +434,10 @@ describe("npm package bin surface regression", () => {
         binNames.map((name) => [name, expectedNpmShimNames(name)]),
       ),
     ).toEqual({
-      "oh-my-claudecode": [
-        "oh-my-claudecode",
-        "oh-my-claudecode.cmd",
-        "oh-my-claudecode.ps1",
+      "oh-my-copilot": [
+        "oh-my-copilot",
+        "oh-my-copilot.cmd",
+        "oh-my-copilot.ps1",
       ],
       omc: ["omc", "omc.cmd", "omc.ps1"],
     });
@@ -461,10 +461,10 @@ describe("npm package bin surface regression", () => {
         packedBinNames.map((name) => [name, expectedNpmShimNames(name)]),
       ),
     ).toEqual({
-      "oh-my-claudecode": [
-        "oh-my-claudecode",
-        "oh-my-claudecode.cmd",
-        "oh-my-claudecode.ps1",
+      "oh-my-copilot": [
+        "oh-my-copilot",
+        "oh-my-copilot.cmd",
+        "oh-my-copilot.ps1",
       ],
       omc: ["omc", "omc.cmd", "omc.ps1"],
     });

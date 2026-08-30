@@ -8,7 +8,7 @@ const entitlementFixture = {
 };
 const entitlementNames = ['remember', 'verify', 'debug'];
 const originalUserType = process.env.USER_TYPE;
-const originalClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
+const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
 const originalHome = process.env.HOME;
 async function withEntitlementFixture(run) {
     vi.resetModules();
@@ -29,9 +29,9 @@ afterEach(() => {
     else
         process.env.USER_TYPE = originalUserType;
     if (originalClaudeConfigDir === undefined)
-        delete process.env.CLAUDE_CONFIG_DIR;
+        delete process.env.COPILOT_CONFIG_DIR;
     else
-        process.env.CLAUDE_CONFIG_DIR = originalClaudeConfigDir;
+        process.env.COPILOT_CONFIG_DIR = originalClaudeConfigDir;
     if (originalHome === undefined)
         delete process.env.HOME;
     else
@@ -56,14 +56,14 @@ describe('nonempty skill entitlement fixture', () => {
             for (const skill of ['Remember', 'VERIFY', 'Debug']) {
                 process.env.USER_TYPE = '';
                 clearSkillsCache();
-                expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-claudecode:${skill}` }))
+                expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-copilot:${skill}` }))
                     .toThrow(/Unknown agent type/);
-                expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-claudecode:${skill}` }))
+                expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-copilot:${skill}` }))
                     .not.toThrow(/Skill\(skill=/);
                 process.env.USER_TYPE = 'ant';
                 clearSkillsCache();
-                expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-claudecode:${skill}` }))
-                    .toThrow(`Skill(skill="oh-my-claudecode:${skill.toLowerCase()}")`);
+                expect(() => enforceModel({ description: 't', prompt: 'p', subagent_type: `oh-my-copilot:${skill}` }))
+                    .toThrow(`Skill(skill="oh-my-copilot:${skill.toLowerCase()}")`);
             }
         });
     });
@@ -75,15 +75,15 @@ describe('nonempty skill entitlement fixture', () => {
                 const claudeConfigDir = join(homeDir, '.claude');
                 mkdirSync(claudeConfigDir, { recursive: true });
                 process.env.HOME = homeDir;
-                process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+                process.env.COPILOT_CONFIG_DIR = claudeConfigDir;
                 process.env.USER_TYPE = '';
                 const installer = await import('../installer/index.js');
-                const result = installer.install({ skipClaudeCheck: true, skipHud: true, noPlugin: true });
+                const result = installer.install({ skipCopilotCheck: true, skipHud: true, noPlugin: true });
                 for (const skill of entitlementNames) {
                     expect(result.installedSkills).not.toContain(`${skill}/SKILL.md`);
                 }
                 process.env.USER_TYPE = 'ant';
-                const antResult = installer.install({ skipClaudeCheck: true, skipHud: true, noPlugin: true });
+                const antResult = installer.install({ skipCopilotCheck: true, skipHud: true, noPlugin: true });
                 for (const skill of entitlementNames) {
                     expect(antResult.installedSkills).toContain(`${skill}/SKILL.md`);
                     expect(existsSync(join(claudeConfigDir, 'skills', skill, 'SKILL.md'))).toBe(true);
