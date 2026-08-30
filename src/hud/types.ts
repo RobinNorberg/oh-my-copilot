@@ -185,6 +185,11 @@ export interface TranscriptData {
   skillCallCount: number;
   /** Name of the last tool_use block seen in transcript */
   lastToolName: string | null;
+  /**
+   * Fork-specific: recent tool invocations, oldest first, for the RecentTools
+   * HUD element. Excludes internal/meta tools (TodoWrite, Skill, Task, ...).
+   */
+  recentTools: RecentTool[];
 }
 
 // ============================================================================
@@ -478,6 +483,9 @@ export interface HudRenderContext {
   /** Name of the last tool called in this session */
   lastToolName?: string | null;
 
+  /** Recent tool invocations (oldest first) backing the RecentTools element */
+  recentTools?: RecentTool[];
+
   /** Best-effort local transcript-backed request payload pressure estimate. */
   payloadEstimate?: PayloadEstimate | null;
 }
@@ -659,6 +667,9 @@ export interface HudElementConfig {
   showCallCounts?: boolean;   // Show tool/agent/skill call counts on the right of the status line (default: true)
   callCountsFormat?: CallCountsFormat; // Controls call count icon rendering: auto (platform default), emoji, or ascii
   showLastTool?: boolean;      // Show name of last tool called (tool:Read)
+  showRecentTools?: boolean;   // Show a rolling list of recent tool calls with status icons
+  recentToolsMax?: number;     // Max collapsed entries to display (default: 5)
+  recentToolsShowTarget?: boolean; // Append target summary (file/command) to each entry
   sessionSummary: boolean;    // Show AI-generated session summary (<20 chars) - generated every 10 turns via claude -p
   maxOutputLines: number;     // Max total output lines to prevent input field shrinkage
   safeMode: boolean;          // Strip ANSI codes and use ASCII-only output to prevent terminal rendering corruption (Issue #346).
@@ -713,7 +724,7 @@ export const DEFAULT_ELEMENT_ORDER: Required<LayoutConfig> = {
     'omcLabel', 'model', 'enterpriseCost', 'rateLimits', 'customBuckets', 'permission', 'thinking',
     'promptTime', 'session', 'tokens', 'ralph', 'autopilot', 'prd',
     'skills', 'lastSkill', 'contextBar', 'agents', 'background',
-    'callCounts', 'lastTool', 'sessionSummary',
+    'callCounts', 'lastTool', 'recentTools', 'sessionSummary',
   ],
   detail: ['missionBoard', 'agents', 'contextWarning', 'payloadWarning', 'todos'],
 };
@@ -790,6 +801,9 @@ export const DEFAULT_HUD_CONFIG: HudConfig = {
     showCallCounts: true,  // Show tool/agent/skill call counts by default (Issue #710)
     callCountsFormat: 'auto',  // Preserve platform-based emoji/ASCII defaults unless explicitly overridden
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     sessionSummary: false, // Disabled by default - opt-in AI-generated session summary
     maxOutputLines: 4,
     safeMode: true,  // Enabled by default to prevent terminal rendering corruption (Issue #346)
@@ -850,6 +864,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: false,
     showCallCounts: false,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     sessionSummary: false,
     maxOutputLines: 2,
     safeMode: true,
@@ -893,6 +910,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     sessionSummary: false, // Opt-in: sends transcript to claude -p
     maxOutputLines: 4,
     safeMode: true,
@@ -936,6 +956,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     sessionSummary: false, // Opt-in: sends transcript to claude -p
     maxOutputLines: 12,
     safeMode: true,
@@ -979,6 +1002,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: false,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     sessionSummary: false,
     maxOutputLines: 4,
     safeMode: true,
@@ -1022,6 +1048,9 @@ export const PRESET_CONFIGS: Record<HudPreset, Partial<HudElementConfig>> = {
     useBars: true,
     showCallCounts: true,
     showLastTool: false,
+    showRecentTools: false,
+    recentToolsMax: 5,
+    recentToolsShowTarget: true,
     sessionSummary: false, // Opt-in: sends transcript to claude -p
     maxOutputLines: 6,
     safeMode: true,

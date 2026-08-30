@@ -11,7 +11,7 @@
 
 import { createHash } from 'crypto';
 import { execFileSync } from 'child_process';
-import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync, statSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync, writeFileSync, unlinkSync, statSync, renameSync } from 'fs';
 import { homedir, tmpdir } from 'os';
 import { resolve, normalize, relative, sep, join, isAbsolute, basename, dirname } from 'path';
 import { pathToFileURL } from 'url';
@@ -30,23 +30,38 @@ import { encodeProjectPath } from '../utils/encode-project-path.js';
  */
 export const WORKSPACE_MARKER = '.omc-workspace';
 
-/** Standard .omc subdirectories */
+/**
+ * Standard state subdirectories, split across two roots.
+ *
+ * This fork coexists with oh-my-claudecode on the same machine and project, so
+ * the two roots are deliberately different:
+ *
+ * - `.omcp/` (ROOT) — plugin-private runtime state. Mode state, sessions,
+ *   logs, drafts, autopilot and scientist artifacts. Keeping this separate
+ *   avoids cross-plugin runtime contention when both plugins are installed.
+ * - `.omc/` (SHARED_ROOT) — cross-plugin shared *content* that is meaningfully
+ *   runtime-agnostic: notepad, project memory, plans, research, plan-scoped
+ *   notepads. A plan written in one CLI is visible to the other.
+ *
+ * See getSharedOmcRoot() and migrateOmcpContentToOmc().
+ */
 export const OmcPaths = {
-  ROOT: '.omc',
-  STATE: '.omc/state',
-  SESSIONS: '.omc/state/sessions',
+  ROOT: '.omcp',
+  SHARED_ROOT: '.omc',
+  STATE: '.omcp/state',
+  SESSIONS: '.omcp/state/sessions',
   PLANS: '.omc/plans',
   RESEARCH: '.omc/research',
   NOTEPAD: '.omc/notepad.md',
   PROJECT_MEMORY: '.omc/project-memory.json',
-  DRAFTS: '.omc/drafts',
+  DRAFTS: '.omcp/drafts',
   NOTEPADS: '.omc/notepads',
-  LOGS: '.omc/logs',
-  SCIENTIST: '.omc/scientist',
-  AUTOPILOT: '.omc/autopilot',
-  SKILLS: '.omc/skills',
-  SHARED_MEMORY: '.omc/state/shared-memory',
-  DEEPINIT_MANIFEST: '.omc/deepinit-manifest.json',
+  LOGS: '.omcp/logs',
+  SCIENTIST: '.omcp/scientist',
+  AUTOPILOT: '.omcp/autopilot',
+  SKILLS: '.omcp/skills',
+  SHARED_MEMORY: '.omcp/state/shared-memory',
+  DEEPINIT_MANIFEST: '.omcp/deepinit-manifest.json',
 } as const;
 
 /**
@@ -886,6 +901,132 @@ export function getOmcRoot(worktreeRoot?: string): string {
     return join(resolveNonGitStateAnchor(root), OmcPaths.ROOT);
   }
   return join(root, OmcPaths.ROOT);
+}
+
+/** One-warning-per-path guard for shared-content relocation. */
+const omcpContentWarnings = new Set<string>();
+
+/**
+ * Get the cross-plugin shared content root.
+ *
+ * This is the directory shared with oh-my-claudecode for content that is
+ * meaningfully runtime-agnostic: notepad, project memory, plans, research,
+ * plan-scoped notepads. Always resolves to `<worktree>/.omc/` (or the
+ * centralized equivalent under `OMC_STATE_DIR`) regardless of which plugin is
+ * calling, so a plan written in one CLI is visible to the other.
+ *
+ * Plugin-private state (mode state, sessions/, logs/) stays under getOmcRoot()
+ * — `.omcp/` — to avoid cross-plugin runtime contention.
+ */
+export function getSharedOmcRoot(worktreeRoot?: string): string {
+  const customDir = process.env.OMC_STATE_DIR;
+  const root = worktreeRoot || getWorktreeRoot() || process.cwd();
+  if (customDir) {
+    const projectId = getProjectIdentifier(root);
+    return join(customDir, projectId, OmcPaths.SHARED_ROOT);
+  }
+  // Safe to call repeatedly — guarded by existsSync checks.
+  migrateOmcpContentToOmc(root);
+  return join(root, OmcPaths.SHARED_ROOT);
+}
+
+/**
+ * One-time relocation of shared content from `.omcp/` to `.omc/`.
+ *
+ * For notepad.md, project-memory.json and the plans/, research/, notepads/
+ * subtrees: if the source exists under `.omcp/` and the corresponding target
+ * under `.omc/` does not, move it. Conflicts (both exist) keep the `.omc/` copy
+ * and warn once. Idempotent — repeated calls are no-ops.
+ *
+ * Skipped when `OMC_STATE_DIR` is set; the centralized layout has no `.omcp/`
+ * to migrate from.
+ *
+ * @returns true if any item was moved
+ */
+export function migrateOmcpContentToOmc(worktreeRoot: string): boolean {
+  if (process.env.OMC_STATE_DIR) return false;
+
+  const omcpRoot = join(worktreeRoot, OmcPaths.ROOT);
+  const omcRoot = join(worktreeRoot, OmcPaths.SHARED_ROOT);
+  if (!existsSync(omcpRoot)) return false;
+
+  let moved = false;
+
+  const fileMoves: Array<[string, string]> = [
+    [join(omcpRoot, 'notepad.md'), join(omcRoot, 'notepad.md')],
+    [join(omcpRoot, 'project-memory.json'), join(omcRoot, 'project-memory.json')],
+  ];
+
+  for (const [src, dst] of fileMoves) {
+    if (!existsSync(src)) continue;
+    if (existsSync(dst)) {
+      const warningKey = `omcp-content:${src}`;
+      if (!omcpContentWarnings.has(warningKey)) {
+        omcpContentWarnings.add(warningKey);
+        console.warn(
+          `[omc-share] Both ${src} and ${dst} exist. Using ${dst}; remove the ` +
+          `legacy file manually after verifying no data loss.`
+        );
+      }
+      continue;
+    }
+    try {
+      mkdirSync(dirname(dst), { recursive: true });
+      renameSync(src, dst);
+      moved = true;
+    } catch (err) {
+      console.warn(
+        `[omc-share] Failed to relocate ${src} → ${dst}: ` +
+        `${err instanceof Error ? err.message : err}`
+      );
+    }
+  }
+
+  for (const sub of ['plans', 'research', 'notepads']) {
+    const srcDir = join(omcpRoot, sub);
+    if (!existsSync(srcDir)) continue;
+    const dstDir = join(omcRoot, sub);
+    try {
+      mkdirSync(dstDir, { recursive: true });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') {
+        console.warn(`[omc-share] Could not create ${dstDir}: ${err}`);
+        continue;
+      }
+    }
+    let entries: string[];
+    try {
+      entries = readdirSync(srcDir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const s = join(srcDir, entry);
+      const d = join(dstDir, entry);
+      if (existsSync(d)) {
+        const warningKey = `omcp-content:${s}`;
+        if (!omcpContentWarnings.has(warningKey)) {
+          omcpContentWarnings.add(warningKey);
+          console.warn(
+            `[omc-share] Both ${s} and ${d} exist. Using ${d}; remove the ` +
+            `legacy entry manually after verifying no data loss.`
+          );
+        }
+        continue;
+      }
+      try {
+        renameSync(s, d);
+        moved = true;
+      } catch (err) {
+        console.warn(
+          `[omc-share] Failed to relocate ${s} → ${d}: ` +
+          `${err instanceof Error ? err.message : err}`
+        );
+      }
+    }
+  }
+
+  return moved;
 }
 
 /**

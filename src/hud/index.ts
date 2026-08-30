@@ -495,6 +495,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
         : null,
       sessionSummary,
       lastToolName: transcriptData.lastToolName,
+      recentTools: transcriptData.recentTools,
       payloadEstimate,
     };
 

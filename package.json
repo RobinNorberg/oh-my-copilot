@@ -82,6 +82,8 @@
     "release": "tsx scripts/release.ts",
     "prepublishOnly": "npm run build",
     "version": "bash scripts/sync-version.sh",
+    "generate:agent-ownership": "node scripts/generate-historical-agent-ownership.mjs",
+    "verify:agent-ownership": "node scripts/generate-historical-agent-ownership.mjs --verify",
     "generate:skill-entitlements": "node scripts/generate-skill-entitlements.mjs",
     "verify:skill-entitlements": "node scripts/generate-skill-entitlements.mjs --verify",
     "generate:prompt-projections": "node scripts/generate-prompt-projections.mjs",

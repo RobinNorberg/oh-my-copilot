@@ -47,6 +47,7 @@ import {
 import { renderMissionBoard } from "./mission-board.js";
 import { renderSessionSummary } from "./elements/session-summary.js";
 import { renderLastTool } from "./elements/last-tool.js";
+import { renderRecentTools } from "./elements/recent-tools.js";
 
 /**
  * ANSI escape sequence regex (matches SGR and other CSI sequences).
@@ -509,6 +510,16 @@ export async function render(
   if (enabledElements.showLastTool === true) {
     const tool = renderLastTool(context.lastToolName ?? null);
     if (tool) rendered.set("lastTool", tool);
+  }
+
+  if (enabledElements.showRecentTools === true) {
+    const tools = renderRecentTools(
+      context.recentTools ?? [],
+      enabledElements.recentToolsMax ?? 5,
+      enabledElements.recentToolsShowTarget !== false,
+      enabledElements.safeMode,
+    );
+    if (tools) rendered.set("recentTools", tools);
   }
 
   if (enabledElements.sessionSummary && context.sessionSummary) {
