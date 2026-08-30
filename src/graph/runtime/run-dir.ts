@@ -112,8 +112,14 @@ function openOrCreateRunsRoot(runsRoot: string): number {
 
 export interface RunDirHandle {
   readonly path: string;
-  readonly device: number;
-  readonly inode: number;
+  /**
+   * Held as bigints because file ids exceed the safe integer range on NTFS and on
+   * Linux filesystems that allocate 64-bit inodes (XFS inode64, Btrfs, overlayfs, NFS).
+   * Rounding them through Number would let two distinct directories compare equal and
+   * silently defeat the substitution check. This handle is never persisted.
+   */
+  readonly device: bigint;
+  readonly inode: bigint;
 }
 
 /**
@@ -175,7 +181,7 @@ export function resolveRunDirHandle(
         );
       }
 
-      const identity = fstatSync(directoryFd);
+      const identity = fstatSync(directoryFd, { bigint: true });
       return { path: target, device: identity.dev, inode: identity.ino };
     } finally {
       closeSync(directoryFd);
