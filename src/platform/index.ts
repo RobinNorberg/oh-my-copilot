@@ -52,3 +52,4 @@ export function isWSL(): boolean {
 // Re-exports
 export * from './process-utils.js';
 export * from './posix-shell.js';
+export * from './executable-resolution.js';

@@ -5,9 +5,9 @@
  * Supports auto-detection and installation hints.
  */
 
-import { spawnSync } from 'child_process';
 import { existsSync, readFileSync } from 'fs';
 import { dirname, extname, isAbsolute, join, parse, resolve } from 'path';
+import { isExecutableAvailable } from '../../platform/executable-resolution.js';
 
 export interface LspServerConfig {
   name: string;
@@ -262,9 +262,7 @@ export function resolvePythonServer(): LspServerConfig {
  */
 export function commandExists(command: string): boolean {
   if (isAbsolute(command)) return existsSync(command);
-  const checkCommand = process.platform === 'win32' ? 'where' : 'which';
-  const result = spawnSync(checkCommand, [command], { stdio: 'ignore' });
-  return result.status === 0;
+  return isExecutableAvailable(command);
 }
 
 /**

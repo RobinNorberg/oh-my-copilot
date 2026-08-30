@@ -582,37 +582,58 @@ describe('model-contract', () => {
   describe('isCliAvailable', () => {
     it('checks version without shell:true for standard binaries', () => {
       const mockSpawnSync = vi.mocked(spawnSync);
+      const restorePlatform = setProcessPlatform('linux');
       clearResolvedPathCache();
+      mockSpawnSync.mockClear();
       mockSpawnSync
         .mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null } as any)
         .mockReturnValueOnce({ status: 0, stdout: '', stderr: '', pid: 0, output: [], signal: null } as any);
 
       isCliAvailable('codex');
 
-      expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'which', ['codex'], { timeout: 5000, encoding: 'utf8' });
-      expect(mockSpawnSync).toHaveBeenNthCalledWith(2, 'codex', ['--version'], { timeout: 5000, shell: false });
+      expect(mockSpawnSync).toHaveBeenNthCalledWith(
+        1,
+        'which',
+        ['codex'],
+        { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true },
+      );
+      expect(mockSpawnSync).toHaveBeenNthCalledWith(
+        2,
+        'codex',
+        ['--version'],
+        { timeout: 5000, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], shell: false, windowsHide: true },
+      );
+      restorePlatform();
       clearResolvedPathCache();
       mockSpawnSync.mockRestore();
     });
 
-    it('uses COMSPEC for .cmd binaries on win32', () => {
+    it('falls back to COMSPEC when a .cmd shim refuses to start directly on win32', () => {
       const mockSpawnSync = vi.mocked(spawnSync);
       const restorePlatform = setProcessPlatform('win32');
       vi.stubEnv('COMSPEC', 'C:\\Windows\\System32\\cmd.exe');
       clearResolvedPathCache();
+      mockSpawnSync.mockClear();
 
       mockSpawnSync
         .mockReturnValueOnce({ status: 0, stdout: 'C:\\Tools\\codex.cmd\n', stderr: '', pid: 0, output: [], signal: null } as any)
-        .mockReturnValueOnce({ status: 0, stdout: '', stderr: '', pid: 0, output: [], signal: null } as any);
+        // Node cannot exec a .cmd shim directly; it reports EINVAL without ever starting.
+        .mockReturnValueOnce({ status: null, stdout: '', stderr: '', pid: 0, output: [], signal: null, error: Object.assign(new Error('spawn EINVAL'), { code: 'EINVAL' }) } as any)
+        .mockReturnValueOnce({ status: 0, stdout: 'codex 1.2.3\n', stderr: '', pid: 0, output: [], signal: null } as any);
 
-      isCliAvailable('codex');
+      expect(isCliAvailable('codex')).toBe(true);
 
-      expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'where', ['codex'], { timeout: 5000, encoding: 'utf8' });
       expect(mockSpawnSync).toHaveBeenNthCalledWith(
-        2,
+        1,
+        'where.exe',
+        ['codex'],
+        { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true },
+      );
+      expect(mockSpawnSync).toHaveBeenNthCalledWith(
+        3,
         'C:\\Windows\\System32\\cmd.exe',
-        ['/d', '/s', '/c', '"C:\\Tools\\codex.cmd" --version'],
-        { timeout: 5000 }
+        ['/d', '/v:off', '/s', '/c', '""C:\\Tools\\codex.cmd" --version"'],
+        expect.objectContaining({ timeout: 5000, shell: false, windowsVerbatimArguments: true }),
       );
       restorePlatform();
       clearResolvedPathCache();
@@ -624,6 +645,7 @@ describe('model-contract', () => {
       const mockSpawnSync = vi.mocked(spawnSync);
       const restorePlatform = setProcessPlatform('win32');
       clearResolvedPathCache();
+      mockSpawnSync.mockClear();
 
       mockSpawnSync
         .mockReturnValueOnce({ status: 1, stdout: '', stderr: '', pid: 0, output: [], signal: null } as any)
@@ -631,7 +653,12 @@ describe('model-contract', () => {
 
       isCliAvailable('gemini');
 
-      expect(mockSpawnSync).toHaveBeenNthCalledWith(1, 'where', ['gemini'], { timeout: 5000, encoding: 'utf8' });
+      expect(mockSpawnSync).toHaveBeenNthCalledWith(
+        1,
+        'where.exe',
+        ['gemini'],
+        { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true },
+      );
       expect(mockSpawnSync).toHaveBeenNthCalledWith(2, 'gemini', ['--version'], { timeout: 5000, shell: true });
       restorePlatform();
       clearResolvedPathCache();

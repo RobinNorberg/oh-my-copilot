@@ -4,6 +4,7 @@ import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
 import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
 import { isExternalLLMDisabled } from '../lib/security-config.js';
+import { probeExecutable, resolveExecutable } from '../platform/executable-resolution.js';
 import type { WorkerLaunchDescriptor } from './types.js';
 
 export type CliAgentType = 'claude' | 'copilot' | 'codex' | 'gemini' | 'cursor' | 'grok' | 'antigravity';
@@ -112,23 +113,12 @@ export function resolveCliBinaryPath(binary: string): string {
   const cached = resolvedPathCache.get(binary);
   if (cached) return cached;
 
-  const finder = process.platform === 'win32' ? 'where' : 'which';
-  const result = spawnSync(finder, [binary], {
-    timeout: 5000,
-    env: process.env,
-  });
-
-  if (result.status !== 0) {
+  const found = resolveExecutable(binary);
+  if (!found) {
     throw new Error(`CLI binary '${binary}' not found in PATH`);
   }
 
-  const stdout = result.stdout?.toString().trim() ?? '';
-  const firstLine = stdout.split('\n').map(line => line.trim()).find(Boolean) ?? '';
-  if (!firstLine) {
-    throw new Error(`CLI binary '${binary}' not found in PATH`);
-  }
-
-  const resolvedPath = normalize(firstLine);
+  const resolvedPath = normalize(found);
   if (!isAbsolute(resolvedPath)) {
     throw new Error(`Resolved CLI binary '${binary}' to relative path`);
   }
@@ -352,39 +342,23 @@ function resolveBinaryPath(binary: string): string {
   validateBinaryRef(binary);
   if (isAbsolute(binary)) return binary;
 
-  try {
-    const resolver = process.platform === 'win32' ? 'where' : 'which';
-    const result = spawnSync(resolver, [binary], { timeout: 5000, encoding: 'utf8' });
-    if (result.status !== 0) return binary;
-
-    const lines = result.stdout
-      ?.split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean) ?? [];
-
-    const firstPath = lines[0];
-    const isResolvedAbsolute = !!firstPath && (isAbsolute(firstPath) || win32Path.isAbsolute(firstPath));
-    return isResolvedAbsolute ? firstPath : binary;
-  } catch {
-    return binary;
-  }
+  // An unresolvable name falls back to the bare binary so a PATH lookup by the
+  // spawning shell still gets a chance.
+  return resolveExecutable(binary) ?? binary;
 }
 
 export function isCliAvailable(agentType: CliAgentType): boolean {
   const contract = getContract(agentType);
   try {
     const resolvedBinary = resolveBinaryPath(contract.binary);
-    if (process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedBinary)) {
-      const comspec = process.env.COMSPEC || 'cmd.exe';
-      const result = spawnSync(comspec, ['/d', '/s', '/c', `"${resolvedBinary}" --version`], { timeout: 5000 });
+
+    if (resolvedBinary === contract.binary && process.platform === 'win32') {
+      // Unresolved on Windows: only a shell PATH lookup can still find it.
+      const result = spawnSync(resolvedBinary, ['--version'], { timeout: 5000, shell: true });
       return result.status === 0;
     }
 
-    const result = spawnSync(resolvedBinary, ['--version'], {
-      timeout: 5000,
-      shell: process.platform === 'win32',
-    });
-    return result.status === 0;
+    return probeExecutable(resolvedBinary, { timeoutMs: 5000 }).exitedZero;
   } catch {
     return false;
   }

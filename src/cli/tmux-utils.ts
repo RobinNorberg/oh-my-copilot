@@ -14,8 +14,9 @@ import {
   type SpawnSyncOptionsWithStringEncoding,
   type SpawnSyncReturns,
 } from 'child_process';
-import { basename, isAbsolute, win32 as win32Path } from 'path';
+import { basename } from 'path';
 import { promisify } from 'util';
+import { resolveExecutable } from '../platform/executable-resolution.js';
 
 // ── tmux environment & execution wrappers ────────────────────────────────────
 
@@ -153,26 +154,7 @@ function resolveTmuxBinaryPath(): string {
     return 'tmux';
   }
 
-  try {
-    const result = spawnSync('where', ['tmux'], {
-      timeout: 5000,
-      encoding: 'utf8',
-    });
-    if (result.status !== 0) return 'tmux';
-
-    const candidates = result.stdout
-      ?.split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean) ?? [];
-    const first = candidates[0];
-    if (first && (isAbsolute(first) || win32Path.isAbsolute(first))) {
-      return first;
-    }
-  } catch {
-    // Fall back to plain tmux lookup below.
-  }
-
-  return 'tmux';
+  return resolveExecutable('tmux') ?? 'tmux';
 }
 
 /**
