@@ -190,19 +190,19 @@ function dssePayload(sha512: string, overrides: Record<string, unknown> = {}): R
         buildType: 'https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1',
         externalParameters: {
           workflow: {
-            repository: 'https://github.com/Yeachan-Heo/oh-my-copilot',
+            repository: 'https://github.com/RobinNorberg/oh-my-copilot',
             path: '.github/workflows/ci.yml',
             ref: `refs/tags/${TAG}`,
           },
         },
         resolvedDependencies: [{
-          uri: `git+https://github.com/Yeachan-Heo/oh-my-copilot@refs/tags/${TAG}`,
+          uri: `git+https://github.com/RobinNorberg/oh-my-copilot@refs/tags/${TAG}`,
           digest: { gitCommit: SHA },
         }],
       },
       runDetails: {
         builder: { id: 'https://github.com/actions/runner/github-hosted' },
-        metadata: { invocationId: 'https://github.com/Yeachan-Heo/oh-my-copilot/actions/runs/123' },
+        metadata: { invocationId: 'https://github.com/RobinNorberg/oh-my-copilot/actions/runs/123' },
       },
     },
     ...overrides,

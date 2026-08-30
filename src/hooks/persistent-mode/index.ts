@@ -2292,7 +2292,7 @@ async function resolvePersistentModeBlock(
 
   // CRITICAL: Never block context-limit/critical-context stops.
   // Blocking these causes a deadlock where Claude Code cannot compact or exit.
-  // See: https://github.com/Yeachan-Heo/oh-my-copilot/issues/213
+  // See: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/213
   if (isCriticalContextStop(stopContext)) {
     return {
       shouldBlock: false,
@@ -2337,7 +2337,7 @@ async function resolvePersistentModeBlock(
   // When the API returns 429 / quota-exhausted, Claude Code stops the session.
   // Blocking these stops creates an infinite retry loop: the hook injects a
   // continuation prompt → Claude hits the rate limit again → stops again → loops.
-  // Fix for: https://github.com/Yeachan-Heo/oh-my-copilot/issues/777
+  // Fix for: https://github.com/Yeachan-Heo/oh-my-claudecode/issues/777
   if (isRateLimitStop(stopContext)) {
     return {
       shouldBlock: false,

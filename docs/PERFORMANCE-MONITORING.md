@@ -331,7 +331,7 @@ Visit the platform to:
 | Resource | Description | Link |
 |----------|-------------|------|
 | Claude Code Discord | Community support and tips | [discord.gg/anthropic](https://discord.gg/anthropic) |
-| OMC GitHub Issues | Bug reports and feature requests | [GitHub Issues](https://github.com/Yeachan-Heo/oh-my-copilot/issues) |
+| OMC GitHub Issues | Bug reports and feature requests | [GitHub Issues](https://github.com/Yeachan-Heo/oh-my-claudecode/issues) |
 | Anthropic Documentation | Official Claude documentation | [docs.anthropic.com](https://docs.anthropic.com) |
 
 ### Model Performance Benchmarks

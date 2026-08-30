@@ -31,7 +31,7 @@ import { execFileSync, execSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
 
-const REPOSITORY = 'Yeachan-Heo/oh-my-copilot';
+const REPOSITORY = 'RobinNorberg/oh-my-copilot';
 const BASE_SHA = '05c800f40d1ad53b42a78609d2667ef4f726808b';
 const PLANNING_HEAD_SHA = '0a91273e61dbbd47eb0af4c02844409251e08398';
 const SCHEMA_VERSION = 2;

@@ -213,7 +213,7 @@ jobs:
               const headers = { "User-Agent": "omc-upgrade-test" };
               if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
 
-              fetch("https://api.github.com/repos/Yeachan-Heo/oh-my-copilot/releases/latest", { headers })
+              fetch("https://api.github.com/repos/RobinNorberg/oh-my-copilot/releases/latest", { headers })
                 .then(async response => {
                   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
                   const release = await response.json();

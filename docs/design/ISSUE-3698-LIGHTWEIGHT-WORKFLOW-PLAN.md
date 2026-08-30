@@ -4,7 +4,7 @@
 **Owner:** Yeachan-Heo / 허예찬
 **Base measured:** `origin/dev` / `05c800f40d1ad53b42a78609d2667ef4f726808b` (2026-08-12)
 **Planning head verified:** updated on each pushed fix-forward commit (PR #3701); the seed census and durable graph ownership remain distinct.
-**Epic:** [#3698](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3698)
+**Epic:** [#3698](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3698)
 
 ## 1. Scope and non-goals
 
@@ -266,17 +266,17 @@ Existing installations receive generated projections and alias mappings through 
 
 Create these as one coherent issue each, linked to #3698, only after this plan is reviewed:
 
-1. **Inventory manifest and graph generator** ([#3702](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3702)) — produce the durable JSON inventories/call graph, baseline artifact, and drift tests. Depends on none; rollback is delete-only script removal.
-2. **Workflow registry and compatibility policy** ([#3703](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3703)) — schema for canonical names, aliases, risk classes, owners, warnings, milestones. Depends on #3702.
-3. **Prompt SSOT composer and projection digests** ([#3704](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3704)) — structured sections, manifest, deterministic projections, drift/token metrics. Depends on #3702 and #3703.
-4. **Prompt projection parity and install migration** ([#3705](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3705)) — generated CLAUDE/agent/command/skill projections, package/plugin smoke and rollback. Depends on #3704.
-5. **Alias resolver and telemetry** ([#3706](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3706)) — route all classified aliases, one warning/session, migration dashboard/receipt. Depends on #3703.
-6. **Hook registry and dispatcher shadow mode** ([#3707](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3707)) — explicit event/state/lock/timeout/cleanup contracts, shadow comparison only. Depends on #3702 and #3703.
-7. **Hook dispatcher cutover by event family** ([#3708](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3708)) — migrate pre/post/session families with latency/error budgets and rollback flags. Depends on #3707.
-8. **Gate rationalization** ([#3709](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3709)) — convert/delete ceremony gates and merge duplicate evidence; retain hard risk taxonomy. Depends on #3703, #3707, and #3708.
-9. **Canonical workflow UX and documentation** ([#3710](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3710)) — simplify help, commands, skills, CLAUDE projections, migration guide. Depends on #3704, #3705, #3706, and #3709.
-10. **Alias retirement and generated closure cleanup** ([#3711](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3711)) — remove only proven aliases/duplicate projections after the two-release/90-day threshold and canonical-use proof. Depends on #3706 and #3710.
-11. **Release/installation verification and epic closure** ([#3712](https://github.com/Yeachan-Heo/oh-my-copilot/issues/3712)) — verify shipped metrics, migration receipts, child terminality, and remaining risk evidence. Depends on #3705, #3708, #3709, #3710, and #3711.
+1. **Inventory manifest and graph generator** ([#3702](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3702)) — produce the durable JSON inventories/call graph, baseline artifact, and drift tests. Depends on none; rollback is delete-only script removal.
+2. **Workflow registry and compatibility policy** ([#3703](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3703)) — schema for canonical names, aliases, risk classes, owners, warnings, milestones. Depends on #3702.
+3. **Prompt SSOT composer and projection digests** ([#3704](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3704)) — structured sections, manifest, deterministic projections, drift/token metrics. Depends on #3702 and #3703.
+4. **Prompt projection parity and install migration** ([#3705](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3705)) — generated CLAUDE/agent/command/skill projections, package/plugin smoke and rollback. Depends on #3704.
+5. **Alias resolver and telemetry** ([#3706](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3706)) — route all classified aliases, one warning/session, migration dashboard/receipt. Depends on #3703.
+6. **Hook registry and dispatcher shadow mode** ([#3707](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3707)) — explicit event/state/lock/timeout/cleanup contracts, shadow comparison only. Depends on #3702 and #3703.
+7. **Hook dispatcher cutover by event family** ([#3708](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3708)) — migrate pre/post/session families with latency/error budgets and rollback flags. Depends on #3707.
+8. **Gate rationalization** ([#3709](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3709)) — convert/delete ceremony gates and merge duplicate evidence; retain hard risk taxonomy. Depends on #3703, #3707, and #3708.
+9. **Canonical workflow UX and documentation** ([#3710](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3710)) — simplify help, commands, skills, CLAUDE projections, migration guide. Depends on #3704, #3705, #3706, and #3709.
+10. **Alias retirement and generated closure cleanup** ([#3711](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3711)) — remove only proven aliases/duplicate projections after the two-release/90-day threshold and canonical-use proof. Depends on #3706 and #3710.
+11. **Release/installation verification and epic closure** ([#3712](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/3712)) — verify shipped metrics, migration receipts, child terminality, and remaining risk evidence. Depends on #3705, #3708, #3709, #3710, and #3711.
 
 Each child issue must include: exact files/symbols, baseline/target metric, parity tests, owner, rollback boundary, and explicit non-goals. No child may batch unrelated implementation.
 

@@ -39,7 +39,7 @@ Most users want **both**: the plugin for the in-session experience, and the npm 
 Run the following command inside Claude Code:
 
 ```bash
-/plugin marketplace add https://github.com/Yeachan-Heo/oh-my-copilot
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
 ```
 
 ### Step 2: Install the plugin
@@ -62,7 +62,7 @@ npm i -g oh-my-copilot@latest
 > The warning currently comes from the upstream `better-sqlite3` native-addon dependency
 > (`better-sqlite3 -> prebuild-install`); `prebuild-install@7.1.3` is still the latest
 > published version, so there is no safe repo-side dependency bump or override to remove it
-> yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-copilot/issues/2913)
+> yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
 > and does not by itself mean the OMC CLI install failed.
 
 Both can be installed at the same time. The CLI auto-detects the plugin install and will not double-register skills under `~/.claude/skills/` (if you previously hit the duplicate-skill bug, run `omc update` once on 4.11.2+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).

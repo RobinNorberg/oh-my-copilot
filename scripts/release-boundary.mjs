@@ -25,7 +25,7 @@ const GITHUB_ACTIONS_WORKFLOW_V1_BUILD_TYPE = 'https://slsa-framework.github.io/
 
 const GITHUB_HOSTED_BUILDER_ID = 'https://github.com/actions/runner/github-hosted';
 
-const REPOSITORY_URL = 'https://github.com/Yeachan-Heo/oh-my-copilot';
+const REPOSITORY_URL = 'https://github.com/RobinNorberg/oh-my-copilot';
 const WORKFLOW_PATH = '.github/workflows/ci.yml';
 const EXPECTED_BINS = Object.freeze({
   'oh-my-copilot': 'bin/oh-my-copilot.js',
@@ -870,7 +870,7 @@ function assertRunMetadata(predicate, tag) {
       fail('SLSA invocation metadata does not identify the expected repository');
     }
     const invocationId = invocationMetadata.invocationId;
-    if (invocationId !== undefined && (typeof invocationId !== 'string' || !invocationId.includes('Yeachan-Heo/oh-my-copilot'))) {
+    if (invocationId !== undefined && (typeof invocationId !== 'string' || !invocationId.includes('RobinNorberg/oh-my-copilot'))) {
       fail('SLSA invocation metadata does not identify the expected repository');
     }
   }

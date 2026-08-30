@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-const REPOSITORY = 'Yeachan-Heo/oh-my-copilot';
+const REPOSITORY = 'Yeachan-Heo/oh-my-claudecode';
 const OWNER = 'Yeachan-Heo';
 const MERGE_BASE_SHA = '76c90920b74494df6e34d6165be963bca8a9adf6';
 const LIVE_BASE_SHA = '21a6e488ce12d79b9a22d37e1093ac8e79f21029';
@@ -236,10 +236,10 @@ describe('generated-artifact base-owned authorization decision', () => {
     it('allows ordinary contributor pull requests with no generated changes and no authorization entry', () => {
         const input = authorizedInput();
         const sourceFile = { status: 'modified', filename: 'src/index.ts', sha: 'a'.repeat(40) };
-        input.event.pull_request.head.repo.full_name = 'contributor/oh-my-copilot';
+        input.event.pull_request.head.repo.full_name = 'contributor/oh-my-claudecode';
         input.event.pull_request.user.login = 'contributor';
         input.event.pull_request.author_association = 'CONTRIBUTOR';
-        input.livePull.head.repo.full_name = 'contributor/oh-my-copilot';
+        input.livePull.head.repo.full_name = 'contributor/oh-my-claudecode';
         input.livePull.user.login = 'contributor';
         input.livePull.author_association = 'CONTRIBUTOR';
         input.livePull.changed_files = 1;
@@ -268,7 +268,7 @@ describe('generated-artifact base-owned authorization decision', () => {
             input.runtimeCommit.sha = 'b'.repeat(40);
         }, 'runtime GITHUB_SHA does not match the current protected default-main commit SHA');
         expectDenied(input => {
-            input.environment.githubWorkflowRef = `attacker/oh-my-copilot/.github/workflows/generated-artifact-authorization.yml@refs/heads/main`;
+            input.environment.githubWorkflowRef = `attacker/oh-my-claudecode/.github/workflows/generated-artifact-authorization.yml@refs/heads/main`;
         }, 'runtime GITHUB_WORKFLOW_REF');
         expectDenied(input => {
             input.environment.githubWorkflowSha = 'b'.repeat(40);
@@ -298,7 +298,7 @@ describe('generated-artifact base-owned authorization decision', () => {
             input.livePull.base.sha = 'b'.repeat(40);
         }, 'stale or ref-confused');
         expectDenied(input => {
-            input.repositoryMetadata.full_name = 'attacker/oh-my-copilot';
+            input.repositoryMetadata.full_name = 'attacker/oh-my-claudecode';
         }, 'live repository metadata repository does not match');
         expectDenied(input => {
             input.repositoryMetadata.owner.login = 'attacker';
@@ -376,8 +376,8 @@ describe('generated-artifact base-owned authorization decision', () => {
     });
     it('rejects generated changes from forks and non-owner contributors', () => {
         expectDenied(input => {
-            input.event.pull_request.head.repo.full_name = 'fork/oh-my-copilot';
-            input.livePull.head.repo.full_name = 'fork/oh-my-copilot';
+            input.event.pull_request.head.repo.full_name = 'fork/oh-my-claudecode';
+            input.livePull.head.repo.full_name = 'fork/oh-my-claudecode';
         }, 'fork');
         expectDenied(input => {
             input.event.pull_request.user.login = 'contributor';

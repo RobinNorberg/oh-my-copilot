@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-const DEFAULT_REPO_URL = 'https://github.com/Yeachan-Heo/oh-my-copilot';
+const DEFAULT_REPO_URL = 'https://github.com/RobinNorberg/oh-my-copilot';
 const CONVENTIONAL_RE = /^(?<type>[a-z]+)(?:\((?<scope>[^)]*)\))?:\s*(?<desc>.+)$/;
 function parseConventionalSubject(raw) {
     const match = raw.match(CONVENTIONAL_RE);

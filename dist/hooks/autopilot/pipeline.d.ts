@@ -8,7 +8,7 @@
  * via PipelineConfig. The orchestrator manages state transitions, signal
  * detection, and prompt generation.
  *
- * @see https://github.com/Yeachan-Heo/oh-my-copilot/issues/1130
+ * @see https://github.com/Yeachan-Heo/oh-my-claudecode/issues/1130
  */
 import type { AutopilotWorkflowProfileV1 } from "../../shared/types.js";
 import type { PipelineConfig, PipelineStageAdapter, PipelineTracking, PipelinePhase, PipelineStageId, WorkflowProfileStages, WorkflowDescriptor } from "./pipeline-types.js";

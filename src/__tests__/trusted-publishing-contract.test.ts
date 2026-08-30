@@ -46,7 +46,7 @@ describe('npm trusted publishing contract', () => {
     expect(releaseJob).toContain('npm install --global npm@11.17.0');
     expect(releaseJob).toContain('test "$(npm --version)" = "11.17.0"');
     expect(releaseBoundary).toContain("const WORKFLOW_PATH = '.github/workflows/ci.yml'");
-    expect(releaseBoundary).toContain("const REPOSITORY_URL = 'https://github.com/Yeachan-Heo/oh-my-copilot'");
+    expect(releaseBoundary).toContain("const REPOSITORY_URL = 'https://github.com/RobinNorberg/oh-my-copilot'");
     expect(releaseBoundary).not.toContain("const WORKFLOW_PATH = '.github/workflows/release.yml'");
   });
 
