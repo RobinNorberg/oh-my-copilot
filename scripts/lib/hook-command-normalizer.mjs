@@ -1,38 +1,28 @@
-import { spawnSync } from 'node:child_process';
-
-// The shipped manifest form. `node` is the only launcher that both cmd.exe and
-// POSIX sh resolve the same way, so this command string is platform-neutral and
-// survives marketplace updates and config directories shared across OSes.
+// The shipped manifest form, and the only one Windows can run: `node` is the
+// one launcher cmd.exe and POSIX sh resolve the same way, and Windows has no
+// `sh` to bootstrap with. Shipping this form keeps a fresh plugin cache usable
+// on Windows without any rewrite.
 export const PORTABLE_HOOK_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs ';
 export const WINDOWS_HOOK_PREFIX = PORTABLE_HOOK_PREFIX;
-// Bootstrap for the one case the portable form cannot cover: a POSIX host whose
-// non-interactive hook environment has no `node` on PATH (nvm/fnm, issue #892).
+// The POSIX form. find-node.sh resolves `node` from PATH when it is there and
+// from the nvm/fnm/volta locations when it is not, so this works in both cases
+// while the bare-node form works only in the first (issue #892).
 export const UNIX_HOOK_PREFIX = 'sh "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs ';
 
 /**
- * True when a bare `node` resolves from the environment hooks will be spawned
- * with. Under an npm lifecycle script npm prepends its own Node directory to
- * PATH, so the probe cannot see the real hook PATH and reports false — keeping
- * the find-node bootstrap, which is correct either way.
+ * The hook prefix a platform can execute.
+ *
+ * POSIX always gets the find-node bootstrap. An earlier version probed whether
+ * a bare `node` resolved and skipped the bootstrap when it did, but the probe
+ * ran in the setup process, not in the environment the host CLI later spawns
+ * hooks in. An nvm/fnm user who runs setup from an interactive shell and then
+ * launches the CLI from a desktop launcher or launchd has node on PATH for the
+ * probe and not for the hooks, so every hook dies — the exact shape of #892.
+ * The bootstrap is correct whether or not node is on PATH, so there is nothing
+ * to gain by guessing.
  */
-export function nodeResolvesOnHookPath(env = process.env) {
-  if (env.npm_lifecycle_event || env.npm_execpath) return false;
-  try {
-    return spawnSync('node', ['-v'], { env, timeout: 5000, windowsHide: true, stdio: 'ignore' }).status === 0;
-  } catch {
-    return false;
-  }
-}
-
-export function hookPrefixForEnvironment({ platform = process.platform, nodeOnPath } = {}) {
-  // Windows has no `sh`, so the bootstrap form is never an option there.
-  if (platform === 'win32') return PORTABLE_HOOK_PREFIX;
-  const resolvable = nodeOnPath ?? nodeResolvesOnHookPath();
-  return resolvable ? PORTABLE_HOOK_PREFIX : UNIX_HOOK_PREFIX;
-}
-
 export function hookPrefixForPlatform(platform = process.platform) {
-  return hookPrefixForEnvironment({ platform });
+  return platform === 'win32' ? PORTABLE_HOOK_PREFIX : UNIX_HOOK_PREFIX;
 }
 
 export function normalizeHookCommand(command, prefix = hookPrefixForPlatform()) {

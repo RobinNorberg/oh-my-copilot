@@ -27,23 +27,12 @@ function writePluginRoot(root: string, version: string): void {
 }
 
 /**
- * Environment for the repair script. The hook-prefix probe deliberately refuses
- * to trust an npm-managed PATH, so the npm lifecycle variables vitest inherits
- * must be cleared for either branch to be reachable.
+ * Environment for the repair script. The prefix is chosen from the platform
+ * alone, so PATH is deliberately left as inherited — an earlier version probed
+ * it, which sampled the wrong process's environment.
  */
-function hookRepairEnv(
-  configDir: string,
-  { nodeOnPath, root }: { nodeOnPath: boolean; root?: string },
-): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env, COPILOT_CONFIG_DIR: configDir };
-  delete env.npm_lifecycle_event;
-  delete env.npm_execpath;
-  if (!nodeOnPath && root) {
-    const emptyBin = join(root, 'empty-bin');
-    mkdirSync(emptyBin, { recursive: true });
-    env.PATH = emptyBin;
-  }
-  return env;
+function hookRepairEnv(configDir: string): NodeJS.ProcessEnv {
+  return { ...process.env, COPILOT_CONFIG_DIR: configDir };
 }
 
 afterEach(() => {
@@ -124,7 +113,11 @@ describe('repair-plugin-cache.mjs', () => {
     });
   });
 
-  it.runIf(process.platform !== 'win32')('leaves the portable node run.cjs form alone when node is on PATH', () => {
+  it.runIf(process.platform !== 'win32')('rewrites the shipped form to the bootstrap even when node is on PATH', () => {
+    // find-node.sh works whether or not node is on PATH, so POSIX takes it
+    // unconditionally. Leaving the bare-node form because node happens to
+    // resolve here would break the same install once the CLI is launched from
+    // a desktop entry whose PATH lacks the version-manager shim.
     const root = mkdtempSync(join(tmpdir(), 'omc-repair-unix-portable-hooks-'));
     tempRoots.push(root);
 
@@ -140,16 +133,18 @@ describe('repair-plugin-cache.mjs', () => {
     }, null, 2));
 
     const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-      env: hookRepairEnv(configDir, { nodeOnPath: true }),
+      env: hookRepairEnv(configDir),
       encoding: 'utf-8',
     });
 
     expect(result.status).toBe(0);
     const hooksJson = JSON.parse(readFileSync(join(pluginRoot, 'hooks', 'hooks.json'), 'utf-8'));
-    expect(hooksJson.hooks.SessionEnd[0].hooks[0].command).toBe(portable);
+    expect(hooksJson.hooks.SessionEnd[0].hooks[0].command).toBe(
+      'sh "$CLAUDE_PLUGIN_ROOT"/scripts/find-node.sh "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/session-end.mjs',
+    );
   });
 
-  it.runIf(process.platform !== 'win32')('repairs Unix cache hooks to the find-node bootstrap when node is off PATH', () => {
+  it.runIf(process.platform !== 'win32')('repairs Unix cache hooks to the find-node bootstrap', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-repair-unix-hooks-'));
     tempRoots.push(root);
 
@@ -170,7 +165,7 @@ describe('repair-plugin-cache.mjs', () => {
     }, null, 2));
 
     const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-      env: hookRepairEnv(configDir, { nodeOnPath: false, root }),
+      env: hookRepairEnv(configDir),
       encoding: 'utf-8',
     });
 
@@ -182,7 +177,7 @@ describe('repair-plugin-cache.mjs', () => {
     );
   });
 
-  it.runIf(process.platform !== 'win32')('repairs every bundled hook command to find-node when node is off PATH', () => {
+  it.runIf(process.platform !== 'win32')('repairs every bundled hook command to find-node', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-repair-unix-bundled-hooks-'));
     tempRoots.push(root);
 
@@ -196,7 +191,7 @@ describe('repair-plugin-cache.mjs', () => {
     );
 
     const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-      env: hookRepairEnv(configDir, { nodeOnPath: false, root }),
+      env: hookRepairEnv(configDir),
       encoding: 'utf-8',
     });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -163,6 +163,34 @@ describe('setup-progress.mjs', () => {
     expect(existsSync(join(legacyDir, '.omc-config.json'))).toBe(true);
   });
 
+  it('resolves the omc version binary from PATH, never from the working directory', () => {
+    // cmd.exe and where.exe both search the current directory first, so a
+    // cloned repository carrying an omc.cmd would otherwise run during setup.
+    const { root, project, configDir } = makeWorkspace('omc-progress-cwd-omc-');
+    const marker = join(root, 'planted-omc-ran.txt');
+    const planted = process.platform === 'win32' ? 'omc.cmd' : 'omc';
+    writeFileSync(
+      join(project, planted),
+      process.platform === 'win32'
+        ? `@echo off\r\n> "${marker}" echo ran\r\necho 9.9.9-planted\r\n`
+        : `#!/bin/sh\necho ran > "${marker}"\necho 9.9.9-planted\n`,
+      process.platform === 'win32' ? undefined : { mode: 0o755 },
+    );
+
+    const result = spawnSync(process.execPath, [SETUP_PROGRESS, 'complete'], {
+      cwd: project,
+      encoding: 'utf-8',
+      env: { ...process.env, COPILOT_CONFIG_DIR: configDir },
+    });
+
+    expect(result.status).toBe(0);
+    expect(existsSync(marker)).toBe(false);
+    const config = JSON.parse(readFileSync(join(configDir, '.omc-config.json'), 'utf-8')) as {
+      setupVersion: string;
+    };
+    expect(config.setupVersion).not.toContain('planted');
+  });
+
   it('leaves an existing config alone rather than adopting the legacy one', () => {
     const { root, project } = makeWorkspace('omc-progress-no-adopt-');
     const home = join(root, 'home');
@@ -262,6 +290,25 @@ describe('uninstall.mjs', () => {
     expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
     expect(settings.hooks.UserPromptSubmit[0].hooks[0].command).toBe('vendor/third-party.sh');
     expect(settings.hooks.Stop).toBeUndefined();
+  });
+
+  it('keeps an earlier backup instead of overwriting it', () => {
+    const { project, configDir } = makeWorkspace('omc-uninstall-backup-');
+    const settingsPath = seedInstall(configDir);
+    const existingBackup = `${settingsPath}.bak`;
+    writeFileSync(existingBackup, '{"from":"an earlier uninstall"}');
+
+    const result = runScript(UNINSTALL, ['--yes'], project, configDir);
+
+    expect(result.status).toBe(0);
+    // The pre-existing backup is the only copy of what settings looked like
+    // before that run, so this run must not clobber it.
+    expect(readFileSync(existingBackup, 'utf-8')).toBe('{"from":"an earlier uninstall"}');
+    const stamped = readdirSync(configDir).filter(
+      name => name.startsWith('settings.json.') && name.endsWith('.bak') && name !== 'settings.json.bak',
+    );
+    expect(stamped).toHaveLength(1);
+    expect(JSON.parse(readFileSync(join(configDir, stamped[0]), 'utf-8')).model).toBe('opus');
   });
 
   it('refuses to run unattended without --yes', () => {

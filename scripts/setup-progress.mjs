@@ -12,21 +12,12 @@
 // setup skill no longer needs a jq/grep/sed preamble to compute it.
 
 import { spawnSync } from 'node:child_process';
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { constants as fsConstants, copyFileSync, existsSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join } from 'node:path';
 import process from 'node:process';
 
+import { atomicWriteFileSync, ensureDirSync } from './lib/atomic-write.mjs';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 import { resolveOmcStateRoot } from './lib/state-root.mjs';
 
@@ -37,6 +28,11 @@ const CONFIG_FILE = join(CONFIG_DIR, '.omc-config.json');
 
 const STALE_STATE_MS = 24 * 60 * 60 * 1000;
 const STALE_SKILL_STATE_MS = 30 * 60 * 1000;
+const VERSION_PROBE_TIMEOUT_MS = 3000;
+// cmd.exe re-parses the command line, so only a path of this shape is handed to
+// it. Mirrors SAFE_BATCH_PATH in src/platform/executable-resolution.ts.
+const SAFE_BATCH_PATH = /^[A-Za-z]:\\(?:[A-Za-z0-9 ._-]+\\)*[A-Za-z0-9 ._-]+\.(?:cmd|bat)$/i;
+const DEFAULT_COMSPEC = 'C:\\Windows\\System32\\cmd.exe';
 // Mirrors SESSION_ID_REGEX in the TypeScript runtime.
 const SESSION_ID_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$/;
 
@@ -62,11 +58,14 @@ function adoptLegacyConfigFile() {
   if (legacy === CONFIG_FILE || !existsSync(legacy)) return;
 
   try {
-    mkdirSync(dirname(CONFIG_FILE), { recursive: true });
-    copyFileSync(legacy, CONFIG_FILE);
+    ensureDirSync(dirname(CONFIG_FILE));
+    // COPYFILE_EXCL makes "never overwrite" the filesystem's guarantee rather
+    // than a check that another process can win the race against.
+    copyFileSync(legacy, CONFIG_FILE, fsConstants.COPYFILE_EXCL);
     console.log(`Adopted settings from ${legacy}`);
     console.log(`The active config is now ${CONFIG_FILE}; the old file is no longer read.`);
   } catch (error) {
+    if (error?.code === 'EEXIST') return;
     console.log(`Note: could not copy ${legacy} (${error instanceof Error ? error.message : String(error)})`);
   }
 }
@@ -81,17 +80,14 @@ function readJsonFile(path) {
   return JSON.parse(raw);
 }
 
-/** Replace `path` with `content` without ever truncating the destination first. */
+/**
+ * Replace `path` with `content` without ever truncating the destination first.
+ * Delegates to the shared primitive, which creates its temp file with O_EXCL
+ * under a random name and fsyncs both the file and its directory — a
+ * hand-rolled `path.tmp.<pid>` is both guessable and plantable as a symlink.
+ */
 function writeJsonAtomic(path, value) {
-  mkdirSync(dirname(path), { recursive: true });
-  const tmp = `${path}.tmp.${process.pid}`;
-  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
-  try {
-    renameSync(tmp, path);
-  } catch (error) {
-    rmSync(tmp, { force: true });
-    throw error;
-  }
+  atomicWriteFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
 /** Config type recorded by an earlier `save`, so later phases need not recompute it. */
@@ -207,6 +203,59 @@ function versionFromClaudeMd(path) {
   return content.match(/OMC:VERSION:(\S+)/)?.[1] ?? '';
 }
 
+/**
+ * Absolute path of `omc` on PATH, or '' when it is not installed.
+ *
+ * Resolved by walking PATH rather than by asking a shell or `where.exe`: both
+ * of those search the current directory first, so running setup inside a cloned
+ * repository that happens to contain an `omc.cmd` would execute it. Relative
+ * PATH entries are skipped for the same reason.
+ */
+function resolveOmcBinary() {
+  const isWindows = process.platform === 'win32';
+  const entries = (process.env.PATH ?? '').split(isWindows ? ';' : ':');
+  const extensions = isWindows
+    ? (process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean)
+    : [''];
+
+  for (const entry of entries) {
+    const dir = entry.trim().replace(/^"|"$/g, '');
+    if (!dir || !isAbsolute(dir)) continue;
+    for (const extension of extensions) {
+      const candidate = join(dir, `omc${extension}`);
+      try {
+        if (statSync(candidate).isFile()) return candidate;
+      } catch {
+        // Not present in this directory; keep looking.
+      }
+    }
+  }
+  return '';
+}
+
+/** `omc --version`, run from an absolute path and never through a shell. */
+function probeOmcVersion(binary) {
+  const isBatch = /\.(cmd|bat)$/i.test(binary);
+  // A .cmd shim cannot be started directly, so it goes through cmd.exe — but
+  // only when the path fits a closed grammar, since cmd.exe re-parses it.
+  if (isBatch && !SAFE_BATCH_PATH.test(binary)) return '';
+
+  const run = isBatch
+    ? spawnSync(process.env.ComSpec || DEFAULT_COMSPEC, ['/d', '/s', '/c', `"${binary}" --version`], {
+      encoding: 'utf-8',
+      timeout: VERSION_PROBE_TIMEOUT_MS,
+      windowsHide: true,
+      windowsVerbatimArguments: true,
+    })
+    : spawnSync(binary, ['--version'], {
+      encoding: 'utf-8',
+      timeout: VERSION_PROBE_TIMEOUT_MS,
+      windowsHide: true,
+    });
+
+  return run.status === 0 ? (run.stdout ?? '').split(/\r?\n/)[0].trim() : '';
+}
+
 /** Installed OMC version: the CLAUDE.md marker first, then the `omc` CLI. */
 function resolveOmcVersion() {
   const localMarker = versionFromClaudeMd(join(process.cwd(), '.claude', 'CLAUDE.md'));
@@ -214,13 +263,8 @@ function resolveOmcVersion() {
   const globalMarker = versionFromClaudeMd(join(CONFIG_DIR, 'CLAUDE.md'));
   if (globalMarker) return globalMarker;
 
-  // Windows installs `omc` as a .cmd shim, which only a shell lookup resolves.
-  const run = spawnSync('omc', ['--version'], {
-    encoding: 'utf-8',
-    shell: process.platform === 'win32',
-  });
-  const reported = run.status === 0 ? (run.stdout ?? '').split(/\r?\n/)[0].trim() : '';
-  return reported || 'unknown';
+  const binary = resolveOmcBinary();
+  return (binary && probeOmcVersion(binary)) || 'unknown';
 }
 
 function cmdComplete(version) {

@@ -4,12 +4,14 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 /**
- * The shipped hooks manifest uses the one launcher both cmd.exe and POSIX sh
- * resolve identically (`node`). Rewriting it to the sh/find-node bootstrap locks
- * the install to the OS that ran setup, which is what kills every hook when a
- * config directory is shared across OSes or a marketplace update lands. These
- * tests pin the rule that the rewrite happens only when this host genuinely
- * cannot run the portable form.
+ * The shipped hooks manifest uses `node`, the one launcher both cmd.exe and
+ * POSIX sh resolve identically, so a fresh plugin cache is runnable on Windows
+ * with no rewrite. POSIX installs are rewritten to the find-node bootstrap
+ * unconditionally: find-node.sh resolves `node` from PATH when it is there and
+ * from the nvm/fnm/volta locations when it is not, so it is correct in both
+ * cases, while the bare-node form is correct only in the first. These tests pin
+ * that the choice is made from the platform alone — an earlier version probed
+ * the setup process's PATH, which is not the PATH hooks are later spawned with.
  */
 
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -19,8 +21,7 @@ type Normalizer = {
   PORTABLE_HOOK_PREFIX: string;
   UNIX_HOOK_PREFIX: string;
   WINDOWS_HOOK_PREFIX: string;
-  nodeResolvesOnHookPath: (env?: NodeJS.ProcessEnv) => boolean;
-  hookPrefixForEnvironment: (options?: { platform?: string; nodeOnPath?: boolean }) => string;
+  hookPrefixForPlatform: (platform?: string) => string;
   normalizeHookCommand: (command: string, prefix?: string) => string;
   normalizeHooksDataForPlatform: (data: unknown, platform?: string, prefix?: string) => boolean;
 };
@@ -30,45 +31,31 @@ const normalizer = (await import(pathToFileURL(MODULE_PATH).href)) as Normalizer
 const SESSION_END = '"$CLAUDE_PLUGIN_ROOT"/scripts/session-end.mjs';
 
 describe('hook prefix selection', () => {
-  it('always uses the portable form on Windows, which has no sh', () => {
-    expect(normalizer.hookPrefixForEnvironment({ platform: 'win32', nodeOnPath: true }))
-      .toBe(normalizer.PORTABLE_HOOK_PREFIX);
-    expect(normalizer.hookPrefixForEnvironment({ platform: 'win32', nodeOnPath: false }))
-      .toBe(normalizer.PORTABLE_HOOK_PREFIX);
+  it('uses the portable form on Windows, which has no sh', () => {
+    expect(normalizer.hookPrefixForPlatform('win32')).toBe(normalizer.PORTABLE_HOOK_PREFIX);
   });
 
-  it('keeps the portable form on POSIX hosts that resolve node on PATH', () => {
-    for (const platform of ['linux', 'darwin']) {
-      expect(normalizer.hookPrefixForEnvironment({ platform, nodeOnPath: true }))
-        .toBe(normalizer.PORTABLE_HOOK_PREFIX);
+  it('uses the find-node bootstrap on every POSIX platform', () => {
+    for (const platform of ['linux', 'darwin', 'freebsd']) {
+      expect(normalizer.hookPrefixForPlatform(platform), platform).toBe(normalizer.UNIX_HOOK_PREFIX);
     }
+    expect(normalizer.UNIX_HOOK_PREFIX).toContain('find-node.sh');
   });
 
-  it('falls back to the find-node bootstrap only when POSIX node is off PATH', () => {
-    expect(normalizer.hookPrefixForEnvironment({ platform: 'linux', nodeOnPath: false }))
-      .toBe(normalizer.UNIX_HOOK_PREFIX);
-    expect(normalizer.UNIX_HOOK_PREFIX).toContain('find-node.sh');
+  it('does not consult PATH when choosing the POSIX prefix', () => {
+    // The regression this guards: probing whether `node` resolves samples the
+    // setup process's environment, not the one the host CLI spawns hooks with.
+    // An nvm user setting up from a terminal and launching the CLI from a
+    // desktop launcher would get the bare-node form and lose every hook.
+    const source = readFileSync(MODULE_PATH, 'utf-8');
+    expect(source).not.toContain('spawnSync');
+    expect(source).not.toContain('nodeResolvesOnHookPath');
+    expect(source).not.toMatch(/\benv\.PATH\b/);
   });
 
   it('exposes the legacy Windows prefix name as the portable form', () => {
     expect(normalizer.WINDOWS_HOOK_PREFIX).toBe(normalizer.PORTABLE_HOOK_PREFIX);
     expect(normalizer.PORTABLE_HOOK_PREFIX).toBe('node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs ');
-  });
-});
-
-describe('node PATH probe', () => {
-  it('reports false under an npm lifecycle, whose PATH is not the hook PATH', () => {
-    expect(normalizer.nodeResolvesOnHookPath({ ...process.env, npm_lifecycle_event: 'postinstall' })).toBe(false);
-    expect(normalizer.nodeResolvesOnHookPath({ ...process.env, npm_execpath: '/usr/lib/node_modules/npm/bin/npm-cli.js' })).toBe(false);
-  });
-
-  it('reports false when PATH cannot resolve node', () => {
-    const env = { ...process.env };
-    delete env.npm_lifecycle_event;
-    delete env.npm_execpath;
-    env.PATH = join(REPO_ROOT, 'does-not-exist-bin');
-    env.Path = env.PATH;
-    expect(normalizer.nodeResolvesOnHookPath(env)).toBe(false);
   });
 });
 
@@ -111,7 +98,7 @@ describe('shipped hooks manifest', () => {
     ),
   );
 
-  it('ships only portable commands, so a fresh cache needs no rewrite', () => {
+  it('ships the Windows-runnable form, with no sh anywhere', () => {
     expect(commands.length).toBeGreaterThan(0);
     for (const { event, command } of commands) {
       expect(command, event).toMatch(/^node "\$CLAUDE_PLUGIN_ROOT"\/scripts\/run\.cjs /);
@@ -120,13 +107,23 @@ describe('shipped hooks manifest', () => {
     }
   });
 
-  it('needs no patch on a host that can run the portable form', () => {
-    const data = JSON.parse(readFileSync(join(REPO_ROOT, 'hooks', 'hooks.json'), 'utf-8'));
-    for (const platform of ['win32', 'linux', 'darwin']) {
-      expect(
-        normalizer.normalizeHooksDataForPlatform(data, platform, normalizer.PORTABLE_HOOK_PREFIX),
-        platform,
-      ).toBe(false);
+  it('needs no patch on Windows and is rewritten to the bootstrap on POSIX', () => {
+    const freshManifest = () => JSON.parse(readFileSync(join(REPO_ROOT, 'hooks', 'hooks.json'), 'utf-8'));
+
+    expect(normalizer.normalizeHooksDataForPlatform(freshManifest(), 'win32')).toBe(false);
+
+    for (const platform of ['linux', 'darwin']) {
+      const data = freshManifest() as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+      expect(normalizer.normalizeHooksDataForPlatform(data, platform), platform).toBe(true);
+      for (const groups of Object.values(data.hooks)) {
+        for (const group of groups) {
+          for (const hook of group.hooks) {
+            expect(hook.command, platform).toMatch(
+              /^sh "\$CLAUDE_PLUGIN_ROOT"\/scripts\/find-node\.sh "\$CLAUDE_PLUGIN_ROOT"\/scripts\/run\.cjs /,
+            );
+          }
+        }
+      }
     }
   });
 });

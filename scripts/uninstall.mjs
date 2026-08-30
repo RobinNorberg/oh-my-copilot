@@ -8,10 +8,11 @@
 //   node scripts/uninstall.mjs --dry-run  report every action, change nothing
 
 import { createInterface } from 'node:readline/promises';
-import { copyFileSync, existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { constants as fsConstants, copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 
+import { atomicWriteFileSync } from './lib/atomic-write.mjs';
 import { getCopilotConfigDir } from './lib/config-dir.mjs';
 
 const args = process.argv.slice(2);
@@ -79,6 +80,24 @@ function remove(path, { recursive = false } = {}) {
     return;
   }
   rmSync(path, { force: true, recursive });
+}
+
+/**
+ * Backup path that does not collide with an existing one. `.bak` is used when
+ * free; otherwise the run stamps its own copy so a previous uninstall's backup
+ * survives.
+ */
+function backupPathFor(settingsFile) {
+  const plain = `${settingsFile}.bak`;
+  if (!existsSync(plain)) return plain;
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  let candidate = `${settingsFile}.${stamp}.bak`;
+  let counter = 1;
+  while (existsSync(candidate)) {
+    candidate = `${settingsFile}.${stamp}-${counter}.bak`;
+    counter += 1;
+  }
+  return candidate;
 }
 
 /** Strip OMC hook entries from one settings.json hook event array. */
@@ -149,21 +168,29 @@ function cleanSettings(settingsFile) {
     next.hooks = hooks;
   }
 
-  const backup = `${settingsFile}.bak`;
+  const backup = backupPathFor(settingsFile);
   if (DRY_RUN) {
     console.log(`  would back up ${settingsFile} to ${backup}`);
     console.log(`  would remove OMC hook entries from ${settingsFile}`);
     return;
   }
 
-  copyFileSync(settingsFile, backup);
-  // Write through a temp file so a failure cannot truncate the user's settings.
-  const tmp = `${settingsFile}.tmp.${process.pid}`;
   try {
-    writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`);
-    renameSync(tmp, settingsFile);
+    // COPYFILE_EXCL: an earlier uninstall's backup is the only copy of settings
+    // from before that run, so it must never be overwritten by this one.
+    copyFileSync(settingsFile, backup, fsConstants.COPYFILE_EXCL);
   } catch (error) {
-    rmSync(tmp, { force: true });
+    console.log(yellow('⚠ Could not write a backup; settings.json was left unchanged'));
+    console.log(`  ${error instanceof Error ? error.message : String(error)}`);
+    return;
+  }
+
+  try {
+    // The shared primitive creates its temp file with O_EXCL under a random
+    // name and fsyncs it, so neither a planted symlink nor a crash mid-write
+    // can damage the user's settings.
+    atomicWriteFileSync(settingsFile, `${JSON.stringify(next, null, 2)}\n`);
+  } catch (error) {
     console.log(yellow('⚠ Could not modify settings.json automatically'));
     console.log(`  ${error instanceof Error ? error.message : String(error)}`);
     console.log("  Please manually remove OMC hooks from the 'hooks' section");
@@ -241,7 +268,7 @@ async function main() {
   console.log('');
   console.log(yellow('Items NOT removed (manual cleanup if desired):'));
   console.log(`  - CLAUDE.md: ${join(CONFIG_DIR, 'CLAUDE.md')}`);
-  console.log(`  - settings.json backup: ${join(CONFIG_DIR, 'settings.json.bak')}`);
+  console.log(`  - settings.json backups: ${join(CONFIG_DIR, 'settings.json*.bak')}`);
   console.log('');
   console.log('To verify complete removal, inspect:');
   console.log(`  ${CONFIG_DIR}`);

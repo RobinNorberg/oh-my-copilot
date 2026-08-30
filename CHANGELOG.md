@@ -118,14 +118,15 @@ and command names outright rather than aliasing them.
   `scripts/setup-claude-md.mjs`, `scripts/setup-progress.mjs`, and
   `scripts/uninstall.mjs` are the documented entry points; `uninstall.mjs`
   takes `--dry-run` and `--yes`. The shell scripts remain for back-compat.
-- **Plugin hooks survive a marketplace update and a shared config directory.**
-  The cached `hooks/hooks.json` was rewritten at install time from
-  `process.platform`, so the manifest was locked to whichever OS ran setup: a
-  config directory used from both WSL/macOS and native Windows failed every
-  hook with `'sh' is not recognized`, and each marketplace update reinstalled
-  the unpatched form. The rewrite is now a capability probe — the portable
-  `node .../run.cjs` form everywhere it works, and the `find-node.sh` bootstrap
-  only on a POSIX host whose non-interactive `PATH` has no `node`.
+- **A fresh plugin cache is runnable on Windows without a rewrite.** The shipped
+  `hooks/hooks.json` uses `node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs`, the one
+  launcher cmd.exe and POSIX sh resolve the same way, and the install-time
+  rewrite now self-heals a manifest left in the `sh`/`find-node.sh` form by an
+  install on another OS — which previously failed every hook on Windows with
+  `'sh' is not recognized`. POSIX installs still take the `find-node.sh`
+  bootstrap unconditionally: it resolves `node` from `PATH` when it is there
+  and from the nvm/fnm/volta locations when it is not, so it is correct in both
+  cases (issue #892).
 - **Skill instructions run on Windows.** Eighteen skills, across 21 markdown
   files, embedded POSIX-only command blocks with no Windows variant — including
   the cancel skill's emergency stop-hook escape (a sha256 shell function, GNU
