@@ -1,4 +1,3 @@
-import { spawnSync } from 'child_process';
 import { isAbsolute, posix as posixPath, win32 as win32Path } from 'path';
 import { homedir } from 'os';
 import { validateTeamName } from './team-name.js';
@@ -51,11 +50,29 @@ export interface CliBinaryValidation {
 
 const resolvedPathCache = new Map<string, string>();
 
+// Locations any process can write to, so a binary resolved there is not
+// trustworthy.
 const UNTRUSTED_PATH_PATTERNS: RegExp[] = [
   /^\/tmp(\/|$)/,
   /^\/var\/tmp(\/|$)/,
   /^\/dev\/shm(\/|$)/,
 ];
+
+// The POSIX list never matches a Windows path, so drops like C:\Users\me\
+// AppData\Local\Temp\claude.exe sailed through. These match by path segment
+// because %TEMP% and Downloads sit under the user profile, wherever that is,
+// and case-insensitively because the filesystem is.
+const UNTRUSTED_WINDOWS_PATH_PATTERNS: RegExp[] = [
+  /[\\/]Temp[\\/]/i,
+  /[\\/]Tmp[\\/]/i,
+  /[\\/]Downloads[\\/]/i,
+];
+
+function untrustedPathPatterns(): RegExp[] {
+  return process.platform === 'win32'
+    ? [...UNTRUSTED_PATH_PATTERNS, ...UNTRUSTED_WINDOWS_PATH_PATTERNS]
+    : UNTRUSTED_PATH_PATTERNS;
+}
 
 /**
  * Path semantics for the host platform. Selected per call rather than bound at
@@ -164,7 +181,7 @@ export function resolveCliBinaryPath(binary: string): string {
     throw new Error(`Resolved CLI binary '${binary}' to relative path`);
   }
 
-  if (UNTRUSTED_PATH_PATTERNS.some(pattern => pattern.test(resolvedPath))) {
+  if (untrustedPathPatterns().some(pattern => pattern.test(resolvedPath))) {
     throw new Error(`Resolved CLI binary '${binary}' to untrusted location: ${resolvedPath}`);
   }
 
@@ -197,6 +214,7 @@ export function validateCliBinaryPath(binary: string): CliBinaryValidation {
 
 export const _testInternals = {
   UNTRUSTED_PATH_PATTERNS,
+  untrustedPathPatterns,
   getTrustedPrefixes,
   isTrustedPrefix,
 };
@@ -391,15 +409,18 @@ function resolveBinaryPath(binary: string): string {
 export function isCliAvailable(agentType: CliAgentType): boolean {
   const contract = getContract(agentType);
   try {
-    const resolvedBinary = resolveBinaryPath(contract.binary);
+    validateBinaryRef(contract.binary);
+    const resolved = isAbsolute(contract.binary)
+      ? contract.binary
+      : resolveExecutable(contract.binary);
 
-    if (resolvedBinary === contract.binary && process.platform === 'win32') {
-      // Unresolved on Windows: only a shell PATH lookup can still find it.
-      const result = spawnSync(resolvedBinary, ['--version'], { timeout: 5000, shell: true });
-      return result.status === 0;
-    }
+    // Fail closed when the name does not resolve. Handing a bare name to a
+    // shell let cmd.exe resolve it against the current directory and run a
+    // planted claude.cmd from an untrusted repo, and left no resolved path for
+    // the trust check to inspect.
+    if (!resolved) return false;
 
-    return probeExecutable(resolvedBinary, { timeoutMs: 5000 }).exitedZero;
+    return probeExecutable(resolved, { timeoutMs: 5000 }).exitedZero;
   } catch {
     return false;
   }

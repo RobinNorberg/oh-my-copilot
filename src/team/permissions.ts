@@ -8,7 +8,7 @@
  * prompts as instructions for the LLM to follow.
  */
 
-import { relative, resolve } from 'node:path';
+import { posix as posixPath, win32 as win32Path } from 'node:path';
 
 export interface WorkerPermissions {
   workerName: string;
@@ -103,13 +103,47 @@ function matchGlob(pattern: string, path: string): boolean {
 }
 
 /**
- * Working-directory-relative path with forward slashes, matching how glob
- * patterns are written. relative() yields '\' on Windows, so without this no
- * pattern containing '/' matches — including the deny list, which would then
- * stop denying anything.
+ * Path semantics for the host platform, selected per call so a platform-stubbed
+ * test exercises the rules it means to.
  */
-function toPatternPath(workingDirectory: string, filePath: string): string {
-  return relative(workingDirectory, resolve(workingDirectory, filePath)).replace(/\\/g, '/');
+function pathFlavor(): typeof posixPath {
+  return process.platform === 'win32' ? win32Path : posixPath;
+}
+
+/**
+ * Windows filesystems are case-insensitive, so a deny pattern must match
+ * regardless of case — otherwise `.GITHUB/workflows/x.yml` writes the same file
+ * that `.github/**` is supposed to protect. POSIX keeps exact matching.
+ */
+function foldCase(value: string): string {
+  return process.platform === 'win32' ? value.toLowerCase() : value;
+}
+
+interface PatternPath {
+  /** Working-directory-relative, forward slashes, as glob patterns are written. */
+  relPath: string;
+  /** True when the target is not inside the working directory at all. */
+  outside: boolean;
+}
+
+/**
+ * Express a path the way glob patterns are written, and say whether it even
+ * lies inside the working directory.
+ *
+ * relative() yields '\' on Windows, so without normalizing no pattern
+ * containing '/' matches — including the deny list, which would stop denying.
+ * It also returns an ABSOLUTE path when no relative route exists: a different
+ * volume (C: -> D:) or a UNC share. Those do not start with '..', so treating
+ * only '..' as "outside" lets a cross-volume target through, and with the
+ * default empty allowedPaths that means allowed.
+ */
+function toPatternPath(workingDirectory: string, filePath: string): PatternPath {
+  const flavor = pathFlavor();
+  const raw = flavor.relative(workingDirectory, flavor.resolve(workingDirectory, filePath));
+  return {
+    relPath: raw.replace(/\\/g, '/'),
+    outside: raw.startsWith('..') || flavor.isAbsolute(raw),
+  };
 }
 
 /**
@@ -121,14 +155,17 @@ export function isPathAllowed(
   filePath: string,
   workingDirectory: string
 ): boolean {
-  const relPath = toPatternPath(workingDirectory, filePath);
+  const { relPath, outside } = toPatternPath(workingDirectory, filePath);
 
-  // If path escapes working directory, always deny
-  if (relPath.startsWith('..')) return false;
+  // Anything not inside the working directory is denied, whether it escaped
+  // via '..' or sits on another volume / UNC share entirely.
+  if (outside) return false;
+
+  const target = foldCase(relPath);
 
   // Check denied paths first (they override)
   for (const pattern of permissions.deniedPaths) {
-    if (matchGlob(pattern, relPath)) return false;
+    if (matchGlob(foldCase(pattern), target)) return false;
   }
 
   // If no allowed paths specified, allow all within workingDirectory
@@ -136,7 +173,7 @@ export function isPathAllowed(
 
   // Check allowed paths
   for (const pattern of permissions.allowedPaths) {
-    if (matchGlob(pattern, relPath)) return true;
+    if (matchGlob(foldCase(pattern), target)) return true;
   }
 
   return false;
@@ -260,14 +297,15 @@ export function findPermissionViolations(
   for (const filePath of changedPaths) {
     if (!isPathAllowed(permissions, filePath, cwd)) {
       // Determine which deny pattern matched for the reason
-      const relPath = toPatternPath(cwd, filePath);
+      const { relPath, outside } = toPatternPath(cwd, filePath);
 
       let reason: string;
-      if (relPath.startsWith('..')) {
+      if (outside) {
         reason = `Path escapes working directory: ${relPath}`;
       } else {
         // Find which deny pattern matched
-        const matchedDeny = permissions.deniedPaths.find(p => matchGlob(p, relPath));
+        const target = foldCase(relPath);
+        const matchedDeny = permissions.deniedPaths.find(p => matchGlob(foldCase(p), target));
         if (matchedDeny) {
           reason = `Matches denied pattern: ${matchedDeny}`;
         } else {

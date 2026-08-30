@@ -81,7 +81,7 @@ describe('runAutoresearchEvaluator shell portability', () => {
 
     const [file, args, options] = mockSpawnSync.mock.calls[0];
     expect(String(file).replace(/\\/g, '/')).toBe('C:/Program Files/Git/bin/bash.exe');
-    expect(args).toEqual(['-lc', 'FOO=1 ./eval.sh']);
+    expect(args).toEqual(['-c', 'FOO=1 ./eval.sh']);
     expect(options).toMatchObject({ cwd: 'C:\\worktree', shell: false });
     expect(record.status).toBe('pass');
   });

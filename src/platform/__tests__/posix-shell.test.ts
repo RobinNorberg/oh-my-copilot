@@ -97,7 +97,7 @@ describe('resolvePosixCommandInvocation', () => {
     });
   });
 
-  it('routes the command through bash -lc on Windows', () => {
+  it('routes the command through bash -c on Windows', () => {
     setPlatform('win32');
     vi.stubEnv('SHELL', '');
     vi.stubEnv('PATH', 'C:\\Program Files\\Git\\bin');
@@ -105,7 +105,8 @@ describe('resolvePosixCommandInvocation', () => {
 
     const invocation = resolvePosixCommandInvocation('FOO=1 ./eval.sh 2>/dev/null');
     expect(normalize(invocation!.file)).toBe('C:/Program Files/Git/bin/bash.exe');
-    expect(invocation!.args).toEqual(['-lc', 'FOO=1 ./eval.sh 2>/dev/null']);
+    // -c, not -lc: no profile sourcing, matching the POSIX `sh -c` path.
+    expect(invocation!.args).toEqual(['-c', 'FOO=1 ./eval.sh 2>/dev/null']);
     expect(invocation!.shell).toBe(false);
   });
 

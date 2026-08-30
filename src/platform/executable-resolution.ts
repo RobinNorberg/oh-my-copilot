@@ -170,7 +170,10 @@ function isBatchPath(resolvedPath: string, model: PlatformModel): boolean {
 }
 
 function isValidatedComspec(candidate: string | undefined): candidate is string {
-  if (!candidate || /[\0\r\n]/.test(candidate) || /[\\/]$/.test(candidate)) return false;
+  // Whitespace is rejected along with control characters: the batch fallback
+  // spawns with windowsVerbatimArguments, which leaves argv[0] unquoted, so a
+  // space-bearing COMSPEC would be split into separate arguments.
+  if (!candidate || /[\0\r\n\s]/.test(candidate) || /[\\/]$/.test(candidate)) return false;
   if (!path.win32.isAbsolute(candidate)) return false;
   return path.win32.basename(candidate).toLowerCase() === 'cmd.exe';
 }

@@ -4,13 +4,13 @@
  * User-authored commands (autoresearch evaluator commands, hook snippets) are
  * written as POSIX sh: `FOO=1 ./eval.sh`, relative `./` paths, `2>/dev/null`.
  * cmd.exe cannot run any of that, so on Windows we look for a real POSIX shell
- * (Git Bash / MSYS2) and run the command through `bash -lc <command>`.
+ * (Git Bash / MSYS2) and run the command through `bash -c <command>`.
  */
 
 import { existsSync } from 'fs';
 import { basename, join } from 'path';
 
-/** Shell basenames we accept as POSIX-compatible for `-lc <command>`. */
+/** Shell basenames we accept as POSIX-compatible for `-c <command>`. */
 const POSIX_SHELL_NAMES = new Set(['bash', 'sh', 'zsh', 'ksh', 'dash']);
 
 /** Discovery order on Windows: Git Bash first, then MSYS2/Cygwin layouts. */
@@ -121,5 +121,8 @@ export function resolvePosixCommandInvocation(command: string): PosixCommandInvo
 
   const shell = findPosixShell();
   if (!shell) return null;
-  return { file: shell, args: ['-lc', command], shell: false };
+  // -c, not -lc: a login shell sources /etc/profile and ~/.bash_profile first,
+  // whose PATH rewrites and cd's would change the command's environment in a
+  // way the POSIX `sh -c` path does not. Same execution model on both platforms.
+  return { file: shell, args: ['-c', command], shell: false };
 }
