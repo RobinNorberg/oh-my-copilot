@@ -1,5 +1,5 @@
 import { readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { resolveOmcPath } from '../lib/worktree-paths.js';
 
 export interface AdoConfig {
   org?: string;
@@ -19,14 +19,15 @@ export interface OmpConfig {
 }
 
 /**
- * Read .omg/config.json from the given directory (or cwd).
- * Returns null if the file doesn't exist.
+ * Read config.json from the OMC state root for the given directory (or cwd).
+ * Resolution goes through resolveOmcPath so OMC_STATE_DIR and .omc-workspace
+ * anchoring apply, rather than assuming a literal `<dir>/.omg`.
+ * Returns null if the file doesn't exist or cannot be read.
  */
 export function readOmpConfig(dir?: string): OmpConfig | null {
-  const base = dir || process.cwd();
-  const configPath = join(base, '.omg', 'config.json');
-  if (!existsSync(configPath)) return null;
   try {
+    const configPath = resolveOmcPath('config.json', dir);
+    if (!existsSync(configPath)) return null;
     const raw = readFileSync(configPath, 'utf-8');
     return JSON.parse(raw) as OmpConfig;
   } catch {

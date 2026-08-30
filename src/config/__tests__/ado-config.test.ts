@@ -5,15 +5,32 @@ vi.mock('node:fs', () => ({
   readFileSync: vi.fn(),
 }));
 
+// The canonical resolver is stubbed so these stay unit tests of the parsing
+// path; that it is consulted at all — with the caller's directory — is the
+// contract the multirepo-paths gate cares about.
+vi.mock('../../lib/worktree-paths.js', () => ({
+  resolveOmcPath: vi.fn((relativePath: string, worktreeRoot?: string) =>
+    `${worktreeRoot ?? '/detected/root'}/.omg/${relativePath}`),
+}));
+
 import { existsSync, readFileSync } from 'node:fs';
+import { resolveOmcPath } from '../../lib/worktree-paths.js';
 import { readOmpConfig, getAdoConfig } from '../ado-config.js';
 
 const mockExistsSync = vi.mocked(existsSync);
 const mockReadFileSync = vi.mocked(readFileSync);
+const mockResolveOmcPath = vi.mocked(resolveOmcPath);
+
+/** afterEach resets implementations, so restore the resolver before each test. */
+function stubResolver(): void {
+  mockResolveOmcPath.mockImplementation((relativePath: string, worktreeRoot?: string) =>
+    `${worktreeRoot ?? '/detected/root'}/.omg/${relativePath}`);
+}
 
 describe('readOmpConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stubResolver();
   });
 
   afterEach(() => {
@@ -70,20 +87,40 @@ describe('readOmpConfig', () => {
     expect(readOmpConfig('/some/dir')).toBeNull();
   });
 
-  it('uses cwd when no dir is provided', () => {
+  it('resolves the config path through the canonical state-root resolver', () => {
+    mockExistsSync.mockReturnValue(false);
+
+    readOmpConfig('/some/dir');
+
+    expect(mockResolveOmcPath).toHaveBeenCalledWith('config.json', '/some/dir');
+    expect(mockExistsSync).toHaveBeenCalledWith('/some/dir/.omg/config.json');
+  });
+
+  it('lets the resolver auto-detect the root when no dir is provided', () => {
     mockExistsSync.mockReturnValue(false);
 
     readOmpConfig();
 
+    expect(mockResolveOmcPath).toHaveBeenCalledWith('config.json', undefined);
     const checkedPath = mockExistsSync.mock.calls[0][0] as string;
     expect(checkedPath).toContain('.omg');
     expect(checkedPath).toContain('config.json');
+  });
+
+  it('returns null when the resolver rejects the path', () => {
+    mockResolveOmcPath.mockImplementation(() => {
+      throw new Error('Path escapes omc boundary');
+    });
+
+    expect(readOmpConfig('/some/dir')).toBeNull();
+    expect(mockExistsSync).not.toHaveBeenCalled();
   });
 });
 
 describe('getAdoConfig', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    stubResolver();
   });
 
   afterEach(() => {
