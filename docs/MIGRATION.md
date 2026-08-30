@@ -120,7 +120,7 @@ switch to the replacement — the old name no longer resolves:
 | `ultraqa`           | `/oh-my-copilot:verify`                  |
 | `deep-dive`         | `/oh-my-copilot:plan` then `execute`, or `/oh-my-copilot:research` for investigation |
 | `sciomc`            | `/oh-my-copilot:research`                |
-| `ccg`               | `/oh-my-copilot:execute`                 |
+| `cccg` skill (invoked as `/ccg`) | `/oh-my-copilot:execute`   |
 | `omc-teams`         | `/oh-my-copilot:team`                    |
 | `setup`             | `/oh-my-copilot:omc-setup`               |
 | `mcp-setup`         | `/oh-my-copilot:omc-setup`               |

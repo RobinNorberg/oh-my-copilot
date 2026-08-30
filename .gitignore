@@ -5,6 +5,10 @@ node_modules/
 .omc/*
 !.omcp/
 .omcp/*
+!.omg/
+.omg/*
+!.omg/skills/
+!.omg/skills/**
 !.omc/skills/
 !.omc/skills/**
 .idea/
