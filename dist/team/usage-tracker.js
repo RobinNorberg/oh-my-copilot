@@ -6,7 +6,7 @@
  * NOTE: Token counts are not available from Codex/Gemini CLI output.
  * Character counts serve as a rough proxy for usage estimation.
  *
- * Storage: append-only JSONL at .omc/logs/team-usage-{team}.jsonl
+ * Storage: append-only JSONL at .omg/logs/team-usage-{team}.jsonl
  */
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';

@@ -10,7 +10,7 @@ function makeTempProject() {
     return tempDir;
 }
 function writeSkillState(tempDir, sessionId, skillName, overrides = {}) {
-    const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'skill-active-state.json'), JSON.stringify({
         active: true,
@@ -25,7 +25,7 @@ function writeSkillState(tempDir, sessionId, skillName, overrides = {}) {
     }, null, 2));
 }
 function writeSubagentTrackingState(tempDir, agents) {
-    const stateDir = join(tempDir, '.omc', 'state');
+    const stateDir = join(tempDir, '.omg', 'state');
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'subagent-tracking-state.json'), JSON.stringify({
         agents,
@@ -77,7 +77,7 @@ describe('persistent-mode skill-state stop integration (issue #1033)', () => {
             ]);
             const result = await checkPersistentModes(sessionId, tempDir);
             expect(result.shouldBlock).toBe(false);
-            const statePath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'skill-active-state.json');
+            const statePath = join(tempDir, '.omg', 'state', 'sessions', sessionId, 'skill-active-state.json');
             const persisted = JSON.parse(readFileSync(statePath, 'utf-8'));
             expect(persisted.reinforcement_count).toBe(0);
         }
@@ -120,7 +120,7 @@ describe('persistent-mode skill-state stop integration (issue #1033)', () => {
     it('ignores stale legacy skill-active state when session id is unavailable', async () => {
         const tempDir = makeTempProject();
         try {
-            const stateDir = join(tempDir, '.omc', 'state');
+            const stateDir = join(tempDir, '.omg', 'state');
             mkdirSync(stateDir, { recursive: true });
             const past = new Date(Date.now() - 30 * 60 * 1000).toISOString();
             writeFileSync(join(stateDir, 'skill-active-state.json'), JSON.stringify({
@@ -158,7 +158,7 @@ describe('persistent-mode skill-state stop integration (issue #1033)', () => {
         const tempDir = makeTempProject();
         try {
             // Write both ralph and skill state
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
                 active: true,

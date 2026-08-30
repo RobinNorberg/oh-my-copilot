@@ -5,7 +5,7 @@ import { spawn } from 'child_process';
 
 // Create test directory
 const testDir = join(tmpdir(), `remember-tag-test-${Date.now()}`);
-const omcDir = join(testDir, '.omc');
+const omcDir = join(testDir, '.omg');
 mkdirSync(omcDir, { recursive: true });
 
 console.log('Testing remember tag processing in post-tool-verifier.mjs\n');

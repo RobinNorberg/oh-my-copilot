@@ -8,7 +8,7 @@
  *    - "strict": all security features enabled
  *    - unset/other: per-feature defaults apply
  *
- * 2. Config file (.claude/omc.jsonc or ~/.config/claude-omc/config.jsonc)
+ * 2. Config file (.copilot/omc.jsonc or ~/.config/claude-omc/config.jsonc)
  *    security section — granular overrides (highest precedence)
  *
  * Precedence: config file > OMC_SECURITY env var > defaults (all off)
@@ -43,7 +43,7 @@ let cachedConfig = null;
  */
 function loadSecurityFromConfigFiles() {
     const paths = [
-        join(process.cwd(), ".claude", "omc.jsonc"),
+        join(process.cwd(), ".copilot", "omc.jsonc"),
         join(getConfigDir(), "claude-omc", "config.jsonc"),
     ];
     for (const configPath of paths) {

@@ -23,7 +23,7 @@ describe('flush-race', () => {
         previousUserProfile = process.env.USERPROFILE;
         process.env.HOME = testDir;
         process.env.USERPROFILE = testDir;
-        mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
+        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
     });
     afterEach(() => {
         flushPendingWrites();
@@ -374,7 +374,7 @@ describe('flush-race', () => {
         });
         it('should return empty state when no file exists', () => {
             const emptyDir = mkdtempSync(join(testDir, 'empty-test-'));
-            mkdirSync(join(emptyDir, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(emptyDir, '.omg', 'state'), { recursive: true });
             try {
                 const result = readDiskState(emptyDir);
                 expect(result.agents).toHaveLength(0);

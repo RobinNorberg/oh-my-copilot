@@ -15,12 +15,12 @@ const TEST_TEAM = 'test-bridge-int';
 const WORK_DIR = join(realpathSync(tmpdir()), '__test_bridge_work__');
 const originalClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
 process.env.COPILOT_CONFIG_DIR = join(WORK_DIR, '.claude');
-// Task files now live in the canonical .omc/state/team path (relative to WORK_DIR)
+// Task files now live in the canonical .omg/state/team path (relative to WORK_DIR)
 const TEAMS_DIR = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
 // Canonical tasks dir for this team
 const originalHome = process.env.HOME;
 const originalUserProfile = process.env.USERPROFILE;
-const TASKS_DIR = join(WORK_DIR, '.omc', 'state', 'team', TEST_TEAM, 'tasks');
+const TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
 
 beforeAll(() => {
   process.env.HOME = WORK_DIR;
@@ -71,7 +71,7 @@ beforeEach(() => {
   mkdirSync(join(TEAMS_DIR, 'outbox'), { recursive: true });
   mkdirSync(join(TEAMS_DIR, 'signals'), { recursive: true });
   mkdirSync(WORK_DIR, { recursive: true });
-  mkdirSync(join(WORK_DIR, '.omc', 'state'), { recursive: true });
+  mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
 });
 
 afterEach(() => {

@@ -3,7 +3,7 @@ import { appendFile, mkdir, readdir, readFile, writeFile } from 'node:fs/promise
 import { join, relative } from 'node:path';
 import { formatClaudeGoalReconciliation, parseClaudeGoalSnapshot, reconcileClaudeGoalSnapshot, } from '../goal-workflows/claude-goal-snapshot.js';
 import { getOmcRoot } from '../lib/worktree-paths.js';
-export const ULTRAGOAL_DIR = '.omc/ultragoal';
+export const ULTRAGOAL_DIR = '.omg/ultragoal';
 export const ULTRAGOAL_BRIEF = 'brief.md';
 export const ULTRAGOAL_GOALS = 'goals.json';
 export const ULTRAGOAL_LEDGER = 'ledger.jsonl';
@@ -29,7 +29,7 @@ export function ultragoalLedgerPath(cwd, planId) {
     return join(ultragoalDir(cwd, planId), ULTRAGOAL_LEDGER);
 }
 /**
- * List all multi-plan IDs under .omc/ultragoal/plans/.
+ * List all multi-plan IDs under .omg/ultragoal/plans/.
  * Returns an empty array when the plans/ subdir doesn't exist.
  */
 export async function listUltragoalPlanIds(cwd) {
@@ -512,7 +512,7 @@ export async function checkpointUltragoal(cwd, options) {
             }
             else {
                 const taskScopedRequirement = aggregateMode && snapshot?.status === 'complete' && Boolean(snapshot.objective)
-                    ? ' Completed task-scoped aggregate reconciliation requires the checkpoint goal to be the active in-progress OMC goal, evidence that names that active OMC goal id, names .omc/ultragoal/goals.json or ledger.jsonl, includes completed implementation plus validation/review evidence, and a Claude /goal objective that maps to the ultragoal brief/artifact.'
+                    ? ' Completed task-scoped aggregate reconciliation requires the checkpoint goal to be the active in-progress OMC goal, evidence that names that active OMC goal id, names .omg/ultragoal/goals.json or ledger.jsonl, includes completed implementation plus validation/review evidence, and a Claude /goal objective that maps to the ultragoal brief/artifact.'
                     : '';
                 const remediation = reconciliation.snapshot.available
                     && reconciliation.snapshot.status === 'complete'

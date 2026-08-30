@@ -29,7 +29,7 @@ export function getCopilotConfigDir() {
 }
 
 export function getOmcConfigDir() {
-  return join(getCopilotConfigDir(), '.omc');
+  return join(getCopilotConfigDir(), '.omg');
 }
 
 export function getUpdateCheckCachePath() {

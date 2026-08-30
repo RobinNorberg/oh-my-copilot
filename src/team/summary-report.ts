@@ -105,7 +105,7 @@ export function generateTeamReport(
 
 /**
  * Write the report to disk.
- * Path: .omc/reports/team-{teamName}-{timestamp}.md
+ * Path: .omg/reports/team-{teamName}-{timestamp}.md
  * Returns the file path.
  */
 export function saveTeamReport(

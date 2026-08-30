@@ -224,7 +224,7 @@ export function onSessionStart(data: { cwd?: string }): { additionalContext?: st
     if (!index || pages.length === 0) return {};
 
     const summary = [
-      `[LLM Wiki: ${pages.length} pages at .omc/wiki/]`,
+      `[LLM Wiki: ${pages.length} pages at .omg/wiki/]`,
       '',
       'Use wiki_query to search, wiki_list to browse, wiki_read to view pages.',
       '',

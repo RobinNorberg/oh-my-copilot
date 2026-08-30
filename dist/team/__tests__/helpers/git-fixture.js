@@ -8,7 +8,7 @@
 //   - Worker worktrees live at tmpDir/worktrees/{workerName}/
 //   - Worker branches are omc-team/{teamName}/{workerName} (matching getBranchName)
 //   - Leader branch must NOT be main/master (M3 hardening) — defaults to 'omc-team-test-leader'
-//   - State dir (.omc/...) is created inside the repo root so orchestrator paths resolve
+//   - State dir (.omg/...) is created inside the repo root so orchestrator paths resolve
 //   - simulateRuntimeRestart does NOT clean up the repo; it only kills the orchestrator
 //     handle (if set externally) and can optionally create an orphan rebase-merge dir.
 import { execFileSync } from 'node:child_process';
@@ -59,7 +59,7 @@ export async function createGitFixture(opts) {
         git(repoRoot, ['checkout', '--detach']);
     }
     // Create worker worktrees
-    const workersDir = join(repoRoot, '.omc', 'team', teamName, 'worktrees');
+    const workersDir = join(repoRoot, '.omg', 'team', teamName, 'worktrees');
     mkdirSync(workersDir, { recursive: true });
     const workers = [];
     for (let i = 0; i < workerCount; i++) {
@@ -74,7 +74,7 @@ export async function createGitFixture(opts) {
         workers.push({ name: workerName, worktreePath: wtPath, branch });
     }
     // Write worktrees.json metadata (needed by listTeamWorktrees / recoverFromRestart)
-    const worktreesMetaDir = join(repoRoot, '.omc', 'state', 'team', teamName);
+    const worktreesMetaDir = join(repoRoot, '.omg', 'state', 'team', teamName);
     mkdirSync(worktreesMetaDir, { recursive: true });
     const worktreesMeta = workers.map((w) => ({
         path: w.worktreePath,
@@ -155,7 +155,7 @@ export async function createGitFixture(opts) {
                     }
                 }
                 // Remove merger worktree if it exists
-                const mergerPath = join(repoRoot, '.omc', 'team', teamName, 'merger');
+                const mergerPath = join(repoRoot, '.omg', 'team', teamName, 'merger');
                 if (existsSync(mergerPath)) {
                     try {
                         git(repoRoot, ['worktree', 'remove', '--force', mergerPath]);
@@ -244,6 +244,6 @@ export function readEventLog(eventLogPath) {
 }
 /** Build the event log path for a team. */
 export function orchestratorEventLogPath(repoRoot, teamName) {
-    return join(repoRoot, '.omc', 'state', 'team', teamName, 'orchestrator-events.jsonl');
+    return join(repoRoot, '.omg', 'state', 'team', teamName, 'orchestrator-events.jsonl');
 }
 //# sourceMappingURL=git-fixture.js.map

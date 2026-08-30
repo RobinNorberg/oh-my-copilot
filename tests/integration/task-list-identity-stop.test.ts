@@ -53,7 +53,7 @@ function writeTaskStore(claudeConfigDir: string, identity: string, statuses: str
 }
 
 function ralphStatePath(f: Fixture): string {
-  return join(f.project, '.omc', 'state', 'sessions', 'stop-session', 'ralph-state.json');
+  return join(f.project, '.omg', 'state', 'sessions', 'stop-session', 'ralph-state.json');
 }
 
 function writeActiveRalph(f: Fixture) {

@@ -116,7 +116,7 @@ describe('task-file-ops edge cases', () => {
   beforeEach(() => {
     TASK_TEST_CWD = mkdtempSync(join(realpathSync(tmpdir()), 'omc-edge-tasks-'));
     restoreTaskFixtureEnv = isolateFixtureRoot(TASK_TEST_CWD);
-    TASKS_DIR = join(TASK_TEST_CWD, '.omc', 'state', 'team', EDGE_TEAM_TASKS, 'tasks');
+    TASKS_DIR = join(TASK_TEST_CWD, '.omg', 'state', 'team', EDGE_TEAM_TASKS, 'tasks');
     mkdirSync(TASKS_DIR, { recursive: true });
   });
 
@@ -646,7 +646,7 @@ describe('heartbeat edge cases', () => {
 
   describe('readHeartbeat with corrupt JSON file', () => {
     it('returns null for corrupt heartbeat file', () => {
-      const dir = join(HB_DIR, '.omc', 'state', 'team-bridge', 'test-team');
+      const dir = join(HB_DIR, '.omg', 'state', 'team-bridge', 'test-team');
       mkdirSync(dir, { recursive: true });
       writeFileSync(join(dir, 'w1.heartbeat.json'), 'NOT JSON');
       expect(readHeartbeat(HB_DIR, 'test-team', 'w1')).toBeNull();
@@ -659,7 +659,7 @@ describe('heartbeat edge cases', () => {
       writeHeartbeat(HB_DIR, makeHeartbeat({ workerName: 'good2' }));
 
       // Write a corrupt heartbeat file
-      const dir = join(HB_DIR, '.omc', 'state', 'team-bridge', 'test-team');
+      const dir = join(HB_DIR, '.omg', 'state', 'team-bridge', 'test-team');
       writeFileSync(join(dir, 'corrupt.heartbeat.json'), '{bad json{{{');
 
       const heartbeats = listHeartbeats(HB_DIR, 'test-team');
@@ -682,7 +682,7 @@ describe('heartbeat edge cases', () => {
   describe('cleanupTeamHeartbeats with non-heartbeat files', () => {
     it('removes all files in the team directory including non-heartbeat ones', () => {
       writeHeartbeat(HB_DIR, makeHeartbeat({ workerName: 'w1' }));
-      const dir = join(HB_DIR, '.omc', 'state', 'team-bridge', 'test-team');
+      const dir = join(HB_DIR, '.omg', 'state', 'team-bridge', 'test-team');
       // Write an extra non-heartbeat file
       writeFileSync(join(dir, 'other-file.txt'), 'not a heartbeat');
 
@@ -779,7 +779,7 @@ describe('team-registration edge cases', () => {
     restoreRegistrationFixtureEnv = isolateFixtureRoot(REG_DIR);
     CONFIG_DIR = join(getCopilotConfigDir(), 'teams', REG_TEAM);
     mkdirSync(REG_DIR, { recursive: true });
-    mkdirSync(join(REG_DIR, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(REG_DIR, '.omg', 'state'), { recursive: true });
     mkdirSync(CONFIG_DIR, { recursive: true });
   });
 
@@ -796,7 +796,7 @@ describe('team-registration edge cases', () => {
 
   describe('readProbeResult with corrupt JSON', () => {
     it('returns null for malformed probe result file', () => {
-      const probePath = join(REG_DIR, '.omc', 'state', 'config-probe-result.json');
+      const probePath = join(REG_DIR, '.omg', 'state', 'config-probe-result.json');
       writeFileSync(probePath, 'NOT JSON');
       expect(readProbeResult(REG_DIR)).toBeNull();
     });
@@ -804,7 +804,7 @@ describe('team-registration edge cases', () => {
 
   describe('listMcpWorkers with malformed shadow registry', () => {
     it('returns empty when shadow registry is corrupt JSON', () => {
-      const shadowPath = join(REG_DIR, '.omc', 'state', 'team-mcp-workers.json');
+      const shadowPath = join(REG_DIR, '.omg', 'state', 'team-mcp-workers.json');
       writeFileSync(shadowPath, '{bad');
       // Should not throw and return whatever was parsed from config (empty since config not set up for this team)
       const workers = listMcpWorkers(REG_TEAM, REG_DIR);
@@ -878,7 +878,7 @@ describe('team-registration edge cases', () => {
 
   describe('unregisterMcpWorker with corrupt shadow registry', () => {
     it('does not throw when shadow registry is malformed', () => {
-      const shadowPath = join(REG_DIR, '.omc', 'state', 'team-mcp-workers.json');
+      const shadowPath = join(REG_DIR, '.omg', 'state', 'team-mcp-workers.json');
       writeFileSync(shadowPath, 'NOT JSON');
       expect(() => unregisterMcpWorker(REG_TEAM, 'w1', REG_DIR)).not.toThrow();
     });
@@ -912,7 +912,7 @@ describe('team-registration edge cases', () => {
   describe('shadow registry handles missing workers array gracefully', () => {
     it('registers successfully when shadow registry has no workers field', () => {
       // Shadow file exists but has no "workers" key — (registry.workers || []) guard handles it
-      const shadowPath = join(REG_DIR, '.omc', 'state', 'team-mcp-workers.json');
+      const shadowPath = join(REG_DIR, '.omg', 'state', 'team-mcp-workers.json');
       writeFileSync(shadowPath, JSON.stringify({ teamName: REG_TEAM }));
 
       // Should not throw

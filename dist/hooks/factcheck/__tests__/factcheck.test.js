@@ -18,7 +18,7 @@ function defaultPolicy() {
         mode: 'quick',
         strict_project_patterns: [],
         forbidden_path_prefixes: [join(getCopilotConfigDir(), 'plugins/cache/omc/')],
-        forbidden_path_substrings: ['/.omc/', '.omc-config.json'],
+        forbidden_path_substrings: ['/.omg/', '.omc-config.json'],
         readonly_command_prefixes: [
             'ls ', 'cat ', 'find ', 'grep ', 'head ', 'tail ', 'stat ', 'echo ', 'wc ',
         ],

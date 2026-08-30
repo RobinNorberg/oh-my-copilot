@@ -128,7 +128,7 @@ function getCopilotConfigDir() {
   const home = (0, import_os.homedir)();
   const configured = process.env.COPILOT_CONFIG_DIR?.trim();
   if (!configured) {
-    return stripTrailingSep((0, import_path2.normalize)((0, import_path2.join)(home, ".claude")));
+    return stripTrailingSep((0, import_path2.normalize)((0, import_path2.join)(home, ".copilot")));
   }
   if (configured === "~") {
     return stripTrailingSep((0, import_path2.normalize)(home));
@@ -142,21 +142,21 @@ function getCopilotConfigDir() {
 // src/lib/worktree-paths.ts
 var WORKSPACE_MARKER = ".omc-workspace";
 var OmcPaths = {
-  ROOT: ".omc",
-  STATE: ".omc/state",
-  SESSIONS: ".omc/state/sessions",
-  PLANS: ".omc/plans",
-  RESEARCH: ".omc/research",
-  NOTEPAD: ".omc/notepad.md",
-  PROJECT_MEMORY: ".omc/project-memory.json",
-  DRAFTS: ".omc/drafts",
-  NOTEPADS: ".omc/notepads",
-  LOGS: ".omc/logs",
-  SCIENTIST: ".omc/scientist",
-  AUTOPILOT: ".omc/autopilot",
-  SKILLS: ".omc/skills",
-  SHARED_MEMORY: ".omc/state/shared-memory",
-  DEEPINIT_MANIFEST: ".omc/deepinit-manifest.json"
+  ROOT: ".omg",
+  STATE: ".omg/state",
+  SESSIONS: ".omg/state/sessions",
+  PLANS: ".omg/plans",
+  RESEARCH: ".omg/research",
+  NOTEPAD: ".omg/notepad.md",
+  PROJECT_MEMORY: ".omg/project-memory.json",
+  DRAFTS: ".omg/drafts",
+  NOTEPADS: ".omg/notepads",
+  LOGS: ".omg/logs",
+  SCIENTIST: ".omg/scientist",
+  AUTOPILOT: ".omg/autopilot",
+  SKILLS: ".omg/skills",
+  SHARED_MEMORY: ".omg/state/shared-memory",
+  DEEPINIT_MANIFEST: ".omg/deepinit-manifest.json"
 };
 var MAX_WORKTREE_CACHE_SIZE = 8;
 var worktreeCacheMap = /* @__PURE__ */ new Map();
@@ -275,7 +275,7 @@ var SENSITIVE_DIR_BASENAMES = /* @__PURE__ */ new Set([
   "ssh",
   ".pki",
   ".config",
-  ".claude",
+  ".copilot",
   ".claude.json",
   ".codex",
   ".gemini",
@@ -2747,8 +2747,8 @@ function validateConfigPath(configPath2, homeDir, claudeConfigDir) {
   const resolved = (0, import_path15.resolve)(configPath2);
   const isUnderHome = resolved.startsWith(homeDir + "/") || resolved === homeDir;
   const normalizedConfigDir = (0, import_path15.resolve)(claudeConfigDir);
-  const normalizedOmcDir = (0, import_path15.resolve)(homeDir, ".omc");
-  const hasOmcComponent = resolved.includes("/.omc/") || resolved.endsWith("/.omc");
+  const normalizedOmcDir = (0, import_path15.resolve)(homeDir, ".omg");
+  const hasOmcComponent = resolved.includes("/.omg/") || resolved.endsWith("/.omc");
   const isTrustedSubpath = resolved === normalizedConfigDir || resolved.startsWith(normalizedConfigDir + "/") || resolved === normalizedOmcDir || resolved.startsWith(normalizedOmcDir + "/") || hasOmcComponent;
   if (!isUnderHome || !isTrustedSubpath) return false;
   try {
@@ -2791,7 +2791,7 @@ function main() {
   const home = (0, import_os3.homedir)();
   const claudeConfigDir = getCopilotConfigDir();
   if (!validateConfigPath(configPath2, home, claudeConfigDir)) {
-    console.error(`Config path must be under ~/ with ${claudeConfigDir} or ~/.omc/ subpath: ${configPath2}`);
+    console.error(`Config path must be under ~/ with ${claudeConfigDir} or ~/.omg/ subpath: ${configPath2}`);
     process.exit(1);
   }
   let config;

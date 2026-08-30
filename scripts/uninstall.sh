@@ -155,7 +155,7 @@ else
 fi
 
 # Remove .omc directory if it exists (plans, notepads, drafts)
-if [ -d "$COPILOT_CONFIG_DIR/../.omc" ] || [ -d ".omc" ]; then
+if [ -d "$COPILOT_CONFIG_DIR/../.omc" ] || [ -d ".omg" ]; then
     echo -e "${YELLOW}Note: .omc directory (plans/notepads) was not removed.${NC}"
     echo "  To remove project plans and notepads, run:"
     echo "    rm -rf .omc"

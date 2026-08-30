@@ -18,7 +18,7 @@ describe("subagent-tracker", () => {
         previousUserProfile = process.env.USERPROFILE;
         process.env.HOME = testDir;
         process.env.USERPROFILE = testDir;
-        mkdirSync(join(testDir, ".omc", "state"), { recursive: true });
+        mkdirSync(join(testDir, ".omg", "state"), { recursive: true });
     });
     afterEach(() => {
         flushPendingWrites();
@@ -624,7 +624,7 @@ describe("subagent-tracker", () => {
             const fromParent = readMissionBoardState(testDir, "parent-uuid-xyz");
             expect(fromParent?.missions.some((mission) => mission.id.startsWith("session:parent-uuid-xyz:"))).toBe(true);
             // Sanity: explicitly assert no pid-* session dir got created for this run.
-            const sessionsDir = join(testDir, ".omc", "state", "sessions");
+            const sessionsDir = join(testDir, ".omg", "state", "sessions");
             const entries = require("fs").readdirSync(sessionsDir);
             expect(entries.filter((name) => name.startsWith("pid-"))).toHaveLength(0);
             expect(entries).toContain("parent-uuid-xyz");
@@ -1188,12 +1188,12 @@ describe("subagent-tracker", () => {
         }
         function makeGitRepo() {
             const repoDir = join(testDir, `repo-${Math.random().toString(36).slice(2)}`);
-            mkdirSync(join(repoDir, ".omc", "state"), { recursive: true });
+            mkdirSync(join(repoDir, ".omg", "state"), { recursive: true });
             git(repoDir, ["init"]);
             git(repoDir, ["config", "user.email", "test@test.com"]);
             git(repoDir, ["config", "user.name", "Test"]);
             git(repoDir, ["config", "commit.gpgsign", "false"]);
-            writeFileSync(join(repoDir, ".gitignore"), ".omc/\n");
+            writeFileSync(join(repoDir, ".gitignore"), ".omg/\n");
             writeFileSync(join(repoDir, "tracked.txt"), "seed\n");
             git(repoDir, ["add", ".gitignore", "tracked.txt"]);
             git(repoDir, ["commit", "-m", "seed"]);

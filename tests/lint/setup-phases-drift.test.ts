@@ -225,12 +225,12 @@ describe("setup phases drift enforcement (issue #3871)", () => {
     expect(snippet, "Phase 2 must keep an executable resume-boundary snippet").toBeTruthy();
     const root = mkdtempSync(join(tmpdir(), "setup-drift-resume-"));
     try {
-      mkdirSync(join(root, ".omc", "state"), { recursive: true });
-      writeFileSync(join(root, ".omc", "state", "setup-state.json"), JSON.stringify({ lastCompletedStep: 7 }));
+      mkdirSync(join(root, ".omg", "state"), { recursive: true });
+      writeFileSync(join(root, ".omg", "state", "setup-state.json"), JSON.stringify({ lastCompletedStep: 7 }));
       const resumed = execFileSync("bash", ["-c", `${snippet}\nprintf '%s:%s\\n' "$RESUMED_PHASE_TWO_BOUNDARY" "$RESUME_LAST_COMPLETED_STEP"`], { cwd: root });
       expect(resumed.toString()).toContain("true:7");
 
-      writeFileSync(join(root, ".omc", "state", "setup-state.json"), JSON.stringify({ lastCompletedStep: 2 }));
+      writeFileSync(join(root, ".omg", "state", "setup-state.json"), JSON.stringify({ lastCompletedStep: 2 }));
       const fresh = execFileSync("bash", ["-c", `${snippet}\nprintf '%s:%s\\n' "$RESUMED_PHASE_TWO_BOUNDARY" "$RESUME_LAST_COMPLETED_STEP"`], { cwd: root });
       expect(fresh.toString()).toContain("false:2");
     } finally {

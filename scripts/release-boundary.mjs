@@ -325,7 +325,7 @@ function assertForbiddenArchivePaths(entries) {
     const basenamePart = basename(path).toLowerCase();
     if (
       path === '.gjc' || path.startsWith('.gjc/') ||
-      path === '.omc' || path.startsWith('.omc/') ||
+      path === '.omg' || path.startsWith('.omg/') ||
       path === 'logs' || path.startsWith('logs/') ||
       path === 'sessions' || path.startsWith('sessions/') ||
       basenamePart.endsWith('.log') ||

@@ -27,8 +27,8 @@
  *   1. `writeSkillActiveStateCopies()` is the only helper allowed to persist
  *      workflow-slot state. Every workflow-slot write, confirm, tombstone, TTL
  *      pruning, and hard-clear must update BOTH
- *        - `.omc/state/skill-active-state.json`
- *        - `.omc/state/sessions/{sessionId}/skill-active-state.json`
+ *        - `.omg/state/skill-active-state.json`
+ *        - `.omg/state/sessions/{sessionId}/skill-active-state.json`
  *      together through this single helper.
  *   2. Support-skill writes go through the same helper so the shared file
  *      never drops the `active_skills` branch.
@@ -555,8 +555,8 @@ export function readSkillActiveStateNormalized(
 /**
  * THE ONLY HELPER allowed to persist workflow-slot state.
  *
- * Writes BOTH root `.omc/state/skill-active-state.json` AND session
- * `.omc/state/sessions/{sessionId}/skill-active-state.json` together. When a
+ * Writes BOTH root `.omg/state/skill-active-state.json` AND session
+ * `.omg/state/sessions/{sessionId}/skill-active-state.json` together. When a
  * resolved state is empty (no slots, no support_skill), the corresponding
  * file is removed instead — the absence of a file is the canonical empty
  * state.

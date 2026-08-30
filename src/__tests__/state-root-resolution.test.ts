@@ -2,7 +2,7 @@
  * Regression tests for issue #2532: centralized OMC_STATE_DIR state-root resolution.
  *
  * Verifies that:
- *   1. Default behavior (no OMC_STATE_DIR) is unchanged — state lives in {dir}/.omc/
+ *   1. Default behavior (no OMC_STATE_DIR) is unchanged — state lives in {dir}/.omg/
  *   2. session-start.mjs reads session state from the custom OMC_STATE_DIR location
  *   3. persistent-mode.cjs (stop hook) reads mode state from the custom OMC_STATE_DIR
  *      location and correctly blocks the stop when an active mode is present there
@@ -154,7 +154,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
 
   it('session-start reads ralph state from default .omc path when OMC_STATE_DIR is not set', () => {
     const sessionId = 'test-session-default';
-    const stateDir = join(fakeProject, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(fakeProject, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stateDir, 'ralph-state.json'),
@@ -180,7 +180,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
 
   it('session-start ignores tombstoned stale ralph restore state after cancel', () => {
     const sessionId = 'test-session-tombstoned-ralph';
-    const omcRoot = join(fakeProject, '.omc');
+    const omcRoot = join(fakeProject, '.omg');
     const stateDir = join(omcRoot, 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
@@ -209,7 +209,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
 
   it('session-start ignores tombstoned stale ultrawork restore state after cancel', () => {
     const sessionId = 'test-session-tombstoned-ultrawork';
-    const omcRoot = join(fakeProject, '.omc');
+    const omcRoot = join(fakeProject, '.omg');
     const stateDir = join(omcRoot, 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
@@ -239,7 +239,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     const priorSessionId = 'prior-runner-session';
     const currentSessionId = 'current-runner-session';
 
-    const priorStateDir = join(fakeProject, '.omc', 'state', 'sessions', priorSessionId);
+    const priorStateDir = join(fakeProject, '.omg', 'state', 'sessions', priorSessionId);
     mkdirSync(priorStateDir, { recursive: true });
     writeFileSync(
       join(priorStateDir, 'ralph-state.json'),
@@ -278,7 +278,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
 
     expect(existsSync(join(priorStateDir, 'ralph-state.json'))).toBe(true);
     expect(existsSync(markerPath)).toBe(true);
-    expect(existsSync(join(fakeProject, '.omc', 'state', 'sessions', currentSessionId, 'session-started.json'))).toBe(true);
+    expect(existsSync(join(fakeProject, '.omg', 'state', 'sessions', currentSessionId, 'session-started.json'))).toBe(true);
   });
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -343,7 +343,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
   it('session-start does NOT restore state when OMC_STATE_DIR is set but state is only in default .omc', () => {
     const sessionId = 'test-session-only-default';
     // Place state ONLY in the default .omc location
-    const defaultStateDir = join(fakeProject, '.omc', 'state', 'sessions', sessionId);
+    const defaultStateDir = join(fakeProject, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(defaultStateDir, { recursive: true });
     writeFileSync(
       join(defaultStateDir, 'ralph-state.json'),
@@ -374,7 +374,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
 
   it('stop hook blocks when active ralph state is in default .omc path (baseline)', () => {
     const sessionId = 'test-stop-default';
-    const stateDir = join(fakeProject, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(fakeProject, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stateDir, 'ralph-state.json'),
@@ -431,7 +431,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
   it('stop hook does NOT block when OMC_STATE_DIR is set but state is only in default .omc', () => {
     const sessionId = 'test-stop-mismatch';
     // Place active state in default location only
-    const defaultStateDir = join(fakeProject, '.omc', 'state', 'sessions', sessionId);
+    const defaultStateDir = join(fakeProject, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(defaultStateDir, { recursive: true });
     writeFileSync(
       join(defaultStateDir, 'ralph-state.json'),
@@ -462,7 +462,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
 
   it('pre-tool-enforcer injects [TEAM ROUTING REQUIRED] when team-state lives in default .omc (baseline)', () => {
     const sessionId = 'test-pte-team-default';
-    const stateDir = join(fakeProject, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(fakeProject, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stateDir, 'team-state.json'),
@@ -525,7 +525,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
   it('pre-tool-enforcer ignores stale team-state in default .omc when OMC_STATE_DIR is set', () => {
     const sessionId = 'test-pte-team-mismatch';
     // Place active team-state in default location only
-    const stateDir = join(fakeProject, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(fakeProject, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(
       join(stateDir, 'team-state.json'),
@@ -582,7 +582,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     );
     const defaultPath = join(
       fakeProject,
-      '.omc',
+      '.omg',
       'state',
       'sessions',
       sessionId,
@@ -606,13 +606,13 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     process.env.USERPROFILE = fakeHome;
     try {
       clearWorktreeCache();
-      const expected = join(fakeHome, '.omc');
+      const expected = join(fakeHome, '.omg');
       process.chdir(firstCwd);
       expect(getOmcRoot()).toBe(expected);
       process.chdir(secondCwd);
       expect(getOmcRoot()).toBe(expected);
-      expect(existsSync(join(firstCwd, '.omc'))).toBe(false);
-      expect(existsSync(join(secondCwd, '.omc'))).toBe(false);
+      expect(existsSync(join(firstCwd, '.omg'))).toBe(false);
+      expect(existsSync(join(secondCwd, '.omg'))).toBe(false);
     } finally {
       process.chdir(previousCwd);
       if (previousHome === undefined) delete process.env.HOME;
@@ -627,7 +627,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     const fakeHome = join(tempDir, 'home');
     const project = join(fakeHome, 'workspace', 'project');
     const nestedCwd = join(project, 'deep', 'path');
-    mkdirSync(join(project, '.omc'), { recursive: true });
+    mkdirSync(join(project, '.omg'), { recursive: true });
     mkdirSync(nestedCwd, { recursive: true });
 
     const previousHome = process.env.HOME;
@@ -638,7 +638,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     try {
       clearWorktreeCache();
       process.chdir(nestedCwd);
-      expect(getOmcRoot()).toBe(join(fakeHome, '.omc'));
+      expect(getOmcRoot()).toBe(join(fakeHome, '.omg'));
     } finally {
       process.chdir(previousCwd);
       if (previousHome === undefined) delete process.env.HOME;
@@ -652,7 +652,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
   it('does not reuse state roots under protected home directories', () => {
     const fakeHome = join(tempDir, 'home');
     const sensitiveCwd = join(fakeHome, '.ssh', 'nested');
-    mkdirSync(join(fakeHome, '.ssh', '.omc'), { recursive: true });
+    mkdirSync(join(fakeHome, '.ssh', '.omg'), { recursive: true });
     mkdirSync(sensitiveCwd, { recursive: true });
 
     const previousHome = process.env.HOME;
@@ -661,7 +661,7 @@ describe('OMC_STATE_DIR state-root resolution (issue #2532)', () => {
     process.env.USERPROFILE = fakeHome;
     try {
       clearWorktreeCache();
-      expect(getOmcRoot(sensitiveCwd)).toBe(join(fakeHome, '.omc'));
+      expect(getOmcRoot(sensitiveCwd)).toBe(join(fakeHome, '.omg'));
     } finally {
       if (previousHome === undefined) delete process.env.HOME;
       else process.env.HOME = previousHome;

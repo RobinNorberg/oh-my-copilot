@@ -28,7 +28,7 @@ export type ApprovedExecutionLaunchHintOutcome = {
     hint: ApprovedExecutionLaunchHint;
 };
 /**
- * Read planning artifacts from .omc/.omx plans directories.
+ * Read planning artifacts from .omg/.omx plans directories.
  * Returns paths to all PRD and test-spec files found.
  */
 export declare function readPlanningArtifacts(cwd: string): PlanningArtifacts;

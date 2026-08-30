@@ -8,7 +8,7 @@
 import { join } from 'path';
 import { homedir } from 'os';
 /** Storage directory for rules injector state */
-export const OMC_STORAGE_DIR = join(homedir(), '.omc');
+export const OMC_STORAGE_DIR = join(homedir(), '.omg');
 export const RULES_INJECTOR_STORAGE = join(OMC_STORAGE_DIR, 'rules-injector');
 /** Project marker files that indicate a project root */
 export const PROJECT_MARKERS = [
@@ -23,7 +23,7 @@ export const PROJECT_MARKERS = [
 export const PROJECT_RULE_SUBDIRS = [
     ['.github', 'instructions'],
     ['.cursor', 'rules'],
-    ['.claude', 'rules'],
+    ['.copilot', 'rules'],
 ];
 /** Single-file rules that always apply */
 export const PROJECT_RULE_FILES = [

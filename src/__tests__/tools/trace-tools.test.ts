@@ -12,14 +12,14 @@ vi.mock('../../lib/worktree-paths.js', async () => {
   const { join } = await import('path');
   return {
     validateWorkingDirectory: (dir?: string) => dir || testDir,
-    getOmcRoot: (dir?: string) => join(dir || testDir, '.omc'),
+    getOmcRoot: (dir?: string) => join(dir || testDir, '.omg'),
   };
 });
 
 describe('trace-tools', () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `trace-tools-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
     resetSessionStartTimes();
   });
 
@@ -292,7 +292,7 @@ describe('trace-tools', () => {
 
   describe('edge cases', () => {
     it('should handle malformed JSONL lines gracefully', async () => {
-      const replayPath = join(testDir, '.omc', 'state', 'agent-replay-malformed.jsonl');
+      const replayPath = join(testDir, '.omg', 'state', 'agent-replay-malformed.jsonl');
       writeFileSync(replayPath, [
         '{"t":0,"agent":"a1","event":"agent_start","agent_type":"executor"}',
         'THIS IS NOT JSON',
@@ -313,7 +313,7 @@ describe('trace-tools', () => {
 
     it('should auto-detect latest session from multiple replay files', async () => {
       // Create older session
-      const oldPath = join(testDir, '.omc', 'state', 'agent-replay-old-sess.jsonl');
+      const oldPath = join(testDir, '.omg', 'state', 'agent-replay-old-sess.jsonl');
       writeFileSync(oldPath, '{"t":0,"agent":"a1","event":"agent_start","agent_type":"planner"}\n');
 
       // Wait a tick to ensure different mtime
@@ -321,7 +321,7 @@ describe('trace-tools', () => {
       while (Date.now() - now < 50) { /* spin */ }
 
       // Create newer session
-      const newPath = join(testDir, '.omc', 'state', 'agent-replay-new-sess.jsonl');
+      const newPath = join(testDir, '.omg', 'state', 'agent-replay-new-sess.jsonl');
       writeFileSync(newPath, '{"t":0,"agent":"a1","event":"agent_start","agent_type":"executor"}\n');
 
       // Call without sessionId — should auto-detect the newest

@@ -1,12 +1,12 @@
 /**
  * Worktree Path Enforcement
  *
- * Provides strict path validation and resolution for .omc/ paths,
+ * Provides strict path validation and resolution for .omg/ paths,
  * ensuring all operations stay within the worktree boundary.
  *
  * Supports OMC_STATE_DIR environment variable for centralized state storage.
  * When set, state is stored at $OMC_STATE_DIR/{project-identifier}/ instead
- * of {worktree}/.omc/. This preserves state across worktree deletions.
+ * of {worktree}/.omg/. This preserves state across worktree deletions.
  */
 
 import { createHash } from 'crypto';
@@ -32,21 +32,21 @@ export const WORKSPACE_MARKER = '.omc-workspace';
 
 /** Standard .omc subdirectories */
 export const OmcPaths = {
-  ROOT: '.omc',
-  STATE: '.omc/state',
-  SESSIONS: '.omc/state/sessions',
-  PLANS: '.omc/plans',
-  RESEARCH: '.omc/research',
-  NOTEPAD: '.omc/notepad.md',
-  PROJECT_MEMORY: '.omc/project-memory.json',
-  DRAFTS: '.omc/drafts',
-  NOTEPADS: '.omc/notepads',
-  LOGS: '.omc/logs',
-  SCIENTIST: '.omc/scientist',
-  AUTOPILOT: '.omc/autopilot',
-  SKILLS: '.omc/skills',
-  SHARED_MEMORY: '.omc/state/shared-memory',
-  DEEPINIT_MANIFEST: '.omc/deepinit-manifest.json',
+  ROOT: '.omg',
+  STATE: '.omg/state',
+  SESSIONS: '.omg/state/sessions',
+  PLANS: '.omg/plans',
+  RESEARCH: '.omg/research',
+  NOTEPAD: '.omg/notepad.md',
+  PROJECT_MEMORY: '.omg/project-memory.json',
+  DRAFTS: '.omg/drafts',
+  NOTEPADS: '.omg/notepads',
+  LOGS: '.omg/logs',
+  SCIENTIST: '.omg/scientist',
+  AUTOPILOT: '.omg/autopilot',
+  SKILLS: '.omg/skills',
+  SHARED_MEMORY: '.omg/state/shared-memory',
+  DEEPINIT_MANIFEST: '.omg/deepinit-manifest.json',
 } as const;
 
 /**
@@ -142,7 +142,7 @@ export function readWorkspaceMarkerConfig(workspaceRoot: string): WorkspaceMarke
 /**
  * If `cwd` is inside a git submodule, return the outermost superproject working
  * tree; otherwise return null. A submodule is a full git repo, so
- * `git rev-parse --show-toplevel` stops at the submodule and `.omc/` would be
+ * `git rev-parse --show-toplevel` stops at the submodule and `.omg/` would be
  * created there instead of at the monorepo root (#3349). Climbing via
  * `--show-superproject-working-tree` anchors state to the superproject, walking
  * up through nested submodules until no superproject remains.
@@ -211,7 +211,7 @@ function resolveSuperprojectRoot(cwd: string): string | null {
 
 const SENSITIVE_DIR_BASENAMES = new Set([
   '.ssh', '.gnupg', '.aws', '.azure', '.gcloud', '.kube', 'ssh', '.pki',
-  '.config', '.claude', '.claude.json', '.codex', '.gemini', '.cursor',
+  '.config', '.copilot', '.claude.json', '.codex', '.gemini', '.cursor',
   '.vscode', '.ollama', '.docker', '.npm', '.cache', '.local',
   'desktop', 'documents', 'downloads', 'pictures', 'photos', 'music',
   'movies', 'videos', 'public', 'library',
@@ -280,7 +280,7 @@ function resolveNonGitFallbackRoot(): string {
 
 /**
  * Resolve the canonical state anchor for a non-git cwd.
- * Legacy cwd-local `.omc/` trees are never adopted implicitly; callers must
+ * Legacy cwd-local `.omg/` trees are never adopted implicitly; callers must
  * use the explicit migration surface to copy owner-matched session state.
  */
 export function resolveNonGitStateAnchor(startDir?: string): string {
@@ -576,7 +576,7 @@ function formatGitProbeFailedMessage(workingDirectory: string): string {
  * Get the state-anchor "worktree root" for a directory.
  *
  * When cwd is inside a git submodule this climbs to the outermost superproject
- * working tree so `.omc/` state anchors to the monorepo root rather than
+ * working tree so `.omg/` state anchors to the monorepo root rather than
  * polluting the submodule working tree (#3349). For normal repos and linked
  * worktrees (no superproject) it returns the literal git toplevel unchanged.
  * Returns null if not in a git repository.
@@ -646,7 +646,7 @@ const dualDirWarnings = new Set<string>();
 const siblingRetrofitWarned = new Set<string>();
 
 /**
- * Scan sibling subdirs of a workspace anchor for pre-existing .omc/state/ content.
+ * Scan sibling subdirs of a workspace anchor for pre-existing .omg/state/ content.
  * Deduplicated per session via a disk marker so repeated hook firings within the
  * same session don't re-stat siblings or re-emit. A fresh session (new sessionId)
  * will re-warn — intentional, since the user may not have seen the prior warning.
@@ -691,7 +691,7 @@ export function warnSiblingRetrofit(workspaceAnchor: string, sessionId?: string)
   const dirList = legacyDirs.map(d => `  - ${d}`).join('\n');
   process.stderr.write(
     `[omc] workspace-retrofit warning: .omc-workspace anchor found at ${workspaceAnchor}\n` +
-    `  but sibling repos have pre-existing local .omc/state/ content:\n${dirList}\n` +
+    `  but sibling repos have pre-existing local .omg/state/ content:\n${dirList}\n` +
     `  Shared state will go to: ${sharedOmc}\n` +
     `  To migrate legacy state: OMC_MIGRATE_LEGACY_STATE=1 omc setup\n` +
     `  Or manually copy state files to ${sharedOmc}/state/\n`
@@ -760,7 +760,7 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
   // project identifier is a state *identity* (used for OMC_STATE_DIR centralized
   // dirs, which never live inside the working tree), and a submodule must keep
   // its OWN identity — see the "should not change identifier for submodules"
-  // test. The #3349 climb applies only to the on-disk `.omc/` *location*
+  // test. The #3349 climb applies only to the on-disk `.omg/` *location*
   // (getOmcRoot's default branch), not to identity. The no-arg fallback uses
   // getGitTopLevel() (literal toplevel, no climb) so a process launched inside a
   // submodule still resolves the submodule's own identity, and findWorkspaceRoot
@@ -838,7 +838,7 @@ export function getProjectIdentifier(worktreeRoot?: string): string {
  * Get the .omc root directory path.
  *
  * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
- * instead of {worktree}/.omc/. This allows centralized state storage that
+ * instead of {worktree}/.omg/. This allows centralized state storage that
  * survives worktree deletion.
  *
  * @param worktreeRoot - Optional worktree root
@@ -859,7 +859,7 @@ export function getOmcRoot(worktreeRoot?: string): string {
     const projectId = !gitTopLevel && !workspaceRoot ? 'non-git' : getProjectIdentifier(root);
     const centralizedPath = join(customDir, projectId);
 
-    // Log notice if both legacy .omc/ and new centralized dir exist
+    // Log notice if both legacy .omg/ and new centralized dir exist
     const legacyPath = join(root, OmcPaths.ROOT);
     const warningKey = `${legacyPath}:${centralizedPath}`;
     if (!dualDirWarnings.has(warningKey) && existsSync(legacyPath) && existsSync(centralizedPath)) {
@@ -875,7 +875,7 @@ export function getOmcRoot(worktreeRoot?: string): string {
 
   // Workspace marker overrides git root resolution. This enables multi-repo
   // workspaces where the parent dir is not itself a git repo: all sub-repos
-  // share the same .omc/ at the marker location.
+  // share the same .omg/ at the marker location.
   const workspaceAnchor = findWorkspaceRoot(worktreeRoot);
   if (workspaceAnchor && !isSensitiveStateLocation(workspaceAnchor)) {
     return join(workspaceAnchor, OmcPaths.ROOT);
@@ -889,10 +889,10 @@ export function getOmcRoot(worktreeRoot?: string): string {
 }
 
 /**
- * Resolve a relative path under .omc/ to an absolute path.
+ * Resolve a relative path under .omg/ to an absolute path.
  * Validates the path is within the omc boundary.
  *
- * @param relativePath - Path relative to .omc/ (e.g., "state/ralph.json")
+ * @param relativePath - Path relative to .omg/ (e.g., "state/ralph.json")
  * @param worktreeRoot - Optional worktree root (auto-detected if not provided)
  * @returns Absolute path
  * @throws Error if path would escape omc boundary
@@ -930,10 +930,10 @@ export function resolveStatePath(stateName: string, worktreeRoot?: string): stri
 }
 
 /**
- * Ensure a directory exists under .omc/.
+ * Ensure a directory exists under .omg/.
  * Creates parent directories as needed.
  *
- * @param relativePath - Path relative to .omc/
+ * @param relativePath - Path relative to .omg/
  * @param worktreeRoot - Optional worktree root
  * @returns Absolute path to the created directory
  */
@@ -1142,10 +1142,10 @@ export function isValidTranscriptPath(transcriptPath: string): boolean {
   const normalized = normalize(expandedPath);
   const home = homedir();
 
-  // Allowed: [$COPILOT_CONFIG_DIR|~/.claude], ~/.omc/..., system temp dir
+  // Allowed: [$COPILOT_CONFIG_DIR|~/.claude], ~/.omg/..., system temp dir
   const allowedPrefixes = [
     getCopilotConfigDir(),
-    join(home, '.omc'),
+    join(home, '.omg'),
     tmpdir(), // honors $TMPDIR; covers /tmp and macOS /var/folders defaults
     '/tmp',
     '/var/folders', // macOS temp
@@ -1199,8 +1199,8 @@ export type WritePath = string & { readonly __brand: 'WritePath' };
  * provided; legacy root only when sessionId is absent — back-compat mode).
  *
  * Fields:
- *  - `sessionScoped`: `.omc/state/sessions/{sessionId}/{name}.json` (or empty when no sid).
- *  - `legacy`: `.omc/state/{name}.json` — preserved for backwards-compat reads.
+ *  - `sessionScoped`: `.omg/state/sessions/{sessionId}/{name}.json` (or empty when no sid).
+ *  - `legacy`: `.omg/state/{name}.json` — preserved for backwards-compat reads.
  *  - `effectiveRead`: brand-typed path the caller should READ from.
  *    When sid is set and the session-scoped file exists, this is sessionScoped;
  *    otherwise legacy.
@@ -1342,16 +1342,16 @@ export function ensureSessionStateDir(sessionId: string, worktreeRoot?: string):
  * Walks up from `directory` using `git rev-parse --show-toplevel`.
  * Falls back to `getWorktreeRoot(process.cwd())`, then `process.cwd()`.
  *
- * This ensures .omc/ state is always written at the worktree root,
+ * This ensures .omg/ state is always written at the worktree root,
  * even when called from a subdirectory (fixes #576).
  *
  * @param directory - Any directory inside a git worktree (optional)
  * @returns The worktree root (never a subdirectory)
  */
 export function resolveToWorktreeRoot(directory?: string): string {
-  // The resolved root feeds BOTH on-disk `.omc/` placement AND, under
+  // The resolved root feeds BOTH on-disk `.omg/` placement AND, under
   // OMC_STATE_DIR, the centralized-state *identity* (getProjectIdentifier).
-  // The #3349 submodule→superproject climb exists ONLY to place `.omc/` at the
+  // The #3349 submodule→superproject climb exists ONLY to place `.omg/` at the
   // superproject working tree; it must NOT change a submodule's centralized
   // identity (that contract is documented on getProjectIdentifier/getOmcRoot).
   // So when OMC_STATE_DIR is set — where on-disk placement is moot and identity
@@ -1381,14 +1381,14 @@ export function resolveToWorktreeRoot(directory?: string): string {
 /**
  * Resolve a Claude Code transcript path that may be mismatched in worktree sessions.
  *
- * When Claude Code runs inside a worktree (.claude/worktrees/X), it encodes the
+ * When Claude Code runs inside a worktree (.copilot/worktrees/X), it encodes the
  * worktree CWD into the project directory path, creating a transcript_path like:
- *   ~/.claude/projects/-path-to-project--claude-worktrees-X/<session>.jsonl
+ *   ~/.copilot/projects/-path-to-project--claude-worktrees-X/<session>.jsonl
  *
  * But the actual transcript lives at the original project's path:
- *   ~/.claude/projects/-path-to-project/<session>.jsonl
+ *   ~/.copilot/projects/-path-to-project/<session>.jsonl
  *
- * Claude Code encodes `/` and `.` as `-`. The `.claude/worktrees/`
+ * Claude Code encodes `/` and `.` as `-`. The `.copilot/worktrees/`
  * segment becomes `-claude-worktrees-`, preceded by a `-` from the path
  * separator, yielding the distinctive `--claude-worktrees-` pattern in the
  * encoded directory name.
@@ -1407,7 +1407,7 @@ export function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: 
 
   // Strategy 1: Detect worktree-encoded segment in the transcript path itself.
   // The pattern `--claude-worktrees-` appears when Claude Code encodes a CWD
-  // containing `/.claude/worktrees/` (separator `/` → `-`, dot `.` → `-`).
+  // containing `/.copilot/worktrees/` (separator `/` → `-`, dot `.` → `-`).
   // Strip everything from this pattern to the next `/` to recover the original
   // project directory encoding.
   const worktreeSegmentPattern = /--claude-worktrees-[^/\\]+/;
@@ -1420,10 +1420,10 @@ export function resolveTranscriptPath(transcriptPath: string | undefined, cwd?: 
   // When the CWD contains `<sep>.claude<sep>worktrees<sep>`, we can derive the
   // main project root and look for the transcript there. The marker is
   // normalized so it matches the OS-native separator — on Windows the CWD uses
-  // `\`, so a hard-coded `/.claude/worktrees/` would never match.
+  // `\`, so a hard-coded `/.copilot/worktrees/` would never match.
   const effectiveCwd = cwd || process.cwd();
   const normalizedCwd = normalize(effectiveCwd);
-  const worktreeMarker = normalize('/.claude/worktrees/');
+  const worktreeMarker = normalize('/.copilot/worktrees/');
   const markerIdx = normalizedCwd.indexOf(worktreeMarker);
   if (markerIdx !== -1) {
     // The marker includes its leading separator, so everything before it is
@@ -1603,7 +1603,7 @@ function foreignRepositoryResolution(
  * The trusted root is derived from process.cwd(), NOT from user input.
  *
  * Always returns a git top-level — never a subdirectory.
- * This prevents .omc/state/ from being created in subdirectories (#576)
+ * This prevents .omg/state/ from being created in subdirectories (#576)
  * without widening submodule launches to their superproject.
  *
  * @param workingDirectory - User-supplied working directory
@@ -1673,7 +1673,7 @@ export function validateWorkingDirectory(workingDirectory?: string): string {
   // Git-backed sessions still normalize subdirectories to the repository
   // root. A git-less session has no repository root to normalize to, so keep
   // the explicitly requested directory; getOmcRoot() applies the stable
-  // non-git anchor and prevents a per-directory .omc/ from being created.
+  // non-git anchor and prevents a per-directory .omg/ from being created.
   if (getGitTopLevel(process.cwd())) {
     return trustedRoot;
   }

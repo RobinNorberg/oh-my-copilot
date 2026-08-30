@@ -528,7 +528,7 @@ describe('SMOKE: State Cancel Cleanup — session-scoped I/O (issue #1143)', () 
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
     delete process.env.OMC_STATE_DIR;
-    omcDir = join(testDir, '.omc');
+    omcDir = join(testDir, '.omg');
     mkdirSync(omcDir, { recursive: true });
     mockGetOmcRoot.mockReturnValue(omcDir);
   });

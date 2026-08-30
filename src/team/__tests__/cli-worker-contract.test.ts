@@ -100,20 +100,20 @@ describe('cli-worker-contract', () => {
 
   describe('cliWorkerOutputFilePath', () => {
     it('joins team state root + worker into the conventional path', () => {
-      const p = cliWorkerOutputFilePath('/repo/.omc/state/team/foo', 'worker-2');
-      expect(p).toBe('/repo/.omc/state/team/foo/workers/worker-2/verdict.json');
+      const p = cliWorkerOutputFilePath('/repo/.omg/state/team/foo', 'worker-2');
+      expect(p).toBe('/repo/.omg/state/team/foo/workers/worker-2/verdict.json');
     });
 
     it('normalizes windows backslashes to forward slashes', () => {
       const p = cliWorkerOutputFilePath('C:\\proj\\.omc\\state\\team\\foo', 'worker-1');
-      expect(p).toBe('C:/proj/.omc/state/team/foo/workers/worker-1/verdict.json');
+      expect(p).toBe('C:/proj/.omg/state/team/foo/workers/worker-1/verdict.json');
     });
 
     it('scopes replacement artifacts to the assignment and launch attempt', () => {
-      const p = cliWorkerOutputFilePath('/repo/.omc/state/team/foo', 'worker-1', {
+      const p = cliWorkerOutputFilePath('/repo/.omg/state/team/foo', 'worker-1', {
         taskId: '7', assignmentId: 'recovery-2-attempt-9',
       });
-      expect(p).toBe('/repo/.omc/state/team/foo/workers/worker-1/verdict-7-recovery-2-attempt-9.json');
+      expect(p).toBe('/repo/.omg/state/team/foo/workers/worker-1/verdict-7-recovery-2-attempt-9.json');
     });
   });
 

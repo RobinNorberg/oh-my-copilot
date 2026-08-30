@@ -6,7 +6,7 @@
  * to prevent concurrent corruption.
  *
  * Storage layout:
- *   .omc/wiki/
+ *   .omg/wiki/
  *   ├── index.md      (auto-maintained catalog)
  *   ├── log.md         (append-only operation chronicle)
  *   ├── page-slug.md   (knowledge pages)
@@ -51,7 +51,7 @@ export function ensureWikiDir(root: string): string {
     mkdirSync(wikiDir, { recursive: true });
   }
 
-  // Ensure .omc/.gitignore includes wiki/
+  // Ensure .omg/.gitignore includes wiki/
   const omcRoot = getOmcRoot(root);
   const gitignorePath = join(omcRoot, '.gitignore');
   if (existsSync(gitignorePath)) {

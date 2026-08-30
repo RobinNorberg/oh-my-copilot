@@ -62,7 +62,7 @@ import type {
   SealedGraphDescriptor,
 } from "../types.js";
 
-const DEFAULT_RUNS_ROOT_SEGMENTS = [".omc", "graph-runs"];
+const DEFAULT_RUNS_ROOT_SEGMENTS = [".omg", "graph-runs"];
 const DESCRIPTOR_FILE_NAME = "descriptor.json";
 const REQUEST_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/;
 

@@ -152,7 +152,7 @@ describe('rebase conflict mailbox delivery', () => {
         }
         if (gotConflict) {
             // Check rebasing worker inbox has conflict message
-            const rebasingWorkerInboxPath = join(fixture.repoRoot, '.omc', 'state', 'team', fixture.teamName, 'workers', rebasingWorkerName, 'inbox.md');
+            const rebasingWorkerInboxPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'workers', rebasingWorkerName, 'inbox.md');
             expect(existsSync(rebasingWorkerInboxPath)).toBe(true);
             const inboxContent = readFileSync(rebasingWorkerInboxPath, 'utf-8');
             // Inbox should mention rebase and provide git instructions
@@ -271,7 +271,7 @@ describe('M4: dirty-tree audit on rebase resolution', () => {
             await handle.pollOnce();
             await waitForEventInLog({ eventLogPath: eventLog, eventType: 'rebase_resolved', worker: rebasingWorkerName, timeoutMs: 8000 });
             // Check inbox for audit message
-            const rebasingWorkerInboxPath = join(fixture.repoRoot, '.omc', 'state', 'team', fixture.teamName, 'workers', rebasingWorkerName, 'inbox.md');
+            const rebasingWorkerInboxPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'workers', rebasingWorkerName, 'inbox.md');
             if (existsSync(rebasingWorkerInboxPath)) {
                 const inboxContent = readFileSync(rebasingWorkerInboxPath, 'utf-8');
                 // Should mention dirty files

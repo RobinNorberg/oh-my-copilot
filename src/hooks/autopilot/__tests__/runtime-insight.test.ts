@@ -22,14 +22,14 @@ describe('formatAutopilotRuntimeInsight', () => {
   });
 
   it('limits team blocker scans to teams owned by the active session', () => {
-    writeJson(join(cwd, '.omc/state/team/session-a-team/manifest.json'), {
+    writeJson(join(cwd, '.omg/state/team/session-a-team/manifest.json'), {
       schema_version: 2,
       name: 'session-a-team',
       task: 'session-a task',
       leader: { session_id: 'session-A', worker_id: 'leader-a', role: 'leader' },
       created_at: new Date().toISOString(),
     });
-    writeJson(join(cwd, '.omc/state/team/session-a-team/tasks/task-1.json'), {
+    writeJson(join(cwd, '.omg/state/team/session-a-team/tasks/task-1.json'), {
       id: '1',
       subject: 'task 1',
       description: 'broken dependency',
@@ -37,20 +37,20 @@ describe('formatAutopilotRuntimeInsight', () => {
       depends_on: ['999'],
       created_at: new Date().toISOString(),
     });
-    writeJson(join(cwd, '.omc/state/team/session-a-team/workers/worker-1/status.json'), {
+    writeJson(join(cwd, '.omg/state/team/session-a-team/workers/worker-1/status.json'), {
       state: 'blocked',
       reason: 'waiting on scoped issue',
       updated_at: new Date().toISOString(),
     });
 
-    writeJson(join(cwd, '.omc/state/team/session-b-team/manifest.json'), {
+    writeJson(join(cwd, '.omg/state/team/session-b-team/manifest.json'), {
       schema_version: 2,
       name: 'session-b-team',
       task: 'session-b task',
       leader: { session_id: 'session-B', worker_id: 'leader-b', role: 'leader' },
       created_at: new Date().toISOString(),
     });
-    writeJson(join(cwd, '.omc/state/team/session-b-team/tasks/task-7.json'), {
+    writeJson(join(cwd, '.omg/state/team/session-b-team/tasks/task-7.json'), {
       id: '7',
       subject: 'task 7',
       description: 'foreign dependency',
@@ -58,7 +58,7 @@ describe('formatAutopilotRuntimeInsight', () => {
       depends_on: ['404'],
       created_at: new Date().toISOString(),
     });
-    writeJson(join(cwd, '.omc/state/team/session-b-team/workers/worker-9/status.json'), {
+    writeJson(join(cwd, '.omg/state/team/session-b-team/workers/worker-9/status.json'), {
       state: 'failed',
       reason: 'foreign failure',
       updated_at: new Date().toISOString(),
@@ -92,7 +92,7 @@ describe('formatAutopilotRuntimeInsight', () => {
   });
 
   it('keeps legacy workspace-wide scanning when no session id is provided', () => {
-    writeJson(join(cwd, '.omc/state/team/team-a/tasks/task-1.json'), {
+    writeJson(join(cwd, '.omg/state/team/team-a/tasks/task-1.json'), {
       id: '1',
       subject: 'task 1',
       description: 'missing dep',
@@ -100,7 +100,7 @@ describe('formatAutopilotRuntimeInsight', () => {
       depends_on: ['2'],
       created_at: new Date().toISOString(),
     });
-    writeJson(join(cwd, '.omc/state/team/team-b/workers/worker-2/status.json'), {
+    writeJson(join(cwd, '.omg/state/team/team-b/workers/worker-2/status.json'), {
       state: 'failed',
       reason: 'global failure',
       updated_at: new Date().toISOString(),

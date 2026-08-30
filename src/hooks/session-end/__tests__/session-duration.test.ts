@@ -16,7 +16,7 @@ let previousHome: string | undefined;
 let previousUserProfile: string | undefined;
 
 function stateDir(): string {
-  return path.join(tmpDir, '.omc', 'state');
+  return path.join(tmpDir, '.omg', 'state');
 }
 
 function writeState(filename: string, state: Record<string, unknown>): void {

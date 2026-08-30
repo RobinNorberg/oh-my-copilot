@@ -86,8 +86,8 @@ describe('tracked dist wiki runtime fail-closed (#3858 remaining P1)', () => {
     git(sessionRepo, 'commit -m initial');
     srcDir = join(sessionRepo, 'src');
     mkdirSync(srcDir, { recursive: true });
-    mkdirSync(join(sessionRepo, '.omc', 'wiki'), { recursive: true });
-    secretPage = join(sessionRepo, '.omc', 'wiki', 'session-secret.md');
+    mkdirSync(join(sessionRepo, '.omg', 'wiki'), { recursive: true });
+    secretPage = join(sessionRepo, '.omg', 'wiki', 'session-secret.md');
     writeFileSync(
       secretPage,
       '---\ntitle: session-secret\ncategory: reference\nconfidence: high\ntags: [secret]\nupdated: 2026-08-24\n---\n\nsession-secret-body\n',
@@ -133,7 +133,7 @@ describe('tracked dist wiki runtime fail-closed (#3858 remaining P1)', () => {
     }
 
     expect(readFileSync(secretPage, 'utf8')).toBe(secretBefore);
-    expect(existsSync(join(sessionRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
-    expect(existsSync(join(srcDir, '.omc'))).toBe(false);
+    expect(existsSync(join(sessionRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(srcDir, '.omg'))).toBe(false);
   });
 });

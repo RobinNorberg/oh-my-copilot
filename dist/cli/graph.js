@@ -128,11 +128,11 @@ export function graphCommand() {
     command
         .command('run <descriptorPath>')
         .description('Run a graph descriptor with kill/resume support')
-        .option('--runs-root <dir>', 'Directory holding per-run state', '.omc/graph-runs')
+        .option('--runs-root <dir>', 'Directory holding per-run state', '.omg/graph-runs')
         .addHelpText('after', `
 Examples:
   $ omc graph run ./my-graph.json
-  $ omc graph run ./my-graph.json --runs-root .omc/graph-runs
+  $ omc graph run ./my-graph.json --runs-root .omg/graph-runs
 
 Exit codes:
   0   run succeeded

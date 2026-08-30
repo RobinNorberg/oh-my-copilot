@@ -33,7 +33,7 @@ function isolateFixtureRoot(root) {
     };
 }
 function seed(cwd, options = {}) {
-    const stateDir = join(cwd, '.omc', 'state');
+    const stateDir = join(cwd, '.omg', 'state');
     const teamDir = join(stateDir, 'team', TEAM);
     const mailboxDir = join(teamDir, 'mailbox');
     const nowIso = new Date().toISOString();

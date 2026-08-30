@@ -4,7 +4,7 @@
  *
  * Each worker writes a heartbeat file every poll cycle.
  * The lead checks freshness to detect dead workers.
- * Files stored at: .omc/state/team-bridge/{team}/{worker}.heartbeat.json
+ * Files stored at: .omg/state/team-bridge/{team}/{worker}.heartbeat.json
  */
 import { readFileSync, existsSync, readdirSync, unlinkSync, rmdirSync } from 'fs';
 import { join } from 'path';

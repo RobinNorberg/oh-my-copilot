@@ -9,7 +9,7 @@
  */
 export declare const USER_SKILLS_DIR: string;
 export declare const GLOBAL_SKILLS_DIR: string;
-export declare const PROJECT_SKILLS_SUBDIR: ".omc/skills";
+export declare const PROJECT_SKILLS_SUBDIR: ".omg/skills";
 export declare const PROJECT_AGENT_SKILLS_SUBDIR: string;
 export declare const SKILL_EXTENSION = ".md";
 /**

@@ -708,11 +708,11 @@ describe('tmux-detector', () => {
       // getNewPaneTail returns '' → no new lines → pane should be skipped
       vi.mocked(getNewPaneTail).mockReturnValue('');
 
-      const blocked = scanForBlockedPanes(15, '/project/.omc/state');
+      const blocked = scanForBlockedPanes(15, '/project/.omg/state');
 
       expect(blocked).toHaveLength(0);
       // getNewPaneTail must be called with the provided stateDir
-      expect(getNewPaneTail).toHaveBeenCalledWith('%0', '/project/.omc/state', 15);
+      expect(getNewPaneTail).toHaveBeenCalledWith('%0', '/project/.omg/state', 15);
     });
 
     it('detects a blocked pane from fresh delta lines when stateDir is provided', () => {
@@ -723,7 +723,7 @@ describe('tmux-detector', () => {
         'Claude Code\nYou\'ve hit your limit · resets Feb 17 at 2pm\n❯ 1. Stop and wait\nEnter to confirm',
       );
 
-      const blocked = scanForBlockedPanes(15, '/project/.omc/state');
+      const blocked = scanForBlockedPanes(15, '/project/.omg/state');
 
       expect(blocked).toHaveLength(1);
       expect(blocked[0]!.id).toBe('%0');

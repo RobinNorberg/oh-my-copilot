@@ -192,7 +192,7 @@ describe('rebase conflict mailbox delivery', () => {
       // Check rebasing worker inbox has conflict message
       const rebasingWorkerInboxPath = join(
         fixture.repoRoot,
-        '.omc', 'state', 'team', fixture.teamName,
+        '.omg', 'state', 'team', fixture.teamName,
         'workers', rebasingWorkerName, 'inbox.md',
       );
       expect(existsSync(rebasingWorkerInboxPath)).toBe(true);
@@ -339,7 +339,7 @@ describe('M4: dirty-tree audit on rebase resolution', () => {
       // Check inbox for audit message
       const rebasingWorkerInboxPath = join(
         fixture.repoRoot,
-        '.omc', 'state', 'team', fixture.teamName,
+        '.omg', 'state', 'team', fixture.teamName,
         'workers', rebasingWorkerName, 'inbox.md',
       );
 

@@ -229,7 +229,7 @@ export type RuntimeProgressEvent =
 
 /** Injectable I/O + collaborators for the runner (tests pass fakes). */
 export interface RunOptions {
-  /** Default: `.omc/graph-runs` under cwd. */
+  /** Default: `.omg/graph-runs` under cwd. */
   readonly runsRoot?: string;
   readonly executors: readonly NodeExecutor[];
   readonly prompter: HumanApprovalPrompter;

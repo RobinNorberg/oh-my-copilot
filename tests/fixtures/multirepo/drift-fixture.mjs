@@ -17,5 +17,5 @@ import { join } from 'node:path';
 
 export function intentionallyWrong(dir) {
   // ↓ This is the construction the gate is designed to catch.
-  return join(dir, '.omc', 'state', 'fixture.json');
+  return join(dir, '.omg', 'state', 'fixture.json');
 }

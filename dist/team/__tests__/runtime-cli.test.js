@@ -47,7 +47,7 @@ describe('runtime-cli legacy watchdog shutdown', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-shutdown-order-'));
         try {
             const teamName = 'shutdown-order';
-            const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+            const stateRoot = join(cwd, '.omg', 'state', 'team', teamName);
             const tasksDir = join(stateRoot, 'tasks');
             mkdirSync(tasksDir, { recursive: true });
             writeFileSync(join(tasksDir, '1.json'), JSON.stringify({
@@ -310,7 +310,7 @@ describe('runtime-cli terminal preservation helper', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-terminal-complete-'));
         try {
             const teamName = 'runtime-cli-preserve-complete';
-            const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+            const stateRoot = join(cwd, '.omg', 'state', 'team', teamName);
             const tasksDir = join(stateRoot, 'tasks');
             mkdirSync(tasksDir, { recursive: true });
             writeFileSync(join(tasksDir, '1.json'), JSON.stringify({
@@ -341,7 +341,7 @@ describe('runtime-cli terminal preservation helper', () => {
         const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-terminal-cancelled-'));
         try {
             const teamName = 'runtime-cli-preserve-cancelled';
-            const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+            const stateRoot = join(cwd, '.omg', 'state', 'team', teamName);
             const tasksDir = join(stateRoot, 'tasks');
             mkdirSync(tasksDir, { recursive: true });
             writeFileSync(join(tasksDir, '1.json'), JSON.stringify({
@@ -371,14 +371,14 @@ describe('runtime-cli terminal preservation helper', () => {
 });
 describe('runtime-cli terse-final output fallback', () => {
     function seedTask(cwd, teamName, task) {
-        const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+        const stateRoot = join(cwd, '.omg', 'state', 'team', teamName);
         const tasksDir = join(stateRoot, 'tasks');
         mkdirSync(tasksDir, { recursive: true });
         writeFileSync(join(tasksDir, `${task.id}.json`), JSON.stringify({ status: 'completed', ...task }), 'utf-8');
         return stateRoot;
     }
     function writeOutputFile(cwd, teamName, taskId, content) {
-        const outputsDir = join(cwd, '.omc', 'outputs');
+        const outputsDir = join(cwd, '.omg', 'outputs');
         mkdirSync(outputsDir, { recursive: true });
         const suffix = Math.random().toString(36).slice(2, 8);
         writeFileSync(join(outputsDir, `team-${teamName}-task-${taskId}-${Date.now()}-${suffix}.md`), content, 'utf-8');
@@ -403,7 +403,7 @@ describe('runtime-cli terse-final output fallback', () => {
         it('returns null when the outputs directory is missing', () => {
             const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-fallback-none-'));
             try {
-                expect(readTaskOutputFallback(join(cwd, '.omc', 'outputs'), 'team-x', '1')).toBeNull();
+                expect(readTaskOutputFallback(join(cwd, '.omg', 'outputs'), 'team-x', '1')).toBeNull();
             }
             finally {
                 rmSync(cwd, { recursive: true, force: true });
@@ -413,7 +413,7 @@ describe('runtime-cli terse-final output fallback', () => {
             const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-fallback-prefix-'));
             try {
                 writeOutputFile(cwd, 'team-x', '10', 'output for task ten');
-                expect(readTaskOutputFallback(join(cwd, '.omc', 'outputs'), 'team-x', '1')).toBeNull();
+                expect(readTaskOutputFallback(join(cwd, '.omg', 'outputs'), 'team-x', '1')).toBeNull();
             }
             finally {
                 rmSync(cwd, { recursive: true, force: true });

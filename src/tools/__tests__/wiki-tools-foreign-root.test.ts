@@ -49,9 +49,9 @@ function assertVisibleRejectionWithoutCanonicalLeak(
 }
 
 function assertNoFallbackWrites(sessionRepo: string, foreignRepo: string): void {
-  expect(existsSync(join(sessionRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
-  expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
-  expect(existsSync(join(sessionRepo, '.omc', 'wiki'))).toBe(false);
+  expect(existsSync(join(sessionRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
+  expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
+  expect(existsSync(join(sessionRepo, '.omg', 'wiki'))).toBe(false);
 }
 
 
@@ -87,9 +87,9 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
     git(foreignRepo, 'add README.md');
     git(foreignRepo, 'commit -m initial');
     // Populated wiki corpus in the foreign repository.
-    mkdirSync(join(foreignRepo, '.omc', 'wiki'), { recursive: true });
+    mkdirSync(join(foreignRepo, '.omg', 'wiki'), { recursive: true });
     writeFileSync(
-      join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'),
+      join(foreignRepo, '.omg', 'wiki', 'aapanel-setup.md'),
       '---\ntitle: aaPanel Setup\ncategory: reference\nconfidence: high\ntags: [aapanel, hosting]\nupdated: 2026-08-24\n---\n\naaPanel reverse proxy notes for the vault.\n',
     );
 
@@ -131,8 +131,8 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
 
   it('wiki_ingest rejects a foreign-repository workingDirectory and writes to neither repository', async () => {
     const before = {
-      sessionWiki: existsSync(join(sessionRepo, '.omc', 'wiki')),
-      foreignPages: existsSync(join(foreignRepo, '.omc', 'wiki', 'foreign-page.md')),
+      sessionWiki: existsSync(join(sessionRepo, '.omg', 'wiki')),
+      foreignPages: existsSync(join(foreignRepo, '.omg', 'wiki', 'foreign-page.md')),
     };
 
     const result = await wikiIngestTool.handler({
@@ -147,10 +147,10 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
     expect(result.content[0].text).toContain('belongs to a different repository');
     // No fallback-root write: the session repo must not gain a wiki directory,
     // and the foreign repo must not gain the page.
-    expect(existsSync(join(sessionRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(sessionRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
     if (!before.sessionWiki) {
-      expect(existsSync(join(sessionRepo, '.omc', 'wiki'))).toBe(false);
+      expect(existsSync(join(sessionRepo, '.omg', 'wiki'))).toBe(false);
     }
   });
 
@@ -163,8 +163,8 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
 
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('belongs to a different repository');
-    expect(existsSync(join(sessionRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(sessionRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
   });
 
   it('wiki_delete rejects a foreign-repository workingDirectory without touching either wiki', async () => {
@@ -173,7 +173,7 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('belongs to a different repository');
     // The foreign page still exists — no cross-repo deletion, no fallback hit.
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'))).toBe(true);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'aapanel-setup.md'))).toBe(true);
   });
 
   it('wiki_lint and wiki_list reject a foreign-repository workingDirectory', async () => {
@@ -210,7 +210,7 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
       });
     }
     assertNoFallbackWrites(sessionRepo, foreignRepo);
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'))).toBe(true);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'aapanel-setup.md'))).toBe(true);
   });
 
   it('all seven wiki tools reject a symlink foreign alias without leaking the canonical target', async () => {
@@ -228,7 +228,7 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
       });
     }
     assertNoFallbackWrites(sessionRepo, foreignRepo);
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'))).toBe(true);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'aapanel-setup.md'))).toBe(true);
   });
 
   it('all seven wiki tools reject a non-git outside path without leaking the full trusted root', async () => {
@@ -275,8 +275,8 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
         trustedBasename: basename(submodulePath),
       });
     }
-    expect(existsSync(join(submodulePath, '.omc', 'wiki'))).toBe(false);
-    expect(existsSync(join(parentDir, '.omc', 'wiki'))).toBe(false);
+    expect(existsSync(join(submodulePath, '.omg', 'wiki'))).toBe(false);
+    expect(existsSync(join(parentDir, '.omg', 'wiki'))).toBe(false);
   });
 
   it('all seven wiki tools reject a nested git probe failure before IO', async () => {
@@ -300,7 +300,7 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
       expect(result.content[0].text).not.toContain('Wiki page not found');
     }
     assertNoFallbackWrites(sessionRepo, foreignRepo);
-    expect(existsSync(join(nested, '.omc', 'wiki'))).toBe(false);
+    expect(existsSync(join(nested, '.omg', 'wiki'))).toBe(false);
   });
 
   it('same-root subdirectory is accepted without fallback writes to a foreign repo', async () => {
@@ -311,9 +311,9 @@ describe('wiki tools foreign-repository workingDirectory (#3858)', () => {
     expect(result.content[0].text).toContain('No wiki pages match "aaPanel"');
     expect(result.content[0].text).toContain(basename(sessionRepo));
     expect(result.content[0].text).not.toContain(sessionRepo);
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'))).toBe(true);
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
-    expect(existsSync(join(sub, '.omc', 'wiki'))).toBe(false);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'aapanel-setup.md'))).toBe(true);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(sub, '.omg', 'wiki'))).toBe(false);
   });
 
   it('the trusted repository is identified by basename only, not absolute path', async () => {

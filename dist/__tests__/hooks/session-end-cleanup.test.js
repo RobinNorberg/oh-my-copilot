@@ -27,7 +27,7 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     });
     it('removes the ending session\'s hud-stdin-cache.json and prunes its empty directory', () => {
         // Simulate the tree that `writeStdinCache` leaves behind after a session.
-        const sessionDir = join(tmpRoot, '.omc', 'state', 'sessions', 'session-aaa');
+        const sessionDir = join(tmpRoot, '.omg', 'state', 'sessions', 'session-aaa');
         mkdirSync(sessionDir, { recursive: true });
         const cacheFile = join(sessionDir, 'hud-stdin-cache.json');
         writeFileSync(cacheFile, '{}');
@@ -38,7 +38,7 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
         expect(removed).toBeGreaterThanOrEqual(2);
     });
     it('preserves the ending session\'s dir when it still has non-transient state', () => {
-        const sessionDir = join(tmpRoot, '.omc', 'state', 'sessions', 'session-bbb');
+        const sessionDir = join(tmpRoot, '.omg', 'state', 'sessions', 'session-bbb');
         mkdirSync(sessionDir, { recursive: true });
         writeFileSync(join(sessionDir, 'hud-stdin-cache.json'), '{}');
         // A state file that should NOT be cleaned (only transient files are targeted).
@@ -52,7 +52,7 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     });
     it('still removes the legacy top-level hud-stdin-cache.json', () => {
         // Regression: don't drop the old flat-path cleanup path used by session-less callers.
-        const stateDir = join(tmpRoot, '.omc', 'state');
+        const stateDir = join(tmpRoot, '.omg', 'state');
         mkdirSync(stateDir, { recursive: true });
         const legacy = join(stateDir, 'hud-stdin-cache.json');
         writeFileSync(legacy, '{}');
@@ -64,8 +64,8 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     // another concurrent session's HUD cache or prune its directory.
     // ---------------------------------------------------------------------------
     it('does not delete another running session\'s hud-stdin-cache.json', () => {
-        const ending = join(tmpRoot, '.omc', 'state', 'sessions', 'session-ending');
-        const other = join(tmpRoot, '.omc', 'state', 'sessions', 'session-other');
+        const ending = join(tmpRoot, '.omg', 'state', 'sessions', 'session-ending');
+        const other = join(tmpRoot, '.omg', 'state', 'sessions', 'session-other');
         mkdirSync(ending, { recursive: true });
         mkdirSync(other, { recursive: true });
         writeFileSync(join(ending, 'hud-stdin-cache.json'), '{}');
@@ -81,8 +81,8 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
     it('preserves cancel-signal/stop-breaker in other session dirs', () => {
         // Transient markers can still be live cancellation state for another
         // session; SessionEnd must not erase them across ownership boundaries.
-        const ending = join(tmpRoot, '.omc', 'state', 'sessions', 'session-ending');
-        const other = join(tmpRoot, '.omc', 'state', 'sessions', 'session-other');
+        const ending = join(tmpRoot, '.omg', 'state', 'sessions', 'session-ending');
+        const other = join(tmpRoot, '.omg', 'state', 'sessions', 'session-other');
         mkdirSync(ending, { recursive: true });
         mkdirSync(other, { recursive: true });
         writeFileSync(join(ending, 'cancel-signal-state.json'), '{}');
@@ -95,7 +95,7 @@ describe('cleanupTransientState — session-scoped hud-stdin-cache', () => {
         // Legacy callers that omit endingSessionId should not widen the blast
         // radius. HUD cache may only disappear when the caller identifies the
         // ending session explicitly.
-        const other = join(tmpRoot, '.omc', 'state', 'sessions', 'session-other');
+        const other = join(tmpRoot, '.omg', 'state', 'sessions', 'session-other');
         mkdirSync(other, { recursive: true });
         writeFileSync(join(other, 'hud-stdin-cache.json'), '{"running":true}');
         cleanupTransientState(tmpRoot);

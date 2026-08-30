@@ -94,19 +94,19 @@ function withTempDir(fn) {
 }
 
 function skillStatePath(tempDir, sessionId) {
-  return join(tempDir, '.omc', 'state', 'sessions', sessionId, 'skill-active-state.json');
+  return join(tempDir, '.omg', 'state', 'sessions', sessionId, 'skill-active-state.json');
 }
 
 function legacySkillStatePath(tempDir) {
-  return join(tempDir, '.omc', 'state', 'skill-active-state.json');
+  return join(tempDir, '.omg', 'state', 'skill-active-state.json');
 }
 
 function ralplanStatePath(tempDir, sessionId) {
-  return join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
+  return join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralplan-state.json');
 }
 
 function writeSkillStateFixtures(tempDir, sessionId, skillName = 'plan') {
-  mkdirSync(join(tempDir, '.omc', 'state', 'sessions', sessionId), { recursive: true });
+  mkdirSync(join(tempDir, '.omg', 'state', 'sessions', sessionId), { recursive: true });
   writeFileSync(
     skillStatePath(tempDir, sessionId),
     JSON.stringify({
@@ -120,7 +120,7 @@ function writeSkillStateFixtures(tempDir, sessionId, skillName = 'plan') {
       stale_ttl_ms: 900000,
     }),
   );
-  mkdirSync(join(tempDir, '.omc', 'state'), { recursive: true });
+  mkdirSync(join(tempDir, '.omg', 'state'), { recursive: true });
   writeFileSync(
     legacySkillStatePath(tempDir),
     JSON.stringify({
@@ -131,7 +131,7 @@ function writeSkillStateFixtures(tempDir, sessionId, skillName = 'plan') {
 }
 
 function writeRalplanStateFixture(tempDir, sessionId, overrides = {}) {
-  mkdirSync(join(tempDir, '.omc', 'state', 'sessions', sessionId), { recursive: true });
+  mkdirSync(join(tempDir, '.omg', 'state', 'sessions', sessionId), { recursive: true });
   writeFileSync(
     ralplanStatePath(tempDir, sessionId),
     JSON.stringify({
@@ -932,9 +932,9 @@ describe('OMC_QUIET hook message suppression (issue #1646)', () => {
       .toContain('produced valid output');
 
     const taskSummary = withTempDir((tempDir) => {
-      mkdirSync(join(tempDir, '.omc', 'state'), { recursive: true });
+      mkdirSync(join(tempDir, '.omg', 'state'), { recursive: true });
       writeFileSync(
-        join(tempDir, '.omc', 'state', 'subagent-tracking.json'),
+        join(tempDir, '.omg', 'state', 'subagent-tracking.json'),
         JSON.stringify({
           agents: [{ status: 'running', agent_type: 'oh-my-copilot:executor' }],
           total_completed: 1,
@@ -1019,7 +1019,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
     withTempDir((tempDir) => {
       const sessionId = 'ralph-template-no-ultrawork';
       // Redirect HOME so the template hook's shared-home global fallback write
-      // (~/.omc/state/ralph-state.json) lands in the sandbox instead of the
+      // (~/.omg/state/ralph-state.json) lands in the sandbox instead of the
       // real home. Leaving it in the real home leaks active ralph state into
       // other suites (e.g. cancel-integration's broad-clear location count).
       const homeDir = join(tempDir, 'home');
@@ -1033,7 +1033,7 @@ describe('Skill active state cleanup on PostToolUse (issue #2103)', () => {
       }, { HOME: homeDir });
 
       expect(out).toEqual({ continue: true, suppressOutput: true });
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       expect(existsSync(join(stateDir, 'ralph-state.json'))).toBe(true);
       expect(existsSync(join(stateDir, 'ultrawork-state.json'))).toBe(false);
     });

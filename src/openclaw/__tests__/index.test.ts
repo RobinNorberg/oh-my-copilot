@@ -154,7 +154,7 @@ describe("wakeOpenClaw", () => {
 
     expect(mockGetNewPaneTail).toHaveBeenCalledWith(
       "%7",
-      join(fixtureHome, ".omc", "state"),
+      join(fixtureHome, ".omg", "state"),
       15,
     );
     const payload = vi.mocked(wakeGateway).mock.calls[0]?.[2];

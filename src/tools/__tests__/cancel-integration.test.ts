@@ -15,7 +15,7 @@ vi.mock('../../lib/worktree-paths.js', async () => {
     ...actual,
     getOmcRoot: vi.fn((workingDirectory?: string) => process.env.OMC_STATE_DIR
       ? actual.getOmcRoot(workingDirectory)
-      : join(workingDirectory || process.cwd(), '.omc')),
+      : join(workingDirectory || process.cwd(), '.omg')),
     resolveNonGitStateAnchor: vi.fn((workingDirectory?: string) => workingDirectory || process.cwd()),
     validateWorkingDirectory: vi.fn((workingDirectory?: string) => {
       return workingDirectory || process.cwd();
@@ -37,7 +37,7 @@ describe('cancel-integration', () => {
     previousUserProfile = process.env.USERPROFILE;
     process.env.HOME = TEST_DIR;
     process.env.USERPROFILE = TEST_DIR;
-    mkdirSync(join(TEST_DIR, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(TEST_DIR, '.omg', 'state'), { recursive: true });
   });
 
   afterEach(() => {
@@ -51,7 +51,7 @@ describe('cancel-integration', () => {
   describe('1. Single-session cancel with ghost-legacy cleanup', () => {
     it('should clear session files AND ghost legacy files when session_id provided', async () => {
       const sessionId = 'cancel-session-1';
-      const sessionDir = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId);
+      const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(sessionDir, { recursive: true });
 
       // Create ralph state at session path (normal)
@@ -60,9 +60,9 @@ describe('cancel-integration', () => {
         JSON.stringify({ active: true, iteration: 5, _meta: { sessionId } })
       );
 
-      // Create ghost legacy file at .omc/state/ralph-state.json with matching session
+      // Create ghost legacy file at .omg/state/ralph-state.json with matching session
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'ralph-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'ralph-state.json'),
         JSON.stringify({ active: true, iteration: 3, _meta: { sessionId } })
       );
 
@@ -74,7 +74,7 @@ describe('cancel-integration', () => {
 
       // Create ghost legacy ultrawork file with NO _meta block
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'ultrawork-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'ultrawork-state.json'),
         JSON.stringify({ active: true })
       );
 
@@ -97,8 +97,8 @@ describe('cancel-integration', () => {
       expect(existsSync(join(sessionDir, 'ultrawork-state.json'))).toBe(false);
 
       // Ghost legacy files should ALSO be deleted
-      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'ralph-state.json'))).toBe(false);
-      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'ultrawork-state.json'))).toBe(false);
+      expect(existsSync(join(TEST_DIR, '.omg', 'state', 'ralph-state.json'))).toBe(false);
+      expect(existsSync(join(TEST_DIR, '.omg', 'state', 'ultrawork-state.json'))).toBe(false);
 
       // Confirm messages mention ghost cleanup
       expect(ralphResult.content[0].text).toContain('ghost legacy file also removed');
@@ -108,7 +108,7 @@ describe('cancel-integration', () => {
     it('should NOT delete legacy file if it belongs to a different session', async () => {
       const sessionId = 'cancel-session-mine';
       const otherSessionId = 'cancel-session-other';
-      const sessionDir = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId);
+      const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(sessionDir, { recursive: true });
 
       // Create session-scoped state
@@ -119,7 +119,7 @@ describe('cancel-integration', () => {
 
       // Create legacy file owned by a DIFFERENT session
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'ralph-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'ralph-state.json'),
         JSON.stringify({ active: true, _meta: { sessionId: otherSessionId } })
       );
 
@@ -133,14 +133,14 @@ describe('cancel-integration', () => {
       expect(existsSync(join(sessionDir, 'ralph-state.json'))).toBe(false);
 
       // Legacy file should remain (belongs to different session)
-      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'ralph-state.json'))).toBe(true);
+      expect(existsSync(join(TEST_DIR, '.omg', 'state', 'ralph-state.json'))).toBe(true);
     });
 
 
     it('should NOT delete legacy autopilot ghost file owned by a different session via top-level session_id', async () => {
       const sessionId = 'autopilot-session-mine';
       const otherSessionId = 'autopilot-session-other';
-      const sessionDir = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId);
+      const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(sessionDir, { recursive: true });
 
       writeFileSync(
@@ -149,7 +149,7 @@ describe('cancel-integration', () => {
       );
 
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'autopilot-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'autopilot-state.json'),
         JSON.stringify({ active: true, phase: 'execution', session_id: otherSessionId })
       );
 
@@ -160,7 +160,7 @@ describe('cancel-integration', () => {
       });
 
       expect(existsSync(join(sessionDir, 'autopilot-state.json'))).toBe(false);
-      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'autopilot-state.json'))).toBe(true);
+      expect(existsSync(join(TEST_DIR, '.omg', 'state', 'autopilot-state.json'))).toBe(true);
       expect(result.content[0].text).not.toContain('ghost legacy file also removed');
     });
   });
@@ -171,7 +171,7 @@ describe('cancel-integration', () => {
 
       // Create state files in 3 different session directories
       for (const sid of sessions) {
-        const sessionDir = join(TEST_DIR, '.omc', 'state', 'sessions', sid);
+        const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sid);
         mkdirSync(sessionDir, { recursive: true });
         writeFileSync(
           join(sessionDir, 'ralph-state.json'),
@@ -181,14 +181,14 @@ describe('cancel-integration', () => {
 
       // Create legacy state file
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'ralph-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'ralph-state.json'),
         JSON.stringify({ active: true, source: 'legacy' })
       );
 
       // Broad non-git clear is confined to the canonical root for this
       // working directory; unrelated ~/.omc state is not implicitly swept.
       const unrelatedHome = mkdtempSync(join(previousHome ?? homedir(), 'cancel-integration-unrelated-'));
-      const homeStateRoot = join(unrelatedHome, '.omc', 'state');
+      const homeStateRoot = join(unrelatedHome, '.omg', 'state');
       const homeSessionsRoot = join(homeStateRoot, 'sessions');
       const homeSessionDir = join(homeSessionsRoot, 'cancel-integration-home');
       mkdirSync(homeSessionDir, { recursive: true });
@@ -205,12 +205,12 @@ describe('cancel-integration', () => {
 
       // ALL session files should be deleted
       for (const sid of sessions) {
-        const sessionPath = join(TEST_DIR, '.omc', 'state', 'sessions', sid, 'ralph-state.json');
+        const sessionPath = join(TEST_DIR, '.omg', 'state', 'sessions', sid, 'ralph-state.json');
         expect(existsSync(sessionPath)).toBe(false);
       }
 
       // Legacy file should also be deleted
-      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'ralph-state.json'))).toBe(false);
+      expect(existsSync(join(TEST_DIR, '.omg', 'state', 'ralph-state.json'))).toBe(false);
 
       // Unrelated shared-home session remains untouched.
       expect(existsSync(join(homeSessionDir, 'ralph-state.json'))).toBe(true);
@@ -227,7 +227,7 @@ describe('cancel-integration', () => {
   describe('3. Cancel signal', () => {
     it('should write cancel-signal-state.json with 30s TTL via state_clear', async () => {
       const sessionId = 'cancel-signal-test';
-      const sessionDir = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId);
+      const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(sessionDir, { recursive: true });
 
       // Create a state file so clear has something to work with
@@ -269,7 +269,7 @@ describe('cancel-integration', () => {
 
     it('should have expired cancel signal return false for cancel-in-progress check', async () => {
       const sessionId = 'expired-signal-test';
-      const sessionDir = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId);
+      const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(sessionDir, { recursive: true });
 
       // Write an already-expired cancel signal (expires_at in the past)
@@ -296,7 +296,7 @@ describe('cancel-integration', () => {
     it('should detect and deactivate state files with old _meta.updatedAt', () => {
       // Write a state file with updatedAt 5 hours ago (beyond 4-hour threshold)
       const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
-      const stateFile = join(TEST_DIR, '.omc', 'state', 'ralph-state.json');
+      const stateFile = join(TEST_DIR, '.omg', 'state', 'ralph-state.json');
       writeFileSync(stateFile, JSON.stringify({
         active: true,
         iteration: 10,
@@ -317,7 +317,7 @@ describe('cancel-integration', () => {
 
     it('should NOT deactivate state files with recent _meta.updatedAt', () => {
       const recentTime = new Date(Date.now() - 30_000).toISOString(); // 30 seconds ago
-      const stateFile = join(TEST_DIR, '.omc', 'state', 'ultrawork-state.json');
+      const stateFile = join(TEST_DIR, '.omg', 'state', 'ultrawork-state.json');
       writeFileSync(stateFile, JSON.stringify({
         active: true,
         _meta: {
@@ -336,7 +336,7 @@ describe('cancel-integration', () => {
     it('should respect heartbeatAt over updatedAt for staleness', () => {
       const fiveHoursAgo = new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString();
       const recentHeartbeat = new Date(Date.now() - 60_000).toISOString(); // 1 min ago
-      const stateFile = join(TEST_DIR, '.omc', 'state', 'ralph-state.json');
+      const stateFile = join(TEST_DIR, '.omg', 'state', 'ralph-state.json');
       writeFileSync(stateFile, JSON.stringify({
         active: true,
         _meta: {
@@ -357,9 +357,9 @@ describe('cancel-integration', () => {
   describe('5. Team cancel', () => {
     it('should clear team state at both session and legacy paths', async () => {
       const sessionId = 'team-cancel-test';
-      const sessionDir = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId);
+      const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(sessionDir, { recursive: true });
-      const runtimeTeamDir = join(TEST_DIR, '.omc', 'state', 'team', 'demo-team');
+      const runtimeTeamDir = join(TEST_DIR, '.omg', 'state', 'team', 'demo-team');
       mkdirSync(runtimeTeamDir, { recursive: true });
 
       // Create team state at session path
@@ -370,12 +370,12 @@ describe('cancel-integration', () => {
 
       // Create ghost legacy team state with matching session
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'team-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'team-state.json'),
         JSON.stringify({ active: true, phase: 'team-exec', team_name: 'demo-team', _meta: { sessionId } })
       );
 
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'mission-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'mission-state.json'),
         JSON.stringify({
           updatedAt: new Date().toISOString(),
           missions: [
@@ -393,10 +393,10 @@ describe('cancel-integration', () => {
 
       // Both files should be cleaned
       expect(existsSync(join(sessionDir, 'team-state.json'))).toBe(false);
-      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'team-state.json'))).toBe(false);
+      expect(existsSync(join(TEST_DIR, '.omg', 'state', 'team-state.json'))).toBe(false);
       expect(existsSync(runtimeTeamDir)).toBe(false);
 
-      const missionState = JSON.parse(readFileSync(join(TEST_DIR, '.omc', 'state', 'mission-state.json'), 'utf-8'));
+      const missionState = JSON.parse(readFileSync(join(TEST_DIR, '.omg', 'state', 'mission-state.json'), 'utf-8'));
       expect(missionState.missions).toEqual([
         { id: 'session:keep', source: 'session', name: 'keep-session' },
       ]);
@@ -410,7 +410,7 @@ describe('cancel-integration', () => {
     it('should clear team state at session path while preserving unrelated legacy', async () => {
       const sessionId = 'team-cancel-safe';
       const otherSessionId = 'team-other-session';
-      const sessionDir = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId);
+      const sessionDir = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(sessionDir, { recursive: true });
 
       // Create team state at session path
@@ -421,7 +421,7 @@ describe('cancel-integration', () => {
 
       // Create legacy team state from a different session
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'team-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'team-state.json'),
         JSON.stringify({ active: true, _meta: { sessionId: otherSessionId } })
       );
 
@@ -435,14 +435,14 @@ describe('cancel-integration', () => {
       expect(existsSync(join(sessionDir, 'team-state.json'))).toBe(false);
 
       // Legacy file should be preserved (different session)
-      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'team-state.json'))).toBe(true);
+      expect(existsSync(join(TEST_DIR, '.omg', 'state', 'team-state.json'))).toBe(true);
     });
 
     it('should remove all team runtime roots on broad team clear', async () => {
-      mkdirSync(join(TEST_DIR, '.omc', 'state', 'team', 'alpha-team'), { recursive: true });
-      mkdirSync(join(TEST_DIR, '.omc', 'state', 'team', 'beta-team'), { recursive: true });
+      mkdirSync(join(TEST_DIR, '.omg', 'state', 'team', 'alpha-team'), { recursive: true });
+      mkdirSync(join(TEST_DIR, '.omg', 'state', 'team', 'beta-team'), { recursive: true });
       writeFileSync(
-        join(TEST_DIR, '.omc', 'state', 'mission-state.json'),
+        join(TEST_DIR, '.omg', 'state', 'mission-state.json'),
         JSON.stringify({
           updatedAt: new Date().toISOString(),
           missions: [
@@ -458,9 +458,9 @@ describe('cancel-integration', () => {
         workingDirectory: TEST_DIR,
       });
 
-      expect(existsSync(join(TEST_DIR, '.omc', 'state', 'team'))).toBe(false);
+      expect(existsSync(join(TEST_DIR, '.omg', 'state', 'team'))).toBe(false);
 
-      const missionState = JSON.parse(readFileSync(join(TEST_DIR, '.omc', 'state', 'mission-state.json'), 'utf-8'));
+      const missionState = JSON.parse(readFileSync(join(TEST_DIR, '.omg', 'state', 'mission-state.json'), 'utf-8'));
       expect(missionState.missions).toEqual([
         { id: 'session:keep', source: 'session', name: 'keep-session' },
       ]);

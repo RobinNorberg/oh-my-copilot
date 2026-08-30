@@ -71,7 +71,7 @@ export function validateToolPath(inputPath) {
     const rel = relative(normalizedRoot, normalizedPath);
     if (rel.startsWith("..") || isAbsolute(rel)) {
         throw new Error(`Path restricted: '${inputPath}' is outside the project root '${projectRoot}'. ` +
-            `Disable via security.restrictToolPaths in .claude/omc.jsonc or unset OMC_SECURITY.`);
+            `Disable via security.restrictToolPaths in .copilot/omc.jsonc or unset OMC_SECURITY.`);
     }
     return resolved;
 }

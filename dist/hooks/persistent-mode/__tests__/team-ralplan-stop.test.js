@@ -10,7 +10,7 @@ function makeTempProject() {
     return tempDir;
 }
 function writeTeamPipelineState(tempDir, sessionId, overrides = {}) {
-    const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'team-state.json'), JSON.stringify({
         schema_version: 1,
@@ -33,7 +33,7 @@ function writeTeamPipelineState(tempDir, sessionId, overrides = {}) {
     }, null, 2));
 }
 function writeCanonicalTeamState(tempDir, sessionId, teamName, currentPhase) {
-    const teamDir = join(tempDir, '.omc', 'state', 'team', teamName);
+    const teamDir = join(tempDir, '.omg', 'state', 'team', teamName);
     mkdirSync(teamDir, { recursive: true });
     writeFileSync(join(teamDir, 'manifest.json'), JSON.stringify({
         name: teamName,
@@ -45,7 +45,7 @@ function writeCanonicalTeamState(tempDir, sessionId, teamName, currentPhase) {
         },
         created_at: new Date().toISOString(),
         leader_cwd: tempDir,
-        team_state_root: join(tempDir, '.omc', 'state'),
+        team_state_root: join(tempDir, '.omg', 'state'),
     }, null, 2));
     writeFileSync(join(teamDir, 'phase-state.json'), JSON.stringify({
         current_phase: currentPhase,
@@ -53,7 +53,7 @@ function writeCanonicalTeamState(tempDir, sessionId, teamName, currentPhase) {
     }, null, 2));
 }
 function writeRalplanState(tempDir, sessionId, overrides = {}) {
-    const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'ralplan-state.json'), JSON.stringify({
         active: true,
@@ -64,7 +64,7 @@ function writeRalplanState(tempDir, sessionId, overrides = {}) {
     }, null, 2));
 }
 function writeRalphState(tempDir, sessionId) {
-    const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
         active: true,
@@ -79,12 +79,12 @@ function writeRalphState(tempDir, sessionId) {
     }, null, 2));
 }
 function writeStopBreaker(tempDir, sessionId, name, count) {
-    const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, `${name}-stop-breaker.json`), JSON.stringify({ count, updated_at: new Date().toISOString() }, null, 2));
 }
 function writeSubagentTrackingState(tempDir, agents) {
-    const stateDir = join(tempDir, '.omc', 'state');
+    const stateDir = join(tempDir, '.omg', 'state');
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'subagent-tracking-state.json'), JSON.stringify({
         agents,
@@ -319,7 +319,7 @@ describe('team pipeline standalone stop enforcement', () => {
         try {
             writeTeamPipelineState(tempDir, sessionId);
             // Write cancel signal
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'cancel-signal-state.json'), JSON.stringify((() => {
                 const requestedAt = Date.now();
@@ -601,7 +601,7 @@ describe('ralplan standalone stop enforcement', () => {
             expect(firstResult.shouldBlock).toBe(false);
             expect(firstResult.mode).toBe('ralplan');
             expect(firstResult.message).toContain('deactivating stale ralplan state');
-            const statePath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
+            const statePath = join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralplan-state.json');
             const persistedState = JSON.parse(readFileSync(statePath, 'utf-8'));
             expect(persistedState.active).toBe(false);
             expect(persistedState.deactivated_reason).toBe('stop_breaker_exhausted');
@@ -657,7 +657,7 @@ describe('ralplan standalone stop enforcement', () => {
                 },
             ]);
             const staleUpdatedAt = new Date(now.getTime() - 10_000).toISOString();
-            const trackingPath = join(tempDir, '.omc', 'state', 'subagent-tracking-state.json');
+            const trackingPath = join(tempDir, '.omg', 'state', 'subagent-tracking-state.json');
             const tracking = JSON.parse(readFileSync(trackingPath, 'utf-8'));
             tracking.last_updated = staleUpdatedAt;
             writeFileSync(trackingPath, JSON.stringify(tracking, null, 2));
@@ -704,7 +704,7 @@ describe('ralplan standalone stop enforcement', () => {
         try {
             writeRalplanState(tempDir, sessionId);
             // Write cancel signal — caught at top-level checkPersistentModes
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'cancel-signal-state.json'), JSON.stringify((() => {
                 const requestedAt = Date.now();
@@ -743,7 +743,7 @@ describe('team pipeline fail-open behavior', () => {
         const tempDir = makeTempProject();
         try {
             // Write state with no phase field
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'team-state.json'), JSON.stringify({
                 schema_version: 1,

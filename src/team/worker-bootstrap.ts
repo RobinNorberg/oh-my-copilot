@@ -18,14 +18,14 @@ export interface WorkerBootstrapParams {
   cwd: string;
   /**
    * Worker-facing root used in instructions. The default is the leader cwd
-   * relative global state root (`.omc/state`); non-default values are treated as
-   * a team-specific root (`.../.omc/state/team/<team>`), matching
+   * relative global state root (`.omg/state`); non-default values are treated as
+   * a team-specific root (`.../.omg/state/team/<team>`), matching
    * `OMC_TEAM_STATE_ROOT` and `teamStateRoot()` semantics.
    */
   instructionStateRoot?: string;
 }
 
-const DEFAULT_INSTRUCTION_STATE_ROOT = '.omc/state';
+const DEFAULT_INSTRUCTION_STATE_ROOT = '.omg/state';
 
 function buildInstructionPath(...parts: string[]): string {
   return join(...parts).replaceAll('\\', '/');
@@ -279,9 +279,9 @@ ${cursorReviewer
   - Completion is rejected with \`missing_delegation_compliance_evidence\` when required evidence is absent.
 
 ## Canonical Team State Root
-- Resolve the team state root in this order: \`OMC_TEAM_STATE_ROOT\` env -> worker identity \`team_state_root\` -> config/manifest \`team_state_root\` -> ${params.cwd}/.omc/state/team/${teamName}.
-- \`OMC_TEAM_STATE_ROOT\` is the team-specific root (\`.../.omc/state/team/${teamName}\`). When it is set, append worker/mailbox paths directly below it; do not append another \`team/${teamName}\` segment.
-- Worktree-backed workers MUST use the canonical leader-owned state root for inbox, mailbox, task lifecycle, status, heartbeat, and shutdown files; do not use a local worktree \`.omc/state\` when \`OMC_TEAM_STATE_ROOT\` is set.
+- Resolve the team state root in this order: \`OMC_TEAM_STATE_ROOT\` env -> worker identity \`team_state_root\` -> config/manifest \`team_state_root\` -> ${params.cwd}/.omg/state/team/${teamName}.
+- \`OMC_TEAM_STATE_ROOT\` is the team-specific root (\`.../.omg/state/team/${teamName}\`). When it is set, append worker/mailbox paths directly below it; do not append another \`team/${teamName}\` segment.
+- Worktree-backed workers MUST use the canonical leader-owned state root for inbox, mailbox, task lifecycle, status, heartbeat, and shutdown files; do not use a local worktree \`.omg/state\` when \`OMC_TEAM_STATE_ROOT\` is set.
 
 ## Communication Protocol
 - **Inbox**: Read ${inboxPath} for new instructions

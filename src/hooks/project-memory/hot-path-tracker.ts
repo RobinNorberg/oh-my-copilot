@@ -63,7 +63,7 @@ function shouldIgnorePath(relativePath: string): boolean {
   const ignorePatterns = [
     "node_modules",
     ".git",
-    ".omc",
+    ".omg",
     "dist",
     "build",
     ".cache",

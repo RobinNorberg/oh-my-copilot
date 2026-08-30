@@ -37,7 +37,7 @@ describe('Ralph verification flow', () => {
   });
 
   function writeRalphState(sessionId: string, extra: Record<string, unknown> = {}): void {
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, 'ralph-state.json'), JSON.stringify({
       active: true,
@@ -122,7 +122,7 @@ describe('Ralph verification flow', () => {
 
   it('completes Ralph only after reviewer-authored approval output is seen in messages.json', async () => {
     const sessionId = 'ralph-approved';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     writeRalphState(sessionId);
@@ -183,7 +183,7 @@ describe('Ralph verification flow', () => {
 
   it('preserves replacement Ralph, Ultrawork, and verification generations after request consumption', async () => {
     const sessionId = 'ralph-terminal-generation-replacement';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     const now = new Date().toISOString();
     writeRalphState(sessionId, { iteration: 4, started_at: now });
@@ -226,7 +226,7 @@ describe('Ralph verification flow', () => {
 
   it('restores only captured state after partial terminal cleanup failure', async () => {
     const sessionId = 'ralph-terminal-partial-cleanup';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     const now = new Date().toISOString();
     writeRalphState(sessionId, { iteration: 4, started_at: now });
@@ -303,7 +303,7 @@ describe('Ralph verification flow', () => {
     expect(result.message).toContain('US-001');
     expect(result.message).toContain('Verify EACH acceptance criterion');
 
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     const verificationState = JSON.parse(
       readFileSync(join(sessionDir, 'ralph-verification-state.json'), 'utf-8')
     );
@@ -313,7 +313,7 @@ describe('Ralph verification flow', () => {
 
   it('advances current_story_id after story approval instead of completing Ralph', async () => {
     const sessionId = 'ralph-story-approved';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     const prd: PRD = {
@@ -412,7 +412,7 @@ describe('Ralph verification flow', () => {
 
   it('rejects a stale story approval after an amendment reopens the story', async () => {
     const sessionId = 'ralph-amended-story';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writePrd(testDir, {
       project: 'Test', branchName: 'ralph/test', description: 'Stale approval',
@@ -439,7 +439,7 @@ describe('Ralph verification flow', () => {
 
   it('rejects a stale final approval after an amendment reopens completion', async () => {
     const sessionId = 'ralph-amended-final';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writePrd(testDir, {
       project: 'Test', branchName: 'ralph/test', description: 'Stale completion',
@@ -467,7 +467,7 @@ describe('Ralph verification flow', () => {
 
   it('marks a rejected story incomplete in the session-scoped PRD without mutating legacy PRD', async () => {
     const sessionId = 'ralph-story-rejected-session-prd';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     const sessionPrd: PRD = {
@@ -542,13 +542,13 @@ describe('Ralph verification flow', () => {
     expect(updatedSessionPrd?.userStories[0].architectVerified).toBe(false);
     expect(updatedSessionPrd?.userStories[0].notes).toBe('Needs tests before progression.');
 
-    const legacyPrdPath = join(testDir, '.omc', 'prd.json');
+    const legacyPrdPath = join(testDir, '.omg', 'prd.json');
     expect(JSON.parse(readFileSync(legacyPrdPath, 'utf-8'))).toMatchObject(legacyPrd);
   });
 
   it('does not reuse stale earlier story approval from transcript tail', async () => {
     const sessionId = 'ralph-story-stale-approval';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     const prd: PRD = {
@@ -651,7 +651,7 @@ describe('Ralph verification flow', () => {
 
   it('does not accept copied current approval text from ordinary transcript messages', async () => {
     const sessionId = 'ralph-spoofed-current-approval';
-    const sessionDir = join(testDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(testDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
 
     const prd: PRD = {

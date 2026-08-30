@@ -42,7 +42,7 @@ afterEach(() => {
 describe('leaderInboxPath', () => {
   it('returns correct path under cwd', () => {
     const p = leaderInboxPath(TEST_TEAM, TEST_CWD);
-    expect(p).toBe(join(TEST_CWD, '.omc/state/team/my-team/leader/inbox.md'));
+    expect(p).toBe(join(TEST_CWD, '.omg/state/team/my-team/leader/inbox.md'));
   });
 
   it('sanitizes team name (strips special chars)', () => {
@@ -72,7 +72,7 @@ describe('leaderInboxPath', () => {
 describe('ensureLeaderInbox', () => {
   it('creates the leader directory', async () => {
     await ensureLeaderInbox(TEST_TEAM, TEST_CWD);
-    const dir = join(TEST_CWD, '.omc/state/team/my-team/leader');
+    const dir = join(TEST_CWD, '.omg/state/team/my-team/leader');
     expect(existsSync(dir)).toBe(true);
   });
 
@@ -160,7 +160,7 @@ describe('appendToLeaderInbox', () => {
 describe('extendLeaderBootstrapPrompt', () => {
   it('contains the canonical leader inbox path', () => {
     const prompt = extendLeaderBootstrapPrompt(TEST_TEAM);
-    expect(prompt).toContain('.omc/state/team/my-team/leader/inbox.md');
+    expect(prompt).toContain('.omg/state/team/my-team/leader/inbox.md');
   });
 
   it('contains "check this file" instruction', () => {
@@ -190,7 +190,7 @@ describe('extendLeaderBootstrapPrompt', () => {
     const prompt = extendLeaderBootstrapPrompt(TEST_TEAM);
     const fullPath = leaderInboxPath(TEST_TEAM, TEST_CWD);
     // The prompt uses relative path; fullPath has cwd prefix
-    const relSegment = `.omc/state/team/my-team/leader/inbox.md`;
+    const relSegment = `.omg/state/team/my-team/leader/inbox.md`;
     expect(fullPath).toContain(relSegment);
     expect(prompt).toContain(relSegment);
   });

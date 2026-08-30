@@ -1,7 +1,7 @@
 /**
  * Shared State Management for Cross-Tool Interoperability
  *
- * Manages shared state files at .omc/state/interop/ for communication
+ * Manages shared state files at .omg/state/interop/ for communication
  * between OMC (Claude Code) and OMX (Codex CLI).
  *
  * Uses atomic writes for safety and supports task/message passing.

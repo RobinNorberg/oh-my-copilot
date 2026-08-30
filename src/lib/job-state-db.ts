@@ -1,7 +1,7 @@
 /**
  * Job State Database - SQLite-based persistent state for Codex/Gemini background jobs
  *
- * Provides a single shared database at .omc/state/jobs.db for both providers.
+ * Provides a single shared database at .omg/state/jobs.db for both providers.
  * Uses better-sqlite3 with WAL mode for safe concurrent access from multiple
  * MCP server instances. Only job metadata is stored here; prompt/response
  * content remains as files on disk.
@@ -584,7 +584,7 @@ export function deleteJob(
  * Scans the prompts directory for *-status-*.json files, parses each,
  * and upserts into the jobs table. Existing records are overwritten.
  *
- * @param promptsDir - Path to the .omc/prompts/ directory
+ * @param promptsDir - Path to the .omg/prompts/ directory
  * @returns Object with imported and error counts
  */
 export function migrateFromJsonFiles(

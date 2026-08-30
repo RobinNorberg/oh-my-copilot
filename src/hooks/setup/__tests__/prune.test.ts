@@ -16,7 +16,7 @@ describe('pruneOldStateFiles', () => {
     previousUserProfile = process.env.USERPROFILE;
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
-    stateDir = join(testDir, '.omc', 'state');
+    stateDir = join(testDir, '.omg', 'state');
     mkdirSync(stateDir, { recursive: true });
   });
 

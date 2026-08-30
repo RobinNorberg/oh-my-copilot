@@ -3,8 +3,8 @@
  *
  * Detects and expands slash commands in user prompts.
  * Complements Claude Code's native slash command system by adding:
- * - Skill-based commands from ~/.claude/skills/ and .claude/skills/
- * - Project-level commands from .claude/commands/
+ * - Skill-based commands from ~/.copilot/skills/ and .copilot/skills/
+ * - Project-level commands from .copilot/commands/
  * - Template expansion with $ARGUMENTS placeholder
  *
  * Adapted from oh-my-opencode's auto-slash-command hook.

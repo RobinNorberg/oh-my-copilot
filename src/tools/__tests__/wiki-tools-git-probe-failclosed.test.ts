@@ -78,7 +78,7 @@ function installFakeGit(dir: string, unixBody: string, winBody: string): string 
 }
 
 function seedSessionWiki(sessionRepo: string): string {
-  const wikiDir = join(sessionRepo, '.omc', 'wiki');
+  const wikiDir = join(sessionRepo, '.omg', 'wiki');
   mkdirSync(wikiDir, { recursive: true });
   const pagePath = join(wikiDir, 'session-secret.md');
   writeFileSync(
@@ -125,9 +125,9 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
     writeFileSync(join(foreignRepo, 'README.md'), 'vault\n');
     git(foreignRepo, 'add README.md');
     git(foreignRepo, 'commit -m initial');
-    mkdirSync(join(foreignRepo, '.omc', 'wiki'), { recursive: true });
+    mkdirSync(join(foreignRepo, '.omg', 'wiki'), { recursive: true });
     writeFileSync(
-      join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'),
+      join(foreignRepo, '.omg', 'wiki', 'aapanel-setup.md'),
       '---\ntitle: aaPanel Setup\ncategory: reference\nconfidence: high\ntags: [aapanel]\nupdated: 2026-08-24\n---\n\nforeign-only\n',
     );
 
@@ -153,10 +153,10 @@ describe('wiki tools fail closed on generic git probe failure (#3858 remaining P
   function assertNoWikiIo(secretBefore: string): void {
     expect(existsSync(secretPage)).toBe(true);
     expect(readFileSync(secretPage, 'utf8')).toBe(secretBefore);
-    expect(existsSync(join(sessionRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'foreign-page.md'))).toBe(false);
-    expect(existsSync(join(foreignRepo, '.omc', 'wiki', 'aapanel-setup.md'))).toBe(true);
-    expect(existsSync(join(srcDir, '.omc'))).toBe(false);
+    expect(existsSync(join(sessionRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'foreign-page.md'))).toBe(false);
+    expect(existsSync(join(foreignRepo, '.omg', 'wiki', 'aapanel-setup.md'))).toBe(true);
+    expect(existsSync(join(srcDir, '.omg'))).toBe(false);
   }
 
   async function assertAllToolsRejectWithoutIo(workingDirectory: string): Promise<void> {

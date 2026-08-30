@@ -18,7 +18,7 @@ function writeRalphState(
   sessionId: string,
   prompt: string,
 ): void {
-  const sessionDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const sessionDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(sessionDir, { recursive: true });
   writeFileSync(
     join(sessionDir, 'ralph-state.json'),

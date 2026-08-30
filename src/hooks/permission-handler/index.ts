@@ -105,7 +105,7 @@ function readPermissionStringEntries(filePath: string, key: 'allow' | 'ask'): st
 }
 
 export function getCopilotPermissionAllowEntries(directory: string): string[] {
-  const projectSettingsPath = path.join(directory, '.claude', 'settings.local.json');
+  const projectSettingsPath = path.join(directory, '.copilot', 'settings.local.json');
   const globalConfigDir = getCopilotConfigDir();
   const candidatePaths = [
     projectSettingsPath,
@@ -152,7 +152,7 @@ export function hasClaudePermissionApproval(
 
 
 export function getCopilotPermissionAskEntries(directory: string): string[] {
-  const projectSettingsPath = path.join(directory, '.claude', 'settings.local.json');
+  const projectSettingsPath = path.join(directory, '.copilot', 'settings.local.json');
   const globalConfigDir = getCopilotConfigDir();
   const candidatePaths = [
     projectSettingsPath,

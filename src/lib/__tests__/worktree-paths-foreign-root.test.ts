@@ -452,6 +452,6 @@ process.stdout.write(JSON.stringify({
     const queryResult = await wikiQueryTool.handler({ query: 'anything', workingDirectory: linkedWorktree });
     expect(queryResult.isError).toBeUndefined();
     expect(queryResult.content[0].text).toContain('No wiki pages match "anything"');
-    expect(existsSync(join(sessionRepo, '.omc', 'wiki'))).toBe(false);
+    expect(existsSync(join(sessionRepo, '.omg', 'wiki'))).toBe(false);
   });
 });

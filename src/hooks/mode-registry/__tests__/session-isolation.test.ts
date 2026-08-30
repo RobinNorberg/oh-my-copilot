@@ -55,14 +55,14 @@ describe('Session-Scoped State Isolation', () => {
 
   // Helper to create state file at session-scoped path
   function createSessionState(sessionId: string, mode: string, data: Record<string, unknown>) {
-    const sessionDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     writeFileSync(join(sessionDir, `${mode}-state.json`), JSON.stringify(data, null, 2));
   }
 
   // Helper to create legacy state file
   function createLegacyState(mode: string, data: Record<string, unknown>) {
-    const stateDir = join(tempDir, '.omc', 'state');
+    const stateDir = join(tempDir, '.omg', 'state');
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, `${mode}-state.json`), JSON.stringify(data, null, 2));
   }
@@ -93,7 +93,7 @@ describe('Session-Scoped State Isolation', () => {
   describe('resolveSessionStatePath', () => {
     it('should return session-scoped path', () => {
       const path = resolveSessionStatePath('ralph', 'session-123', tempDir);
-      expect(path).toContain('.omc/state/sessions/session-123/ralph-state.json');
+      expect(path).toContain('.omg/state/sessions/session-123/ralph-state.json');
     });
 
     it('should normalize state name', () => {
@@ -149,8 +149,8 @@ describe('Session-Scoped State Isolation', () => {
       createSessionState('session-B', 'ralph', { active: true, prompt: 'Task B' });
 
       // Each session's state should be independent
-      const pathA = join(tempDir, '.omc', 'state', 'sessions', 'session-A', 'ralph-state.json');
-      const pathB = join(tempDir, '.omc', 'state', 'sessions', 'session-B', 'ralph-state.json');
+      const pathA = join(tempDir, '.omg', 'state', 'sessions', 'session-A', 'ralph-state.json');
+      const pathB = join(tempDir, '.omg', 'state', 'sessions', 'session-B', 'ralph-state.json');
 
       const stateA = JSON.parse(readFileSync(pathA, 'utf-8'));
       const stateB = JSON.parse(readFileSync(pathB, 'utf-8'));
@@ -210,11 +210,11 @@ describe('Session-Scoped State Isolation', () => {
       clearModeState('ralph', tempDir, 'session-A');
 
       // Session A state should be gone
-      const pathA = join(tempDir, '.omc', 'state', 'sessions', 'session-A', 'ralph-state.json');
+      const pathA = join(tempDir, '.omg', 'state', 'sessions', 'session-A', 'ralph-state.json');
       expect(existsSync(pathA)).toBe(false);
 
       // Session B state should remain
-      const pathB = join(tempDir, '.omc', 'state', 'sessions', 'session-B', 'ralph-state.json');
+      const pathB = join(tempDir, '.omg', 'state', 'sessions', 'session-B', 'ralph-state.json');
       expect(existsSync(pathB)).toBe(true);
     });
 
@@ -224,14 +224,14 @@ describe('Session-Scoped State Isolation', () => {
       createSessionState(sessionA, 'ralph', { active: true, session_id: sessionA });
       createSessionState(sessionB, 'ralph', { active: true, session_id: sessionB });
 
-      const sessionADir = join(tempDir, '.omc', 'state', 'sessions', sessionA);
-      const sessionBDir = join(tempDir, '.omc', 'state', 'sessions', sessionB);
+      const sessionADir = join(tempDir, '.omg', 'state', 'sessions', sessionA);
+      const sessionBDir = join(tempDir, '.omg', 'state', 'sessions', sessionB);
       const markerA = join(sessionADir, 'ralph-verification-state.json');
       const markerB = join(sessionBDir, 'ralph-verification-state.json');
-      const legacyMarker = join(tempDir, '.omc', 'state', 'ralph-verification.json');
+      const legacyMarker = join(tempDir, '.omg', 'state', 'ralph-verification.json');
       writeFileSync(markerA, JSON.stringify({ pending: true }, null, 2));
       writeFileSync(markerB, JSON.stringify({ pending: true }, null, 2));
-      mkdirSync(join(tempDir, '.omc', 'state'), { recursive: true });
+      mkdirSync(join(tempDir, '.omg', 'state'), { recursive: true });
       writeFileSync(legacyMarker, JSON.stringify({ pending: true }, null, 2));
       expect(existsSync(legacyMarker)).toBe(true);
 
@@ -254,7 +254,7 @@ describe('Session-Scoped State Isolation', () => {
       createSessionState(sessionA, 'ralph', { active: true, session_id: sessionA });
 
       // Legacy marker is owned by session B (a different session)
-      const legacyMarkerDir = join(tempDir, '.omc', 'state');
+      const legacyMarkerDir = join(tempDir, '.omg', 'state');
       mkdirSync(legacyMarkerDir, { recursive: true });
       const legacyMarker = join(legacyMarkerDir, 'ralph-verification.json');
       writeFileSync(legacyMarker, JSON.stringify({ pending: true, session_id: sessionB }));
@@ -268,7 +268,7 @@ describe('Session-Scoped State Isolation', () => {
     });
     it('preserves a replacement marker created after ownership discovery', () => {
       const sessionA = 'session-A';
-      const markerDir = join(tempDir, '.omc', 'state');
+      const markerDir = join(tempDir, '.omg', 'state');
       mkdirSync(markerDir, { recursive: true });
       const markerPath = join(markerDir, 'ralph-verification.json');
       writeFileSync(markerPath, JSON.stringify({ pending: true, session_id: sessionA }));
@@ -285,7 +285,7 @@ describe('Session-Scoped State Isolation', () => {
   describe('Stale session cleanup', () => {
     it('serializes marker writers on the same lock used by cleanup', () => {
       expect(createModeMarker('ralph', tempDir, { session_id: 'session-A', workflowRunId: 'old-run' })).toBe(true);
-      const markerPath = join(tempDir, '.omc', 'state', 'ralph-verification.json');
+      const markerPath = join(tempDir, '.omg', 'state', 'ralph-verification.json');
       const lockPath = `${markerPath}.mutation.lock`;
       writeFileSync(lockPath, liveLockOwner());
 
@@ -299,8 +299,8 @@ describe('Session-Scoped State Isolation', () => {
 
     it('waits for an in-flight marker publisher before treating it as absent', async () => {
       const sessionId = 'marker-in-flight';
-      const markerPath = join(tempDir, '.omc', 'state', 'ralph-verification.json');
-      mkdirSync(join(tempDir, '.omc', 'state'), { recursive: true });
+      const markerPath = join(tempDir, '.omg', 'state', 'ralph-verification.json');
+      mkdirSync(join(tempDir, '.omg', 'state'), { recursive: true });
       const lockPath = `${markerPath}.mutation.lock`;
       writeFileSync(lockPath, liveLockOwner());
       const childScript = String.raw`
@@ -322,7 +322,7 @@ describe('Session-Scoped State Isolation', () => {
     });
 
     it('should remove empty session directories', () => {
-      const emptyDir = join(tempDir, '.omc', 'state', 'sessions', 'empty-session');
+      const emptyDir = join(tempDir, '.omg', 'state', 'sessions', 'empty-session');
       mkdirSync(emptyDir, { recursive: true });
 
       const removed = clearStaleSessionDirs(tempDir, 0);

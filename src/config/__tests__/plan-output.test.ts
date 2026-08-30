@@ -20,8 +20,8 @@ describe("plan output helpers", () => {
   });
 
   it("renders default artifact paths", () => {
-    expect(resolveAutopilotPlanPath()).toBe(".omc/plans/autopilot-impl.md");
-    expect(resolveOpenQuestionsPlanPath()).toBe(".omc/plans/open-questions.md");
+    expect(resolveAutopilotPlanPath()).toBe(".omg/plans/autopilot-impl.md");
+    expect(resolveOpenQuestionsPlanPath()).toBe(".omg/plans/open-questions.md");
   });
 
   it("applies custom directory and filename template", () => {
@@ -49,7 +49,7 @@ describe("plan output helpers", () => {
     };
 
     expect(resolvePlanOutputPath("Autopilot Impl", config)).toBe(
-      ".omc/plans/autopilot-impl.md",
+      ".omg/plans/autopilot-impl.md",
     );
   });
 

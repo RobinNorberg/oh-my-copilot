@@ -195,7 +195,7 @@ export async function installPostToolUseHook(
     return;
   }
 
-  const claudeDir = join(worktreePath, '.claude');
+  const claudeDir = join(worktreePath, '.copilot');
   await mkdir(claudeDir, { recursive: true });
 
   const settingsPath = join(claudeDir, 'settings.json');
@@ -360,7 +360,7 @@ export async function uninstallCommitCadence(
     return;
   }
 
-  const settingsPath = join(ctx.worktreePath, '.claude', 'settings.json');
+  const settingsPath = join(ctx.worktreePath, '.copilot', 'settings.json');
   let raw: string;
   try {
     raw = await io.readFile(settingsPath, 'utf-8');

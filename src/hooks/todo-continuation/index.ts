@@ -491,7 +491,7 @@ function getTodoFilePaths(sessionId?: string, directory?: string): string[] {
   // Project-specific todos
   if (directory) {
     paths.push(join(getOmcRoot(directory), 'todos.json'));
-    paths.push(join(directory, '.claude', 'todos.json'));
+    paths.push(join(directory, '.copilot', 'todos.json'));
   }
 
   // NOTE: Global todos directory scan removed to prevent false positives.

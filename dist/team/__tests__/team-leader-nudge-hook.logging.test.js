@@ -27,26 +27,26 @@ describe('team leader nudge hook logging', () => {
         await writeFile(fullPath, JSON.stringify(value, null, 2), 'utf-8');
     }
     it('logs appendTeamEvent persistence failures without failing the nudge', async () => {
-        await writeJson('.omc/state/team/demo-team/config.json', {
+        await writeJson('.omg/state/team/demo-team/config.json', {
             workers: [{ name: 'worker-1' }],
             leader_pane_id: '%1',
         });
-        await writeJson('.omc/state/team/demo-team/workers/worker-1/status.json', {
+        await writeJson('.omg/state/team/demo-team/workers/worker-1/status.json', {
             state: 'idle',
             updated_at: new Date().toISOString(),
         });
-        await writeJson('.omc/state/team/demo-team/workers/worker-1/heartbeat.json', {
+        await writeJson('.omg/state/team/demo-team/workers/worker-1/heartbeat.json', {
             alive: true,
             last_turn_at: new Date().toISOString(),
         });
-        await writeJson('.omc/state/team/demo-team/tasks/task-1.json', {
+        await writeJson('.omg/state/team/demo-team/tasks/task-1.json', {
             status: 'pending',
         });
         const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
         const sent = [];
         const result = await maybeNudgeLeader({
             cwd,
-            stateDir: join(cwd, '.omc', 'state'),
+            stateDir: join(cwd, '.omg', 'state'),
             teamName: 'demo-team',
             tmux: {
                 async sendKeys(_target, text) {

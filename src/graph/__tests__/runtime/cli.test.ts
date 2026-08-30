@@ -83,7 +83,7 @@ describe('graphCommand run subcommand', () => {
 
   it('runs a fresh descriptor end to end with exit code 0', async () => {
     // Arrange
-    const runsRoot = join(workDir, '.omc', 'graph-runs');
+    const runsRoot = join(workDir, '.omg', 'graph-runs');
     const fixturePath = join(workDir, 'descriptor.json');
     writeFileSync(fixturePath, JSON.stringify(descriptorInput('run-cli-happy', 'CLI happy path')));
 
@@ -109,7 +109,7 @@ describe('graphCommand run subcommand', () => {
     // Arrange
     const input = descriptorInput('run-cli-resume', 'resume identity');
     const sealed = sealGraphDescriptor(input);
-    const runsRoot = join(workDir, '.omc', 'graph-runs');
+    const runsRoot = join(workDir, '.omg', 'graph-runs');
     const storedPath = join(runsRoot, input.run_id, 'descriptor.json');
     mkdirSync(join(runsRoot, input.run_id), { recursive: true });
     writeFileSync(storedPath, JSON.stringify(sealed));
@@ -130,7 +130,7 @@ describe('graphCommand run subcommand', () => {
     const input = descriptorInput('run-cli-mismatch', 'first revision');
     const tampered = { ...input, goal: 'second revision' };
     const sealedStored = sealGraphDescriptor(input);
-    const runsRoot = join(workDir, '.omc', 'graph-runs');
+    const runsRoot = join(workDir, '.omg', 'graph-runs');
     const storedPath = join(runsRoot, input.run_id, 'descriptor.json');
     mkdirSync(join(runsRoot, input.run_id), { recursive: true });
     writeFileSync(storedPath, JSON.stringify(sealedStored));
@@ -150,7 +150,7 @@ describe('graphCommand run subcommand', () => {
 
   it('maps unmapped runtime crashes to exit code 70 with a [crash] message', async () => {
     // Arrange
-    const runsRoot = join(workDir, '.omc', 'graph-runs');
+    const runsRoot = join(workDir, '.omg', 'graph-runs');
     const fixturePath = join(workDir, 'descriptor.json');
     writeFileSync(fixturePath, JSON.stringify(descriptorInput('run-cli-crash', 'crash mapping')));
     mocks.runGraph.mockRejectedValueOnce(new Error('scheduler contract violated'));
@@ -181,7 +181,7 @@ describe('graphCommand run subcommand', () => {
   });
 
   it('fails closed on unsupported POSIX before creating run state', async () => {
-    const runsRoot = join(workDir, '.omc', 'graph-runs');
+    const runsRoot = join(workDir, '.omg', 'graph-runs');
     const fixturePath = join(workDir, 'descriptor.json');
     writeFileSync(fixturePath, JSON.stringify(descriptorInput('run-darwin', 'unsupported')));
     const platform = vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');

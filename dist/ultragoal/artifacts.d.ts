@@ -1,4 +1,4 @@
-export declare const ULTRAGOAL_DIR = ".omc/ultragoal";
+export declare const ULTRAGOAL_DIR = ".omg/ultragoal";
 export declare const ULTRAGOAL_BRIEF = "brief.md";
 export declare const ULTRAGOAL_GOALS = "goals.json";
 export declare const ULTRAGOAL_LEDGER = "ledger.jsonl";
@@ -7,10 +7,10 @@ export declare const ULTRAGOAL_PLANS_SUBDIR = "plans";
  * Multi-plan support (Wave 2 — multi-repo workspace parallelism).
  *
  * Legacy layout (single plan per repo, default for backwards compatibility):
- *   .omc/ultragoal/{brief.md, goals.json, ledger.jsonl}
+ *   .omg/ultragoal/{brief.md, goals.json, ledger.jsonl}
  *
  * Multi-plan layout (opt-in via planId argument or --plan-id / --auto-plan-id CLI flag):
- *   .omc/ultragoal/plans/{planId}/{brief.md, goals.json, ledger.jsonl}
+ *   .omg/ultragoal/plans/{planId}/{brief.md, goals.json, ledger.jsonl}
  *
  * planId is a stable string. Auto-generated form: "{ms}-{slug}" where slug is
  * derived from the first non-empty title in the brief.
@@ -48,8 +48,8 @@ export interface UltragoalPlan {
     version: 1;
     /**
      * Stable plan identifier. When undefined, the plan uses the legacy
-     * single-plan layout (.omc/ultragoal/{brief.md,goals.json,ledger.jsonl}).
-     * When set, artifacts live under .omc/ultragoal/plans/{planId}/.
+     * single-plan layout (.omg/ultragoal/{brief.md,goals.json,ledger.jsonl}).
+     * When set, artifacts live under .omg/ultragoal/plans/{planId}/.
      */
     planId?: string;
     createdAt: string;
@@ -84,14 +84,14 @@ export interface CreateUltragoalOptions {
     now?: Date;
     force?: boolean;
     /**
-     * Explicit plan id; writes to .omc/ultragoal/plans/{planId}/. Mutually
+     * Explicit plan id; writes to .omg/ultragoal/plans/{planId}/. Mutually
      * exclusive with autoPlanId. When both omitted, plan uses legacy layout.
      */
     planId?: string;
     /**
      * Auto-generate a plan id from the brief title and current time.
      * Format: "{epochMs}-{slug}". Enables safe parallel ultragoal runs in
-     * multi-repo workspaces sharing one .omc/.
+     * multi-repo workspaces sharing one .omg/.
      */
     autoPlanId?: boolean;
 }
@@ -145,7 +145,7 @@ export declare function ultragoalBriefPath(cwd: string, planId?: string): string
 export declare function ultragoalGoalsPath(cwd: string, planId?: string): string;
 export declare function ultragoalLedgerPath(cwd: string, planId?: string): string;
 /**
- * List all multi-plan IDs under .omc/ultragoal/plans/.
+ * List all multi-plan IDs under .omg/ultragoal/plans/.
  * Returns an empty array when the plans/ subdir doesn't exist.
  */
 export declare function listUltragoalPlanIds(cwd: string): Promise<string[]>;

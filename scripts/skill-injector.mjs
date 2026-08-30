@@ -105,10 +105,10 @@ function resolveOmcRootSync(startDir) {
   // Walk up looking for .omc-workspace or .git
   while (dir) {
     if (existsSync(join(dir, '.omc-workspace'))) {
-      return join(dir, '.omc');
+      return join(dir, '.omg');
     }
     if (existsSync(join(dir, '.git'))) {
-      return join(dir, '.omc');
+      return join(dir, '.omg');
     }
     const parent = dirname(dir);
     if (parent === dir) break; // filesystem root reached
@@ -116,7 +116,7 @@ function resolveOmcRootSync(startDir) {
   }
 
   // Fallback: use startDir
-  return join(startDir, '.omc');
+  return join(startDir, '.omg');
 }
 
 // ============================================================================
@@ -632,8 +632,8 @@ if (isDisabled) {
 
   const cfgDir = getCopilotConfigDir();
   USER_SKILLS_DIR = join(cfgDir, 'skills', 'omc-learned');
-  GLOBAL_SKILLS_DIR = join(homedir(), '.omc', 'skills');
-  PROJECT_SKILLS_SUBDIR = join('.omc', 'skills');
+  GLOBAL_SKILLS_DIR = join(homedir(), '.omg', 'skills');
+  PROJECT_SKILLS_SUBDIR = join('.omg', 'skills');
   SKILL_EXTENSION = '.md';
   MAX_SKILLS_PER_SESSION = 5;
   MAX_LEARNED_SKILL_DESCRIPTOR_CHARS = 1000;

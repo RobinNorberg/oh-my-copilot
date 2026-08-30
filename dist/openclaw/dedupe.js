@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "crypto";
 import { join } from "path";
 import { atomicWriteJsonSync } from "../lib/atomic-write.js";
 import { isProcessAlive } from "../platform/index.js";
-const STATE_DIR = [".omc", "state"];
+const STATE_DIR = [".omg", "state"];
 const STATE_FILE = "openclaw-event-dedupe.json";
 const LOCK_FILE = "openclaw-event-dedupe.lock";
 const START_WINDOW_MS = 10_000;

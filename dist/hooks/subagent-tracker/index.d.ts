@@ -8,7 +8,7 @@
  * - HUD integration for agent status display
  * - Automatic cleanup of orphaned agent state
  *
- * Storage: session-scoped under .omc/state/sessions/{sessionId}/subagent-tracking-state.json
+ * Storage: session-scoped under .omg/state/sessions/{sessionId}/subagent-tracking-state.json
  * Locking:  withFileLockSync from file-lock.ts (O_CREAT|O_EXCL advisory lock)
  */
 import { type WorktreeDirtyEvidence } from './worktree-evidence.js';

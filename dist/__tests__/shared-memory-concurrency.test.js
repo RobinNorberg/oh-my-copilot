@@ -89,7 +89,7 @@ describe('Shared Memory Concurrency (issue #1160)', () => {
     describe('Project memory concurrent writes', () => {
         it('withProjectMemoryLock should serialize concurrent access', async () => {
             // Set up initial memory
-            const omcDir = join(testDir, '.omc');
+            const omcDir = join(testDir, '.omg');
             mkdirSync(omcDir, { recursive: true });
             const initialMemory = {
                 version: '1.0.0',
@@ -127,7 +127,7 @@ describe('Shared Memory Concurrency (issue #1160)', () => {
             }
         });
         it('lock file should be cleaned up after project memory writes', async () => {
-            const omcDir = join(testDir, '.omc');
+            const omcDir = join(testDir, '.omg');
             mkdirSync(omcDir, { recursive: true });
             const memoryPath = join(omcDir, 'project-memory.json');
             writeFileSync(memoryPath, JSON.stringify({

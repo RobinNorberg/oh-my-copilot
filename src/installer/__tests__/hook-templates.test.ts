@@ -160,8 +160,8 @@ describe('keyword-detector packaged artifacts', () => {
     const fakeHome = mkdtempSync(join(tmpdir(), 'keyword-hook-home-'));
     try {
       for (const [scriptPath, statePath] of [
-        [templatePath, join(tempDir, '.omc', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
-        [pluginPath, join(tempDir, '.omc', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
+        [templatePath, join(tempDir, '.omg', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
+        [pluginPath, join(tempDir, '.omg', 'state', 'sessions', 'hook-session', 'ralph-state.json')],
       ] as const) {
         execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
         execFileSync('node', [scriptPath], {
@@ -181,8 +181,8 @@ describe('keyword-detector packaged artifacts', () => {
         };
         expect(state.awaiting_confirmation).toBe(true);
 
-        rmSync(join(tempDir, '.omc'), { recursive: true, force: true });
-        rmSync(join(fakeHome, '.omc'), { recursive: true, force: true });
+        rmSync(join(tempDir, '.omg'), { recursive: true, force: true });
+        rmSync(join(fakeHome, '.omg'), { recursive: true, force: true });
       }
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -196,7 +196,7 @@ describe('keyword-detector packaged artifacts', () => {
     const projectB = mkdtempSync(join(tmpdir(), 'keyword-hook-project-b-'));
     const fakeHome = mkdtempSync(join(tmpdir(), 'keyword-hook-home-'));
     const emptyXdg = mkdtempSync(join(tmpdir(), 'keyword-hook-xdg-'));
-    const globalStatePath = join(fakeHome, '.omc', 'state', 'autopilot-state.json');
+    const globalStatePath = join(fakeHome, '.omg', 'state', 'autopilot-state.json');
     const foreignState = JSON.stringify({ active: true, project_path: projectB, sentinel: 'project-b' });
     const deadTempPath = `${globalStatePath}.emergency-quarantine.00000000-0000-4000-8000-000000000001.payload.999999999.1.00000000-0000-4000-8000-000000000002.tmp`;
     try {
@@ -214,7 +214,7 @@ describe('keyword-detector packaged artifacts', () => {
 
       expect(readFileSync(globalStatePath, 'utf-8')).toBe(foreignState);
       expect(readFileSync(deadTempPath, 'utf-8')).toBe(foreignState);
-      expect(existsSync(join(projectA, '.omc', 'state', 'sessions', 'project-a-session', 'autopilot-state.json'))).toBe(true);
+      expect(existsSync(join(projectA, '.omg', 'state', 'sessions', 'project-a-session', 'autopilot-state.json'))).toBe(true);
 
       const malformedJournalPath = `${globalStatePath}.emergency-journal.json`;
       writeFileSync(malformedJournalPath, '{not-json');
@@ -999,7 +999,7 @@ describe('atomic write packaged helpers', () => {
     ['standalone hook helper', join(packageRoot, 'templates', 'hooks', 'lib', 'atomic-write.mjs')],
   ])('allows its own recovery claim to converge while preserving foreign claim artifacts through the %s', async (_label, helperPath) => {
     const tempDir = mkdtempSync(join(tmpdir(), 'atomic-write-recovery-claim-'));
-    const statePath = join(tempDir, '.omc', 'state', 'autopilot-state.json');
+    const statePath = join(tempDir, '.omg', 'state', 'autopilot-state.json');
     const claimPath = `${statePath}.emergency-recovery.claim`;
     const projectPath = join(tempDir, 'project-a');
     const state = JSON.stringify({ active: true, project_path: projectPath });
@@ -1039,7 +1039,7 @@ describe('workflow profile runtime packaged artifacts (#3487)', () => {
   it('ignores legacy Ultrawork state in packaged persistent hooks', () => {
     const tempDir = mkdtempSync(join(tmpdir(), 'persistent-mode-retired-ultrawork-'));
     const sessionId = 'retired-ultrawork-template-test';
-    const sessionDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     const statePath = join(sessionDir, 'ultrawork-state.json');
     const legacyState = {
       active: true,

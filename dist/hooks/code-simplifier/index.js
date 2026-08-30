@@ -17,7 +17,7 @@ const DEFAULT_MAX_FILES = 10;
 export const TRIGGER_MARKER_FILENAME = 'code-simplifier-triggered.marker';
 /**
  * Read the global OMC config from the XDG-aware location, with legacy
- * ~/.omc/config.json fallback for backward compatibility.
+ * ~/.omg/config.json fallback for backward compatibility.
  * Returns null if the file does not exist or cannot be parsed.
  */
 export function readOmcConfig() {

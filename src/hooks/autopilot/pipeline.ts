@@ -743,7 +743,7 @@ function buildContext(
     ...(namedWorkflow
       ? {}
       : {
-          specPath: state.expansion?.spec_path || ".omc/autopilot/spec.md",
+          specPath: state.expansion?.spec_path || ".omg/autopilot/spec.md",
           planPath: state.planning?.plan_path || resolveAutopilotPlanPath(),
           openQuestionsPath: resolveOpenQuestionsPlanPath(),
         }),

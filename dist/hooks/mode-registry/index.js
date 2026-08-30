@@ -6,7 +6,7 @@
  *
  * Mode modules import FROM this registry (unidirectional).
  *
- * All modes store state in `.omc/state/` subdirectory for consistency.
+ * All modes store state in `.omg/state/` subdirectory for consistency.
  */
 import { existsSync, readFileSync, mkdirSync, readdirSync, statSync, rmdirSync, rmSync, } from "fs";
 import { canClearStateForSession, clearStateFileLockedIf, writeStateFileLocked } from "../../lib/mode-state-io.js";
@@ -18,7 +18,7 @@ import { MODE_STATE_FILE_MAP, MODE_NAMES } from "../../lib/mode-names.js";
  * Mode configuration registry
  *
  * Maps each mode to its state file location and detection method.
- * All paths are relative to .omc/state/ directory.
+ * All paths are relative to .omg/state/ directory.
  */
 const MODE_CONFIGS = {
     [MODE_NAMES.AUTOPILOT]: {
@@ -100,8 +100,8 @@ export function getMarkerFilePath(cwd, mode) {
     return join(getStateDir(cwd), config.markerFile);
 }
 /**
- * Get the global state file path (in ~/.claude/) for modes that support it
- * @deprecated Global state is no longer supported. All modes use local-only state in .omc/state/
+ * Get the global state file path (in ~/.copilot/) for modes that support it
+ * @deprecated Global state is no longer supported. All modes use local-only state in .omg/state/
  * @returns Always returns null
  */
 export function getGlobalStateFilePath(_mode) {
@@ -354,10 +354,10 @@ function clearDiscoveredJsonFile(filePath, observed, predicate = () => true) {
  * Clear all state files for a mode
  *
  * Deletes:
- * - Local state file (.omc/state/{mode}-state.json)
+ * - Local state file (.omg/state/{mode}-state.json)
  * - Session-scoped state file if sessionId provided
  * - Local marker file if applicable
- * - Global state file if applicable (~/.claude/{mode}-state.json)
+ * - Global state file if applicable (~/.copilot/{mode}-state.json)
  *
  * @returns true if all files were deleted successfully (or didn't exist)
  */

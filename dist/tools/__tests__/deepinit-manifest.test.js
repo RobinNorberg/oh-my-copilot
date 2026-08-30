@@ -25,8 +25,8 @@ function createFile(relativePath, content = '') {
     writeFileSync(fullPath, content);
 }
 function createManifest(directories) {
-    const manifestPath = join(TEST_DIR, '.omc', 'deepinit-manifest.json');
-    mkdirSync(join(TEST_DIR, '.omc'), { recursive: true });
+    const manifestPath = join(TEST_DIR, '.omg', 'deepinit-manifest.json');
+    mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
     writeFileSync(manifestPath, JSON.stringify({
         version: 1,
         generatedAt: new Date().toISOString(),
@@ -52,7 +52,7 @@ describe('isExcluded', () => {
     });
     it('excludes hidden directories (starting with .)', () => {
         expect(isExcluded('.git')).toBe(true);
-        expect(isExcluded('.omc')).toBe(true);
+        expect(isExcluded('.omg')).toBe(true);
         expect(isExcluded('.vscode')).toBe(true);
         expect(isExcluded('.github')).toBe(true);
     });
@@ -102,16 +102,16 @@ describe('scanDirectories', () => {
         expect(result['src/hooks']).toBeDefined();
         expect(result['src/hooks'].files).toEqual(['bridge.ts']);
     });
-    it('excludes node_modules, .git, hidden dirs, .omc/', () => {
+    it('excludes node_modules, .git, hidden dirs, .omg/', () => {
         createFile('src/index.ts');
         createFile('node_modules/pkg/index.js');
         createFile('.git/config');
-        createFile('.omc/state/test.json');
+        createFile('.omg/state/test.json');
         createFile('.vscode/settings.json');
         const result = scanDirectories(TEST_DIR);
         expect(result['node_modules/pkg']).toBeUndefined();
         expect(result['.git']).toBeUndefined();
-        expect(result['.omc/state']).toBeUndefined();
+        expect(result['.omg/state']).toBeUndefined();
         expect(result['.vscode']).toBeUndefined();
         expect(result['src']).toBeDefined();
     });
@@ -402,8 +402,8 @@ describe('deepinitManifestTool handler', () => {
         });
         it('corrupted manifest treated as first run', async () => {
             createFile('src/index.ts');
-            mkdirSync(join(TEST_DIR, '.omc'), { recursive: true });
-            writeFileSync(join(TEST_DIR, '.omc', 'deepinit-manifest.json'), '{ broken json');
+            mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
+            writeFileSync(join(TEST_DIR, '.omg', 'deepinit-manifest.json'), '{ broken json');
             const result = await deepinitManifestTool.handler({
                 action: 'diff',
                 mode: 'incremental',
@@ -421,20 +421,20 @@ describe('deepinitManifestTool handler', () => {
                 mode: 'incremental',
                 dryRun: false,
             });
-            const manifestPath = join(TEST_DIR, '.omc', 'deepinit-manifest.json');
+            const manifestPath = join(TEST_DIR, '.omg', 'deepinit-manifest.json');
             expect(existsSync(manifestPath)).toBe(true);
             const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
             expect(manifest.version).toBe(1);
             expect(manifest.directories['src']).toBeDefined();
         });
-        it('creates .omc/ directory if missing', async () => {
+        it('creates .omg/ directory if missing', async () => {
             createFile('index.ts');
             await deepinitManifestTool.handler({
                 action: 'save',
                 mode: 'incremental',
                 dryRun: false,
             });
-            expect(existsSync(join(TEST_DIR, '.omc', 'deepinit-manifest.json'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omg', 'deepinit-manifest.json'))).toBe(true);
         });
         it('dryRun=true does not write file', async () => {
             createFile('src/index.ts');
@@ -444,7 +444,7 @@ describe('deepinitManifestTool handler', () => {
                 dryRun: true,
             });
             expect(result.content[0].text).toContain('Dry run');
-            expect(existsSync(join(TEST_DIR, '.omc', 'deepinit-manifest.json'))).toBe(false);
+            expect(existsSync(join(TEST_DIR, '.omg', 'deepinit-manifest.json'))).toBe(false);
         });
     });
     describe('check action', () => {
@@ -472,8 +472,8 @@ describe('deepinitManifestTool handler', () => {
             expect(output.directoryCount).toBe(1);
         });
         it('returns exists=true, valid=false when manifest is corrupted', async () => {
-            mkdirSync(join(TEST_DIR, '.omc'), { recursive: true });
-            writeFileSync(join(TEST_DIR, '.omc', 'deepinit-manifest.json'), 'not json');
+            mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
+            writeFileSync(join(TEST_DIR, '.omg', 'deepinit-manifest.json'), 'not json');
             const result = await deepinitManifestTool.handler({
                 action: 'check',
                 mode: 'incremental',

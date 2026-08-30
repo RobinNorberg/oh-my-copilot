@@ -399,7 +399,7 @@ describe('omc ask command', () => {
     });
 });
 describe('run-provider-advisor script contract', () => {
-    it('writes artifact to .omc/artifacts/ask/{provider}-{slug}-{timestamp}.md', () => {
+    it('writes artifact to .omg/artifacts/ask/{provider}-{slug}-{timestamp}.md', () => {
         const wd = mkdtempSync(join(tmpdir(), 'omc-ask-artifact-'));
         try {
             const binDir = writeFakeProviderBinary(wd, 'claude');
@@ -407,7 +407,7 @@ describe('run-provider-advisor script contract', () => {
             expect(result.error).toBeUndefined();
             expect(result.status).toBe(0);
             const artifactPath = result.stdout.trim();
-            expect(artifactPath).toContain(join('.omc', 'artifacts', 'ask', 'claude-artifact-path-contract-'));
+            expect(artifactPath).toContain(join('.omg', 'artifacts', 'ask', 'claude-artifact-path-contract-'));
             expect(existsSync(artifactPath)).toBe(true);
             const artifact = readFileSync(artifactPath, 'utf8');
             expect(artifact).toContain('FAKE_PROVIDER_OK:artifact path contract');

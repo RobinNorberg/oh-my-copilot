@@ -136,7 +136,7 @@ describe("wakeOpenClaw", () => {
             sessionId: "sid-stop",
             projectPath: "/home/user/myproject",
         });
-        expect(mockGetNewPaneTail).toHaveBeenCalledWith("%7", join(fixtureHome, ".omc", "state"), 15);
+        expect(mockGetNewPaneTail).toHaveBeenCalledWith("%7", join(fixtureHome, ".omg", "state"), 15);
         const payload = vi.mocked(wakeGateway).mock.calls[0]?.[2];
         expect(payload.tmuxTail).toBe(parseTmuxTail(freshContent, 15));
         expect(payload.tmuxTail).toBe("RuntimeError: boom\nBLOCKED: runtime failure");

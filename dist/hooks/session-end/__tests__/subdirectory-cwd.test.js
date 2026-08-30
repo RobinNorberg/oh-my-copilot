@@ -1,9 +1,9 @@
 /**
- * Tests for issue #891: MCP state tools and stop hook resolve .omc/state/
+ * Tests for issue #891: MCP state tools and stop hook resolve .omg/state/
  * differently when cwd is a subdirectory.
  *
  * processSessionEnd must normalize input.cwd to the git worktree root before
- * building any .omc/ paths, so it always operates on the same directory that
+ * building any .omg/ paths, so it always operates on the same directory that
  * the MCP state tools write to.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -81,7 +81,7 @@ describe('processSessionEnd cwd normalization (issue #891)', () => {
     });
     it('reads and cleans up state written at worktree root, not subdirectory', async () => {
         // Write an active state file at the worktree root (as MCP tools would)
-        const stateDir = path.join(worktreeRoot, '.omc', 'state');
+        const stateDir = path.join(worktreeRoot, '.omg', 'state');
         fs.mkdirSync(stateDir, { recursive: true });
         fs.writeFileSync(path.join(stateDir, 'ultrawork-state.json'), JSON.stringify({
             active: true,
@@ -108,16 +108,16 @@ describe('processSessionEnd cwd normalization (issue #891)', () => {
             hook_event_name: 'SessionEnd',
             reason: 'clear',
         });
-        // Session summary should appear under worktreeRoot/.omc/sessions/
-        const summaryPath = path.join(worktreeRoot, '.omc', 'sessions', 'test-session-891-summary.json');
+        // Session summary should appear under worktreeRoot/.omg/sessions/
+        const summaryPath = path.join(worktreeRoot, '.omg', 'sessions', 'test-session-891-summary.json');
         expect(fs.existsSync(summaryPath)).toBe(true);
         // Nothing should have been written under the subdirectory
-        expect(fs.existsSync(path.join(subdirectory, '.omc'))).toBe(false);
+        expect(fs.existsSync(path.join(subdirectory, '.omg'))).toBe(false);
     });
     it('leaves state at worktree root untouched when cwd is already the root', async () => {
         // When cwd IS the root, resolveToWorktreeRoot returns it unchanged
         mockResolveToWorktreeRoot.mockImplementation((dir) => dir ?? worktreeRoot);
-        const stateDir = path.join(worktreeRoot, '.omc', 'state');
+        const stateDir = path.join(worktreeRoot, '.omg', 'state');
         fs.mkdirSync(stateDir, { recursive: true });
         // Write a state file that is inactive — should NOT be removed
         fs.writeFileSync(path.join(stateDir, 'ralph-state.json'), JSON.stringify({ active: false, session_id: 'other-session' }));

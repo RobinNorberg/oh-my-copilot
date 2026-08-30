@@ -106,7 +106,7 @@ describe("team/followup-planner", () => {
             process.env.HOME = testDir;
             process.env.USERPROFILE = testDir;
             delete process.env.OMC_STATE_DIR;
-            plansDir = join(testDir, ".omc", "plans");
+            plansDir = join(testDir, ".omg", "plans");
             mkdirSync(plansDir, { recursive: true });
         });
         afterEach(() => {

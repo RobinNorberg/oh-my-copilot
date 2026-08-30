@@ -66,7 +66,7 @@ function resolveOmcRoot(startDir) {
     const home = (() => { try { return resolve(homedir()); } catch { return null; } })();
     while (true) {
       if (existsSync(join(cursor, '.omc-workspace'))) {
-        return join(cursor, '.omc');
+        return join(cursor, '.omg');
       }
       const parent = dirname(cursor);
       if (parent === cursor) break;
@@ -86,13 +86,13 @@ function resolveOmcRoot(startDir) {
       timeout: BOUNDED_GIT_TIMEOUT_MS,
       windowsHide: true,
     }).trim();
-    if (top) return join(top, '.omc');
+    if (top) return join(top, '.omg');
   } catch {
     // not in a git repo — fall through
   }
 
   // 4) Fallback to startDir
-  return join(dir, '.omc');
+  return join(dir, '.omg');
 }
 
 function clampPercent(percent, fallback) {

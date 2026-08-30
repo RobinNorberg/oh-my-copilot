@@ -13,10 +13,10 @@ describe('wiki hook wrapper output', () => {
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(homedir(), 'omc-wiki-hook-format-'));
-    mkdirSync(join(tempDir, '.omc', 'wiki'), { recursive: true });
+    mkdirSync(join(tempDir, '.omg', 'wiki'), { recursive: true });
 
     writeFileSync(
-      join(tempDir, '.omc', 'wiki', 'test-page.md'),
+      join(tempDir, '.omg', 'wiki', 'test-page.md'),
       [
         '---',
         'title: "Test Page"',
@@ -34,7 +34,7 @@ describe('wiki hook wrapper output', () => {
       ].join('\n'),
     );
 
-    writeFileSync(join(tempDir, '.omc', 'wiki', 'index.md'), '# Wiki Index\n- test-page.md\n');
+    writeFileSync(join(tempDir, '.omg', 'wiki', 'index.md'), '# Wiki Index\n- test-page.md\n');
   });
 
   afterEach(() => {
@@ -69,7 +69,7 @@ describe('wiki hook wrapper output', () => {
     expect(output.additionalContext).toBeUndefined();
     expect(output.hookSpecificOutput).toEqual({
       hookEventName: 'SessionStart',
-      additionalContext: expect.stringContaining('[LLM Wiki: 1 pages at .omc/wiki/]'),
+      additionalContext: expect.stringContaining('[LLM Wiki: 1 pages at .omg/wiki/]'),
     });
   });
 

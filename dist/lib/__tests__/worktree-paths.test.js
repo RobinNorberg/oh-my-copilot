@@ -78,7 +78,7 @@ describe('worktree-paths', () => {
     describe('resolveOmcPath', () => {
         it('should resolve paths under .omc directory', () => {
             const result = resolveOmcPath('state/ralph.json', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'state', 'ralph.json'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'state', 'ralph.json'));
         });
         it('should reject paths that escape .omc boundary', () => {
             expect(() => resolveOmcPath('../secret.txt', TEST_DIR)).toThrow('path traversal');
@@ -87,11 +87,11 @@ describe('worktree-paths', () => {
     describe('resolveStatePath', () => {
         it('should resolve state file paths with -state suffix', () => {
             const result = resolveStatePath('ralph', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'state', 'ralph-state.json'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'state', 'ralph-state.json'));
         });
         it('should handle input already having -state suffix', () => {
             const result = resolveStatePath('ultrawork-state', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'state', 'ultrawork-state.json'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'state', 'ultrawork-state.json'));
         });
         it('should resolve swarm as regular JSON path after #1131 removal', () => {
             // swarm SQLite special-casing removed in #1131
@@ -102,44 +102,44 @@ describe('worktree-paths', () => {
     describe('ensureOmcDir', () => {
         it('should create directories under .omc', () => {
             const result = ensureOmcDir('state', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'state'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'state'));
             expect(existsSync(result)).toBe(true);
         });
     });
     describe('helper functions', () => {
         it('getWorktreeNotepadPath returns correct path', () => {
             const result = getWorktreeNotepadPath(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'notepad.md'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'notepad.md'));
         });
         it('getWorktreeProjectMemoryPath returns correct path', () => {
             const result = getWorktreeProjectMemoryPath(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'project-memory.json'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'project-memory.json'));
         });
         it('getOmcRoot returns correct path', () => {
             const result = getOmcRoot(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc'));
+            expect(result).toBe(join(TEST_DIR, '.omg'));
         });
         it('resolvePlanPath returns correct path', () => {
             const result = resolvePlanPath('my-feature', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'plans', 'my-feature.md'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'plans', 'my-feature.md'));
         });
         it('resolveResearchPath returns correct path', () => {
             const result = resolveResearchPath('api-research', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'research', 'api-research'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'research', 'api-research'));
         });
         it('resolveLogsPath returns correct path', () => {
             const result = resolveLogsPath(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'logs'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'logs'));
         });
         it('resolveWisdomPath returns correct path', () => {
             const result = resolveWisdomPath('my-plan', TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc', 'notepads', 'my-plan'));
+            expect(result).toBe(join(TEST_DIR, '.omg', 'notepads', 'my-plan'));
         });
     });
     describe('isPathUnderOmc', () => {
         it('should return true for paths under .omc', () => {
-            expect(isPathUnderOmc(join(TEST_DIR, '.omc', 'state', 'ralph.json'), TEST_DIR)).toBe(true);
-            expect(isPathUnderOmc(join(TEST_DIR, '.omc'), TEST_DIR)).toBe(true);
+            expect(isPathUnderOmc(join(TEST_DIR, '.omg', 'state', 'ralph.json'), TEST_DIR)).toBe(true);
+            expect(isPathUnderOmc(join(TEST_DIR, '.omg'), TEST_DIR)).toBe(true);
         });
         it('should return false for paths outside .omc', () => {
             expect(isPathUnderOmc(join(TEST_DIR, 'src', 'file.ts'), TEST_DIR)).toBe(false);
@@ -149,13 +149,13 @@ describe('worktree-paths', () => {
     describe('ensureAllOmcDirs', () => {
         it('should create all standard .omc subdirectories', () => {
             ensureAllOmcDirs(TEST_DIR);
-            expect(existsSync(join(TEST_DIR, '.omc'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omc', 'state'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omc', 'plans'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omc', 'research'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omc', 'logs'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omc', 'notepads'))).toBe(true);
-            expect(existsSync(join(TEST_DIR, '.omc', 'drafts'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omg'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omg', 'state'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omg', 'plans'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omg', 'research'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omg', 'logs'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omg', 'notepads'))).toBe(true);
+            expect(existsSync(join(TEST_DIR, '.omg', 'drafts'))).toBe(true);
         });
     });
     describe('resolveToWorktreeRoot', () => {
@@ -496,7 +496,7 @@ describe('worktree-paths', () => {
         it('should return default .omc path when OMC_STATE_DIR is not set', () => {
             delete process.env.OMC_STATE_DIR;
             const result = getOmcRoot(TEST_DIR);
-            expect(result).toBe(join(TEST_DIR, '.omc'));
+            expect(result).toBe(join(TEST_DIR, '.omg'));
         });
         it('should return centralized path when OMC_STATE_DIR is set', () => {
             const stateDir = mkdtempSync(join(tmpdir(), 'omc-state-dir-'));
@@ -505,7 +505,7 @@ describe('worktree-paths', () => {
                 const result = getOmcRoot(TEST_DIR);
                 const projectId = 'non-git';
                 expect(result).toBe(join(stateDir, projectId));
-                expect(result).not.toContain('.omc');
+                expect(result).not.toContain('.omg');
             }
             finally {
                 rmSync(stateDir, { recursive: true, force: true });
@@ -518,7 +518,7 @@ describe('worktree-paths', () => {
                 process.env.OMC_STATE_DIR = stateDir;
                 const projectId = 'non-git';
                 // Create both directories
-                mkdirSync(join(TEST_DIR, '.omc'), { recursive: true });
+                mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
                 mkdirSync(join(stateDir, projectId), { recursive: true });
                 clearDualDirWarnings();
                 getOmcRoot(TEST_DIR);
@@ -536,7 +536,7 @@ describe('worktree-paths', () => {
             try {
                 process.env.OMC_STATE_DIR = stateDir;
                 const projectId = 'non-git';
-                // Create only centralized dir (no legacy .omc/)
+                // Create only centralized dir (no legacy .omg/)
                 mkdirSync(join(stateDir, projectId), { recursive: true });
                 clearDualDirWarnings();
                 getOmcRoot(TEST_DIR);
@@ -553,7 +553,7 @@ describe('worktree-paths', () => {
             try {
                 process.env.OMC_STATE_DIR = stateDir;
                 const projectId = 'non-git';
-                mkdirSync(join(TEST_DIR, '.omc'), { recursive: true });
+                mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
                 mkdirSync(join(stateDir, projectId), { recursive: true });
                 clearDualDirWarnings();
                 getOmcRoot(TEST_DIR);
@@ -623,7 +623,7 @@ describe('worktree-paths', () => {
             const centralPath = join(stateDir, projectId, 'state', 'ralph.json');
             expect(isPathUnderOmc(centralPath, TEST_DIR)).toBe(true);
             // Legacy path should NOT be under omc when centralized
-            expect(isPathUnderOmc(join(TEST_DIR, '.omc', 'state', 'ralph.json'), TEST_DIR)).toBe(false);
+            expect(isPathUnderOmc(join(TEST_DIR, '.omg', 'state', 'ralph.json'), TEST_DIR)).toBe(false);
         });
         it('ensureAllOmcDirs should create dirs under centralized path', () => {
             ensureAllOmcDirs(TEST_DIR);
@@ -636,8 +636,8 @@ describe('worktree-paths', () => {
             expect(existsSync(join(centralRoot, 'logs'))).toBe(true);
             expect(existsSync(join(centralRoot, 'notepads'))).toBe(true);
             expect(existsSync(join(centralRoot, 'drafts'))).toBe(true);
-            // Legacy .omc/ should NOT be created
-            expect(existsSync(join(TEST_DIR, '.omc'))).toBe(false);
+            // Legacy .omg/ should NOT be created
+            expect(existsSync(join(TEST_DIR, '.omg'))).toBe(false);
         });
         it('ensureOmcDir should create dir under centralized path', () => {
             const result = ensureOmcDir('state', TEST_DIR);
@@ -659,21 +659,21 @@ describe('worktree-paths', () => {
         });
         it('getOmcRoot ignores marker when absent (regression: monorepo flow unchanged)', () => {
             const result = getOmcRoot(workspaceDir);
-            expect(result).toBe(join(TEST_DIR, '.omc'));
+            expect(result).toBe(join(TEST_DIR, '.omg'));
         });
         it('getOmcRoot anchors to marker dir when marker exists in cwd', () => {
             const fs = require('node:fs');
             fs.writeFileSync(join(workspaceDir, '.omc-workspace'), '');
             clearWorktreeCache();
             const result = getOmcRoot(workspaceDir);
-            expect(result).toBe(join(workspaceDir, '.omc'));
+            expect(result).toBe(join(workspaceDir, '.omg'));
         });
         it('getOmcRoot walks up from subdir to find marker', () => {
             const fs = require('node:fs');
             fs.writeFileSync(join(workspaceDir, '.omc-workspace'), '');
             clearWorktreeCache();
             const result = getOmcRoot(subrepoDir);
-            expect(result).toBe(join(workspaceDir, '.omc'));
+            expect(result).toBe(join(workspaceDir, '.omg'));
         });
         it('getOmcRoot prefers marker over a sub-git-repo root', () => {
             const fs = require('node:fs');
@@ -686,7 +686,7 @@ describe('worktree-paths', () => {
             }
             clearWorktreeCache();
             const result = getOmcRoot(subrepoDir);
-            expect(result).toBe(join(workspaceDir, '.omc'));
+            expect(result).toBe(join(workspaceDir, '.omg'));
         });
         it('getProjectIdentifier honors explicit id from marker', () => {
             const fs = require('node:fs');
@@ -739,7 +739,7 @@ describe('worktree-paths', () => {
                 process.env.OMC_STATE_DIR = stateDir;
                 const result = getOmcRoot(rootA);
                 // Must use centralized path, not the workspace-anchored .omc
-                expect(result).not.toBe(join(rootA, '.omc'));
+                expect(result).not.toBe(join(rootA, '.omg'));
                 expect(result.startsWith(stateDir)).toBe(true);
             }
             finally {
@@ -798,19 +798,19 @@ describe('worktree-paths', () => {
             clearSiblingRetrofitWarnings();
             rmSync(anchorDir, { recursive: true, force: true });
         });
-        it('warns once when siblings have pre-existing .omc/state dirs', () => {
+        it('warns once when siblings have pre-existing .omg/state dirs', () => {
             const siblingA = join(anchorDir, 'repoA');
             const siblingB = join(anchorDir, 'repoB');
-            mkdirSync(join(siblingA, '.omc', 'state'), { recursive: true });
-            mkdirSync(join(siblingB, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(siblingA, '.omg', 'state'), { recursive: true });
+            mkdirSync(join(siblingB, '.omg', 'state'), { recursive: true });
             warnSiblingRetrofit(anchorDir);
             expect(stderrSpy).toHaveBeenCalledTimes(1);
             const written = String(stderrSpy.mock.calls[0][0]);
             expect(written).toContain('workspace-retrofit warning');
-            expect(written).toContain(join(siblingA, '.omc'));
-            expect(written).toContain(join(siblingB, '.omc'));
+            expect(written).toContain(join(siblingA, '.omg'));
+            expect(written).toContain(join(siblingB, '.omg'));
         });
-        it('does not warn when no sibling has .omc/state', () => {
+        it('does not warn when no sibling has .omg/state', () => {
             const siblingA = join(anchorDir, 'repoA');
             mkdirSync(siblingA, { recursive: true });
             warnSiblingRetrofit(anchorDir);
@@ -818,14 +818,14 @@ describe('worktree-paths', () => {
         });
         it('second call with same sessionId stays silent (in-memory dedupe)', () => {
             const siblingA = join(anchorDir, 'repoA');
-            mkdirSync(join(siblingA, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(siblingA, '.omg', 'state'), { recursive: true });
             warnSiblingRetrofit(anchorDir, 'test-session-1');
             warnSiblingRetrofit(anchorDir, 'test-session-1');
             expect(stderrSpy).toHaveBeenCalledTimes(1);
         });
         it('second call with same sessionId stays silent via disk marker', () => {
             const siblingA = join(anchorDir, 'repoA');
-            mkdirSync(join(siblingA, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(siblingA, '.omg', 'state'), { recursive: true });
             const sessionId = 'disk-dedupe-session';
             warnSiblingRetrofit(anchorDir, sessionId);
             // Reset in-memory set but keep disk marker
@@ -834,17 +834,17 @@ describe('worktree-paths', () => {
             // Only warned once — disk marker stopped second call
             expect(stderrSpy).toHaveBeenCalledTimes(1);
         });
-        it('disk marker is written under {anchor}/.omc/state/sibling-retrofit-warned-{sid}.json', () => {
+        it('disk marker is written under {anchor}/.omg/state/sibling-retrofit-warned-{sid}.json', () => {
             const siblingA = join(anchorDir, 'repoA');
-            mkdirSync(join(siblingA, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(siblingA, '.omg', 'state'), { recursive: true });
             const sessionId = 'marker-write-test';
             warnSiblingRetrofit(anchorDir, sessionId);
-            const markerPath = join(anchorDir, '.omc', 'state', `sibling-retrofit-warned-${sessionId}.json`);
+            const markerPath = join(anchorDir, '.omg', 'state', `sibling-retrofit-warned-${sessionId}.json`);
             expect(existsSync(markerPath)).toBe(true);
         });
         it('different sessionId re-warns after in-memory clear', () => {
             const siblingA = join(anchorDir, 'repoA');
-            mkdirSync(join(siblingA, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(siblingA, '.omg', 'state'), { recursive: true });
             warnSiblingRetrofit(anchorDir, 'session-A');
             clearSiblingRetrofitWarnings();
             warnSiblingRetrofit(anchorDir, 'session-B');
@@ -852,13 +852,13 @@ describe('worktree-paths', () => {
         });
         it('clearSiblingRetrofitWarnings removes disk markers and allows re-warn', () => {
             const siblingA = join(anchorDir, 'repoA');
-            mkdirSync(join(siblingA, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(siblingA, '.omg', 'state'), { recursive: true });
             const sessionId = 'clear-test-session';
             warnSiblingRetrofit(anchorDir, sessionId);
             expect(stderrSpy).toHaveBeenCalledTimes(1);
             // Clear both in-memory and disk markers
-            clearSiblingRetrofitWarnings(join(anchorDir, '.omc'));
-            const markerPath = join(anchorDir, '.omc', 'state', `sibling-retrofit-warned-${sessionId}.json`);
+            clearSiblingRetrofitWarnings(join(anchorDir, '.omg'));
+            const markerPath = join(anchorDir, '.omg', 'state', `sibling-retrofit-warned-${sessionId}.json`);
             expect(existsSync(markerPath)).toBe(false);
             // Subsequent call should warn again
             warnSiblingRetrofit(anchorDir, sessionId);
@@ -881,7 +881,7 @@ describe('worktree-paths', () => {
         it('no sessionId: sessionScoped is empty string, effectiveRead and effectiveWrite equal legacy', () => {
             const paths = resolveSessionStatePaths('ralph', undefined, workDir);
             expect(paths.sessionScoped).toBe('');
-            const expectedLegacy = join(TEST_DIR, '.omc', 'state', 'ralph-state.json');
+            const expectedLegacy = join(TEST_DIR, '.omg', 'state', 'ralph-state.json');
             expect(paths.legacy).toBe(expectedLegacy);
             expect(paths.effectiveRead).toBe(expectedLegacy);
             expect(paths.effectiveWrite).toBe(expectedLegacy);
@@ -889,20 +889,20 @@ describe('worktree-paths', () => {
         it('with sessionId: effectiveWrite is the session-scoped path', () => {
             const sessionId = 'pid-99999-1234567890';
             const paths = resolveSessionStatePaths('ultrawork', sessionId, workDir);
-            const expectedSession = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json');
+            const expectedSession = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId, 'ultrawork-state.json');
             expect(paths.effectiveWrite).toBe(expectedSession);
             expect(paths.sessionScoped).toBe(expectedSession);
         });
         it('effectiveRead === legacy when session-scoped file does not exist yet', () => {
             const sessionId = 'pid-99999-1111111111';
             const paths = resolveSessionStatePaths('ralph', sessionId, workDir);
-            const expectedLegacy = join(TEST_DIR, '.omc', 'state', 'ralph-state.json');
+            const expectedLegacy = join(TEST_DIR, '.omg', 'state', 'ralph-state.json');
             expect(paths.effectiveRead).toBe(expectedLegacy);
         });
         it('effectiveRead === sessionScoped after session file is created', () => {
             const sessionId = 'pid-99999-2222222222';
-            const sessionScoped = join(TEST_DIR, '.omc', 'state', 'sessions', sessionId, 'ralph-state.json');
-            mkdirSync(join(TEST_DIR, '.omc', 'state', 'sessions', sessionId), { recursive: true });
+            const sessionScoped = join(TEST_DIR, '.omg', 'state', 'sessions', sessionId, 'ralph-state.json');
+            mkdirSync(join(TEST_DIR, '.omg', 'state', 'sessions', sessionId), { recursive: true });
             writeFileSync(sessionScoped, '{}');
             const paths = resolveSessionStatePaths('ralph', sessionId, workDir);
             expect(paths.effectiveRead).toBe(sessionScoped);

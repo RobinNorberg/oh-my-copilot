@@ -81,7 +81,7 @@ function makeRuntime(cwd, teamName, tasks = [{ subject: 'Task 1', description: '
     };
 }
 function initTask(cwd, teamName, task = {}) {
-    const root = join(cwd, '.omc', 'state', 'team', teamName);
+    const root = join(cwd, '.omg', 'state', 'team', teamName);
     mkdirSync(join(root, 'tasks'), { recursive: true });
     mkdirSync(join(root, 'workers', 'worker-1'), { recursive: true });
     writeFileSync(join(root, 'tasks', 'task-1.json'), JSON.stringify({

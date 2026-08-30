@@ -1,12 +1,12 @@
 /**
  * Worktree Path Enforcement
  *
- * Provides strict path validation and resolution for .omc/ paths,
+ * Provides strict path validation and resolution for .omg/ paths,
  * ensuring all operations stay within the worktree boundary.
  *
  * Supports OMC_STATE_DIR environment variable for centralized state storage.
  * When set, state is stored at $OMC_STATE_DIR/{project-identifier}/ instead
- * of {worktree}/.omc/. This preserves state across worktree deletions.
+ * of {worktree}/.omg/. This preserves state across worktree deletions.
  */
 /**
  * Workspace marker filename. A directory containing this file is treated as
@@ -21,21 +21,21 @@
 export declare const WORKSPACE_MARKER = ".omc-workspace";
 /** Standard .omc subdirectories */
 export declare const OmcPaths: {
-    readonly ROOT: ".omc";
-    readonly STATE: ".omc/state";
-    readonly SESSIONS: ".omc/state/sessions";
-    readonly PLANS: ".omc/plans";
-    readonly RESEARCH: ".omc/research";
-    readonly NOTEPAD: ".omc/notepad.md";
-    readonly PROJECT_MEMORY: ".omc/project-memory.json";
-    readonly DRAFTS: ".omc/drafts";
-    readonly NOTEPADS: ".omc/notepads";
-    readonly LOGS: ".omc/logs";
-    readonly SCIENTIST: ".omc/scientist";
-    readonly AUTOPILOT: ".omc/autopilot";
-    readonly SKILLS: ".omc/skills";
-    readonly SHARED_MEMORY: ".omc/state/shared-memory";
-    readonly DEEPINIT_MANIFEST: ".omc/deepinit-manifest.json";
+    readonly ROOT: ".omg";
+    readonly STATE: ".omg/state";
+    readonly SESSIONS: ".omg/state/sessions";
+    readonly PLANS: ".omg/plans";
+    readonly RESEARCH: ".omg/research";
+    readonly NOTEPAD: ".omg/notepad.md";
+    readonly PROJECT_MEMORY: ".omg/project-memory.json";
+    readonly DRAFTS: ".omg/drafts";
+    readonly NOTEPADS: ".omg/notepads";
+    readonly LOGS: ".omg/logs";
+    readonly SCIENTIST: ".omg/scientist";
+    readonly AUTOPILOT: ".omg/autopilot";
+    readonly SKILLS: ".omg/skills";
+    readonly SHARED_MEMORY: ".omg/state/shared-memory";
+    readonly DEEPINIT_MANIFEST: ".omg/deepinit-manifest.json";
 };
 interface WorkspaceMarkerConfig {
     id?: string;
@@ -58,7 +58,7 @@ export declare function readWorkspaceMarkerConfig(workspaceRoot: string): Worksp
 export declare function isSensitiveStateLocation(dir: string): boolean;
 /**
  * Resolve the canonical state anchor for a non-git cwd.
- * Legacy cwd-local `.omc/` trees are never adopted implicitly; callers must
+ * Legacy cwd-local `.omg/` trees are never adopted implicitly; callers must
  * use the explicit migration surface to copy owner-matched session state.
  */
 export declare function resolveNonGitStateAnchor(startDir?: string): string;
@@ -97,7 +97,7 @@ export declare function getGitTopLevel(cwd?: string): string | null;
  * Get the state-anchor "worktree root" for a directory.
  *
  * When cwd is inside a git submodule this climbs to the outermost superproject
- * working tree so `.omc/` state anchors to the monorepo root rather than
+ * working tree so `.omg/` state anchors to the monorepo root rather than
  * polluting the submodule working tree (#3349). For normal repos and linked
  * worktrees (no superproject) it returns the literal git toplevel unchanged.
  * Returns null if not in a git repository.
@@ -114,7 +114,7 @@ export declare function getWorktreeRoot(cwd?: string): string | null;
  */
 export declare function validatePath(inputPath: string): void;
 /**
- * Scan sibling subdirs of a workspace anchor for pre-existing .omc/state/ content.
+ * Scan sibling subdirs of a workspace anchor for pre-existing .omg/state/ content.
  * Deduplicated per session via a disk marker so repeated hook firings within the
  * same session don't re-stat siblings or re-emit. A fresh session (new sessionId)
  * will re-warn — intentional, since the user may not have seen the prior warning.
@@ -152,7 +152,7 @@ export declare function getProjectIdentifier(worktreeRoot?: string): string;
  * Get the .omc root directory path.
  *
  * When OMC_STATE_DIR is set, returns $OMC_STATE_DIR/{project-identifier}/
- * instead of {worktree}/.omc/. This allows centralized state storage that
+ * instead of {worktree}/.omg/. This allows centralized state storage that
  * survives worktree deletion.
  *
  * @param worktreeRoot - Optional worktree root
@@ -160,10 +160,10 @@ export declare function getProjectIdentifier(worktreeRoot?: string): string;
  */
 export declare function getOmcRoot(worktreeRoot?: string): string;
 /**
- * Resolve a relative path under .omc/ to an absolute path.
+ * Resolve a relative path under .omg/ to an absolute path.
  * Validates the path is within the omc boundary.
  *
- * @param relativePath - Path relative to .omc/ (e.g., "state/ralph.json")
+ * @param relativePath - Path relative to .omg/ (e.g., "state/ralph.json")
  * @param worktreeRoot - Optional worktree root (auto-detected if not provided)
  * @returns Absolute path
  * @throws Error if path would escape omc boundary
@@ -182,10 +182,10 @@ export declare function resolveOmcPath(relativePath: string, worktreeRoot?: stri
  */
 export declare function resolveStatePath(stateName: string, worktreeRoot?: string): string;
 /**
- * Ensure a directory exists under .omc/.
+ * Ensure a directory exists under .omg/.
  * Creates parent directories as needed.
  *
- * @param relativePath - Path relative to .omc/
+ * @param relativePath - Path relative to .omg/
  * @param worktreeRoot - Optional worktree root
  * @returns Absolute path to the created directory
  */
@@ -299,8 +299,8 @@ export type WritePath = string & {
  * provided; legacy root only when sessionId is absent — back-compat mode).
  *
  * Fields:
- *  - `sessionScoped`: `.omc/state/sessions/{sessionId}/{name}.json` (or empty when no sid).
- *  - `legacy`: `.omc/state/{name}.json` — preserved for backwards-compat reads.
+ *  - `sessionScoped`: `.omg/state/sessions/{sessionId}/{name}.json` (or empty when no sid).
+ *  - `legacy`: `.omg/state/{name}.json` — preserved for backwards-compat reads.
  *  - `effectiveRead`: brand-typed path the caller should READ from.
  *    When sid is set and the session-scoped file exists, this is sessionScoped;
  *    otherwise legacy.
@@ -374,7 +374,7 @@ export declare function ensureSessionStateDir(sessionId: string, worktreeRoot?: 
  * Walks up from `directory` using `git rev-parse --show-toplevel`.
  * Falls back to `getWorktreeRoot(process.cwd())`, then `process.cwd()`.
  *
- * This ensures .omc/ state is always written at the worktree root,
+ * This ensures .omg/ state is always written at the worktree root,
  * even when called from a subdirectory (fixes #576).
  *
  * @param directory - Any directory inside a git worktree (optional)
@@ -384,14 +384,14 @@ export declare function resolveToWorktreeRoot(directory?: string): string;
 /**
  * Resolve a Claude Code transcript path that may be mismatched in worktree sessions.
  *
- * When Claude Code runs inside a worktree (.claude/worktrees/X), it encodes the
+ * When Claude Code runs inside a worktree (.copilot/worktrees/X), it encodes the
  * worktree CWD into the project directory path, creating a transcript_path like:
- *   ~/.claude/projects/-path-to-project--claude-worktrees-X/<session>.jsonl
+ *   ~/.copilot/projects/-path-to-project--claude-worktrees-X/<session>.jsonl
  *
  * But the actual transcript lives at the original project's path:
- *   ~/.claude/projects/-path-to-project/<session>.jsonl
+ *   ~/.copilot/projects/-path-to-project/<session>.jsonl
  *
- * Claude Code encodes `/` and `.` as `-`. The `.claude/worktrees/`
+ * Claude Code encodes `/` and `.` as `-`. The `.copilot/worktrees/`
  * segment becomes `-claude-worktrees-`, preceded by a `-` from the path
  * separator, yielding the distinctive `--claude-worktrees-` pattern in the
  * encoded directory name.
@@ -412,7 +412,7 @@ export declare function getCanonicalWorkingDirectoryRoots(target: object): {
  * The trusted root is derived from process.cwd(), NOT from user input.
  *
  * Always returns a git top-level — never a subdirectory.
- * This prevents .omc/state/ from being created in subdirectories (#576)
+ * This prevents .omg/state/ from being created in subdirectories (#576)
  * without widening submodule launches to their superproject.
  *
  * @param workingDirectory - User-supplied working directory

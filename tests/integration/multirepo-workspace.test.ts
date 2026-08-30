@@ -51,7 +51,7 @@ describe('multi-repo workspace anchor', () => {
 
     const rootA = getOmcRoot(repoA);
     const rootB = getOmcRoot(repoB);
-    const expected = join(parent, '.omc');
+    const expected = join(parent, '.omg');
 
     expect(rootA).toBe(expected);
     expect(rootB).toBe(expected);
@@ -92,8 +92,8 @@ describe('multi-repo workspace anchor', () => {
     // Write paths must differ
     expect(pathsA.effectiveWrite).not.toBe(pathsB.effectiveWrite);
 
-    // Both write paths must live under the shared workspace .omc/state/sessions/
-    const sessionsRoot = join(parent, '.omc', 'state', 'sessions');
+    // Both write paths must live under the shared workspace .omg/state/sessions/
+    const sessionsRoot = join(parent, '.omg', 'state', 'sessions');
     expect(pathsA.effectiveWrite.startsWith(sessionsRoot)).toBe(true);
     expect(pathsB.effectiveWrite.startsWith(sessionsRoot)).toBe(true);
   });

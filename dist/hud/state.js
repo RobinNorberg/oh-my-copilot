@@ -16,7 +16,7 @@ import { cleanupStaleBackgroundTasks, markOrphanedTasksAsStale, } from "./backgr
 // Path Helpers
 // ============================================================================
 /**
- * Get the HUD state file path in the project's .omc/state directory
+ * Get the HUD state file path in the project's .omg/state directory
  */
 function getLocalStateFilePath(directory) {
     const baseDir = validateWorkingDirectory(directory);
@@ -44,7 +44,7 @@ function getSettingsFilePath() {
  * Get the HUD config file path (legacy)
  */
 function getConfigFilePath() {
-    return join(getCopilotConfigDir(), ".omc", "hud-config.json");
+    return join(getCopilotConfigDir(), ".omg", "hud-config.json");
 }
 function readJsonFile(filePath) {
     if (!existsSync(filePath)) {
@@ -95,7 +95,7 @@ function mergeElementsForWrite(legacyElements, nextElements) {
     return merged;
 }
 /**
- * Ensure the .omc/state directory exists
+ * Ensure the .omg/state directory exists
  */
 function ensureStateDir(directory) {
     const baseDir = validateWorkingDirectory(directory);
@@ -135,7 +135,7 @@ export function readHudState(directory, sessionId) {
             return null;
         }
     }
-    // Check new local state first (.omc/state/hud-state.json)
+    // Check new local state first (.omg/state/hud-state.json)
     const localStateFile = getLocalStateFilePath(directory);
     if (existsSync(localStateFile)) {
         try {
@@ -147,7 +147,7 @@ export function readHudState(directory, sessionId) {
             // Fall through to legacy check
         }
     }
-    // Check legacy local state (.omc/hud-state.json)
+    // Check legacy local state (.omg/hud-state.json)
     const legacyStateFile = getLegacyRootStateFilePath(directory);
     if (existsSync(legacyStateFile)) {
         try {

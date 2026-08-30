@@ -151,7 +151,7 @@ describe('scaleUp duplicate worker guard', () => {
             hud_pane_id: null,
             resize_hook_name: null,
             resize_hook_target: null,
-            team_state_root: `${resolve(cwd)}/.omc/state/team/demo-team`,
+            team_state_root: `${resolve(cwd)}/.omg/state/team/demo-team`,
         };
         return { ...base, ...overrides };
     }
@@ -504,7 +504,7 @@ describe('scaleUp duplicate worker guard', () => {
     });
     it('rolls back spawned effects when shutdown wins the config revision', async () => {
         config = makeConfig({ state_revision: 4, next_worker_index: 2, worktree_mode: 'named' });
-        const worktreePath = join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-2');
+        const worktreePath = join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-2');
         gitWorktreeMocks.ensureWorkerWorktree.mockReturnValue({ path: worktreePath, branch: 'worker-2',
             detached: false, created: true });
         gitWorktreeMocks.installWorktreeRootAgents.mockReturnValue(undefined);
@@ -538,7 +538,7 @@ describe('scaleUp duplicate worker guard', () => {
     });
     it('rolls back every spawned effect when worker identity publication fails', async () => {
         config = makeConfig({ state_revision: 4, next_worker_index: 2, worktree_mode: 'named' });
-        const worktreePath = join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-2');
+        const worktreePath = join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-2');
         gitWorktreeMocks.ensureWorkerWorktree.mockReturnValue({ path: worktreePath, branch: 'worker-2',
             detached: false, created: true });
         gitWorktreeMocks.installWorktreeRootAgents.mockReturnValue(undefined);
@@ -556,7 +556,7 @@ describe('scaleUp duplicate worker guard', () => {
     });
     it('cleans the exact partial worktree and worker directory when worktree creation throws', async () => {
         config = makeConfig({ state_revision: 4, next_worker_index: 2, worktree_mode: 'named' });
-        const worktreePath = join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-2');
+        const worktreePath = join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-2');
         gitWorktreeMocks.ensureWorkerWorktree.mockImplementation(() => {
             rmSync(worktreePath, { recursive: true, force: true });
             mkdirSync(worktreePath, { recursive: true });
@@ -587,7 +587,7 @@ describe('scaleUp duplicate worker guard', () => {
     });
     it('publishes durable orphan evidence when pane and worktree cleanup cannot be verified', async () => {
         config = makeConfig({ state_revision: 4, next_worker_index: 2, worktree_mode: 'named' });
-        const worktreePath = join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-2');
+        const worktreePath = join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-2');
         await mkdir(worktreePath, { recursive: true });
         gitWorktreeMocks.ensureWorkerWorktree.mockReturnValue({ path: worktreePath, branch: 'worker-2',
             detached: false, created: true });

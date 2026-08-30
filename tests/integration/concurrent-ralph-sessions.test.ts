@@ -6,7 +6,7 @@
  *
  * Multi-repo workspace anchor tests (Wave 4 migration): verifies that when
  * a .omc-workspace marker exists in a parent dir, session state resolves
- * through the workspace anchor .omc/ rather than the sub-repo .omc/.
+ * through the workspace anchor .omg/ rather than the sub-repo .omg/.
  */
 
 import { describe, it, expect, afterEach } from 'vitest';
@@ -24,10 +24,10 @@ describe('concurrent ralph sessions (E.3)', () => {
 
   /**
    * Simulate what a ralph startup does: write a ralph-state.json scoped to
-   * the session under .omc/state/sessions/{sessionId}/
+   * the session under .omg/state/sessions/{sessionId}/
    */
   function writeRalphState(projectRoot: string, sessionId: string, payload: Record<string, unknown>) {
-    const sessionDir = join(projectRoot, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(projectRoot, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     const statePath = join(sessionDir, 'ralph-state.json');
     writeFileSync(statePath, JSON.stringify(payload, null, 2), 'utf-8');
@@ -50,8 +50,8 @@ describe('concurrent ralph sessions (E.3)', () => {
     ]);
 
     // Verify session A state
-    const pathA = join(tempDir, '.omc', 'state', 'sessions', sessionA, 'ralph-state.json');
-    const pathB = join(tempDir, '.omc', 'state', 'sessions', sessionB, 'ralph-state.json');
+    const pathA = join(tempDir, '.omg', 'state', 'sessions', sessionA, 'ralph-state.json');
+    const pathB = join(tempDir, '.omg', 'state', 'sessions', sessionB, 'ralph-state.json');
 
     expect(existsSync(pathA)).toBe(true);
     expect(existsSync(pathB)).toBe(true);
@@ -80,7 +80,7 @@ describe('concurrent ralph sessions (E.3)', () => {
       original_prompt: 'Scoped',
     });
 
-    const topLevelPath = join(tempDir, '.omc', 'state', 'ralph-state.json');
+    const topLevelPath = join(tempDir, '.omg', 'state', 'ralph-state.json');
 
     // Top-level path must not have been created
     expect(existsSync(topLevelPath)).toBe(false);
@@ -97,7 +97,7 @@ describe('concurrent ralph sessions — multi-repo workspace anchor (E.3 migrati
     if (workspaceRoot) rmSync(workspaceRoot, { recursive: true, force: true });
   });
 
-  it('sibling sub-repos in a workspace share one .omc/state without overwriting each other', async () => {
+  it('sibling sub-repos in a workspace share one .omg/state without overwriting each other', async () => {
     workspaceRoot = mkdtempSync(join(tmpdir(), 'omc-ralph-workspace-'));
 
     // Drop workspace marker so getOmcRoot() anchors to workspaceRoot
@@ -110,13 +110,13 @@ describe('concurrent ralph sessions — multi-repo workspace anchor (E.3 migrati
 
     clearWorktreeCache();
 
-    // Each sub-repo session writes under the shared workspace .omc/state/sessions/
+    // Each sub-repo session writes under the shared workspace .omg/state/sessions/
     const sessionA = 'workspace-ralph-a';
     const sessionB = 'workspace-ralph-b';
 
     // writeRalphState constructs paths relative to projectRoot using join()
     // directly. For workspace resolution, paths must be under workspace anchor.
-    const wsStateDir = join(workspaceRoot, '.omc', 'state', 'sessions');
+    const wsStateDir = join(workspaceRoot, '.omg', 'state', 'sessions');
     mkdirSync(wsStateDir, { recursive: true });
 
     const pathA = join(wsStateDir, sessionA, 'ralph-state.json');
@@ -143,8 +143,8 @@ describe('concurrent ralph sessions — multi-repo workspace anchor (E.3 migrati
     expect(stateA.session_id).toBe(sessionA);
     expect(stateB.session_id).toBe(sessionB);
 
-    // Neither sub-repo must have its own .omc/state
-    expect(existsSync(join(repoA, '.omc', 'state'))).toBe(false);
-    expect(existsSync(join(repoB, '.omc', 'state'))).toBe(false);
+    // Neither sub-repo must have its own .omg/state
+    expect(existsSync(join(repoA, '.omg', 'state'))).toBe(false);
+    expect(existsSync(join(repoB, '.omg', 'state'))).toBe(false);
   });
 });

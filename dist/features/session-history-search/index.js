@@ -53,7 +53,7 @@ function getMainRepoRoot(projectRoot) {
     }
 }
 function getClaudeWorktreeParent(projectRoot) {
-    const marker = `${normalize('/.claude/worktrees/')}`;
+    const marker = `${normalize('/.copilot/worktrees/')}`;
     const normalizedRoot = normalize(projectRoot);
     const idx = normalizedRoot.indexOf(marker);
     if (idx === -1)

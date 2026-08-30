@@ -99,8 +99,8 @@ describe("subagent-lock benchmark", () => {
 
   function makeTempDir(): string {
     const dir = join(tmpdir(), `omc-bench-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-    // Create the .omc/state dir so resolveSessionStatePaths can resolve paths
-    mkdirSync(join(dir, ".omc", "state"), { recursive: true });
+    // Create the .omg/state dir so resolveSessionStatePaths can resolve paths
+    mkdirSync(join(dir, ".omg", "state"), { recursive: true });
     dirs.push(dir);
     return dir;
   }

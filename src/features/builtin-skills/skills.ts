@@ -123,12 +123,12 @@ type DeepInterviewThresholdResolution = {
 
 function getDeepInterviewAmbiguityThresholdResolution(): DeepInterviewThresholdResolution {
   const profileSettingsPath = join(getCopilotConfigDir(), 'settings.json');
-  const projectSettingsPath = join(process.cwd(), '.claude', 'settings.json');
+  const projectSettingsPath = join(process.cwd(), '.copilot', 'settings.json');
   const profileThreshold = readDeepInterviewThresholdFromSettings(profileSettingsPath);
   const projectThreshold = readDeepInterviewThresholdFromSettings(projectSettingsPath);
 
   if (projectThreshold !== null) {
-    return { threshold: projectThreshold, source: './.claude/settings.json' };
+    return { threshold: projectThreshold, source: './.copilot/settings.json' };
   }
 
   if (profileThreshold !== null) {
@@ -195,7 +195,7 @@ function applyDeepInterviewRuntimeSettings(template: string): string {
     : withResolvedPlaceholders.replace(
       '4. **Initialize state** via `state_write(mode="deep-interview")`:',
       [
-        `3.5. **Load runtime settings** from \`~/.claude/settings.json\` and \`./.claude/settings.json\` before state init (project overrides profile). For this run, use \`ambiguityThreshold = ${threshold}\`.`,
+        `3.5. **Load runtime settings** from \`~/.copilot/settings.json\` and \`./.copilot/settings.json\` before state init (project overrides profile). For this run, use \`ambiguityThreshold = ${threshold}\`.`,
         '4. **Initialize state** via `state_write(mode="deep-interview")`:',
       ].join('\n'),
     );

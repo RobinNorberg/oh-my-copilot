@@ -76,7 +76,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('removes dormant team-created worktrees during normal shutdown', async () => {
         const teamName = 'shutdown-team';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         writeFileSync(join(teamRoot, 'config.json'), JSON.stringify({
             name: teamName,
@@ -103,7 +103,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('keeps team state when dirty worktrees are preserved during shutdown', async () => {
         const teamName = 'shutdown-dirty-team';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         writeFileSync(join(teamRoot, 'config.json'), JSON.stringify({
             name: teamName,
@@ -130,7 +130,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('keeps worktrees and team state when config is missing but clean metadata exists', async () => {
         const teamName = 'shutdown-missing-config-clean-metadata';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         const worktree = createWorkerWorktree(teamName, 'worker-clean', repoDir);
         expect(existsSync(teamRoot)).toBe(true);
         expect(existsSync(join(teamRoot, 'worktrees.json'))).toBe(true);
@@ -142,11 +142,11 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('keeps team state when config is missing but worktree root AGENTS backup exists', async () => {
         const teamName = 'shutdown-backup-only-team';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         const backupPath = join(teamRoot, 'workers', 'worker-1', 'worktree-root-agents.json');
         mkdirSync(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
         writeFileSync(backupPath, JSON.stringify({
-            worktreePath: join(repoDir, '.omc', 'team', teamName, 'worktrees', 'worker-1'),
+            worktreePath: join(repoDir, '.omg', 'team', teamName, 'worktrees', 'worker-1'),
             hadOriginal: true,
             originalContent: 'original',
             installedContent: 'managed',
@@ -159,7 +159,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('keeps team state when config is missing but worktree metadata is corrupt', async () => {
         const teamName = 'shutdown-corrupt-metadata-team';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         writeFileSync(join(teamRoot, 'worktrees.json'), '{not-json', 'utf-8');
         const { shutdownTeamV2 } = await import('../runtime-v2.js');
@@ -169,7 +169,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('uses the canonical team state root in worktree shutdown ack instructions', async () => {
         const teamName = 'shutdown-worktree-ack-team';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         const worktree = createWorkerWorktree(teamName, 'worker-wt', repoDir);
         writeFileSync(join(worktree.path, 'dirty.txt'), 'dirty', 'utf-8');
@@ -202,11 +202,11 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
         await shutdownTeamV2(teamName, repoDir, { timeoutMs: 0 });
         const inbox = readFileSync(join(teamRoot, 'workers', 'worker-wt', 'inbox.md'), 'utf-8');
         expect(inbox).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-wt/shutdown-ack.json');
-        expect(inbox).not.toContain(`Write your ack to: .omc/state/team/${teamName}`);
+        expect(inbox).not.toContain(`Write your ack to: .omg/state/team/${teamName}`);
     });
     it('keeps worktrees and team state when a worker pane remains alive after shutdown kill', async () => {
         const teamName = 'shutdown-live-pane-team';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         const worktree = createWorkerWorktree(teamName, 'worker-live', repoDir);
         const launchAttempt = await prepareAcceptedLaunch(repoDir, teamName, 'worker-live', '%42');
@@ -252,7 +252,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('keeps worktrees and team state when pane liveness probe is unknown after shutdown kill', async () => {
         const teamName = 'shutdown-unknown-pane-team';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         const worktree = createWorkerWorktree(teamName, 'worker-unknown', repoDir);
         const launchAttempt = await prepareAcceptedLaunch(repoDir, teamName, 'worker-unknown', '%44');
@@ -296,7 +296,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('keeps worktrees and team state when tmux cleanup fails before liveness is proven', async () => {
         const teamName = 'shutdown-kill-fails-team';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         const worktree = createWorkerWorktree(teamName, 'worker-kill-fails', repoDir);
         const launchAttempt = await prepareAcceptedLaunch(repoDir, teamName, 'worker-kill-fails', '%43');
@@ -341,7 +341,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it.each([false, true])('blocks %s force shutdown before effects while recovery is active', async (force) => {
         const teamName = force ? 'shutdown-active-force' : 'shutdown-active-normal';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         const configPath = join(teamRoot, 'config.json');
         writeFileSync(configPath, JSON.stringify({
@@ -364,7 +364,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('does not commit shutdown lifecycle or kill panes when manifest projection fails', async () => {
         const teamName = 'shutdown-projection-failure';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         const configPath = join(teamRoot, 'config.json');
         writeFileSync(configPath, JSON.stringify({
@@ -384,7 +384,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('blocks shutdown before effects while a scale-down reservation is active', async () => {
         const teamName = 'shutdown-active-scale-down';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         mkdirSync(teamRoot, { recursive: true });
         const configPath = join(teamRoot, 'config.json');
         const now = new Date().toISOString();
@@ -410,7 +410,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('restores active lifecycle when a worker rejects normal shutdown before pane cleanup', async () => {
         const teamName = 'shutdown-worker-rejected';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         const workerRoot = join(teamRoot, 'workers', 'worker-1');
         mkdirSync(workerRoot, { recursive: true });
         const configPath = join(teamRoot, 'config.json');
@@ -436,7 +436,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('does not roll back a shutdown fence owned by another concurrent invocation', async () => {
         const teamName = 'shutdown-concurrent-owner';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         const workerRoot = join(teamRoot, 'workers', 'worker-1');
         mkdirSync(workerRoot, { recursive: true });
         const configPath = join(teamRoot, 'config.json');
@@ -464,7 +464,7 @@ describe('shutdownTeamV2 detached worktree cleanup', () => {
     });
     it('leaves an active team recoverable when the normal shutdown gate blocks', async () => {
         const teamName = 'shutdown-gate-blocked';
-        const teamRoot = join(repoDir, '.omc', 'state', 'team', teamName);
+        const teamRoot = join(repoDir, '.omg', 'state', 'team', teamName);
         const tasksRoot = join(teamRoot, 'tasks');
         mkdirSync(tasksRoot, { recursive: true });
         const configPath = join(teamRoot, 'config.json');

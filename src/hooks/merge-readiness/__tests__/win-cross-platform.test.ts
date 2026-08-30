@@ -49,9 +49,9 @@ describe("merge-readiness Windows cross-platform contract", () => {
   it("resolves .omc root with the platform-native separator under a worktree", () => {
     const omcRoot = getOmcRoot(tempDir);
     expect(isAbsolute(omcRoot)).toBe(true);
-    // .omc root terminates with the native separator + ".omc" (backslash on win32,
+    // .omc root terminates with the native separator + ".omg" (backslash on win32,
     // forward slash on POSIX) - proves path.join builds the path, not string concat.
-    expect(omcRoot.endsWith(sep + ".omc")).toBe(true);
+    expect(omcRoot.endsWith(sep + ".omg")).toBe(true);
     // Worktree root prefix preserved verbatim (no accidental drive-letter drop on win32).
     expect(omcRoot.startsWith(tempDir)).toBe(true);
   });
@@ -64,7 +64,7 @@ describe("merge-readiness Windows cross-platform contract", () => {
     expect(statePath.includes(sep)).toBe(true);
 
     // Path-traversal rejection is platform-agnostic: backslash OR forward-slash OR ".."
-    // must throw regardless of host OS (prevents .omc/state/sessions/../x writes).
+    // must throw regardless of host OS (prevents .omg/state/sessions/../x writes).
     expect(() => validateSessionId("bad/session")).toThrow();
     expect(() => validateSessionId("bad" + sep + "session")).toThrow();
     expect(() => validateSessionId("..escape")).toThrow();
@@ -120,11 +120,11 @@ describe("merge-readiness Windows cross-platform contract", () => {
   });
 
   it("normalizes backslash artifact paths to forward slashes on win32 (listArtifactFiles contract)", () => {
-    mkdirSync(join(tempDir, ".omc", "specs"), { recursive: true });
-    writeFileSync(join(tempDir, ".omc", "specs", "design.md"), "spec for the change\n");
+    mkdirSync(join(tempDir, ".omg", "specs"), { recursive: true });
+    writeFileSync(join(tempDir, ".omg", "specs", "design.md"), "spec for the change\n");
     // Plant a merge-readiness artifact that must be EXCLUDED from source evidence.
-    mkdirSync(join(tempDir, ".omc", "artifacts", "merge-readiness"), { recursive: true });
-    writeFileSync(join(tempDir, ".omc", "artifacts", "merge-readiness", "self.md"), "self\n");
+    mkdirSync(join(tempDir, ".omg", "artifacts", "merge-readiness"), { recursive: true });
+    writeFileSync(join(tempDir, ".omg", "artifacts", "merge-readiness", "self.md"), "self\n");
 
     const evidence = collectMergeReadinessEvidence(tempDir);
     expect(evidence.sourceArtifacts).toContain("specs/design.md");

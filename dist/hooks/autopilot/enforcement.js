@@ -366,7 +366,7 @@ function generateContinuationPrompt(state, directory, sessionId) {
     writeAutopilotState(directory, state, sessionId);
     const phasePrompt = getPhasePrompt(state.phase, {
         idea: state.originalIdea || state.prompt || "",
-        specPath: state.expansion.spec_path || `.omc/autopilot/spec.md`,
+        specPath: state.expansion.spec_path || `.omg/autopilot/spec.md`,
         planPath: state.planning.plan_path || resolveAutopilotPlanPath(),
         openQuestionsPath: resolveOpenQuestionsPlanPath(),
     });
@@ -467,7 +467,7 @@ function checkPipelineAutopilot(state, sessionId, directory) {
             idea: state.originalIdea || state.prompt || "",
             directory: state.project_path || directory,
             sessionId,
-            specPath: state.expansion.spec_path || ".omc/autopilot/spec.md",
+            specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
             planPath: state.planning.plan_path || resolveAutopilotPlanPath(),
             openQuestionsPath: resolveOpenQuestionsPlanPath(),
             config: tracking.pipelineConfig ?? DEFAULT_PIPELINE_CONFIG,
@@ -507,7 +507,7 @@ ${stagePrompt}
         idea: state.originalIdea || state.prompt || "",
         directory: state.project_path || directory,
         sessionId,
-        specPath: state.expansion.spec_path || ".omc/autopilot/spec.md",
+        specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
         planPath: state.planning.plan_path || resolveAutopilotPlanPath(),
         openQuestionsPath: resolveOpenQuestionsPlanPath(),
         config: tracking.pipelineConfig ?? DEFAULT_PIPELINE_CONFIG,

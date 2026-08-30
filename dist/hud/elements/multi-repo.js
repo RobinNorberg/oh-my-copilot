@@ -67,7 +67,7 @@ function looksLikeRepo(entryPath) {
     return existsSync(join(entryPath, '.git'));
 }
 /**
- * Count session directories under `<cwd>/.omc/state/sessions/`.
+ * Count session directories under `<cwd>/.omg/state/sessions/`.
  *
  * A session is "active" when both:
  *  1. The directory name matches a Claude Code session UUID — filters

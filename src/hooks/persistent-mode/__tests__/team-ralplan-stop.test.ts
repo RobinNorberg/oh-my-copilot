@@ -16,7 +16,7 @@ function writeTeamPipelineState(
   sessionId: string,
   overrides: Record<string, unknown> = {}
 ): void {
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -53,7 +53,7 @@ function writeCanonicalTeamState(
   teamName: string,
   currentPhase: string,
 ): void {
-  const teamDir = join(tempDir, '.omc', 'state', 'team', teamName);
+  const teamDir = join(tempDir, '.omg', 'state', 'team', teamName);
   mkdirSync(teamDir, { recursive: true });
 
   writeFileSync(
@@ -69,7 +69,7 @@ function writeCanonicalTeamState(
         },
         created_at: new Date().toISOString(),
         leader_cwd: tempDir,
-        team_state_root: join(tempDir, '.omc', 'state'),
+        team_state_root: join(tempDir, '.omg', 'state'),
       },
       null,
       2,
@@ -94,7 +94,7 @@ function writeRalplanState(
   sessionId: string,
   overrides: Record<string, unknown> = {}
 ): void {
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -117,7 +117,7 @@ function writeRalphState(
   tempDir: string,
   sessionId: string
 ): void {
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -146,7 +146,7 @@ function writeStopBreaker(
   name: string,
   count: number
 ): void {
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -159,7 +159,7 @@ function writeSubagentTrackingState(
   tempDir: string,
   agents: Array<Record<string, unknown>>,
 ): void {
-  const stateDir = join(tempDir, '.omc', 'state');
+  const stateDir = join(tempDir, '.omg', 'state');
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(
     join(stateDir, 'subagent-tracking-state.json'),
@@ -434,7 +434,7 @@ describe('team pipeline standalone stop enforcement', () => {
       writeTeamPipelineState(tempDir, sessionId);
 
       // Write cancel signal
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'cancel-signal-state.json'),
@@ -763,7 +763,7 @@ describe('ralplan standalone stop enforcement', () => {
       expect(firstResult.mode).toBe('ralplan');
       expect(firstResult.message).toContain('deactivating stale ralplan state');
 
-      const statePath = join(tempDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
+      const statePath = join(tempDir, '.omg', 'state', 'sessions', sessionId, 'ralplan-state.json');
       const persistedState = JSON.parse(readFileSync(statePath, 'utf-8')) as Record<string, unknown>;
       expect(persistedState.active).toBe(false);
       expect(persistedState.deactivated_reason).toBe('stop_breaker_exhausted');
@@ -826,7 +826,7 @@ describe('ralplan standalone stop enforcement', () => {
       ]);
 
       const staleUpdatedAt = new Date(now.getTime() - 10_000).toISOString();
-      const trackingPath = join(tempDir, '.omc', 'state', 'subagent-tracking-state.json');
+      const trackingPath = join(tempDir, '.omg', 'state', 'subagent-tracking-state.json');
       const tracking = JSON.parse(readFileSync(trackingPath, 'utf-8')) as { last_updated?: string };
       tracking.last_updated = staleUpdatedAt;
       writeFileSync(trackingPath, JSON.stringify(tracking, null, 2));
@@ -880,7 +880,7 @@ describe('ralplan standalone stop enforcement', () => {
       writeRalplanState(tempDir, sessionId);
 
       // Write cancel signal — caught at top-level checkPersistentModes
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'cancel-signal-state.json'),
@@ -929,7 +929,7 @@ describe('team pipeline fail-open behavior', () => {
 
     try {
       // Write state with no phase field
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'team-state.json'),

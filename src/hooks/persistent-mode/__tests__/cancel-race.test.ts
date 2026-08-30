@@ -6,7 +6,7 @@ import { execFileSync } from 'child_process';
 import { checkPersistentModes } from '../index.js';
 
 function makeRalphSession(tempDir: string, sessionId: string): string {
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -110,7 +110,7 @@ describe('persistent-mode cancel race guard (issue #921)', () => {
     try {
       execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
       const ownerDir = makeRalphSession(tempDir, ownerSessionId);
-      const resumedDir = join(tempDir, '.omc', 'state', 'sessions', resumedSessionId);
+      const resumedDir = join(tempDir, '.omg', 'state', 'sessions', resumedSessionId);
       mkdirSync(resumedDir, { recursive: true });
 
       const requestedAt = Date.now();

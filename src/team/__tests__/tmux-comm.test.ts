@@ -44,7 +44,7 @@ describe('queueInboxInstruction', () => {
     vi.mocked(sendToWorker).mockResolvedValue(true);
     try {
       await queueInboxInstruction('queue-team', 'worker-1', 'hello', '%1', cwd);
-      const inbox = join(cwd, '.omc', 'state', 'team', 'queue-team', 'workers', 'worker-1', 'inbox.md');
+      const inbox = join(cwd, '.omg', 'state', 'team', 'queue-team', 'workers', 'worker-1', 'inbox.md');
       expect(readFileSync(inbox, 'utf8')).toContain('hello');
       expect(sendToWorker).toHaveBeenCalledWith('', '%1', 'check-inbox');
     } finally {

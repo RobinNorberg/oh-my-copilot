@@ -38,7 +38,7 @@ describe('shouldSkipEntry', () => {
     });
     it('does not skip hidden directory if important (CLAUDE.md is a file, so N/A)', () => {
         // .omc is in SKIP_DIRS, so it is skipped
-        expect(shouldSkipEntry('.omc', true, [])).toBe(true);
+        expect(shouldSkipEntry('.omg', true, [])).toBe(true);
     });
     it('does not skip src directory', () => {
         expect(shouldSkipEntry('src', true, [])).toBe(false);

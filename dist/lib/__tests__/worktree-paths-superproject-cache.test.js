@@ -7,7 +7,7 @@ import { join, resolve } from "path";
 import { homedir } from "os";
 import { clearWorktreeCache, getOmcRoot } from "../worktree-paths.js";
 const mockedExecFileSync = vi.mocked(execFileSync);
-const canonicalRoot = join(homedir(), ".omc");
+const canonicalRoot = join(homedir(), ".omg");
 describe("resolveSuperprojectRoot cache", () => {
     beforeEach(() => {
         clearWorktreeCache();

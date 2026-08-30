@@ -1826,7 +1826,7 @@ function processPreToolUse(input) {
     // src/**/__tests__/. The emitted message here is kept wording-aligned with the
     // enforcer to prevent accidental drift, but must NOT be relied on to shape LLM
     // behavior in production. Tracked for deletion — see the Open Questions entry
-    // at `.omc/plans/open-questions.md` under the model-routing alignment section.
+    // at `.omg/plans/open-questions.md` under the model-routing alignment section.
     // Force-inherit: deny Task/Agent calls that carry a `model` parameter when
     // forceInherit is enabled (Bedrock, Vertex, CC Switch, etc.).
     // Claude Code's hook protocol does not support modifiedInput, so we cannot
@@ -2255,7 +2255,7 @@ async function processAutopilot(input) {
     // Check phase and inject appropriate prompt
     const context = {
         idea: state.originalIdea,
-        specPath: state.expansion.spec_path || ".omc/autopilot/spec.md",
+        specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
         planPath: state.planning.plan_path || resolveAutopilotPlanPath(config),
         openQuestionsPath: resolveOpenQuestionsPlanPath(config),
     };

@@ -38,7 +38,7 @@ Examples:
   omc team shutdown fix-failing-tests
   omc team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
 
-Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omc/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
+Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
   --no-decompose       Treat the launch text as pre-authored/fixed worker scope; do not split by commas/lists.
@@ -227,7 +227,7 @@ export function resolveAvailableTeamName(baseName, cwd) {
         if (!existsSync(teamDir(candidate)))
             return candidate;
     }
-    throw new Error(`Unable to allocate a fresh team name for ${sanitizedBase}; remove stale .omc/state/team entries or choose a more specific launch task.`);
+    throw new Error(`Unable to allocate a fresh team name for ${sanitizedBase}; remove stale .omg/state/team entries or choose a more specific launch task.`);
 }
 function isTeamStateLive(config) {
     const target = typeof config?.tmux_session === 'string' ? config.tmux_session.trim() : '';

@@ -25,7 +25,7 @@ describe("planning/artifacts", () => {
     previousUserProfile = process.env.USERPROFILE;
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
-    plansDir = join(testDir, ".omc", "plans");
+    plansDir = join(testDir, ".omg", "plans");
     mkdirSync(plansDir, { recursive: true });
   });
 
@@ -136,7 +136,7 @@ describe("planning/artifacts", () => {
 
       expect(result.prdPaths).toHaveLength(2);
       expect(result.prdPaths[0]).toContain(join(".omx", "plans", "prd-zzz.md"));
-      expect(result.prdPaths[1]).toContain(join(".omc", "plans", "prd-aaa.md"));
+      expect(result.prdPaths[1]).toContain(join(".omg", "plans", "prd-aaa.md"));
     });
 
     it("orders timestamped artifacts after legacy names by timestamp", () => {

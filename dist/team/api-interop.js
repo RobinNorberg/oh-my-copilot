@@ -301,7 +301,7 @@ function readTeamStateRootFromFile(path) {
 function stateRootToWorkingDirectory(stateRoot) {
     const absolute = resolvePath(stateRoot);
     const normalized = absolute.replaceAll('\\', '/');
-    for (const marker of ['/.omc/state/team/', '/.omx/state/team/']) {
+    for (const marker of ['/.omg/state/team/', '/.omx/state/team/']) {
         const idx = normalized.lastIndexOf(marker);
         if (idx >= 0) {
             const workspaceRoot = absolute.slice(0, idx);
@@ -310,7 +310,7 @@ function stateRootToWorkingDirectory(stateRoot) {
             return dirname(dirname(dirname(dirname(absolute))));
         }
     }
-    for (const marker of ['/.omc/state', '/.omx/state']) {
+    for (const marker of ['/.omg/state', '/.omx/state']) {
         const idx = normalized.lastIndexOf(marker);
         if (idx >= 0) {
             const workspaceRoot = absolute.slice(0, idx);

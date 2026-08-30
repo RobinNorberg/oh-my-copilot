@@ -68,7 +68,7 @@ describe("Project Memory Integration", () => {
             expect(memory).not.toBeNull();
             expect(memory?.techStack.packageManager).toBe("pnpm");
             expect(memory?.build.buildCommand).toBe("pnpm build");
-            const omcDir = path.join(tempDir, ".omc");
+            const omcDir = path.join(tempDir, ".omg");
             const omcStat = await fs.stat(omcDir);
             expect(omcStat.isDirectory()).toBe(true);
             const pending = contextCollector.getPending(sessionId);
@@ -90,7 +90,7 @@ describe("Project Memory Integration", () => {
                 const memoryPath = getMemoryPath(tempDir);
                 const content = await fs.readFile(memoryPath, "utf-8");
                 expect(JSON.parse(content).projectRoot).toBe(tempDir);
-                await expect(fs.access(path.join(tempDir, ".omc", "project-memory.json"))).rejects.toThrow();
+                await expect(fs.access(path.join(tempDir, ".omg", "project-memory.json"))).rejects.toThrow();
             }
             finally {
                 delete process.env.OMC_STATE_DIR;

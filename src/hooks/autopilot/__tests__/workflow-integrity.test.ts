@@ -109,7 +109,7 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
     const base = initAutopilot(testDir, 'ship the release', sessionId)!;
     const partialNamed = { ...base, [marker]: value } as typeof base;
     writeAutopilotState(testDir, partialNamed, sessionId);
-    const statePath = join(testDir, '.omc', 'state', 'sessions', sessionId, 'autopilot-state.json');
+    const statePath = join(testDir, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json');
     process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
     const before = readFileSync(statePath);
 
@@ -292,7 +292,7 @@ describe("workflow descriptor integrity enforcement (#3487)", () => {
       },
     });
     writeFileSync(transcriptPath, `${signal}\n`);
-    const statePath = join(testDir, ".omc", "state", "sessions", sessionId, "autopilot-state.json");
+    const statePath = join(testDir, ".omg", "state", "sessions", sessionId, "autopilot-state.json");
     const validState = readAutopilotState(testDir, sessionId)!;
     const before = readFileSync(statePath);
     expect(validateNamedWorkflowStateStructure(validState, sessionId)).not.toBeNull();

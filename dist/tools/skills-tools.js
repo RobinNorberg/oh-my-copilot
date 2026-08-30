@@ -2,7 +2,7 @@
  * Skills Tools
  *
  * MCP tools for loading and listing OMC learned skills
- * from local (.omc/skills/) and global (~/.omc/skills/) directories.
+ * from local (.omg/skills/) and global (~/.omg/skills/) directories.
  */
 import { z } from 'zod';
 import { resolve, normalize, sep } from 'path';
@@ -89,7 +89,7 @@ function formatSkillOutput(skills) {
 // Tool 1: load_omc_skills_local
 export const loadLocalTool = {
     name: 'load_omc_skills_local',
-    description: 'Load and list skills from the project-local .omc/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.',
+    description: 'Load and list skills from the project-local .omg/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.',
     schema: loadLocalSchema,
     handler: async (args) => {
         const projectRoot = args.projectRoot ? validateProjectRoot(args.projectRoot) : process.cwd();
@@ -106,7 +106,7 @@ export const loadLocalTool = {
 // Tool 2: load_omc_skills_global
 export const loadGlobalTool = {
     name: 'load_omc_skills_global',
-    description: 'Load and list skills from global user directories (~/.omc/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.',
+    description: 'Load and list skills from global user directories (~/.omg/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.',
     schema: loadGlobalSchema,
     handler: async (_args) => {
         const allSkills = loadAllSkills(null);
@@ -137,7 +137,7 @@ export const listSkillsTool = {
             output += `### User Skills (${userSkills.length})\n\n${formatSkillOutput(userSkills)}`;
         }
         if (skills.length === 0) {
-            output = `## No Skills Found\n\nNo skill files were discovered in any searched directories.\n\nSearched:\n- Project: .omc/skills/\n- Global: ~/.omc/skills/\n- Claude config: ${getCopilotConfigDir()}/skills/omc-learned/`;
+            output = `## No Skills Found\n\nNo skill files were discovered in any searched directories.\n\nSearched:\n- Project: .omg/skills/\n- Global: ~/.omg/skills/\n- Claude config: ${getCopilotConfigDir()}/skills/omc-learned/`;
         }
         return {
             content: [{

@@ -19,7 +19,7 @@ describe("Ralphthon PRD", () => {
         process.env.HOME = testDir;
         process.env.USERPROFILE = testDir;
         // Create .omc directory for PRD storage
-        mkdirSync(join(testDir, ".omc"), { recursive: true });
+        mkdirSync(join(testDir, ".omg"), { recursive: true });
     });
     afterEach(() => {
         if (previousHome === undefined)
@@ -49,12 +49,12 @@ describe("Ralphthon PRD", () => {
         });
         it("should return null for invalid JSON", () => {
             const { writeFileSync } = require("fs");
-            writeFileSync(join(testDir, ".omc", "ralphthon-prd.json"), "invalid json");
+            writeFileSync(join(testDir, ".omg", "ralphthon-prd.json"), "invalid json");
             expect(readRalphthonPrd(testDir)).toBeNull();
         });
         it("should return null for PRD without stories array", () => {
             const { writeFileSync } = require("fs");
-            writeFileSync(join(testDir, ".omc", "ralphthon-prd.json"), JSON.stringify({ project: "x", config: {} }));
+            writeFileSync(join(testDir, ".omg", "ralphthon-prd.json"), JSON.stringify({ project: "x", config: {} }));
             expect(readRalphthonPrd(testDir)).toBeNull();
         });
     });
@@ -63,7 +63,7 @@ describe("Ralphthon PRD", () => {
             const { writeFileSync } = require("fs");
             const legacy = createTestPrd();
             delete legacy.planningContext;
-            writeFileSync(join(testDir, ".omc", "ralphthon-prd.json"), JSON.stringify(legacy));
+            writeFileSync(join(testDir, ".omg", "ralphthon-prd.json"), JSON.stringify(legacy));
             const result = readRalphthonPrd(testDir);
             expect(result.planningContext).toEqual(DEFAULT_PLANNING_CONTEXT);
         });
@@ -77,7 +77,7 @@ describe("Ralphthon PRD", () => {
             expect(result.project).toBe("test-project");
         });
         it("should create .omc directory if missing", () => {
-            rmSync(join(testDir, ".omc"), { recursive: true, force: true });
+            rmSync(join(testDir, ".omg"), { recursive: true, force: true });
             const prd = createTestPrd();
             expect(writeRalphthonPrd(testDir, prd)).toBe(true);
         });

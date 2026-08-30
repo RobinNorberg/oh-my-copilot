@@ -13,7 +13,7 @@ import type { AutopilotStateForHud } from './elements/autopilot.js';
 export declare function readRalphStateForHud(directory: string, sessionId?: string): RalphStateForHud | null;
 /**
  * Read PRD state for HUD display.
- * Checks both root prd.json and .omc/prd.json.
+ * Checks both root prd.json and .omg/prd.json.
  */
 export declare function readPrdStateForHud(directory: string): PrdStateForHud | null;
 /**

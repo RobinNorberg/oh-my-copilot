@@ -40,9 +40,9 @@ const launch = (provider) => ({
 function config(overrides = {}) {
     const workers = [
         { name: 'worker-1', index: 1, role: 'executor', worker_cli: 'codex', assigned_tasks: [],
-            worktree_path: '/repo/.omc/team/demo/worktrees/worker-1', launch_descriptor: launch('codex') },
+            worktree_path: '/repo/.omg/team/demo/worktrees/worker-1', launch_descriptor: launch('codex') },
         { name: 'worker-2', index: 2, role: 'executor', worker_cli: 'gemini', assigned_tasks: [],
-            worktree_path: '/repo/.omc/team/demo/worktrees/worker-2', launch_descriptor: launch('gemini') },
+            worktree_path: '/repo/.omg/team/demo/worktrees/worker-2', launch_descriptor: launch('gemini') },
     ];
     return {
         name: 'demo', worker_count: workers.length, workers, agent_type: 'claude', created_at: new Date().toISOString(),
@@ -224,7 +224,7 @@ describe('runtime-v2 committed service reconciliation', () => {
             workers: [
                 ...config().workers,
                 { name: 'worker-3', index: 3, role: 'executor', worker_cli: 'codex', assigned_tasks: [],
-                    worktree_path: '/repo/.omc/team/demo/worktrees/worker-3', launch_descriptor: launch('codex') },
+                    worktree_path: '/repo/.omg/team/demo/worktrees/worker-3', launch_descriptor: launch('codex') },
             ],
             service_descriptor: {
                 schema_version: 1, service_generation: 3, service_attempt_id: '3:owner',

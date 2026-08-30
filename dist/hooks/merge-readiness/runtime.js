@@ -141,7 +141,7 @@ function listArtifactFiles(directory, sessionId) {
             }
         }
     }
-    // Scan .omc/state/ for canonical mode-state files that record a real run
+    // Scan .omg/state/ for canonical mode-state files that record a real run
     // (the "relevant mode state artifacts" advertised in SKILL.md). Scan the
     // legacy/global state dir AND the current session's session-scoped state dir,
     // so a --from-artifacts run after a session-scoped workflow (ralph/team/etc.)
@@ -383,7 +383,7 @@ function persistOrFailClosed(workingDir, state, sessionId) {
  */
 export function createInitialMergeReadinessState(directory, promptText, sessionId, baseRef) {
     // Validate sessionId before any path join: listArtifactFiles joins it into
-    // .omc/state/sessions/<sessionId>/ for evidence collection, and an unvalidated
+    // .omg/state/sessions/<sessionId>/ for evidence collection, and an unvalidated
     // traversal id (../../) would scan arbitrary directories outside that scope.
     if (sessionId)
         validateSessionId(sessionId);

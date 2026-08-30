@@ -34,7 +34,7 @@ export function getCopilotConfigDir() {
     const home = homedir();
     const configured = process.env.COPILOT_CONFIG_DIR?.trim();
     if (!configured) {
-        return stripTrailingSep(normalize(join(home, '.claude')));
+        return stripTrailingSep(normalize(join(home, '.copilot')));
     }
     if (configured === '~') {
         return stripTrailingSep(normalize(home));
@@ -50,7 +50,7 @@ export function getCopilotConfigDir() {
  * instead of mixing in ~/.omc.
  */
 export function getOmcConfigDir() {
-    return join(getCopilotConfigDir(), '.omc');
+    return join(getCopilotConfigDir(), '.omg');
 }
 /** Resolve the canonical update-check cache file path. */
 export function getUpdateCheckCachePath() {

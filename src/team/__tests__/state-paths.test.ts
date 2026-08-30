@@ -13,7 +13,7 @@ describe('state-paths task/mailbox normalization', () => {
   });
 
   it('uses canonical JSON mailbox path', () => {
-    expect(TeamPaths.mailbox('demo', 'worker-1')).toBe('.omc/state/team/demo/mailbox/worker-1.json');
+    expect(TeamPaths.mailbox('demo', 'worker-1')).toBe('.omg/state/team/demo/mailbox/worker-1.json');
   });
 
   it('preserves absolute paths when resolving team state files', () => {

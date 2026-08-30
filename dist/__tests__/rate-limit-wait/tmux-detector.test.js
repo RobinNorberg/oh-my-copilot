@@ -572,17 +572,17 @@ describe('tmux-detector', () => {
             vi.mocked(tmuxExec).mockReturnValue('main:0.0 %0 1 dev Claude\n');
             // getNewPaneTail returns '' → no new lines → pane should be skipped
             vi.mocked(getNewPaneTail).mockReturnValue('');
-            const blocked = scanForBlockedPanes(15, '/project/.omc/state');
+            const blocked = scanForBlockedPanes(15, '/project/.omg/state');
             expect(blocked).toHaveLength(0);
             // getNewPaneTail must be called with the provided stateDir
-            expect(getNewPaneTail).toHaveBeenCalledWith('%0', '/project/.omc/state', 15);
+            expect(getNewPaneTail).toHaveBeenCalledWith('%0', '/project/.omg/state', 15);
         });
         it('detects a blocked pane from fresh delta lines when stateDir is provided', () => {
             vi.mocked(tmuxSpawn).mockReturnValue(tmuxAvailableReturn);
             vi.mocked(tmuxExec).mockReturnValue('main:0.0 %0 1 dev Claude\n');
             // getNewPaneTail returns new rate-limit content
             vi.mocked(getNewPaneTail).mockReturnValue('Claude Code\nYou\'ve hit your limit · resets Feb 17 at 2pm\n❯ 1. Stop and wait\nEnter to confirm');
-            const blocked = scanForBlockedPanes(15, '/project/.omc/state');
+            const blocked = scanForBlockedPanes(15, '/project/.omg/state');
             expect(blocked).toHaveLength(1);
             expect(blocked[0].id).toBe('%0');
             expect(blocked[0].analysis.isBlocked).toBe(true);

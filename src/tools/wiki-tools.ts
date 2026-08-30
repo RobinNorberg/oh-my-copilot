@@ -59,7 +59,7 @@ function resolveWikiRoot(
 
 /** Searched-root suffix for empty/no-match results: basename + corpus size (#3858). */
 function searchedSuffix(root: string, pages: number): string {
-  return ` (searched ${pages} page${pages === 1 ? '' : 's'} in ${basename(root)}/.omc/wiki)`;
+  return ` (searched ${pages} page${pages === 1 ? '' : 's'} in ${basename(root)}/.omg/wiki)`;
 }
 
 // ============================================================================
@@ -320,7 +320,7 @@ export const wikiAddTool: ToolDefinition<{
       return {
         content: [{
           type: 'text' as const,
-          text: `Wiki page created: ${result.created[0]}\nPath: .omc/wiki/${result.created[0]}`,
+          text: `Wiki page created: ${result.created[0]}\nPath: .omg/wiki/${result.created[0]}`,
         }],
       };
     } catch (error) {

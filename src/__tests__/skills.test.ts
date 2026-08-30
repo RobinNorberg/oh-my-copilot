@@ -254,7 +254,7 @@ describe('Builtin Skills', () => {
         steps: ['deep-interview', 'plan'],
         nextSkill: undefined,
         nextSkillArgs: undefined,
-        handoff: '.omc/specs/deep-interview-{slug}.md',
+        handoff: '.omg/specs/deep-interview-{slug}.md',
         handoffRequiresApproval: true,
       });
       expect(skill?.template).toContain('## Skill Pipeline');
@@ -266,7 +266,7 @@ describe('Builtin Skills', () => {
       expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-copilot:plan")');
       expect(skill?.template).toContain('Only after the user selects this option, invoke `Skill("oh-my-copilot:plan")`');
       expect(skill?.template).toContain('do not automatically invoke autopilot or any other execution skill');
-      expect(skill?.template).toContain('`.omc/specs/deep-interview-{slug}.md`');
+      expect(skill?.template).toContain('`.omg/specs/deep-interview-{slug}.md`');
       expect(skill?.template).toContain('Why now: {one_sentence_targeting_rationale}');
       expect(skill?.template).toContain('cite the repo evidence');
       expect(skill?.template).toContain('Ontology-style question for scope-fuzzy tasks');
@@ -438,11 +438,11 @@ describe('Builtin Skills', () => {
       expect(raw).toContain('Do not ask the next `AskUserQuestion`, score ambiguity, or hand off to execution from an over-budget raw transcript.');
       expect(raw).toContain('Preserve the AskUserQuestion path for OMC-native interaction');
       expect(raw).toContain('Consult accumulated local planning knowledge');
-      expect(raw).toContain('glob `.omc/specs/deep-*.md` and `.omc/plans/*.md`');
+      expect(raw).toContain('glob `.omg/specs/deep-*.md` and `.omg/plans/*.md`');
       expect(raw).toContain('before designing Round 1 questions');
-      expect(raw).toContain('`.omc/specs/deep-interview-{slug}.md` exactly');
+      expect(raw).toContain('`.omg/specs/deep-interview-{slug}.md` exactly');
       expect(raw).toContain('Ephemeral interview artifacts');
-      expect(raw).toContain('`.omc/state/` or in-memory state via `state_write`');
+      expect(raw).toContain('`.omg/state/` or in-memory state via `state_write`');
       expect(raw).toContain('Round 0: Topology Enumeration Gate');
       expect(raw).toContain('before any Phase 2 ambiguity scoring');
       expect(raw).toContain('"topology": {');
@@ -574,7 +574,7 @@ describe('Builtin Skills', () => {
         steps: ['deep-interview'],
         nextSkill: undefined,
         nextSkillArgs: undefined,
-        handoff: '.omc/plans/ralplan-*.md',
+        handoff: '.omg/plans/ralplan-*.md',
         handoffRequiresApproval: true,
       });
       expect(skill?.template).toContain('## Skill Pipeline');
@@ -584,7 +584,7 @@ describe('Builtin Skills', () => {
       expect(skill?.template).not.toContain('Next skill: `autopilot`');
       expect(skill?.template).not.toContain('Skill("oh-my-copilot:autopilot")');
       expect(skill?.template).not.toContain('3. Invoke Skill("oh-my-copilot:autopilot")');
-      expect(skill?.template).toContain('`.omc/plans/ralplan-*.md`');
+      expect(skill?.template).toContain('`.omg/plans/ralplan-*.md`');
     });
 
     it('should expose review mode guidance for ai-slop-cleaner', () => {

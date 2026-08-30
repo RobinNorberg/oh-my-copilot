@@ -138,7 +138,7 @@ describe('worktree runtime e2e: 3 workers × 3 commits', () => {
         const eventLog = orchestratorEventLogPath(fixture.repoRoot, fixture.teamName);
         await waitForEventInLog({ eventLogPath: eventLog, eventType: 'merge_succeeded', worker: 'worker-1', timeoutMs: 8000 });
         // Leader inbox should have been created and seeded by orchestrator startup
-        const leaderInboxPath = join(fixture.repoRoot, '.omc', 'state', 'team', fixture.teamName, 'leader', 'inbox.md');
+        const leaderInboxPath = join(fixture.repoRoot, '.omg', 'state', 'team', fixture.teamName, 'leader', 'inbox.md');
         expect(existsSync(leaderInboxPath)).toBe(true);
     });
     it('orchestrator state is consistent across registerWorker calls', async () => {

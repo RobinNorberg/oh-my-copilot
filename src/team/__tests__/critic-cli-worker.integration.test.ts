@@ -43,7 +43,7 @@ describe.skipIf(!SHOULD_RUN)('critic CLI worker integration (AC-7)', () => {
     delete process.env.OMC_STATE_DIR;
     try {
       const teamName = 'critic-int';
-      const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
+      const teamRoot = join(cwd, '.omg', 'state', 'team', teamName);
       mkdirSync(join(teamRoot, 'tasks'), { recursive: true });
       mkdirSync(join(teamRoot, 'workers', 'worker-critic'), { recursive: true });
 

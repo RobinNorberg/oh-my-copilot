@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // OMC Post-Tool-Use Hook (Node.js)
 // Processes <remember> tags from Task agent output
-// Saves to .omc/notepad.md for compaction-resilient memory
+// Saves to .omg/notepad.md for compaction-resilient memory
 
 import { existsSync, readFileSync, mkdirSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname } from 'path';
@@ -167,7 +167,7 @@ async function activateState(directory, stateName, state, sessionId) {
   } catch {}
 
   // Also write to global fallback
-  const globalDir = join(homedir(), '.omc', 'state');
+  const globalDir = join(homedir(), '.omg', 'state');
   try {
     if (!existsSync(globalDir)) mkdirSync(globalDir, { recursive: true });
     atomicWriteFileSync(join(globalDir, `${stateName}-state.json`), JSON.stringify(state, null, 2));

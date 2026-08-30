@@ -31,7 +31,7 @@ function isolateFixtureRoot(root: string): () => void {
 }
 
 function seed(cwd: string, options: { undeliveredInbound?: boolean; undeliveredOutbound?: boolean } = {}): string {
-  const stateDir = join(cwd, '.omc', 'state');
+  const stateDir = join(cwd, '.omg', 'state');
   const teamDir = join(stateDir, 'team', TEAM);
   const mailboxDir = join(teamDir, 'mailbox');
   const nowIso = new Date().toISOString();

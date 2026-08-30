@@ -16,7 +16,7 @@ const sessionId = 'named-activation-fence';
 function fixture() {
   const directory = mkdtempSync(join(tmpdir(), 'keyword-activation-'));
   created.push(directory);
-  const statePath = join(directory, '.omc', 'state', 'sessions', sessionId, 'autopilot-state.json');
+  const statePath = join(directory, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json');
   mkdirSync(join(statePath, '..'), { recursive: true });
   const namedState = {
     active: true,

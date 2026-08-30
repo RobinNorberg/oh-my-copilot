@@ -77,7 +77,7 @@ function normalizePath(value) {
     return value.replace(/\\/g, '/').replace(/\/+$/, '');
 }
 function isDefaultClaudeConfigDir() {
-    return normalizePath(getCopilotConfigDir()) === normalizePath(join(homedir(), '.claude'));
+    return normalizePath(getCopilotConfigDir()) === normalizePath(join(homedir(), '.copilot'));
 }
 function quoteCommandPath(path) {
     return `"${path.replace(/"/g, '\\"')}"`;

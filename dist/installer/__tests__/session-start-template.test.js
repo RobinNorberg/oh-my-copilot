@@ -13,7 +13,7 @@ describe('session-start template retired-state handling', () => {
         tempDir = mkdtempSync(join(tmpdir(), 'omc-session-start-template-'));
         fakeHome = join(tempDir, 'home');
         fakeProject = join(tempDir, 'project');
-        mkdirSync(join(fakeProject, '.omc', 'state'), { recursive: true });
+        mkdirSync(join(fakeProject, '.omg', 'state'), { recursive: true });
         // Add .git so validateCwd accepts this directory as a valid workspace anchor
         mkdirSync(join(fakeProject, '.git'), { recursive: true });
     });
@@ -36,7 +36,7 @@ describe('session-start template retired-state handling', () => {
     }
     it('ignores retired ultrawork state from a different active session', () => {
         const now = new Date().toISOString();
-        writeFileSync(join(fakeProject, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
+        writeFileSync(join(fakeProject, '.omg', 'state', 'ultrawork-state.json'), JSON.stringify({
             active: true,
             session_id: 'session-a',
             started_at: now,
@@ -55,7 +55,7 @@ describe('session-start template retired-state handling', () => {
         expect(context).not.toContain('Old task that should not bleed into session-b');
     });
     it('keeps template session-start under budget when only a tiny omission remainder remains', () => {
-        writeFileSync(join(fakeProject, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
+        writeFileSync(join(fakeProject, '.omg', 'state', 'ultrawork-state.json'), JSON.stringify({
             active: true,
             session_id: 'session-budget-owner',
             started_at: '2026-04-23T00:00:00.000Z',
@@ -105,7 +105,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
         expect(context.length).toBeLessThanOrEqual(6000);
     });
     it('does not restore retired ultrawork for the owning session', () => {
-        writeFileSync(join(fakeProject, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
+        writeFileSync(join(fakeProject, '.omg', 'state', 'ultrawork-state.json'), JSON.stringify({
             active: true,
             session_id: 'session-owner',
             started_at: '2026-03-19T00:00:00.000Z',
@@ -124,8 +124,8 @@ ${'- preserve this startup guidance\n'.repeat(400)}
         expect(context).not.toContain('[PARALLEL SESSION WARNING]');
     });
     it('does not warn for global fallback state from a different normalized project path', () => {
-        mkdirSync(join(fakeHome, '.omc', 'state'), { recursive: true });
-        writeFileSync(join(fakeHome, '.omc', 'state', 'ultrawork-state.json'), JSON.stringify({
+        mkdirSync(join(fakeHome, '.omg', 'state'), { recursive: true });
+        writeFileSync(join(fakeHome, '.omg', 'state', 'ultrawork-state.json'), JSON.stringify({
             active: true,
             session_id: 'session-a',
             started_at: '2026-03-19T00:00:00.000Z',
@@ -168,7 +168,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
         expect(context.length).toBeLessThanOrEqual(6000);
     });
     it('surfaces update notices through systemMessage without injecting them into additionalContext', () => {
-        const omcDir = join(fakeHome, '.claude', '.omc');
+        const omcDir = join(fakeHome, '.claude', '.omg');
         mkdirSync(omcDir, { recursive: true });
         writeFileSync(join(omcDir, 'update-check.json'), JSON.stringify({
             timestamp: Date.now(),
@@ -201,7 +201,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
         expect(output.hookSpecificOutput?.additionalContext ?? '').not.toContain('999.0.0');
     });
     it('honors autoUpgradePrompt=false with passive systemMessage wording', () => {
-        const omcDir = join(fakeHome, '.claude', '.omc');
+        const omcDir = join(fakeHome, '.claude', '.omg');
         mkdirSync(omcDir, { recursive: true });
         writeFileSync(join(fakeHome, '.claude', '.omc-config.json'), JSON.stringify({ autoUpgradePrompt: false }));
         writeFileSync(join(omcDir, 'update-check.json'), JSON.stringify({
@@ -281,13 +281,13 @@ describe('session-start template cwd validation (Wave B1)', () => {
         expect(parsed.continue).toBe(true);
         expect(parsed.hookSpecificOutput).toBeUndefined();
         // Must NOT have written any state files into the empty dir
-        expect(existsSync(join(emptyCwd, '.omc'))).toBe(false);
+        expect(existsSync(join(emptyCwd, '.omg'))).toBe(false);
     });
     it('does NOT warn or skip when cwd contains a .git directory', () => {
         const gitProject = mkdtempSync(join(tmpdir(), 'omc-git-project-'));
         try {
             mkdirSync(join(gitProject, '.git'), { recursive: true });
-            mkdirSync(join(gitProject, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(gitProject, '.omg', 'state'), { recursive: true });
             const { stderr, stdout } = runSessionStartRaw({
                 hook_event_name: 'SessionStart',
                 session_id: 'session-git-cwd',
@@ -307,7 +307,7 @@ describe('session-start template cwd validation (Wave B1)', () => {
         const wsProject = mkdtempSync(join(tmpdir(), 'omc-ws-project-'));
         try {
             writeFileSync(join(wsProject, '.omc-workspace'), '{}');
-            mkdirSync(join(wsProject, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(wsProject, '.omg', 'state'), { recursive: true });
             const { stderr, stdout } = runSessionStartRaw({
                 hook_event_name: 'SessionStart',
                 session_id: 'session-ws-cwd',
@@ -325,7 +325,7 @@ describe('session-start template cwd validation (Wave B1)', () => {
         const gitProject = mkdtempSync(join(tmpdir(), 'omc-git-subdir-'));
         try {
             mkdirSync(join(gitProject, '.git'), { recursive: true });
-            mkdirSync(join(gitProject, '.omc', 'state'), { recursive: true });
+            mkdirSync(join(gitProject, '.omg', 'state'), { recursive: true });
             const nested = join(gitProject, 'packages', 'app', 'src');
             mkdirSync(nested, { recursive: true });
             const { stderr, stdout } = runSessionStartRaw({

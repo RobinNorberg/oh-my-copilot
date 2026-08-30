@@ -169,7 +169,7 @@ describe('recovery pane rollback evidence', () => {
         expect(paneMocks.applyMainVerticalLayout.mock.invocationCallOrder[0])
             .toBeLessThan(paneMocks.spawnOwnedWorkerInPane.mock.invocationCallOrder[0]);
         expect(paneMocks.killTeamPane).not.toHaveBeenCalled();
-        const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
+        const evidenceRoot = absPath(cwd, `.omg/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
         const evidenceFiles = readdirSync(evidenceRoot);
         expect(evidenceFiles).toHaveLength(1);
         const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles[0]), 'utf8'));
@@ -220,7 +220,7 @@ describe('recovery pane rollback evidence', () => {
             .resolves.toMatchObject({ outcome: 'failed', error: 'spawn_failed', recoveryId });
         expect(paneMocks.killOwnedWorkerPane).not.toHaveBeenCalled();
         expect(paneMocks.killTeamPane).not.toHaveBeenCalled();
-        const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
+        const evidenceRoot = absPath(cwd, `.omg/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
         const evidenceFiles = readdirSync(evidenceRoot);
         expect(evidenceFiles.length).toBeGreaterThan(0);
         const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles.at(-1)), 'utf8'));
@@ -667,7 +667,7 @@ describe('recovery pane rollback evidence', () => {
         await expect(executeRecoverDeadWorkerV2Owner({ teamName, cwd, workerName: 'worker-1', requestId }))
             .resolves.toMatchObject({ outcome: 'failed', error: 'spawn_failed', recoveryId });
         expect(paneMocks.spawnWorkerInPane).not.toHaveBeenCalled();
-        const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
+        const evidenceRoot = absPath(cwd, `.omg/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
         const evidenceFiles = readdirSync(evidenceRoot);
         expect(evidenceFiles).toHaveLength(1);
         const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles[0]), 'utf8'));
@@ -698,7 +698,7 @@ describe('recovery pane rollback evidence', () => {
             splitTarget: '%leader', direction: 'right', rawOutput: '%orphan\n', stderr: 'transport interrupted', paneId: null });
         await expect(executeRecoverDeadWorkerV2Owner({ teamName, cwd, workerName: 'worker-1', requestId }))
             .resolves.toMatchObject({ outcome: 'failed', error: 'spawn_failed', recoveryId });
-        const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
+        const evidenceRoot = absPath(cwd, `.omg/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
         const evidenceFiles = readdirSync(evidenceRoot);
         expect(evidenceFiles).toHaveLength(1);
         const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles[0]), 'utf8'));
@@ -732,7 +732,7 @@ describe('recovery pane rollback evidence', () => {
             .resolves.toMatchObject({ outcome: 'failed', error: 'worker_activation_failed', recoveryId });
         expect(paneMocks.spawnOwnedWorkerInPane).not.toHaveBeenCalled();
         expect(paneMocks.killTeamPane).not.toHaveBeenCalled();
-        const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
+        const evidenceRoot = absPath(cwd, `.omg/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
         const evidenceFiles = readdirSync(evidenceRoot);
         expect(evidenceFiles).toHaveLength(1);
         const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles[0]), 'utf8'));
@@ -804,7 +804,7 @@ describe('recovery pane rollback evidence', () => {
         expect(paneMocks.spawnOwnedWorkerInPane).not.toHaveBeenCalled();
         expect(paneMocks.killOwnedWorkerPane).not.toHaveBeenCalled();
         expect(paneMocks.killTeamPane).not.toHaveBeenCalled();
-        const evidenceRoot = absPath(cwd, `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
+        const evidenceRoot = absPath(cwd, `.omg/state/team/${teamName}/recovery/rollback-failures/${recoveryId}`);
         const evidenceFiles = readdirSync(evidenceRoot);
         expect(evidenceFiles).toHaveLength(1);
         const evidence = JSON.parse(readFileSync(join(evidenceRoot, evidenceFiles[0]), 'utf8'));

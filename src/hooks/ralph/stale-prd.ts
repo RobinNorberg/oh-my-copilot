@@ -30,7 +30,7 @@
  * - Session end: `src/hooks/session-end/index.ts` `processSessionEnd()` →
  *   `runForegroundSessionEndCleanup()` → `cleanupModeStates()` removes active
  *   ralph mode state. The session-scoped PRD
- *   (`.omc/state/sessions/{id}/prd.json`) is NOT removed and survives into the
+ *   (`.omg/state/sessions/{id}/prd.json`) is NOT removed and survives into the
  *   next session — which is how a stale PRD gets resumed as if the work were
  *   outstanding. `processSessionEnd` therefore surfaces the warning *before*
  *   mode-state cleanup.

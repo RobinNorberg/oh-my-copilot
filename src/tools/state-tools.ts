@@ -477,13 +477,13 @@ function getLegacyStateFileCandidates(mode: StateToolMode, root: string): string
     getStatePath(mode, root),
     join(getOmcRoot(root), `${normalizedName}.json`),
   ];
-  if (mode === 'autopilot' && getGitTopLevel(root)) candidates.push(join(homedir(), '.omc', 'state', 'autopilot-state.json'));
+  if (mode === 'autopilot' && getGitTopLevel(root)) candidates.push(join(homedir(), '.omg', 'state', 'autopilot-state.json'));
 
   return [...new Set(candidates)];
 }
 
 function isSharedHomeAutopilotCandidate(path: string, root: string): boolean {
-  const sharedHomeStateRoot = resolve(homedir(), '.omc', 'state');
+  const sharedHomeStateRoot = resolve(homedir(), '.omg', 'state');
   const candidatePath = resolve(path);
   const canonicalStateRoot = resolve(getOmcRoot(root), 'state');
   const isDescendant = (ancestor: string, descendant: string): boolean => {
@@ -2279,7 +2279,7 @@ const stateMigrateNonGitTool: ToolDefinition<any> = {
   description: 'Explicitly copy session-owned JSON state from a legacy non-git .omc root into the canonical non-git state root without overwriting or deleting source files.',
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: {
-    workingDirectory: z.string().optional().describe('Legacy non-git working directory containing .omc/state/sessions/<session_id>'),
+    workingDirectory: z.string().optional().describe('Legacy non-git working directory containing .omg/state/sessions/<session_id>'),
     session_id: z.string().describe('Exact session owner to migrate'),
   },
   handler: async (args: { workingDirectory?: string; session_id?: string }) => {

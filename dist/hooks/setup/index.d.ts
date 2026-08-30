@@ -62,7 +62,7 @@ export declare function setEnvironmentVariables(): string[];
  */
 export declare function patchHooksJsonForWindows(pluginRoot: string): void;
 /**
- * Ensure ~/.claude/hooks/lib/stdin.mjs points to the current plugin version.
+ * Ensure ~/.copilot/hooks/lib/stdin.mjs points to the current plugin version.
  *
  * This fixes a silent breakage that occurs when OMC upgrades to a new version:
  * the symlink stays pointing at the old version's cache dir, so hooks that
@@ -79,7 +79,7 @@ export declare function ensureStdinSymlink(pluginRoot: string): void;
  */
 export declare function processSetupInit(input: SetupInput): Promise<HookOutput>;
 /**
- * Prune old state files from .omc/state directory
+ * Prune old state files from .omg/state directory
  */
 export declare function pruneOldStateFiles(directory: string, maxAgeDays?: number): number;
 /**

@@ -27,9 +27,9 @@ describe('team summary worktree metadata', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'omc-summary-worktree-'));
     const restoreEnv = isolateFixtureRoot(cwd);
     const teamName = 'summary-team';
-    const teamRoot = join(cwd, '.omc', 'state', 'team', teamName);
-    const teamStateRoot = join(cwd, '.omc', 'state', 'team', teamName);
-    const worktreePath = join(cwd, '.omc', 'team', teamName, 'worktrees', 'worker-1');
+    const teamRoot = join(cwd, '.omg', 'state', 'team', teamName);
+    const teamStateRoot = join(cwd, '.omg', 'state', 'team', teamName);
+    const worktreePath = join(cwd, '.omg', 'team', teamName, 'worktrees', 'worker-1');
     try {
       mkdirSync(teamRoot, { recursive: true });
       writeFileSync(join(teamRoot, 'config.json'), JSON.stringify({

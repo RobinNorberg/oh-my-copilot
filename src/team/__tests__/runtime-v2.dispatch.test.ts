@@ -302,7 +302,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       if (!sent) return { ok: false, reason: 'startup_send_failed' };
       if (mocks.autoStartupEvidence) {
         const taskId = String(mocks.nextStartupTaskId++);
-        const workerDir = join(cwd, '.omc', 'state', 'team', context.attempt.team_name, 'workers', context.attempt.worker_name);
+        const workerDir = join(cwd, '.omg', 'state', 'team', context.attempt.team_name, 'workers', context.attempt.worker_name);
         await mkdir(workerDir, { recursive: true });
         await writeFile(join(workerDir, 'status.json'), JSON.stringify({
           state: 'working',
@@ -396,7 +396,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(requests[0]?.trigger_message).toContain('execute now');
     expect(requests[0]?.trigger_message).toContain('concrete progress');
 
-    const inboxPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
+    const inboxPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
     const inbox = await readFile(inboxPath, 'utf-8');
     expect(inbox).toContain('Dispatch test');
     expect(inbox).toContain('ACK/progress replies are not a stop signal');
@@ -411,7 +411,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       expect.objectContaining({
         envVars: expect.objectContaining({
           OMC_TEAM_WORKER: 'dispatch-team/worker-1',
-          OMC_TEAM_STATE_ROOT: join(cwd, '.omc', 'state', 'team', 'dispatch-team'),
+          OMC_TEAM_STATE_ROOT: join(cwd, '.omg', 'state', 'team', 'dispatch-team'),
           OMC_TEAM_LEADER_CWD: cwd,
         }),
       }),
@@ -425,8 +425,8 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(ownedSpawnOrder).toBeLessThan(providerOrder);
     expect(layoutOrder).toBeLessThan(providerOrder);
     expect(providerOrder).toBeLessThan(inboxOrder);
-    const config = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'));
-    const manifest = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json'), 'utf-8'));
+    const config = JSON.parse(await readFile(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'));
+    const manifest = JSON.parse(await readFile(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'manifest.json'), 'utf-8'));
     expect(config.workers[0].launch_descriptor).toMatchObject({ provider: 'claude', binary: '/usr/bin/claude', args: [] });
     expect(manifest.workers[0].launch_descriptor).toEqual(config.workers[0].launch_descriptor);
     expect(config.service_descriptor).toMatchObject({ schema_version: 1, auto_merge_enabled: false, cadence_policy: 'disabled' });
@@ -449,12 +449,12 @@ describe('runtime v2 startup inbox dispatch', () => {
     });
 
     const config = JSON.parse(await readFile(
-      join(cwd, '.omc', 'state', 'team', 'cursor-bootstrap-team', 'config.json'),
+      join(cwd, '.omg', 'state', 'team', 'cursor-bootstrap-team', 'config.json'),
       'utf-8',
     ));
     expect(config.workers[0].role).toBe('critic');
     const inbox = await readFile(
-      join(cwd, '.omc', 'state', 'team', 'cursor-bootstrap-team', 'workers', 'worker-1', 'inbox.md'),
+      join(cwd, '.omg', 'state', 'team', 'cursor-bootstrap-team', 'workers', 'worker-1', 'inbox.md'),
       'utf-8',
     );
     expect(inbox).toContain('Agent-Type Guidance (cursor)');
@@ -561,14 +561,14 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     });
 
-    const taskPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
+    const taskPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
     const task = JSON.parse(await readFile(taskPath, 'utf-8')) as { delegation?: { mode?: string; required_parallel_probe?: boolean } };
     expect(task.delegation).toMatchObject({
       mode: 'auto',
       required_parallel_probe: true,
     });
 
-    const inboxPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
+    const inboxPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
     const inbox = await readFile(inboxPath, 'utf-8');
     expect(inbox).toContain('"result"');
     expect(inbox).toContain('Subagent skip reason:');
@@ -588,7 +588,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     })).rejects.toThrow('claude launch exploded');
 
-    const markerPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'startup-failure.json');
+    const markerPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'startup-failure.json');
     const marker = JSON.parse(await readFile(markerPath, 'utf-8')) as {
       reason?: string;
       error?: string;
@@ -621,7 +621,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     })).rejects.toThrow(/cmux command failed for both current and legacy forms/);
 
-    const markerPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'startup-failure.json');
+    const markerPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'startup-failure.json');
     const markerText = await readFile(markerPath, 'utf-8');
     expect(markerText).toContain('current=send-surface');
     expect(markerText).toContain('legacy=send');
@@ -651,7 +651,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     })).rejects.toThrow(/cmux command failed for current form/);
 
-    const markerPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'startup-failure.json');
+    const markerPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'startup-failure.json');
     const markerText = await readFile(markerPath, 'utf-8');
     expect(markerText).toContain('current=send-surface');
     expect(markerText).toContain('cmux transport timed out after partial write');
@@ -684,13 +684,13 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     })).rejects.toThrow('claude launch exploded after dirty worktree');
 
-    const markerPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'startup-failure.json');
+    const markerPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'startup-failure.json');
     const marker = JSON.parse(await readFile(markerPath, 'utf-8')) as {
       error?: string;
       preserved?: Array<{ workerName?: string; path?: string; reason?: string }>;
     };
-    const backupPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'worktree-root-agents.json');
-    const worktreePath = join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1');
+    const backupPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'worktree-root-agents.json');
+    const worktreePath = join(cwd, '.omg', 'team', 'dispatch-team', 'worktrees', 'worker-1');
     expect(marker.error).toContain('claude launch exploded after dirty worktree');
     expect(marker.preserved?.[0]).toMatchObject({
       workerName: 'worker-1',
@@ -726,7 +726,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(runtime.config.workspace_mode).toBe('worktree');
     expect(runtime.config.worktree_mode).toBe('named');
     expect(runtime.config.workers[0]).toMatchObject({
-      working_dir: join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
+      working_dir: join(cwd, '.omg', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
       worktree_repo_root: cwd,
       worktree_branch: 'omc-team/dispatch-team/worker-1',
       worktree_detached: false,
@@ -736,13 +736,13 @@ describe('runtime v2 startup inbox dispatch', () => {
       'dispatch-session',
       expect.objectContaining({ paneId: '%2' }),
       expect.objectContaining({
-        cwd: join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
+        cwd: join(cwd, '.omg', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
         launchStateCwd: cwd,
       }),
     );
 
-    const configPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json');
-    const manifestPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json');
+    const configPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'config.json');
+    const manifestPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'manifest.json');
     const persisted = JSON.parse(await readFile(configPath, 'utf-8'));
     const manifest = JSON.parse(await readFile(manifestPath, 'utf-8'));
     expect(persisted.state_revision).toBe(1);
@@ -758,9 +758,9 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(runtime.config.team_state_root).toBeDefined();
     const teamStateRoot = runtime.config.team_state_root!;
     expect(requests[0]?.trigger_message.replace('$OMC_TEAM_STATE_ROOT', teamStateRoot))
-      .toContain(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md'));
+      .toContain(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md'));
 
-    const overlay = await readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'AGENTS.md'), 'utf-8');
+    const overlay = await readFile(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'AGENTS.md'), 'utf-8');
     expect(overlay).toContain('$OMC_TEAM_STATE_ROOT/workers/worker-1/status.json');
     expect(overlay).not.toContain('$OMC_TEAM_STATE_ROOT/team/dispatch-team');
   });
@@ -827,10 +827,10 @@ describe('runtime v2 startup inbox dispatch', () => {
       workerName: 'worker-1',
       agentType: 'codex',
       enabled: true,
-      worktreePath: join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
+      worktreePath: join(cwd, '.omg', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
     }));
     expect(cadenceMocks.startFallbackPoller).toHaveBeenCalledWith(
-      join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
+      join(cwd, '.omg', 'team', 'dispatch-team', 'worktrees', 'worker-1'),
       'worker-1',
     );
 
@@ -892,7 +892,7 @@ describe('runtime v2 startup inbox dispatch', () => {
       workerPaneIds: [],
       sessionMode: 'dedicated-window',
     });
-    await mkdir(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'manifest.json'), { recursive: true });
+    await mkdir(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'manifest.json'), { recursive: true });
 
     const { startTeamV2 } = await import('../runtime-v2.js');
 
@@ -912,11 +912,11 @@ describe('runtime v2 startup inbox dispatch', () => {
       '%1',
       { sessionMode: 'dedicated-window' },
     );
-    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omg', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -942,11 +942,11 @@ describe('runtime v2 startup inbox dispatch', () => {
       cwd,
     })).rejects.toThrow('tmux_start_failed');
 
-    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'config.json'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'worktrees.json'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(readFile(join(cwd, '.omc', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
+    await expect(readFile(join(cwd, '.omg', 'team', 'dispatch-team', 'worktrees', 'worker-1', 'AGENTS.md'), 'utf-8'))
       .rejects.toMatchObject({ code: 'ENOENT' });
   });
 
@@ -1000,7 +1000,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     const spawnedWorkers = mocks.spawnWorkerInPane.mock.calls.map((call) => call[2]?.envVars?.OMC_TEAM_WORKER);
     expect(spawnedWorkers).toEqual(['dispatch-team/worker-2']);
 
-    const taskPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
+    const taskPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
     const persistedTask = JSON.parse(await readFile(taskPath, 'utf-8'));
     expect(persistedTask.role).toBe('test-engineer');
   });
@@ -1023,11 +1023,11 @@ describe('runtime v2 startup inbox dispatch', () => {
 
     expect(runtime.config.workers.map((worker) => worker.role)).toEqual(['architect', 'writer']);
 
-    const taskPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
+    const taskPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
     const persistedTask = JSON.parse(await readFile(taskPath, 'utf-8'));
     expect(persistedTask.role).toBe('architect');
 
-    const configPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json');
+    const configPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'config.json');
     const persisted = JSON.parse(await readFile(configPath, 'utf-8'));
     expect(persisted.workers.map((worker: { role: string }) => worker.role)).toEqual(['architect', 'writer']);
   });
@@ -1101,7 +1101,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     // what lets the leader transition the task. Without it the task would
     // strand in_progress — the failure mode that kept these gates closed.
     const persisted = JSON.parse(await readFile(
-      join(cwd, '.omc', 'state', 'team', 'cursor-routing-team', 'config.json'),
+      join(cwd, '.omg', 'state', 'team', 'cursor-routing-team', 'config.json'),
       'utf-8',
     ));
     expect(persisted.workers[0].worker_cli).toBe('cursor');
@@ -1110,7 +1110,7 @@ describe('runtime v2 startup inbox dispatch', () => {
 
     // And the reviewer contract actually reached the worker.
     const inbox = await readFile(
-      join(cwd, '.omc', 'state', 'team', 'cursor-routing-team', 'workers', 'worker-1', 'inbox.md'),
+      join(cwd, '.omg', 'state', 'team', 'cursor-routing-team', 'workers', 'worker-1', 'inbox.md'),
       'utf-8',
     );
     expect(inbox).toContain('REQUIRED: Structured Verdict Output');
@@ -1191,7 +1191,7 @@ describe('runtime v2 startup inbox dispatch', () => {
 
     expect(mocks.spawnWorkerInPane).toHaveBeenCalledTimes(1);
     expect(mocks.killTeamSession).not.toHaveBeenCalled();
-    const configPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'config.json');
+    const configPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'config.json');
     const persisted = JSON.parse(await readFile(configPath, 'utf-8'));
     expect(persisted.workers[0].pane_id).toBeUndefined();
     expect(persisted.workers[0].assigned_tasks).toEqual([]);
@@ -1558,7 +1558,7 @@ describe('runtime v2 startup inbox dispatch', () => {
   it('rejects a stale worker status that predates the current startup trigger', async () => {
     cwd = await mkdtempFixture('omc-runtime-v2-stale-status-');
     mocks.autoStartupEvidence = false;
-    const workerDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
+    const workerDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
     await mkdir(workerDir, { recursive: true });
     await writeFile(join(workerDir, 'status.json'), JSON.stringify({
       state: 'working',
@@ -1590,7 +1590,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     cwd = await mkdtempFixture('omc-runtime-v2-stale-claim-');
     mocks.autoStartupEvidence = false;
     mocks.createTeamSession.mockImplementationOnce(async () => {
-      const taskPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
+      const taskPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
       const task = JSON.parse(await readFile(taskPath, 'utf8'));
       await writeFile(taskPath, JSON.stringify({
         ...task,
@@ -1626,7 +1626,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     mocks.autoStartupEvidence = false;
 
     mocks.sendToWorker.mockImplementation(async () => {
-      const mailboxDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'mailbox');
+      const mailboxDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'mailbox');
       await mkdir(mailboxDir, { recursive: true });
       await writeFile(join(mailboxDir, 'leader-fixed.json'), JSON.stringify({
         worker: 'leader-fixed',
@@ -1661,7 +1661,7 @@ describe('runtime v2 startup inbox dispatch', () => {
 
     mocks.sendToWorker.mockImplementation(async () => {
       if (evidenceKind === 'claim') {
-        const taskPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
+        const taskPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks', 'task-1.json');
         const task = JSON.parse(await readFile(taskPath, 'utf-8'));
         await writeFile(taskPath, JSON.stringify({
           ...task,
@@ -1675,7 +1675,7 @@ describe('runtime v2 startup inbox dispatch', () => {
           },
         }, null, 2), 'utf-8');
       } else {
-        const workerDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
+        const workerDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
         await mkdir(workerDir, { recursive: true });
         await writeFile(join(workerDir, 'status.json'), JSON.stringify({
           state: 'working',
@@ -1706,7 +1706,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     mocks.autoStartupEvidence = false;
 
     mocks.sendToWorker.mockImplementation(async () => {
-      const taskDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks');
+      const taskDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks');
       const taskPath = join(taskDir, 'task-1.json');
       const existing = JSON.parse(await readFile(taskPath, 'utf-8'));
       await writeFile(taskPath, JSON.stringify({
@@ -1742,7 +1742,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     mocks.autoStartupEvidence = false;
 
     mocks.sendToWorker.mockImplementation(async () => {
-      const workerDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
+      const workerDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
       await mkdir(workerDir, { recursive: true });
       await writeFile(join(workerDir, 'status.json'), JSON.stringify({
         state: 'working',
@@ -1775,7 +1775,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     // pane visibly consumed the startup trigger (spinner + esc-to-interrupt),
     // and the first-turn status evidence lands only after the initial budget.
     mocks.retryStartupInboxSubmit.mockImplementation(async () => {
-      const workerDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
+      const workerDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1');
       await mkdir(workerDir, { recursive: true });
       await writeFile(join(workerDir, 'status.json'), JSON.stringify({
         state: 'working',
@@ -1928,7 +1928,7 @@ describe('runtime v2 startup inbox dispatch', () => {
 
     modelContractMocks.isPromptModeAgent.mockImplementation((agentType?: string) => agentType === 'gemini');
     mocks.spawnWorkerInPane.mockImplementation(async (_sessionName: string, _paneId: string, config: { envVars?: Record<string, string> }) => {
-      const taskDir = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'tasks');
+      const taskDir = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'tasks');
       const canonicalTaskPath = join(taskDir, 'task-1.json');
       const legacyTaskPath = join(taskDir, '1.json');
       const taskPath = await readFile(canonicalTaskPath, 'utf-8')
@@ -1989,7 +1989,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(launchArgs.some((arg: string) => arg.includes('transition-task-status'))).toBe(false);
     expect(launchArgs.some((arg: string) => arg.includes('blocked'))).toBe(false);
     expect(launchArgs.some((arg: string) => arg.includes('Reviewer seed'))).toBe(false);
-    const inboxPath = join(cwd, '.omc', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
+    const inboxPath = join(cwd, '.omg', 'state', 'team', 'dispatch-team', 'workers', 'worker-1', 'inbox.md');
     const inbox = await readFile(inboxPath, 'utf-8');
     expect(inbox).toContain('team api claim-task');
     expect(inbox).toContain('transition-task-status');

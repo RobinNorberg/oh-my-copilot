@@ -40,8 +40,8 @@ describe('readDispatchRequestStrict', () => {
   let previousOmcStateDir: string | undefined;
 
   async function writeStore(value: unknown): Promise<string> {
-    const path = join(cwd, '.omc', 'state', 'team', teamName, 'dispatch', 'requests.json');
-    await mkdir(join(cwd, '.omc', 'state', 'team', teamName, 'dispatch'), { recursive: true });
+    const path = join(cwd, '.omg', 'state', 'team', teamName, 'dispatch', 'requests.json');
+    await mkdir(join(cwd, '.omg', 'state', 'team', teamName, 'dispatch'), { recursive: true });
     await writeFile(path, JSON.stringify(value, null, 2), 'utf8');
     return path;
   }

@@ -16,7 +16,7 @@ describe('unified MCP registry sync', () => {
         testRoot = mkdtempSync(join(tmpdir(), 'omc-mcp-registry-'));
         claudeDir = join(testRoot, '.claude');
         codexDir = join(testRoot, '.codex');
-        omcDir = join(testRoot, '.omc');
+        omcDir = join(testRoot, '.omg');
         mkdirSync(claudeDir, { recursive: true });
         mkdirSync(codexDir, { recursive: true });
         mkdirSync(omcDir, { recursive: true });
@@ -601,7 +601,7 @@ describe('unified MCP registry sync', () => {
         process.env.HOME = testRoot;
         process.env.XDG_CONFIG_HOME = join(testRoot, '.config');
         process.env.XDG_STATE_HOME = join(testRoot, '.state');
-        const legacyRegistryDir = join(testRoot, '.omc');
+        const legacyRegistryDir = join(testRoot, '.omg');
         mkdirSync(legacyRegistryDir, { recursive: true });
         writeFileSync(join(legacyRegistryDir, 'mcp-registry.json'), JSON.stringify({
             gitnexus: { command: 'gitnexus', args: ['mcp'] },

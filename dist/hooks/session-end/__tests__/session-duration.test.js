@@ -13,7 +13,7 @@ let tmpDir;
 let previousHome;
 let previousUserProfile;
 function stateDir() {
-    return path.join(tmpDir, '.omc', 'state');
+    return path.join(tmpDir, '.omg', 'state');
 }
 function writeState(filename, state) {
     const dir = stateDir();

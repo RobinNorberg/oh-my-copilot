@@ -14,7 +14,7 @@ vi.mock('../../cli/tmux-utils.js', async (importOriginal) => {
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
 import { tmuxExec } from '../../cli/tmux-utils.js';
 import { getNewPaneTail, getPaneHistorySize } from '../../features/rate-limit-wait/pane-fresh-capture.js';
-const STATE_DIR = '/project/.omc/state';
+const STATE_DIR = '/project/.omg/state';
 const PANE_ID = '%5';
 /** Set up fs mock so state file does not exist. */
 function noStateFile() {

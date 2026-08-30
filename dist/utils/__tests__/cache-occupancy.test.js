@@ -14,12 +14,12 @@ describe('cache occupancy registry', () => {
         const result = readOccupiedPluginRoots(dir);
         expect(result.unavailable).toBe(false);
         expect(result.roots).toEqual(new Set([root]));
-        const files = readdirSync(join(dir, '.omc', 'cache-occupancy'));
+        const files = readdirSync(join(dir, '.omg', 'cache-occupancy'));
         expect(files).toHaveLength(1);
         expect(files[0]).toMatch(/^[a-f0-9]{64}\.json$/);
     });
     it('drops corrupt records without exposing their contents', () => {
-        const registry = join(dir, '.omc', 'cache-occupancy');
+        const registry = join(dir, '.omg', 'cache-occupancy');
         mkdirSync(registry, { recursive: true });
         writeFileSync(join(registry, `${'a'.repeat(64)}.json`), '{broken');
         expect(readOccupiedPluginRoots(dir).roots.size).toBe(0);

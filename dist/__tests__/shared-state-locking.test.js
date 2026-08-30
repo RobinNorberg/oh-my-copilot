@@ -51,7 +51,7 @@ describe('shared-state updateSharedTask locking', () => {
         expect(updated.result).toBe('done');
         expect(updated.completedAt).toBeTruthy();
         // Verify lock file does not persist after operation
-        const lockPath = join(tempDir, '.omc', 'state', 'interop', 'tasks', `${task.id}.json.lock`);
+        const lockPath = join(tempDir, '.omg', 'state', 'interop', 'tasks', `${task.id}.json.lock`);
         expect(existsSync(lockPath)).toBe(false);
     });
 });

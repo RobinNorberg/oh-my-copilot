@@ -42,7 +42,7 @@ function alive(pid) {
   catch (error) { return error?.code === 'EPERM'; }
 }
 
-function registryDir(configDir) { return join(configDir, '.omc', 'cache-occupancy'); }
+function registryDir(configDir) { return join(configDir, '.omg', 'cache-occupancy'); }
 function fileName(root, pid, start) { return `${createHash('sha256').update(`${root}\0${pid}\0${start}`).digest('hex')}.json`; }
 
 export function publishCacheOccupancy(pluginRoot, configDir, pid = process.ppid) {

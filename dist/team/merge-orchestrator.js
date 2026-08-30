@@ -30,7 +30,7 @@
 // "fix" them by aligning with the plan:
 //
 //   1. Events are written to a dedicated `orchestrator-events.jsonl` log under
-//      `.omc/state/team/{team}/`, NOT to the shared `events.jsonl` used by the
+//      `.omg/state/team/{team}/`, NOT to the shared `events.jsonl` used by the
 //      rest of the runtime. This keeps orchestrator-internal state isolated and
 //      avoids interleaving with worker/leader event streams that have different
 //      consumers and retention rules.

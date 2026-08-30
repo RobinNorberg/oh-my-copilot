@@ -17,7 +17,7 @@ function writeSkillState(
   skillName: string,
   overrides: Record<string, unknown> = {}
 ): void {
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
 
   writeFileSync(
@@ -44,7 +44,7 @@ function writeSubagentTrackingState(
   tempDir: string,
   agents: Array<Record<string, unknown>>,
 ): void {
-  const stateDir = join(tempDir, '.omc', 'state');
+  const stateDir = join(tempDir, '.omg', 'state');
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(
     join(stateDir, 'subagent-tracking-state.json'),
@@ -112,7 +112,7 @@ describe('persistent-mode skill-state stop integration (issue #1033)', () => {
 
       const statePath = join(
         tempDir,
-        '.omc',
+        '.omg',
         'state',
         'sessions',
         sessionId,
@@ -167,7 +167,7 @@ describe('persistent-mode skill-state stop integration (issue #1033)', () => {
     const tempDir = makeTempProject();
 
     try {
-      const stateDir = join(tempDir, '.omc', 'state');
+      const stateDir = join(tempDir, '.omg', 'state');
       mkdirSync(stateDir, { recursive: true });
       const past = new Date(Date.now() - 30 * 60 * 1000).toISOString();
       writeFileSync(
@@ -212,7 +212,7 @@ describe('persistent-mode skill-state stop integration (issue #1033)', () => {
 
     try {
       // Write both ralph and skill state
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
 
       writeFileSync(

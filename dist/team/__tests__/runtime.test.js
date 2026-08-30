@@ -22,7 +22,7 @@ describe('runtime types', () => {
         process.env.HOME = cwd;
         process.env.USERPROFILE = cwd;
         const teamName = 'monitor-team';
-        const tasksDir = join(cwd, '.omc', 'state', 'team', teamName, 'tasks');
+        const tasksDir = join(cwd, '.omg', 'state', 'team', teamName, 'tasks');
         mkdirSync(tasksDir, { recursive: true });
         writeFileSync(join(tasksDir, 'task-1.json'), JSON.stringify({ status: 'pending' }), 'utf-8');
         writeFileSync(join(tasksDir, 'task-2.json'), JSON.stringify({ status: 'completed' }), 'utf-8');

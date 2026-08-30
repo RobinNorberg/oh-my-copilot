@@ -3,7 +3,7 @@
  *
  * When initInteropSession (and all other writers) are called from a sub-repo
  * inside a .omc-workspace multi-repo layout, interop state must land at the
- * workspace root's .omc/, not at the sub-repo's .omc/.
+ * workspace root's .omg/, not at the sub-repo's .omg/.
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'fs';
@@ -63,13 +63,13 @@ describe('shared-state workspace-marker path resolution', () => {
         // Clear caches so other tests are not polluted by this fixture.
         clearWorktreeCache();
     });
-    it('writes interop config to the workspace root .omc/, not the sub-repo .omc/', () => {
+    it('writes interop config to the workspace root .omg/, not the sub-repo .omg/', () => {
         // Call initInteropSession from the child sub-repo directory.
         initInteropSession('test-session', subDir);
         // Expected: file is at workspace root
-        const expectedPath = join(workspaceRoot, '.omc', 'state', 'interop', 'config.json');
+        const expectedPath = join(workspaceRoot, '.omg', 'state', 'interop', 'config.json');
         // Regression: file would be at sub-repo root if the bug were present
-        const wrongPath = join(subDir, '.omc', 'state', 'interop', 'config.json');
+        const wrongPath = join(subDir, '.omg', 'state', 'interop', 'config.json');
         expect(existsSync(expectedPath)).toBe(true);
         expect(existsSync(wrongPath)).toBe(false);
     });

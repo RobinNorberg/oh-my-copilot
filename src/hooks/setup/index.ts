@@ -47,11 +47,11 @@ export interface HookOutput {
 // ============================================================================
 
 const REQUIRED_DIRECTORIES = [
-  '.omc/state',
-  '.omc/logs',
-  '.omc/notepads',
-  '.omc/state/checkpoints',
-  '.omc/plans',
+  '.omg/state',
+  '.omg/logs',
+  '.omg/notepads',
+  '.omg/state/checkpoints',
+  '.omg/plans',
 ];
 
 const CONFIG_FILES = [
@@ -193,7 +193,7 @@ export function patchHooksJsonForWindows(pluginRoot: string): void {
 }
 
 /**
- * Ensure ~/.claude/hooks/lib/stdin.mjs points to the current plugin version.
+ * Ensure ~/.copilot/hooks/lib/stdin.mjs points to the current plugin version.
  *
  * This fixes a silent breakage that occurs when OMC upgrades to a new version:
  * the symlink stays pointing at the old version's cache dir, so hooks that
@@ -354,7 +354,7 @@ export async function processSetupInit(input: SetupInput): Promise<HookOutput> {
 // ============================================================================
 
 /**
- * Prune old state files from .omc/state directory
+ * Prune old state files from .omg/state directory
  */
 export function pruneOldStateFiles(directory: string, maxAgeDays: number = DEFAULT_STATE_MAX_AGE_DAYS): number {
   const stateDir = join(getOmcRoot(directory), 'state');

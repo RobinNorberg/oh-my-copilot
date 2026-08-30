@@ -337,7 +337,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
   });
 
   it('reports Codex config.toml drift against the unified MCP registry', () => {
-    const registryDir = join(TEST_CLAUDE_DIR, '..', '.omc');
+    const registryDir = join(TEST_CLAUDE_DIR, '..', '.omg');
     const codexDir = join(TEST_CLAUDE_DIR, '..', '.codex');
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(codexDir, { recursive: true });
@@ -367,7 +367,7 @@ describe('doctor-conflicts: hook ownership classification', () => {
   });
 
   it('reports mismatched Codex config.toml entries against the unified MCP registry', () => {
-    const registryDir = join(TEST_CLAUDE_DIR, '..', '.omc');
+    const registryDir = join(TEST_CLAUDE_DIR, '..', '.omg');
     const codexDir = join(TEST_CLAUDE_DIR, '..', '.codex');
     mkdirSync(registryDir, { recursive: true });
     mkdirSync(codexDir, { recursive: true });
@@ -892,11 +892,11 @@ describe('doctor-conflicts: config known fields (issue #1499)', () => {
     }
     resetTestDirs();
     mkdirSync(TEST_PROJECT_CLAUDE_DIR, { recursive: true });
-    mkdirSync(join(TEST_PROJECT_DIR, '.omc'), { recursive: true });
+    mkdirSync(join(TEST_PROJECT_DIR, '.omg'), { recursive: true });
     mkdirSync(join(TEST_PROJECT_DIR, '.codex'), { recursive: true });
     process.env.COPILOT_CONFIG_DIR = TEST_CLAUDE_DIR;
     process.env.CLAUDE_MCP_CONFIG_PATH = join(TEST_CLAUDE_DIR, '..', '.claude.json');
-    process.env.OMC_HOME = join(TEST_PROJECT_DIR, '.omc');
+    process.env.OMC_HOME = join(TEST_PROJECT_DIR, '.omg');
     process.env.CODEX_HOME = join(TEST_PROJECT_DIR, '.codex');
     cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(TEST_PROJECT_DIR);
   });

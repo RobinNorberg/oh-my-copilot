@@ -25,7 +25,7 @@ beforeEach(() => {
   delete process.env.OMC_STATE_DIR;
 
   mkdirSync(TEST_DIR, { recursive: true });
-  mkdirSync(join(TEST_DIR, '.omc', 'state'), { recursive: true });
+  mkdirSync(join(TEST_DIR, '.omg', 'state'), { recursive: true });
   configDir = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
   mkdirSync(configDir, { recursive: true });
 });

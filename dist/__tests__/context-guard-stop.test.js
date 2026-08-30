@@ -75,12 +75,12 @@ describe('context-guard-stop safe recovery messaging (issue #1373)', () => {
         });
         expect(out.decision).toBe('block');
         expect(String(out.reason)).toContain('Run /compact immediately');
-        expect(String(out.reason)).toContain('.omc/state');
+        expect(String(out.reason)).toContain('.omg/state');
     });
     it('blocks using HUD cache when transcript and hook payload omit context_window', () => {
         const sessionId = `hud-stop-${Date.now()}`;
         writeTranscriptWithoutContext(transcriptPath, 10);
-        const cacheDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+        const cacheDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
         mkdirSync(cacheDir, { recursive: true });
         writeFileSync(join(cacheDir, 'hud-stdin-cache.json'), JSON.stringify({
             cwd: tempDir,

@@ -48,7 +48,7 @@ describe('Ralph Progress Module', () => {
   describe('initProgress', () => {
     it('should create progress.txt in .omc directory', () => {
       expect(initProgress(testDir)).toBe(true);
-      expect(existsSync(join(testDir, '.omc', PROGRESS_FILENAME))).toBe(true);
+      expect(existsSync(join(testDir, '.omg', PROGRESS_FILENAME))).toBe(true);
     });
 
     it('should include started timestamp', () => {
@@ -82,7 +82,7 @@ describe('Ralph Progress Module', () => {
     });
 
     it('should read progress from .omc directory', () => {
-      const omcDir = join(testDir, '.omc');
+      const omcDir = join(testDir, '.omg');
       mkdirSync(omcDir, { recursive: true });
       writeFileSync(join(omcDir, PROGRESS_FILENAME), '# Test');
       expect(readProgressRaw(testDir)).toBe('# Test');
@@ -201,7 +201,7 @@ Just garbage`;
     });
 
     it('should create progress file if not exists', () => {
-      rmSync(join(testDir, '.omc'), { recursive: true, force: true });
+      rmSync(join(testDir, '.omg'), { recursive: true, force: true });
 
       const result = appendProgress(testDir, {
         storyId: 'US-001',
@@ -211,7 +211,7 @@ Just garbage`;
       });
 
       expect(result).toBe(true);
-      expect(existsSync(join(testDir, '.omc', PROGRESS_FILENAME))).toBe(true);
+      expect(existsSync(join(testDir, '.omg', PROGRESS_FILENAME))).toBe(true);
     });
 
     it('should include timestamp', () => {
@@ -259,11 +259,11 @@ Just garbage`;
     });
 
     it('should create progress file if not exists', () => {
-      rmSync(join(testDir, '.omc'), { recursive: true, force: true });
+      rmSync(join(testDir, '.omg'), { recursive: true, force: true });
 
       const result = addPattern(testDir, 'New pattern');
       expect(result).toBe(true);
-      expect(existsSync(join(testDir, '.omc', PROGRESS_FILENAME))).toBe(true);
+      expect(existsSync(join(testDir, '.omg', PROGRESS_FILENAME))).toBe(true);
     });
 
     it('should recover when directory is deleted', () => {
@@ -340,7 +340,7 @@ Just garbage`;
     });
 
     it('should return empty string when no patterns', () => {
-      rmSync(join(testDir, '.omc'), { recursive: true, force: true });
+      rmSync(join(testDir, '.omg'), { recursive: true, force: true });
       const formatted = formatPatternsForContext(testDir);
       expect(formatted).toBe('');
     });
@@ -353,7 +353,7 @@ Just garbage`;
     });
 
     it('should return empty string when no progress', () => {
-      rmSync(join(testDir, '.omc'), { recursive: true, force: true });
+      rmSync(join(testDir, '.omg'), { recursive: true, force: true });
       const formatted = formatProgressForContext(testDir);
       expect(formatted).toBe('');
     });

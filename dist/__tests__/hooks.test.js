@@ -449,14 +449,14 @@ describe('Team staged workflow integration', () => {
     const sessionId = 'team-session-test';
     beforeEach(() => {
         testDir = join(tmpdir(), `omc-team-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(join(testDir, '.omc', 'state', 'sessions', sessionId), { recursive: true });
+        mkdirSync(join(testDir, '.omg', 'state', 'sessions', sessionId), { recursive: true });
         execSync('git init', { cwd: testDir });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
     });
     it('restores active Team stage on session-start', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-exec',
@@ -511,7 +511,7 @@ schema
         expect(result.message || '').not.toContain('<team_compositions>');
     });
     it('keeps session-start under budget when only a tiny omission remainder remains', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'ultrawork-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'ultrawork-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             started_at: '2026-04-23T00:00:00.000Z',
@@ -532,7 +532,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
         expect((result.message || '').length).toBeLessThanOrEqual(6000);
     });
     it('keeps combined session-start restore context under aggregate budget', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-exec',
@@ -558,7 +558,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect((result.message || '').length).toBeLessThanOrEqual(6000);
     });
     it('emits terminal Team restore guidance on cancelled stage', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-fix',
@@ -574,7 +574,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message || '').toContain('cancel');
     });
     it('enforces verify stage continuation while active and non-terminal', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -591,7 +591,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message).toContain('Continue working');
     });
     it('enforces fix stage continuation while active and non-terminal', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-fix',
@@ -608,7 +608,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message).toContain('Continue working');
     });
     it('skips Team stage continuation on authentication stop reasons', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -624,7 +624,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message || '').toContain('AUTHENTICATION ERROR');
     });
     it('allows terminal cleanup when Team stage is cancelled', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-verify',
@@ -639,7 +639,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('fails open when Team stage is missing', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             team_name: 'delivery-team'
@@ -652,7 +652,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(result.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('fails open when Team stage is unknown or malformed', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: { bad: true },
@@ -664,7 +664,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         });
         expect(malformedResult.continue).toBe(true);
         expect(malformedResult.message || '').not.toContain('[TEAM MODE CONTINUATION]');
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-unknown',
@@ -678,13 +678,13 @@ ${'- preserve this startup guidance\n'.repeat(500)}
         expect(unknownResult.message || '').not.toContain('[TEAM MODE CONTINUATION]');
     });
     it('trips Team continuation circuit breaker after max stop reinforcements', async () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-state.json'), JSON.stringify({
             active: true,
             session_id: sessionId,
             stage: 'team-exec',
             team_name: 'delivery-team'
         }));
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'team-pipeline-stop-breaker.json'), JSON.stringify({ count: 20, updated_at: new Date().toISOString() }, null, 2));
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'team-pipeline-stop-breaker.json'), JSON.stringify({ count: 20, updated_at: new Date().toISOString() }, null, 2));
         const result = await processHook('persistent-mode', {
             sessionId,
             directory: testDir,
@@ -694,7 +694,7 @@ ${'- preserve this startup guidance\n'.repeat(500)}
     });
     it('bypasses autopilot continuation when transcript context is critically exhausted', async () => {
         const transcriptPath = join(testDir, 'transcript.jsonl');
-        writeFileSync(join(testDir, '.omc', 'state', 'sessions', sessionId, 'autopilot-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json'), JSON.stringify({
             active: true,
             phase: 'execution',
             session_id: sessionId,
@@ -737,8 +737,8 @@ describe('Persistent-mode reply cleanup behavior', () => {
         rmSync(tempHome, { recursive: true, force: true });
     });
     it('does not remove reply-session registry on idle Stop/persistent-mode', async () => {
-        const registryPath = join(homedir(), '.omc', 'state', 'reply-session-registry.jsonl');
-        mkdirSync(join(homedir(), '.omc', 'state'), { recursive: true });
+        const registryPath = join(homedir(), '.omg', 'state', 'reply-session-registry.jsonl');
+        mkdirSync(join(homedir(), '.omg', 'state'), { recursive: true });
         writeFileSync(registryPath, `${JSON.stringify({
             platform: 'telegram',
             messageId: '123',

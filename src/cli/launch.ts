@@ -599,7 +599,7 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
 }
 
 function isDefaultClaudeConfigDirPath(configDir: string): boolean {
-  return configDir === join(homedir(), '.claude');
+  return configDir === join(homedir(), '.copilot');
 }
 
 /**

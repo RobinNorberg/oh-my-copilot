@@ -1,7 +1,7 @@
 /**
- * Wave G lint test: assert that only the `team` skill writes to `.omc/handoffs/`.
+ * Wave G lint test: assert that only the `team` skill writes to `.omg/handoffs/`.
  *
- * `.omc/handoffs/` is intentionally shared across team runs to enable resume
+ * `.omg/handoffs/` is intentionally shared across team runs to enable resume
  * and post-mortem. Only code under `src/team/**` or `src/hooks/team-pipeline/**`
  * is permitted to write there. Any other writer is a governance violation.
  *
@@ -19,7 +19,7 @@ const SRC_ROOT = join(REPO_ROOT, 'src');
 const TEMPLATES_ROOT = join(REPO_ROOT, 'templates');
 
 /**
- * Allowed source directories that may reference `.omc/handoffs/` as writers.
+ * Allowed source directories that may reference `.omg/handoffs/` as writers.
  * Paths use forward slashes for cross-platform regex matching.
  */
 const ALLOWED_WRITER_PREFIXES = [
@@ -118,8 +118,8 @@ describe('handoffs-writers lint (Wave G)', () => {
     if (violations.length > 0) {
       const msg = [
         '',
-        'GOVERNANCE VIOLATION: Only src/team/** and src/hooks/team-pipeline/** may reference .omc/handoffs/.',
-        'See docs/REFERENCE.md § ".omc/handoffs/ shared contract" for the policy.',
+        'GOVERNANCE VIOLATION: Only src/team/** and src/hooks/team-pipeline/** may reference .omg/handoffs/.',
+        'See docs/REFERENCE.md § ".omg/handoffs/ shared contract" for the policy.',
         '',
         'Offending lines:',
         ...violations.map(v => `  ${v}`),

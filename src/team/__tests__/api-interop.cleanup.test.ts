@@ -283,7 +283,7 @@ describe('team api cleanup', () => {
     const teamRoot = teamStatePath(cwd, teamName);
     await mkdir(teamRoot, { recursive: true });
     await writeFile(join(teamRoot, 'orphan.txt'), 'stale', 'utf-8');
-    await writeText(cwd, `.omc/state/team/${teamName}/config.json`, '{bad-config');
+    await writeText(cwd, `.omg/state/team/${teamName}/config.json`, '{bad-config');
     const metadataPath = join(teamRoot, 'worktrees.json');
     await writeJson(teamStatePath(cwd, teamName, 'worktrees.json'), [{
       workerName: 'worker-1',

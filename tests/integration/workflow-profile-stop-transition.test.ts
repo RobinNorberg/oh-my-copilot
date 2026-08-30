@@ -68,7 +68,7 @@ function fixture(kind) {
   mkdirSync(project, { recursive: true });
   execFileSync('git', ['init'], { cwd: project, stdio: 'pipe' });
   writeFileSync(transcript, '');
-  const statePath = join(project, '.omc', 'state', 'sessions', sessionId, 'autopilot-state.json');
+  const statePath = join(project, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json');
   mkdirSync(dirname(statePath), { recursive: true });
 
   let hook = pluginHook;
@@ -943,7 +943,7 @@ describe.each(['plugin', 'installed-template'])('workflow profile stop transitio
   it('honors cancellation beside an already-loaded global fallback without recreating it', async () => {
     const f = fixture(kind);
     rmSync(f.statePath, { force: true });
-    const globalPath = join(f.home, '.omc', 'state', 'autopilot-state.json');
+    const globalPath = join(f.home, '.omg', 'state', 'autopilot-state.json');
     mkdirSync(dirname(globalPath), { recursive: true });
     const globalState = { active: true, mode: 'autopilot', phase: 'execution', prompt: workflowTask, project_path: f.project, session_id: f.sessionId, execution: { files_created: [], files_modified: [], current_task: 'ship' } };
     const snapshot = JSON.stringify(globalState);

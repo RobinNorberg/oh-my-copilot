@@ -147,7 +147,7 @@ describe('workflow profile state contract (#3487)', () => {
     const state = initAutopilot(testDir, 'partial named task', sessionId)!;
     const partialNamedState = { ...state, workflowRunId: '' } as typeof state;
     writeAutopilotState(testDir, partialNamedState, sessionId);
-    const statePath = join(testDir, '.omc', 'state', 'sessions', sessionId, 'autopilot-state.json');
+    const statePath = join(testDir, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json');
     const before = readFileSync(statePath);
     process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
 

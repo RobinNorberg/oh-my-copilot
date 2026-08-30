@@ -64,7 +64,7 @@ describe('Project Memory Storage', () => {
   describe('getMemoryPath', () => {
     it('should return correct memory file path', () => {
       const memoryPath = getMemoryPath(projectRoot);
-      expect(memoryPath).toBe(path.join(projectRoot, '.omc', 'project-memory.json'));
+      expect(memoryPath).toBe(path.join(projectRoot, '.omg', 'project-memory.json'));
     });
 
     it('should return centralized memory file path when OMC_STATE_DIR is set', async () => {
@@ -115,7 +115,7 @@ describe('Project Memory Storage', () => {
       await saveProjectMemory(projectRoot, memory);
 
       // Verify .omc directory exists
-      const omcDir = path.join(projectRoot, '.omc');
+      const omcDir = path.join(projectRoot, '.omg');
       const omcStat = await fs.stat(omcDir);
       expect(omcStat.isDirectory()).toBe(true);
 
@@ -149,7 +149,7 @@ describe('Project Memory Storage', () => {
         const centralizedPath = path.join(stateDir, 'non-git', 'project-memory.json');
         const centralizedContent = await fs.readFile(centralizedPath, 'utf-8');
         expect(JSON.parse(centralizedContent).projectRoot).toBe(projectRoot);
-        await expect(fs.access(path.join(projectRoot, '.omc', 'project-memory.json'))).rejects.toThrow();
+        await expect(fs.access(path.join(projectRoot, '.omg', 'project-memory.json'))).rejects.toThrow();
       } finally {
         delete process.env.OMC_STATE_DIR;
         await fs.rm(stateDir, { recursive: true, force: true });
@@ -262,7 +262,7 @@ describe('Project Memory Storage', () => {
 
     it('should return null for invalid JSON', async () => {
       // Create .omc directory
-      const omcDir = path.join(projectRoot, '.omc');
+      const omcDir = path.join(projectRoot, '.omg');
       await fs.mkdir(omcDir, { recursive: true });
 
       // Write invalid JSON
@@ -275,7 +275,7 @@ describe('Project Memory Storage', () => {
 
     it('should return null for memory with missing required fields', async () => {
       // Create .omc directory
-      const omcDir = path.join(projectRoot, '.omc');
+      const omcDir = path.join(projectRoot, '.omg');
       await fs.mkdir(omcDir, { recursive: true });
 
       // Write incomplete memory

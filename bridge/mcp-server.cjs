@@ -18157,7 +18157,7 @@ function getCopilotConfigDir() {
   const home = (0, import_os.homedir)();
   const configured = process.env.COPILOT_CONFIG_DIR?.trim();
   if (!configured) {
-    return stripTrailingSep((0, import_path.normalize)((0, import_path.join)(home, ".claude")));
+    return stripTrailingSep((0, import_path.normalize)((0, import_path.join)(home, ".copilot")));
   }
   if (configured === "~") {
     return stripTrailingSep((0, import_path.normalize)(home));
@@ -18213,7 +18213,7 @@ var STRICT_OVERRIDES = {
 var cachedConfig = null;
 function loadSecurityFromConfigFiles() {
   const paths = [
-    (0, import_path4.join)(process.cwd(), ".claude", "omc.jsonc"),
+    (0, import_path4.join)(process.cwd(), ".copilot", "omc.jsonc"),
     (0, import_path4.join)(getConfigDir(), "claude-omc", "config.jsonc")
   ];
   for (const configPath of paths) {
@@ -21290,21 +21290,21 @@ function encodeProjectPath(projectPath) {
 // src/lib/worktree-paths.ts
 var WORKSPACE_MARKER = ".omc-workspace";
 var OmcPaths = {
-  ROOT: ".omc",
-  STATE: ".omc/state",
-  SESSIONS: ".omc/state/sessions",
-  PLANS: ".omc/plans",
-  RESEARCH: ".omc/research",
-  NOTEPAD: ".omc/notepad.md",
-  PROJECT_MEMORY: ".omc/project-memory.json",
-  DRAFTS: ".omc/drafts",
-  NOTEPADS: ".omc/notepads",
-  LOGS: ".omc/logs",
-  SCIENTIST: ".omc/scientist",
-  AUTOPILOT: ".omc/autopilot",
-  SKILLS: ".omc/skills",
-  SHARED_MEMORY: ".omc/state/shared-memory",
-  DEEPINIT_MANIFEST: ".omc/deepinit-manifest.json"
+  ROOT: ".omg",
+  STATE: ".omg/state",
+  SESSIONS: ".omg/state/sessions",
+  PLANS: ".omg/plans",
+  RESEARCH: ".omg/research",
+  NOTEPAD: ".omg/notepad.md",
+  PROJECT_MEMORY: ".omg/project-memory.json",
+  DRAFTS: ".omg/drafts",
+  NOTEPADS: ".omg/notepads",
+  LOGS: ".omg/logs",
+  SCIENTIST: ".omg/scientist",
+  AUTOPILOT: ".omg/autopilot",
+  SKILLS: ".omg/skills",
+  SHARED_MEMORY: ".omg/state/shared-memory",
+  DEEPINIT_MANIFEST: ".omg/deepinit-manifest.json"
 };
 var MAX_WORKTREE_CACHE_SIZE = 8;
 var worktreeCacheMap = /* @__PURE__ */ new Map();
@@ -21423,7 +21423,7 @@ var SENSITIVE_DIR_BASENAMES = /* @__PURE__ */ new Set([
   "ssh",
   ".pki",
   ".config",
-  ".claude",
+  ".copilot",
   ".claude.json",
   ".codex",
   ".gemini",
@@ -22237,7 +22237,7 @@ function validateToolPath(inputPath) {
   const rel = (0, import_path13.relative)(normalizedRoot, normalizedPath);
   if (rel.startsWith("..") || (0, import_path13.isAbsolute)(rel)) {
     throw new Error(
-      `Path restricted: '${inputPath}' is outside the project root '${projectRoot}'. Disable via security.restrictToolPaths in .claude/omc.jsonc or unset OMC_SECURITY.`
+      `Path restricted: '${inputPath}' is outside the project root '${projectRoot}'. Disable via security.restrictToolPaths in .copilot/omc.jsonc or unset OMC_SECURITY.`
     );
   }
   return resolved;
@@ -25230,7 +25230,7 @@ function buildDefaultConfig() {
       execution: "solo"
     },
     planOutput: {
-      directory: ".omc/plans",
+      directory: ".omg/plans",
       filenameTemplate: "{{name}}.md"
     },
     teleport: {
@@ -26543,11 +26543,11 @@ function getLegacyStateFileCandidates(mode, root) {
     getStatePath(mode, root),
     (0, import_path27.join)(getOmcRoot(root), `${normalizedName}.json`)
   ];
-  if (mode === "autopilot" && getGitTopLevel(root)) candidates.push((0, import_path27.join)((0, import_os4.homedir)(), ".omc", "state", "autopilot-state.json"));
+  if (mode === "autopilot" && getGitTopLevel(root)) candidates.push((0, import_path27.join)((0, import_os4.homedir)(), ".omg", "state", "autopilot-state.json"));
   return [...new Set(candidates)];
 }
 function isSharedHomeAutopilotCandidate(path13, root) {
-  const sharedHomeStateRoot = (0, import_path27.resolve)((0, import_os4.homedir)(), ".omc", "state");
+  const sharedHomeStateRoot = (0, import_path27.resolve)((0, import_os4.homedir)(), ".omg", "state");
   const candidatePath = (0, import_path27.resolve)(path13);
   const canonicalStateRoot = (0, import_path27.resolve)(getOmcRoot(root), "state");
   const isDescendant = (ancestor, descendant) => {
@@ -28005,7 +28005,7 @@ var stateMigrateNonGitTool = {
   description: "Explicitly copy session-owned JSON state from a legacy non-git .omc root into the canonical non-git state root without overwriting or deleting source files.",
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: {
-    workingDirectory: external_exports.string().optional().describe("Legacy non-git working directory containing .omc/state/sessions/<session_id>"),
+    workingDirectory: external_exports.string().optional().describe("Legacy non-git working directory containing .omg/state/sessions/<session_id>"),
     session_id: external_exports.string().describe("Exact session owner to migrate")
   },
   handler: async (args) => {
@@ -29065,7 +29065,7 @@ var import_path30 = require("path");
 // src/hooks/rules-injector/constants.ts
 var import_path29 = require("path");
 var import_os5 = require("os");
-var OMC_STORAGE_DIR = (0, import_path29.join)((0, import_os5.homedir)(), ".omc");
+var OMC_STORAGE_DIR = (0, import_path29.join)((0, import_os5.homedir)(), ".omg");
 var RULES_INJECTOR_STORAGE = (0, import_path29.join)(OMC_STORAGE_DIR, "rules-injector");
 
 // src/hooks/project-memory/storage.ts
@@ -29758,7 +29758,7 @@ function getMainRepoRoot(projectRoot) {
   }
 }
 function getClaudeWorktreeParent(projectRoot) {
-  const marker = `${(0, import_path38.normalize)("/.claude/worktrees/")}`;
+  const marker = `${(0, import_path38.normalize)("/.copilot/worktrees/")}`;
   const normalizedRoot = (0, import_path38.normalize)(projectRoot);
   const idx = normalizedRoot.indexOf(marker);
   if (idx === -1) return null;
@@ -31851,7 +31851,7 @@ function resolveWikiRoot(workingDirectory) {
   return { ok: true, root: resolution.root };
 }
 function searchedSuffix(root, pages) {
-  return ` (searched ${pages} page${pages === 1 ? "" : "s"} in ${(0, import_node_path2.basename)(root)}/.omc/wiki)`;
+  return ` (searched ${pages} page${pages === 1 ? "" : "s"} in ${(0, import_node_path2.basename)(root)}/.omg/wiki)`;
 }
 var wikiIngestTool = {
   name: "wiki_ingest",
@@ -32066,7 +32066,7 @@ var wikiAddTool = {
         content: [{
           type: "text",
           text: `Wiki page created: ${result.created[0]}
-Path: .omc/wiki/${result.created[0]}`
+Path: .omg/wiki/${result.created[0]}`
         }]
       };
     } catch (error2) {
@@ -32274,7 +32274,7 @@ var import_path43 = require("path");
 var import_path42 = require("path");
 var import_os6 = require("os");
 var USER_SKILLS_DIR = (0, import_path42.join)(getCopilotConfigDir(), "skills", "omc-learned");
-var GLOBAL_SKILLS_DIR = (0, import_path42.join)((0, import_os6.homedir)(), ".omc", "skills");
+var GLOBAL_SKILLS_DIR = (0, import_path42.join)((0, import_os6.homedir)(), ".omg", "skills");
 var PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
 var PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path42.join)(".agents", "skills");
 var MAX_RECURSION_DEPTH = 10;
@@ -32605,7 +32605,7 @@ function formatSkillOutput(skills) {
 }
 var loadLocalTool = {
   name: "load_omc_skills_local",
-  description: "Load and list skills from the project-local .omc/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.",
+  description: "Load and list skills from the project-local .omg/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.",
   schema: loadLocalSchema,
   handler: async (args) => {
     const projectRoot = args.projectRoot ? validateProjectRoot(args.projectRoot) : process.cwd();
@@ -32623,7 +32623,7 @@ ${formatSkillOutput(projectSkills)}`
 };
 var loadGlobalTool = {
   name: "load_omc_skills_global",
-  description: "Load and list skills from global user directories (~/.omc/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
+  description: "Load and list skills from global user directories (~/.omg/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
   schema: loadGlobalSchema,
   handler: async (_args) => {
     const allSkills = loadAllSkills(null);
@@ -32667,8 +32667,8 @@ ${formatSkillOutput(userSkills)}`;
 No skill files were discovered in any searched directories.
 
 Searched:
-- Project: .omc/skills/
-- Global: ~/.omc/skills/
+- Project: .omg/skills/
+- Global: ~/.omg/skills/
 - Claude config: ${getCopilotConfigDir()}/skills/omc-learned/`;
     }
     return {

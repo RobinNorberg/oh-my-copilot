@@ -11,7 +11,7 @@ import type { StopContext } from '../../todo-continuation/index.js';
 function makeRalphWorktree(sessionId: string): string {
   const tempDir = mkdtempSync(join(tmpdir(), 'thinking-only-streak-'));
   execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(
     join(stateDir, 'ralph-state.json'),

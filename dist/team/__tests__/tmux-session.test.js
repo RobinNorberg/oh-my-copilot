@@ -615,7 +615,7 @@ describe('shouldAttemptAdaptiveRetry', () => {
 describe('pane readiness startup banners', () => {
     it('does not treat Claude bypass-permissions startup banner as ready', () => {
         const capture = [
-            'Read .omc/state/team/example/workers/worker-1/inbox.md, execute now, report concrete progress.',
+            'Read .omg/state/team/example/workers/worker-1/inbox.md, execute now, report concrete progress.',
             '─────────────────────────────────────────────',
             '[OMC] Starting...',
             '⏵⏵ bypass permissions on (shift+tab to cycle)',

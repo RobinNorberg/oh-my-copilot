@@ -7,15 +7,15 @@ let rootDir = '';
 
 vi.mock('../../lib/worktree-paths.js', () => ({
   validateWorkingDirectory: (workingDirectory?: string) => workingDirectory ?? rootDir,
-  getOmcRoot: (worktreeRoot?: string) => join(worktreeRoot ?? rootDir, '.omc'),
+  getOmcRoot: (worktreeRoot?: string) => join(worktreeRoot ?? rootDir, '.omg'),
   ensureSessionStateDir: (sessionId: string, worktreeRoot?: string) => {
-    const sessionDir = join(worktreeRoot ?? rootDir, '.omc', 'state', 'sessions', sessionId);
+    const sessionDir = join(worktreeRoot ?? rootDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(sessionDir, { recursive: true });
     return sessionDir;
   },
   resolveSessionStatePath: (stateName: string, sessionId: string, worktreeRoot?: string) => {
     const normalizedName = stateName.endsWith('-state') ? stateName : `${stateName}-state`;
-    return join(worktreeRoot ?? rootDir, '.omc', 'state', 'sessions', sessionId, `${normalizedName}.json`);
+    return join(worktreeRoot ?? rootDir, '.omg', 'state', 'sessions', sessionId, `${normalizedName}.json`);
   },
 }));
 
@@ -31,7 +31,7 @@ describe('HUD session-scoped state', () => {
   });
 
   it('writes HUD state into the current session directory and clears stale root fallback', () => {
-    const staleRootDir = join(rootDir, '.omc');
+    const staleRootDir = join(rootDir, '.omg');
     mkdirSync(staleRootDir, { recursive: true });
     writeFileSync(
       join(staleRootDir, 'hud-state.json'),
@@ -49,27 +49,27 @@ describe('HUD session-scoped state', () => {
 
     expect(result).toBe(true);
 
-    const sessionFile = join(rootDir, '.omc', 'state', 'sessions', 'session-123', 'hud-state.json');
+    const sessionFile = join(rootDir, '.omg', 'state', 'sessions', 'session-123', 'hud-state.json');
     expect(existsSync(sessionFile)).toBe(true);
-    expect(existsSync(join(rootDir, '.omc', 'hud-state.json'))).toBe(false);
+    expect(existsSync(join(rootDir, '.omg', 'hud-state.json'))).toBe(false);
 
     const written = JSON.parse(readFileSync(sessionFile, 'utf-8')) as { sessionId?: string };
     expect(written.sessionId).toBe('session-123');
   });
 
   it('reads only the session-scoped HUD state when a sessionId is provided', () => {
-    mkdirSync(join(rootDir, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(rootDir, '.omg', 'state'), { recursive: true });
     writeFileSync(
-      join(rootDir, '.omc', 'state', 'hud-state.json'),
+      join(rootDir, '.omg', 'state', 'hud-state.json'),
       JSON.stringify({ timestamp: '2024-01-01T00:00:00.000Z', backgroundTasks: [{ id: 'stale-root' }] }),
     );
     writeFileSync(
-      join(rootDir, '.omc', 'hud-state.json'),
+      join(rootDir, '.omg', 'hud-state.json'),
       JSON.stringify({ timestamp: '2024-01-01T00:00:00.000Z', backgroundTasks: [{ id: 'legacy-root' }] }),
     );
-    mkdirSync(join(rootDir, '.omc', 'state', 'sessions', 'session-999'), { recursive: true });
+    mkdirSync(join(rootDir, '.omg', 'state', 'sessions', 'session-999'), { recursive: true });
     writeFileSync(
-      join(rootDir, '.omc', 'state', 'sessions', 'session-999', 'hud-state.json'),
+      join(rootDir, '.omg', 'state', 'sessions', 'session-999', 'hud-state.json'),
       JSON.stringify({ timestamp: '2024-01-02T00:00:00.000Z', backgroundTasks: [{ id: 'session-state' }], sessionId: 'session-999' }),
     );
 
@@ -79,13 +79,13 @@ describe('HUD session-scoped state', () => {
   });
 
   it('does not revive root HUD state when the current session-scoped file is missing', () => {
-    mkdirSync(join(rootDir, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(rootDir, '.omg', 'state'), { recursive: true });
     writeFileSync(
-      join(rootDir, '.omc', 'state', 'hud-state.json'),
+      join(rootDir, '.omg', 'state', 'hud-state.json'),
       JSON.stringify({ timestamp: '2024-01-01T00:00:00.000Z', backgroundTasks: [{ id: 'stale-root' }] }),
     );
     writeFileSync(
-      join(rootDir, '.omc', 'hud-state.json'),
+      join(rootDir, '.omg', 'hud-state.json'),
       JSON.stringify({ timestamp: '2024-01-01T00:00:00.000Z', backgroundTasks: [{ id: 'legacy-root' }] }),
     );
 

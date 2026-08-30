@@ -58,7 +58,7 @@ describe('multi-repo workspace team writes', () => {
     if (parent) rmSync(parent, { recursive: true, force: true });
   });
 
-  const sharedOmc = () => join(parent, '.omc');
+  const sharedOmc = () => join(parent, '.omg');
 
   it('audit log writes land under the shared .omc, not the sub-repo', () => {
     const event: AuditEvent = {
@@ -73,7 +73,7 @@ describe('multi-repo workspace team writes', () => {
     const logPath = join(sharedOmc(), 'logs', `team-bridge-${teamName}.jsonl`);
     expect(existsSync(logPath)).toBe(true);
     // Must NOT have written into the sub-repo's local .omc.
-    expect(existsSync(join(api, '.omc', 'logs', `team-bridge-${teamName}.jsonl`))).toBe(false);
+    expect(existsSync(join(api, '.omg', 'logs', `team-bridge-${teamName}.jsonl`))).toBe(false);
     expect(readAuditLog(api, teamName)).toHaveLength(1);
   });
 

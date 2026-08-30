@@ -14,9 +14,9 @@ describe('bridge-entry security', () => {
     expect(source).toContain('validateBridgeWorkingDirectory');
   });
 
-  it('validates config path is under ~/.claude/ or .omc/', () => {
+  it('validates config path is under ~/.claude/ or .omg/', () => {
     expect(source).toContain('.claude/');
-    expect(source).toContain('.omc/');
+    expect(source).toContain('.omg/');
   });
 
   it('sanitizes team and worker names', () => {
@@ -75,7 +75,7 @@ describe('validateConfigPath', () => {
   const claudeConfigDir = '/home/user/.claude';
 
   it('should reject paths outside home directory', () => {
-    expect(validateConfigPath('/tmp/.omc/config.json', home, claudeConfigDir)).toBe(false);
+    expect(validateConfigPath('/tmp/.omg/config.json', home, claudeConfigDir)).toBe(false);
   });
 
   it('should reject paths without trusted subpath', () => {
@@ -86,8 +86,8 @@ describe('validateConfigPath', () => {
     expect(validateConfigPath('/home/user/.claude/teams/foo/config.json', home, claudeConfigDir)).toBe(true);
   });
 
-  it('should accept paths under project/.omc/', () => {
-    expect(validateConfigPath('/home/user/project/.omc/state/config.json', home, claudeConfigDir)).toBe(true);
+  it('should accept paths under project/.omg/', () => {
+    expect(validateConfigPath('/home/user/project/.omg/state/config.json', home, claudeConfigDir)).toBe(true);
   });
 
   it('should reject path that matches subpath but not home', () => {

@@ -43,7 +43,7 @@ describe('assignTask trigger delivery', () => {
         process.env.USERPROFILE = cwd;
         delete process.env.OMC_STATE_DIR;
         const teamName = 'assign-team';
-        const root = join(cwd, '.omc', 'state', 'team', teamName);
+        const root = join(cwd, '.omg', 'state', 'team', teamName);
         mkdirSync(join(root, 'tasks'), { recursive: true });
         writeFileSync(join(root, 'tasks', 'task-1.json'), JSON.stringify({
             id: '1',
@@ -69,7 +69,7 @@ describe('assignTask trigger delivery', () => {
         previousUserProfile = process.env.USERPROFILE;
         process.env.HOME = cwd;
         process.env.USERPROFILE = cwd;
-        const root = join(cwd, '.omc', 'state', 'team', 'assign-team');
+        const root = join(cwd, '.omg', 'state', 'team', 'assign-team');
         mkdirSync(join(root, 'tasks'), { recursive: true });
         writeFileSync(join(root, 'tasks', 'task-1.json'), JSON.stringify({
             id: '1',

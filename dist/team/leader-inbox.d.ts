@@ -5,7 +5,7 @@
 export declare function leaderInboxPath(teamName: string, cwd: string): string;
 /**
  * Ensures the leader inbox directory and seed file exist.
- * Creates .omc/state/team/{team}/leader/ and seeds inbox.md with a header banner.
+ * Creates .omg/state/team/{team}/leader/ and seeds inbox.md with a header banner.
  * Returns the absolute path to inbox.md.
  * Idempotent: safe to call multiple times.
  * Validates path is within cwd to prevent traversal.

@@ -15,8 +15,8 @@ describe('Ralph PRD-Mandatory', () => {
         process.env.HOME = testDir;
         process.env.USERPROFILE = testDir;
         mkdirSync(testDir, { recursive: true });
-        // Create .omc/state directory for ralph state files
-        mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
+        // Create .omg/state directory for ralph state files
+        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
     });
     afterEach(() => {
         if (existsSync(testDir)) {
@@ -170,7 +170,7 @@ describe('Ralph PRD-Mandatory', () => {
             expect(state).not.toBeNull();
             expect(state.prd_mode).toBe(true);
             expect(Object.prototype.hasOwnProperty.call(state, 'linked_ultrawork')).toBe(false);
-            expect(existsSync(join(testDir, '.omc', 'state', 'ultrawork-state.json'))).toBe(false);
+            expect(existsSync(join(testDir, '.omg', 'state', 'ultrawork-state.json'))).toBe(false);
         });
         it('should set current_story_id to next incomplete story', () => {
             const prd = {

@@ -144,7 +144,7 @@ async function main() {
 
   const results = [];
   const base = buildFixture();
-  const ws_omc = join(base, '.omc');
+  const ws_omc = join(base, '.omg');
   const sid = 'audit-session-1';
 
   // ── 1. ultragoal — ultragoalDir(cwd, planId) ──────────────────────────────
@@ -159,7 +159,7 @@ process.stdout.write(JSON.stringify({ dir }) + '\\n');
     } else {
       const expected = join(ws_omc, 'ultragoal');
       results.push(r.data.dir === expected
-        ? pass(1, `ultragoal dir → workspace .omc/ultragoal`)
+        ? pass(1, `ultragoal dir → workspace .omg/ultragoal`)
         : fail(1, 'ultragoalDir should resolve under workspace .omc', expected, r.data.dir));
     }
   }
@@ -257,7 +257,7 @@ process.stdout.write(JSON.stringify({ write: p.effectiveWrite }) + '\\n');
         try {
           const parsed = JSON.parse(stdout);
           results.push(parsed.base_root?.startsWith(ws_omc)
-            ? pass(7, `self-improve base_root → workspace .omc/self-improve`)
+            ? pass(7, `self-improve base_root → workspace .omg/self-improve`)
             : fail(7, 'self-improve base_root should be under workspace .omc',
                 join(ws_omc, 'self-improve'), parsed.base_root));
         } catch (e) {
@@ -278,8 +278,8 @@ process.stdout.write(JSON.stringify({ dir }) + '\\n');
     else {
       const expected = join(ws_omc, 'state', 'interop');
       results.push(r.data.dir === expected
-        ? pass(8, `interop dir → workspace .omc/state/interop`)
-        : fail(8, 'interop dir should be workspace .omc/state/interop', expected, r.data.dir));
+        ? pass(8, `interop dir → workspace .omg/state/interop`)
+        : fail(8, 'interop dir should be workspace .omg/state/interop', expected, r.data.dir));
     }
   }
 
@@ -292,7 +292,7 @@ process.stdout.write(JSON.stringify({ root, specsPath }) + '\\n');
 `);
     if (!r.ok) results.push(fail(9, `autoresearch probe error: ${r.error}`));
     else results.push(r.data.root.startsWith(ws_omc)
-      ? pass(9, `autoresearch specs path → workspace .omc/specs`)
+      ? pass(9, `autoresearch specs path → workspace .omg/specs`)
       : fail(9, 'autoresearch specs should be under workspace .omc',
           join(ws_omc, 'specs'), r.data.specsPath));
   }
@@ -326,14 +326,14 @@ process.stdout.write(JSON.stringify({ notepadPath, memoryPath }) + '\\n');
     retrofitBase = mkdtempSync(join(tmpdir(), 'omc-audit-retrofit-'));
   }
   gitInit(join(retrofitBase, 'api'));
-  const legacyStateDir  = join(retrofitBase, 'api', '.omc', 'state');
+  const legacyStateDir  = join(retrofitBase, 'api', '.omg', 'state');
   const legacyStateFile = join(legacyStateDir, 'ralph-state.json');
   mkdirSync(legacyStateDir, { recursive: true });
   writeFileSync(legacyStateFile, JSON.stringify({ iteration: 3 }));
 
   // 11. legacy state exists BEFORE marker drop
   results.push(existsSync(legacyStateFile)
-    ? pass(11, `legacy api/.omc/state/ralph-state.json created before .omc-workspace drop`)
+    ? pass(11, `legacy api/.omg/state/ralph-state.json created before .omc-workspace drop`)
     : fail(11, 'legacy state file should exist before workspace marker drop', legacyStateFile, 'missing'));
 
   // 12. drop .omc-workspace marker
@@ -352,7 +352,7 @@ process.stdout.write(JSON.stringify({ root }) + '\\n');
 `);
     const stderr = r.stderr ?? '';
     const hasWarning     = stderr.includes('workspace-retrofit warning');
-    const hasLegacyPath  = stderr.includes(join(retrofitBase, 'api', '.omc'));
+    const hasLegacyPath  = stderr.includes(join(retrofitBase, 'api', '.omg'));
     const hasMigrateHint = stderr.includes('OMC_MIGRATE_LEGACY_STATE');
     results.push(hasWarning && hasLegacyPath && hasMigrateHint
       ? pass(13, `warnSiblingRetrofit fires with legacy path + OMC_MIGRATE_LEGACY_STATE hint`)
@@ -370,7 +370,7 @@ process.stdout.write(JSON.stringify({ root }) + '\\n');
     } else {
       const content = JSON.parse(readFileSync(legacyStateFile, 'utf-8'));
       results.push(content.iteration === 3
-        ? pass(14, `legacy api/.omc/state/ralph-state.json unchanged after retrofit (no auto-migration)`)
+        ? pass(14, `legacy api/.omg/state/ralph-state.json unchanged after retrofit (no auto-migration)`)
         : fail(14, 'legacy file content changed unexpectedly',
             JSON.stringify({ iteration: 3 }), JSON.stringify(content)));
     }
@@ -389,7 +389,7 @@ process.stdout.write(JSON.stringify({ root }) + '\\n');
       results.push(fail(15, `rollback probe error: ${r.error}`));
     } else {
       const { root } = r.data;
-      const expectedFallback = join(base, 'api', '.omc');
+      const expectedFallback = join(base, 'api', '.omg');
       if (root !== ws_omc && root.startsWith(join(base, 'api'))) {
         results.push(pass(15, `OMC_DISABLE_MULTIREPO=1 bypasses workspace anchor → api/.omc`));
       } else if (root === ws_omc) {

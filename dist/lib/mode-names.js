@@ -41,7 +41,7 @@ export const ALL_MODE_NAMES = [
 ];
 /**
  * Mode state file mapping — the canonical filename for each mode's state file
- * relative to `.omc/state/`.
+ * relative to `.omg/state/`.
  */
 export const MODE_STATE_FILE_MAP = {
     [MODE_NAMES.AUTOPILOT]: 'autopilot-state.json',

@@ -62,7 +62,7 @@ describe('spawnWorkerForTask task orphan prevention', () => {
         const taskIndex = 0;
         const taskId = String(taskIndex + 1);
         // Create task directory and initial task file (status: pending)
-        const tasksDir = join(tmpDir, '.omc', 'state', 'team', teamName, 'tasks');
+        const tasksDir = join(tmpDir, '.omg', 'state', 'team', teamName, 'tasks');
         mkdirSync(tasksDir, { recursive: true });
         writeFileSync(join(tasksDir, `${taskId}.json`), JSON.stringify({
             id: taskId,

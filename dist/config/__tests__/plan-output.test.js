@@ -6,8 +6,8 @@ describe("plan output helpers", () => {
         expect(getPlanOutputFilenameTemplate()).toBe(DEFAULT_PLAN_OUTPUT_FILENAME_TEMPLATE);
     });
     it("renders default artifact paths", () => {
-        expect(resolveAutopilotPlanPath()).toBe(".omc/plans/autopilot-impl.md");
-        expect(resolveOpenQuestionsPlanPath()).toBe(".omc/plans/open-questions.md");
+        expect(resolveAutopilotPlanPath()).toBe(".omg/plans/autopilot-impl.md");
+        expect(resolveOpenQuestionsPlanPath()).toBe(".omg/plans/open-questions.md");
     });
     it("applies custom directory and filename template", () => {
         const config = {
@@ -26,7 +26,7 @@ describe("plan output helpers", () => {
                 filenameTemplate: "../bad.md",
             },
         };
-        expect(resolvePlanOutputPath("Autopilot Impl", config)).toBe(".omc/plans/autopilot-impl.md");
+        expect(resolvePlanOutputPath("Autopilot Impl", config)).toBe(".omg/plans/autopilot-impl.md");
     });
     it("builds absolute paths from the configured relative output path", () => {
         const config = {

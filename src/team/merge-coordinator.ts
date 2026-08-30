@@ -174,7 +174,7 @@ export function mergeWorkerBranch(
 
   try {
     // Abort if working tree has uncommitted changes to tracked files to prevent clobbering.
-    // Uses diff-index which ignores untracked files (e.g. .omc/ worktree metadata).
+    // Uses diff-index which ignores untracked files (e.g. .omg/ worktree metadata).
     try {
       execFileSync('git', ['diff-index', '--quiet', 'HEAD', '--'], {
         cwd: repoRoot, stdio: 'pipe', windowsHide: true

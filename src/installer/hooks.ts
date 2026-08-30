@@ -88,7 +88,7 @@ function normalizePath(value: string): string {
 }
 
 function isDefaultClaudeConfigDir(): boolean {
-  return normalizePath(getCopilotConfigDir()) === normalizePath(join(homedir(), '.claude'));
+  return normalizePath(getCopilotConfigDir()) === normalizePath(join(homedir(), '.copilot'));
 }
 
 function quoteCommandPath(path: string): string {

@@ -200,7 +200,7 @@ export interface PluginConfig {
 
   // Plan output configuration (issue #1636)
   planOutput?: {
-    /** Relative directory for generated plan artifacts. Default: .omc/plans */
+    /** Relative directory for generated plan artifacts. Default: .omg/plans */
     directory?: string;
     /** Filename template. Supported tokens: {{name}}, {{kind}}. Default: {{name}}.md */
     filenameTemplate?: string;

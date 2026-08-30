@@ -49,7 +49,7 @@ describe('install() settings.json lost-update protection (issue #2584)', () => {
         homeDir = join(tempRoot, 'home');
         claudeConfigDir = join(homeDir, '.claude');
         codexHome = join(tempRoot, '.codex');
-        omcHome = join(tempRoot, '.omc');
+        omcHome = join(tempRoot, '.omg');
         mkdirSync(homeDir, { recursive: true });
         mkdirSync(claudeConfigDir, { recursive: true });
         mkdirSync(codexHome, { recursive: true });

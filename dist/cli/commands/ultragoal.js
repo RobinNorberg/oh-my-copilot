@@ -16,20 +16,20 @@ Aliases:
   create -> create-goals, complete|next|start-next -> complete-goals
 
 Artifacts (single-plan, default for monorepo / single session):
-  .omc/ultragoal/brief.md
-  .omc/ultragoal/goals.json
-  .omc/ultragoal/ledger.jsonl
+  .omg/ultragoal/brief.md
+  .omg/ultragoal/goals.json
+  .omg/ultragoal/ledger.jsonl
 
 Artifacts (multi-plan, enabled by --plan-id or --auto-plan-id):
-  .omc/ultragoal/plans/{planId}/brief.md
-  .omc/ultragoal/plans/{planId}/goals.json
-  .omc/ultragoal/plans/{planId}/ledger.jsonl
+  .omg/ultragoal/plans/{planId}/brief.md
+  .omg/ultragoal/plans/{planId}/goals.json
+  .omg/ultragoal/plans/{planId}/ledger.jsonl
 
 Multi-plan resolution:
   When --plan-id is omitted, ultragoal selects the legacy plan if present,
   otherwise the single multi-plan if there's exactly one. If multiple plans
   exist, --plan-id becomes required. Use multi-plan mode for parallel
-  ultragoal runs in a shared .omc/ (multi-repo workspaces; see .omc-workspace).
+  ultragoal runs in a shared .omg/ (multi-repo workspaces; see .omc-workspace).
 
 Claude /goal integration:
   This command cannot directly invoke the Claude Code /goal slash command from a shell;

@@ -99,7 +99,7 @@ const SKILL_ENTRIES = [
     // are `keep`.
     entry({ name: 'autopilot', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained as a directly-invocable end-to-end workflow alongside execute (owner direction, 5.0.0).' }),
     entry({ name: 'autoresearch', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained as its own research lane entrypoint alongside research (owner direction, 5.0.0).' }),
-    entry({ name: 'ultragoal', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained as the durable multi-goal workflow with its own .omc/ultragoal artifacts (owner direction, 5.0.0).' }),
+    entry({ name: 'ultragoal', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained as the durable multi-goal workflow with its own .omg/ultragoal artifacts (owner direction, 5.0.0).' }),
     entry({ name: 'ralph', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained: src/hooks/ralph is a live subsystem, `ralph` is a wired KeywordType and slash skill, and it is autopilot\'s verification engine (owner direction, 5.0.0).' }),
     // Release maintainer boundary (owner decision 2): compatibility alias to
     // maintainer-only `omc release`; fail-closed. Explicitly exempt from the

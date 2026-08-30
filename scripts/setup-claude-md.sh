@@ -126,14 +126,14 @@ ensure_local_omc_git_exclude() {
   [ ! -f "$exclude_path" ] || [ ! -s "$exclude_path" ] || printf '\n' >> "$exclude_path"
   cat >> "$exclude_path" <<'EOF'
 # BEGIN OMC local artifacts
-!.omc/
-.omc/*
-!.omc/skills/
-!.omc/skills/**
+!.omg/
+.omg/*
+!.omg/skills/
+!.omg/skills/**
 .omx/
 # END OMC local artifacts
 EOF
-  echo "Configured git exclude for local OMC/OMX artifacts (preserving .omc/skills/)"
+  echo "Configured git exclude for local OMC/OMX artifacts (preserving .omg/skills/)"
 }
 
 install_reference_skill() {

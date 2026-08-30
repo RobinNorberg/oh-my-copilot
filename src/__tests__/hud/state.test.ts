@@ -385,7 +385,7 @@ describe("writeHudConfig", () => {
   it("merges legacy hud-config defaults into the written omcHud payload", () => {
     mockExistsSync.mockImplementation((path) => {
       const s = String(path);
-      return s.endsWith("settings.json") || s.endsWith(".omc/hud-config.json");
+      return s.endsWith("settings.json") || s.endsWith(".omg/hud-config.json");
     });
     mockReadFileSync.mockImplementation((path) => {
       const s = String(path);

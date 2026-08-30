@@ -15,11 +15,11 @@ import { getOmcRoot } from '../../lib/worktree-paths.js';
 // Constants
 // ============================================================================
 const REQUIRED_DIRECTORIES = [
-    '.omc/state',
-    '.omc/logs',
-    '.omc/notepads',
-    '.omc/state/checkpoints',
-    '.omc/plans',
+    '.omg/state',
+    '.omg/logs',
+    '.omg/notepads',
+    '.omg/state/checkpoints',
+    '.omg/plans',
 ];
 const CONFIG_FILES = [
     '.omc-config.json',
@@ -143,7 +143,7 @@ export function patchHooksJsonForWindows(pluginRoot) {
     }
 }
 /**
- * Ensure ~/.claude/hooks/lib/stdin.mjs points to the current plugin version.
+ * Ensure ~/.copilot/hooks/lib/stdin.mjs points to the current plugin version.
  *
  * This fixes a silent breakage that occurs when OMC upgrades to a new version:
  * the symlink stays pointing at the old version's cache dir, so hooks that
@@ -298,7 +298,7 @@ export async function processSetupInit(input) {
 // Maintenance Functions
 // ============================================================================
 /**
- * Prune old state files from .omc/state directory
+ * Prune old state files from .omg/state directory
  */
 export function pruneOldStateFiles(directory, maxAgeDays = DEFAULT_STATE_MAX_AGE_DAYS) {
     const stateDir = join(getOmcRoot(directory), 'state');

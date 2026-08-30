@@ -3,7 +3,7 @@
  * Generate deterministic prompt projections for #3705.
  * Canonical source: docs/CLAUDE.md (between OMC markers).
  * Outputs: CLAUDE.md, .github/CLAUDE.md with unified version + digest.
- * Also emits .omc/projection-manifest.json when not in verify mode.
+ * Also emits .omg/projection-manifest.json when not in verify mode.
  *
  * Determinism: fixed marker framing, version from package.json, LF normalization,
  * and stable ordering. Build fails on stale projections when --verify is set.
@@ -78,7 +78,7 @@ async function main() {
   }
   // Emit manifest for migration evidence (non-blocking for #3704)
   try {
-    const outDir=join(root,'.omc');
+    const outDir=join(root,'.omg');
     await mkdir(outDir,{recursive:true});
     const manifest={
       schemaVersion: 1,
@@ -88,7 +88,7 @@ async function main() {
       projections: targets.map(p=>({kind:'claude',sourcePath:'docs/CLAUDE.md',outputPath:p,digest:composedDigest,byteLength: Buffer.byteLength(composed,'utf8')})),
     };
     await writeFile(join(outDir,'projection-manifest.json'), JSON.stringify(manifest,null,2)+'\n');
-    console.error(`[generate] manifest .omc/projection-manifest.json sourceRevision=${bodyDigest.slice(0,12)}`);
+    console.error(`[generate] manifest .omg/projection-manifest.json sourceRevision=${bodyDigest.slice(0,12)}`);
   } catch (e) { console.error(`[generate] manifest skipped: ${String(e)}`); }
 }
 main().catch(e=>{ console.error(String(e?.stack ?? e)); process.exit(1); });

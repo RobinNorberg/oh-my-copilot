@@ -49,7 +49,7 @@ describe('state-manager cache', () => {
         return filePath;
     }
     function writeLegacyStateToDisk(name, data) {
-        const legacyDir = path.join(TEST_WORKTREE_ROOT, '.omc', 'state');
+        const legacyDir = path.join(TEST_WORKTREE_ROOT, '.omg', 'state');
         fs.mkdirSync(legacyDir, { recursive: true });
         const filePath = path.join(legacyDir, `${name}.json`);
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
@@ -112,12 +112,12 @@ describe('state-manager cache', () => {
             expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining(`Failed to read state from ${standardPath}`), expect.any(SyntaxError));
         });
         it('should report missing state with warning evidence when legacy JSON is malformed', () => {
-            const legacyPath = path.join(TEST_WORKTREE_ROOT, '.omc', 'state', 'boulder.json');
+            const legacyPath = path.join(TEST_WORKTREE_ROOT, '.omg', 'state', 'boulder.json');
             fs.mkdirSync(path.dirname(legacyPath), { recursive: true });
             fs.writeFileSync(legacyPath, '{ malformed legacy json', 'utf-8');
             const result = readState('boulder', StateLocation.LOCAL, { checkLegacy: true });
             expect(result.exists).toBe(false);
-            expect(result.legacyLocations).toEqual(['.omc/state/boulder.json']);
+            expect(result.legacyLocations).toEqual(['.omg/state/boulder.json']);
             expect(consoleWarnSpy).toHaveBeenCalledWith(expect.stringContaining(`Failed to read legacy state from ${legacyPath}`), expect.any(SyntaxError));
         });
     });
@@ -150,7 +150,7 @@ describe('cleanupStaleStates', () => {
     let consoleWarnSpy;
     beforeEach(() => {
         tmpDir = fs.mkdtempSync(path.join('/tmp', 'omc-cleanup-test-'));
-        const stateDir = path.join(tmpDir, '.omc', 'state');
+        const stateDir = path.join(tmpDir, '.omg', 'state');
         fs.mkdirSync(stateDir, { recursive: true });
         clearStateCache();
         consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
@@ -164,13 +164,13 @@ describe('cleanupStaleStates', () => {
         catch { /* best-effort */ }
     });
     function writeStateFile(name, data) {
-        const stateDir = path.join(tmpDir, '.omc', 'state');
+        const stateDir = path.join(tmpDir, '.omg', 'state');
         const filePath = path.join(stateDir, `${name}.json`);
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
         return filePath;
     }
     function readStateFile(name) {
-        const filePath = path.join(tmpDir, '.omc', 'state', `${name}.json`);
+        const filePath = path.join(tmpDir, '.omg', 'state', `${name}.json`);
         return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     }
     it('should deactivate stale active entries', () => {

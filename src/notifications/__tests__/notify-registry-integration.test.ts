@@ -252,7 +252,7 @@ describe("notify() -> session-registry integration", () => {
     });
 
     expect(result).not.toBeNull();
-    expect(mockGetNewPaneTail).toHaveBeenCalledWith("%42", join(fixtureHome, ".omc/state"), 23);
+    expect(mockGetNewPaneTail).toHaveBeenCalledWith("%42", join(fixtureHome, ".omg/state"), 23);
     expect(mockCapturePaneContent).not.toHaveBeenCalled();
   });
 

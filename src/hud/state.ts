@@ -46,7 +46,7 @@ import {
 // ============================================================================
 
 /**
- * Get the HUD state file path in the project's .omc/state directory
+ * Get the HUD state file path in the project's .omg/state directory
  */
 function getLocalStateFilePath(directory?: string): string {
   const baseDir = validateWorkingDirectory(directory);
@@ -78,7 +78,7 @@ function getSettingsFilePath(): string {
  * Get the HUD config file path (legacy)
  */
 function getConfigFilePath(): string {
-  return join(getCopilotConfigDir(), ".omc", "hud-config.json");
+  return join(getCopilotConfigDir(), ".omg", "hud-config.json");
 }
 
 function readJsonFile<T>(filePath: string): T | null {
@@ -161,7 +161,7 @@ function mergeElementsForWrite(
 }
 
 /**
- * Ensure the .omc/state directory exists
+ * Ensure the .omg/state directory exists
  */
 function ensureStateDir(directory?: string): void {
   const baseDir = validateWorkingDirectory(directory);
@@ -223,7 +223,7 @@ export function readHudState(
     }
   }
 
-  // Check new local state first (.omc/state/hud-state.json)
+  // Check new local state first (.omg/state/hud-state.json)
   const localStateFile = getLocalStateFilePath(directory);
   if (existsSync(localStateFile)) {
     try {
@@ -238,7 +238,7 @@ export function readHudState(
     }
   }
 
-  // Check legacy local state (.omc/hud-state.json)
+  // Check legacy local state (.omg/hud-state.json)
   const legacyStateFile = getLegacyRootStateFilePath(directory);
   if (existsSync(legacyStateFile)) {
     try {

@@ -10,8 +10,8 @@ describe('wiki hook wrapper output', () => {
     let tempDir;
     beforeEach(() => {
         tempDir = mkdtempSync(join(homedir(), 'omc-wiki-hook-format-'));
-        mkdirSync(join(tempDir, '.omc', 'wiki'), { recursive: true });
-        writeFileSync(join(tempDir, '.omc', 'wiki', 'test-page.md'), [
+        mkdirSync(join(tempDir, '.omg', 'wiki'), { recursive: true });
+        writeFileSync(join(tempDir, '.omg', 'wiki', 'test-page.md'), [
             '---',
             'title: "Test Page"',
             'tags: ["test"]',
@@ -26,7 +26,7 @@ describe('wiki hook wrapper output', () => {
             '# Test Page',
             '',
         ].join('\n'));
-        writeFileSync(join(tempDir, '.omc', 'wiki', 'index.md'), '# Wiki Index\n- test-page.md\n');
+        writeFileSync(join(tempDir, '.omg', 'wiki', 'index.md'), '# Wiki Index\n- test-page.md\n');
     });
     afterEach(() => {
         rmSync(tempDir, { recursive: true, force: true });
@@ -47,7 +47,7 @@ describe('wiki hook wrapper output', () => {
         expect(output.additionalContext).toBeUndefined();
         expect(output.hookSpecificOutput).toEqual({
             hookEventName: 'SessionStart',
-            additionalContext: expect.stringContaining('[LLM Wiki: 1 pages at .omc/wiki/]'),
+            additionalContext: expect.stringContaining('[LLM Wiki: 1 pages at .omg/wiki/]'),
         });
     });
     it('emits PreCompact wiki context as top-level systemMessage', () => {

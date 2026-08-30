@@ -37,7 +37,7 @@ describe("Ralphthon PRD", () => {
     process.env.HOME = testDir;
     process.env.USERPROFILE = testDir;
     // Create .omc directory for PRD storage
-    mkdirSync(join(testDir, ".omc"), { recursive: true });
+    mkdirSync(join(testDir, ".omg"), { recursive: true });
   });
 
   afterEach(() => {
@@ -70,7 +70,7 @@ describe("Ralphthon PRD", () => {
     it("should return null for invalid JSON", () => {
       const { writeFileSync } = require("fs");
       writeFileSync(
-        join(testDir, ".omc", "ralphthon-prd.json"),
+        join(testDir, ".omg", "ralphthon-prd.json"),
         "invalid json",
       );
       expect(readRalphthonPrd(testDir)).toBeNull();
@@ -79,7 +79,7 @@ describe("Ralphthon PRD", () => {
     it("should return null for PRD without stories array", () => {
       const { writeFileSync } = require("fs");
       writeFileSync(
-        join(testDir, ".omc", "ralphthon-prd.json"),
+        join(testDir, ".omg", "ralphthon-prd.json"),
         JSON.stringify({ project: "x", config: {} }),
       );
       expect(readRalphthonPrd(testDir)).toBeNull();
@@ -92,7 +92,7 @@ describe("Ralphthon PRD", () => {
       const legacy = createTestPrd();
       delete legacy.planningContext;
       writeFileSync(
-        join(testDir, ".omc", "ralphthon-prd.json"),
+        join(testDir, ".omg", "ralphthon-prd.json"),
         JSON.stringify(legacy),
       );
 
@@ -112,7 +112,7 @@ describe("Ralphthon PRD", () => {
     });
 
     it("should create .omc directory if missing", () => {
-      rmSync(join(testDir, ".omc"), { recursive: true, force: true });
+      rmSync(join(testDir, ".omg"), { recursive: true, force: true });
       const prd = createTestPrd();
       expect(writeRalphthonPrd(testDir, prd)).toBe(true);
     });

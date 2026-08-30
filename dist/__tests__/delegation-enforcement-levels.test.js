@@ -148,7 +148,7 @@ describe('delegation-enforcement-levels', () => {
             // Local config exists with 'off', global has 'strict'
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (s.endsWith('/.omc/config.json'))
+                if (s.endsWith('/.omg/config.json'))
                     return true;
                 if (/[\\/]mock[\\/]home[\\/]\.claude[\\/]\.omc-config\.json$/.test(s))
                     return true;
@@ -156,7 +156,7 @@ describe('delegation-enforcement-levels', () => {
             });
             mockReadFileSync.mockImplementation((p) => {
                 const s = String(p);
-                if (s.endsWith('/.omc/config.json')) {
+                if (s.endsWith('/.omg/config.json')) {
                     return JSON.stringify({ delegationEnforcementLevel: 'off' });
                 }
                 if (/[\\/]mock[\\/]home[\\/]\.claude[\\/]\.omc-config\.json$/.test(s)) {
@@ -221,7 +221,7 @@ describe('delegation-enforcement-levels', () => {
         it('supports enforcementLevel key as alternative', () => {
             mockExistsSync.mockImplementation((p) => {
                 const s = String(p);
-                if (s.endsWith('/.omc/config.json'))
+                if (s.endsWith('/.omg/config.json'))
                     return true;
                 return false;
             });
@@ -291,7 +291,7 @@ describe('delegation-enforcement-levels', () => {
         });
         describe('allowed paths always continue', () => {
             const allowedPaths = [
-                '.omc/plans/test.md',
+                '.omg/plans/test.md',
                 '.claude/settings.json',
                 'docs/CLAUDE.md',
                 'AGENTS.md',
@@ -389,7 +389,7 @@ describe('delegation-enforcement-levels', () => {
             const entry = {
                 timestamp: new Date().toISOString(),
                 tool: 'Write',
-                filePath: '.omc/plans/test.md',
+                filePath: '.omg/plans/test.md',
                 decision: 'allowed',
                 reason: 'allowed_path',
             };
@@ -534,8 +534,8 @@ describe('delegation-enforcement-levels', () => {
     });
     // ─── Helper function unit tests ───
     describe('isAllowedPath', () => {
-        it('returns true for .omc/ paths', () => {
-            expect(isAllowedPath('.omc/plans/test.md')).toBe(true);
+        it('returns true for .omg/ paths', () => {
+            expect(isAllowedPath('.omg/plans/test.md')).toBe(true);
         });
         it('returns true for .claude/ paths', () => {
             expect(isAllowedPath('.claude/settings.json')).toBe(true);
@@ -586,8 +586,8 @@ describe('delegation-enforcement-levels', () => {
             expect(isAllowedPath('')).toBe(true);
         });
         // Traversal bypass prevention
-        it('rejects .omc/../src/file.ts traversal', () => {
-            expect(isAllowedPath('.omc/../src/file.ts')).toBe(false);
+        it('rejects .omg/../src/file.ts traversal', () => {
+            expect(isAllowedPath('.omg/../src/file.ts')).toBe(false);
         });
         it('rejects .claude/../src/file.ts traversal', () => {
             expect(isAllowedPath('.claude/../src/file.ts')).toBe(false);
@@ -603,15 +603,15 @@ describe('delegation-enforcement-levels', () => {
             expect(isAllowedPath('.omc\\..\\src\\file.ts')).toBe(false);
         });
         // Nested .omc in non-root position (should be rejected for relative paths)
-        it('rejects foo/.omc/bar.ts as relative path', () => {
-            expect(isAllowedPath('foo/.omc/bar.ts')).toBe(false);
+        it('rejects foo/.omg/bar.ts as relative path', () => {
+            expect(isAllowedPath('foo/.omg/bar.ts')).toBe(false);
         });
         // Windows mixed-separator edge cases
         it('rejects mixed separator traversal .omc\\..\\..\\secret', () => {
             expect(isAllowedPath('.omc\\..\\..\\secret')).toBe(false);
         });
-        it('rejects double-dot with mixed separators .omc/..\\src', () => {
-            expect(isAllowedPath('.omc/..\\src')).toBe(false);
+        it('rejects double-dot with mixed separators .omg/..\\src', () => {
+            expect(isAllowedPath('.omg/..\\src')).toBe(false);
         });
         it('rejects UNC paths as not relative to project', () => {
             expect(isAllowedPath('\\\\server\\share\\.omc\\file')).toBe(false);

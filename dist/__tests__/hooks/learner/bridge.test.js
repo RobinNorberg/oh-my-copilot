@@ -49,8 +49,8 @@ describe("Skill Bridge Module", () => {
         }
     });
     describe("findSkillFiles", () => {
-        it("should discover skills in project .omc/skills/", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+        it("should discover skills in project .omg/skills/", () => {
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "test-skill.md"), "---\nname: Test Skill\ntriggers:\n  - test\n---\nContent");
             const files = findSkillFiles(testProjectRoot);
@@ -71,7 +71,7 @@ describe("Skill Bridge Module", () => {
             expect(projectFiles[0].path).toContain("compat-skill.md");
         });
         it("should discover skills recursively in subdirectories", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             const subDir = join(skillsDir, "subdir", "nested");
             mkdirSync(subDir, { recursive: true });
             writeFileSync(join(skillsDir, "root-skill.md"), "---\nname: Root\ntriggers:\n  - root\n---\nRoot content");
@@ -85,7 +85,7 @@ describe("Skill Bridge Module", () => {
             expect(names.some((n) => n.includes("nested-skill.md"))).toBe(true);
         });
         it("should ignore non-.md files", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "valid.md"), "---\nname: Valid\n---\nContent");
             writeFileSync(join(skillsDir, "invalid.txt"), "Not a skill");
@@ -97,7 +97,7 @@ describe("Skill Bridge Module", () => {
             expect(projectFiles[0].path).toContain("valid.md");
         });
         it("should treat symlinked project roots as within boundary", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "linked-skill.md"), "---\nname: Linked Skill\ntriggers:\n  - linked\n---\nContent");
             const linkedProjectRoot = join(tmpdir(), `omc-bridge-link-${Date.now()}-${Math.random().toString(16).slice(2)}`);
@@ -173,7 +173,7 @@ Content`;
     });
     describe("matchSkillsForInjection", () => {
         it("should match skills by trigger substring", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "deploy-skill.md"), "---\nname: Deploy Skill\ntriggers:\n  - deploy\n  - deployment\n---\nDeployment instructions");
             const matches = matchSkillsForInjection("I need to deploy the application", testProjectRoot, "test-session");
@@ -182,7 +182,7 @@ Content`;
             expect(matches[0].score).toBeGreaterThan(0);
         });
         it("returns compact descriptor metadata for matched skills", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             const longBody = `${"Full body secret. ".repeat(200)}Do not inject this whole body.`;
             writeFileSync(join(skillsDir, "descriptor-skill.md"), `---
@@ -199,7 +199,7 @@ ${longBody}`);
             expect(matches[0].content).toContain("Full body secret");
         });
         it("registers emitted learner context as compact descriptors within budget", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             const giantBody = `${"Sensitive full body content. ".repeat(400)}Tail.`;
             for (const [name, trigger] of [
@@ -228,7 +228,7 @@ ${giantBody}`);
             expect(pending.merged.length).toBeLessThanOrEqual(3000);
         });
         it("keeps learner omission text inside the descriptor budget", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             const largeSummary = "Summary ".repeat(220);
             for (const [name, trigger] of [
@@ -253,21 +253,21 @@ Body`);
             expect(pending.merged).toContain("Additional learned skills omitted");
         });
         it("should not match when triggers dont match", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "database-skill.md"), "---\nname: Database\ntriggers:\n  - database\n  - sql\n---\nDB instructions");
             const matches = matchSkillsForInjection("Help me with React components", testProjectRoot, "test-session");
             expect(matches).toHaveLength(0);
         });
         it("should not match skills with empty scalar triggers", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "blank-trigger-skill.md"), "---\nname: Blank Trigger\ntriggers:\n---\nBlank trigger instructions");
             const matches = matchSkillsForInjection("Help me with React components", testProjectRoot, "blank-trigger-session");
             expect(matches).toHaveLength(0);
         });
         it("should ignore blank trigger entries while matching valid triggers", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "mixed-trigger-skill.md"), `---
 name: Mixed Trigger
@@ -285,7 +285,7 @@ Mixed trigger instructions`);
             expect(validMatches[0].triggers).toEqual(["deploy"]);
         });
         it("should use fuzzy matching when opt-in", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             // Skill with fuzzy matching enabled
             writeFileSync(join(skillsDir, "fuzzy-skill.md"), "---\nname: Fuzzy Skill\nmatching: fuzzy\ntriggers:\n  - deployment\n---\nFuzzy content");
@@ -296,7 +296,7 @@ Mixed trigger instructions`);
             expect(matches.length).toBeGreaterThanOrEqual(0);
         });
         it("should respect skill limit", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             // Create 10 skills that all match "test"
             for (let i = 0; i < 10; i++) {
@@ -322,7 +322,7 @@ Mixed trigger instructions`);
         });
         it("should persist state to file", () => {
             markSkillsInjected("persist-test", ["/path/to/persist.md"], testProjectRoot);
-            const stateFile = join(testProjectRoot, ".omc", "state", "skill-sessions.json");
+            const stateFile = join(testProjectRoot, ".omg", "state", "skill-sessions.json");
             expect(existsSync(stateFile)).toBe(true);
             const state = JSON.parse(readFileSync(stateFile, "utf-8"));
             expect(state.sessions["persist-test"]).toBeDefined();
@@ -335,8 +335,8 @@ Mixed trigger instructions`);
             process.env.OMC_STATE_DIR = centralizedDir;
             try {
                 markSkillsInjected("omc-state-dir-test", ["/path/to/centralized.md"], testProjectRoot);
-                // State must NOT land in the project-local .omc/
-                expect(existsSync(join(testProjectRoot, ".omc"))).toBe(false);
+                // State must NOT land in the project-local .omg/
+                expect(existsSync(join(testProjectRoot, ".omg"))).toBe(false);
                 // State must land somewhere under the centralized dir
                 const found = readdirSync(centralizedDir, { recursive: true })
                     .map((f) => String(f))
@@ -354,7 +354,7 @@ Mixed trigger instructions`);
             }
         });
         it("should not re-inject already injected skills", () => {
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "once-skill.md"), "---\nname: Once Only\ntriggers:\n  - once\n---\nOnce content");
             // First match
@@ -371,7 +371,7 @@ Mixed trigger instructions`);
         it("should return project skills before user skills", () => {
             // We can't easily test user skills dir in isolation, but we can verify
             // that project skills come first in the returned array
-            const skillsDir = join(testProjectRoot, ".omc", "skills");
+            const skillsDir = join(testProjectRoot, ".omg", "skills");
             mkdirSync(skillsDir, { recursive: true });
             writeFileSync(join(skillsDir, "project-skill.md"), "---\nname: Project Skill\ntriggers:\n  - priority\n---\nProject content");
             const files = findSkillFiles(testProjectRoot);

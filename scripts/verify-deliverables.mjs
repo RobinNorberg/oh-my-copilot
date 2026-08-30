@@ -8,7 +8,7 @@
  * that gap by verifying file existence and minimum content.
  *
  * Deliverable requirements are loaded from (in priority order):
- *   1. .omc/deliverables.json (project-specific overrides)
+ *   1. .omg/deliverables.json (project-specific overrides)
  *   2. ${CLAUDE_PLUGIN_ROOT}/templates/deliverables.json (OMC defaults)
  *
  * This hook is ADVISORY (non-blocking) and never prevents the agent from

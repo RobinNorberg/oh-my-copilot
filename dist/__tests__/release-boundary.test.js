@@ -351,7 +351,7 @@ describe('release-boundary.mjs', () => {
             'package/package.json',
         ]);
         const forbiddenPath = writeTarball(root, 'forbidden.tgz', releaseTarball(SHA, [
-            { path: 'package/.omc/evidence.json', content: '{}' },
+            { path: 'package/.omg/evidence.json', content: '{}' },
         ]));
         expect(() => assertArchive(forbiddenPath, { version: VERSION, gitHead: SHA })).toThrow('forbidden operational artifact');
         expect(assertEvidence(tarballPath, evidencePath)).toEqual(evidence);

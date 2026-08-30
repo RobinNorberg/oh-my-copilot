@@ -11,7 +11,7 @@ describe('Ralphthon Orchestrator', () => {
     let testDir;
     beforeEach(() => {
         testDir = mkdtempSync(join(tmpdir(), 'ralphthon-orch-test-'));
-        mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
+        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });

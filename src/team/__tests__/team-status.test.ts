@@ -11,7 +11,7 @@ import type { HeartbeatData, TaskFile, OutboxMessage, McpWorkerMember } from '..
 
 const TEST_TEAM = 'test-team-status';
 let WORK_DIR: string;
-// Canonical tasks dir: {WORK_DIR}/.omc/state/team/{TEST_TEAM}/tasks/
+// Canonical tasks dir: {WORK_DIR}/.omg/state/team/{TEST_TEAM}/tasks/
 let TASKS_DIR: string;
 let previousHome: string | undefined;
 let previousUserProfile: string | undefined;
@@ -27,10 +27,10 @@ beforeEach(() => {
   process.env.USERPROFILE = WORK_DIR;
   delete process.env.OMC_STATE_DIR;
 
-  TASKS_DIR = join(WORK_DIR, '.omc', 'state', 'team', TEST_TEAM, 'tasks');
+  TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
   mkdirSync(TASKS_DIR, { recursive: true });
-  mkdirSync(join(WORK_DIR, '.omc', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
-  mkdirSync(join(WORK_DIR, '.omc', 'state'), { recursive: true });
+  mkdirSync(join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
+  mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
 });
 
 afterEach(() => {
@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 function writeWorkerRegistry(workers: McpWorkerMember[]): void {
-  const registryPath = join(WORK_DIR, '.omc', 'state', 'team-mcp-workers.json');
+  const registryPath = join(WORK_DIR, '.omg', 'state', 'team-mcp-workers.json');
   atomicWriteJson(registryPath, { teamName: TEST_TEAM, workers });
 }
 
@@ -58,7 +58,7 @@ function writeTask(task: TaskFile): void {
 }
 
 function writeHeartbeatFile(data: HeartbeatData): void {
-  const hbPath = join(WORK_DIR, '.omc', 'state', 'team-bridge', TEST_TEAM, `${data.workerName}.heartbeat.json`);
+  const hbPath = join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM, `${data.workerName}.heartbeat.json`);
   atomicWriteJson(hbPath, data);
 }
 

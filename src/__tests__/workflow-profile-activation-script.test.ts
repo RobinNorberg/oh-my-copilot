@@ -280,7 +280,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         template.resolveOmcStateRoot(linked),
       ]);
       expect(new Set(defaultRoots).size).toBe(1);
-      expect(defaultRoots[0]).toBe(join(linked, '.omc'));
+      expect(defaultRoots[0]).toBe(join(linked, '.omg'));
     } finally {
       if (previousStateDir === undefined) delete process.env.OMC_STATE_DIR;
       else process.env.OMC_STATE_DIR = previousStateDir;

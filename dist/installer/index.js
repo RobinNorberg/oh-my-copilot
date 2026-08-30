@@ -194,7 +194,7 @@ function canonicalizeExistingPath(value) {
     }
 }
 function isDefaultClaudeConfigDirPath(configDir) {
-    return normalizePath(configDir) === normalizePath(join(homedir(), '.claude'));
+    return normalizePath(configDir) === normalizePath(join(homedir(), '.copilot'));
 }
 function quoteShellArg(value) {
     return `"${value.replace(/"/g, '\\"')}"`;

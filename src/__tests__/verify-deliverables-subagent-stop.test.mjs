@@ -44,7 +44,7 @@ function withTempDir(fn) {
 }
 
 function writeFixtures(dir, sessionId, { stage = 'team-plan', files = ['DESIGN.md'], minSize = 10 } = {}) {
-  const omcRoot = join(dir, '.omc');
+  const omcRoot = join(dir, '.omg');
   mkdirSync(omcRoot, { recursive: true });
   writeFileSync(
     join(omcRoot, 'deliverables.json'),

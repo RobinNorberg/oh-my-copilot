@@ -23,7 +23,7 @@ describe('persistent-mode ralph hard max iterations', () => {
         const sessionId = 'session-hard-max';
         try {
             execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
                 active: true,
@@ -51,7 +51,7 @@ describe('persistent-mode ralph hard max iterations', () => {
         const sessionId = 'session-no-hardmax';
         try {
             execFileSync('git', ['init'], { cwd: tempDir, stdio: 'pipe' });
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
                 active: true,

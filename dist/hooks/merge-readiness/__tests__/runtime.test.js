@@ -74,7 +74,7 @@ describe("merge-readiness runtime", () => {
         expect(state.required_dimensions).toEqual(["why", "change", "tradeoff", "risk", "team"]);
         expect(state.evidence.changedFiles).toContain("README.md");
         expect("artifact_path" in state).toBe(false);
-        expect(existsSync(join(tempDir, ".omc", "artifacts", "merge-readiness"))).toBe(false);
+        expect(existsSync(join(tempDir, ".omg", "artifacts", "merge-readiness"))).toBe(false);
         const persisted = readMergeReadinessState(tempDir, sessionId);
         expect(persisted?.result).toBe("pending");
         expect(persisted?.change_summary).toBe(state.change_summary);
@@ -116,7 +116,7 @@ describe("merge-readiness runtime", () => {
         expect(state?.why).toBe("Why text");
         expect(state?.pending_question?.id).toBe("q1");
         expect(readMergeReadinessState(tempDir, sessionId)?.whatChanged).toBe("What changed text");
-        expect(existsSync(join(tempDir, ".omc", "artifacts", "merge-readiness"))).toBe(false);
+        expect(existsSync(join(tempDir, ".omg", "artifacts", "merge-readiness"))).toBe(false);
     });
     it("passes when all required MCQs answered correctly (correctness rate >= threshold)", () => {
         createInitialMergeReadinessState(tempDir, "/merge-readiness --standard explain docs change", sessionId);
@@ -191,8 +191,8 @@ describe("merge-readiness runtime", () => {
             execFileSync("git", ["add", "."], { cwd: dir, stdio: "ignore", windowsHide: true });
             execFileSync("git", ["commit", "-m", "init"], { cwd: dir, stdio: "ignore", windowsHide: true });
             // Clean tree (no diff) + an unrelated plans file: must block, not start pending.
-            mkdirSync(join(dir, ".omc", "plans"), { recursive: true });
-            writeFileSync(join(dir, ".omc", "plans", "unrelated.md"), "notes\n");
+            mkdirSync(join(dir, ".omg", "plans"), { recursive: true });
+            writeFileSync(join(dir, ".omg", "plans", "unrelated.md"), "notes\n");
             const state = createInitialMergeReadinessState(dir, "/merge-readiness --standard change", sessionId);
             expect(state.result).toBe("blocked");
         }
@@ -210,8 +210,8 @@ describe("merge-readiness runtime", () => {
             execFileSync("git", ["add", "."], { cwd: dir, stdio: "ignore", windowsHide: true });
             execFileSync("git", ["commit", "-m", "init"], { cwd: dir, stdio: "ignore", windowsHide: true });
             // Clean tree + a specs file: specs is now scanned and matches the test-evidence regex.
-            mkdirSync(join(dir, ".omc", "specs"), { recursive: true });
-            writeFileSync(join(dir, ".omc", "specs", "design.md"), "spec for the change\n");
+            mkdirSync(join(dir, ".omg", "specs"), { recursive: true });
+            writeFileSync(join(dir, ".omg", "specs", "design.md"), "spec for the change\n");
             const state = createInitialMergeReadinessState(dir, "/merge-readiness --standard change", sessionId);
             expect(state.result).toBe("pending");
         }
@@ -420,7 +420,7 @@ describe("merge-readiness runtime", () => {
     it.runIf(process.platform !== "win32")("fails closed on a real disposable POSIX directory write fault", () => {
         createInitialMergeReadinessState(tempDir, "/merge-readiness --quick change", sessionId);
         const before = readMergeReadinessState(tempDir, sessionId);
-        const stateDir = join(tempDir, ".omc", "state", "sessions", sessionId);
+        const stateDir = join(tempDir, ".omg", "state", "sessions", sessionId);
         chmodSync(stateDir, 0o500);
         try {
             const result = setMergeReadinessContent(tempDir, {
@@ -657,8 +657,8 @@ describe("merge-readiness runtime", () => {
             execFileSync("git", ["commit", "-m", "init"], { cwd: dir, stdio: "ignore", windowsHide: true });
             // Clean tree (no diff) + an unrelated plans file under --from-artifacts:
             // must block, since the artifact is neither a test nor a review artifact.
-            mkdirSync(join(dir, ".omc", "plans"), { recursive: true });
-            writeFileSync(join(dir, ".omc", "plans", "unrelated.md"), "notes\n");
+            mkdirSync(join(dir, ".omg", "plans"), { recursive: true });
+            writeFileSync(join(dir, ".omg", "plans", "unrelated.md"), "notes\n");
             const state = createInitialMergeReadinessState(dir, "/merge-readiness --from-artifacts change", sessionId);
             expect(state.result).toBe("blocked");
         }
@@ -679,12 +679,12 @@ describe("merge-readiness runtime", () => {
             // 40-per-root cap. specs/ has one valid test-evidence file. Previously the
             // global 40-file cap was exhausted by plans/ and specs/ was never scanned,
             // so --from-artifacts blocked despite valid evidence in a later root.
-            mkdirSync(join(dir, ".omc", "plans"), { recursive: true });
+            mkdirSync(join(dir, ".omg", "plans"), { recursive: true });
             for (let i = 0; i < 45; i++) {
-                writeFileSync(join(dir, ".omc", "plans", `plan-${i}.md`), `plan notes ${i}\n`);
+                writeFileSync(join(dir, ".omg", "plans", `plan-${i}.md`), `plan notes ${i}\n`);
             }
-            mkdirSync(join(dir, ".omc", "specs"), { recursive: true });
-            writeFileSync(join(dir, ".omc", "specs", "design.md"), "spec for the change\n");
+            mkdirSync(join(dir, ".omg", "specs"), { recursive: true });
+            writeFileSync(join(dir, ".omg", "specs", "design.md"), "spec for the change\n");
             const state = createInitialMergeReadinessState(dir, "/merge-readiness --from-artifacts change", sessionId);
             expect(state.evidence.sourceArtifacts).toContain("specs/design.md");
             expect(state.result).toBe("pending");
@@ -703,8 +703,8 @@ describe("merge-readiness runtime", () => {
             execFileSync("git", ["add", "."], { cwd: dir, stdio: "ignore", windowsHide: true });
             execFileSync("git", ["commit", "-m", "init"], { cwd: dir, stdio: "ignore", windowsHide: true });
             // Clean tree, but an active ralph mode-state file records a real run.
-            mkdirSync(join(dir, ".omc", "state"), { recursive: true });
-            writeFileSync(join(dir, ".omc", "state", "ralph-state.json"), JSON.stringify({ active: true, iteration: 3, started_at: "2026-01-01T00:00:00.000Z", phase: "execute" }));
+            mkdirSync(join(dir, ".omg", "state"), { recursive: true });
+            writeFileSync(join(dir, ".omg", "state", "ralph-state.json"), JSON.stringify({ active: true, iteration: 3, started_at: "2026-01-01T00:00:00.000Z", phase: "execute" }));
             const state = createInitialMergeReadinessState(dir, "/merge-readiness --standard change", sessionId);
             expect(state.evidence.sourceArtifacts).toContain("state/ralph-state.json");
             expect(state.result).toBe("pending");
@@ -724,9 +724,9 @@ describe("merge-readiness runtime", () => {
             execFileSync("git", ["commit", "-m", "init"], { cwd: dir, stdio: "ignore", windowsHide: true });
             // Clean tree + a stale ralph-state stub (active:false, phase:init) and a
             // bookkeeping ralph-stop-breaker.json: neither records a real run.
-            mkdirSync(join(dir, ".omc", "state"), { recursive: true });
-            writeFileSync(join(dir, ".omc", "state", "ralph-state.json"), JSON.stringify({ active: false, phase: "init" }));
-            writeFileSync(join(dir, ".omc", "state", "ralph-stop-breaker.json"), JSON.stringify({ active: true, iteration: 5 }));
+            mkdirSync(join(dir, ".omg", "state"), { recursive: true });
+            writeFileSync(join(dir, ".omg", "state", "ralph-state.json"), JSON.stringify({ active: false, phase: "init" }));
+            writeFileSync(join(dir, ".omg", "state", "ralph-stop-breaker.json"), JSON.stringify({ active: true, iteration: 5 }));
             const state = createInitialMergeReadinessState(dir, "/merge-readiness --standard change", sessionId);
             expect(state.evidence.sourceArtifacts).toEqual([]);
             expect(state.result).toBe("blocked");
@@ -826,7 +826,7 @@ describe("merge-readiness runtime", () => {
                     const state = createInitialMergeReadinessState(tempDir, "/merge-readiness --quick change", sid);
                     state.result = "blocked";
                     state.awaiting_content = false;
-                    writeFileSync(join(tempDir, ".omc", "state", "sessions", sid, "merge-readiness-state.json"), JSON.stringify(state));
+                    writeFileSync(join(tempDir, ".omg", "state", "sessions", sid, "merge-readiness-state.json"), JSON.stringify(state));
                 },
                 action: (sid) => cancelMergeReadiness(tempDir, sid),
             },
@@ -841,7 +841,7 @@ describe("merge-readiness runtime", () => {
                     const state = createInitialMergeReadinessState(tempDir, "/merge-readiness --quick change", sid);
                     state.result = "blocked";
                     state.awaiting_content = false;
-                    writeFileSync(join(tempDir, ".omc", "state", "sessions", sid, "merge-readiness-state.json"), JSON.stringify(state));
+                    writeFileSync(join(tempDir, ".omg", "state", "sessions", sid, "merge-readiness-state.json"), JSON.stringify(state));
                 },
                 action: (sid) => overrideMergeReadiness(tempDir, "Attempt blocked override.", sid),
             },
@@ -984,8 +984,8 @@ describe("merge-readiness runtime", () => {
             execFileSync("git", ["commit", "-m", "init"], { cwd: dir, stdio: "ignore", windowsHide: true });
             // Clean tree. An active ralph run stored under the CURRENT session's
             // session-scoped state dir must count as evidence (not just legacy/global).
-            mkdirSync(join(dir, ".omc", "state", "sessions", sessionId), { recursive: true });
-            writeFileSync(join(dir, ".omc", "state", "sessions", sessionId, "ralph-state.json"), JSON.stringify({ active: true, iteration: 3, started_at: "2026-01-01T00:00:00.000Z", phase: "execute" }));
+            mkdirSync(join(dir, ".omg", "state", "sessions", sessionId), { recursive: true });
+            writeFileSync(join(dir, ".omg", "state", "sessions", sessionId, "ralph-state.json"), JSON.stringify({ active: true, iteration: 3, started_at: "2026-01-01T00:00:00.000Z", phase: "execute" }));
             const state = createInitialMergeReadinessState(dir, "/merge-readiness --from-artifacts change", sessionId);
             expect(state.evidence.sourceArtifacts).toContain(`state/sessions/${sessionId}/ralph-state.json`);
             expect(state.result).toBe("pending");
@@ -1009,7 +1009,7 @@ describe("merge-readiness runtime", () => {
     });
     it("rejects a traversal session id before scanning the session state dir", () => {
         // A session id with traversal sequences must be rejected before
-        // listArtifactFiles joins it into .omc/state/sessions/<sessionId>/.
+        // listArtifactFiles joins it into .omg/state/sessions/<sessionId>/.
         expect(() => createInitialMergeReadinessState(tempDir, "/merge-readiness --quick change", "../../foo")).toThrow();
         expect(() => createInitialMergeReadinessState(tempDir, "/merge-readiness --quick change", "../bar")).toThrow();
     });

@@ -20,7 +20,7 @@ describe('Shared Memory', () => {
     let tildeConfigDir;
     beforeEach(() => {
         testDir = join(tmpdir(), `shared-memory-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        omcDir = join(testDir, '.omc');
+        omcDir = join(testDir, '.omg');
         tildeConfigDir = join(homedir(), `.omc-test-shared-memory-${Date.now()}-${Math.random().toString(36).slice(2)}`);
         mkdirSync(omcDir, { recursive: true });
         mockGetOmcRoot.mockReturnValue(omcDir);

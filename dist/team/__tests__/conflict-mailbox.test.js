@@ -21,7 +21,7 @@ const BASE_REBASE_ARGS = {
     leaderBranch: 'omc-team/test-team-leader',
     conflictingFiles: CONFLICTS,
     baseSha: 'def5678',
-    worktreePath: '/repo/.omc/team/test-team/worktrees/writer',
+    worktreePath: '/repo/.omg/team/test-team/worktrees/writer',
     observedAt: 1_000_000_000_000,
 };
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ describe('formatRebaseConflictForWorker', () => {
       **Worker branch:** \`omc-team/test-team/writer\`
       **Base branch:** \`omc-team/test-team-leader\`
       **Base SHA:** \`def5678\`
-      **Worktree:** \`/repo/.omc/team/test-team/worktrees/writer\`
+      **Worktree:** \`/repo/.omg/team/test-team/worktrees/writer\`
       **Observed at:** 2001-09-09T01:46:40.000Z
 
       **Conflicting files:**
@@ -122,7 +122,7 @@ describe('formatRebaseConflictForWorker', () => {
     });
     it('includes worktree path', () => {
         const result = formatRebaseConflictForWorker(BASE_REBASE_ARGS);
-        expect(result).toContain('/repo/.omc/team/test-team/worktrees/writer');
+        expect(result).toContain('/repo/.omg/team/test-team/worktrees/writer');
     });
     it('is pure: same input → same output', () => {
         expect(formatRebaseConflictForWorker(BASE_REBASE_ARGS)).toBe(formatRebaseConflictForWorker(BASE_REBASE_ARGS));
@@ -161,10 +161,10 @@ afterEach(() => {
     rmSync(TEST_CWD, { recursive: true, force: true });
 });
 describe('deliverMergeConflictToLeader', () => {
-    it('writes to .omc/state/team/{team}/leader/inbox.md', async () => {
+    it('writes to .omg/state/team/{team}/leader/inbox.md', async () => {
         const message = formatMergeConflictForLeader(BASE_MERGE_ARGS);
         await deliverMergeConflictToLeader({ teamName: TEST_TEAM, cwd: TEST_CWD, message });
-        const expectedPath = join(TEST_CWD, `.omc/state/team/${TEST_TEAM}/leader/inbox.md`);
+        const expectedPath = join(TEST_CWD, `.omg/state/team/${TEST_TEAM}/leader/inbox.md`);
         expect(existsSync(expectedPath)).toBe(true);
         const content = readFileSync(expectedPath, 'utf-8');
         expect(content).toContain(message);
@@ -172,13 +172,13 @@ describe('deliverMergeConflictToLeader', () => {
     it('appends separator before message', async () => {
         const message = 'first message';
         await deliverMergeConflictToLeader({ teamName: TEST_TEAM, cwd: TEST_CWD, message });
-        const expectedPath = join(TEST_CWD, `.omc/state/team/${TEST_TEAM}/leader/inbox.md`);
+        const expectedPath = join(TEST_CWD, `.omg/state/team/${TEST_TEAM}/leader/inbox.md`);
         const content = readFileSync(expectedPath, 'utf-8');
         expect(content).toContain('\n\n---\n');
     });
 });
 describe('deliverRebaseConflictToWorker', () => {
-    it('writes to .omc/state/team/{team}/workers/{worker}/inbox.md', async () => {
+    it('writes to .omg/state/team/{team}/workers/{worker}/inbox.md', async () => {
         const message = formatRebaseConflictForWorker(BASE_REBASE_ARGS);
         await deliverRebaseConflictToWorker({
             teamName: TEST_TEAM,
@@ -186,7 +186,7 @@ describe('deliverRebaseConflictToWorker', () => {
             cwd: TEST_CWD,
             message,
         });
-        const expectedPath = join(TEST_CWD, `.omc/state/team/${TEST_TEAM}/workers/writer/inbox.md`);
+        const expectedPath = join(TEST_CWD, `.omg/state/team/${TEST_TEAM}/workers/writer/inbox.md`);
         expect(existsSync(expectedPath)).toBe(true);
         const content = readFileSync(expectedPath, 'utf-8');
         expect(content).toContain(message);
@@ -199,7 +199,7 @@ describe('deliverRebaseConflictToWorker', () => {
             cwd: TEST_CWD,
             message,
         });
-        const expectedPath = join(TEST_CWD, `.omc/state/team/${TEST_TEAM}/workers/writer/inbox.md`);
+        const expectedPath = join(TEST_CWD, `.omg/state/team/${TEST_TEAM}/workers/writer/inbox.md`);
         const content = readFileSync(expectedPath, 'utf-8');
         expect(content).toContain('\n\n---\n');
     });

@@ -83,7 +83,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
   });
 
   async function writeConfigAndTask(taskStatus: 'pending' | 'in_progress' = 'pending'): Promise<void> {
-    const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const teamRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     await mkdir(join(teamRoot, 'tasks'), { recursive: true });
     await mkdir(join(teamRoot, 'workers', 'worker-1'), { recursive: true });
     await writeFile(join(teamRoot, 'config.json'), JSON.stringify({
@@ -108,7 +108,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
       resize_hook_name: null,
       resize_hook_target: null,
       next_task_id: 2,
-      team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+      team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
       workspace_mode: 'single',
     }, null, 2), 'utf-8');
     await writeFile(join(teamRoot, 'tasks', '1.json'), JSON.stringify({
@@ -139,7 +139,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-missing-blocker-'));
     isolateFixtureRoot(cwd);
     await writeConfigAndTask('pending');
-    const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const teamRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     await writeFile(join(teamRoot, 'tasks', '1.json'), JSON.stringify({
       id: '1',
       subject: 'Blocked task',
@@ -193,7 +193,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-unknown-liveness-'));
     isolateFixtureRoot(cwd);
     await writeConfigAndTask('in_progress');
-    const teamRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const teamRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     await writeFile(join(teamRoot, 'monitor-snapshot.json'), JSON.stringify({
       taskStatusById: { 1: 'in_progress' },
       workerAliveByName: { 'worker-1': true },
@@ -245,7 +245,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
     cwd = await mkdtemp(join(tmpdir(), 'omc-runtime-v2-monitor-dedup-'));
     isolateFixtureRoot(cwd);
     await writeConfigAndTask('pending');
-    const root = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const root = join(cwd, '.omg', 'state', 'team', 'demo-team');
     const config = canonicalizeTeamConfigWorkers({
       name: 'demo-team',
       task: 'demo',
@@ -264,7 +264,7 @@ describe('monitorTeamV2 pane-based stall inference', () => {
       resize_hook_name: null,
       resize_hook_target: null,
       next_task_id: 2,
-      team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+      team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
       workspace_mode: 'single',
     } as any);
     expect(config.workers).toEqual([expect.objectContaining({

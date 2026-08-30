@@ -68,7 +68,7 @@ describe('runtime-cli legacy watchdog shutdown', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-shutdown-order-'));
     try {
       const teamName = 'shutdown-order';
-      const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+      const stateRoot = join(cwd, '.omg', 'state', 'team', teamName);
       const tasksDir = join(stateRoot, 'tasks');
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(join(tasksDir, '1.json'), JSON.stringify({
@@ -409,7 +409,7 @@ describe('runtime-cli terminal preservation helper', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-terminal-complete-'));
     try {
       const teamName = 'runtime-cli-preserve-complete';
-      const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+      const stateRoot = join(cwd, '.omg', 'state', 'team', teamName);
       const tasksDir = join(stateRoot, 'tasks');
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(
@@ -446,7 +446,7 @@ describe('runtime-cli terminal preservation helper', () => {
     const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-terminal-cancelled-'));
     try {
       const teamName = 'runtime-cli-preserve-cancelled';
-      const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+      const stateRoot = join(cwd, '.omg', 'state', 'team', teamName);
       const tasksDir = join(stateRoot, 'tasks');
       mkdirSync(tasksDir, { recursive: true });
       writeFileSync(
@@ -486,7 +486,7 @@ describe('runtime-cli terse-final output fallback', () => {
     teamName: string,
     task: { id: string; status?: string; result?: string; summary?: string },
   ): string {
-    const stateRoot = join(cwd, '.omc', 'state', 'team', teamName);
+    const stateRoot = join(cwd, '.omg', 'state', 'team', teamName);
     const tasksDir = join(stateRoot, 'tasks');
     mkdirSync(tasksDir, { recursive: true });
     writeFileSync(
@@ -498,7 +498,7 @@ describe('runtime-cli terse-final output fallback', () => {
   }
 
   function writeOutputFile(cwd: string, teamName: string, taskId: string, content: string): void {
-    const outputsDir = join(cwd, '.omc', 'outputs');
+    const outputsDir = join(cwd, '.omg', 'outputs');
     mkdirSync(outputsDir, { recursive: true });
     const suffix = Math.random().toString(36).slice(2, 8);
     writeFileSync(
@@ -532,7 +532,7 @@ describe('runtime-cli terse-final output fallback', () => {
       const cwd = mkdtempSync(join(tmpdir(), 'runtime-cli-fallback-none-'));
       try {
         expect(
-          readTaskOutputFallback(join(cwd, '.omc', 'outputs'), 'team-x', '1'),
+          readTaskOutputFallback(join(cwd, '.omg', 'outputs'), 'team-x', '1'),
         ).toBeNull();
       } finally {
         rmSync(cwd, { recursive: true, force: true });
@@ -544,7 +544,7 @@ describe('runtime-cli terse-final output fallback', () => {
       try {
         writeOutputFile(cwd, 'team-x', '10', 'output for task ten');
         expect(
-          readTaskOutputFallback(join(cwd, '.omc', 'outputs'), 'team-x', '1'),
+          readTaskOutputFallback(join(cwd, '.omg', 'outputs'), 'team-x', '1'),
         ).toBeNull();
       } finally {
         rmSync(cwd, { recursive: true, force: true });

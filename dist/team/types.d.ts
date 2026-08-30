@@ -29,7 +29,7 @@ export interface BridgeWorkerPermissions {
     allowedCommands: string[];
     maxFileSize: number;
 }
-/** Mirrors the JSON structure of {cwd}/.omc/state/team/{team}/tasks/{id}.json */
+/** Mirrors the JSON structure of {cwd}/.omg/state/team/{team}/tasks/{id}.json */
 export interface TaskFile {
     id: string;
     subject: string;

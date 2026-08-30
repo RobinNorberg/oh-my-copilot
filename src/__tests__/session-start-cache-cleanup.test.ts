@@ -31,7 +31,7 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
     fakeProject = join(tmpDir, 'project');
 
     // Create fake project directory with .omc
-    mkdirSync(join(fakeProject, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(fakeProject, '.omg', 'state'), { recursive: true });
     // session-start validateCwd requires a real workspace anchor (.git / .omc-workspace)
     mkdirSync(join(fakeProject, '.git'), { recursive: true });
 
@@ -93,8 +93,8 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
   it('keeps explicit external plugin roots authoritative for update checks', () => {
     createFakeVersion('4.14.5');
     const externalRoot = createExternalPluginRoot('4.14.4');
-    const updateCache = join(fakeHome, '.claude', '.omc', 'update-check.json');
-    mkdirSync(join(fakeHome, '.claude', '.omc'), { recursive: true });
+    const updateCache = join(fakeHome, '.claude', '.omg', 'update-check.json');
+    mkdirSync(join(fakeHome, '.claude', '.omg'), { recursive: true });
     writeFileSync(updateCache, JSON.stringify({
       timestamp: Date.now(),
       latestVersion: '4.14.5',
@@ -112,8 +112,8 @@ describe('session-start.mjs — plugin cache cleanup uses symlinks', () => {
   it('uses latest managed cache version for stale managed cache roots', () => {
     createFakeVersion('4.14.4');
     createFakeVersion('4.14.5');
-    const updateCache = join(fakeHome, '.claude', '.omc', 'update-check.json');
-    mkdirSync(join(fakeHome, '.claude', '.omc'), { recursive: true });
+    const updateCache = join(fakeHome, '.claude', '.omg', 'update-check.json');
+    mkdirSync(join(fakeHome, '.claude', '.omg'), { recursive: true });
     writeFileSync(updateCache, JSON.stringify({
       timestamp: Date.now(),
       latestVersion: '4.14.5',

@@ -671,7 +671,7 @@ describe("autopilot team CLI worker configuration", () => {
     const prompt = executionAdapter.getPrompt({
       idea: "test",
       directory: "/tmp",
-      planPath: ".omc/plans/autopilot-impl.md",
+      planPath: ".omg/plans/autopilot-impl.md",
       config: {
         ...DEFAULT_PIPELINE_CONFIG,
         execution: "team",

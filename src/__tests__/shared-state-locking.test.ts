@@ -68,7 +68,7 @@ describe('shared-state updateSharedTask locking', () => {
 
     // Verify lock file does not persist after operation
     const lockPath = join(
-      tempDir, '.omc', 'state', 'interop', 'tasks', `${task.id}.json.lock`,
+      tempDir, '.omg', 'state', 'interop', 'tasks', `${task.id}.json.lock`,
     );
     expect(existsSync(lockPath)).toBe(false);
   });

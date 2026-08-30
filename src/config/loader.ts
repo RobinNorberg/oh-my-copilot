@@ -3,7 +3,7 @@
  *
  * Handles loading and merging configuration from multiple sources:
  * - User config: ~/.config/claude-omc/config.jsonc
- * - Project config: .claude/omc.jsonc
+ * - Project config: .copilot/omg.jsonc
  * - Environment variables
  */
 
@@ -172,7 +172,7 @@ export function buildDefaultConfig(): PluginConfig {
       execution: "solo",
     },
     planOutput: {
-      directory: ".omc/plans",
+      directory: ".omg/plans",
       filenameTemplate: "{{name}}.md",
     },
     teleport: {
@@ -213,7 +213,7 @@ export function getConfigPaths(): { user: string; project: string } {
 
   return {
     user: join(userConfigDir, "claude-omc", "config.jsonc"),
-    project: join(process.cwd(), ".claude", "omc.jsonc"),
+    project: join(process.cwd(), ".copilot", "omg.jsonc"),
   };
 }
 
@@ -914,7 +914,11 @@ export function findContextFiles(startDir?: string): string[] {
   // Files to look for
   const contextFileNames = [
     "AGENTS.md",
+    "copilot-instructions.md",
     "CLAUDE.md",
+    ".copilot/copilot-instructions.md",
+    ".copilot/AGENTS.md",
+    // Retained for compatibility when this plugin runs under Claude Code.
     ".claude/CLAUDE.md",
     ".claude/AGENTS.md",
   ];

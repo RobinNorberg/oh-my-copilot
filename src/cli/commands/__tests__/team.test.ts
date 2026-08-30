@@ -19,7 +19,7 @@ async function captureLog(fn: () => Promise<void>): Promise<string[]> {
 
 /** Helper: init minimal team state on disk */
 async function initTeamState(teamName: string, wd: string): Promise<void> {
-  const base = join(wd, '.omc', 'state', 'team', teamName);
+  const base = join(wd, '.omg', 'state', 'team', teamName);
   await mkdir(join(base, 'tasks'), { recursive: true });
   await mkdir(join(base, 'workers', 'worker-1'), { recursive: true });
   await mkdir(join(base, 'mailbox'), { recursive: true });
@@ -233,7 +233,7 @@ describe('teamCommand api operations', () => {
   it('ignores stale team state without a live tmux session when enforcing leader spawn gate', async () => {
     wd = await mkdtemp(join(tmpdir(), 'omc-team-stale-gate-'));
     isolateFixtureHome(wd);
-    const stale = join(wd, '.omc', 'state', 'team', 'stale-team');
+    const stale = join(wd, '.omg', 'state', 'team', 'stale-team');
     await mkdir(stale, { recursive: true });
     await writeFile(join(stale, 'config.json'), JSON.stringify({
       name: 'stale-team',
@@ -256,7 +256,7 @@ describe('teamCommand api operations', () => {
     isolateFixtureHome(wd);
     previousCwd = process.cwd();
     process.chdir(wd);
-    const base = join(wd, '.omc', 'state', 'team', 'demo-team');
+    const base = join(wd, '.omg', 'state', 'team', 'demo-team');
     await mkdir(base, { recursive: true });
     await writeFile(join(base, 'manifest.json'), JSON.stringify({
       schema_version: 2,
@@ -468,7 +468,7 @@ describe('parseTeamArgs comma-separated multi-type specs', () => {
     const originalUserProfile = process.env.USERPROFILE;
     process.env.HOME = slugWd;
     process.env.USERPROFILE = slugWd;
-    await mkdir(join(slugWd, '.omc', 'state', 'team', parsed.teamName), { recursive: true });
+    await mkdir(join(slugWd, '.omg', 'state', 'team', parsed.teamName), { recursive: true });
     expect(resolveAvailableTeamName(parsed.teamName, slugWd)).toBe(`${parsed.teamName.slice(0, 28).replace(/-$/g, '')}-2`);
     if (originalHome === undefined) delete process.env.HOME;
     else process.env.HOME = originalHome;

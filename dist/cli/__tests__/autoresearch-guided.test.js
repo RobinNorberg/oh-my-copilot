@@ -189,8 +189,8 @@ describe('runAutoresearchNoviceBridge', () => {
                 'ux-eval',
                 'launch',
             ])));
-            const draftContent = await readFile(join(repo, '.omc', 'specs', 'deep-interview-autoresearch-ux-eval.md'), 'utf-8');
-            const resultContent = await readFile(join(repo, '.omc', 'specs', 'autoresearch-ux-eval', 'result.json'), 'utf-8');
+            const draftContent = await readFile(join(repo, '.omg', 'specs', 'deep-interview-autoresearch-ux-eval.md'), 'utf-8');
+            const resultContent = await readFile(join(repo, '.omg', 'specs', 'autoresearch-ux-eval', 'result.json'), 'utf-8');
             const missionContent = await readFile(join(result.missionDir, 'mission.md'), 'utf-8');
             const sandboxContent = await readFile(join(result.missionDir, 'sandbox.md'), 'utf-8');
             expect(result.slug).toBe('ux-eval');

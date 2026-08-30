@@ -357,7 +357,7 @@ function getTodoFilePaths(sessionId, directory) {
     // Project-specific todos
     if (directory) {
         paths.push(join(getOmcRoot(directory), 'todos.json'));
-        paths.push(join(directory, '.claude', 'todos.json'));
+        paths.push(join(directory, '.copilot', 'todos.json'));
     }
     // NOTE: Global todos directory scan removed to prevent false positives.
     // Only session-specific and project-local todos are now checked.

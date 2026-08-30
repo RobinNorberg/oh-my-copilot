@@ -520,7 +520,7 @@ function formatRestoreContext(checkpoint, path) {
     lines.push('', `Active plan (boulder): ${boulder.plan_name || 'unnamed'} — ${(boulder.progress?.completed) || 0}/${(boulder.progress?.total) || 0} steps done.`);
     lines.push(`Plan file: ${boulder.active_plan}`);
   }
-  if (checkpoint.wisdom_exported) lines.push('', 'Plan wisdom was exported before compaction (see .omc/state/checkpoints/wisdom-*.md).');
+  if (checkpoint.wisdom_exported) lines.push('', 'Plan wisdom was exported before compaction (see .omg/state/checkpoints/wisdom-*.md).');
   lines.push('', 'Treat this as prior-session context only. Prioritize the current user request; consult the plan/PRD files above before resuming long-running work.', `Raw checkpoint: ${path}`);
   const text = lines.join('\n');
   return text.length <= RESTORE_CONTEXT_MAX_CHARS ? text : text.slice(0, RESTORE_CONTEXT_MAX_CHARS - 1) + '…';

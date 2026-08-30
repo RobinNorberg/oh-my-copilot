@@ -3,7 +3,7 @@
  *
  * Companion to artifacts.test.ts. Verifies that when a .omc-workspace marker
  * exists in a parent directory, ultragoal artifacts are written to the
- * workspace anchor's .omc/ instead of the sub-repo's .omc/.
+ * workspace anchor's .omg/ instead of the sub-repo's .omg/.
  */
 import { describe, expect, it } from 'vitest';
 import { execSync } from 'node:child_process';
@@ -21,7 +21,7 @@ function cleanQualityGate() {
     };
 }
 describe('ultragoal artifacts — multi-repo workspace anchor', () => {
-    it('writes artifacts to workspace anchor .omc/ when .omc-workspace marker is in a parent dir', async () => {
+    it('writes artifacts to workspace anchor .omg/ when .omc-workspace marker is in a parent dir', async () => {
         const workspaceRoot = await mkdtemp(join(homedir(), 'omc-multirepo-anchor-'));
         try {
             // Drop workspace marker so getOmcRoot() anchors to workspaceRoot
@@ -33,15 +33,15 @@ describe('ultragoal artifacts — multi-repo workspace anchor', () => {
             clearWorktreeCache();
             await createUltragoalPlan(subDir, { brief: '- Task A\n- Task B' });
             // Artifacts must land under the workspace anchor, not in the sub-repo
-            expect(existsSync(join(workspaceRoot, '.omc', 'ultragoal', 'goals.json'))).toBe(true);
-            expect(existsSync(join(subDir, '.omc', 'ultragoal'))).toBe(false);
+            expect(existsSync(join(workspaceRoot, '.omg', 'ultragoal', 'goals.json'))).toBe(true);
+            expect(existsSync(join(subDir, '.omg', 'ultragoal'))).toBe(false);
         }
         finally {
             clearWorktreeCache();
             await rm(workspaceRoot, { recursive: true, force: true });
         }
     });
-    it('sibling sub-repos share one workspace .omc/ when rooted at the same .omc-workspace', async () => {
+    it('sibling sub-repos share one workspace .omg/ when rooted at the same .omc-workspace', async () => {
         const workspaceRoot = await mkdtemp(join(homedir(), 'omc-multirepo-sibling-'));
         try {
             writeFileSync(join(workspaceRoot, '.omc-workspace'), '{}');
@@ -55,12 +55,12 @@ describe('ultragoal artifacts — multi-repo workspace anchor', () => {
             // Plans with explicit planId so they don't collide on the shared goals.json
             await createUltragoalPlan(repoA, { brief: '- Feature A', planId: 'plan-a' });
             await createUltragoalPlan(repoB, { brief: '- Feature B', planId: 'plan-b' });
-            // Both plans land under the single workspace .omc/
-            expect(existsSync(join(workspaceRoot, '.omc', 'ultragoal', 'plans', 'plan-a', 'goals.json'))).toBe(true);
-            expect(existsSync(join(workspaceRoot, '.omc', 'ultragoal', 'plans', 'plan-b', 'goals.json'))).toBe(true);
-            // Sub-repos must not have their own .omc/ultragoal
-            expect(existsSync(join(repoA, '.omc', 'ultragoal'))).toBe(false);
-            expect(existsSync(join(repoB, '.omc', 'ultragoal'))).toBe(false);
+            // Both plans land under the single workspace .omg/
+            expect(existsSync(join(workspaceRoot, '.omg', 'ultragoal', 'plans', 'plan-a', 'goals.json'))).toBe(true);
+            expect(existsSync(join(workspaceRoot, '.omg', 'ultragoal', 'plans', 'plan-b', 'goals.json'))).toBe(true);
+            // Sub-repos must not have their own .omg/ultragoal
+            expect(existsSync(join(repoA, '.omg', 'ultragoal'))).toBe(false);
+            expect(existsSync(join(repoB, '.omg', 'ultragoal'))).toBe(false);
             // Plans read back from either sub-repo have the correct goal counts
             const planA = await readUltragoalPlan(repoA, 'plan-a');
             const planB = await readUltragoalPlan(repoB, 'plan-b');
@@ -98,7 +98,7 @@ describe('ultragoal artifacts — multi-repo workspace anchor', () => {
             const plan = await readUltragoalPlan(subDir);
             expect(plan.goals[0]?.status).toBe('complete');
             // Ledger is in the workspace anchor, not the sub-repo
-            const ledger = await readFile(join(workspaceRoot, '.omc', 'ultragoal', 'ledger.jsonl'), 'utf-8');
+            const ledger = await readFile(join(workspaceRoot, '.omg', 'ultragoal', 'ledger.jsonl'), 'utf-8');
             expect(ledger).toMatch(/"event":"plan_created"/);
             expect(ledger).toMatch(/"event":"goal_started"/);
         }

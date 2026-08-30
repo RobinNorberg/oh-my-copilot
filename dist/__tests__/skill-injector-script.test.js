@@ -59,11 +59,11 @@ const projectDir = ${JSON.stringify(projectDir)}.replaceAll('\\\\', '/');
 function normalizedPath(value) { return typeof value === 'string' ? value.replaceAll('\\\\', '/') : ''; }
 function isSkillDiscoveryPath(value) {
   const path = normalizedPath(value);
-  return path === projectDir + '/.omc/skills' || path.includes('/.omc/skills/') || path.endsWith('/skills/omc-learned');
+  return path === projectDir + '/.omg/skills' || path.includes('/.omg/skills/') || path.endsWith('/skills/omc-learned');
 }
 function isSkillStatePath(value) {
   const path = normalizedPath(value);
-  return path.startsWith(projectDir + '/.omc/state/') && /skill-sessions-fallback(?:-state)?\\.json(?:\\.lock)?$/.test(path);
+  return path.startsWith(projectDir + '/.omg/state/') && /skill-sessions-fallback(?:-state)?\\.json(?:\\.lock)?$/.test(path);
 }
 function mark(name) { require('fs').writeFileSync(${JSON.stringify(sentinel)} + '-' + name, 'called'); }
 fs.readdirSync = function(...args) { if (isSkillDiscoveryPath(args[0])) mark('discovery'); return originalReaddirSync.apply(this, args); };
@@ -94,8 +94,8 @@ Module._load = function(request, parent, isMain) {
 });
 describe('skill-injector.mjs learned skill injection', () => {
     function writeLearnedSkill(projectDir) {
-        mkdirSync(join(projectDir, '.omc', 'skills'), { recursive: true });
-        writeFileSync(join(projectDir, '.omc', 'skills', 'release-notes.md'), `---
+        mkdirSync(join(projectDir, '.omg', 'skills'), { recursive: true });
+        writeFileSync(join(projectDir, '.omg', 'skills', 'release-notes.md'), `---
 name: Release Notes
 triggers:
   - release notes

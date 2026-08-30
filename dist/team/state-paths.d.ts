@@ -3,7 +3,7 @@
  * All paths are relative to cwd.
  *
  * State layout:
- *   .omc/state/team/{teamName}/
+ *   .omg/state/team/{teamName}/
  *     config.json
  *     shutdown.json
  *     tasks/
@@ -102,10 +102,10 @@ export declare function teamStateRoot(cwd: string, teamName: string): string;
  * Canonical task storage path builder.
  *
  * All task files live at:
- *   {cwd}/.omc/state/team/{teamName}/tasks/task-{taskId}.json
+ *   {cwd}/.omg/state/team/{teamName}/tasks/task-{taskId}.json
  *
  * When taskId is omitted, returns the tasks directory:
- *   {cwd}/.omc/state/team/{teamName}/tasks/
+ *   {cwd}/.omg/state/team/{teamName}/tasks/
  *
  * Use this as the single source of truth for task file locations.
  * New writes always use this canonical path.
@@ -114,7 +114,7 @@ export declare function getTaskStoragePath(cwd: string, teamName: string, taskId
 /**
  * Legacy task storage path builder (deprecated).
  *
- * Old location: ~/.claude/tasks/{teamName}/{taskId}.json
+ * Old location: ~/.copilot/tasks/{teamName}/{taskId}.json
  *
  * Used only by the compatibility shim in task-file-ops.ts to check
  * for data written by older versions during reads. New code must not

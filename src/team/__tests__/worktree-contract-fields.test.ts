@@ -33,13 +33,13 @@ describe('native worktree contract fields', () => {
       index: 1,
       role: 'executor',
       assigned_tasks: ['1'],
-      working_dir: join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-1'),
+      working_dir: join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-1'),
       worktree_repo_root: resolve(cwd),
-      worktree_path: join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-1'),
+      worktree_path: join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-1'),
       worktree_branch: 'omc-team/demo-team/worker-1',
       worktree_detached: false,
       worktree_created: true,
-      team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+      team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
     };
     const config: TeamConfig = {
       name: 'demo-team',
@@ -53,7 +53,7 @@ describe('native worktree contract fields', () => {
       tmux_session: 'demo-session',
       next_task_id: 2,
       leader_cwd: cwd,
-      team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+      team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
       workspace_mode: 'worktree',
       worktree_mode: 'named',
       leader_pane_id: '%0',
@@ -69,7 +69,7 @@ describe('native worktree contract fields', () => {
       expect(readBack).toMatchObject({
         workspace_mode: 'worktree',
         worktree_mode: 'named',
-        team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+        team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
         workers: [expect.objectContaining({
           working_dir: worker.worktree_path,
           worktree_repo_root: resolve(cwd),
@@ -77,7 +77,7 @@ describe('native worktree contract fields', () => {
           worktree_branch: 'omc-team/demo-team/worker-1',
           worktree_detached: false,
           worktree_created: true,
-          team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+          team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
         })],
       });
     } finally {
@@ -94,13 +94,13 @@ describe('native worktree contract fields', () => {
       index: 1,
       role: 'executor',
       assigned_tasks: [],
-      working_dir: join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-1'),
+      working_dir: join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-1'),
       worktree_repo_root: resolve(cwd),
-      worktree_path: join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-1'),
+      worktree_path: join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-1'),
       worktree_branch: 'omc-team/demo-team/worker-1',
       worktree_detached: true,
       worktree_created: false,
-      team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+      team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
     };
     const manifest: TeamManifestV2 = {
       schema_version: 2,
@@ -127,7 +127,7 @@ describe('native worktree contract fields', () => {
       next_task_id: 1,
       created_at: new Date().toISOString(),
       leader_cwd: cwd,
-      team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+      team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
       workspace_mode: 'worktree',
       worktree_mode: 'detached',
       leader_pane_id: '%0',
@@ -138,8 +138,8 @@ describe('native worktree contract fields', () => {
 
     try {
       const { mkdir, writeFile } = await import('fs/promises');
-      await mkdir(join(cwd, '.omc', 'state', 'team', 'demo-team'), { recursive: true });
-      await writeFile(join(cwd, '.omc', 'state', 'team', 'demo-team', 'manifest.json'), JSON.stringify(manifest, null, 2));
+      await mkdir(join(cwd, '.omg', 'state', 'team', 'demo-team'), { recursive: true });
+      await writeFile(join(cwd, '.omg', 'state', 'team', 'demo-team', 'manifest.json'), JSON.stringify(manifest, null, 2));
 
       const readBack = await readTeamConfig('demo-team', cwd);
       expect(readBack?.workspace_mode).toBe('worktree');
@@ -163,16 +163,16 @@ describe('native worktree contract fields', () => {
         index: 1,
         role: 'executor',
         assigned_tasks: [],
-        working_dir: join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-1'),
+        working_dir: join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-1'),
         worktree_repo_root: resolve(cwd),
-        worktree_path: join(cwd, '.omc', 'team', 'demo-team', 'worktrees', 'worker-1'),
+        worktree_path: join(cwd, '.omg', 'team', 'demo-team', 'worktrees', 'worker-1'),
         worktree_branch: 'omc-team/demo-team/worker-1',
         worktree_detached: false,
         worktree_created: true,
-        team_state_root: join(cwd, '.omc', 'state', 'team', 'demo-team'),
+        team_state_root: join(cwd, '.omg', 'state', 'team', 'demo-team'),
       }, cwd);
 
-      const identity = JSON.parse(await readFile(join(cwd, '.omc', 'state', 'team', 'demo-team', 'workers', 'worker-1', 'identity.json'), 'utf-8')) as WorkerInfo;
+      const identity = JSON.parse(await readFile(join(cwd, '.omg', 'state', 'team', 'demo-team', 'workers', 'worker-1', 'identity.json'), 'utf-8')) as WorkerInfo;
       expect(identity).toMatchObject({
         worktree_repo_root: resolve(cwd),
         worktree_branch: 'omc-team/demo-team/worker-1',

@@ -54,7 +54,7 @@ function processAlive(pid) {
     }
 }
 export function getCacheOccupancyDir(configDir = getCopilotConfigDir()) {
-    return join(configDir, '.omc', 'cache-occupancy');
+    return join(configDir, '.omg', 'cache-occupancy');
 }
 function recordName(pluginRoot, pid, identity) {
     return `${createHash('sha256').update(`${pluginRoot}\0${pid}\0${identity}`).digest('hex')}.json`;

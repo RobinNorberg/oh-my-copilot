@@ -188,7 +188,7 @@ description: Deep interview
 pipeline: [deep-interview, plan, autopilot]
 next-skill: plan
 next-skill-args: --consensus --direct
-handoff: .omc/specs/deep-interview-{slug}.md
+handoff: .omg/specs/deep-interview-{slug}.md
 ---
 
 Deep interview body`
@@ -206,7 +206,7 @@ Deep interview body`
     expect(result.replacementText).toContain('Pipeline: `deep-interview → plan → autopilot`');
     expect(result.replacementText).toContain('Next skill arguments: `--consensus --direct`');
     expect(result.replacementText).toContain('Skill("oh-my-copilot:plan")');
-    expect(result.replacementText).toContain('`.omc/specs/deep-interview-{slug}.md`');
+    expect(result.replacementText).toContain('`.omg/specs/deep-interview-{slug}.md`');
   });
 
   it('discovers project-local compatibility skills from .agents/skills', async () => {
@@ -334,7 +334,7 @@ description: Deep interview
 pipeline: [deep-interview, plan, autopilot]
 next-skill: plan
 next-skill-args: --consensus --direct
-handoff: .omc/specs/deep-interview-{slug}.md
+handoff: .omg/specs/deep-interview-{slug}.md
 ---
 
 Deep interview body`

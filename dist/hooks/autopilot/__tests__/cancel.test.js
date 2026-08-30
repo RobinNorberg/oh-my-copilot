@@ -27,7 +27,7 @@ describe('AutopilotCancel', () => {
         process.env.HOME = testDir;
         process.env.USERPROFILE = testDir;
         const fs = require('fs');
-        fs.mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
+        fs.mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
         vi.clearAllMocks();
     });
     afterEach(() => {
@@ -61,7 +61,7 @@ describe('AutopilotCancel', () => {
             const state = initAutopilot(testDir, 'test idea');
             if (state) {
                 state.active = false;
-                const stateFile = join(testDir, '.omc', 'state', 'autopilot-state.json');
+                const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
                 const fs = require('fs');
                 fs.writeFileSync(stateFile, JSON.stringify(state, null, 2));
             }
@@ -116,7 +116,7 @@ describe('AutopilotCancel', () => {
         it('should clean up pre-existing retired ultraqa state when active', () => {
             initAutopilot(testDir, 'test idea');
             // Simulate a pre-existing retired ultraqa state file
-            writeFileSync(join(testDir, '.omc', 'state', 'ultraqa-state.json'), JSON.stringify({ active: true, cycle: 2 }));
+            writeFileSync(join(testDir, '.omg', 'state', 'ultraqa-state.json'), JSON.stringify({ active: true, cycle: 2 }));
             const result = cancelAutopilot(testDir);
             expect(result.success).toBe(true);
             expect(result.message).toContain('Cleaned up: ultraqa');
@@ -129,7 +129,7 @@ describe('AutopilotCancel', () => {
                 active: true,
                 linked_ultrawork: true
             });
-            writeFileSync(join(testDir, '.omc', 'state', 'ultraqa-state.json'), JSON.stringify({ active: true, cycle: 1 }));
+            writeFileSync(join(testDir, '.omg', 'state', 'ultraqa-state.json'), JSON.stringify({ active: true, cycle: 1 }));
             const result = cancelAutopilot(testDir);
             expect(result.success).toBe(true);
             expect(result.message).toContain('Cleaned up: ralph, ultraqa');
@@ -149,7 +149,7 @@ describe('AutopilotCancel', () => {
             const sessionId = 'same-session-clear-replacement';
             const observed = initAutopilot(testDir, 'old run', sessionId);
             writeAutopilotState(testDir, observed, sessionId);
-            const statePath = join(testDir, '.omc', 'state', 'sessions', sessionId, 'autopilot-state.json');
+            const statePath = join(testDir, '.omg', 'state', 'sessions', sessionId, 'autopilot-state.json');
             const replacement = { ...observed, originalIdea: 'replacement run' };
             process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_PATH = statePath;
             process.env.OMC_TEST_CONDITIONAL_CLEAR_REPLACEMENT_BASE64 = Buffer.from(JSON.stringify(replacement)).toString('base64');
@@ -189,7 +189,7 @@ describe('AutopilotCancel', () => {
                 },
             });
             writeAutopilotState(testDir, state, sessionId);
-            const ralplanStatePath = join(testDir, '.omc', 'state', 'sessions', sessionId, 'ralplan-state.json');
+            const ralplanStatePath = join(testDir, '.omg', 'state', 'sessions', sessionId, 'ralplan-state.json');
             writeFileSync(ralplanStatePath, JSON.stringify({ active: true, session_id: sessionId, current_phase: 'ralplan' }));
             expect(validateNamedWorkflowStateStructure(readAutopilotState(testDir, sessionId), sessionId)).not.toBeNull();
             process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
@@ -320,7 +320,7 @@ describe('AutopilotCancel', () => {
         it('should clear ultraqa state when present', () => {
             initAutopilot(testDir, 'test idea');
             // Pre-existing retired ultraqa state (inactive) still gets cleared
-            writeFileSync(join(testDir, '.omc', 'state', 'ultraqa-state.json'), JSON.stringify({ active: false, cycle: 3 }));
+            writeFileSync(join(testDir, '.omg', 'state', 'ultraqa-state.json'), JSON.stringify({ active: false, cycle: 3 }));
             clearAutopilot(testDir);
             expect(readModeState('ultraqa', testDir)).toBeNull();
         });
@@ -331,7 +331,7 @@ describe('AutopilotCancel', () => {
                 active: true,
                 linked_ultrawork: true
             });
-            writeFileSync(join(testDir, '.omc', 'state', 'ultraqa-state.json'), JSON.stringify({ active: true, cycle: 1 }));
+            writeFileSync(join(testDir, '.omg', 'state', 'ultraqa-state.json'), JSON.stringify({ active: true, cycle: 1 }));
             clearAutopilot(testDir);
             expect(ralphLoop.clearRalphState).toHaveBeenCalledWith(testDir);
             expect(readModeState('ultraqa', testDir)).toBeNull();
@@ -400,7 +400,7 @@ describe('AutopilotCancel', () => {
             initAutopilot(testDir, 'test idea');
             cancelAutopilot(testDir);
             // Age the state file to be older than the stale threshold
-            const stateFile = join(testDir, '.omc', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
             const pastTime = new Date(Date.now() - STALE_STATE_MAX_AGE_MS - 60_000);
             utimesSync(stateFile, pastTime, pastTime);
             const result = canResumeAutopilot(testDir);
@@ -410,7 +410,7 @@ describe('AutopilotCancel', () => {
             initAutopilot(testDir, 'test idea');
             cancelAutopilot(testDir);
             // Age the state file
-            const stateFile = join(testDir, '.omc', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
             const pastTime = new Date(Date.now() - STALE_STATE_MAX_AGE_MS - 60_000);
             utimesSync(stateFile, pastTime, pastTime);
             canResumeAutopilot(testDir);
@@ -422,7 +422,7 @@ describe('AutopilotCancel', () => {
             const observed = initAutopilot(testDir, 'old run');
             observed.active = false;
             writeAutopilotState(testDir, observed);
-            const stateFile = join(testDir, '.omc', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
             const pastTime = new Date(Date.now() - STALE_STATE_MAX_AGE_MS - 60_000);
             utimesSync(stateFile, pastTime, pastTime);
             const replacement = { ...observed, active: true, originalIdea: 'replacement run' };
@@ -522,7 +522,7 @@ describe('AutopilotCancel', () => {
             transitionPhase(testDir, 'planning');
             cancelAutopilot(testDir);
             // Simulate passage of time — file is now older than 1 hour
-            const stateFile = join(testDir, '.omc', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
             const pastTime = new Date(Date.now() - STALE_STATE_MAX_AGE_MS - 60_000);
             utimesSync(stateFile, pastTime, pastTime);
             const result = resumeAutopilot(testDir);
@@ -541,7 +541,7 @@ describe('AutopilotCancel', () => {
             state.active = false;
             state.workflowRunId = '11111111-1111-4111-8111-111111111111';
             writeAutopilotState(testDir, state);
-            const stateFile = join(testDir, '.omc', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
             const before = require('fs').readFileSync(stateFile);
             expect(canResumeAutopilot(testDir)).toMatchObject({ canResume: false, integrityFailed: true });
             expect(resumeAutopilot(testDir)).toMatchObject({ success: false, message: 'workflow_descriptor_integrity_failed' });
@@ -552,7 +552,7 @@ describe('AutopilotCancel', () => {
             state.active = false;
             state.workflow = createWorkflowDescriptor('release-flow', { version: 1, stages: ['ralplan', 'execution'] });
             writeAutopilotState(testDir, state);
-            const stateFile = join(testDir, '.omc', 'state', 'autopilot-state.json');
+            const stateFile = join(testDir, '.omg', 'state', 'autopilot-state.json');
             const before = require('fs').readFileSync(stateFile);
             process.env.OMC_TEST_FLOCK_AVAILABLE = '0';
             expect(resumeAutopilot(testDir)).toMatchObject({ success: false, message: 'workflow_descriptor_integrity_failed' });

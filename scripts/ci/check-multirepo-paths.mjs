@@ -29,7 +29,7 @@ const WHITELIST_FILES = new Set([
   'src/lib/worktree-paths.ts',
   'scripts/lib/state-root.mjs',
   'scripts/lib/state-root.cjs',
-  // The gate itself (contains '.omc' literals in its own patterns)
+  // The gate itself (contains '.omg' literals in its own patterns)
   'scripts/ci/check-multirepo-paths.mjs',
   // Hook scripts that resolve workspace markers inline (own resolver, pre-dist)
   'scripts/post-tool-verifier.mjs',
@@ -69,7 +69,7 @@ function isWhitelisted(filePath) {
  * A match is benign when the first argument resolves to a known GLOBAL config root
  * (homedir(), os.homedir(), getCopilotConfigDir(), COPILOT_CONFIG_DIR). These are
  * NOT workspace state — they're per-user installs of the OMC binary itself.
- * The multi-repo enforcement applies only to workspace-scoped `.omc/`.
+ * The multi-repo enforcement applies only to workspace-scoped `.omg/`.
  */
 // Global config first-arg patterns. When join()'s first arg is one of these,
 // the construction is a per-user OMC install config path (NOT workspace state).
@@ -81,7 +81,7 @@ const GLOBAL_FIRST_ARG_PATTERNS = [
   /^(?:path\.)?join\(\s*configDir\s*,/,
 ];
 function isGlobalConfigMatch(matchText) {
-  // matchText looks like: join(homedir(), '.omc', 'state', ...) or path.join(os.homedir(), '.omc', ...)
+  // matchText looks like: join(homedir(), '.omg', 'state', ...) or path.join(os.homedir(), '.omg', ...)
   // Args may span lines — normalize whitespace before matching.
   const normalized = matchText.replace(/\s+/g, ' ').trimStart();
   return GLOBAL_FIRST_ARG_PATTERNS.some(re => re.test(normalized));
@@ -100,21 +100,21 @@ const { parse, Lang } = sg;
 
 // Patterns to search — (language, pattern string) pairs
 const TS_PATTERNS = [
-  "join($_, '.omc', $$$)",
-  'join($_, ".omc", $$$)',
-  "path.join($_, '.omc', $$$)",
-  "`${$_}/.omc/$$$`",
+  "join($_, '.omg', $$$)",
+  'join($_, ".omg", $$$)',
+  "path.join($_, '.omg', $$$)",
+  "`${$_}/.omg/$$$`",
   "`${$_}\\.omc\\$$$`",
 ];
 const JS_PATTERNS = [
-  "join($_, '.omc', $$$)",
-  'join($_, ".omc", $$$)',
-  "path.join($_, '.omc', $$$)",
-  "`${$_}/.omc/$$$`",
+  "join($_, '.omg', $$$)",
+  'join($_, ".omg", $$$)',
+  "path.join($_, '.omg', $$$)",
+  "`${$_}/.omg/$$$`",
   "`${$_}\\.omc\\$$$`",
 ];
 
-const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'bridge', 'coverage', '.omc']);
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'bridge', 'coverage', '.omg']);
 
 function* walkFiles(dir) {
   let entries;

@@ -1136,7 +1136,7 @@ export function captureModeStateCleanup(
 /**
  * Find session-scoped state files that belong to the requested session.
  *
- * Normally the state file lives under `.omc/state/sessions/{sessionId}/`.
+ * Normally the state file lives under `.omg/state/sessions/{sessionId}/`.
  * When a file is stranded under a different session directory (for example
  * after session continuation or manual recovery), this scans all session
  * directories and returns any file whose embedded owner still matches the
@@ -1211,7 +1211,7 @@ export function findSessionOwnedStateFiles(mode: string, sessionId: string, dire
  * A fresh `/cancel` invocation may run in a new Claude session id while the
  * state files that keep the Stop hook alive still live under the completed
  * session's directory.  We intentionally require durable completion evidence
- * (`.omc/sessions/{sessionId}.json`) before returning a sibling session's file
+ * (`.omg/sessions/{sessionId}.json`) before returning a sibling session's file
  * so active parallel sessions are not cleared just because their ids differ
  * from the caller's fresh cancel session.
  */

@@ -328,7 +328,7 @@ describe('team cli', () => {
     const unref = vi.fn();
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const cwd = makeProject('omc-team-cli-approved-followup-');
-    const plansDir = join(cwd, '.omc', 'plans');
+    const plansDir = join(cwd, '.omg', 'plans');
     mkdirSync(plansDir, { recursive: true });
     writeFileSync(
       join(plansDir, 'prd-feature.md'),
@@ -384,7 +384,7 @@ describe('team cli', () => {
 
   it('legacy team alias fails closed for incomplete approved short follow-up hints', async () => {
     const cwd = makeProject('omc-team-cli-approved-incomplete-');
-    const plansDir = join(cwd, '.omc', 'plans');
+    const plansDir = join(cwd, '.omg', 'plans');
     mkdirSync(plansDir, { recursive: true });
     writeFileSync(
       join(plansDir, 'prd-feature.md'),
@@ -412,7 +412,7 @@ describe('team cli', () => {
 
   it('legacy team alias fails closed for ambiguous approved short follow-up hints', async () => {
     const cwd = makeProject('omc-team-cli-approved-ambiguous-');
-    const plansDir = join(cwd, '.omc', 'plans');
+    const plansDir = join(cwd, '.omg', 'plans');
     mkdirSync(plansDir, { recursive: true });
     writeFileSync(
       join(plansDir, 'prd-feature.md'),
@@ -524,7 +524,7 @@ describe('team cli', () => {
 
     const jobId = 'omc-cleanup1';
     const cwd = makeProject('omc-team-cli-cleanup-');
-    const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const stateRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     mkdirSync(stateRoot, { recursive: true });
 
     writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
@@ -569,7 +569,7 @@ describe('team cli', () => {
 
     const jobId = 'omc-cleanup3';
     const cwd = makeProject('omc-team-cli-preserve-cleanup-');
-    const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const stateRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     mkdirSync(stateRoot, { recursive: true });
     writeFileSync(join(stateRoot, 'config.json'), JSON.stringify({
       name: 'demo-team',
@@ -624,7 +624,7 @@ describe('team cli', () => {
 
     const jobId = 'omc-cleanup5';
     const cwd = makeProject('omc-team-cli-unknown-liveness-');
-    const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const stateRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     mkdirSync(stateRoot, { recursive: true });
     writeFileSync(join(stateRoot, 'config.json'), JSON.stringify({
       name: 'demo-team',
@@ -669,7 +669,7 @@ describe('team cli', () => {
 
     const jobId = 'omc-cleanup6';
     const cwd = makeProject('omc-team-cli-unknown-probe-');
-    const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const stateRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     mkdirSync(stateRoot, { recursive: true });
     writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
       status: 'running',
@@ -702,7 +702,7 @@ describe('team cli', () => {
 
     const jobId = 'omc-cleanup4';
     const cwd = makeProject('omc-team-cli-live-cleanup-');
-    const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const stateRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     mkdirSync(stateRoot, { recursive: true });
 
     writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
@@ -737,7 +737,7 @@ describe('team cli', () => {
 
     const jobId = 'omc-cleanup2';
     const cwd = makeProject('omc-team-cli-window-cleanup-');
-    const stateRoot = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const stateRoot = join(cwd, '.omg', 'state', 'team', 'demo-team');
     mkdirSync(stateRoot, { recursive: true });
 
     writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify({
@@ -784,7 +784,7 @@ describe('team cli', () => {
     });
 
     const cwd = makeProject('omc-team-cli-v2-status-');
-    const root = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const root = join(cwd, '.omg', 'state', 'team', 'demo-team');
     mkdirSync(root, { recursive: true });
     writeFileSync(join(root, 'config.json'), JSON.stringify({
       name: 'demo-team',
@@ -833,7 +833,7 @@ describe('team cli', () => {
     });
 
     const cwd = makeProject('omc-team-cli-v2-status-dedup-');
-    const root = join(cwd, '.omc', 'state', 'team', 'demo-team');
+    const root = join(cwd, '.omg', 'state', 'team', 'demo-team');
     mkdirSync(root, { recursive: true });
     const duplicateWorkerConfig = canonicalizeTeamConfigWorkers({
       name: 'demo-team',
@@ -934,7 +934,7 @@ describe('team cli', () => {
     mocks.shutdownTeamV2.mockResolvedValue({ outcome: 'cleaned' });
 
     const cwd = makeProject('omc-team-cli-v2-shutdown-');
-    const root = join(cwd, '.omc', 'state', 'team', 'beta-team');
+    const root = join(cwd, '.omg', 'state', 'team', 'beta-team');
     mkdirSync(root, { recursive: true });
     writeFileSync(join(root, 'config.json'), JSON.stringify({
       name: 'beta-team',
@@ -1054,7 +1054,7 @@ describe('team cli', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const cwd = makeProject('omc-team-cli-send-');
-    const root = join(cwd, '.omc', 'state', 'team', 'api-team');
+    const root = join(cwd, '.omg', 'state', 'team', 'api-team');
     mkdirSync(join(root, 'tasks'), { recursive: true });
     mkdirSync(join(root, 'mailbox'), { recursive: true });
     writeFileSync(join(root, 'config.json'), JSON.stringify({
@@ -1106,7 +1106,7 @@ describe('team cli', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const cwd = makeProject('omc-team-cli-notified-');
-    const root = join(cwd, '.omc', 'state', 'team', 'api-team');
+    const root = join(cwd, '.omg', 'state', 'team', 'api-team');
     mkdirSync(join(root, 'mailbox'), { recursive: true });
     writeFileSync(join(root, 'config.json'), JSON.stringify({
       name: 'api-team',
@@ -1165,7 +1165,7 @@ describe('team cli', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const cwd = makeProject('omc-team-cli-api-');
-    const root = join(cwd, '.omc', 'state', 'team', 'api-team');
+    const root = join(cwd, '.omg', 'state', 'team', 'api-team');
     mkdirSync(join(root, 'tasks'), { recursive: true });
     writeFileSync(join(root, 'tasks', 'task-1.json'), JSON.stringify({
       id: '1',

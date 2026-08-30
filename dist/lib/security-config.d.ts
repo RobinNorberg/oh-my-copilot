@@ -8,7 +8,7 @@
  *    - "strict": all security features enabled
  *    - unset/other: per-feature defaults apply
  *
- * 2. Config file (.claude/omc.jsonc or ~/.config/claude-omc/config.jsonc)
+ * 2. Config file (.copilot/omc.jsonc or ~/.config/claude-omc/config.jsonc)
  *    security section — granular overrides (highest precedence)
  *
  * Precedence: config file > OMC_SECURITY env var > defaults (all off)
@@ -18,7 +18,7 @@ export interface SecurityConfig {
     restrictToolPaths: boolean;
     /** Sandbox python_repl with blocked modules/builtins */
     pythonSandbox: boolean;
-    /** Disable project-level .omc/skills/ loading */
+    /** Disable project-level .omg/skills/ loading */
     disableProjectSkills: boolean;
     /** Disable silent auto-update */
     disableAutoUpdate: boolean;

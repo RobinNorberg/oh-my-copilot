@@ -150,7 +150,7 @@ describe('runtime-v2 Gemini preflight routing', () => {
         })).rejects.toThrow("cli_binary_preflight_failed:gemini:Resolved CLI binary 'gemini' to untrusted location");
         expect(mocks.createTeamSession).not.toHaveBeenCalled();
         expect(mocks.spawnOwnedWorkerInPane).not.toHaveBeenCalled();
-        await expect(import('node:fs/promises').then(fs => fs.access(join(cwd, '.omc', 'state', 'team', 'routed-preflight-team'))))
+        await expect(import('node:fs/promises').then(fs => fs.access(join(cwd, '.omg', 'state', 'team', 'routed-preflight-team'))))
             .rejects.toMatchObject({ code: 'ENOENT' });
     });
 });

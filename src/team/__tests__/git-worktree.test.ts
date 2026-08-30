@@ -42,7 +42,7 @@ describe('git-worktree', () => {
     it('creates worktree at correct path', () => {
       const info = createWorkerWorktree(teamName, 'worker1', repoDir);
 
-      expect(info.path).toContain(`.omc/team/${teamName}/worktrees/worker1`);
+      expect(info.path).toContain(`.omg/team/${teamName}/worktrees/worker1`);
       expect(info.branch).toBe(`omc-team/${teamName}/worker1`);
       expect(info.workerName).toBe('worker1');
       expect(info.teamName).toBe(teamName);
@@ -68,7 +68,7 @@ describe('git-worktree', () => {
     });
 
     it('rejects a stale plain directory instead of deleting files', () => {
-      const stalePath = join(repoDir, '.omc', 'team', teamName, 'worktrees', 'worker-stale');
+      const stalePath = join(repoDir, '.omg', 'team', teamName, 'worktrees', 'worker-stale');
       rmSync(stalePath, { recursive: true, force: true });
       mkdirSync(stalePath, { recursive: true });
       writeFileSync(join(stalePath, 'orphan.txt'), 'orphaned state');
@@ -83,7 +83,7 @@ describe('git-worktree', () => {
         requireCleanLeader: false,
       });
 
-      expect(info?.path).toContain(`.omc/team/${teamName}/worktrees/worker-detached`);
+      expect(info?.path).toContain(`.omg/team/${teamName}/worktrees/worker-detached`);
       expect(info?.detached).toBe(true);
       expect(info?.created).toBe(true);
       expect(info?.reused).toBe(false);
@@ -156,8 +156,8 @@ describe('git-worktree', () => {
 
     it('refuses a symlink at the canonical worker worktree path', () => {
       const workerName = 'worker-symlink';
-      const worktreePath = join(repoDir, '.omc', 'team', teamName, 'worktrees', workerName);
-      mkdirSync(join(repoDir, '.omc', 'team', teamName, 'worktrees'), { recursive: true });
+      const worktreePath = join(repoDir, '.omg', 'team', teamName, 'worktrees', workerName);
+      mkdirSync(join(repoDir, '.omg', 'team', teamName, 'worktrees'), { recursive: true });
       symlinkSync(repoDir, worktreePath, 'dir');
 
       expect(() => removeWorkerWorktree(teamName, workerName, repoDir)).toThrow(/worktree_path_is_symlink/);
@@ -206,7 +206,7 @@ describe('git-worktree', () => {
       const workerName = 'worker-agents-dirty';
       const info = createWorkerWorktree(teamName, workerName, repoDir);
       const agentsPath = join(info.path, 'AGENTS.md');
-      const backupPath = join(repoDir, '.omc', 'state', 'team', teamName, 'workers', workerName, 'worktree-root-agents.json');
+      const backupPath = join(repoDir, '.omg', 'state', 'team', teamName, 'workers', workerName, 'worktree-root-agents.json');
       installWorktreeRootAgents(teamName, workerName, repoDir, info.path, 'managed overlay\n');
       writeFileSync(join(info.path, 'dirty.txt'), 'dirty');
 
@@ -227,7 +227,7 @@ describe('git-worktree', () => {
       const workerName = 'worker-agents-clean-preflight';
       const info = createWorkerWorktree(teamName, workerName, repoDir);
       const agentsPath = join(info.path, 'AGENTS.md');
-      const backupPath = join(repoDir, '.omc', 'state', 'team', teamName, 'workers', workerName, 'worktree-root-agents.json');
+      const backupPath = join(repoDir, '.omg', 'state', 'team', teamName, 'workers', workerName, 'worktree-root-agents.json');
       installWorktreeRootAgents(teamName, workerName, repoDir, info.path, 'managed overlay\n');
 
       expect(() => prepareWorkerWorktreeForRemoval(teamName, workerName, repoDir, info.path)).not.toThrow();
@@ -243,7 +243,7 @@ describe('git-worktree', () => {
       execFileSync('git', ['commit', '-m', 'Add root agents'], { cwd: repoDir, stdio: 'pipe' });
       const workerName = 'worker-agents-partial-install';
       const info = createWorkerWorktree(teamName, workerName, repoDir);
-      const backupDir = join(repoDir, '.omc', 'state', 'team', teamName, 'workers', workerName);
+      const backupDir = join(repoDir, '.omg', 'state', 'team', teamName, 'workers', workerName);
       const backupPath = join(backupDir, 'worktree-root-agents.json');
       mkdirSync(backupDir, { recursive: true });
       writeFileSync(backupPath, JSON.stringify({
@@ -351,7 +351,7 @@ describe('git-worktree', () => {
 
     it('preserves corrupt root AGENTS backup for metadata-listed workers', () => {
       const info = createWorkerWorktree(teamName, 'worker-corrupt-backup', repoDir);
-      const backupDir = join(repoDir, '.omc', 'state', 'team', teamName, 'workers', 'worker-corrupt-backup');
+      const backupDir = join(repoDir, '.omg', 'state', 'team', teamName, 'workers', 'worker-corrupt-backup');
       const backupPath = join(backupDir, 'worktree-root-agents.json');
       mkdirSync(backupDir, { recursive: true });
       writeFileSync(backupPath, '{not-json', 'utf-8');
@@ -367,10 +367,10 @@ describe('git-worktree', () => {
     });
 
     it('preserves team state cleanup when only worktree-root AGENTS backup remains', () => {
-      const backupPath = join(repoDir, '.omc', 'state', 'team', teamName, 'workers', 'worker-backup', 'worktree-root-agents.json');
-      mkdirSync(join(repoDir, '.omc', 'state', 'team', teamName, 'workers', 'worker-backup'), { recursive: true });
+      const backupPath = join(repoDir, '.omg', 'state', 'team', teamName, 'workers', 'worker-backup', 'worktree-root-agents.json');
+      mkdirSync(join(repoDir, '.omg', 'state', 'team', teamName, 'workers', 'worker-backup'), { recursive: true });
       writeFileSync(backupPath, JSON.stringify({
-        worktreePath: join(repoDir, '.omc', 'team', teamName, 'worktrees', 'worker-backup'),
+        worktreePath: join(repoDir, '.omg', 'team', teamName, 'worktrees', 'worker-backup'),
         hadOriginal: true,
         originalContent: 'original',
         installedContent: 'managed',
@@ -387,8 +387,8 @@ describe('git-worktree', () => {
     });
 
     it('preserves team state cleanup when worktree metadata is corrupt', () => {
-      const metadataPath = join(repoDir, '.omc', 'state', 'team', teamName, 'worktrees.json');
-      mkdirSync(join(repoDir, '.omc', 'state', 'team', teamName), { recursive: true });
+      const metadataPath = join(repoDir, '.omg', 'state', 'team', teamName, 'worktrees.json');
+      mkdirSync(join(repoDir, '.omg', 'state', 'team', teamName), { recursive: true });
       writeFileSync(metadataPath, '{not-json', 'utf-8');
 
       const result = cleanupTeamWorktrees(teamName, repoDir);

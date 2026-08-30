@@ -26,7 +26,7 @@ describe('builtin skill drafting contracts for learned skills (issue #2425)', ()
     expect(skillify).toBeDefined();
     expect(skillify!.template).toContain('output a complete skill file that starts with YAML frontmatter');
     expect(skillify!.template).toContain('Never emit plain markdown-only skill files.');
-    expect(skillify!.template).toContain('.omc/skills/<skill-name>.md');
+    expect(skillify!.template).toContain('.omg/skills/<skill-name>.md');
     expect(skillify!.template).toContain('skills/omc-learned/<skill-name>.md');
   });
 });

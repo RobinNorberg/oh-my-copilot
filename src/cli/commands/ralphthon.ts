@@ -136,7 +136,7 @@ export function buildRalphthonInterviewPrompt(
   const sanitizedTask = task.replace(/[\r\n\0]+/g, " ").trim();
   return `/deep-interview ${sanitizedTask}
 
-After the interview, generate a ralphthon-prd.json file in .omc/ with this structure:
+After the interview, generate a ralphthon-prd.json file in .omg/ with this structure:
 {
   "project": "<project name>",
   "branchName": "<branch>",

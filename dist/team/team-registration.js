@@ -62,7 +62,7 @@ export function getRegistrationStrategy(workingDirectory) {
  *
  * Strategy auto-selected based on cached probe result:
  * - 'config': Write member to config.json (preferred)
- * - 'shadow': Write member to .omc/state/team-mcp-workers.json (fallback)
+ * - 'shadow': Write member to .omg/state/team-mcp-workers.json (fallback)
  *
  * Both paths use atomic write (temp + rename) to prevent corruption.
  */

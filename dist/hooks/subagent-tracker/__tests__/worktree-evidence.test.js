@@ -146,7 +146,7 @@ describe("collectWorktreeDirtyEvidence", () => {
     it("identifies linked git worktrees as isolated worktrees", () => {
         const repo = makeTempDir();
         initRepo(repo);
-        const worktree = join(repo, ".omc", "team", "demo-team", "worktrees", "worker-1");
+        const worktree = join(repo, ".omg", "team", "demo-team", "worktrees", "worker-1");
         mkdirSync(worktree, { recursive: true });
         git(repo, ["worktree", "add", "-b", "linked-branch", worktree]);
         const evidence = collectWorktreeDirtyEvidence(worktree);

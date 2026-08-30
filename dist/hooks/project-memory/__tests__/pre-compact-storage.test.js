@@ -59,8 +59,8 @@ describe("Project Memory PreCompact storage integration", () => {
         process.env.HOME = projectRoot;
         process.env.USERPROFILE = projectRoot;
         await fs.writeFile(path.join(projectRoot, "package.json"), "{}\n");
-        await fs.mkdir(path.join(projectRoot, ".omc"), { recursive: true });
-        await fs.writeFile(path.join(projectRoot, ".omc", "project-memory.json"), JSON.stringify(createMinimalPersistedMemory(projectRoot)), "utf-8");
+        await fs.mkdir(path.join(projectRoot, ".omg"), { recursive: true });
+        await fs.writeFile(path.join(projectRoot, ".omg", "project-memory.json"), JSON.stringify(createMinimalPersistedMemory(projectRoot)), "utf-8");
         const input = {
             session_id: "test-session",
             transcript_path: "/tmp/transcript",

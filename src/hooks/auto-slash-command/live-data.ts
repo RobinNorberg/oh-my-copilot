@@ -12,7 +12,7 @@
  * - Once per session: `!only-once npm install`
  * - Output formats: `!json docker inspect ...`, `!table ...`, `!diff git diff`
  * - Multi-line: `!begin-script bash` ... `!end-script`
- * - Security allowlist via .omc/config/live-data-policy.json
+ * - Security allowlist via .omg/config/live-data-policy.json
  */
 
 import { execFileSync } from "child_process";
@@ -285,7 +285,7 @@ function loadSecurityPolicy(): SecurityPolicy {
   const root = getWorktreeRoot() || process.cwd();
   const policyPaths = [
     join(getOmcRoot(root), "config", "live-data-policy.json"),
-    join(root, ".claude", "live-data-policy.json"),
+    join(root, ".copilot", "live-data-policy.json"),
   ];
 
   for (const p of policyPaths) {

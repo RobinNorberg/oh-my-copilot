@@ -160,8 +160,8 @@ function discoverSkillsFromDir(skillsDir) {
  */
 export function discoverAllCommands() {
     const userCommandsDir = join(COPILOT_CONFIG_DIR, 'commands');
-    const projectCommandsDir = join(process.cwd(), '.claude', 'commands');
-    const projectClaudeSkillsDir = join(process.cwd(), '.claude', 'skills');
+    const projectCommandsDir = join(process.cwd(), '.copilot', 'commands');
+    const projectClaudeSkillsDir = join(process.cwd(), '.copilot', 'skills');
     const projectOmcSkillsDir = join(getOmcRoot(), 'skills');
     const projectAgentSkillsDir = join(process.cwd(), '.agents', 'skills');
     const userSkillsDir = join(COPILOT_CONFIG_DIR, 'skills');
@@ -325,7 +325,7 @@ export function executeSlashCommand(parsed) {
     if (!command) {
         return {
             success: false,
-            error: `Command "/${parsed.command}" not found. Available commands are in ${COPILOT_CONFIG_DIR}/commands/ or .claude/commands/`,
+            error: `Command "/${parsed.command}" not found. Available commands are in ${COPILOT_CONFIG_DIR}/commands/ or .copilot/commands/`,
         };
     }
     try {

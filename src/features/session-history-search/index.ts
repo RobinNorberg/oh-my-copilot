@@ -84,7 +84,7 @@ function getMainRepoRoot(projectRoot: string): string | null {
 }
 
 function getClaudeWorktreeParent(projectRoot: string): string | null {
-  const marker = `${normalize('/.claude/worktrees/')}`;
+  const marker = `${normalize('/.copilot/worktrees/')}`;
   const normalizedRoot = normalize(projectRoot);
   const idx = normalizedRoot.indexOf(marker);
   if (idx === -1) return null;

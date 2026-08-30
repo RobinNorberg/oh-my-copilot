@@ -7,7 +7,7 @@ Interview guidance for this ralphthon intake:
 - For brownfield confirmations, cite the repo evidence that triggered the question (file path, symbol, or pattern) before asking the user to choose a direction.
 - If scope remains fuzzy because the core entity keeps shifting, use ontology-style questioning to identify what the thing fundamentally IS before asking for more feature detail.
 
-After the interview, generate a ralphthon-prd.json file in .omc/ with this structure:
+After the interview, generate a ralphthon-prd.json file in .omg/ with this structure:
 {
   "project": "<project name>",
   "branchName": "<branch>",

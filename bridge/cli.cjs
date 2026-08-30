@@ -3039,7 +3039,7 @@ function getCopilotConfigDir() {
   const home = (0, import_os.homedir)();
   const configured = process.env.COPILOT_CONFIG_DIR?.trim();
   if (!configured) {
-    return stripTrailingSep((0, import_path.normalize)((0, import_path.join)(home, ".claude")));
+    return stripTrailingSep((0, import_path.normalize)((0, import_path.join)(home, ".copilot")));
   }
   if (configured === "~") {
     return stripTrailingSep((0, import_path.normalize)(home));
@@ -3050,7 +3050,7 @@ function getCopilotConfigDir() {
   return stripTrailingSep((0, import_path.normalize)(configured));
 }
 function getOmcConfigDir() {
-  return (0, import_path.join)(getCopilotConfigDir(), ".omc");
+  return (0, import_path.join)(getCopilotConfigDir(), ".omg");
 }
 function getUpdateCheckCachePath() {
   return (0, import_path.join)(getOmcConfigDir(), "update-check.json");
@@ -3163,7 +3163,7 @@ function processAlive(pid) {
   }
 }
 function getCacheOccupancyDir(configDir = getCopilotConfigDir()) {
-  return (0, import_path2.join)(configDir, ".omc", "cache-occupancy");
+  return (0, import_path2.join)(configDir, ".omg", "cache-occupancy");
 }
 function validRecord(value) {
   if (!value || typeof value !== "object") return false;
@@ -3273,7 +3273,7 @@ function getUserHomeDir() {
   return process.env.HOME || (0, import_os2.homedir)();
 }
 function getLegacyOmcDir() {
-  return (0, import_path3.join)(getUserHomeDir(), ".omc");
+  return (0, import_path3.join)(getUserHomeDir(), ".omg");
 }
 function getGlobalOmcConfigRoot() {
   const explicitRoot = process.env.OMC_HOME?.trim();
@@ -4219,7 +4219,7 @@ function buildDefaultConfig() {
       execution: "solo"
     },
     planOutput: {
-      directory: ".omc/plans",
+      directory: ".omg/plans",
       filenameTemplate: "{{name}}.md"
     },
     teleport: {
@@ -4253,7 +4253,7 @@ function getConfigPaths() {
   const userConfigDir = getConfigDir();
   return {
     user: (0, import_path4.join)(userConfigDir, "claude-omc", "config.jsonc"),
-    project: (0, import_path4.join)(process.cwd(), ".claude", "omc.jsonc")
+    project: (0, import_path4.join)(process.cwd(), ".copilot", "omg.jsonc")
   };
 }
 function loadJsoncFile(path27) {
@@ -4706,7 +4706,11 @@ function findContextFiles(startDir) {
   const searchDir = startDir ?? process.cwd();
   const contextFileNames = [
     "AGENTS.md",
+    "copilot-instructions.md",
     "CLAUDE.md",
+    ".copilot/copilot-instructions.md",
+    ".copilot/AGENTS.md",
+    // Retained for compatibility when this plugin runs under Claude Code.
     ".claude/CLAUDE.md",
     ".claude/AGENTS.md"
   ];
@@ -5052,7 +5056,7 @@ var init_utils = __esm({
     import_fs4 = require("fs");
     import_path5 = require("path");
     import_url = require("url");
-    OPEN_QUESTIONS_PATH = ".omc/plans/open-questions.md";
+    OPEN_QUESTIONS_PATH = ".omg/plans/open-questions.md";
   }
 });
 
@@ -31588,7 +31592,7 @@ function isValidTranscriptPath(transcriptPath) {
   const home = (0, import_os4.homedir)();
   const allowedPrefixes = [
     getCopilotConfigDir(),
-    (0, import_path18.join)(home, ".omc"),
+    (0, import_path18.join)(home, ".omg"),
     (0, import_os4.tmpdir)(),
     // honors $TMPDIR; covers /tmp and macOS /var/folders defaults
     "/tmp",
@@ -31678,7 +31682,7 @@ function resolveTranscriptPath(transcriptPath, cwd2) {
   }
   const effectiveCwd = cwd2 || process.cwd();
   const normalizedCwd = (0, import_path18.normalize)(effectiveCwd);
-  const worktreeMarker = (0, import_path18.normalize)("/.claude/worktrees/");
+  const worktreeMarker = (0, import_path18.normalize)("/.copilot/worktrees/");
   const markerIdx = normalizedCwd.indexOf(worktreeMarker);
   if (markerIdx !== -1) {
     const mainProjectRoot = normalizedCwd.substring(0, markerIdx);
@@ -31982,21 +31986,21 @@ var init_worktree_paths = __esm({
     init_encode_project_path();
     WORKSPACE_MARKER = ".omc-workspace";
     OmcPaths = {
-      ROOT: ".omc",
-      STATE: ".omc/state",
-      SESSIONS: ".omc/state/sessions",
-      PLANS: ".omc/plans",
-      RESEARCH: ".omc/research",
-      NOTEPAD: ".omc/notepad.md",
-      PROJECT_MEMORY: ".omc/project-memory.json",
-      DRAFTS: ".omc/drafts",
-      NOTEPADS: ".omc/notepads",
-      LOGS: ".omc/logs",
-      SCIENTIST: ".omc/scientist",
-      AUTOPILOT: ".omc/autopilot",
-      SKILLS: ".omc/skills",
-      SHARED_MEMORY: ".omc/state/shared-memory",
-      DEEPINIT_MANIFEST: ".omc/deepinit-manifest.json"
+      ROOT: ".omg",
+      STATE: ".omg/state",
+      SESSIONS: ".omg/state/sessions",
+      PLANS: ".omg/plans",
+      RESEARCH: ".omg/research",
+      NOTEPAD: ".omg/notepad.md",
+      PROJECT_MEMORY: ".omg/project-memory.json",
+      DRAFTS: ".omg/drafts",
+      NOTEPADS: ".omg/notepads",
+      LOGS: ".omg/logs",
+      SCIENTIST: ".omg/scientist",
+      AUTOPILOT: ".omg/autopilot",
+      SKILLS: ".omg/skills",
+      SHARED_MEMORY: ".omg/state/shared-memory",
+      DEEPINIT_MANIFEST: ".omg/deepinit-manifest.json"
     };
     MAX_WORKTREE_CACHE_SIZE = 8;
     worktreeCacheMap = /* @__PURE__ */ new Map();
@@ -32013,7 +32017,7 @@ var init_worktree_paths = __esm({
       "ssh",
       ".pki",
       ".config",
-      ".claude",
+      ".copilot",
       ".claude.json",
       ".codex",
       ".gemini",
@@ -32071,7 +32075,7 @@ var init_worktree_paths = __esm({
 // src/lib/security-config.ts
 function loadSecurityFromConfigFiles() {
   const paths = [
-    (0, import_path19.join)(process.cwd(), ".claude", "omc.jsonc"),
+    (0, import_path19.join)(process.cwd(), ".copilot", "omc.jsonc"),
     (0, import_path19.join)(getConfigDir(), "claude-omc", "config.jsonc")
   ];
   for (const configPath of paths) {
@@ -33430,7 +33434,7 @@ var init_constants = __esm({
     init_config_dir();
     init_worktree_paths();
     USER_SKILLS_DIR = (0, import_path21.join)(getCopilotConfigDir(), "skills", "omc-learned");
-    GLOBAL_SKILLS_DIR = (0, import_path21.join)((0, import_os5.homedir)(), ".omc", "skills");
+    GLOBAL_SKILLS_DIR = (0, import_path21.join)((0, import_os5.homedir)(), ".omg", "skills");
     PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
     PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path21.join)(".agents", "skills");
     MAX_RECURSION_DEPTH = 10;
@@ -35434,7 +35438,7 @@ var init_plan_output = __esm({
     "use strict";
     import_path27 = require("path");
     init_worktree_paths();
-    DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omc/plans";
+    DEFAULT_PLAN_OUTPUT_DIRECTORY = ".omg/plans";
     DEFAULT_PLAN_OUTPUT_FILENAME_TEMPLATE = "{{name}}.md";
   }
 });
@@ -35511,7 +35515,7 @@ The Analyst is read-only and cannot write files, so you must persist its open qu
 ### Step 3: Save Combined Spec
 
 Combine Analyst requirements + Architect technical spec into a single document.
-Save to: \`.omc/autopilot/spec.md\`
+Save to: \`.omg/autopilot/spec.md\`
 
 ${includeLegacyCompletion ? `### Step 4: Signal Completion
 
@@ -35790,7 +35794,7 @@ function getPhasePrompt(phase, context) {
       );
     case "planning":
       return getDirectPlanningPrompt(
-        context.specPath || ".omc/autopilot/spec.md",
+        context.specPath || ".omg/autopilot/spec.md",
         context.planPath || resolveAutopilotPlanPath()
       );
     case "execution":
@@ -35798,7 +35802,7 @@ function getPhasePrompt(phase, context) {
     case "qa":
       return getQAPrompt();
     case "validation":
-      return getValidationPrompt(context.specPath || ".omc/autopilot/spec.md");
+      return getValidationPrompt(context.specPath || ".omg/autopilot/spec.md");
     default:
       return "";
   }
@@ -35826,7 +35830,7 @@ var init_ralplan_adapter = __esm({
         return config2.planning === false;
       },
       getPrompt(context) {
-        const specPath = context.specPath || ".omc/autopilot/spec.md";
+        const specPath = context.specPath || ".omg/autopilot/spec.md";
         const planPath = context.planPath || resolveAutopilotPlanPath();
         if (context.config.planning === "ralplan") {
           return `## PIPELINE STAGE: RALPLAN (Consensus Planning)
@@ -36067,7 +36071,7 @@ var init_ralph_adapter = __esm({
         return config2.verification === false;
       },
       getPrompt(context) {
-        const specPath = context.specPath || ".omc/autopilot/spec.md";
+        const specPath = context.specPath || ".omg/autopilot/spec.md";
         const maxIterations = context.config.verification !== false ? context.config.verification.maxIterations : 100;
         return `## PIPELINE STAGE: RALPH (Verification)
 
@@ -39340,7 +39344,7 @@ function buildContext(state, tracking) {
     directory: state.project_path || process.cwd(),
     sessionId: state.session_id,
     ...namedWorkflow ? {} : {
-      specPath: state.expansion?.spec_path || ".omc/autopilot/spec.md",
+      specPath: state.expansion?.spec_path || ".omg/autopilot/spec.md",
       planPath: state.planning?.plan_path || resolveAutopilotPlanPath(),
       openQuestionsPath: resolveOpenQuestionsPlanPath()
     },
@@ -40801,7 +40805,7 @@ function normalizePath(value) {
   return value.replace(/\\/g, "/").replace(/\/+$/, "");
 }
 function isDefaultClaudeConfigDir() {
-  return normalizePath(getCopilotConfigDir()) === normalizePath((0, import_path55.join)((0, import_os9.homedir)(), ".claude"));
+  return normalizePath(getCopilotConfigDir()) === normalizePath((0, import_path55.join)((0, import_os9.homedir)(), ".copilot"));
 }
 function quoteCommandPath(path27) {
   return `"${path27.replace(/"/g, '\\"')}"`;
@@ -43107,7 +43111,7 @@ function canonicalizeExistingPath2(value) {
   }
 }
 function isDefaultClaudeConfigDirPath(configDir) {
-  return normalizePath2(configDir) === normalizePath2((0, import_path60.join)((0, import_os12.homedir)(), ".claude"));
+  return normalizePath2(configDir) === normalizePath2((0, import_path60.join)((0, import_os12.homedir)(), ".copilot"));
 }
 function quoteShellArg(value) {
   return `"${value.replace(/"/g, '\\"')}"`;
@@ -46279,7 +46283,7 @@ function getTodoFilePaths(sessionId, directory) {
   }
   if (directory) {
     paths.push((0, import_path62.join)(getOmcRoot(directory), "todos.json"));
-    paths.push((0, import_path62.join)(directory, ".claude", "todos.json"));
+    paths.push((0, import_path62.join)(directory, ".copilot", "todos.json"));
   }
   return paths;
 }
@@ -47700,7 +47704,7 @@ function getSettingsFilePath() {
   return (0, import_path64.join)(getCopilotConfigDir(), "settings.json");
 }
 function getConfigFilePath() {
-  return (0, import_path64.join)(getCopilotConfigDir(), ".omc", "hud-config.json");
+  return (0, import_path64.join)(getCopilotConfigDir(), ".omg", "hud-config.json");
 }
 function readJsonFile(filePath) {
   if (!(0, import_fs52.existsSync)(filePath)) {
@@ -49810,7 +49814,7 @@ function readPermissionStringEntries(filePath, key) {
   }
 }
 function getCopilotPermissionAllowEntries(directory) {
-  const projectSettingsPath = path15.join(directory, ".claude", "settings.local.json");
+  const projectSettingsPath = path15.join(directory, ".copilot", "settings.local.json");
   const globalConfigDir = getCopilotConfigDir();
   const candidatePaths = [
     projectSettingsPath,
@@ -49843,7 +49847,7 @@ function hasClaudePermissionApproval(directory, toolName, command) {
   return allowEntries.includes(`Bash(${trimmedCommand})`);
 }
 function getCopilotPermissionAskEntries(directory) {
-  const projectSettingsPath = path15.join(directory, ".claude", "settings.local.json");
+  const projectSettingsPath = path15.join(directory, ".copilot", "settings.local.json");
   const globalConfigDir = getCopilotConfigDir();
   const candidatePaths = [
     projectSettingsPath,
@@ -52743,7 +52747,7 @@ function generateContinuationPrompt(state, directory, sessionId) {
   writeAutopilotState(directory, state, sessionId);
   const phasePrompt = getPhasePrompt(state.phase, {
     idea: state.originalIdea || state.prompt || "",
-    specPath: state.expansion.spec_path || `.omc/autopilot/spec.md`,
+    specPath: state.expansion.spec_path || `.omg/autopilot/spec.md`,
     planPath: state.planning.plan_path || resolveAutopilotPlanPath(),
     openQuestionsPath: resolveOpenQuestionsPlanPath()
   });
@@ -52833,7 +52837,7 @@ function checkPipelineAutopilot(state, sessionId, directory) {
       idea: state.originalIdea || state.prompt || "",
       directory: state.project_path || directory,
       sessionId,
-      specPath: state.expansion.spec_path || ".omc/autopilot/spec.md",
+      specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
       planPath: state.planning.plan_path || resolveAutopilotPlanPath(),
       openQuestionsPath: resolveOpenQuestionsPlanPath(),
       config: tracking.pipelineConfig ?? DEFAULT_PIPELINE_CONFIG
@@ -52873,7 +52877,7 @@ ${stagePrompt2}
     idea: state.originalIdea || state.prompt || "",
     directory: state.project_path || directory,
     sessionId,
-    specPath: state.expansion.spec_path || ".omc/autopilot/spec.md",
+    specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
     planPath: state.planning.plan_path || resolveAutopilotPlanPath(),
     openQuestionsPath: resolveOpenQuestionsPlanPath(),
     config: tracking.pipelineConfig ?? DEFAULT_PIPELINE_CONFIG
@@ -59548,7 +59552,7 @@ var init_dedupe = __esm({
     import_path80 = require("path");
     init_atomic_write();
     init_platform();
-    STATE_DIR = [".omc", "state"];
+    STATE_DIR = [".omg", "state"];
     STATE_FILE2 = "openclaw-event-dedupe.json";
     LOCK_FILE = "openclaw-event-dedupe.lock";
     START_WINDOW_MS = 1e4;
@@ -59998,7 +60002,7 @@ function onSessionStart(data) {
     const index = readIndex(root2);
     if (!index || pages.length === 0) return {};
     const summary = [
-      `[LLM Wiki: ${pages.length} pages at .omc/wiki/]`,
+      `[LLM Wiki: ${pages.length} pages at .omg/wiki/]`,
       "",
       "Use wiki_query to search, wiki_list to browse, wiki_read to view pages.",
       "",
@@ -60108,8 +60112,8 @@ function normalizeTaskFileStem(taskId) {
 }
 function absPath(cwd2, relativePath) {
   if ((0, import_path84.isAbsolute)(relativePath)) return relativePath;
-  if (relativePath === ".omc" || relativePath.startsWith(".omc/")) {
-    return (0, import_path84.join)(getOmcRoot(cwd2), relativePath.slice(".omc".length).replace(/^\//, ""));
+  if (relativePath === ".omg" || relativePath.startsWith(".omg/")) {
+    return (0, import_path84.join)(getOmcRoot(cwd2), relativePath.slice(".omg".length).replace(/^\//, ""));
   }
   return (0, import_path84.join)(cwd2, relativePath);
 }
@@ -60131,84 +60135,84 @@ var init_state_paths = __esm({
     import_path84 = require("path");
     init_worktree_paths();
     TeamPaths = {
-      root: (teamName) => `.omc/state/team/${teamName}`,
-      config: (teamName) => `.omc/state/team/${teamName}/config.json`,
-      shutdown: (teamName) => `.omc/state/team/${teamName}/shutdown.json`,
-      tasks: (teamName) => `.omc/state/team/${teamName}/tasks`,
-      taskFile: (teamName, taskId) => `.omc/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
-      workers: (teamName) => `.omc/state/team/${teamName}/workers`,
-      workerDir: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}`,
-      heartbeat: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/heartbeat.json`,
-      inbox: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/inbox.md`,
-      outbox: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/outbox.jsonl`,
-      ready: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/.ready`,
-      overlay: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/AGENTS.md`,
-      shutdownAck: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json`,
-      workerLaunchAttemptRoot: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}`,
-      workerLaunchCurrent: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/current.json`,
-      workerLaunchExpected: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/expected.json`,
-      workerLaunchAck: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/ack.json`,
-      workerLaunchStarted: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/provider-started.json`,
-      workerLaunchTransportOwner: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/transport-owner.json`,
-      workerLaunchBootstrapDescriptor: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/bootstrap.json`,
-      workerLaunchWrapper: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/launch.cmd`,
-      workerLaunchTransportCleanupComplete: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/transport-cleanup-complete.json`,
-      workerLaunchDecision: (teamName, workerName2, attemptId) => `.omc/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/decision.json`,
-      mailbox: (teamName, workerName2) => `.omc/state/team/${teamName}/mailbox/${workerName2}.json`,
-      mailboxLockDir: (teamName, workerName2) => `.omc/state/team/${teamName}/mailbox/.lock-${workerName2}`,
-      dispatchRequests: (teamName) => `.omc/state/team/${teamName}/dispatch/requests.json`,
-      dispatchLockDir: (teamName) => `.omc/state/team/${teamName}/dispatch/.lock`,
-      mailboxNotificationLock: (teamName, requestId) => `.omc/state/team/${teamName}/dispatch/.mailbox-notification-${(0, import_node_crypto2.createHash)("sha256").update(requestId).digest("hex")}.lock`,
-      workerStatus: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/status.json`,
-      workerIdleNotify: (teamName) => `.omc/state/team/${teamName}/worker-idle-notify.json`,
-      workerPrevNotifyState: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/prev-notify-state.json`,
-      events: (teamName) => `.omc/state/team/${teamName}/events.jsonl`,
-      approval: (teamName, taskId) => `.omc/state/team/${teamName}/approvals/${taskId}.json`,
-      manifest: (teamName) => `.omc/state/team/${teamName}/manifest.json`,
-      monitorSnapshot: (teamName) => `.omc/state/team/${teamName}/monitor-snapshot.json`,
-      summarySnapshot: (teamName) => `.omc/state/team/${teamName}/summary-snapshot.json`,
-      phaseState: (teamName) => `.omc/state/team/${teamName}/phase-state.json`,
-      scalingLock: (teamName) => `.omc/state/team/${teamName}/.scaling-lock`,
-      configMutationLock: (teamName) => `.omc/state/team/${teamName}/.config-mutation.lock`,
-      workerIdentity: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/identity.json`,
-      workerAgentsMd: (teamName) => `.omc/state/team/${teamName}/worker-agents.md`,
-      shutdownRequest: (teamName, workerName2) => `.omc/state/team/${teamName}/workers/${workerName2}/shutdown-request.json`,
-      checkpoints: (teamName, taskId, claimTokenHash) => `.omc/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}`,
-      checkpoint: (teamName, taskId, claimTokenHash, sequence) => `.omc/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}/${sequence}.json`,
-      checkpointLatest: (teamName, taskId, claimTokenHash) => `.omc/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}/latest.json`,
+      root: (teamName) => `.omg/state/team/${teamName}`,
+      config: (teamName) => `.omg/state/team/${teamName}/config.json`,
+      shutdown: (teamName) => `.omg/state/team/${teamName}/shutdown.json`,
+      tasks: (teamName) => `.omg/state/team/${teamName}/tasks`,
+      taskFile: (teamName, taskId) => `.omg/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
+      workers: (teamName) => `.omg/state/team/${teamName}/workers`,
+      workerDir: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}`,
+      heartbeat: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/heartbeat.json`,
+      inbox: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/inbox.md`,
+      outbox: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/outbox.jsonl`,
+      ready: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/.ready`,
+      overlay: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/AGENTS.md`,
+      shutdownAck: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/shutdown-ack.json`,
+      workerLaunchAttemptRoot: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}`,
+      workerLaunchCurrent: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/current.json`,
+      workerLaunchExpected: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/expected.json`,
+      workerLaunchAck: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/ack.json`,
+      workerLaunchStarted: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/provider-started.json`,
+      workerLaunchTransportOwner: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/transport-owner.json`,
+      workerLaunchBootstrapDescriptor: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/bootstrap.json`,
+      workerLaunchWrapper: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/launch.cmd`,
+      workerLaunchTransportCleanupComplete: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/transport-cleanup-complete.json`,
+      workerLaunchDecision: (teamName, workerName2, attemptId) => `.omg/state/team/${teamName}/workers/${workerName2}/launch-attempts/${attemptId}/decision.json`,
+      mailbox: (teamName, workerName2) => `.omg/state/team/${teamName}/mailbox/${workerName2}.json`,
+      mailboxLockDir: (teamName, workerName2) => `.omg/state/team/${teamName}/mailbox/.lock-${workerName2}`,
+      dispatchRequests: (teamName) => `.omg/state/team/${teamName}/dispatch/requests.json`,
+      dispatchLockDir: (teamName) => `.omg/state/team/${teamName}/dispatch/.lock`,
+      mailboxNotificationLock: (teamName, requestId) => `.omg/state/team/${teamName}/dispatch/.mailbox-notification-${(0, import_node_crypto2.createHash)("sha256").update(requestId).digest("hex")}.lock`,
+      workerStatus: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/status.json`,
+      workerIdleNotify: (teamName) => `.omg/state/team/${teamName}/worker-idle-notify.json`,
+      workerPrevNotifyState: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/prev-notify-state.json`,
+      events: (teamName) => `.omg/state/team/${teamName}/events.jsonl`,
+      approval: (teamName, taskId) => `.omg/state/team/${teamName}/approvals/${taskId}.json`,
+      manifest: (teamName) => `.omg/state/team/${teamName}/manifest.json`,
+      monitorSnapshot: (teamName) => `.omg/state/team/${teamName}/monitor-snapshot.json`,
+      summarySnapshot: (teamName) => `.omg/state/team/${teamName}/summary-snapshot.json`,
+      phaseState: (teamName) => `.omg/state/team/${teamName}/phase-state.json`,
+      scalingLock: (teamName) => `.omg/state/team/${teamName}/.scaling-lock`,
+      configMutationLock: (teamName) => `.omg/state/team/${teamName}/.config-mutation.lock`,
+      workerIdentity: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/identity.json`,
+      workerAgentsMd: (teamName) => `.omg/state/team/${teamName}/worker-agents.md`,
+      shutdownRequest: (teamName, workerName2) => `.omg/state/team/${teamName}/workers/${workerName2}/shutdown-request.json`,
+      checkpoints: (teamName, taskId, claimTokenHash) => `.omg/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}`,
+      checkpoint: (teamName, taskId, claimTokenHash, sequence) => `.omg/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}/${sequence}.json`,
+      checkpointLatest: (teamName, taskId, claimTokenHash) => `.omg/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}/latest.json`,
       taskRecoverySidecar: (teamName, recoveryId, taskId) => {
         if (recoveryId.length === 0 || recoveryId.length > 128 || recoveryId === "." || recoveryId === ".." || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(recoveryId)) {
           throw new Error("invalid_recovery_request_id");
         }
         const taskStem = normalizeTaskFileStem(taskId);
         if (!/^task-\d+$/.test(taskStem)) throw new Error("invalid_task_id");
-        return `.omc/state/team/${teamName}/recovery/task-sidecars/${recoveryId}/${taskStem}.json`;
+        return `.omg/state/team/${teamName}/recovery/task-sidecars/${recoveryId}/${taskStem}.json`;
       },
-      taskRecoveryReservation: (teamName, taskId) => `.omc/state/team/${teamName}/recovery/reservations/${normalizeTaskFileStem(taskId)}.json`,
-      ownerEpochs: (teamName) => `.omc/state/team/${teamName}/recovery/owner-epochs`,
-      ownerEpoch: (teamName, epoch) => `.omc/state/team/${teamName}/recovery/owner-epochs/${epoch}.json`,
+      taskRecoveryReservation: (teamName, taskId) => `.omg/state/team/${teamName}/recovery/reservations/${normalizeTaskFileStem(taskId)}.json`,
+      ownerEpochs: (teamName) => `.omg/state/team/${teamName}/recovery/owner-epochs`,
+      ownerEpoch: (teamName, epoch) => `.omg/state/team/${teamName}/recovery/owner-epochs/${epoch}.json`,
       recoveryOwnerBootstrapCandidate: (teamName, expectedEpoch, nonce) => {
         if (nonce.length === 0 || nonce.length > 128 || nonce === "." || nonce === ".." || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(nonce)) throw new Error("invalid_recovery_owner_bootstrap_nonce");
-        return `.omc/state/team/${teamName}/recovery/owner-bootstrap/${expectedEpoch}/${nonce}.json`;
+        return `.omg/state/team/${teamName}/recovery/owner-bootstrap/${expectedEpoch}/${nonce}.json`;
       },
-      recoveryIntents: (teamName) => `.omc/state/team/${teamName}/recovery/intents`,
-      recoveryIntent: (teamName, recoveryId) => `.omc/state/team/${teamName}/recovery/intents/${recoveryId}.json`,
-      recoveryAttempts: (teamName) => `.omc/state/team/${teamName}/recovery/attempts`,
-      recoveryAttempt: (teamName, recoveryId) => `.omc/state/team/${teamName}/recovery/attempts/${recoveryId}.json`,
-      recoveryActivation: (teamName, recoveryId, paneAttemptId) => `.omc/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}`,
-      recoveryReady: (teamName, recoveryId, paneAttemptId) => `.omc/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/ready.json`,
-      recoveryActivate: (teamName, recoveryId, paneAttemptId) => `.omc/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/activate.json`,
-      recoveryRun: (teamName, recoveryId, paneAttemptId) => `.omc/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/run.json`,
-      recoveryRequestsRoot: () => ".omc/state/team-recovery/by-request",
-      recoveryAdmissionLock: (payloadHash) => `.omc/state/team-recovery/admission-locks/${payloadHash}.lock`,
-      recoveryLifecycleLock: (workspaceHash2, teamName) => `.omc/state/team-recovery/lifecycle-locks/${workspaceHash2}/${teamName}.lock`,
-      recoveryRequestPending: (requestId) => `.omc/state/team-recovery/by-request/${requestId}.pending.json`,
-      recoveryRequestResult: (requestId) => `.omc/state/team-recovery/by-request/${requestId}.result.json`,
-      recoveryResultByTeam: (workspaceHash2, teamName, recoveryId) => `.omc/state/team-recovery/by-team/${workspaceHash2}/${teamName}/${recoveryId}.json`,
-      recoveryFinalIndexLock: (workspaceHash2, teamName, recoveryId) => `.omc/state/team-recovery/index-locks/${workspaceHash2}/${teamName}/${recoveryId}.lock`,
-      scalingRollbackFailure: (teamName, recordedAt) => `.omc/state/team/${teamName}/scaling-rollback/${recordedAt}.json`,
-      recoveryPaneRollbackFailure: (teamName, recoveryId, paneAttemptId, recordedAt) => `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}/${paneAttemptId}-${recordedAt}.json`,
-      recoveryAuditIndex: () => ".omc/state/team-recovery/audit.jsonl"
+      recoveryIntents: (teamName) => `.omg/state/team/${teamName}/recovery/intents`,
+      recoveryIntent: (teamName, recoveryId) => `.omg/state/team/${teamName}/recovery/intents/${recoveryId}.json`,
+      recoveryAttempts: (teamName) => `.omg/state/team/${teamName}/recovery/attempts`,
+      recoveryAttempt: (teamName, recoveryId) => `.omg/state/team/${teamName}/recovery/attempts/${recoveryId}.json`,
+      recoveryActivation: (teamName, recoveryId, paneAttemptId) => `.omg/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}`,
+      recoveryReady: (teamName, recoveryId, paneAttemptId) => `.omg/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/ready.json`,
+      recoveryActivate: (teamName, recoveryId, paneAttemptId) => `.omg/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/activate.json`,
+      recoveryRun: (teamName, recoveryId, paneAttemptId) => `.omg/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/run.json`,
+      recoveryRequestsRoot: () => ".omg/state/team-recovery/by-request",
+      recoveryAdmissionLock: (payloadHash) => `.omg/state/team-recovery/admission-locks/${payloadHash}.lock`,
+      recoveryLifecycleLock: (workspaceHash2, teamName) => `.omg/state/team-recovery/lifecycle-locks/${workspaceHash2}/${teamName}.lock`,
+      recoveryRequestPending: (requestId) => `.omg/state/team-recovery/by-request/${requestId}.pending.json`,
+      recoveryRequestResult: (requestId) => `.omg/state/team-recovery/by-request/${requestId}.result.json`,
+      recoveryResultByTeam: (workspaceHash2, teamName, recoveryId) => `.omg/state/team-recovery/by-team/${workspaceHash2}/${teamName}/${recoveryId}.json`,
+      recoveryFinalIndexLock: (workspaceHash2, teamName, recoveryId) => `.omg/state/team-recovery/index-locks/${workspaceHash2}/${teamName}/${recoveryId}.lock`,
+      scalingRollbackFailure: (teamName, recordedAt) => `.omg/state/team/${teamName}/scaling-rollback/${recordedAt}.json`,
+      recoveryPaneRollbackFailure: (teamName, recoveryId, paneAttemptId, recordedAt) => `.omg/state/team/${teamName}/recovery/rollback-failures/${recoveryId}/${paneAttemptId}-${recordedAt}.json`,
+      recoveryAuditIndex: () => ".omg/state/team-recovery/audit.jsonl"
     };
   }
 });
@@ -63231,11 +63235,11 @@ function readDeepInterviewThresholdFromSettings(path27) {
 }
 function getDeepInterviewAmbiguityThresholdResolution() {
   const profileSettingsPath = (0, import_path91.join)(getCopilotConfigDir(), "settings.json");
-  const projectSettingsPath = (0, import_path91.join)(process.cwd(), ".claude", "settings.json");
+  const projectSettingsPath = (0, import_path91.join)(process.cwd(), ".copilot", "settings.json");
   const profileThreshold2 = readDeepInterviewThresholdFromSettings(profileSettingsPath);
   const projectThreshold = readDeepInterviewThresholdFromSettings(projectSettingsPath);
   if (projectThreshold !== null) {
-    return { threshold: projectThreshold, source: "./.claude/settings.json" };
+    return { threshold: projectThreshold, source: "./.copilot/settings.json" };
   }
   if (profileThreshold2 !== null) {
     return { threshold: profileThreshold2, source: "[$COPILOT_CONFIG_DIR|~/.claude]/settings.json" };
@@ -63283,7 +63287,7 @@ function applyDeepInterviewRuntimeSettings(template) {
   const withRuntimeSettings = withResolvedPlaceholders.includes("3.5. **Load runtime settings**:") || withResolvedPlaceholders.includes("## Phase 0: Resolve Ambiguity Threshold") ? withResolvedPlaceholders : withResolvedPlaceholders.replace(
     '4. **Initialize state** via `state_write(mode="deep-interview")`:',
     [
-      `3.5. **Load runtime settings** from \`~/.claude/settings.json\` and \`./.claude/settings.json\` before state init (project overrides profile). For this run, use \`ambiguityThreshold = ${threshold}\`.`,
+      `3.5. **Load runtime settings** from \`~/.copilot/settings.json\` and \`./.copilot/settings.json\` before state init (project overrides profile). For this run, use \`ambiguityThreshold = ${threshold}\`.`,
       '4. **Initialize state** via `state_write(mode="deep-interview")`:'
     ].join("\n")
   );
@@ -66601,9 +66605,9 @@ ${cursorReviewer ? "- Reviewer task transition: the leader completes or fails th
   - Completion is rejected with \`missing_delegation_compliance_evidence\` when required evidence is absent.
 
 ## Canonical Team State Root
-- Resolve the team state root in this order: \`OMC_TEAM_STATE_ROOT\` env -> worker identity \`team_state_root\` -> config/manifest \`team_state_root\` -> ${params.cwd}/.omc/state/team/${teamName}.
-- \`OMC_TEAM_STATE_ROOT\` is the team-specific root (\`.../.omc/state/team/${teamName}\`). When it is set, append worker/mailbox paths directly below it; do not append another \`team/${teamName}\` segment.
-- Worktree-backed workers MUST use the canonical leader-owned state root for inbox, mailbox, task lifecycle, status, heartbeat, and shutdown files; do not use a local worktree \`.omc/state\` when \`OMC_TEAM_STATE_ROOT\` is set.
+- Resolve the team state root in this order: \`OMC_TEAM_STATE_ROOT\` env -> worker identity \`team_state_root\` -> config/manifest \`team_state_root\` -> ${params.cwd}/.omg/state/team/${teamName}.
+- \`OMC_TEAM_STATE_ROOT\` is the team-specific root (\`.../.omg/state/team/${teamName}\`). When it is set, append worker/mailbox paths directly below it; do not append another \`team/${teamName}\` segment.
+- Worktree-backed workers MUST use the canonical leader-owned state root for inbox, mailbox, task lifecycle, status, heartbeat, and shutdown files; do not use a local worktree \`.omg/state\` when \`OMC_TEAM_STATE_ROOT\` is set.
 
 ## Communication Protocol
 - **Inbox**: Read ${inboxPath} for new instructions
@@ -66703,7 +66707,7 @@ var init_worker_bootstrap = __esm({
     init_fs_utils();
     init_state_paths();
     init_model_contract();
-    DEFAULT_INSTRUCTION_STATE_ROOT = ".omc/state";
+    DEFAULT_INSTRUCTION_STATE_ROOT = ".omg/state";
   }
 });
 
@@ -68981,7 +68985,7 @@ ${message2}`, "utf-8");
 }
 function extendLeaderBootstrapPrompt(teamName, cwd2) {
   const safe2 = sanitizeName(teamName);
-  const path27 = cwd2 ? (0, import_path98.join)(teamStateRoot(cwd2, safe2), "leader", "inbox.md") : `.omc/state/team/${safe2}/leader/inbox.md`;
+  const path27 = cwd2 ? (0, import_path98.join)(teamStateRoot(cwd2, safe2), "leader", "inbox.md") : `.omg/state/team/${safe2}/leader/inbox.md`;
   return `Runtime notifications appear at ${path27} \u2014 check this file periodically and after long-running operations.`;
 }
 var import_promises17, import_fs80, import_path98, LEADER_INBOX_HEADER;
@@ -69120,7 +69124,7 @@ async function installPostToolUseHook(worktreePath, workerName2) {
   if (isHookPaused(worktreePath)) {
     return;
   }
-  const claudeDir = (0, import_path99.join)(worktreePath, ".claude");
+  const claudeDir = (0, import_path99.join)(worktreePath, ".copilot");
   await (0, import_promises18.mkdir)(claudeDir, { recursive: true });
   const settingsPath = (0, import_path99.join)(claudeDir, "settings.json");
   const hookCommand = buildHookCommand2(workerName2);
@@ -69199,7 +69203,7 @@ async function uninstallCommitCadence(ctx, io = { readFile: import_promises18.re
     if (ownsRegisteredGeneration) cadenceOwners.delete(ctx.worktreePath);
     return;
   }
-  const settingsPath = (0, import_path99.join)(ctx.worktreePath, ".claude", "settings.json");
+  const settingsPath = (0, import_path99.join)(ctx.worktreePath, ".copilot", "settings.json");
   let raw;
   try {
     raw = await io.readFile(settingsPath, "utf-8");
@@ -77471,7 +77475,7 @@ var init_codebase_map = __esm({
       ".venv",
       "venv",
       "env",
-      ".omc",
+      ".omg",
       ".claude",
       "tmp",
       "temp"
@@ -77900,7 +77904,7 @@ async function saveModeSummary(directory) {
 }
 function readTodoSummary(directory) {
   const todoPaths = [
-    (0, import_path108.join)(directory, ".claude", "todos.json"),
+    (0, import_path108.join)(directory, ".copilot", "todos.json"),
     (0, import_path108.join)(getOmcRoot(directory), "state", "todos.json")
   ];
   for (const todoPath of todoPaths) {
@@ -78578,11 +78582,11 @@ var init_setup = __esm({
     init_config_dir();
     init_worktree_paths();
     REQUIRED_DIRECTORIES = [
-      ".omc/state",
-      ".omc/logs",
-      ".omc/notepads",
-      ".omc/state/checkpoints",
-      ".omc/plans"
+      ".omg/state",
+      ".omg/logs",
+      ".omg/notepads",
+      ".omg/state/checkpoints",
+      ".omg/plans"
     ];
     CONFIG_FILES = [
       ".omc-config.json"
@@ -89460,7 +89464,7 @@ var init_runner = __esm({
     init_store();
     init_safe_fs();
     init_types9();
-    DEFAULT_RUNS_ROOT_SEGMENTS = [".omc", "graph-runs"];
+    DEFAULT_RUNS_ROOT_SEGMENTS = [".omg", "graph-runs"];
     DESCRIPTOR_FILE_NAME = "descriptor.json";
     REQUEST_FINGERPRINT_PATTERN = /^[a-f0-9]{64}$/;
   }
@@ -91932,7 +91936,7 @@ function settingsFileHasApiKey(filePath) {
 }
 function detectApiKeySource(cwd2) {
   if (cwd2) {
-    const projectSettings = (0, import_path157.join)(cwd2, ".claude", "settings.local.json");
+    const projectSettings = (0, import_path157.join)(cwd2, ".copilot", "settings.local.json");
     if (settingsFileHasApiKey(projectSettings)) return "project";
   }
   const globalSettings = (0, import_path157.join)(getCopilotConfigDir(), "settings.json");
@@ -95897,7 +95901,7 @@ function validateToolPath(inputPath) {
   const rel = (0, import_path20.relative)(normalizedRoot, normalizedPath);
   if (rel.startsWith("..") || (0, import_path20.isAbsolute)(rel)) {
     throw new Error(
-      `Path restricted: '${inputPath}' is outside the project root '${projectRoot}'. Disable via security.restrictToolPaths in .claude/omc.jsonc or unset OMC_SECURITY.`
+      `Path restricted: '${inputPath}' is outside the project root '${projectRoot}'. Disable via security.restrictToolPaths in .copilot/omc.jsonc or unset OMC_SECURITY.`
     );
   }
   return resolved;
@@ -97337,7 +97341,7 @@ function formatSkillOutput(skills) {
 }
 var loadLocalTool = {
   name: "load_omc_skills_local",
-  description: "Load and list skills from the project-local .omc/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.",
+  description: "Load and list skills from the project-local .omg/skills/ directory. Returns skill metadata (id, name, description, triggers, tags) for all discovered project-scoped skills.",
   schema: loadLocalSchema,
   handler: async (args) => {
     const projectRoot = args.projectRoot ? validateProjectRoot(args.projectRoot) : process.cwd();
@@ -97355,7 +97359,7 @@ ${formatSkillOutput(projectSkills)}`
 };
 var loadGlobalTool = {
   name: "load_omc_skills_global",
-  description: "Load and list skills from global user directories (~/.omc/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
+  description: "Load and list skills from global user directories (~/.omg/skills/ and [$COPILOT_CONFIG_DIR|~/.claude]/skills/omc-learned/). Returns skill metadata for all discovered user-scoped skills.",
   schema: loadGlobalSchema,
   handler: async (_args) => {
     const allSkills = loadAllSkills(null);
@@ -97399,8 +97403,8 @@ ${formatSkillOutput(userSkills)}`;
 No skill files were discovered in any searched directories.
 
 Searched:
-- Project: .omc/skills/
-- Global: ~/.omc/skills/
+- Project: .omg/skills/
+- Global: ~/.omg/skills/
 - Claude config: ${getCopilotConfigDir()}/skills/omc-learned/`;
     }
     return {
@@ -98520,11 +98524,11 @@ function getLegacyStateFileCandidates(mode, root2) {
     getStatePath(mode, root2),
     (0, import_path37.join)(getOmcRoot(root2), `${normalizedName}.json`)
   ];
-  if (mode === "autopilot" && getGitTopLevel(root2)) candidates.push((0, import_path37.join)((0, import_os7.homedir)(), ".omc", "state", "autopilot-state.json"));
+  if (mode === "autopilot" && getGitTopLevel(root2)) candidates.push((0, import_path37.join)((0, import_os7.homedir)(), ".omg", "state", "autopilot-state.json"));
   return [...new Set(candidates)];
 }
 function isSharedHomeAutopilotCandidate(path27, root2) {
-  const sharedHomeStateRoot = (0, import_path37.resolve)((0, import_os7.homedir)(), ".omc", "state");
+  const sharedHomeStateRoot = (0, import_path37.resolve)((0, import_os7.homedir)(), ".omg", "state");
   const candidatePath = (0, import_path37.resolve)(path27);
   const canonicalStateRoot = (0, import_path37.resolve)(getOmcRoot(root2), "state");
   const isDescendant = (ancestor, descendant) => {
@@ -99982,7 +99986,7 @@ var stateMigrateNonGitTool = {
   description: "Explicitly copy session-owned JSON state from a legacy non-git .omc root into the canonical non-git state root without overwriting or deleting source files.",
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
   schema: {
-    workingDirectory: external_exports.string().optional().describe("Legacy non-git working directory containing .omc/state/sessions/<session_id>"),
+    workingDirectory: external_exports.string().optional().describe("Legacy non-git working directory containing .omg/state/sessions/<session_id>"),
     session_id: external_exports.string().describe("Exact session owner to migrate")
   },
   handler: async (args) => {
@@ -100785,7 +100789,7 @@ var import_path40 = require("path");
 // src/hooks/rules-injector/constants.ts
 var import_path39 = require("path");
 var import_os8 = require("os");
-var OMC_STORAGE_DIR = (0, import_path39.join)((0, import_os8.homedir)(), ".omc");
+var OMC_STORAGE_DIR = (0, import_path39.join)((0, import_os8.homedir)(), ".omg");
 var RULES_INJECTOR_STORAGE = (0, import_path39.join)(OMC_STORAGE_DIR, "rules-injector");
 
 // src/hooks/rules-injector/finder.ts
@@ -101299,7 +101303,7 @@ function getMainRepoRoot(projectRoot) {
   }
 }
 function getClaudeWorktreeParent(projectRoot) {
-  const marker = `${(0, import_path48.normalize)("/.claude/worktrees/")}`;
+  const marker = `${(0, import_path48.normalize)("/.copilot/worktrees/")}`;
   const normalizedRoot = (0, import_path48.normalize)(projectRoot);
   const idx = normalizedRoot.indexOf(marker);
   if (idx === -1) return null;
@@ -104109,7 +104113,7 @@ function resolveWikiRoot(workingDirectory) {
   return { ok: true, root: resolution.root };
 }
 function searchedSuffix(root2, pages) {
-  return ` (searched ${pages} page${pages === 1 ? "" : "s"} in ${(0, import_node_path2.basename)(root2)}/.omc/wiki)`;
+  return ` (searched ${pages} page${pages === 1 ? "" : "s"} in ${(0, import_node_path2.basename)(root2)}/.omg/wiki)`;
 }
 var wikiIngestTool = {
   name: "wiki_ingest",
@@ -104324,7 +104328,7 @@ var wikiAddTool = {
         content: [{
           type: "text",
           text: `Wiki page created: ${result.created[0]}
-Path: .omc/wiki/${result.created[0]}`
+Path: .omg/wiki/${result.created[0]}`
         }]
       };
     } catch (error2) {
@@ -105989,13 +105993,13 @@ var import_fs51 = require("fs");
 // src/hooks/omc-orchestrator/constants.ts
 var ALLOWED_PATH_PATTERNS = [
   /^\.omc\//,
-  // .omc/**
+  // .omg/**
   /^\.claude\//,
-  // .claude/** (local)
+  // .copilot/** (local)
   /^~?\/\.claude\//,
-  // legacy ~/.claude/** references
+  // legacy ~/.copilot/** references
   /\/\.claude\//,
-  // any /.claude/ path
+  // any /.copilot/ path
   /CLAUDE\.md$/,
   // **/CLAUDE.md
   /AGENTS\.md$/
@@ -106048,7 +106052,7 @@ var DIRECT_WORK_REMINDER = `
 
 [SYSTEM REMINDER - DELEGATION REQUIRED]
 
-You just performed direct file modifications outside \`.omc/\`.
+You just performed direct file modifications outside \`.omg/\`.
 
 **You are an ORCHESTRATOR, not an IMPLEMENTER.**
 
@@ -106058,8 +106062,8 @@ As an orchestrator, you should:
 - **COORDINATE** multiple tasks and ensure completion
 
 You should NOT:
-- Write code directly (except for \`.omc/\` files like plans and notepads)
-- Make direct file edits outside \`.omc/\`
+- Write code directly (except for \`.omg/\` files like plans and notepads)
+- Make direct file edits outside \`.omg/\`
 - Implement features yourself
 
 **If you need to make changes:**
@@ -106077,7 +106081,7 @@ var ORCHESTRATOR_DELEGATION_REQUIRED = `
 
 **STOP. YOU ARE VIOLATING ORCHESTRATOR PROTOCOL.**
 
-You (coordinator) are attempting to directly modify a file outside \`.omc/\`.
+You (coordinator) are attempting to directly modify a file outside \`.omg/\`.
 
 **Path attempted:** $FILE_PATH
 
@@ -106091,7 +106095,7 @@ As an ORCHESTRATOR, you MUST:
 3. **COORDINATE** - you orchestrate, you don't implement
 
 **ALLOWED direct file operations:**
-- Files inside \`.omc/\` (plans, notepads, drafts)
+- Files inside \`.omg/\` (plans, notepads, drafts)
 - Files inside \`[$COPILOT_CONFIG_DIR|~/.claude]/\`
 - \`CLAUDE.md\` and \`AGENTS.md\` files
 - Reading files for verification
@@ -106099,7 +106103,7 @@ As an ORCHESTRATOR, you MUST:
 
 **FORBIDDEN direct file operations:**
 - Writing/editing source code
-- Creating new files outside \`.omc/\`
+- Creating new files outside \`.omg/\`
 - Any implementation work
 
 ---
@@ -107546,7 +107550,7 @@ var SKILL_ENTRIES = [
   // are `keep`.
   entry({ name: "autopilot", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Retained as a directly-invocable end-to-end workflow alongside execute (owner direction, 5.0.0)." }),
   entry({ name: "autoresearch", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Retained as its own research lane entrypoint alongside research (owner direction, 5.0.0)." }),
-  entry({ name: "ultragoal", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Retained as the durable multi-goal workflow with its own .omc/ultragoal artifacts (owner direction, 5.0.0)." }),
+  entry({ name: "ultragoal", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Retained as the durable multi-goal workflow with its own .omg/ultragoal artifacts (owner direction, 5.0.0)." }),
   entry({ name: "ralph", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Retained: src/hooks/ralph is a live subsystem, `ralph` is a wired KeywordType and slash skill, and it is autopilot's verification engine (owner direction, 5.0.0)." }),
   // Release maintainer boundary (owner decision 2): compatibility alias to
   // maintainer-only `omc release`; fail-closed. Explicitly exempt from the
@@ -109902,7 +109906,7 @@ ${detailParts.join("\n\n")}`
   }
   const context = {
     idea: state.originalIdea,
-    specPath: state.expansion.spec_path || ".omc/autopilot/spec.md",
+    specPath: state.expansion.spec_path || ".omg/autopilot/spec.md",
     planPath: state.planning.plan_path || resolveAutopilotPlanPath(config2),
     openQuestionsPath: resolveOpenQuestionsPlanPath(config2)
   };
@@ -110404,12 +110408,12 @@ var import_fs97 = require("fs");
 var import_path117 = require("path");
 init_config_dir();
 var DEFAULT_TASK_TTL_MS = 30 * 60 * 1e3;
-var BACKGROUND_TASKS_DIR = (0, import_path117.join)(getCopilotConfigDir(), ".omc", "background-tasks");
+var BACKGROUND_TASKS_DIR = (0, import_path117.join)(getCopilotConfigDir(), ".omg", "background-tasks");
 
 // src/hooks/directory-readme-injector/constants.ts
 var import_node_path21 = require("node:path");
 var import_node_os4 = require("node:os");
-var OMC_STORAGE_DIR2 = (0, import_node_path21.join)((0, import_node_os4.homedir)(), ".omc");
+var OMC_STORAGE_DIR2 = (0, import_node_path21.join)((0, import_node_os4.homedir)(), ".omg");
 var README_INJECTOR_STORAGE = (0, import_node_path21.join)(
   OMC_STORAGE_DIR2,
   "directory-readme"
@@ -110486,7 +110490,7 @@ var import_path119 = require("path");
 // src/hooks/agent-usage-reminder/constants.ts
 var import_path118 = require("path");
 var import_os17 = require("os");
-var OMC_STORAGE_DIR3 = (0, import_path118.join)((0, import_os17.homedir)(), ".omc");
+var OMC_STORAGE_DIR3 = (0, import_path118.join)((0, import_os17.homedir)(), ".omg");
 var AGENT_USAGE_REMINDER_STORAGE = (0, import_path118.join)(
   OMC_STORAGE_DIR3,
   "agent-usage-reminder"
@@ -110684,7 +110688,7 @@ var DEFAULT_FACTCHECK_POLICY = {
   mode: "quick",
   strict_project_patterns: [],
   forbidden_path_prefixes: ["${COPILOT_CONFIG_DIR}/plugins/cache/omc/"],
-  forbidden_path_substrings: ["/.omc/", ".omc-config.json"],
+  forbidden_path_substrings: ["/.omg/", ".omc-config.json"],
   readonly_command_prefixes: [
     "ls ",
     "cat ",
@@ -111176,7 +111180,7 @@ function readTeamStateRootFromFile(path27) {
 function stateRootToWorkingDirectory(stateRoot2) {
   const absolute = (0, import_node_path22.resolve)(stateRoot2);
   const normalized = absolute.replaceAll("\\", "/");
-  for (const marker of ["/.omc/state/team/", "/.omx/state/team/"]) {
+  for (const marker of ["/.omg/state/team/", "/.omx/state/team/"]) {
     const idx = normalized.lastIndexOf(marker);
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
@@ -111184,7 +111188,7 @@ function stateRootToWorkingDirectory(stateRoot2) {
       return (0, import_node_path22.dirname)((0, import_node_path22.dirname)((0, import_node_path22.dirname)((0, import_node_path22.dirname)(absolute))));
     }
   }
-  for (const marker of ["/.omc/state", "/.omx/state"]) {
+  for (const marker of ["/.omg/state", "/.omx/state"]) {
     const idx = normalized.lastIndexOf(marker);
     if (idx >= 0) {
       const workspaceRoot = absolute.slice(0, idx);
@@ -113404,7 +113408,7 @@ function collectHooksFromSettings(settingsPath) {
 }
 function checkHookConflicts() {
   const profileSettingsPath = (0, import_path141.join)(getCopilotConfigDir(), "settings.json");
-  const projectSettingsPath = (0, import_path141.join)(process.cwd(), ".claude", "settings.json");
+  const projectSettingsPath = (0, import_path141.join)(process.cwd(), ".copilot", "settings.json");
   const profileHooks = collectHooksFromSettings(profileSettingsPath);
   const projectHooks = collectHooksFromSettings(projectSettingsPath);
   const seen = /* @__PURE__ */ new Set();
@@ -114534,7 +114538,7 @@ Examples:
   omc team shutdown fix-failing-tests
   omc team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
 
-Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omc/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
+Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
 Auto-merge (v2-only):
   --no-decompose       Treat the launch text as pre-authored/fixed worker scope; do not split by commas/lists.
@@ -114687,7 +114691,7 @@ function resolveAvailableTeamName(baseName, cwd2) {
     const candidate = `${sanitizedBase.slice(0, 30 - suffixText.length).replace(/-$/g, "")}${suffixText}`;
     if (!(0, import_node_fs18.existsSync)(teamDir3(candidate))) return candidate;
   }
-  throw new Error(`Unable to allocate a fresh team name for ${sanitizedBase}; remove stale .omc/state/team entries or choose a more specific launch task.`);
+  throw new Error(`Unable to allocate a fresh team name for ${sanitizedBase}; remove stale .omg/state/team entries or choose a more specific launch task.`);
 }
 function isTeamStateLive(config2) {
   const target = typeof config2?.tmux_session === "string" ? config2.tmux_session.trim() : "";
@@ -115889,7 +115893,7 @@ function buildRalphthonInterviewPrompt(task, options) {
   const sanitizedTask = task.replace(/[\r\n\0]+/g, " ").trim();
   return `/deep-interview ${sanitizedTask}
 
-After the interview, generate a ralphthon-prd.json file in .omc/ with this structure:
+After the interview, generate a ralphthon-prd.json file in .omg/ with this structure:
 {
   "project": "<project name>",
   "branchName": "<branch>",
@@ -116282,7 +116286,7 @@ var import_node_fs20 = require("node:fs");
 var import_promises28 = require("node:fs/promises");
 var import_node_path25 = require("node:path");
 init_worktree_paths();
-var ULTRAGOAL_DIR = ".omc/ultragoal";
+var ULTRAGOAL_DIR = ".omg/ultragoal";
 var ULTRAGOAL_BRIEF = "brief.md";
 var ULTRAGOAL_GOALS = "goals.json";
 var ULTRAGOAL_LEDGER = "ledger.jsonl";
@@ -116701,7 +116705,7 @@ async function checkpointUltragoal(cwd2, options) {
           claudeGoal: options.claudeGoal
         };
       } else {
-        const taskScopedRequirement = aggregateMode && snapshot?.status === "complete" && Boolean(snapshot.objective) ? " Completed task-scoped aggregate reconciliation requires the checkpoint goal to be the active in-progress OMC goal, evidence that names that active OMC goal id, names .omc/ultragoal/goals.json or ledger.jsonl, includes completed implementation plus validation/review evidence, and a Claude /goal objective that maps to the ultragoal brief/artifact." : "";
+        const taskScopedRequirement = aggregateMode && snapshot?.status === "complete" && Boolean(snapshot.objective) ? " Completed task-scoped aggregate reconciliation requires the checkpoint goal to be the active in-progress OMC goal, evidence that names that active OMC goal id, names .omg/ultragoal/goals.json or ledger.jsonl, includes completed implementation plus validation/review evidence, and a Claude /goal objective that maps to the ultragoal brief/artifact." : "";
         const remediation = reconciliation.snapshot.available && reconciliation.snapshot.status === "complete" && Boolean(reconciliation.snapshot.objective) && normalizeObjective2(reconciliation.snapshot.objective ?? "") !== normalizeObjective2(expectedObjective) ? ` ${buildCompletedLegacyGoalRemediation(goal)}` : "";
         throw new UltragoalError(`${formatClaudeGoalReconciliation(reconciliation)}${taskScopedRequirement}${remediation}`);
       }
@@ -116904,20 +116908,20 @@ Aliases:
   create -> create-goals, complete|next|start-next -> complete-goals
 
 Artifacts (single-plan, default for monorepo / single session):
-  .omc/ultragoal/brief.md
-  .omc/ultragoal/goals.json
-  .omc/ultragoal/ledger.jsonl
+  .omg/ultragoal/brief.md
+  .omg/ultragoal/goals.json
+  .omg/ultragoal/ledger.jsonl
 
 Artifacts (multi-plan, enabled by --plan-id or --auto-plan-id):
-  .omc/ultragoal/plans/{planId}/brief.md
-  .omc/ultragoal/plans/{planId}/goals.json
-  .omc/ultragoal/plans/{planId}/ledger.jsonl
+  .omg/ultragoal/plans/{planId}/brief.md
+  .omg/ultragoal/plans/{planId}/goals.json
+  .omg/ultragoal/plans/{planId}/ledger.jsonl
 
 Multi-plan resolution:
   When --plan-id is omitted, ultragoal selects the legacy plan if present,
   otherwise the single multi-plan if there's exactly one. If multiple plans
   exist, --plan-id becomes required. Use multi-plan mode for parallel
-  ultragoal runs in a shared .omc/ (multi-repo workspaces; see .omc-workspace).
+  ultragoal runs in a shared .omg/ (multi-repo workspaces; see .omc-workspace).
 
 Claude /goal integration:
   This command cannot directly invoke the Claude Code /goal slash command from a shell;
@@ -118595,7 +118599,7 @@ function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir()) {
   }, { timeoutMs: 5e3, retryDelayMs: 50 });
 }
 function isDefaultClaudeConfigDirPath2(configDir) {
-  return configDir === (0, import_path146.join)((0, import_os22.homedir)(), ".claude");
+  return configDir === (0, import_path146.join)((0, import_os22.homedir)(), ".copilot");
 }
 function extractNotifyFlag(args) {
   let notifyEnabled = true;
@@ -119934,12 +119938,12 @@ async function runAction(descriptorPath, runsRoot) {
 function graphCommand() {
   const command = new Command("graph");
   command.description("Execute sealed graph descriptors (graph runtime v2)");
-  command.command("run <descriptorPath>").description("Run a graph descriptor with kill/resume support").option("--runs-root <dir>", "Directory holding per-run state", ".omc/graph-runs").addHelpText(
+  command.command("run <descriptorPath>").description("Run a graph descriptor with kill/resume support").option("--runs-root <dir>", "Directory holding per-run state", ".omg/graph-runs").addHelpText(
     "after",
     `
 Examples:
   $ omc graph run ./my-graph.json
-  $ omc graph run ./my-graph.json --runs-root .omc/graph-runs
+  $ omc graph run ./my-graph.json --runs-root .omg/graph-runs
 
 Exit codes:
   0   run succeeded
@@ -120683,9 +120687,9 @@ Examples:
   console.log(source_default.gray("\n\u2501".repeat(50)));
   console.log(source_default.gray("\nTo check for updates, run: oh-my-copilot update --check"));
 });
-program2.command("install").description("Install OMC agents and commands to Claude Code config directory (default: ~/.claude/)").option("-f, --force", "Overwrite existing files").option("-q, --quiet", "Suppress output except for errors").option("--skip-claude-check", "Skip checking if Claude Code is installed").addHelpText("after", `
+program2.command("install").description("Install OMC agents and commands to Claude Code config directory (default: ~/.copilot/)").option("-f, --force", "Overwrite existing files").option("-q, --quiet", "Suppress output except for errors").option("--skip-claude-check", "Skip checking if Claude Code is installed").addHelpText("after", `
 Examples:
-  $ omc install                  Install to config directory (default: ~/.claude/)
+  $ omc install                  Install to config directory (default: ~/.copilot/)
   $ omc install --force          Reinstall, overwriting existing files
   $ omc install --quiet          Silent install for scripts
   $ COPILOT_CONFIG_DIR=$HOME/.claude-isolated-workspace omc install  Isolated config directory`).action(async (options) => {
@@ -120888,7 +120892,7 @@ sessionCmd.command("friction").description("Report local session context-bloat a
 var capabilitiesCmd = program2.command("capabilities").description("Create or verify deterministic tool/skill/capability lockfiles").addHelpText("after", `
 Examples:
   $ omc capabilities lock
-  $ omc capabilities lock --json --lockfile .omc/capabilities.lock.json
+  $ omc capabilities lock --json --lockfile .omg/capabilities.lock.json
   $ omc capabilities check --json`);
 capabilitiesCmd.command("lock").description("Write the current deterministic tool/skill/capability lockfile").option("--json", "Output as JSON").option("--lockfile <path>", "Lockfile path (default: omc-capabilities.lock.json)").action(async (options) => {
   const exitCode = await capabilitiesLockCommand(options);

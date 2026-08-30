@@ -5,7 +5,7 @@
 // Read/Edit/Write/Grep/Glob when delegation rules indicate the work should be
 // routed to a specialised agent instead.
 //
-// Opt-in: default OFF. Enable via `.omc/config.json`:
+// Opt-in: default OFF. Enable via `.omg/config.json`:
 //
 //   {
 //     "routing": {
@@ -107,7 +107,7 @@ function readDelegationConfig(loadOmcConfig) {
  * @param {object} args
  * @param {string} args.toolName - Claude Code tool name (Read|Edit|Write|...)
  * @param {string} [args.stateDir] - Directory used to persist the event window.
- *   Typically `<cwd>/.omc/state` to mirror the rest of OMC state storage.
+ *   Typically `<cwd>/.omg/state` to mirror the rest of OMC state storage.
  * @param {object} [args.env=process.env] - Environment for bypass-flag lookup.
  * @param {Function} [args.loadOmcConfig] - Function returning the resolved OMC
  *   config object. Injecting it keeps this module decoupled from the existing

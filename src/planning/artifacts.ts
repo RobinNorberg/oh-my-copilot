@@ -3,7 +3,7 @@
 /**
  * Planning artifacts reader.
  *
- * Reads .omc/plans/ directory for PRD and test-spec files,
+ * Reads .omg/plans/ directory for PRD and test-spec files,
  * and extracts approved execution launch hints embedded in PRD markdown.
  */
 
@@ -112,7 +112,7 @@ function hasCompletePlanningPair(
 }
 
 /**
- * Read planning artifacts from .omc/.omx plans directories.
+ * Read planning artifacts from .omg/.omx plans directories.
  * Returns paths to all PRD and test-spec files found.
  */
 export function readPlanningArtifacts(cwd: string): PlanningArtifacts {

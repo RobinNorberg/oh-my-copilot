@@ -64,7 +64,7 @@ describe('Ralph PRD Module', () => {
     });
 
     it('should find prd.json in .omc directory', () => {
-      const omcDir = join(testDir, '.omc');
+      const omcDir = join(testDir, '.omg');
       mkdirSync(omcDir, { recursive: true });
       const prdPath = join(omcDir, PRD_FILENAME);
       writeFileSync(prdPath, '{}');
@@ -73,7 +73,7 @@ describe('Ralph PRD Module', () => {
 
     it('should prefer root over .omc', () => {
       const rootPath = join(testDir, PRD_FILENAME);
-      const omcDir = join(testDir, '.omc');
+      const omcDir = join(testDir, '.omg');
       mkdirSync(omcDir, { recursive: true });
       const omcPath = join(omcDir, PRD_FILENAME);
 
@@ -152,7 +152,7 @@ describe('Ralph PRD Module', () => {
 
     it('should create .omc directory when writing', () => {
       writePrd(testDir, samplePrd);
-      expect(existsSync(join(testDir, '.omc'))).toBe(true);
+      expect(existsSync(join(testDir, '.omg'))).toBe(true);
     });
 
     it('isolates transient PRDs for concurrent sessions in the same project', () => {
@@ -182,13 +182,13 @@ describe('Ralph PRD Module', () => {
       expect(readPrd(testDir, sessionB)?.userStories[0].id).toBe('US-B');
       expect(findPrdPath(testDir, sessionA)).toBe(getSessionPrdPath(testDir, sessionA));
       expect(findPrdPath(testDir, sessionB)).toBe(getSessionPrdPath(testDir, sessionB));
-      expect(existsSync(join(testDir, '.omc', 'prd.json'))).toBe(false);
+      expect(existsSync(join(testDir, '.omg', 'prd.json'))).toBe(false);
     });
 
     it('migrates an existing project PRD into the requesting session without mutating the legacy file', () => {
       const legacyPrd: PRD = { ...samplePrd, project: 'Legacy Project' };
-      const legacyPath = join(testDir, '.omc', 'prd.json');
-      mkdirSync(join(testDir, '.omc'), { recursive: true });
+      const legacyPath = join(testDir, '.omg', 'prd.json');
+      mkdirSync(join(testDir, '.omg'), { recursive: true });
       writeFileSync(legacyPath, JSON.stringify(legacyPrd, null, 2));
 
       const result = ensurePrdForStartup(testDir, 'New Project', 'branch', 'New task', undefined, 'session-a');
@@ -330,7 +330,7 @@ describe('Ralph PRD Module', () => {
     });
 
     it('should return false when no prd exists', () => {
-      rmSync(join(testDir, '.omc'), { recursive: true, force: true });
+      rmSync(join(testDir, '.omg'), { recursive: true, force: true });
       expect(markStoryComplete(testDir, 'US-001')).toBe(false);
     });
   });

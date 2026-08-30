@@ -177,7 +177,7 @@ function restoreGlobalClaudeCodeIfNeeded(beforeUpdate, verbose = false) {
 }
 /**
  * Best-effort sync of the Claude Code marketplace clone.
- * The marketplace clone at ~/.claude/plugins/marketplaces/omc/ is used by
+ * The marketplace clone at ~/.copilot/plugins/marketplaces/omc/ is used by
  * Claude Code to populate the plugin cache. If it's stale, `/plugin install`
  * and cache rebuilds reinstall old versions. (See #506)
  */
@@ -474,7 +474,7 @@ export function isAutoUpgradePromptEnabled() {
 /**
  * Check if team feature is enabled
  * Returns false by default - requires explicit opt-in
- * Checks ~/.claude/settings.json first, then env var fallback
+ * Checks ~/.copilot/settings.json first, then env var fallback
  */
 export function isTeamEnabled() {
     try {
@@ -684,7 +684,7 @@ export function reconcileUpdateRuntime(options) {
     const projectScopedPlugin = isProjectScopedPlugin();
     // Plugin installs execute hooks from <pluginRoot>/hooks/hooks.json. Re-running
     // the standalone settings.json hook merge during `omc update` re-injects the
-    // legacy ~/.claude/hooks/* entries and causes duplicate hook execution.
+    // legacy ~/.copilot/hooks/* entries and causes duplicate hook execution.
     //
     // Reconciliation should still refresh shared installer artifacts (CLAUDE.md,
     // HUD, MCP registry, statusLine, etc.), but it must leave settings.json hook

@@ -66,7 +66,7 @@ describe('state root resolution priority: config > manifest > cwd-walk', () => {
     let restoreFixtureEnv;
     const teamName = 'priority-test-team';
     async function seedBase() {
-        const base = join(cwd, '.omc', 'state', 'team', teamName);
+        const base = join(cwd, '.omg', 'state', 'team', teamName);
         await mkdir(join(base, 'tasks'), { recursive: true });
         await mkdir(join(base, 'mailbox'), { recursive: true });
         await writeFile(join(base, 'tasks', 'task-1.json'), JSON.stringify({
@@ -120,7 +120,7 @@ describe('state root resolution priority: config > manifest > cwd-walk', () => {
     it('uses config.team_state_root over manifest.team_state_root when both present', async () => {
         const base = await seedBase();
         // Create a separate "wrong" directory that manifest points to
-        const wrongRoot = join(cwd, 'wrong-root', '.omc', 'state', 'team', teamName);
+        const wrongRoot = join(cwd, 'wrong-root', '.omg', 'state', 'team', teamName);
         await mkdir(join(wrongRoot, 'tasks'), { recursive: true });
         await mkdir(join(wrongRoot, 'mailbox'), { recursive: true });
         // Manifest points to wrong root

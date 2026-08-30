@@ -22,7 +22,7 @@ describe('memory-tools payload validation', () => {
         process.env.HOME = TEST_DIR;
         process.env.USERPROFILE = TEST_DIR;
         delete process.env.OMC_STATE_DIR;
-        mkdirSync(join(TEST_DIR, '.omc'), { recursive: true });
+        mkdirSync(join(TEST_DIR, '.omg'), { recursive: true });
     });
     afterEach(() => {
         delete process.env.OMC_STATE_DIR;
@@ -72,7 +72,7 @@ describe('memory-tools payload validation', () => {
         const stateDir = '/tmp/memory-tools-centralized-state';
         rmSync(stateDir, { recursive: true, force: true });
         mkdirSync(stateDir, { recursive: true });
-        rmSync(join(TEST_DIR, '.omc'), { recursive: true, force: true });
+        rmSync(join(TEST_DIR, '.omg'), { recursive: true, force: true });
         try {
             process.env.OMC_STATE_DIR = stateDir;
             const result = await projectMemoryWriteTool.handler({
@@ -86,7 +86,7 @@ describe('memory-tools payload validation', () => {
             const centralizedPath = join(stateDir, 'non-git', 'project-memory.json');
             expect(result.content[0].text).toContain(centralizedPath);
             expect(JSON.parse(readFileSync(centralizedPath, 'utf-8')).projectRoot).toBe(TEST_DIR);
-            expect(existsSync(join(TEST_DIR, '.omc', 'project-memory.json'))).toBe(false);
+            expect(existsSync(join(TEST_DIR, '.omg', 'project-memory.json'))).toBe(false);
             expect(result.isError).toBeUndefined();
         }
         finally {
@@ -94,7 +94,7 @@ describe('memory-tools payload validation', () => {
         }
     });
     it('should add a directive when existing memory lacks userDirectives', async () => {
-        const memoryPath = join(TEST_DIR, '.omc', 'project-memory.json');
+        const memoryPath = join(TEST_DIR, '.omg', 'project-memory.json');
         writeFileSync(memoryPath, JSON.stringify({
             version: '1.0.0',
             lastScanned: Date.now(),
@@ -117,7 +117,7 @@ describe('memory-tools payload validation', () => {
         ]);
     });
     it('should add a note when existing memory lacks customNotes', async () => {
-        const memoryPath = join(TEST_DIR, '.omc', 'project-memory.json');
+        const memoryPath = join(TEST_DIR, '.omg', 'project-memory.json');
         writeFileSync(memoryPath, JSON.stringify({
             version: '1.0.0',
             lastScanned: Date.now(),

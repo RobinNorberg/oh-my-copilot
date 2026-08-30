@@ -11,7 +11,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/config-dir.sh"
 
-STATE_FILE=".omc/state/setup-state.json"
+STATE_FILE=".omg/state/setup-state.json"
 CONFIG_DIR="$(resolve_claude_config_dir)"
 CONFIG_FILE="$CONFIG_DIR/.omc-config.json"
 
@@ -39,7 +39,7 @@ iso_to_epoch() {
 cmd_save() {
   local step="$1"
   local config_type="${2:-unknown}"
-  mkdir -p .omc/state
+  mkdir -p .omg/state
   cat > "$STATE_FILE" << EOF
 {
   "lastCompletedStep": $step,
@@ -115,11 +115,11 @@ cmd_complete() {
   if [ -n "$sid" ]; then
     # Validate session ID: alphanumeric, hyphens, underscores only (matches TS SESSION_ID_REGEX)
     if [[ "$sid" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,255}$ ]]; then
-      rm -f ".omc/state/sessions/${sid}/skill-active-state.json" 2>/dev/null || true
+      rm -f ".omg/state/sessions/${sid}/skill-active-state.json" 2>/dev/null || true
     fi
   else
     # No session ID: fall back to cleaning stale files only (>30min, matching heavy TTL)
-    find .omc/state -name "skill-active-state.json" -mmin +30 -delete 2>/dev/null || true
+    find .omg/state -name "skill-active-state.json" -mmin +30 -delete 2>/dev/null || true
   fi
 
   # Mark setup as completed in persistent config

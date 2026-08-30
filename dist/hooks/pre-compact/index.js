@@ -146,7 +146,7 @@ export async function saveModeSummary(directory) {
  */
 function readTodoSummary(directory) {
     const todoPaths = [
-        join(directory, ".claude", "todos.json"),
+        join(directory, ".copilot", "todos.json"),
         join(getOmcRoot(directory), "state", "todos.json"),
     ];
     for (const todoPath of todoPaths) {
@@ -173,7 +173,7 @@ function readTodoSummary(directory) {
 }
 /**
  * Get summary of active and recent background jobs from SQLite DB
- * Queries .omc/state/jobs.db for Codex/Gemini job statuses
+ * Queries .omg/state/jobs.db for Codex/Gemini job statuses
  */
 async function getActiveJobsSummary(directory) {
     try {
@@ -244,7 +244,7 @@ export function collectPlanRefs(directory, sessionId) {
         console.error("[PreCompact] Error collecting PRD anchor:", error);
     }
     // Boulder plan (OMC orchestrator)
-    // readBoulderState resolves {directory}/.omc/boulder.json itself, so pass
+    // readBoulderState resolves {directory}/.omg/boulder.json itself, so pass
     // the project directory, not the already-resolved .omc root.
     try {
         const boulder = readBoulderState(directory);

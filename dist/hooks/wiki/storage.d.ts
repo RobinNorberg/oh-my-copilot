@@ -6,7 +6,7 @@
  * to prevent concurrent corruption.
  *
  * Storage layout:
- *   .omc/wiki/
+ *   .omg/wiki/
  *   ├── index.md      (auto-maintained catalog)
  *   ├── log.md         (append-only operation chronicle)
  *   ├── page-slug.md   (knowledge pages)

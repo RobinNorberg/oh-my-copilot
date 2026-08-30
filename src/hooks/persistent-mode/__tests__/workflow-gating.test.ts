@@ -25,13 +25,13 @@ function writeWorkflowLedger(
       session_id: sessionId,
       mode_state_path: `${skill}-state.json`,
       initialized_mode: skill,
-      initialized_state_path: join(tempDir, '.omc', 'state', 'skill-active-state.json'),
-      initialized_session_state_path: join(tempDir, '.omc', 'state', 'sessions', sessionId, 'skill-active-state.json'),
+      initialized_state_path: join(tempDir, '.omg', 'state', 'skill-active-state.json'),
+      initialized_session_state_path: join(tempDir, '.omg', 'state', 'sessions', sessionId, 'skill-active-state.json'),
     };
   }
   const payload = JSON.stringify({ version: 2, active_skills }, null, 2);
 
-  const rootDir = join(tempDir, '.omc', 'state');
+  const rootDir = join(tempDir, '.omg', 'state');
   mkdirSync(rootDir, { recursive: true });
   writeFileSync(join(rootDir, 'skill-active-state.json'), payload);
 
@@ -41,7 +41,7 @@ function writeWorkflowLedger(
 }
 
 function writeRalphState(tempDir: string, sessionId: string): void {
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(
     join(stateDir, 'ralph-state.json'),
@@ -65,7 +65,7 @@ function writeModeState(
   mode: 'autopilot' | 'ralph' | 'ralplan',
   state: Record<string, unknown>,
 ): void {
-  const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+  const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
   mkdirSync(stateDir, { recursive: true });
   writeFileSync(join(stateDir, `${mode}-state.json`), JSON.stringify(state, null, 2));
 }
@@ -75,7 +75,7 @@ function readSessionWorkflowLedger(tempDir: string, sessionId: string): {
 } {
   return JSON.parse(
     readFileSync(
-      join(tempDir, '.omc', 'state', 'sessions', sessionId, 'skill-active-state.json'),
+      join(tempDir, '.omg', 'state', 'sessions', sessionId, 'skill-active-state.json'),
       'utf-8',
     ),
   );
@@ -85,7 +85,7 @@ function readRootWorkflowLedger(tempDir: string): {
   active_skills: Record<string, { completed_at?: string | null }>;
 } {
   return JSON.parse(
-    readFileSync(join(tempDir, '.omc', 'state', 'skill-active-state.json'), 'utf-8'),
+    readFileSync(join(tempDir, '.omg', 'state', 'skill-active-state.json'), 'utf-8'),
   );
 }
 
@@ -172,7 +172,7 @@ describe('workflow-gating: tombstoned slot suppresses stale mode files (spec j)'
 
     try {
       // Write autopilot-state.json in session state dir
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'autopilot-state.json'),
@@ -206,7 +206,7 @@ describe('workflow-gating: tombstoned slot suppresses stale mode files (spec j)'
     const tempDir = makeTempProject();
 
     try {
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'ralplan-state.json'),
@@ -236,7 +236,7 @@ describe('workflow-gating: tombstoned slot suppresses stale mode files (spec j)'
     const tempDir = makeTempProject();
 
     try {
-      const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+      const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(
         join(stateDir, 'ultrawork-state.json'),

@@ -59,26 +59,26 @@ describe('risk-assess false-positive controls', () => {
   });
 
   it('ignores .omc harness state and log files for classification', () => {
-    expect(isNoisePath('.omc/harness-state/session.json')).toBe(true);
+    expect(isNoisePath('.omg/harness-state/session.json')).toBe(true);
     expect(isNoisePath('runs/output.log')).toBe(true);
-    const result = classifyChangedFiles(['.omc/harness-state/session.json', 'runs/output.log'], 500);
+    const result = classifyChangedFiles(['.omg/harness-state/session.json', 'runs/output.log'], 500);
     expect(result.level).toBe('none');
     expect(result.relevantFiles).toEqual([]);
   });
 
   it('ignores large noise diffs when classifying a small code change', () => withRepo((repo) => {
     write(repo, 'src/index.ts', 'export const value = 0;\n');
-    write(repo, '.omc/harness-state/session.json', '{}\n');
-    git(repo, ['add', 'src/index.ts', '.omc/harness-state/session.json']);
+    write(repo, '.omg/harness-state/session.json', '{}\n');
+    git(repo, ['add', 'src/index.ts', '.omg/harness-state/session.json']);
     git(repo, ['commit', '-m', 'fixture files']);
 
     write(repo, 'src/index.ts', 'export const value = 1;\n');
-    write(repo, '.omc/harness-state/session.json', `${'{"event":"noise"}\n'.repeat(250)}`);
+    write(repo, '.omg/harness-state/session.json', `${'{"event":"noise"}\n'.repeat(250)}`);
 
     const result = assessRisk({ cwd: repo });
 
     expect(result.changedFiles).toContain('src/index.ts');
-    expect(result.changedFiles).toContain('.omc/harness-state/session.json');
+    expect(result.changedFiles).toContain('.omg/harness-state/session.json');
     expect(result.relevantFiles).toEqual(['src/index.ts']);
     expect(result.diffSize).toBeLessThan(20);
     expect(result.level).toBe('low');

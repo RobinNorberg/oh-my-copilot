@@ -8,7 +8,7 @@ describe('flow-tracer', () => {
     let testDir;
     beforeEach(() => {
         testDir = join(tmpdir(), `flow-tracer-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
+        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
         resetSessionStartTimes();
     });
     afterEach(() => {

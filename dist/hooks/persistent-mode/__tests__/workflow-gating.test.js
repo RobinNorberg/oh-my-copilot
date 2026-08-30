@@ -19,12 +19,12 @@ function writeWorkflowLedger(tempDir, sessionId, slots) {
             session_id: sessionId,
             mode_state_path: `${skill}-state.json`,
             initialized_mode: skill,
-            initialized_state_path: join(tempDir, '.omc', 'state', 'skill-active-state.json'),
-            initialized_session_state_path: join(tempDir, '.omc', 'state', 'sessions', sessionId, 'skill-active-state.json'),
+            initialized_state_path: join(tempDir, '.omg', 'state', 'skill-active-state.json'),
+            initialized_session_state_path: join(tempDir, '.omg', 'state', 'sessions', sessionId, 'skill-active-state.json'),
         };
     }
     const payload = JSON.stringify({ version: 2, active_skills }, null, 2);
-    const rootDir = join(tempDir, '.omc', 'state');
+    const rootDir = join(tempDir, '.omg', 'state');
     mkdirSync(rootDir, { recursive: true });
     writeFileSync(join(rootDir, 'skill-active-state.json'), payload);
     const sessionDir = join(rootDir, 'sessions', sessionId);
@@ -32,7 +32,7 @@ function writeWorkflowLedger(tempDir, sessionId, slots) {
     writeFileSync(join(sessionDir, 'skill-active-state.json'), payload);
 }
 function writeRalphState(tempDir, sessionId) {
-    const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'ralph-state.json'), JSON.stringify({
         active: true,
@@ -47,15 +47,15 @@ function writeRalphState(tempDir, sessionId) {
     }, null, 2));
 }
 function writeModeState(tempDir, sessionId, mode, state) {
-    const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+    const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, `${mode}-state.json`), JSON.stringify(state, null, 2));
 }
 function readSessionWorkflowLedger(tempDir, sessionId) {
-    return JSON.parse(readFileSync(join(tempDir, '.omc', 'state', 'sessions', sessionId, 'skill-active-state.json'), 'utf-8'));
+    return JSON.parse(readFileSync(join(tempDir, '.omg', 'state', 'sessions', sessionId, 'skill-active-state.json'), 'utf-8'));
 }
 function readRootWorkflowLedger(tempDir) {
-    return JSON.parse(readFileSync(join(tempDir, '.omc', 'state', 'skill-active-state.json'), 'utf-8'));
+    return JSON.parse(readFileSync(join(tempDir, '.omg', 'state', 'skill-active-state.json'), 'utf-8'));
 }
 describe('workflow-gating: kill switches (spec i)', () => {
     let savedDisableOmc;
@@ -130,7 +130,7 @@ describe('workflow-gating: tombstoned slot suppresses stale mode files (spec j)'
         const tempDir = makeTempProject();
         try {
             // Write autopilot-state.json in session state dir
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'autopilot-state.json'), JSON.stringify({
                 active: true,
@@ -158,7 +158,7 @@ describe('workflow-gating: tombstoned slot suppresses stale mode files (spec j)'
         const sessionId = 'tomb-ralplan-01';
         const tempDir = makeTempProject();
         try {
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'ralplan-state.json'), JSON.stringify({
                 active: true,
@@ -182,7 +182,7 @@ describe('workflow-gating: tombstoned slot suppresses stale mode files (spec j)'
         const sessionId = 'tomb-ulw-01';
         const tempDir = makeTempProject();
         try {
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', sessionId);
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', sessionId);
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'ultrawork-state.json'), JSON.stringify({
                 active: true,

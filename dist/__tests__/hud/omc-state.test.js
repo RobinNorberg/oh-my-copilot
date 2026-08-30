@@ -37,7 +37,7 @@ describe('hud omc state session scoping', () => {
     }
     it('keeps backward-compatible newest-session fallback when sessionId is omitted', () => {
         const worktree = createWorktree();
-        const omcRoot = join(worktree, '.omc');
+        const omcRoot = join(worktree, '.omg');
         const older = Date.now() - 60_000;
         const newer = Date.now();
         writeJson(join(omcRoot, 'state', 'sessions', 'session-a', 'ralph-state.json'), {
@@ -61,7 +61,7 @@ describe('hud omc state session scoping', () => {
     });
     it('reads only the requested session state when sessionId is provided', () => {
         const worktree = createWorktree();
-        const omcRoot = join(worktree, '.omc');
+        const omcRoot = join(worktree, '.omg');
         const older = Date.now() - 60_000;
         const newer = Date.now();
         writeJson(join(omcRoot, 'state', 'sessions', 'session-a', 'ralph-state.json'), {
@@ -85,7 +85,7 @@ describe('hud omc state session scoping', () => {
     });
     it('does not leak to other sessions or fallback files when a session-scoped file is missing', () => {
         const worktree = createWorktree();
-        const omcRoot = join(worktree, '.omc');
+        const omcRoot = join(worktree, '.omg');
         writeJson(join(omcRoot, 'state', 'sessions', 'session-b', 'autopilot-state.json'), {
             active: true,
             phase: 'execution',
@@ -104,7 +104,7 @@ describe('hud omc state session scoping', () => {
     });
     it('reads current_phase when phase is missing for autopilot HUD state', () => {
         const worktree = createWorktree();
-        const omcRoot = join(worktree, '.omc');
+        const omcRoot = join(worktree, '.omg');
         writeJson(join(omcRoot, 'state', 'autopilot-state.json'), {
             active: true,
             current_phase: 'execution',
@@ -124,7 +124,7 @@ describe('hud omc state session scoping', () => {
     });
     it('applies session scoping to combined mode helpers', () => {
         const worktree = createWorktree();
-        const omcRoot = join(worktree, '.omc');
+        const omcRoot = join(worktree, '.omg');
         writeJson(join(omcRoot, 'state', 'sessions', 'session-a', 'ralph-state.json'), {
             active: false,
             iteration: 1,
@@ -145,7 +145,7 @@ describe('hud omc state session scoping', () => {
     });
     it('ignores an active legacy Ultrawork file for HUD mode state', () => {
         const worktree = createWorktree();
-        writeJson(join(worktree, '.omc', 'state', 'ultrawork-state.json'), {
+        writeJson(join(worktree, '.omg', 'state', 'ultrawork-state.json'), {
             active: true,
             reinforcement_count: 7,
         });

@@ -15,7 +15,7 @@ function writeJsonSync(path, value) {
     writeFileSync(path, JSON.stringify(value, null, 2), 'utf-8');
 }
 function seedTeam(cwd, options = {}) {
-    const stateDir = join(cwd, '.omc', 'state');
+    const stateDir = join(cwd, '.omg', 'state');
     const teamDir = join(stateDir, 'team', TEAM);
     const nowIso = new Date().toISOString();
     writeJsonSync(join(teamDir, 'config.json'), {

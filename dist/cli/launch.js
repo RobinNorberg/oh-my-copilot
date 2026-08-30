@@ -505,7 +505,7 @@ export function prepareOmcLaunchConfigDir(baseConfigDir = getCopilotConfigDir())
     }, { timeoutMs: 5000, retryDelayMs: 50 });
 }
 function isDefaultClaudeConfigDirPath(configDir) {
-    return configDir === join(homedir(), '.claude');
+    return configDir === join(homedir(), '.copilot');
 }
 /**
  * Extract the OMC-specific --notify flag from launch args.

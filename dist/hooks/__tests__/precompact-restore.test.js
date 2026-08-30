@@ -52,7 +52,7 @@ function withPublisherPreload(preloadPath, env, callback) {
 function createTempDir() {
     const dir = mkdtempSync(join(homedir(), 'precompact-restore-test-'));
     execFileSync('git', ['init', '--quiet'], { cwd: dir, stdio: 'ignore' });
-    mkdirSync(join(dir, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(dir, '.omg', 'state'), { recursive: true });
     return dir;
 }
 function makePreCompactInput(cwd, trigger = 'auto', sessionId = 'test-session') {
@@ -84,7 +84,7 @@ function writeCheckpoint(dir, createdAt, overrides = {}) {
 }
 /** Minimal mirror of getOmcRoot for tests (no OMC_STATE_DIR in test env). */
 function getOmcRootForTest(dir) {
-    return join(dir, '.omc');
+    return join(dir, '.omg');
 }
 // ============================================================================
 // Writer: schema carries plan anchors
@@ -104,7 +104,7 @@ describe('PreCompact writer - plan anchors (issue #3730)', () => {
     });
     it('captures PRD anchors when a PRD is active', async () => {
         // Arrange: session-scoped PRD (ralph PRD mode)
-        // PRD lives at .omc/state/sessions/{sessionId}/prd.json
+        // PRD lives at .omg/state/sessions/{sessionId}/prd.json
         const prdDir = join(getOmcRootForTest(tempDir), 'state', 'sessions', 'test-session');
         const completionCriteriaRevision = `sha256:${createHash('sha256').update(JSON.stringify({ acceptanceCriteria: ['bug reproduces'], criterionAmendments: [] })).digest('hex')}`;
         mkdirSync(prdDir, { recursive: true });
@@ -333,7 +333,7 @@ describe('PreCompact restore (issue #3730)', () => {
         expect(candidate.ok ? formatCheckpointRestoreContext(candidate.checkpoint, candidate.path) : '')
             .not.toContain('EXTERNAL_HARD_LINK_CHECKPOINT_MARKER');
     });
-    it('rejects a symlinked .omc/state ancestor before reading external checkpoints', async () => {
+    it('rejects a symlinked .omg/state ancestor before reading external checkpoints', async () => {
         const omcRoot = getOmcRootForTest(tempDir);
         const statePath = join(omcRoot, 'state');
         rmSync(statePath, { recursive: true, force: true });
@@ -546,14 +546,14 @@ syncBuiltinESMExports();
             },
             plan_refs: {
                 prd: {
-                    path: '/repo/.omc/state/session/s1/prd.json',
+                    path: '/repo/.omg/state/session/s1/prd.json',
                     title: 'Fix the login bug',
                     status: 'in_progress',
                     stories_total: 4,
                     stories_completed: 2,
                 },
                 boulder: {
-                    active_plan: '/repo/.omc/plans/refactor.md',
+                    active_plan: '/repo/.omg/plans/refactor.md',
                     plan_name: 'refactor',
                     progress: { total: 6, completed: 3, isComplete: false },
                 },

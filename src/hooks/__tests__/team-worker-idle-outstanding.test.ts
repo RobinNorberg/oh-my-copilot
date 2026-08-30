@@ -28,7 +28,7 @@ interface SeedOptions {
 
 function makeTestEnv() {
   const tmpDir = mkdtempSync(join(tmpdir(), 'omc-worker-idle-outstanding-'));
-  const stateDir = join(tmpDir, '.omc', 'state');
+  const stateDir = join(tmpDir, '.omg', 'state');
   const teamDir = join(stateDir, 'team', TEAM);
   mkdirSync(join(teamDir, 'workers', WORKER), { recursive: true });
   mkdirSync(join(teamDir, 'workers', OTHER_WORKER), { recursive: true });

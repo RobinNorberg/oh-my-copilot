@@ -16,7 +16,7 @@ describe('session-start template retired-state handling', () => {
     tempDir = mkdtempSync(join(tmpdir(), 'omc-session-start-template-'));
     fakeHome = join(tempDir, 'home');
     fakeProject = join(tempDir, 'project');
-    mkdirSync(join(fakeProject, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(fakeProject, '.omg', 'state'), { recursive: true });
     // Add .git so validateCwd accepts this directory as a valid workspace anchor
     mkdirSync(join(fakeProject, '.git'), { recursive: true });
   });
@@ -48,7 +48,7 @@ describe('session-start template retired-state handling', () => {
   it('ignores retired ultrawork state from a different active session', () => {
     const now = new Date().toISOString();
     writeFileSync(
-      join(fakeProject, '.omc', 'state', 'ultrawork-state.json'),
+      join(fakeProject, '.omg', 'state', 'ultrawork-state.json'),
       JSON.stringify({
         active: true,
         session_id: 'session-a',
@@ -73,7 +73,7 @@ describe('session-start template retired-state handling', () => {
 
   it('keeps template session-start under budget when only a tiny omission remainder remains', () => {
     writeFileSync(
-      join(fakeProject, '.omc', 'state', 'ultrawork-state.json'),
+      join(fakeProject, '.omg', 'state', 'ultrawork-state.json'),
       JSON.stringify({
         active: true,
         session_id: 'session-budget-owner',
@@ -135,7 +135,7 @@ ${'- preserve this startup guidance\n'.repeat(400)}
 
   it('does not restore retired ultrawork for the owning session', () => {
     writeFileSync(
-      join(fakeProject, '.omc', 'state', 'ultrawork-state.json'),
+      join(fakeProject, '.omg', 'state', 'ultrawork-state.json'),
       JSON.stringify({
         active: true,
         session_id: 'session-owner',
@@ -159,9 +159,9 @@ ${'- preserve this startup guidance\n'.repeat(400)}
   });
 
   it('does not warn for global fallback state from a different normalized project path', () => {
-    mkdirSync(join(fakeHome, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(fakeHome, '.omg', 'state'), { recursive: true });
     writeFileSync(
-      join(fakeHome, '.omc', 'state', 'ultrawork-state.json'),
+      join(fakeHome, '.omg', 'state', 'ultrawork-state.json'),
       JSON.stringify({
         active: true,
         session_id: 'session-a',
@@ -215,7 +215,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
   });
 
   it('surfaces update notices through systemMessage without injecting them into additionalContext', () => {
-    const omcDir = join(fakeHome, '.claude', '.omc');
+    const omcDir = join(fakeHome, '.claude', '.omg');
     mkdirSync(omcDir, { recursive: true });
     writeFileSync(
       join(omcDir, 'update-check.json'),
@@ -258,7 +258,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
   });
 
   it('honors autoUpgradePrompt=false with passive systemMessage wording', () => {
-    const omcDir = join(fakeHome, '.claude', '.omc');
+    const omcDir = join(fakeHome, '.claude', '.omg');
     mkdirSync(omcDir, { recursive: true });
     writeFileSync(join(fakeHome, '.claude', '.omc-config.json'), JSON.stringify({ autoUpgradePrompt: false }));
     writeFileSync(
@@ -353,14 +353,14 @@ describe('session-start template cwd validation (Wave B1)', () => {
     expect(parsed.hookSpecificOutput).toBeUndefined();
 
     // Must NOT have written any state files into the empty dir
-    expect(existsSync(join(emptyCwd, '.omc'))).toBe(false);
+    expect(existsSync(join(emptyCwd, '.omg'))).toBe(false);
   });
 
   it('does NOT warn or skip when cwd contains a .git directory', () => {
     const gitProject = mkdtempSync(join(tmpdir(), 'omc-git-project-'));
     try {
       mkdirSync(join(gitProject, '.git'), { recursive: true });
-      mkdirSync(join(gitProject, '.omc', 'state'), { recursive: true });
+      mkdirSync(join(gitProject, '.omg', 'state'), { recursive: true });
 
       const { stderr, stdout } = runSessionStartRaw({
         hook_event_name: 'SessionStart',
@@ -383,7 +383,7 @@ describe('session-start template cwd validation (Wave B1)', () => {
     const wsProject = mkdtempSync(join(tmpdir(), 'omc-ws-project-'));
     try {
       writeFileSync(join(wsProject, '.omc-workspace'), '{}');
-      mkdirSync(join(wsProject, '.omc', 'state'), { recursive: true });
+      mkdirSync(join(wsProject, '.omg', 'state'), { recursive: true });
 
       const { stderr, stdout } = runSessionStartRaw({
         hook_event_name: 'SessionStart',
@@ -404,7 +404,7 @@ describe('session-start template cwd validation (Wave B1)', () => {
     const gitProject = mkdtempSync(join(tmpdir(), 'omc-git-subdir-'));
     try {
       mkdirSync(join(gitProject, '.git'), { recursive: true });
-      mkdirSync(join(gitProject, '.omc', 'state'), { recursive: true });
+      mkdirSync(join(gitProject, '.omg', 'state'), { recursive: true });
       const nested = join(gitProject, 'packages', 'app', 'src');
       mkdirSync(nested, { recursive: true });
 

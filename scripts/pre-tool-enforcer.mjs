@@ -723,7 +723,7 @@ function resolveOmcRoot(startDir) {
     const home = (() => { try { return resolve(homedir()); } catch { return null; } })();
     while (true) {
       if (existsSync(join(cursor, '.omc-workspace'))) {
-        return join(cursor, '.omc');
+        return join(cursor, '.omg');
       }
       const parent = dirname(cursor);
       if (parent === cursor) break;
@@ -743,13 +743,13 @@ function resolveOmcRoot(startDir) {
       timeout: BOUNDED_GIT_TIMEOUT_MS,
       windowsHide: true,
     }).trim();
-    if (top) return join(top, '.omc');
+    if (top) return join(top, '.omg');
   } catch {
     // not in a git repo — fall through
   }
 
   // 4) Fallback to startDir
-  return join(dir, '.omc');
+  return join(dir, '.omg');
 }
 
 
@@ -998,7 +998,7 @@ function isUltragoalTerminalState(state, directory) {
   const phase = normalizePhase(state.current_phase ?? state.phase ?? state.status);
   if (phase && ULTRAGOAL_TERMINAL_PHASES.has(phase)) return true;
 
-  const plan = readJsonFile(join(directory, '.omc', 'ultragoal', 'goals.json'));
+  const plan = readJsonFile(join(directory, '.omg', 'ultragoal', 'goals.json'));
   if (!plan || typeof plan !== 'object') return false;
   if (plan.aggregateCompletion?.status === 'complete') return true;
   if (!Array.isArray(plan.goals) || plan.goals.length === 0) return false;
@@ -1037,7 +1037,7 @@ function getExpectedUltragoalObjective(state, directory) {
     if (typeof value === 'string' && value.trim()) return value.trim();
   }
 
-  const plan = readJsonFile(join(directory, '.omc', 'ultragoal', 'goals.json'));
+  const plan = readJsonFile(join(directory, '.omg', 'ultragoal', 'goals.json'));
   if (typeof plan?.claudeObjective === 'string' && plan.claudeObjective.trim()) return plan.claudeObjective.trim();
   if (typeof plan?.aggregateCompletion?.objective === 'string' && plan.aggregateCompletion.objective.trim()) {
     return plan.aggregateCompletion.objective.trim();
@@ -1254,7 +1254,7 @@ function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, dat
   const mismatch = actualObjective
     ? `current Claude /goal appears unrelated: "${actual.objective}".`
     : 'no active Claude /goal snapshot was visible to the hook.';
-  return `[ULTRAGOAL /GOAL REQUIRED] Active ultragoal state requires the matching Claude /goal before tools run; ${mismatch} Activate /goal with the ultragoal objective, or set ALLOW_ULTRAGOAL_WITHOUT_GOAL=1 to bypass this guard intentionally. Expected objective: ${expected || '<record one in ultragoal-state.json or .omc/ultragoal/goals.json>'}`;
+  return `[ULTRAGOAL /GOAL REQUIRED] Active ultragoal state requires the matching Claude /goal before tools run; ${mismatch} Activate /goal with the ultragoal objective, or set ALLOW_ULTRAGOAL_WITHOUT_GOAL=1 to bypass this guard intentionally. Expected objective: ${expected || '<record one in ultragoal-state.json or .omg/ultragoal/goals.json>'}`;
 }
 
 function hasActiveJsonMode(stateDir, { allowSessionTagged = false } = {}) {
@@ -1515,7 +1515,7 @@ function getSkillProtectionLevel(skillName, rawSkillName) {
 function loadOmcConfig() {
   const configPaths = [
     join(getCopilotConfigDir(), '.omc-config.json'),
-    join(process.cwd(), '.omc', 'config.json'),
+    join(process.cwd(), '.omg', 'config.json'),
   ];
   for (const configPath of configPaths) {
     try {
@@ -1884,7 +1884,7 @@ async function main() {
     // preflight blocks Task/Agent spawning when context is exhausted, this
     // evaluator blocks raw Read/Edit/Write/Grep/Glob when configured rules
     // indicate the work should be delegated to a specialised agent. Default OFF
-    // — only fires when `.omc/config.json` has `routing.forceDelegation.enforce`.
+    // — only fires when `.omg/config.json` has `routing.forceDelegation.enforce`.
     const delegationBlock = evaluateForceAgentDelegation({
       toolName,
       stateDir,

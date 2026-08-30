@@ -179,7 +179,7 @@ describe('worktree runtime e2e: 3 workers × 3 commits', () => {
     // Leader inbox should have been created and seeded by orchestrator startup
     const leaderInboxPath = join(
       fixture.repoRoot,
-      '.omc', 'state', 'team', fixture.teamName,
+      '.omg', 'state', 'team', fixture.teamName,
       'leader', 'inbox.md',
     );
     expect(existsSync(leaderInboxPath)).toBe(true);

@@ -10,7 +10,7 @@ function makeTempDir() {
     return tempDir;
 }
 function writeSubagentTrackingState(tempDir, agents) {
-    const stateDir = join(tempDir, '.omc', 'state');
+    const stateDir = join(tempDir, '.omg', 'state');
     mkdirSync(stateDir, { recursive: true });
     writeFileSync(join(stateDir, 'subagent-tracking-state.json'), JSON.stringify({
         agents,
@@ -141,11 +141,11 @@ describe('skill-state', () => {
             const state = writeSkillActiveState(tempDir, 'phase-resume', 'session-1');
             expect(state).toBeNull();
             expect(readSkillActiveState(tempDir, 'session-1')).toBeNull();
-            expect(existsSync(join(tempDir, '.omc', 'state', 'sessions', 'session-1'))).toBe(false);
+            expect(existsSync(join(tempDir, '.omg', 'state', 'sessions', 'session-1'))).toBe(false);
         });
         it('creates state file on disk', () => {
             writeSkillActiveState(tempDir, 'skill', 'session-1');
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', 'session-1');
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', 'session-1');
             const files = existsSync(stateDir);
             expect(files).toBe(true);
         });
@@ -223,7 +223,7 @@ describe('skill-state', () => {
             expect(state.active).toBe(true);
         });
         it('returns null for invalid JSON', () => {
-            const stateDir = join(tempDir, '.omc', 'state', 'sessions', 'session-1');
+            const stateDir = join(tempDir, '.omg', 'state', 'sessions', 'session-1');
             mkdirSync(stateDir, { recursive: true });
             writeFileSync(join(stateDir, 'skill-active-state.json'), 'not json');
             expect(readSkillActiveState(tempDir, 'session-1')).toBeNull();
@@ -380,7 +380,7 @@ describe('skill-state', () => {
             const past = new Date(Date.now() - 10 * 60 * 1000).toISOString();
             state.started_at = past;
             state.last_checked_at = past;
-            const statePath = join(tempDir, '.omc', 'state', 'sessions', 'session-1', 'skill-active-state.json');
+            const statePath = join(tempDir, '.omg', 'state', 'sessions', 'session-1', 'skill-active-state.json');
             writeFileSync(statePath, JSON.stringify(state, null, 2));
             const result = checkSkillActiveState(tempDir, 'session-1');
             expect(result.shouldBlock).toBe(false);
@@ -451,8 +451,8 @@ describe('skill-state', () => {
     // writeSkillActiveStateCopies — dual-write invariant (spec a/b)
     // -----------------------------------------------------------------------
     describe('writeSkillActiveStateCopies — dual-write invariant (spec a/b)', () => {
-        const rootFilePath = (dir) => join(dir, '.omc', 'state', 'skill-active-state.json');
-        const sessionFilePath = (dir, sid) => join(dir, '.omc', 'state', 'sessions', sid, 'skill-active-state.json');
+        const rootFilePath = (dir) => join(dir, '.omg', 'state', 'skill-active-state.json');
+        const sessionFilePath = (dir, sid) => join(dir, '.omg', 'state', 'sessions', sid, 'skill-active-state.json');
         it('writes both root and session copies on seed', () => {
             const sessionId = 'dwc-seed-01';
             const state = upsertWorkflowSkillSlot(emptySkillActiveStateV2(), 'ralph', {
@@ -493,7 +493,7 @@ describe('skill-state', () => {
             });
             writeSkillActiveStateCopies(tempDir, state);
             expect(existsSync(rootFilePath(tempDir))).toBe(true);
-            expect(existsSync(join(tempDir, '.omc', 'state', 'sessions'))).toBe(false);
+            expect(existsSync(join(tempDir, '.omg', 'state', 'sessions'))).toBe(false);
         });
         it('both copies reflect tombstone after markWorkflowSkillCompleted (spec b)', () => {
             const sessionId = 'dwc-tomb-01';
@@ -553,7 +553,7 @@ describe('skill-state', () => {
             expect(Object.keys(state.active_skills)).toHaveLength(0);
         });
         it('normalizes v1 scalar payload into support_skill branch', () => {
-            const stateDir = join(tempDir, '.omc', 'state');
+            const stateDir = join(tempDir, '.omg', 'state');
             mkdirSync(stateDir, { recursive: true });
             const v1 = {
                 active: true,
@@ -573,7 +573,7 @@ describe('skill-state', () => {
         });
         it('session copy is authoritative for session-local reads', () => {
             const sessionId = 'norm-auth-01';
-            const rootDir = join(tempDir, '.omc', 'state');
+            const rootDir = join(tempDir, '.omg', 'state');
             const sessionDir = join(rootDir, 'sessions', sessionId);
             mkdirSync(rootDir, { recursive: true });
             mkdirSync(sessionDir, { recursive: true });
@@ -614,7 +614,7 @@ describe('skill-state', () => {
             expect(result.active_skills['autopilot']).toBeUndefined();
         });
         it('returns empty state when sessionId provided but no session copy exists (no cross-session leak)', () => {
-            const rootDir = join(tempDir, '.omc', 'state');
+            const rootDir = join(tempDir, '.omg', 'state');
             mkdirSync(rootDir, { recursive: true });
             const rootState = {
                 version: 2,
@@ -788,11 +788,11 @@ describe('skill-state', () => {
     // Diverged-copy reconciliation (spec d)
     // -----------------------------------------------------------------------
     describe('diverged-copy reconciliation (spec d)', () => {
-        const rootFilePath = (dir) => join(dir, '.omc', 'state', 'skill-active-state.json');
-        const sessionFilePath = (dir, sid) => join(dir, '.omc', 'state', 'sessions', sid, 'skill-active-state.json');
+        const rootFilePath = (dir) => join(dir, '.omg', 'state', 'skill-active-state.json');
+        const sessionFilePath = (dir, sid) => join(dir, '.omg', 'state', 'sessions', sid, 'skill-active-state.json');
         it('session copy is authoritative when root and session copies diverge', () => {
             const sessionId = 'drift-auth-01';
-            const rootDir = join(tempDir, '.omc', 'state');
+            const rootDir = join(tempDir, '.omg', 'state');
             const sessionDir = join(rootDir, 'sessions', sessionId);
             mkdirSync(rootDir, { recursive: true });
             mkdirSync(sessionDir, { recursive: true });
@@ -818,7 +818,7 @@ describe('skill-state', () => {
         });
         it('next writeSkillActiveStateCopies re-syncs diverged copies', () => {
             const sessionId = 'drift-resync-01';
-            const rootDir = join(tempDir, '.omc', 'state');
+            const rootDir = join(tempDir, '.omg', 'state');
             const sessionDir = join(rootDir, 'sessions', sessionId);
             mkdirSync(rootDir, { recursive: true });
             mkdirSync(sessionDir, { recursive: true });

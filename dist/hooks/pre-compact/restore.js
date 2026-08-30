@@ -620,7 +620,7 @@ export function formatCheckpointRestoreContext(checkpoint, path) {
         lines.push(`Plan file: ${boulder.active_plan}`);
     }
     if (checkpoint.wisdom_exported)
-        lines.push('', 'Plan wisdom was exported before compaction (see .omc/state/checkpoints/wisdom-*.md).');
+        lines.push('', 'Plan wisdom was exported before compaction (see .omg/state/checkpoints/wisdom-*.md).');
     lines.push('', 'Treat this as prior-session context only. Prioritize the current user request; consult the plan/PRD files above before resuming long-running work.', `Raw checkpoint: ${path}`);
     return truncate(lines.join('\n'), RESTORE_CONTEXT_MAX_CHARS);
 }

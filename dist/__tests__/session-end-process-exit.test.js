@@ -65,7 +65,7 @@ function configureDeferredAdapters(cwd) {
 }
 async function waitForTerminalCallback(cwd, sessionId) {
     const callbackPath = join(cwd, 'callback.md');
-    const manifestPath = join(cwd, '.omc', 'state', 'session-end-jobs', `${sessionId}.json`);
+    const manifestPath = join(cwd, '.omg', 'state', 'session-end-jobs', `${sessionId}.json`);
     const deadline = Date.now() + DETACHED_WORKER_CEILING_MS;
     while (Date.now() < deadline) {
         if (existsSync(callbackPath) && existsSync(manifestPath)) {
@@ -103,7 +103,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
     it.skipIf(!HAS_GENERATED_DIST).each(SESSION_END_SCRIPTS)('%s terminates a live manifest-lock contender within the foreground ceiling', async (_name, script) => {
         const cwd = createProject();
         const sessionId = `live-manifest-lock-${_name}`;
-        const jobsDir = join(cwd, '.omc', 'state', 'session-end-jobs');
+        const jobsDir = join(cwd, '.omg', 'state', 'session-end-jobs');
         mkdirSync(jobsDir, { recursive: true });
         writeFileSync(join(jobsDir, `${sessionId}.json.lock`), JSON.stringify({
             pid: process.pid, processStartIdentity: null, nonce: 'live-owner', createdAt: new Date().toISOString(),
@@ -117,7 +117,7 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
         const result = await runUntilClose(script, cwd, validSessionEndInput(cwd, sessionId));
         expectPromptExit(result);
         if (_name === 'session-end') {
-            const manifestPath = join(cwd, '.omc', 'state', 'session-end-jobs', `${sessionId}.json`);
+            const manifestPath = join(cwd, '.omg', 'state', 'session-end-jobs', `${sessionId}.json`);
             const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
             expect(manifest.actions.callback.phase).toBe('deferred-best-effort');
             expect(manifest.actions.notification.phase).toBe('deferred-best-effort');
@@ -167,16 +167,16 @@ describe('SessionEnd run.cjs process exit regressions (#3477)', () => {
             NODE_EXTRA_CA_CERTS: caPath,
         });
         expectPromptExit(result);
-        const manifest = JSON.parse(readFileSync(join(cwd, '.omc', 'state', 'session-end-jobs', 'configured-network-routing.json'), 'utf8'));
+        const manifest = JSON.parse(readFileSync(join(cwd, '.omg', 'state', 'session-end-jobs', 'configured-network-routing.json'), 'utf8'));
         expect(manifest.actions.callback.phase).toBe('deferred-best-effort');
         expect(manifest.actions.notification.phase).toBe('deferred-best-effort');
     });
     it.skipIf(!HAS_GENERATED_DIST)('wiki-session-end exits without waiting for a live wiki lock', async () => {
         const cwd = createProject();
         configureDeferredAdapters(cwd);
-        const wikiDir = join(cwd, '.omc', 'wiki');
+        const wikiDir = join(cwd, '.omg', 'wiki');
         mkdirSync(wikiDir, { recursive: true });
-        writeFileSync(join(cwd, '.omc', '.omc-config.json'), JSON.stringify({ wiki: { autoCapture: true } }));
+        writeFileSync(join(cwd, '.omg', '.omc-config.json'), JSON.stringify({ wiki: { autoCapture: true } }));
         writeFileSync(join(wikiDir, '.wiki-lock.lock'), JSON.stringify({ pid: process.pid, timestamp: Date.now() }));
         const result = await runUntilClose(join(REPO_ROOT, 'scripts', 'wiki-session-end.mjs'), cwd, validSessionEndInput(cwd, 'wiki-live-lock'));
         expectPromptExit(result);

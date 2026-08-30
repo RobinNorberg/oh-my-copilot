@@ -485,7 +485,7 @@ function isVertexSession() {
 function readRoutingForceInheritFromConfig(directory) {
   const configPaths = [
     join(configDir, '.omc-config.json'),
-    join(directory, '.omc', 'config.json'),
+    join(directory, '.omg', 'config.json'),
   ];
 
   for (const configPath of configPaths) {
@@ -630,7 +630,7 @@ function getMarketplaceCloneVersion() {
 
 function writeUpdateCheckCache(latestVersion, currentVersion, updateAvailable, source) {
   try {
-    const dir = join(configDir, '.omc');
+    const dir = join(configDir, '.omg');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(getUpdateCheckCachePath(), JSON.stringify({
       timestamp: Date.now(),
@@ -727,7 +727,7 @@ function detectVersionDrift() {
 
 // Check if we should notify (once per unique drift combination)
 function shouldNotifyDrift(driftInfo) {
-  const stateFile = join(configDir, '.omc', 'update-state.json');
+  const stateFile = join(configDir, '.omg', 'update-state.json');
   const driftKey = `plugin:${driftInfo.pluginVersion}-npm:${driftInfo.npmVersion}-claude:${driftInfo.claudeMdVersion}`;
 
   try {
@@ -739,7 +739,7 @@ function shouldNotifyDrift(driftInfo) {
 
   // Save new drift state
   try {
-    const dir = join(configDir, '.omc');
+    const dir = join(configDir, '.omg');
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     writeFileSync(stateFile, JSON.stringify({
       lastNotifiedDrift: driftKey,

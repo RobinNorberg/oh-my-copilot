@@ -7,7 +7,7 @@ import { readModeState, writeModeState, } from '../lib/mode-state-io.js';
 import { isModeActiveInAnySession } from '../hooks/mode-registry/index.js';
 import { parseEvaluatorResult, } from './contracts.js';
 const AUTORESEARCH_RESULTS_HEADER = 'iteration\tcommit\tpass\tscore\tstatus\tdescription\n';
-const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omc/'];
+const AUTORESEARCH_WORKTREE_EXCLUDES = ['results.tsv', 'run.log', 'node_modules', '.omg/'];
 // Exclusive modes that cannot run concurrently with autoresearch
 const EXCLUSIVE_MODES = ['ralph', 'autopilot', 'autoresearch'];
 function nowIso() {

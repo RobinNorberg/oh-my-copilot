@@ -71,11 +71,11 @@ function shouldWriteStateBack(path) {
 }
 
 /**
- * Read the session-idle notification cooldown in seconds from ~/.omc/config.json.
+ * Read the session-idle notification cooldown in seconds from ~/.omg/config.json.
  * Default: 60. 0 = disabled.
  */
 function getIdleCooldownSeconds() {
-  const configPath = join(homedir(), '.omc', 'config.json');
+  const configPath = join(homedir(), '.omg', 'config.json');
   const config = readJsonFile(configPath);
   const val = config?.notificationCooldown?.sessionIdleSeconds;
   if (typeof val === 'number') return val;
@@ -573,7 +573,7 @@ function writeStopBreaker(stateDir, name, count, sessionId) {
 /**
  * Check if a cancel signal is in progress for the session.
  * Cancel signals are written by state_clear and expire after 30 seconds.
- * @param {string} stateDir - The .omc/state directory path
+ * @param {string} stateDir - The .omg/state directory path
  * @param {string} sessionId - Optional session ID
  * @returns {boolean} true if cancel is in progress
  */

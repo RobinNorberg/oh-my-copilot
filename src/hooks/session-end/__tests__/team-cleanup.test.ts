@@ -105,7 +105,7 @@ describe('processSessionEnd team cleanup (#1632)', () => {
 
   it('records missing team config as preserved instead of deleting ownership evidence', async () => {
     const sessionId = 'pid-1632-missing-config';
-    const teamSessionDir = path.join(tmpDir, '.omc', 'state', 'sessions', sessionId);
+    const teamSessionDir = path.join(tmpDir, '.omg', 'state', 'sessions', sessionId);
     fs.mkdirSync(teamSessionDir, { recursive: true });
     fs.writeFileSync(path.join(teamSessionDir, 'team-state.json'), JSON.stringify({
       active: true, session_id: sessionId, team_name: 'missing-config-team', current_phase: 'team-exec',
@@ -122,7 +122,7 @@ describe('processSessionEnd team cleanup (#1632)', () => {
 
   it('force-shuts down a session-owned runtime-v2 team from session team state', async () => {
     const sessionId = 'pid-1632-v2';
-    const teamSessionDir = path.join(tmpDir, '.omc', 'state', 'sessions', sessionId);
+    const teamSessionDir = path.join(tmpDir, '.omg', 'state', 'sessions', sessionId);
     fs.mkdirSync(teamSessionDir, { recursive: true });
     fs.writeFileSync(
       path.join(teamSessionDir, 'team-state.json'),
@@ -146,7 +146,7 @@ describe('processSessionEnd team cleanup (#1632)', () => {
 
   it('records a preserved runtime-v2 shutdown as incomplete cleanup', async () => {
     const sessionId = 'pid-1632-v2-preserved';
-    const teamSessionDir = path.join(tmpDir, '.omc', 'state', 'sessions', sessionId);
+    const teamSessionDir = path.join(tmpDir, '.omg', 'state', 'sessions', sessionId);
     fs.mkdirSync(teamSessionDir, { recursive: true });
     fs.writeFileSync(path.join(teamSessionDir, 'team-state.json'),
       JSON.stringify({ active: true, session_id: sessionId, team_name: 'preserved-team' }), 'utf-8');
@@ -163,7 +163,7 @@ describe('processSessionEnd team cleanup (#1632)', () => {
 
   it('force-shuts down a legacy runtime team referenced by the ending session', async () => {
     const sessionId = 'pid-1632-legacy';
-    const teamSessionDir = path.join(tmpDir, '.omc', 'state', 'sessions', sessionId);
+    const teamSessionDir = path.join(tmpDir, '.omg', 'state', 'sessions', sessionId);
     fs.mkdirSync(teamSessionDir, { recursive: true });
     fs.writeFileSync(
       path.join(teamSessionDir, 'team-state.json'),
@@ -194,7 +194,7 @@ describe('processSessionEnd team cleanup (#1632)', () => {
 
   it('records an unverified legacy shutdown as failed instead of cleaned', async () => {
     const sessionId = 'pid-1632-legacy-failed';
-    const teamSessionDir = path.join(tmpDir, '.omc', 'state', 'sessions', sessionId);
+    const teamSessionDir = path.join(tmpDir, '.omg', 'state', 'sessions', sessionId);
     fs.mkdirSync(teamSessionDir, { recursive: true });
     fs.writeFileSync(path.join(teamSessionDir, 'team-state.json'), JSON.stringify({
       active: true, session_id: sessionId, team_name: 'legacy-failed-team', current_phase: 'team-exec',
@@ -248,7 +248,7 @@ describe('processSessionEnd team cleanup (#1632)', () => {
   it('only cleans up manifests owned by the ending session', async () => {
     const sessionId = 'pid-1632-owner';
     const otherSessionId = 'pid-1632-other';
-    const teamRoot = path.join(tmpDir, '.omc', 'state', 'team');
+    const teamRoot = path.join(tmpDir, '.omg', 'state', 'team');
     fs.mkdirSync(path.join(teamRoot, 'owned-team'), { recursive: true });
     fs.mkdirSync(path.join(teamRoot, 'other-team'), { recursive: true });
 

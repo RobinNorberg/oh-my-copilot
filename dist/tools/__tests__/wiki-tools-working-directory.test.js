@@ -51,8 +51,8 @@ describe('wiki tools workingDirectory', () => {
             workingDirectory: linked,
         });
         expect(addResult.isError).toBeUndefined();
-        expect(existsSync(join(linked, '.omc', 'wiki', 'linked-worktree-page.md'))).toBe(true);
-        expect(existsSync(join(primary, '.omc', 'wiki'))).toBe(false);
+        expect(existsSync(join(linked, '.omg', 'wiki', 'linked-worktree-page.md'))).toBe(true);
+        expect(existsSync(join(primary, '.omg', 'wiki'))).toBe(false);
         const readResult = await wikiReadTool.handler({
             page: 'linked-worktree-page',
             workingDirectory: linked,
@@ -60,7 +60,7 @@ describe('wiki tools workingDirectory', () => {
         expect(readResult.isError).toBeUndefined();
         expect(readResult.content[0].text).toContain('Linked Worktree Page');
         expect(readResult.content[0].text).toContain('This belongs to the linked worktree wiki.');
-        expect(existsSync(join(primary, '.omc', 'wiki'))).toBe(false);
+        expect(existsSync(join(primary, '.omg', 'wiki'))).toBe(false);
     });
 });
 //# sourceMappingURL=wiki-tools-working-directory.test.js.map

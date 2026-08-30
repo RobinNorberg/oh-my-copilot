@@ -380,7 +380,7 @@ export async function startTeam(config: TeamConfig): Promise<TeamRuntime> {
   // Validate CLIs once and pin absolute binary paths for consistent spawn behavior.
   // Reject headless-unsupported providers (e.g. antigravity on Windows) here in
   // preflight — BEFORE writing any team state or creating the tmux session — so an
-  // unsupported provider can never leave stale `.omc/state/team` files or a leader
+  // unsupported provider can never leave stale `.omg/state/team` files or a leader
   // session behind. (spawnWorkerForTask keeps its own guard for the watchdog path.)
   const resolvedBinaryPaths: Partial<Record<CliAgentType, string>> = {};
   for (const agentType of [...new Set(agentTypes)]) {

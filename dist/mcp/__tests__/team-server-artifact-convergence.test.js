@@ -98,7 +98,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const persisted = JSON.parse(readFileSync(join(jobsDir, `${jobId}.json`), 'utf-8'));
         expect(persisted.status).toBe('failed');
     });
-    it('handleCleanup removes only scoped .omc/state/team/<teamName> directory', async () => {
+    it('handleCleanup removes only scoped .omg/state/team/<teamName> directory', async () => {
         const { handleCleanup } = await importTeamServerWithJobsDir(jobsDir);
         const jobId = 'omc-art3';
         const cwd = join(testRoot, 'workspace');
@@ -211,7 +211,7 @@ describe('team-server artifact convergence + scoped cleanup', () => {
         const backupPath = join(teamDir, 'workers', 'worker-1', 'worktree-root-agents.json');
         mkdirSync(join(teamDir, 'workers', 'worker-1'), { recursive: true });
         writeFileSync(backupPath, JSON.stringify({
-            worktreePath: join(cwd, '.omc', 'team', 'team-one', 'worktrees', 'worker-1'),
+            worktreePath: join(cwd, '.omg', 'team', 'team-one', 'worktrees', 'worker-1'),
             hadOriginal: true,
             originalContent: 'original',
             installedContent: 'managed',

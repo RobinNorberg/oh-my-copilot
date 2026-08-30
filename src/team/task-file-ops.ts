@@ -6,10 +6,10 @@
  * Read/write/scan task JSON files with atomic writes (temp + rename).
  *
  * Canonical task storage path:
- *   {cwd}/.omc/state/team/{teamName}/tasks/{id}.json
+ *   {cwd}/.omg/state/team/{teamName}/tasks/{id}.json
  *
  * Legacy path (read-only fallback during migration):
- *   ~/.claude/tasks/{teamName}/{id}.json
+ *   ~/.copilot/tasks/{teamName}/{id}.json
  *
  * New writes always go to the canonical path. Reads check the canonical
  * path first; if the file is absent there, the legacy path is tried so
@@ -151,7 +151,7 @@ function sanitizeTaskId(taskId: string): string {
 
 /**
  * Returns the canonical tasks directory for a team.
- * All new writes go here: {cwd}/.omc/state/team/{teamName}/tasks/
+ * All new writes go here: {cwd}/.omg/state/team/{teamName}/tasks/
  */
 function canonicalTasksDir(teamName: string, cwd?: string): string {
   const root = cwd ?? process.cwd();
@@ -162,7 +162,7 @@ function canonicalTasksDir(teamName: string, cwd?: string): string {
 
 /**
  * Returns the legacy tasks directory for a team.
- * Used only for read-fallback: ~/.claude/tasks/{teamName}/
+ * Used only for read-fallback: ~/.copilot/tasks/{teamName}/
  */
 function legacyTasksDir(teamName: string): string {
   const claudeConfigDir = getCopilotConfigDir();

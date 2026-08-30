@@ -1,23 +1,21 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "omc",
-  "description": "Claude Code native multi-agent orchestration - intelligent model routing, 28 agents, 32 skills",
+  "description": "GitHub Copilot CLI multi-agent orchestration - intelligent model routing, 20 agents, 46 skills",
   "owner": {
-    "name": "Yeachan Heo",
-    "email": "hurrc04@gmail.com"
+    "name": "Robin Norberg"
   },
   "plugins": [
     {
       "name": "oh-my-copilot",
-      "description": "Claude Code native multi-agent orchestration with intelligent model routing, 28 agent variants, and 32 powerful skills. Zero learning curve. Maximum power.",
-      "version": "5.0.2",
+      "description": "Multi-agent orchestration for GitHub Copilot CLI with intelligent model routing, 20 agent variants, and 46 skills. Zero learning curve. Maximum power.",
+      "version": "5.0.0",
       "author": {
-        "name": "Yeachan Heo",
-        "email": "hurrc04@gmail.com"
+        "name": "Robin Norberg"
       },
       "source": "./",
       "category": "productivity",
-      "homepage": "https://github.com/Yeachan-Heo/oh-my-copilot",
+      "homepage": "https://github.com/RobinNorberg/oh-my-copilot",
       "tags": [
         "multi-agent",
         "orchestration",
@@ -27,5 +25,5 @@
       ]
     }
   ],
-  "version": "5.0.2"
+  "version": "5.0.0"
 }

@@ -52,7 +52,7 @@ describe('team leader nudge hook', () => {
     taskStatuses: string[];
     workerStates: Array<{ name: string; state: string; alive?: boolean; lastTurnAt?: string }>;
   }): Promise<void> {
-    const teamRoot = '.omc/state/team/demo-team';
+    const teamRoot = '.omg/state/team/demo-team';
     await writeJson(`${teamRoot}/config.json`, {
       workers: options.workerStates.map((worker) => ({ name: worker.name })),
       leader_pane_id: '%1',
@@ -88,7 +88,7 @@ describe('team leader nudge hook', () => {
     const sent: string[] = [];
     const result = await maybeNudgeLeader({
       cwd,
-      stateDir: join(cwd, '.omc', 'state'),
+      stateDir: join(cwd, '.omg', 'state'),
       teamName: 'demo-team',
       tmux: {
         async sendKeys(_target, text) {
@@ -101,7 +101,7 @@ describe('team leader nudge hook', () => {
     expect(result.reason).toContain('all_alive_workers_idle');
     expect(sent[0]).toContain('reuse-current-team');
 
-    const eventsRaw = await readFile(join(cwd, '.omc', 'state', 'team', 'demo-team', 'events.jsonl'), 'utf-8');
+    const eventsRaw = await readFile(join(cwd, '.omg', 'state', 'team', 'demo-team', 'events.jsonl'), 'utf-8');
     expect(eventsRaw).toContain('"next_action":"reuse-current-team"');
   });
 
@@ -116,7 +116,7 @@ describe('team leader nudge hook', () => {
     const sent: string[] = [];
     const result = await maybeNudgeLeader({
       cwd,
-      stateDir: join(cwd, '.omc', 'state'),
+      stateDir: join(cwd, '.omg', 'state'),
       teamName: 'demo-team',
       tmux: {
         async sendKeys(_target, text) {

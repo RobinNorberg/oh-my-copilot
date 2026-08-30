@@ -206,7 +206,7 @@ export interface PluginConfig {
     team?: TeamConfigBlock;
     autopilot?: AutopilotConfigBlock;
     planOutput?: {
-        /** Relative directory for generated plan artifacts. Default: .omc/plans */
+        /** Relative directory for generated plan artifacts. Default: .omg/plans */
         directory?: string;
         /** Filename template. Supported tokens: {{name}}, {{kind}}. Default: {{name}}.md */
         filenameTemplate?: string;

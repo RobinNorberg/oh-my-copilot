@@ -115,7 +115,7 @@ describe('State Poisoning Resilience', () => {
         process.env.HOME = testDir;
         process.env.USERPROFILE = testDir;
         delete process.env.OMC_STATE_DIR;
-        mkdirSync(join(testDir, '.omc', 'state'), { recursive: true });
+        mkdirSync(join(testDir, '.omg', 'state'), { recursive: true });
     });
     afterEach(() => {
         rmSync(testDir, { recursive: true, force: true });
@@ -133,22 +133,22 @@ describe('State Poisoning Resilience', () => {
             process.env.OMC_STATE_DIR = previousStateDir;
     });
     it('should return null for completely invalid JSON state', () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'autopilot-state.json'), 'THIS IS NOT JSON {{{}}}');
+        writeFileSync(join(testDir, '.omg', 'state', 'autopilot-state.json'), 'THIS IS NOT JSON {{{}}}');
         const state = readAutopilotState(testDir);
         expect(state).toBeNull();
     });
     it('should return null for empty string state file', () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'autopilot-state.json'), '');
+        writeFileSync(join(testDir, '.omg', 'state', 'autopilot-state.json'), '');
         const state = readAutopilotState(testDir);
         expect(state).toBeNull();
     });
     it('should return null for truncated JSON state', () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'autopilot-state.json'), '{"active": true, "phase": "exec');
+        writeFileSync(join(testDir, '.omg', 'state', 'autopilot-state.json'), '{"active": true, "phase": "exec');
         const state = readAutopilotState(testDir);
         expect(state).toBeNull();
     });
     it('should return null for JSON array instead of object', () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'autopilot-state.json'), '[1, 2, 3]');
+        writeFileSync(join(testDir, '.omg', 'state', 'autopilot-state.json'), '[1, 2, 3]');
         const state = readAutopilotState(testDir);
         // Might parse successfully as an array but the code should handle this
         // since it expects an AutopilotState object
@@ -157,7 +157,7 @@ describe('State Poisoning Resilience', () => {
         expect(state === null || Array.isArray(state)).toBe(true);
     });
     it('should return null for binary data state file', () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'autopilot-state.json'), Buffer.from([0x00, 0x01, 0x02, 0xFF, 0xFE]));
+        writeFileSync(join(testDir, '.omg', 'state', 'autopilot-state.json'), Buffer.from([0x00, 0x01, 0x02, 0xFF, 0xFE]));
         const state = readAutopilotState(testDir);
         expect(state).toBeNull();
     });
@@ -171,13 +171,13 @@ describe('State Poisoning Resilience', () => {
         for (let i = 0; i < 51; i++) {
             nested += '}';
         }
-        writeFileSync(join(testDir, '.omc', 'state', 'autopilot-state.json'), nested);
+        writeFileSync(join(testDir, '.omg', 'state', 'autopilot-state.json'), nested);
         // Should parse without crashing
         const state = readAutopilotState(testDir);
         expect(state).not.toBeUndefined(); // parsed ok (it's valid JSON)
     });
     it('should handle state file with null values', () => {
-        writeFileSync(join(testDir, '.omc', 'state', 'autopilot-state.json'), JSON.stringify({
+        writeFileSync(join(testDir, '.omg', 'state', 'autopilot-state.json'), JSON.stringify({
             active: null,
             phase: null,
             originalIdea: null,

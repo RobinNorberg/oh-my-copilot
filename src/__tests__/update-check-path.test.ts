@@ -18,7 +18,7 @@ describe('update-check cache path', () => {
     process.env.COPILOT_CONFIG_DIR = join('/tmp', 'omc-custom-claude');
 
     expect(getUpdateCheckCachePath()).toBe(
-      join('/tmp', 'omc-custom-claude', '.omc', 'update-check.json'),
+      join('/tmp', 'omc-custom-claude', '.omg', 'update-check.json'),
     );
   });
 

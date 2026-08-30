@@ -67,7 +67,7 @@ describe('installer MCP config ownership (issue #1802)', () => {
     homeDir = join(tempRoot, 'home');
     claudeConfigDir = join(homeDir, '.claude');
     codexHome = join(tempRoot, '.codex');
-    omcHome = join(tempRoot, '.omc');
+    omcHome = join(tempRoot, '.omg');
 
     mkdirSync(homeDir, { recursive: true });
     mkdirSync(claudeConfigDir, { recursive: true });
@@ -192,7 +192,7 @@ describe('installer hook merge — first install writes non-empty hook groups', 
     homeDir = join(tempRoot, 'home');
     claudeConfigDir = join(homeDir, '.claude');
     codexHome = join(tempRoot, '.codex');
-    omcHome = join(tempRoot, '.omc');
+    omcHome = join(tempRoot, '.omg');
 
     mkdirSync(homeDir, { recursive: true });
     mkdirSync(claudeConfigDir, { recursive: true });

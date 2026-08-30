@@ -18,7 +18,7 @@ describe('team-worker-hook heartbeat missing file', () => {
     const workerName = 'worker-1';
     beforeEach(() => {
         tmpDir = mkdtempSync(join(tmpdir(), 'heartbeat-test-'));
-        stateDir = join(tmpDir, '.omc', 'state');
+        stateDir = join(tmpDir, '.omg', 'state');
         // Set up minimal team config so readTeamWorkersForIdleCheck works
         const teamDir = join(stateDir, 'team', teamName);
         mkdirSync(teamDir, { recursive: true });

@@ -7,7 +7,7 @@ import { getOmcRoot } from '../lib/worktree-paths.js';
  * All paths are relative to cwd.
  *
  * State layout:
- *   .omc/state/team/{teamName}/
+ *   .omg/state/team/{teamName}/
  *     config.json
  *     shutdown.json
  *     tasks/
@@ -32,134 +32,134 @@ export function normalizeTaskFileStem(taskId: string): string {
 
 export const TeamPaths = {
   root: (teamName: string) =>
-    `.omc/state/team/${teamName}`,
+    `.omg/state/team/${teamName}`,
 
   config: (teamName: string) =>
-    `.omc/state/team/${teamName}/config.json`,
+    `.omg/state/team/${teamName}/config.json`,
 
   shutdown: (teamName: string) =>
-    `.omc/state/team/${teamName}/shutdown.json`,
+    `.omg/state/team/${teamName}/shutdown.json`,
 
   tasks: (teamName: string) =>
-    `.omc/state/team/${teamName}/tasks`,
+    `.omg/state/team/${teamName}/tasks`,
 
   taskFile: (teamName: string, taskId: string) =>
-    `.omc/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
+    `.omg/state/team/${teamName}/tasks/${normalizeTaskFileStem(taskId)}.json`,
 
   workers: (teamName: string) =>
-    `.omc/state/team/${teamName}/workers`,
+    `.omg/state/team/${teamName}/workers`,
 
   workerDir: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}`,
+    `.omg/state/team/${teamName}/workers/${workerName}`,
 
   heartbeat: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/heartbeat.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/heartbeat.json`,
 
   inbox: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/inbox.md`,
+    `.omg/state/team/${teamName}/workers/${workerName}/inbox.md`,
 
   outbox: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/outbox.jsonl`,
+    `.omg/state/team/${teamName}/workers/${workerName}/outbox.jsonl`,
 
   ready: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/.ready`,
+    `.omg/state/team/${teamName}/workers/${workerName}/.ready`,
 
   overlay: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/AGENTS.md`,
+    `.omg/state/team/${teamName}/workers/${workerName}/AGENTS.md`,
 
   shutdownAck: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/shutdown-ack.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/shutdown-ack.json`,
 
   workerLaunchAttemptRoot: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}`,
 
   workerLaunchCurrent: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/current.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/current.json`,
 
   workerLaunchExpected: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/expected.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/expected.json`,
 
   workerLaunchAck: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/ack.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/ack.json`,
 
   workerLaunchStarted: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/provider-started.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/provider-started.json`,
 
   workerLaunchTransportOwner: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/transport-owner.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/transport-owner.json`,
 
   workerLaunchBootstrapDescriptor: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/bootstrap.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/bootstrap.json`,
 
   workerLaunchWrapper: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/launch.cmd`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/launch.cmd`,
 
   workerLaunchTransportCleanupComplete: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/transport-cleanup-complete.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/transport-cleanup-complete.json`,
 
   workerLaunchDecision: (teamName: string, workerName: string, attemptId: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/decision.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/launch-attempts/${attemptId}/decision.json`,
 
   mailbox: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/mailbox/${workerName}.json`,
+    `.omg/state/team/${teamName}/mailbox/${workerName}.json`,
 
   mailboxLockDir: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/mailbox/.lock-${workerName}`,
+    `.omg/state/team/${teamName}/mailbox/.lock-${workerName}`,
 
   dispatchRequests: (teamName: string) =>
-    `.omc/state/team/${teamName}/dispatch/requests.json`,
+    `.omg/state/team/${teamName}/dispatch/requests.json`,
 
   dispatchLockDir: (teamName: string) =>
-    `.omc/state/team/${teamName}/dispatch/.lock`,
+    `.omg/state/team/${teamName}/dispatch/.lock`,
   mailboxNotificationLock: (teamName: string, requestId: string) =>
-    `.omc/state/team/${teamName}/dispatch/.mailbox-notification-${createHash('sha256').update(requestId).digest('hex')}.lock`,
+    `.omg/state/team/${teamName}/dispatch/.mailbox-notification-${createHash('sha256').update(requestId).digest('hex')}.lock`,
 
   workerStatus: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/status.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/status.json`,
 
   workerIdleNotify: (teamName: string) =>
-    `.omc/state/team/${teamName}/worker-idle-notify.json`,
+    `.omg/state/team/${teamName}/worker-idle-notify.json`,
 
   workerPrevNotifyState: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/prev-notify-state.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/prev-notify-state.json`,
 
   events: (teamName: string) =>
-    `.omc/state/team/${teamName}/events.jsonl`,
+    `.omg/state/team/${teamName}/events.jsonl`,
 
   approval: (teamName: string, taskId: string) =>
-    `.omc/state/team/${teamName}/approvals/${taskId}.json`,
+    `.omg/state/team/${teamName}/approvals/${taskId}.json`,
 
   manifest: (teamName: string) =>
-    `.omc/state/team/${teamName}/manifest.json`,
+    `.omg/state/team/${teamName}/manifest.json`,
 
   monitorSnapshot: (teamName: string) =>
-    `.omc/state/team/${teamName}/monitor-snapshot.json`,
+    `.omg/state/team/${teamName}/monitor-snapshot.json`,
 
   summarySnapshot: (teamName: string) =>
-    `.omc/state/team/${teamName}/summary-snapshot.json`,
+    `.omg/state/team/${teamName}/summary-snapshot.json`,
 
   phaseState: (teamName: string) =>
-    `.omc/state/team/${teamName}/phase-state.json`,
+    `.omg/state/team/${teamName}/phase-state.json`,
 
   scalingLock: (teamName: string) =>
-    `.omc/state/team/${teamName}/.scaling-lock`,
+    `.omg/state/team/${teamName}/.scaling-lock`,
   configMutationLock: (teamName: string) =>
-    `.omc/state/team/${teamName}/.config-mutation.lock`,
+    `.omg/state/team/${teamName}/.config-mutation.lock`,
 
   workerIdentity: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/identity.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/identity.json`,
 
   workerAgentsMd: (teamName: string) =>
-    `.omc/state/team/${teamName}/worker-agents.md`,
+    `.omg/state/team/${teamName}/worker-agents.md`,
 
   shutdownRequest: (teamName: string, workerName: string) =>
-    `.omc/state/team/${teamName}/workers/${workerName}/shutdown-request.json`,
+    `.omg/state/team/${teamName}/workers/${workerName}/shutdown-request.json`,
   checkpoints: (teamName: string, taskId: string, claimTokenHash: string) =>
-    `.omc/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}`,
+    `.omg/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}`,
   checkpoint: (teamName: string, taskId: string, claimTokenHash: string, sequence: number) =>
-    `.omc/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}/${sequence}.json`,
+    `.omg/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}/${sequence}.json`,
   checkpointLatest: (teamName: string, taskId: string, claimTokenHash: string) =>
-    `.omc/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}/latest.json`,
+    `.omg/state/team/${teamName}/checkpoints/${normalizeTaskFileStem(taskId)}/${claimTokenHash}/latest.json`,
   taskRecoverySidecar: (teamName: string, recoveryId: string, taskId: string) => {
     if (recoveryId.length === 0 || recoveryId.length > 128 || recoveryId === '.' || recoveryId === '..'
       || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(recoveryId)) {
@@ -167,53 +167,53 @@ export const TeamPaths = {
     }
     const taskStem = normalizeTaskFileStem(taskId);
     if (!/^task-\d+$/.test(taskStem)) throw new Error('invalid_task_id');
-    return `.omc/state/team/${teamName}/recovery/task-sidecars/${recoveryId}/${taskStem}.json`;
+    return `.omg/state/team/${teamName}/recovery/task-sidecars/${recoveryId}/${taskStem}.json`;
   },
   taskRecoveryReservation: (teamName: string, taskId: string) =>
-    `.omc/state/team/${teamName}/recovery/reservations/${normalizeTaskFileStem(taskId)}.json`,
+    `.omg/state/team/${teamName}/recovery/reservations/${normalizeTaskFileStem(taskId)}.json`,
   ownerEpochs: (teamName: string) =>
-    `.omc/state/team/${teamName}/recovery/owner-epochs`,
+    `.omg/state/team/${teamName}/recovery/owner-epochs`,
   ownerEpoch: (teamName: string, epoch: number) =>
-    `.omc/state/team/${teamName}/recovery/owner-epochs/${epoch}.json`,
+    `.omg/state/team/${teamName}/recovery/owner-epochs/${epoch}.json`,
   recoveryOwnerBootstrapCandidate: (teamName: string, expectedEpoch: number, nonce: string) => {
     if (nonce.length === 0 || nonce.length > 128 || nonce === '.' || nonce === '..'
       || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(nonce)) throw new Error('invalid_recovery_owner_bootstrap_nonce');
-    return `.omc/state/team/${teamName}/recovery/owner-bootstrap/${expectedEpoch}/${nonce}.json`;
+    return `.omg/state/team/${teamName}/recovery/owner-bootstrap/${expectedEpoch}/${nonce}.json`;
   },
   recoveryIntents: (teamName: string) =>
-    `.omc/state/team/${teamName}/recovery/intents`,
+    `.omg/state/team/${teamName}/recovery/intents`,
   recoveryIntent: (teamName: string, recoveryId: string) =>
-    `.omc/state/team/${teamName}/recovery/intents/${recoveryId}.json`,
+    `.omg/state/team/${teamName}/recovery/intents/${recoveryId}.json`,
   recoveryAttempts: (teamName: string) =>
-    `.omc/state/team/${teamName}/recovery/attempts`,
+    `.omg/state/team/${teamName}/recovery/attempts`,
   recoveryAttempt: (teamName: string, recoveryId: string) =>
-    `.omc/state/team/${teamName}/recovery/attempts/${recoveryId}.json`,
+    `.omg/state/team/${teamName}/recovery/attempts/${recoveryId}.json`,
   recoveryActivation: (teamName: string, recoveryId: string, paneAttemptId: string) =>
-    `.omc/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}`,
+    `.omg/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}`,
   recoveryReady: (teamName: string, recoveryId: string, paneAttemptId: string) =>
-    `.omc/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/ready.json`,
+    `.omg/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/ready.json`,
   recoveryActivate: (teamName: string, recoveryId: string, paneAttemptId: string) =>
-    `.omc/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/activate.json`,
+    `.omg/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/activate.json`,
   recoveryRun: (teamName: string, recoveryId: string, paneAttemptId: string) =>
-    `.omc/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/run.json`,
-  recoveryRequestsRoot: () => '.omc/state/team-recovery/by-request',
+    `.omg/state/team/${teamName}/recovery/activation/${recoveryId}/${paneAttemptId}/run.json`,
+  recoveryRequestsRoot: () => '.omg/state/team-recovery/by-request',
   recoveryAdmissionLock: (payloadHash: string) =>
-    `.omc/state/team-recovery/admission-locks/${payloadHash}.lock`,
+    `.omg/state/team-recovery/admission-locks/${payloadHash}.lock`,
   recoveryLifecycleLock: (workspaceHash: string, teamName: string) =>
-    `.omc/state/team-recovery/lifecycle-locks/${workspaceHash}/${teamName}.lock`,
+    `.omg/state/team-recovery/lifecycle-locks/${workspaceHash}/${teamName}.lock`,
   recoveryRequestPending: (requestId: string) =>
-    `.omc/state/team-recovery/by-request/${requestId}.pending.json`,
+    `.omg/state/team-recovery/by-request/${requestId}.pending.json`,
   recoveryRequestResult: (requestId: string) =>
-    `.omc/state/team-recovery/by-request/${requestId}.result.json`,
+    `.omg/state/team-recovery/by-request/${requestId}.result.json`,
   recoveryResultByTeam: (workspaceHash: string, teamName: string, recoveryId: string) =>
-    `.omc/state/team-recovery/by-team/${workspaceHash}/${teamName}/${recoveryId}.json`,
+    `.omg/state/team-recovery/by-team/${workspaceHash}/${teamName}/${recoveryId}.json`,
   recoveryFinalIndexLock: (workspaceHash: string, teamName: string, recoveryId: string) =>
-    `.omc/state/team-recovery/index-locks/${workspaceHash}/${teamName}/${recoveryId}.lock`,
+    `.omg/state/team-recovery/index-locks/${workspaceHash}/${teamName}/${recoveryId}.lock`,
   scalingRollbackFailure: (teamName: string, recordedAt: number) =>
-    `.omc/state/team/${teamName}/scaling-rollback/${recordedAt}.json`,
+    `.omg/state/team/${teamName}/scaling-rollback/${recordedAt}.json`,
   recoveryPaneRollbackFailure: (teamName: string, recoveryId: string, paneAttemptId: string, recordedAt: number) =>
-    `.omc/state/team/${teamName}/recovery/rollback-failures/${recoveryId}/${paneAttemptId}-${recordedAt}.json`,
-  recoveryAuditIndex: () => '.omc/state/team-recovery/audit.jsonl',
+    `.omg/state/team/${teamName}/recovery/rollback-failures/${recoveryId}/${paneAttemptId}-${recordedAt}.json`,
+  recoveryAuditIndex: () => '.omg/state/team-recovery/audit.jsonl',
 } as const;
 
 /**
@@ -221,8 +221,8 @@ export const TeamPaths = {
  */
 export function absPath(cwd: string, relativePath: string): string {
   if (isAbsolute(relativePath)) return relativePath;
-  if (relativePath === '.omc' || relativePath.startsWith('.omc/')) {
-    return join(getOmcRoot(cwd), relativePath.slice('.omc'.length).replace(/^\//, ''));
+  if (relativePath === '.omg' || relativePath.startsWith('.omg/')) {
+    return join(getOmcRoot(cwd), relativePath.slice('.omg'.length).replace(/^\//, ''));
   }
   return join(cwd, relativePath);
 }
@@ -238,10 +238,10 @@ export function teamStateRoot(cwd: string, teamName: string): string {
  * Canonical task storage path builder.
  *
  * All task files live at:
- *   {cwd}/.omc/state/team/{teamName}/tasks/task-{taskId}.json
+ *   {cwd}/.omg/state/team/{teamName}/tasks/task-{taskId}.json
  *
  * When taskId is omitted, returns the tasks directory:
- *   {cwd}/.omc/state/team/{teamName}/tasks/
+ *   {cwd}/.omg/state/team/{teamName}/tasks/
  *
  * Use this as the single source of truth for task file locations.
  * New writes always use this canonical path.
@@ -257,7 +257,7 @@ export function getTaskStoragePath(cwd: string, teamName: string, taskId?: strin
 /**
  * Legacy task storage path builder (deprecated).
  *
- * Old location: ~/.claude/tasks/{teamName}/{taskId}.json
+ * Old location: ~/.copilot/tasks/{teamName}/{taskId}.json
  *
  * Used only by the compatibility shim in task-file-ops.ts to check
  * for data written by older versions during reads. New code must not

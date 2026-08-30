@@ -29,7 +29,7 @@ function getCopilotConfigDir() {
 }
 
 function getOmcConfigDir() {
-  return join(getCopilotConfigDir(), '.omc');
+  return join(getCopilotConfigDir(), '.omg');
 }
 
 function getUpdateCheckCachePath() {

@@ -25,11 +25,11 @@ import { expandTriggers } from "./transliteration-map.js";
 // Re-export constants
 export const USER_SKILLS_DIR = join(
   homedir(),
-  ".claude",
+  ".copilot",
   "skills",
   "omc-learned",
 );
-export const GLOBAL_SKILLS_DIR = join(homedir(), ".omc", "skills");
+export const GLOBAL_SKILLS_DIR = join(homedir(), ".omg", "skills");
 export const PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
 export const PROJECT_AGENT_SKILLS_SUBDIR = join(".agents", "skills");
 export const SKILL_EXTENSION = ".md";

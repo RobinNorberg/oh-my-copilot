@@ -3,8 +3,8 @@
  *
  * Covers the three defects reported in the issue:
  *  1. cwd-fragmentation: every non-git working directory became its own
- *     `.omc/` state root.
- *  2. sensitive-location writes: `.omc/` was created inside `~/.ssh`,
+ *     `.omg/` state root.
+ *  2. sensitive-location writes: `.omg/` was created inside `~/.ssh`,
  *     `~/.claude`, and similar locations.
  *  3. ignored `workingDirectory`: state tools silently resolved a provided
  *     non-git directory back to the session's trusted root, so state_clear
@@ -101,9 +101,9 @@ describe('#3873 non-git state-root anchoring', () => {
         roots.add(getOmcRoot());
       }
       expect(roots.size).toBe(1);
-      expect([...roots][0]).toBe(join(fakeHome, '.omc'));
+      expect([...roots][0]).toBe(join(fakeHome, '.omg'));
 
-      mkdirSync(join(base, '.omc'), { recursive: true });
+      mkdirSync(join(base, '.omg'), { recursive: true });
       const rootsAfter = new Set<string>();
       for (const dir of [base, join(base, 'a'), join(base, 'a', 'b')]) {
         process.chdir(dir);
@@ -111,8 +111,8 @@ describe('#3873 non-git state-root anchoring', () => {
         rootsAfter.add(getOmcRoot());
       }
       expect(rootsAfter.size).toBe(1);
-      expect([...rootsAfter][0]).toBe(join(fakeHome, '.omc'));
-      expect(isDir(join(base, '.omc'))).toBe(true);
+      expect([...rootsAfter][0]).toBe(join(fakeHome, '.omg'));
+      expect(isDir(join(base, '.omg'))).toBe(true);
     });
 
     it('nested hook directories do not implicitly adopt an existing project root', () => {
@@ -124,11 +124,11 @@ describe('#3873 non-git state-root anchoring', () => {
         join(project, '.claude', 'hooks', 'experiments'),
       ];
       for (const directory of hookDirs) mkdirSync(directory, { recursive: true });
-      mkdirSync(join(project, '.omc'), { recursive: true });
+      mkdirSync(join(project, '.omg'), { recursive: true });
 
       process.chdir(project);
       const projectRoot = getOmcRoot();
-      expect(projectRoot).toBe(join(fakeHome, '.omc'));
+      expect(projectRoot).toBe(join(fakeHome, '.omg'));
       for (const directory of hookDirs) {
         process.chdir(directory);
         clearWorktreeCache();
@@ -141,25 +141,25 @@ describe('#3873 non-git state-root anchoring', () => {
     it('cwd inside ~/.ssh never anchors state in ~/.ssh', () => {
       const ssh = join(fakeHome, '.ssh');
       const nested = join(ssh, 'nested');
-      mkdirSync(join(nested, '.omc'), { recursive: true });
+      mkdirSync(join(nested, '.omg'), { recursive: true });
       process.chdir(nested);
       clearWorktreeCache();
       const root = getOmcRoot();
-      expect(root).not.toBe(join(nested, '.omc'));
+      expect(root).not.toBe(join(nested, '.omg'));
       expect(root.startsWith(join(ssh))).toBe(false);
     });
 
     it('cwd directly in HOME anchors to ~/.omc, not HOME itself', () => {
       process.chdir(fakeHome);
-      expect(getOmcRoot()).toBe(join(fakeHome, '.omc'));
+      expect(getOmcRoot()).toBe(join(fakeHome, '.omg'));
     });
 
     it('cwd in a user content directory never anchors there', () => {
       const downloads = join(fakeHome, 'Downloads');
-      mkdirSync(join(downloads, '.omc'), { recursive: true });
+      mkdirSync(join(downloads, '.omg'), { recursive: true });
       process.chdir(downloads);
       clearWorktreeCache();
-      expect(getOmcRoot()).not.toBe(join(downloads, '.omc'));
+      expect(getOmcRoot()).not.toBe(join(downloads, '.omg'));
     });
 
     it('isSensitiveStateLocation marks well-known sensitive dirs', () => {
@@ -193,16 +193,16 @@ describe('#3873 non-git state-root anchoring', () => {
       const sensitiveTarget = join(osPaths.tmp, 'job-target');
       mkdirSync(sensitiveTarget, { recursive: true });
       mkdirSync(project, { recursive: true });
-      symlinkSync(sensitiveTarget, join(project, '.omc'), 'junction');
+      symlinkSync(sensitiveTarget, join(project, '.omg'), 'junction');
       process.chdir(project);
       clearWorktreeCache();
-      expect(getOmcRoot()).toBe(join(fakeHome, '.omc'));
+      expect(getOmcRoot()).toBe(join(fakeHome, '.omg'));
     });
 
     it('walk-up skips sensitive ancestors without adopting a legacy .omc', () => {
       const project = join(scratch, 'proj');
       mkdirSync(join(project, '.config', 'work'), { recursive: true });
-      mkdirSync(join(project, '.omc'), { recursive: true });
+      mkdirSync(join(project, '.omg'), { recursive: true });
       expect(resolveNonGitStateAnchor(join(project, '.config', 'work'))).toBe(fakeHome);
     });
   });
@@ -218,8 +218,8 @@ describe('#3873 non-git state-root anchoring', () => {
       const base = join(scratch, 'anchor-tree');
       const mid = join(base, 'x');
       mkdirSync(join(base, 'x', 'y'), { recursive: true });
-      mkdirSync(join(base, '.omc'), { recursive: true });
-      writeFileSync(join(mid, '.omc'), 'not a directory');
+      mkdirSync(join(base, '.omg'), { recursive: true });
+      writeFileSync(join(mid, '.omg'), 'not a directory');
       expect(resolveNonGitStateAnchor(join(base, 'x', 'y'))).toBe(fakeHome);
     });
   });
@@ -233,7 +233,7 @@ describe('#3873 non-git state-root anchoring', () => {
       for (const dir of [repo, join(repo, 'x'), join(repo, 'x', 'y')]) {
         process.chdir(dir);
         clearWorktreeCache();
-        expect(getOmcRoot()).toBe(join(repo, '.omc'));
+        expect(getOmcRoot()).toBe(join(repo, '.omg'));
       }
     });
 
@@ -247,7 +247,7 @@ describe('#3873 non-git state-root anchoring', () => {
       clearWorktreeCache();
       const root = getOmcRoot();
       expect(root.startsWith(central)).toBe(true);
-      expect(root).not.toBe(join(dir, '.omc'));
+      expect(root).not.toBe(join(dir, '.omg'));
     });
 
     it('OMC_STATE_DIR uses one fixed non-git child for multiple directories', () => {
@@ -273,18 +273,18 @@ describe('#3873 non-git state-root anchoring', () => {
       execFileSync('git', ['init', '-q'], { cwd: repo });
       process.chdir(repo);
       clearWorktreeCache();
-      expect(getOmcRoot()).toBe(join(repo, '.omc'));
+      expect(getOmcRoot()).toBe(join(repo, '.omg'));
     });
 
     it('.omc-workspace remains separate from non-git canonical anchoring', () => {
       const parent = join(scratch, 'ws-parent');
       const inner = join(parent, 'repo-a', 'sub');
       mkdirSync(inner, { recursive: true });
-      mkdirSync(join(parent, 'repo-b', '.omc'), { recursive: true });
+      mkdirSync(join(parent, 'repo-b', '.omg'), { recursive: true });
       writeFileSync(join(parent, '.omc-workspace'), '{}');
       const anchor = resolveNonGitStateAnchor(inner);
-      expect(anchor).not.toBe(join(parent, 'repo-b', '.omc'));
-      mkdirSync(join(parent, '.omc'), { recursive: true });
+      expect(anchor).not.toBe(join(parent, 'repo-b', '.omg'));
+      mkdirSync(join(parent, '.omg'), { recursive: true });
       clearWorktreeCache();
       expect(resolveNonGitStateAnchor(inner)).toBe(parent);
     });
@@ -349,10 +349,10 @@ describe('#3873 non-git state-root anchoring', () => {
         ensureAllOmcDirs();
         expect(getOmcRoot()).toBe(root);
       }
-      expect(root).toBe(join(fakeHome, '.omc'));
-      expect(isDir(join(base, '.omc'))).toBe(false);
-      expect(isDir(join(base, 'one', '.omc'))).toBe(false);
-      expect(isDir(join(base, 'one', 'two', '.omc'))).toBe(false);
+      expect(root).toBe(join(fakeHome, '.omg'));
+      expect(isDir(join(base, '.omg'))).toBe(false);
+      expect(isDir(join(base, 'one', '.omg'))).toBe(false);
+      expect(isDir(join(base, 'one', 'two', '.omg'))).toBe(false);
     });
   });
 });

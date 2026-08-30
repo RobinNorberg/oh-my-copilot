@@ -4,7 +4,7 @@
  * Git worktree manager for team worker isolation.
  *
  * Native team worktrees live at:
- *   {repoRoot}/.omc/team/{team}/worktrees/{worker}
+ *   {repoRoot}/.omg/team/{team}/worktrees/{worker}
  * Branch naming (branch mode): omc-team/{teamName}/{workerName}
  *
  * The public create/remove helpers are kept for legacy callers, but the

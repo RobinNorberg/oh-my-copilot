@@ -10,14 +10,14 @@ describe('.omc gitignore state contract', () => {
       .filter(Boolean);
 
     expect(gitignore).toEqual(expect.arrayContaining([
-      '!.omc/',
-      '.omc/*',
-      '!.omc/skills/',
-      '!.omc/skills/**',
+      '!.omg/',
+      '.omg/*',
+      '!.omg/skills/',
+      '!.omg/skills/**',
     ]));
 
-    expect(gitignore.indexOf('!.omc/')).toBeLessThan(gitignore.indexOf('.omc/*'));
-    expect(gitignore.indexOf('.omc/*')).toBeLessThan(gitignore.indexOf('!.omc/skills/'));
-    expect(gitignore.indexOf('!.omc/skills/')).toBeLessThan(gitignore.indexOf('!.omc/skills/**'));
+    expect(gitignore.indexOf('!.omg/')).toBeLessThan(gitignore.indexOf('.omg/*'));
+    expect(gitignore.indexOf('.omg/*')).toBeLessThan(gitignore.indexOf('!.omg/skills/'));
+    expect(gitignore.indexOf('!.omg/skills/')).toBeLessThan(gitignore.indexOf('!.omg/skills/**'));
   });
 });

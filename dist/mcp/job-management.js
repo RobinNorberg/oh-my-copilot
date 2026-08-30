@@ -57,7 +57,7 @@ function textResult(text, isError = false) {
 }
 /**
  * Find the status file for a job by provider and jobId.
- * Scans .omc/prompts/ for files matching the naming convention.
+ * Scans .omg/prompts/ for files matching the naming convention.
  *
  * Handles 0/1/many matches:
  * - 0 matches: returns undefined

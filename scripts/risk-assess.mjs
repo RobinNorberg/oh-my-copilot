@@ -22,9 +22,9 @@ export function isNoisePath(file) {
   const base = path.posix.basename(normalized);
   if (base.endsWith('.log')) return true;
   if (base === 'harness-state.json' || base.endsWith('.snapshot.json') || base.endsWith('.snap.json')) return true;
-  return normalized.startsWith('.omc/harness-state/') ||
-    normalized === '.omc/harness-state' ||
-    normalized.startsWith('.omc/state/') ||
+  return normalized.startsWith('.omg/harness-state/') ||
+    normalized === '.omg/harness-state' ||
+    normalized.startsWith('.omg/state/') ||
     normalized.startsWith('.omx/state/') ||
     normalized.startsWith('logs/');
 }

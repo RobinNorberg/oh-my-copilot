@@ -951,7 +951,7 @@ async function activateState(directory, prompt, stateName, sessionId) {
 
   // The standalone compatibility fallback is shared by every project, so it
   // may only recover or replace generations owned by this canonical project.
-  const globalStatePath = join(homedir(), '.omc', 'state', `${stateName}-state.json`);
+  const globalStatePath = join(homedir(), '.omg', 'state', `${stateName}-state.json`);
   const authorizeGlobalState = (candidate) =>
     typeof candidate?.project_path === 'string' && resolve(candidate.project_path) === resolve(directory);
   writeState(globalStatePath, authorizeGlobalState);

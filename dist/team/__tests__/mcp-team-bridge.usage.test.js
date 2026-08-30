@@ -56,7 +56,7 @@ describe('mcp-team-bridge usage recording', () => {
                 startedAt: Date.now() - 200,
                 startedAtIso: new Date(Date.now() - 200).toISOString(),
             });
-            const logPath = join(workingDirectory, '.omc', 'logs', 'team-usage-usage-team.jsonl');
+            const logPath = join(workingDirectory, '.omg', 'logs', 'team-usage-usage-team.jsonl');
             const content = readFileSync(logPath, 'utf-8').trim();
             const record = JSON.parse(content);
             expect(record.taskId).toBe('1');

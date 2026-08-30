@@ -222,7 +222,7 @@ function canonicalizeExistingPath(value: string): string {
 }
 
 function isDefaultClaudeConfigDirPath(configDir: string): boolean {
-  return normalizePath(configDir) === normalizePath(join(homedir(), '.claude'));
+  return normalizePath(configDir) === normalizePath(join(homedir(), '.copilot'));
 }
 
 function quoteShellArg(value: string): string {

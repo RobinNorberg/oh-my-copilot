@@ -97,7 +97,7 @@ export declare function cleanupModeStates(directory: string, sessionId?: string)
 export declare function cleanupMissionState(directory: string, sessionId?: string): number;
 export declare function cleanupSessionOwnedTeams(directory: string, sessionId: string, initialTeamNames?: string[]): Promise<SessionOwnedTeamCleanupResult>;
 /**
- * Export session summary to .omc/sessions/
+ * Export session summary to .omg/sessions/
  */
 export declare function exportSessionSummary(directory: string, metrics: SessionMetrics): void;
 export declare function cleanupSessionPython(directory: string, sessionId: string): Promise<void>;

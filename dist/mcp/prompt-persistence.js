@@ -1,7 +1,7 @@
 /**
  * Prompt Persistence - Audit trail for external model prompts and responses
  *
- * Writes assembled prompts and model responses to .omc/prompts/ before/after
+ * Writes assembled prompts and model responses to .omg/prompts/ before/after
  * sending to Codex/Gemini, providing visibility, debugging, and compliance audit trail.
  */
 import { mkdirSync, writeFileSync, readFileSync, existsSync, renameSync, readdirSync, unlinkSync } from 'fs';

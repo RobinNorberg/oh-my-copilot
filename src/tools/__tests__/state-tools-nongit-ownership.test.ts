@@ -112,14 +112,14 @@ describe('#3873 real non-git state ownership', () => {
 
   it('explicitly migrates only matching session-owned JSON without overwriting or deleting source', async () => {
     const sourceRoot = join(osPaths.home, 'legacy-project');
-    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'migrate-a');
+    const sourceSession = join(sourceRoot, '.omg', 'state', 'sessions', 'migrate-a');
     mkdirSync(sourceSession, { recursive: true });
     const ownedPath = join(sourceSession, 'ralph-state.json');
     const foreignPath = join(sourceSession, 'ultrawork-state.json');
     const owned = JSON.stringify({ active: true, session_id: 'migrate-a', _meta: { sessionId: 'migrate-a' } });
     writeFileSync(ownedPath, owned);
     writeFileSync(foreignPath, JSON.stringify({ active: true, session_id: 'other-session' }));
-    writeFileSync(join(sourceRoot, '.omc', 'state', 'ralph-state.json'), JSON.stringify({ active: true, session_id: 'migrate-a' }));
+    writeFileSync(join(sourceRoot, '.omg', 'state', 'ralph-state.json'), JSON.stringify({ active: true, session_id: 'migrate-a' }));
 
     const beforeMigrationCwd = process.cwd();
     process.chdir(sourceRoot);
@@ -153,7 +153,7 @@ describe('#3873 real non-git state ownership', () => {
 
   it('rejects migration sources outside the authorized home boundary', async () => {
     const sourceRoot = join(osPaths.tmp, 'attacker-sibling');
-    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'boundary-owner');
+    const sourceSession = join(sourceRoot, '.omg', 'state', 'sessions', 'boundary-owner');
     mkdirSync(sourceSession, { recursive: true });
     writeFileSync(join(sourceSession, 'ralph-state.json'), JSON.stringify({
       active: true,
@@ -172,7 +172,7 @@ describe('#3873 real non-git state ownership', () => {
 
   it('rejects an owner-matched source outside the trusted session working directory', async () => {
     const sourceRoot = join(osPaths.home, 'untrusted-sibling');
-    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'boundary-owner');
+    const sourceSession = join(sourceRoot, '.omg', 'state', 'sessions', 'boundary-owner');
     mkdirSync(sourceSession, { recursive: true });
     writeFileSync(join(sourceSession, 'ralph-state.json'), JSON.stringify({
       active: true,
@@ -191,7 +191,7 @@ describe('#3873 real non-git state ownership', () => {
 
   it('returns an empty migration report for a partial legacy root', async () => {
     const sourceRoot = join(osPaths.home, 'partial-legacy');
-    mkdirSync(join(sourceRoot, '.omc'), { recursive: true });
+    mkdirSync(join(sourceRoot, '.omg'), { recursive: true });
     const beforeCwd = process.cwd();
     process.chdir(sourceRoot);
     let result;
@@ -206,7 +206,7 @@ describe('#3873 real non-git state ownership', () => {
 
   it('rejects oversized migration records without reading unbounded input', async () => {
     const sourceRoot = join(osPaths.home, 'oversized-legacy');
-    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'large-owner');
+    const sourceSession = join(sourceRoot, '.omg', 'state', 'sessions', 'large-owner');
     mkdirSync(sourceSession, { recursive: true });
     const sourcePath = join(sourceSession, 'ralph-state.json');
     const oversized = `{"active":true,"session_id":"large-owner","payload":"${'x'.repeat(1_100_000)}"}`;
@@ -270,7 +270,7 @@ describe('#3873 real non-git state ownership', () => {
     writeFileSync(join(targetSession, 'ralph-state.json'), JSON.stringify({ active: true, session_id: 'symlink-owner' }));
     mkdirSync(sourceRoot, { recursive: true });
     try {
-      symlinkSync(targetOmc, join(sourceRoot, '.omc'), 'dir');
+      symlinkSync(targetOmc, join(sourceRoot, '.omg'), 'dir');
     } catch {
       return;
     }
@@ -289,7 +289,7 @@ describe('#3873 real non-git state ownership', () => {
 
   it('rejects symlinked destination ancestors before copying', async () => {
     const sourceRoot = join(osPaths.home, 'destination-symlink-project');
-    const sourceSession = join(sourceRoot, '.omc', 'state', 'sessions', 'destination-owner');
+    const sourceSession = join(sourceRoot, '.omg', 'state', 'sessions', 'destination-owner');
     mkdirSync(sourceSession, { recursive: true });
     writeFileSync(join(sourceSession, 'ralph-state.json'), JSON.stringify({ active: true, session_id: 'destination-owner' }));
 

@@ -13,7 +13,7 @@ describe("session isolation", () => {
     let testDir;
     beforeEach(() => {
         testDir = join(tmpdir(), `subagent-isolation-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-        mkdirSync(join(testDir, ".omc", "state"), { recursive: true });
+        mkdirSync(join(testDir, ".omg", "state"), { recursive: true });
     });
     afterEach(() => {
         flushPendingWrites();

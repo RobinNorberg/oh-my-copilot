@@ -221,7 +221,7 @@ describe.sequential('direct mailbox notification orchestration', () => {
         temporaryDirectories.push(root);
         const actualCwd = join(root, 'actual');
         const aliasCwd = join(root, 'alias');
-        await mkdir(join(actualCwd, '.omc', 'state', 'team', 'dispatch-team', 'dispatch'), { recursive: true });
+        await mkdir(join(actualCwd, '.omg', 'state', 'team', 'dispatch-team', 'dispatch'), { recursive: true });
         await symlink(actualCwd, aliasCwd, 'dir');
         const state = harness(params({ cwd: actualCwd }));
         state.dependencies.invokeEffect = vi.fn(async () => ({
@@ -399,7 +399,7 @@ describe.sequential('direct mailbox notification orchestration', () => {
     });
     it('uses the broadcast recipient snapshot 1:1 and surfaces a persisted recipient divergence', async () => {
         const cwd = suiteHome;
-        await mkdir(join(suiteHome, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
+        await mkdir(join(suiteHome, '.omg', 'state', 'team', 'dispatch-team'), { recursive: true });
         let nextMessage = 0;
         const effects = [];
         const outcomes = await queueBroadcastMailboxMessage({
@@ -435,7 +435,7 @@ describe.sequential('direct mailbox notification orchestration', () => {
     });
     it('does not notify a broadcast when persisting the second recipient fails', async () => {
         const cwd = suiteHome;
-        await mkdir(join(suiteHome, '.omc', 'state', 'team', 'dispatch-team'), { recursive: true });
+        await mkdir(join(suiteHome, '.omg', 'state', 'team', 'dispatch-team'), { recursive: true });
         const notify = vi.fn(async () => ({ ok: true, transport: 'hook', reason: 'queued_for_hook_dispatch' }));
         await expect(queueBroadcastMailboxMessage({
             teamName: 'dispatch-team',

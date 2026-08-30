@@ -47,7 +47,7 @@ function makeTempProject(prefix) {
     const cwd = mkdtempSync(join(tmpdir(), prefix));
     created.push(cwd);
     execFileSync('git', ['init', '--quiet'], { cwd, stdio: 'pipe' });
-    mkdirSync(join(cwd, '.omc', 'state', 'sessions', 'session-a'), { recursive: true });
+    mkdirSync(join(cwd, '.omg', 'state', 'sessions', 'session-a'), { recursive: true });
     return cwd;
 }
 function writeUltragoalState(cwd, overrides = {}) {
@@ -62,11 +62,11 @@ function writeUltragoalState(cwd, overrides = {}) {
         claude_goal_objective: 'Complete issue #3098 ultragoal persistence.',
         ...overrides,
     };
-    writeFileSync(join(cwd, '.omc', 'state', 'sessions', 'session-a', 'ultragoal-state.json'), `${JSON.stringify(state, null, 2)}\n`);
+    writeFileSync(join(cwd, '.omg', 'state', 'sessions', 'session-a', 'ultragoal-state.json'), `${JSON.stringify(state, null, 2)}\n`);
     return state;
 }
 function ultragoalStatePath(cwd) {
-    return join(cwd, '.omc', 'state', 'sessions', 'session-a', 'ultragoal-state.json');
+    return join(cwd, '.omg', 'state', 'sessions', 'session-a', 'ultragoal-state.json');
 }
 function readUltragoalState(cwd) {
     return JSON.parse(readFileSync(ultragoalStatePath(cwd), 'utf-8'));
@@ -523,7 +523,7 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
             session_id: 'session-a',
             prompt: 'Review whether ultragoal keyword activation steals unrelated prompts',
         });
-        const statePath = join(cwd, '.omc', 'state', 'sessions', 'session-a', 'ultragoal-state.json');
+        const statePath = join(cwd, '.omg', 'state', 'sessions', 'session-a', 'ultragoal-state.json');
         expect(existsSync(statePath)).toBe(false);
     });
     it('does not activate or deny for quoted reported speech and pasted bug-report keyword mentions', () => {

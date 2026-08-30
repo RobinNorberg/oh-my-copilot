@@ -37,7 +37,7 @@ function writeTranscriptWithoutContextWindow(dir, inputTokens) {
     return transcriptPath;
 }
 function writeHudCache(dir, sessionId, usedPercentage) {
-    const cacheDir = join(dir, '.omc', 'state', 'sessions', sessionId);
+    const cacheDir = join(dir, '.omg', 'state', 'sessions', sessionId);
     mkdirSync(cacheDir, { recursive: true });
     const cachePath = join(cacheDir, 'hud-stdin-cache.json');
     writeFileSync(cachePath, JSON.stringify({

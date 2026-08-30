@@ -53,21 +53,21 @@ var import_os = require("os");
 // src/lib/worktree-paths.ts
 var WORKSPACE_MARKER = ".omc-workspace";
 var OmcPaths = {
-  ROOT: ".omc",
-  STATE: ".omc/state",
-  SESSIONS: ".omc/state/sessions",
-  PLANS: ".omc/plans",
-  RESEARCH: ".omc/research",
-  NOTEPAD: ".omc/notepad.md",
-  PROJECT_MEMORY: ".omc/project-memory.json",
-  DRAFTS: ".omc/drafts",
-  NOTEPADS: ".omc/notepads",
-  LOGS: ".omc/logs",
-  SCIENTIST: ".omc/scientist",
-  AUTOPILOT: ".omc/autopilot",
-  SKILLS: ".omc/skills",
-  SHARED_MEMORY: ".omc/state/shared-memory",
-  DEEPINIT_MANIFEST: ".omc/deepinit-manifest.json"
+  ROOT: ".omg",
+  STATE: ".omg/state",
+  SESSIONS: ".omg/state/sessions",
+  PLANS: ".omg/plans",
+  RESEARCH: ".omg/research",
+  NOTEPAD: ".omg/notepad.md",
+  PROJECT_MEMORY: ".omg/project-memory.json",
+  DRAFTS: ".omg/drafts",
+  NOTEPADS: ".omg/notepads",
+  LOGS: ".omg/logs",
+  SCIENTIST: ".omg/scientist",
+  AUTOPILOT: ".omg/autopilot",
+  SKILLS: ".omg/skills",
+  SHARED_MEMORY: ".omg/state/shared-memory",
+  DEEPINIT_MANIFEST: ".omg/deepinit-manifest.json"
 };
 var MAX_WORKTREE_CACHE_SIZE = 8;
 var worktreeCacheMap = /* @__PURE__ */ new Map();
@@ -186,7 +186,7 @@ var SENSITIVE_DIR_BASENAMES = /* @__PURE__ */ new Set([
   "ssh",
   ".pki",
   ".config",
-  ".claude",
+  ".copilot",
   ".claude.json",
   ".codex",
   ".gemini",
@@ -799,11 +799,11 @@ function expandTriggers(triggersLower) {
 // src/hooks/learner/bridge.ts
 var USER_SKILLS_DIR = (0, import_path3.join)(
   (0, import_os3.homedir)(),
-  ".claude",
+  ".copilot",
   "skills",
   "omc-learned"
 );
-var GLOBAL_SKILLS_DIR = (0, import_path3.join)((0, import_os3.homedir)(), ".omc", "skills");
+var GLOBAL_SKILLS_DIR = (0, import_path3.join)((0, import_os3.homedir)(), ".omg", "skills");
 var PROJECT_SKILLS_SUBDIR = OmcPaths.SKILLS;
 var PROJECT_AGENT_SKILLS_SUBDIR = (0, import_path3.join)(".agents", "skills");
 var SKILL_EXTENSION = ".md";

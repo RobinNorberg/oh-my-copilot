@@ -58,8 +58,8 @@ export interface ClaudeMdFileStatus {
     manualReview: boolean;
 }
 /**
- * Check for hook conflicts in both profile-level (~/.claude/settings.json)
- * and project-level (./.claude/settings.json).
+ * Check for hook conflicts in both profile-level (~/.copilot/settings.json)
+ * and project-level (./.copilot/settings.json).
  *
  * Claude Code settings precedence: project > profile > defaults.
  * We check both levels so the diagnostic is complete.

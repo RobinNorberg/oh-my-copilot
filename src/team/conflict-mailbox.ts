@@ -3,8 +3,8 @@
 // Formats and delivers merge/rebase conflict notifications for omc-teams CLI workers.
 //
 // NOTE: Markdown inbox is canonical for omc-teams CLI; JSONL is for native /team MCP workers
-// (out of scope here). Worker inbox: .omc/state/team/{team}/workers/{worker}/inbox.md.
-// Leader inbox: .omc/state/team/{team}/leader/inbox.md (see leader-inbox.ts).
+// (out of scope here). Worker inbox: .omg/state/team/{team}/workers/{worker}/inbox.md.
+// Leader inbox: .omg/state/team/{team}/leader/inbox.md (see leader-inbox.ts).
 //
 // This module is 100% pure (formatMergeConflictForLeader, formatRebaseConflictForWorker).
 // Delivery functions delegate to appendToLeaderInbox / appendToInbox respectively.

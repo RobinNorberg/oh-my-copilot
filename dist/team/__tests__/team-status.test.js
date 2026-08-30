@@ -9,7 +9,7 @@ import { recordTaskUsage } from '../usage-tracker.js';
 import { getCopilotConfigDir } from '../../utils/config-dir.js';
 const TEST_TEAM = 'test-team-status';
 let WORK_DIR;
-// Canonical tasks dir: {WORK_DIR}/.omc/state/team/{TEST_TEAM}/tasks/
+// Canonical tasks dir: {WORK_DIR}/.omg/state/team/{TEST_TEAM}/tasks/
 let TASKS_DIR;
 let previousHome;
 let previousUserProfile;
@@ -22,10 +22,10 @@ beforeEach(() => {
     process.env.HOME = WORK_DIR;
     process.env.USERPROFILE = WORK_DIR;
     delete process.env.OMC_STATE_DIR;
-    TASKS_DIR = join(WORK_DIR, '.omc', 'state', 'team', TEST_TEAM, 'tasks');
+    TASKS_DIR = join(WORK_DIR, '.omg', 'state', 'team', TEST_TEAM, 'tasks');
     mkdirSync(TASKS_DIR, { recursive: true });
-    mkdirSync(join(WORK_DIR, '.omc', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
-    mkdirSync(join(WORK_DIR, '.omc', 'state'), { recursive: true });
+    mkdirSync(join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM), { recursive: true });
+    mkdirSync(join(WORK_DIR, '.omg', 'state'), { recursive: true });
 });
 afterEach(() => {
     const outboxDir = join(getCopilotConfigDir(), 'teams', TEST_TEAM);
@@ -46,14 +46,14 @@ afterEach(() => {
     rmSync(outboxDir, { recursive: true, force: true });
 });
 function writeWorkerRegistry(workers) {
-    const registryPath = join(WORK_DIR, '.omc', 'state', 'team-mcp-workers.json');
+    const registryPath = join(WORK_DIR, '.omg', 'state', 'team-mcp-workers.json');
     atomicWriteJson(registryPath, { teamName: TEST_TEAM, workers });
 }
 function writeTask(task) {
     atomicWriteJson(join(TASKS_DIR, `${task.id}.json`), task);
 }
 function writeHeartbeatFile(data) {
-    const hbPath = join(WORK_DIR, '.omc', 'state', 'team-bridge', TEST_TEAM, `${data.workerName}.heartbeat.json`);
+    const hbPath = join(WORK_DIR, '.omg', 'state', 'team-bridge', TEST_TEAM, `${data.workerName}.heartbeat.json`);
     atomicWriteJson(hbPath, data);
 }
 function makeWorker(name, provider = 'codex') {

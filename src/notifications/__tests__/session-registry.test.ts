@@ -65,7 +65,7 @@ registerMessage(mapping);
 describe("session-registry", () => {
   beforeEach(() => {
     // Create a fresh temp directory for each test so registry I/O is fully
-    // isolated from the real ~/.omc/state and from other parallel test runs.
+    // isolated from the real ~/.omg/state and from other parallel test runs.
     testDir = mkdtempSync(join(tmpdir(), "omc-session-registry-test-"));
     process.env["OMC_TEST_REGISTRY_DIR"] = testDir;
     REGISTRY_PATH = join(testDir, "reply-session-registry.jsonl");

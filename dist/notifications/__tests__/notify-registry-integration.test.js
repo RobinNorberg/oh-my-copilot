@@ -209,7 +209,7 @@ describe("notify() -> session-registry integration", () => {
             projectPath: "/test/project",
         });
         expect(result).not.toBeNull();
-        expect(mockGetNewPaneTail).toHaveBeenCalledWith("%42", join(fixtureHome, ".omc/state"), 23);
+        expect(mockGetNewPaneTail).toHaveBeenCalledWith("%42", join(fixtureHome, ".omg/state"), 23);
         expect(mockCapturePaneContent).not.toHaveBeenCalled();
     });
     it("falls back to direct pane capture when projectPath is unavailable", async () => {

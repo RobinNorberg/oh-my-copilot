@@ -108,7 +108,7 @@ assert(
 
 clearWorktreeCache();
 const omcRoot = getOmcRoot(apiDir);
-const expectedOmcRoot = join(FIXTURE, '.omc');
+const expectedOmcRoot = join(FIXTURE, '.omg');
 assert(
   resolve(omcRoot) === resolve(expectedOmcRoot),
   'getOmcRoot(apiDir) → fixture/.omc',
@@ -133,13 +133,13 @@ assert(
 // --------------------------------------------------------------------------
 clearWorktreeCache();
 const apiPaths = resolveSessionStatePaths('demo', 'session-api', apiDir);
-const expectedApiWrite = join(FIXTURE, '.omc', 'state', 'sessions', 'session-api', 'demo-state.json');
+const expectedApiWrite = join(FIXTURE, '.omg', 'state', 'sessions', 'session-api', 'demo-state.json');
 assert(
   resolve(apiPaths.effectiveWrite) === resolve(expectedApiWrite),
   `resolveSessionStatePaths api effectiveWrite → …sessions/session-api/demo-state.json`,
   'resolveSessionStatePaths api effectiveWrite → WRONG',
   `returned: ${apiPaths.effectiveWrite}\n        expected: ${expectedApiWrite}`,
-  'effectiveWrite must be session-scoped under shared .omc/'
+  'effectiveWrite must be session-scoped under shared .omg/'
 );
 
 // --------------------------------------------------------------------------
@@ -149,14 +149,14 @@ console.log('\n=== STEP 2: WEB dir — same .omc, different session ===');
 
 clearWorktreeCache();
 const webPaths = resolveSessionStatePaths('demo', 'session-web', webDir);
-const expectedWebWrite = join(FIXTURE, '.omc', 'state', 'sessions', 'session-web', 'demo-state.json');
+const expectedWebWrite = join(FIXTURE, '.omg', 'state', 'sessions', 'session-web', 'demo-state.json');
 
 assert(
   resolve(webPaths.effectiveWrite) === resolve(expectedWebWrite),
   `resolveSessionStatePaths web effectiveWrite → …sessions/session-web/demo-state.json`,
   'resolveSessionStatePaths web effectiveWrite → WRONG',
   `returned: ${webPaths.effectiveWrite}\n        expected: ${expectedWebWrite}`,
-  'effectiveWrite must be under shared .omc/ with distinct session subdir'
+  'effectiveWrite must be under shared .omg/ with distinct session subdir'
 );
 
 assert(
@@ -240,10 +240,10 @@ if (webResult.status === 0) {
   );
 }
 
-// Actual write locations: <subrepo>/.omc/ultragoal/plans/<planId>/
-const apiPlansDir = join(apiDir, '.omc', 'ultragoal', 'plans');
-const webPlansDir = join(webDir, '.omc', 'ultragoal', 'plans');
-const sharedPlansDir = join(FIXTURE, '.omc', 'ultragoal', 'plans');
+// Actual write locations: <subrepo>/.omg/ultragoal/plans/<planId>/
+const apiPlansDir = join(apiDir, '.omg', 'ultragoal', 'plans');
+const webPlansDir = join(webDir, '.omg', 'ultragoal', 'plans');
+const sharedPlansDir = join(FIXTURE, '.omg', 'ultragoal', 'plans');
 
 const apiPlanDirs = existsSync(apiPlansDir) ? readdirSync(apiPlansDir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name) : [];
 const webPlanDirs = existsSync(webPlansDir) ? readdirSync(webPlansDir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name) : [];
@@ -256,13 +256,13 @@ console.log(`        web plan IDs:     ${webPlanDirs.join(', ') || '(none)'}`);
 console.log(`        shared plans dir: ${sharedPlansDir}`);
 console.log(`        shared plan IDs:  ${sharedPlanDirs.join(', ') || '(none)'}`);
 
-// After multi-repo Wave A: ultragoal plans now land in the shared workspace .omc/
+// After multi-repo Wave A: ultragoal plans now land in the shared workspace .omg/
 // because artifacts.ts was updated to use getOmcRoot()/workspace-marker resolution.
-// Plans from BOTH subrepos go to the shared FIXTURE/.omc/ultragoal/plans/.
+// Plans from BOTH subrepos go to the shared FIXTURE/.omg/ultragoal/plans/.
 const totalPlans = apiPlanDirs.length + webPlanDirs.length + sharedPlanDirs.length;
 if (sharedPlanDirs.length >= 2) {
   pass(
-    `ultragoal plans land in shared workspace .omc/ (${sharedPlanDirs.length} plans)`,
+    `ultragoal plans land in shared workspace .omg/ (${sharedPlanDirs.length} plans)`,
     `shared: ${sharedPlanDirs.join(', ')}`
   );
 } else if (apiPlanDirs.length >= 1 && webPlanDirs.length >= 1) {
@@ -298,7 +298,7 @@ if (apiPlanId && webPlanId) {
 console.log('\n=== STEP 4: PID liveness — dead PID 999999 ===');
 
 const fakeSid = 'fake-sid-dead-pid';
-const fakeStateDir = join(FIXTURE, '.omc', 'state', 'sessions', fakeSid);
+const fakeStateDir = join(FIXTURE, '.omg', 'state', 'sessions', fakeSid);
 mkdirSync(fakeStateDir, { recursive: true });
 const fakeStatePath = join(fakeStateDir, 'ultrawork-state.json');
 writeFileSync(fakeStatePath, JSON.stringify({ active: true, owner_pid: 999999 }));
@@ -325,8 +325,8 @@ assert(
 // --------------------------------------------------------------------------
 // Step 5 — Session subdir contents listing
 // --------------------------------------------------------------------------
-console.log('\n=== STEP 5: Session subdir contents (shared .omc/) ===');
-const sessionsDir = join(FIXTURE, '.omc', 'state', 'sessions');
+console.log('\n=== STEP 5: Session subdir contents (shared .omg/) ===');
+const sessionsDir = join(FIXTURE, '.omg', 'state', 'sessions');
 if (existsSync(sessionsDir)) {
   const sessionDirs = readdirSync(sessionsDir, { withFileTypes: true })
     .filter(e => e.isDirectory())
@@ -334,7 +334,7 @@ if (existsSync(sessionsDir)) {
       const files = readdirSync(join(sessionsDir, e.name)).join(', ');
       return `  ${e.name}/  →  ${files || '(empty)'}`;
     });
-  console.log('  Sessions in shared fixture .omc/:');
+  console.log('  Sessions in shared fixture .omg/:');
   sessionDirs.forEach(s => console.log(s));
 } else {
   console.log('  sessions dir not found (steps 1-2 must have failed)');
@@ -365,7 +365,7 @@ if (process.platform === 'win32') {
     'Windows: resolved write path does not contain \\.omc\\ outside configured OMC_STATE_DIR',
     'Windows: resolved write path contains \\.omc\\ OUTSIDE OMC_STATE_DIR (path escape bug)',
     `writePath=${writePath}  stateDir=${winStateDir}`,
-    'When OMC_STATE_DIR is set, no path should escape to a raw /.omc/ location'
+    'When OMC_STATE_DIR is set, no path should escape to a raw /.omg/ location'
   );
   console.log(`        write path: ${writePath}`);
 
@@ -378,7 +378,7 @@ if (process.platform === 'win32') {
 }
 
 // --------------------------------------------------------------------------
-// Step 7 — Workspace-marker retrofit: pre-existing sibling .omc/state/
+// Step 7 — Workspace-marker retrofit: pre-existing sibling .omg/state/
 // --------------------------------------------------------------------------
 console.log('\n=== STEP 7: Workspace-marker retrofit sibling-scan warning ===');
 
@@ -388,8 +388,8 @@ const retrofitWeb = join(retrofitFixture, 'web');
 mkdirSync(retrofitApi, { recursive: true });
 mkdirSync(retrofitWeb, { recursive: true });
 
-// Pre-create sibling .omc/state/ content BEFORE dropping workspace marker
-const legacyStateDir = join(retrofitApi, '.omc', 'state');
+// Pre-create sibling .omg/state/ content BEFORE dropping workspace marker
+const legacyStateDir = join(retrofitApi, '.omg', 'state');
 mkdirSync(legacyStateDir, { recursive: true });
 const legacyStateFile = join(legacyStateDir, 'ralph-state.json');
 const legacyContent = JSON.stringify({ active: true, mode: 'ralph', legacy: true });
@@ -417,16 +417,16 @@ if (retrofitAnchor) warnSiblingRetrofit(retrofitAnchor);
 // Restore stderr
 process.stderr.write = origStderrWrite;
 
-// (i) Structured warning emitted listing sibling .omc/state dirs
+// (i) Structured warning emitted listing sibling .omg/state dirs
 assert(
   retrofitStderr.includes('[omc] workspace-retrofit warning'),
   'Retrofit warning emitted to stderr',
   'Retrofit warning NOT emitted to stderr',
   `stderr captured: ${retrofitStderr.slice(0, 200)}`,
-  'warnSiblingRetrofit must fire when sibling has pre-existing .omc/state/'
+  'warnSiblingRetrofit must fire when sibling has pre-existing .omg/state/'
 );
 
-// (ii) Pre-existing api/.omc/state/ralph-state.json not overwritten or deleted
+// (ii) Pre-existing api/.omg/state/ralph-state.json not overwritten or deleted
 assert(
   existsSync(legacyStateFile),
   'Pre-existing ralph-state.json preserved (not deleted)',
@@ -465,7 +465,7 @@ mkdirSync(driftFixtureDir, { recursive: true });
 const driftFixtureFile = join(driftFixtureDir, 'drift-fixture.mjs');
 writeFileSync(
   driftFixtureFile,
-  `import {join} from 'path'; const dir = '/tmp'; const p = join(dir, '.omc', 'state', 'foo');\n`
+  `import {join} from 'path'; const dir = '/tmp'; const p = join(dir, '.omg', 'state', 'foo');\n`
 );
 
 const gateScript = join(__dirname, 'ci', 'check-multirepo-paths.mjs');
@@ -492,7 +492,7 @@ assert(
 );
 
 assert(
-  gateResult.stderr?.includes("join(dir, '.omc'") || gateResult.stderr?.includes('.omc'),
+  gateResult.stderr?.includes("join(dir, '.omg'") || gateResult.stderr?.includes('.omg'),
   'AST-grep gate output includes matched pattern text',
   'AST-grep gate output missing matched pattern text',
   `stderr: ${gateResult.stderr?.slice(0, 300)}`

@@ -75,7 +75,7 @@ const RESOLVED_GW = {
 };
 
 const PROJECT_PATH = "/home/user/project";
-const STATE_DIR = join(PROJECT_PATH, ".omc", "state");
+const STATE_DIR = join(PROJECT_PATH, ".omg", "state");
 
 describe("dead-pane guard in wakeOpenClaw (issue #2562)", () => {
   let origTmux: string | undefined;

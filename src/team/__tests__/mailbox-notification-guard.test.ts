@@ -129,14 +129,14 @@ describe('teamReadCanonicalMailboxMessageStrict', () => {
   let restoreFixtureEnv: (() => void) | undefined;
 
   async function writeMailbox(value: unknown, workerName = input.recipient): Promise<void> {
-    const path = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', `${workerName}.json`);
-    await mkdir(join(cwd, '.omc', 'state', 'team', teamName, 'mailbox'), { recursive: true });
+    const path = join(cwd, '.omg', 'state', 'team', teamName, 'mailbox', `${workerName}.json`);
+    await mkdir(join(cwd, '.omg', 'state', 'team', teamName, 'mailbox'), { recursive: true });
     await writeFile(path, JSON.stringify(value, null, 2), 'utf8');
   }
 
   async function writeRawMailbox(raw: string, workerName = input.recipient): Promise<void> {
-    const path = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', `${workerName}.json`);
-    await mkdir(join(cwd, '.omc', 'state', 'team', teamName, 'mailbox'), { recursive: true });
+    const path = join(cwd, '.omg', 'state', 'team', teamName, 'mailbox', `${workerName}.json`);
+    await mkdir(join(cwd, '.omg', 'state', 'team', teamName, 'mailbox'), { recursive: true });
     await writeFile(path, raw, 'utf8');
   }
 
@@ -156,8 +156,8 @@ describe('teamReadCanonicalMailboxMessageStrict', () => {
   });
 
   it('never falls back to legacy JSONL while compatibility reads still do', async () => {
-    const legacyPath = join(cwd, '.omc', 'state', 'team', teamName, 'mailbox', 'worker-1.jsonl');
-    await mkdir(join(cwd, '.omc', 'state', 'team', teamName, 'mailbox'), { recursive: true });
+    const legacyPath = join(cwd, '.omg', 'state', 'team', teamName, 'mailbox', 'worker-1.jsonl');
+    await mkdir(join(cwd, '.omg', 'state', 'team', teamName, 'mailbox'), { recursive: true });
     await writeFile(legacyPath, `${JSON.stringify({
       id: input.messageId,
       from: 'leader-fixed',

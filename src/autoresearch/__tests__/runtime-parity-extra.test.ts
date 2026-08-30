@@ -143,7 +143,7 @@ describe('autoresearch runtime parity extras', () => {
       });
       const worktreeContract = await materializeAutoresearchMissionToWorktree(contract, worktreePath);
       const runtime = await prepareAutoresearchRuntime(worktreeContract, repo, worktreePath, { runTag: '20260314T040000Z' });
-      const statePath = join(repo, '.omc', 'state', 'autoresearch-state.json');
+      const statePath = join(repo, '.omg', 'state', 'autoresearch-state.json');
       const idleState = {
         schema_version: 1,
         active: false,
@@ -182,7 +182,7 @@ describe('autoresearch runtime parity extras', () => {
       });
       const worktreeContract = await materializeAutoresearchMissionToWorktree(contract, worktreePath);
       const runtime = await prepareAutoresearchRuntime(worktreeContract, repo, worktreePath, { runTag: '20260314T041500Z' });
-      const statePath = join(repo, '.omc', 'state', 'autoresearch-state.json');
+      const statePath = join(repo, '.omg', 'state', 'autoresearch-state.json');
       const idleState = {
         schema_version: 1,
         active: false,
@@ -246,7 +246,7 @@ describe('autoresearch runtime parity extras', () => {
       const manifest = JSON.parse(await readFile(runtime.manifestFile, 'utf-8')) as Record<string, unknown>;
       manifest.status = 'completed';
       await writeFile(runtime.manifestFile, `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
-      await writeFile(join(repo, '.omc', 'state', 'autoresearch-state.json'), `${JSON.stringify({
+      await writeFile(join(repo, '.omg', 'state', 'autoresearch-state.json'), `${JSON.stringify({
         schema_version: 1,
         active: false,
         run_id: runtime.runId,

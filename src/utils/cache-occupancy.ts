@@ -52,7 +52,7 @@ export interface CacheOccupancyRecord {
 }
 
 export function getCacheOccupancyDir(configDir = getCopilotConfigDir()): string {
-  return join(configDir, '.omc', 'cache-occupancy');
+  return join(configDir, '.omg', 'cache-occupancy');
 }
 
 function recordName(pluginRoot: string, pid: number, identity: string): string {

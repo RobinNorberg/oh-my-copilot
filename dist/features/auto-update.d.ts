@@ -131,7 +131,7 @@ export declare function isAutoUpgradePromptEnabled(): boolean;
 /**
  * Check if team feature is enabled
  * Returns false by default - requires explicit opt-in
- * Checks ~/.claude/settings.json first, then env var fallback
+ * Checks ~/.copilot/settings.json first, then env var fallback
  */
 export declare function isTeamEnabled(): boolean;
 /**

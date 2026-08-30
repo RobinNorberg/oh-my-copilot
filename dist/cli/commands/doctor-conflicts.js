@@ -52,15 +52,15 @@ function collectHooksFromSettings(settingsPath) {
     return conflicts;
 }
 /**
- * Check for hook conflicts in both profile-level (~/.claude/settings.json)
- * and project-level (./.claude/settings.json).
+ * Check for hook conflicts in both profile-level (~/.copilot/settings.json)
+ * and project-level (./.copilot/settings.json).
  *
  * Claude Code settings precedence: project > profile > defaults.
  * We check both levels so the diagnostic is complete.
  */
 export function checkHookConflicts() {
     const profileSettingsPath = join(getCopilotConfigDir(), 'settings.json');
-    const projectSettingsPath = join(process.cwd(), '.claude', 'settings.json');
+    const projectSettingsPath = join(process.cwd(), '.copilot', 'settings.json');
     const profileHooks = collectHooksFromSettings(profileSettingsPath);
     const projectHooks = collectHooksFromSettings(projectSettingsPath);
     // Deduplicate by event+command (same hook in both levels should appear once)
@@ -377,7 +377,7 @@ function isSupportedSetupFallbackSkill(legacySkillsDir, entry, baseName) {
         return false;
     }
     // scripts/setup-claude-md.sh intentionally syncs the raw bundled
-    // skills/wiki/SKILL.md file into ~/.claude/skills/wiki/SKILL.md. Keep the
+    // skills/wiki/SKILL.md file into ~/.copilot/skills/wiki/SKILL.md. Keep the
     // retired omc-reference fallback for already-installed 4.x upgrades.
     // as a Claude CLI fallback. Suppress only that exact, unmodified sync so real
     // legacy collisions and user-edited fallback copies still surface.
