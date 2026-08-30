@@ -18604,6 +18604,7 @@ var LEGACY_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>
 var CURSOR_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯→]\s*/u;
 var PROVIDER_IDLE_PROMPT_LINES = {
   claude: LEGACY_IDLE_PROMPT_LINE,
+  copilot: LEGACY_IDLE_PROMPT_LINE,
   codex: LEGACY_IDLE_PROMPT_LINE,
   gemini: LEGACY_IDLE_PROMPT_LINE,
   cursor: CURSOR_IDLE_PROMPT_LINE,

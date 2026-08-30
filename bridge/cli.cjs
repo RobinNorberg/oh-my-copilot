@@ -42100,8 +42100,8 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "287d4091749263fc4a646321f6586ad9080c34b8c78503c47f17dabd12a28f77",
         "lineCount": 411,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
-        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
         "normalizedSha256": "287d4091749263fc4a646321f6586ad9080c34b8c78503c47f17dabd12a28f77"
       },
       {
@@ -42113,8 +42113,8 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "b052a9b9be4aeb4bcd012839e212332213100d24d565ca57f0d7f128e6fe7477",
         "lineCount": 395,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
-        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
         "normalizedSha256": "b052a9b9be4aeb4bcd012839e212332213100d24d565ca57f0d7f128e6fe7477"
       },
       {
@@ -42126,8 +42126,8 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "e7f081c220adf8e57f1c0bbc97ab6c7caa8b928bb02c95fa7306db3c64f1ad6e",
         "lineCount": 718,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
-        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-copilot/main/docs/MIGRATION.md).",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
+        "finalLine": "For migration guides from earlier versions, see the [Migration Guide](https://raw.githubusercontent.com/Yeachan-Heo/oh-my-claudecode/main/docs/MIGRATION.md).",
         "normalizedSha256": "e7f081c220adf8e57f1c0bbc97ab6c7caa8b928bb02c95fa7306db3c64f1ad6e"
       },
       {
@@ -42139,7 +42139,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "29392870c7a6b6f06f93f2877cae448825498bb5e438c81b0dad3c96b8fc2ac5",
         "lineCount": 720,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "29392870c7a6b6f06f93f2877cae448825498bb5e438c81b0dad3c96b8fc2ac5"
       },
@@ -42152,7 +42152,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "b046b3b3cb97b347386fff48f4d84e5af64e5f4194b676e04369012f91bb23f4",
         "lineCount": 680,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "b046b3b3cb97b347386fff48f4d84e5af64e5f4194b676e04369012f91bb23f4"
       },
@@ -42165,7 +42165,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "e2f01b2570ef9a8f0ca2ed5b33352fa1f35126c4061583e8799b13729fa13610",
         "lineCount": 680,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "e2f01b2570ef9a8f0ca2ed5b33352fa1f35126c4061583e8799b13729fa13610"
       },
@@ -42178,7 +42178,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "e7137b0f9fb77753b782910834c8ca23ad2db83d8942f14868be7eccbaa462ed",
         "lineCount": 659,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "e7137b0f9fb77753b782910834c8ca23ad2db83d8942f14868be7eccbaa462ed"
       },
@@ -42191,7 +42191,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "8354f803febe3ee1c4fc719596ebb1aa096bb3f8b344dcd640ac1c792445aad9",
         "lineCount": 576,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "8354f803febe3ee1c4fc719596ebb1aa096bb3f8b344dcd640ac1c792445aad9"
       },
@@ -42204,7 +42204,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "f78fe8182ba2bb94b345477f25fe5da8b10950f486d97dfe08c5cf4725a923a7",
         "lineCount": 583,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "For migration guides from earlier versions, see [MIGRATION.md](./MIGRATION.md).",
         "normalizedSha256": "f78fe8182ba2bb94b345477f25fe5da8b10950f486d97dfe08c5cf4725a923a7"
       },
@@ -42217,7 +42217,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "7590ed845e49d05d772ecbc3de4b0ae1a20fd4d026ad5572b647ca665c3da128",
         "lineCount": 576,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "7590ed845e49d05d772ecbc3de4b0ae1a20fd4d026ad5572b647ca665c3da128"
       },
@@ -42230,7 +42230,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "44dcb8243c81521372e5b05ed4a6c2070a70eab2cac463c77fdde729432428b8",
         "lineCount": 534,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "44dcb8243c81521372e5b05ed4a6c2070a70eab2cac463c77fdde729432428b8"
       },
@@ -42243,7 +42243,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "4fc8628543dbea375e0108cc44ed3cd7243b757d1a2ac58cb0086984b8f6a119",
         "lineCount": 457,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "4fc8628543dbea375e0108cc44ed3cd7243b757d1a2ac58cb0086984b8f6a119"
       },
@@ -42256,7 +42256,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "ac274106313706b880e2f2d98d7dd9d264dfe86bba8c27fd421c0702c15abdfd",
         "lineCount": 457,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "ac274106313706b880e2f2d98d7dd9d264dfe86bba8c27fd421c0702c15abdfd"
       },
@@ -42269,7 +42269,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "bdf21db37ead6784352d1f8e82129b82080f84a48ab86bdc2db78c6d79d7ec3b",
         "lineCount": 431,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "bdf21db37ead6784352d1f8e82129b82080f84a48ab86bdc2db78c6d79d7ec3b"
       },
@@ -42282,7 +42282,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "fd53d1ee2ee96ade4372e00a21b0bcf079c1d46d9ba0e5a599f0eb2c8fddb2a0",
         "lineCount": 424,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "fd53d1ee2ee96ade4372e00a21b0bcf079c1d46d9ba0e5a599f0eb2c8fddb2a0"
       },
@@ -42295,7 +42295,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "684738ecf9ecbe7273f06b0935ad22f01ec622fdd933add02276b078e97b29c4",
         "lineCount": 417,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "684738ecf9ecbe7273f06b0935ad22f01ec622fdd933add02276b078e97b29c4"
       },
@@ -42308,7 +42308,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "f50ebdb7bf4753ee2d14d403feda4b734c55039c3cbad211c3e8bde4c54e2d39",
         "lineCount": 386,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "**New in 3.x:** Autopilot mode provides the ultimate hands-off experience.",
         "normalizedSha256": "f50ebdb7bf4753ee2d14d403feda4b734c55039c3cbad211c3e8bde4c54e2d39"
       },
@@ -42321,7 +42321,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "32ed686cf8a071bafab679e196590160a7add0757918bf332a2455bca97eb2f9",
         "lineCount": 304,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
         "normalizedSha256": "32ed686cf8a071bafab679e196590160a7add0757918bf332a2455bca97eb2f9"
       },
@@ -42334,7 +42334,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "393c02f244aa1033d542e1b0d1ae17a9188eedd23ae262c3d69d1ca0676d3710",
         "lineCount": 304,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
         "normalizedSha256": "393c02f244aa1033d542e1b0d1ae17a9188eedd23ae262c3d69d1ca0676d3710"
       },
@@ -42347,7 +42347,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "1b164df10e9a1f621288a501592470206e2af7ec10a13f85ca5faef22418d6cc",
         "lineCount": 292,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
         "normalizedSha256": "1b164df10e9a1f621288a501592470206e2af7ec10a13f85ca5faef22418d6cc"
       },
@@ -42360,7 +42360,7 @@ var init_legacy_claude_md_corpus = __esm({
         "rawSha256": "5001bd4e3be7801b26e2961f11ea237719a098b624ed20c9767763aee3958b3a",
         "lineCount": 292,
         "terminalEolPolicy": "required",
-        "openingLine": "# oh-my-copilot - Intelligent Multi-Agent Orchestration",
+        "openingLine": "# oh-my-claudecode - Intelligent Multi-Agent Orchestration",
         "finalLine": "The difference? You don't NEED them anymore. Everything auto-activates.",
         "normalizedSha256": "5001bd4e3be7801b26e2961f11ea237719a098b624ed20c9767763aee3958b3a"
       },
@@ -43426,7 +43426,7 @@ function isCopilotInstalled() {
   }
 }
 function isRunningAsPlugin() {
-  return !!process.env.CLAUDE_PLUGIN_ROOT;
+  return !!(process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT);
 }
 function isProjectScopedPlugin() {
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT;
@@ -53449,14 +53449,36 @@ var init_bitbucket = __esm({
 });
 
 // src/providers/azure-devops.ts
+function classifyError(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  const stderr = err?.stderr ? String(err.stderr) : msg;
+  if (stderr.includes("az login") || stderr.includes("AADSTS") || stderr.includes("Please run") || stderr.includes("TF400813")) {
+    return new AdoError(stderr, "auth");
+  }
+  if (stderr.includes("TF401232") || stderr.includes("does not exist") || stderr.includes("404") || stderr.includes("ResourceNotFound")) {
+    return new AdoError(stderr, "not-found");
+  }
+  if (stderr.includes("timed out") || stderr.includes("ETIMEDOUT") || err?.killed) {
+    return new AdoError(stderr, "timeout");
+  }
+  return new AdoError(stderr, "unknown");
+}
 function stripRefPrefix(ref) {
   return ref.replace(/^refs\/heads\//, "");
 }
-var import_node_child_process5, AzureDevOpsProvider;
+var import_node_child_process5, AdoError, AzureDevOpsProvider;
 var init_azure_devops = __esm({
   "src/providers/azure-devops.ts"() {
     "use strict";
     import_node_child_process5 = require("node:child_process");
+    AdoError = class extends Error {
+      type;
+      constructor(message2, type) {
+        super(message2);
+        this.name = "AdoError";
+        this.type = type;
+      }
+    };
     AzureDevOpsProvider = class {
       name = "azure-devops";
       displayName = "Azure DevOps";
@@ -53483,8 +53505,8 @@ var init_azure_devops = __esm({
             body: data.description,
             author: createdBy?.displayName
           };
-        } catch {
-          return null;
+        } catch (err) {
+          throw classifyError(err);
         }
       }
       viewIssue(number3) {
@@ -53502,8 +53524,8 @@ var init_azure_devops = __esm({
             body: fields?.["System.Description"],
             url: data.url
           };
-        } catch {
-          return null;
+        } catch (err) {
+          throw classifyError(err);
         }
       }
       checkAuth() {
@@ -53520,6 +53542,262 @@ var init_azure_devops = __esm({
       }
       getRequiredCLI() {
         return "az";
+      }
+      escapeWiql(value) {
+        return value.replace(/'/g, "''");
+      }
+      listWorkItems(options) {
+        const conditions = [];
+        if (options.state) {
+          conditions.push(`[System.State] = '${this.escapeWiql(options.state)}'`);
+        }
+        if (options.tags && options.tags.length > 0) {
+          for (const tag of options.tags) {
+            conditions.push(`[System.Tags] Contains '${this.escapeWiql(tag)}'`);
+          }
+        }
+        if (options.project) {
+          conditions.push(`[System.TeamProject] = '${this.escapeWiql(options.project)}'`);
+        }
+        const where = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+        const wiql = `SELECT [System.Id],[System.Title],[System.State],[System.Tags],[System.AssignedTo] FROM WorkItems${where} ORDER BY [System.CreatedDate] DESC`;
+        const args = ["boards", "query", "--wiql", wiql, "--output", "json"];
+        if (options.org) args.push("--org", options.org);
+        try {
+          const raw = (0, import_node_child_process5.execFileSync)("az", args, {
+            encoding: "utf-8",
+            timeout: 15e3,
+            stdio: ["pipe", "pipe", "pipe"]
+          });
+          const data = JSON.parse(raw);
+          const paginated = data.slice(options.skip ?? 0, options.top ? (options.skip ?? 0) + options.top : void 0);
+          return paginated.map((item) => this.normalizeWorkItem(item));
+        } catch (err) {
+          throw classifyError(err);
+        }
+      }
+      createWorkItem(options) {
+        const args = [
+          "boards",
+          "work-item",
+          "create",
+          "--title",
+          options.title,
+          "--type",
+          options.type ?? "Task",
+          "--output",
+          "json"
+        ];
+        if (options.org) args.push("--org", options.org);
+        if (options.project) args.push("--project", options.project);
+        const fields = [];
+        if (options.description) fields.push(`System.Description=${options.description}`);
+        if (options.assignedTo) fields.push(`System.AssignedTo=${options.assignedTo}`);
+        if (options.tags && options.tags.length > 0) fields.push(`System.Tags=${options.tags.join("; ")}`);
+        if (options.areaPath) fields.push(`System.AreaPath=${options.areaPath}`);
+        if (options.iterationPath) fields.push(`System.IterationPath=${options.iterationPath}`);
+        if (fields.length > 0) args.push("--fields", ...fields);
+        const raw = (0, import_node_child_process5.execFileSync)("az", args, {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+        const data = JSON.parse(raw);
+        return this.normalizeWorkItem(data);
+      }
+      addTag(workItemId, tag) {
+        const current = this.fetchWorkItemTags(workItemId);
+        const updated = [...current, tag].join("; ");
+        (0, import_node_child_process5.execFileSync)("az", ["boards", "work-item", "update", "--id", String(workItemId), "--fields", `System.Tags=${updated}`, "--output", "json"], {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+      }
+      removeTag(workItemId, tag) {
+        const current = this.fetchWorkItemTags(workItemId);
+        const updated = current.filter((t) => t !== tag).join("; ");
+        (0, import_node_child_process5.execFileSync)("az", ["boards", "work-item", "update", "--id", String(workItemId), "--fields", `System.Tags=${updated}`, "--output", "json"], {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+      }
+      addComment(workItemId, comment) {
+        (0, import_node_child_process5.execFileSync)("az", ["boards", "work-item", "update", "--id", String(workItemId), "--discussion", comment, "--output", "json"], {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+      }
+      listPullRequests(options) {
+        const status = options?.status ?? "active";
+        const args = ["repos", "pr", "list", "--status", status, "--output", "json"];
+        if (options?.org) args.push("--org", options.org);
+        if (options?.project) args.push("--project", options.project);
+        try {
+          const raw = (0, import_node_child_process5.execFileSync)("az", args, {
+            encoding: "utf-8",
+            timeout: 15e3,
+            stdio: ["pipe", "pipe", "pipe"]
+          });
+          const data = JSON.parse(raw);
+          return data.map((item) => {
+            const createdBy = item["createdBy"];
+            return {
+              title: item["title"],
+              headBranch: item["sourceRefName"] ? stripRefPrefix(item["sourceRefName"]) : void 0,
+              baseBranch: item["targetRefName"] ? stripRefPrefix(item["targetRefName"]) : void 0,
+              url: item["url"],
+              body: item["description"],
+              author: createdBy?.["displayName"]
+            };
+          });
+        } catch (err) {
+          throw classifyError(err);
+        }
+      }
+      createPullRequest(options) {
+        const args = [
+          "repos",
+          "pr",
+          "create",
+          "--title",
+          options.title,
+          "--source-branch",
+          options.sourceBranch,
+          "--target-branch",
+          options.targetBranch,
+          "--output",
+          "json"
+        ];
+        if (options.description) args.push("--description", options.description);
+        if (options.org) args.push("--org", options.org);
+        if (options.project) args.push("--project", options.project);
+        const raw = (0, import_node_child_process5.execFileSync)("az", args, {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+        const data = JSON.parse(raw);
+        const createdBy = data["createdBy"];
+        return {
+          title: data["title"],
+          headBranch: data["sourceRefName"] ? stripRefPrefix(data["sourceRefName"]) : void 0,
+          baseBranch: data["targetRefName"] ? stripRefPrefix(data["targetRefName"]) : void 0,
+          url: data["url"],
+          body: data["description"],
+          author: createdBy?.["displayName"]
+        };
+      }
+      mergePullRequest(id, org) {
+        const args = ["repos", "pr", "update", "--id", String(id), "--status", "completed", "--output", "json"];
+        if (org) args.push("--org", org);
+        (0, import_node_child_process5.execFileSync)("az", args, {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+      }
+      updateWorkItemState(workItemId, state, org) {
+        const args = ["boards", "work-item", "update", "--id", String(workItemId), "--fields", `System.State=${state}`, "--output", "json"];
+        if (org) args.push("--org", org);
+        (0, import_node_child_process5.execFileSync)("az", args, {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+      }
+      linkWorkItemToPR(workItemId, prId, org, project) {
+        const args = [
+          "boards",
+          "work-item",
+          "relation",
+          "add",
+          "--id",
+          String(workItemId),
+          "--relation-type",
+          "ArtifactLink",
+          "--target-url",
+          `vstfs:///Git/PullRequestId/${prId}`,
+          "--output",
+          "json"
+        ];
+        if (org) args.push("--org", org);
+        if (project) args.push("--project", project);
+        (0, import_node_child_process5.execFileSync)("az", args, {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+      }
+      listPRsForReviewer(reviewerEmail, options) {
+        const status = options?.status ?? "active";
+        const args = ["repos", "pr", "list", "--reviewer", reviewerEmail, "--status", status, "--output", "json"];
+        if (options?.org) args.push("--org", options.org);
+        if (options?.project) args.push("--project", options.project);
+        if (options?.repository) args.push("--repository", options.repository);
+        try {
+          const raw = (0, import_node_child_process5.execFileSync)("az", args, {
+            encoding: "utf-8",
+            timeout: 15e3,
+            stdio: ["pipe", "pipe", "pipe"]
+          });
+          const data = JSON.parse(raw);
+          return data.map((item) => {
+            const createdBy = item["createdBy"];
+            return {
+              title: item["title"],
+              headBranch: item["sourceRefName"] ? stripRefPrefix(item["sourceRefName"]) : void 0,
+              baseBranch: item["targetRefName"] ? stripRefPrefix(item["targetRefName"]) : void 0,
+              url: item["url"],
+              body: item["description"],
+              author: createdBy?.["displayName"]
+            };
+          });
+        } catch (err) {
+          throw classifyError(err);
+        }
+      }
+      getPRDiff(prId, org) {
+        if (!Number.isInteger(prId) || prId < 1) return "";
+        const args = ["repos", "pr", "diff", "--id", String(prId), "--output", "json"];
+        if (org) args.push("--org", org);
+        try {
+          const raw = (0, import_node_child_process5.execFileSync)("az", args, {
+            encoding: "utf-8",
+            timeout: 3e4,
+            stdio: ["pipe", "pipe", "pipe"]
+          });
+          return raw;
+        } catch (err) {
+          throw classifyError(err);
+        }
+      }
+      fetchWorkItemTags(workItemId) {
+        const raw = (0, import_node_child_process5.execFileSync)("az", ["boards", "work-item", "show", "--id", String(workItemId), "--output", "json"], {
+          encoding: "utf-8",
+          timeout: 15e3,
+          stdio: ["pipe", "pipe", "pipe"]
+        });
+        const data = JSON.parse(raw);
+        const tagsRaw = data.fields?.["System.Tags"];
+        if (!tagsRaw) return [];
+        return tagsRaw.split(";").map((t) => t.trim()).filter(Boolean);
+      }
+      normalizeWorkItem(item) {
+        const fields = item.fields;
+        const tagsRaw = fields["System.Tags"];
+        const tags = tagsRaw ? tagsRaw.split(";").map((t) => t.trim()).filter(Boolean) : [];
+        const assignedTo = fields["System.AssignedTo"];
+        return {
+          id: item.id,
+          title: fields["System.Title"] ?? "",
+          state: fields["System.State"] ?? "",
+          tags,
+          assignedTo: typeof assignedTo === "object" && assignedTo !== null ? assignedTo["displayName"] : assignedTo,
+          url: fields["System.TeamFoundationId"]
+        };
       }
     };
   }
@@ -55517,7 +55795,7 @@ function formatSessionEnd(payload) {
 }
 function formatSessionIdle(payload) {
   const lines = [`# Session Idle`, ""];
-  lines.push(`Claude has finished and is waiting for input.`);
+  lines.push(`Copilot has finished and is waiting for input.`);
   lines.push("");
   if (payload.reason) {
     lines.push(`**Reason:** ${payload.reason}`);
@@ -63340,6 +63618,19 @@ var init_model_contract = __esm({
           return rawOutput.trim();
         }
       },
+      copilot: {
+        agentType: "copilot",
+        binary: "copilot",
+        installInstructions: "Install Copilot CLI: https://github.com/github/copilot-cli",
+        buildLaunchArgs(model, extraFlags = []) {
+          const args = ["--dangerously-skip-permissions"];
+          if (model) args.push("--model", model);
+          return [...args, ...extraFlags];
+        },
+        parseOutput(rawOutput) {
+          return rawOutput.trim();
+        }
+      },
       codex: {
         agentType: "codex",
         binary: "codex",
@@ -63517,6 +63808,7 @@ var init_pane_readiness = __esm({
     CURSOR_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯→]\s*/u;
     PROVIDER_IDLE_PROMPT_LINES = {
       claude: LEGACY_IDLE_PROMPT_LINE,
+      copilot: LEGACY_IDLE_PROMPT_LINE,
       codex: LEGACY_IDLE_PROMPT_LINE,
       gemini: LEGACY_IDLE_PROMPT_LINE,
       cursor: CURSOR_IDLE_PROMPT_LINE,
@@ -67977,7 +68269,7 @@ function resolveRoleAssignment(role, cfg) {
   const spec = getRoleRoutingSpec(roleRouting, canonical);
   const isOrchestrator = canonical === "orchestrator";
   const provider = isOrchestrator ? "claude" : spec?.provider ?? "claude";
-  const model = provider === "claude" ? resolveClaudeModel(canonical, spec?.model, cfg) : resolveExternalModel(provider, spec?.model, cfg);
+  const model = provider === "claude" || provider === "copilot" ? resolveClaudeModel(canonical, spec?.model, cfg) : resolveExternalModel(provider, spec?.model, cfg);
   const agent = spec?.agent ?? ROLE_TO_AGENT[canonical];
   return { provider, model, agent };
 }
@@ -74240,6 +74532,16 @@ var init_runtime_v2 = __esm({
       // evidence well after the initial budget) gets one bounded read-only recheck
       // before teardown; idle, wrong, or dead panes keep the fast fail-closed path.
       claude: {
+        initialBudgetMs: 1250,
+        finalRecheckBudgetMs: 0,
+        resubmitAttempts: 4,
+        resubmitBudgetMs: 2750,
+        engagedPaneRecheckBudgetMs: 3e4
+      },
+      // Copilot CLI is this fork's host and shares Claude's interactive transport
+      // characteristics, including the lost-submit failure mode, so it gets the same
+      // bounded resubmit behavior rather than the external-provider evidence gate.
+      copilot: {
         initialBudgetMs: 1250,
         finalRecheckBudgetMs: 0,
         resubmitAttempts: 4,
@@ -109838,6 +110140,22 @@ var PART_STORAGE = (0, import_node_path20.join)(CLAUDE_CODE_STORAGE, "part");
 var DEBUG3 = process.env.RECOVERY_DEBUG === "1" || process.env.CONTEXT_LIMIT_RECOVERY_DEBUG === "1" || process.env.SESSION_RECOVERY_DEBUG === "1";
 var DEBUG_FILE2 = (0, import_node_path20.join)((0, import_node_os3.tmpdir)(), "recovery-debug.log");
 
+// src/hooks/recovery/types.ts
+var ORCHESTRATION_RECOVERY_CONFIG = {
+  /** Max retry attempts per task before escalating */
+  maxRetries: 3,
+  /** Initial backoff delay in ms */
+  initialBackoffMs: 2e3,
+  /** Backoff multiplier */
+  backoffMultiplier: 2,
+  /** Max backoff delay in ms */
+  maxBackoffMs: 3e4,
+  /** Rolling window for attempt history in ms (2 hours) */
+  rollingWindowMs: 2 * 60 * 60 * 1e3,
+  /** Max attempt records per task */
+  maxAttemptsPerTask: 20
+};
+
 // src/hooks/preemptive-compaction/index.ts
 var fs19 = __toESM(require("fs"), 1);
 var path22 = __toESM(require("path"), 1);
@@ -113411,6 +113729,7 @@ init_formatting();
 init_loader();
 var PROVIDER_BINARY = {
   claude: "claude",
+  copilot: "copilot",
   codex: "codex",
   gemini: "gemini",
   grok: "grok",

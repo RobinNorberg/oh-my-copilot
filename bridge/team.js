@@ -3928,6 +3928,7 @@ var init_pane_readiness = __esm({
     CURSOR_IDLE_PROMPT_LINE = /^\s*(?:[│┃║▌▐▏▕╎┆┊]\s*)?[›>❯→]\s*/u;
     PROVIDER_IDLE_PROMPT_LINES = {
       claude: LEGACY_IDLE_PROMPT_LINE,
+      copilot: LEGACY_IDLE_PROMPT_LINE,
       codex: LEGACY_IDLE_PROMPT_LINE,
       gemini: LEGACY_IDLE_PROMPT_LINE,
       cursor: CURSOR_IDLE_PROMPT_LINE,
@@ -9968,6 +9969,19 @@ var init_model_contract = __esm({
           return rawOutput.trim();
         }
       },
+      copilot: {
+        agentType: "copilot",
+        binary: "copilot",
+        installInstructions: "Install Copilot CLI: https://github.com/github/copilot-cli",
+        buildLaunchArgs(model, extraFlags = []) {
+          const args = ["--dangerously-skip-permissions"];
+          if (model) args.push("--model", model);
+          return [...args, ...extraFlags];
+        },
+        parseOutput(rawOutput) {
+          return rawOutput.trim();
+        }
+      },
       codex: {
         agentType: "codex",
         binary: "codex",
@@ -11295,7 +11309,7 @@ function resolveRoleAssignment(role, cfg) {
   const spec = getRoleRoutingSpec(roleRouting, canonical);
   const isOrchestrator = canonical === "orchestrator";
   const provider = isOrchestrator ? "claude" : spec?.provider ?? "claude";
-  const model = provider === "claude" ? resolveClaudeModel(canonical, spec?.model, cfg) : resolveExternalModel(provider, spec?.model, cfg);
+  const model = provider === "claude" || provider === "copilot" ? resolveClaudeModel(canonical, spec?.model, cfg) : resolveExternalModel(provider, spec?.model, cfg);
   const agent = spec?.agent ?? ROLE_TO_AGENT[canonical];
   return { provider, model, agent };
 }
@@ -17555,6 +17569,16 @@ var init_runtime_v2 = __esm({
       // evidence well after the initial budget) gets one bounded read-only recheck
       // before teardown; idle, wrong, or dead panes keep the fast fail-closed path.
       claude: {
+        initialBudgetMs: 1250,
+        finalRecheckBudgetMs: 0,
+        resubmitAttempts: 4,
+        resubmitBudgetMs: 2750,
+        engagedPaneRecheckBudgetMs: 3e4
+      },
+      // Copilot CLI is this fork's host and shares Claude's interactive transport
+      // characteristics, including the lost-submit failure mode, so it gets the same
+      // bounded resubmit behavior rather than the external-provider evidence gate.
+      copilot: {
         initialBudgetMs: 1250,
         finalRecheckBudgetMs: 0,
         resubmitAttempts: 4,

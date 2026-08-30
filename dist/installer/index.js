@@ -458,9 +458,10 @@ export function isCopilotInstalled() {
  * @returns true if running in plugin context, false otherwise
  */
 export function isRunningAsPlugin() {
-    // Check for CLAUDE_PLUGIN_ROOT env var (set by plugin system)
-    // This is the most reliable indicator that we're running as a plugin
-    return !!process.env.CLAUDE_PLUGIN_ROOT;
+    // Check for PLUGIN_ROOT / CLAUDE_PLUGIN_ROOT env vars (set by the plugin
+    // system). Copilot CLI sets PLUGIN_ROOT, Claude Code sets CLAUDE_PLUGIN_ROOT;
+    // this fork can run under either host, so both are accepted.
+    return !!(process.env.PLUGIN_ROOT || process.env.CLAUDE_PLUGIN_ROOT);
 }
 /**
  * Check if we're running as a project-scoped plugin (not global)
