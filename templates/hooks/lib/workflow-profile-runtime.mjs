@@ -70,18 +70,18 @@ function openNoFollowFile(absolute) {
   if (!procSelfFdAvailable()) {
     let walked = pathRoot;
     for (let index = 0; index < components.length; index += 1) {
-      walked = join(walked, components[index]); const isFinal = index === components.length - 1; const stat = lstatSync(walked);
+      walked = join(walked, components[index]); const isFinal = index === components.length - 1; const stat = lstatSync(walked, { bigint: true });
       if (stat.isSymbolicLink() || (isFinal ? !stat.isFile() : !stat.isDirectory())) return null;
-      pathIdentity.push({ device: Number(stat.dev), inode: Number(stat.ino) });
+      pathIdentity.push({ device: String(stat.dev), inode: String(stat.ino) });
     }
-    const fd = openSync(absolute, fsConstants.O_RDONLY); const opened = fstatSync(fd); const final = pathIdentity[pathIdentity.length - 1];
-    if (!opened.isFile() || Number(opened.dev) !== final.device || Number(opened.ino) !== final.inode) { closeSync(fd); return null; }
+    const fd = openSync(absolute, fsConstants.O_RDONLY); const opened = fstatSync(fd, { bigint: true }); const final = pathIdentity[pathIdentity.length - 1];
+    if (!opened.isFile() || !sameFileId(opened.dev, final.device) || !sameFileId(opened.ino, final.inode)) { closeSync(fd); return null; }
     return { fd, pathIdentity, canonicalPath: realpathSync(absolute) };
   }
   let fd;
   try {
     fd = openSync(pathRoot, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY);
-    for (let index = 0; index < components.length; index += 1) { const isFinal = index === components.length - 1; const nextFd = openSync(`/proc/self/fd/${fd}/${components[index]}`, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | (isFinal ? 0 : fsConstants.O_DIRECTORY)); const nextStat = fstatSync(nextFd); pathIdentity.push({ device: Number(nextStat.dev), inode: Number(nextStat.ino) }); if ((isFinal && !nextStat.isFile()) || (!isFinal && !nextStat.isDirectory())) { closeSync(nextFd); return null; } closeSync(fd); fd = nextFd; }
+    for (let index = 0; index < components.length; index += 1) { const isFinal = index === components.length - 1; const nextFd = openSync(`/proc/self/fd/${fd}/${components[index]}`, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | (isFinal ? 0 : fsConstants.O_DIRECTORY)); const nextStat = fstatSync(nextFd, { bigint: true }); pathIdentity.push({ device: String(nextStat.dev), inode: String(nextStat.ino) }); if ((isFinal && !nextStat.isFile()) || (!isFinal && !nextStat.isDirectory())) { closeSync(nextFd); return null; } closeSync(fd); fd = nextFd; }
     const opened = { fd, pathIdentity, canonicalPath: realpathSync(`/proc/self/fd/${fd}`) };
     fd = undefined; return opened;
   } finally { if (fd !== undefined) { try { closeSync(fd); } catch {} } }

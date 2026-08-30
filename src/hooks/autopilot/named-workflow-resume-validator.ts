@@ -191,13 +191,13 @@ function openVerifiedFile(
   let fd: number | undefined;
   try {
     let walked = pathRoot;
-    let expected: { device: number; inode: number } | null = null;
+    let expected: { device: string; inode: string } | null = null;
     for (let index = 0; index < components.length; index += 1) {
       walked = join(walked, components[index]);
       const final = index === components.length - 1;
-      const stat = lstatSync(walked);
+      const stat = lstatSync(walked, { bigint: true });
       if (stat.isSymbolicLink() || (final ? !stat.isFile() : !stat.isDirectory())) return null;
-      if (final) expected = { device: Number(stat.dev), inode: Number(stat.ino) };
+      if (final) expected = { device: String(stat.dev), inode: String(stat.ino) };
     }
     const canonicalPath = realpathSync(absolute);
     if (
@@ -206,12 +206,12 @@ function openVerifiedFile(
     )
       return null;
     fd = openSync(absolute, constants.O_RDONLY);
-    const opened = fstatSync(fd);
+    const opened = fstatSync(fd, { bigint: true });
     if (
       !expected ||
       !opened.isFile() ||
-      Number(opened.dev) !== expected.device ||
-      Number(opened.ino) !== expected.inode
+      !sameFileId(opened.dev, expected.device) ||
+      !sameFileId(opened.ino, expected.inode)
     )
       return null;
     const result = { fd, path: canonicalPath };

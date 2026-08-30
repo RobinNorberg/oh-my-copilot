@@ -609,7 +609,7 @@ describe('state-tools', () => {
             transcriptBasename: `${sessionId}.jsonl`,
             sessionId,
             byteOffset: 0,
-            fileIdentity: { device: Number(stat.dev), inode: Number(stat.ino), size: Number(stat.size), mtimeNs: stat.mtimeNs.toString(), ctimeNs: stat.ctimeNs.toString(), contentSha256: createHash('sha256').update(readFileSync(transcript)).digest('hex') },
+            fileIdentity: { device: String(stat.dev), inode: String(stat.ino), size: Number(stat.size), mtimeNs: stat.mtimeNs.toString(), ctimeNs: stat.ctimeNs.toString(), contentSha256: createHash('sha256').update(readFileSync(transcript)).digest('hex') },
           },
           completionObservations: [],
         },

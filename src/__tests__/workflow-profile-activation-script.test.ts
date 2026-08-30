@@ -848,10 +848,10 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
       const transcriptPath = join(cwd, 'claude-config', 'projects', 'workflow-activation-fixture.jsonl');
       rmSync(transcriptPath);
       writeFileSync(transcriptPath, 'replacement');
-      const replacementIdentity = lstatSync(transcriptPath);
+      const replacementIdentity = lstatSync(transcriptPath, { bigint: true });
       rmSync(lockPath, { force: true });
       await pending;
-      expect(JSON.parse(stateBytes(cwd)!.toString())).toMatchObject({ workflow: { workflowName: 'release-flow' }, pipelineTracking: { activationBoundary: { byteOffset: 11, fileIdentity: { inode: replacementIdentity.ino, device: replacementIdentity.dev, size: 11 } } } });
+      expect(JSON.parse(stateBytes(cwd)!.toString())).toMatchObject({ workflow: { workflowName: 'release-flow' }, pipelineTracking: { activationBoundary: { byteOffset: 11, fileIdentity: { inode: String(replacementIdentity.ino), device: String(replacementIdentity.dev), size: 11 } } } });
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
