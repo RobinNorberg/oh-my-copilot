@@ -142,7 +142,7 @@ describe('Contract 2: no unguarded $HOME/.claude in shell/script files', () => {
         'scripts/lib/config-dir.cjs',
         'scripts/lib/config-dir.sh',
     ]);
-    // The safe pattern: ${COPILOT_CONFIG_DIR:-$HOME/.claude}
+    // The safe pattern: ${COPILOT_CONFIG_DIR:-$HOME/.copilot}
     const SAFE_PATTERN = /\$\{COPILOT_CONFIG_DIR:-\$HOME\/\.claude\}/;
     const DANGEROUS_PATTERN = /\$HOME\/\.claude/;
     const violations = [];
@@ -172,7 +172,7 @@ describe('Contract 2: no unguarded $HOME/.claude in shell/script files', () => {
                 .map(v => `  ${v.file}:${v.line}: ${v.text}`)
                 .join('\n');
             expect.fail(`Found $HOME/.claude without COPILOT_CONFIG_DIR guard:\n${details}\n\n` +
-                `Replace with: \${COPILOT_CONFIG_DIR:-$HOME/.claude}`);
+                `Replace with: \${COPILOT_CONFIG_DIR:-$HOME/.copilot}`);
         }
     });
 });

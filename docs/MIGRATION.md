@@ -6,6 +6,7 @@ This guide covers all migration paths for oh-my-copilot. Find your current versi
 
 ## Table of Contents
 
+- [v4.13.102 → v5.0.0: Fork Upgrade Guide](#v413102--v500-fork-upgrade-guide)
 - [v4.x → v5.0: Workflow Retirement](#v4x--v50-workflow-retirement)
 - [Unreleased: Team MCP Runtime Deprecation (CLI-Only)](#unreleased-team-mcp-runtime-deprecation-cli-only)
 - [Unreleased: Native Team Worktree Mode (Opt-In)](#unreleased-native-team-worktree-mode-opt-in)
@@ -40,6 +41,161 @@ locations and descendants of system temp/OS roots are never used as roots.
   foreign repositories and failed Git probes are rejected visibly.
 - Session-scoped state remains owned by its `session_id`. No time-based cleanup
   or cancellation was added.
+
+---
+
+## v4.13.102 → v5.0.0: Fork Upgrade Guide
+
+This section is specific to **oh-my-copilot** (binaries `oh-my-copilot` and
+`omcp`), the downstream fork maintained at
+[RobinNorberg/oh-my-copilot](https://github.com/RobinNorberg/oh-my-copilot).
+It covers the concrete upgrade path from fork **v4.13.102** to fork
+**v5.0.0**. The section below it, [v4.x → v5.0: Workflow
+Retirement](#v4x--v50-workflow-retirement), documents the same skill/command
+retirement in more detail (including declared-only and alias entries); read
+this section first for what's fork-specific about the jump.
+
+### TL;DR
+
+v5.0.0 rebases the fork onto the upstream `plan → execute → review → verify`
+workflow surface, and — the single most important thing for anyone
+upgrading — **moves two directories that OMC and the host CLI both read
+from, with no automatic migration.** Eleven skill names and seven command
+files are also retired outright (not aliased), three skills are new, one
+hook subsystem is gone with no replacement, and two opt-in features are
+added. Fork-exclusive skills (Azure DevOps, GitHub, and four standalone
+skills) are unaffected.
+
+### Directory moves: `.claude/` → `.copilot/`, `.omc/` → `.omg/`
+
+**v5.0.0 does not auto-migrate either directory.** Whatever you leave behind
+in the old locations is simply ignored, not read, and not merged — you must
+move it yourself before your existing config, skills, and state are picked
+up again.
+
+**1. `.claude/` → `.copilot/`.** oh-my-copilot is a GitHub Copilot CLI
+plugin, and it now reads the host CLI's own surface from `.copilot/` instead
+of `.claude/`: `settings.json`, `settings.local.json`, hooks, commands,
+skills, plugins, rules, tasks, and worktrees.
+
+- Project config moves from `.claude/omc.jsonc` to `.copilot/omg.jsonc`.
+  Move that file yourself:
+  ```bash
+  mkdir -p .copilot
+  mv .claude/omc.jsonc .copilot/omg.jsonc
+  ```
+- Context files are the one exception with a built-in fallback: the plugin
+  now *prefers* `copilot-instructions.md` and `.copilot/AGENTS.md`, but it
+  still falls back to `.claude/CLAUDE.md` / `.claude/AGENTS.md` when running
+  under Claude Code. You don't have to move those two immediately, though
+  moving them (or adding `copilot-instructions.md`) is recommended going
+  forward.
+- Everything else under `.claude/` — settings, hooks, commands, skills,
+  plugins, rules, tasks, worktrees — is **not** read from `.claude/` anymore
+  and must be moved to `.copilot/` to keep working.
+
+**2. `.omc/` → `.omg/`.** All oh-my-copilot runtime files move: state,
+sessions, logs, plans, research, `notepad.md`, `project-memory.json`,
+drafts, and autopilot/team state. Move the whole tree:
+
+```bash
+mv .omc .omg
+```
+
+If you pin `planOutput.directory` explicitly in config, note its **default**
+changed from `.omc/plans` to `.omg/plans` — update an explicit pin
+accordingly (an unpinned config picks up the new default automatically).
+
+**Unchanged:** the multi-repo workspace marker file is still named
+`.omc-workspace` at the workspace root — it does not need renaming.
+
+### Retired skill and command names
+
+If any of these are in your scripts, hooks, `CLAUDE.md`, or muscle memory,
+switch to the replacement — the old name no longer resolves:
+
+| Retired name       | Replacement                              |
+| ------------------- | ----------------------------------------- |
+| `ultrawork`         | `/oh-my-copilot:execute`                 |
+| `ultraqa`           | `/oh-my-copilot:verify`                  |
+| `deep-dive`         | `/oh-my-copilot:plan` then `execute`, or `/oh-my-copilot:research` for investigation |
+| `sciomc`            | `/oh-my-copilot:research`                |
+| `ccg`               | `/oh-my-copilot:execute`                 |
+| `omc-teams`         | `/oh-my-copilot:team`                    |
+| `setup`             | `/oh-my-copilot:omc-setup`               |
+| `mcp-setup`         | `/oh-my-copilot:omc-setup`               |
+| `omc-reference`     | `/oh-my-copilot:wiki`                    |
+| `learner`           | `/oh-my-copilot:skillify` or `/oh-my-copilot:remember` |
+| `writer-memory`     | `/oh-my-copilot:remember`                |
+
+Seven command files were removed alongside their skills: `ccg.md`,
+`deep-dive.md`, `learner.md`, `mcp-setup.md`, `omc-teams.md`, `sciomc.md`,
+`writer-memory.md`.
+
+### New Tier-0 workflow shape
+
+The canonical chain is now `plan → execute → review → verify`. Three skills
+are newly adopted: `execute`, `research`, and `review`. `review` installs as
+`omc-review` (it would otherwise collide with a native Claude Code command
+name). A new `/oh-my-copilot:compact` command is also added — it does not
+trigger Claude Code's native `/compact` itself, it prepares OMC context and
+hands you the bare `/compact` command to run.
+
+### Known regression: `stagger-launch` is gone
+
+The `ultrawork` / `ultraqa` / `ultrapilot` hook subsystems are removed, and
+the `stagger-launch` hook goes with them. `stagger-launch`'s only trigger was
+`ultrawork` mode, and it throttled rapid parallel agent launches to avoid a
+rate-limit thundering herd. That protection is **not** carried over to the
+new `execute`/`team` workflow surface in 5.0.0 — this is a known regression,
+not an oversight. If you relied on `ultrawork` specifically for its launch
+throttling, there is currently no equivalent in the new workflow surface.
+
+### Upgrading
+
+oh-my-copilot is a GitHub Copilot CLI plugin (binaries `oh-my-copilot`,
+`omcp`). To upgrade:
+
+```bash
+npm i -g oh-my-copilot@5
+```
+
+or, via the plugin marketplace:
+
+```bash
+/plugin marketplace add https://github.com/RobinNorberg/oh-my-copilot
+/plugin install oh-my-copilot
+```
+
+Then run `/oh-my-copilot:omc-setup` (or say "setup omc") to refresh installed
+skills and prune retired ones.
+
+**Stale agent files from v4 are now correctly cleaned up.** The 4.x agent
+ownership inventory wrongly contained upstream's agent-file hashes instead of
+the fork's own, so agent files installed by v4 could fail the installer's
+ownership check and be left behind on upgrade instead of being reclaimed.
+5.0.0 fixes this by regenerating the inventory from the fork's own release
+history, so a v4.13.102 → v5.0.0 upgrade should no longer leave orphaned
+agent files behind.
+
+### New opt-in features
+
+Neither of these is enabled by default — turn them on if you want them:
+
+- **Microsoft Teams notifications.** Set `OMC_MICROSOFT_TEAMS_WEBHOOK_URL` to
+  a Power Automate Workflows or legacy O365 Connector webhook URL (or add a
+  `teams` block to your notification config) to receive OMC notifications in
+  Teams.
+- **RecentTools HUD element.** Enable `showRecentTools` in your HUD config to
+  show a rolling list of recent tool calls with status icons in the
+  statusline; tune it with `recentToolsMax` (default 5) and
+  `recentToolsShowTarget`.
+
+### Unchanged
+
+Fork-exclusive skills are not affected by the retirement or the upstream
+rebase: the five `omc-ado-*` Azure DevOps skills, the five `omc-gh-*` GitHub
+skills, plus `critique`, `deep-review`, `discover`, and `ralph-experiment`.
 
 ---
 

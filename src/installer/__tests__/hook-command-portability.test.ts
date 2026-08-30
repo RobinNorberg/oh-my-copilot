@@ -37,7 +37,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
     vi.resetModules();
   });
 
-  it('default config: commands use ${COPILOT_CONFIG_DIR:-$HOME/.claude} pattern', async () => {
+  it('default config: commands use ${COPILOT_CONFIG_DIR:-$HOME/.copilot} pattern', async () => {
     delete process.env.COPILOT_CONFIG_DIR;
     vi.resetModules();
 
@@ -57,7 +57,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
 
     // On default config, all commands should use the portable env-var pattern
     for (const cmd of commands) {
-      expect(cmd).toContain('${COPILOT_CONFIG_DIR:-$HOME/.claude}');
+      expect(cmd).toContain('${COPILOT_CONFIG_DIR:-$HOME/.copilot}');
     }
   });
 
@@ -118,7 +118,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
       const details = violations.map(v => `  ${v.event}: ${v.command}`).join('\n');
       expect.fail(
         `Found hardcoded home directory paths in hook commands:\n${details}\n\n` +
-        `Hook commands must use $HOME or \${COPILOT_CONFIG_DIR:-$HOME/.claude}, not resolved absolute home paths.`
+        `Hook commands must use $HOME or \${COPILOT_CONFIG_DIR:-$HOME/.copilot}, not resolved absolute home paths.`
       );
     }
   });
@@ -167,7 +167,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
     expect(commands.length).toBeGreaterThan(0);
     for (const cmd of commands) {
       expect(cmd).toContain('/.claude/hooks/');
-      expect(cmd).not.toContain('${COPILOT_CONFIG_DIR:-$HOME/.claude}');
+      expect(cmd).not.toContain('${COPILOT_CONFIG_DIR:-$HOME/.copilot}');
       expect(cmd).not.toContain('%USERPROFILE%');
     }
   });

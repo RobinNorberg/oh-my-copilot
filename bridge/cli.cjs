@@ -40815,7 +40815,7 @@ function buildHookCommand(filename) {
     return `node ${quoteCommandPath((0, import_path55.join)(getCopilotConfigDir(), "hooks", filename).replace(/\\/g, "/"))}`;
   }
   if (isDefaultClaudeConfigDir()) {
-    return `node "\${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/${filename}"`;
+    return `node "\${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/${filename}"`;
   }
   return `node ${quoteCommandPath((0, import_path55.join)(getCopilotConfigDir(), "hooks", filename).replace(/\\/g, "/"))}`;
 }
@@ -43123,15 +43123,15 @@ function buildStatusLineCommand(nodeBin, hudScriptPath, findNodePath, cacheWrapp
   const normalizedHudScriptPath = hudScriptPath.replace(/\\/g, "/");
   if (cacheWrapperPath) {
     if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
-      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
+      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud-cache.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs";
     }
     return `sh ${quoteShellArg(cacheWrapperPath.replace(/\\/g, "/"))} ${quoteShellArg(normalizedHudScriptPath)}`;
   }
   if (isDefaultClaudeConfigDirPath(COPILOT_CONFIG_DIR)) {
     if (findNodePath) {
-      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
+      return "sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/find-node.sh ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs";
     }
-    return "node ${COPILOT_CONFIG_DIR:-$HOME/.claude}/hud/omcp-hud.mjs";
+    return "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs";
   }
   if (findNodePath) {
     return `sh ${quoteShellArg(findNodePath.replace(/\\/g, "/"))} ${quoteShellArg(normalizedHudScriptPath)}`;

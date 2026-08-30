@@ -26,7 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { normalizeHooksDataForPlatform } from './lib/hook-command-normalizer.mjs';
 
 function getCopilotConfigDir() {
-  const configured = (process.env.COPILOT_CONFIG_DIR || join(homedir(), '.claude')).replace(/[\\/]+$/, '');
+  const configured = (process.env.COPILOT_CONFIG_DIR || join(homedir(), '.copilot')).replace(/[\\/]+$/, '');
   if (configured === '~') return homedir();
   if (configured.startsWith('~/') || configured.startsWith('~\\')) return join(homedir(), configured.slice(2));
   return configured;

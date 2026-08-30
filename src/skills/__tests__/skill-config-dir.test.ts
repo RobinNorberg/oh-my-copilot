@@ -42,7 +42,7 @@ function extractBashBlocks(filePath: string): { startLine: number; content: stri
 
 /**
  * Find lines in bash blocks that use $HOME/.claude without the
- * ${COPILOT_CONFIG_DIR:-$HOME/.claude} pattern.
+ * ${COPILOT_CONFIG_DIR:-$HOME/.copilot} pattern.
  */
 function findHardcodedHomeClaude(filePath: string): { line: number; text: string }[] {
   const blocks = extractBashBlocks(filePath);
@@ -52,7 +52,7 @@ function findHardcodedHomeClaude(filePath: string): { line: number; text: string
     const lines = block.content.split('\n');
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
-      // Match $HOME/.claude that is NOT inside ${COPILOT_CONFIG_DIR:-$HOME/.claude}
+      // Match $HOME/.claude that is NOT inside ${COPILOT_CONFIG_DIR:-$HOME/.copilot}
       if (/\$HOME\/\.claude/.test(line) && !/\$\{COPILOT_CONFIG_DIR:-\$HOME\/\.claude\}/.test(line)) {
         violations.push({
           line: block.startLine + i,
@@ -127,7 +127,7 @@ describe('skill markdown bash blocks must respect COPILOT_CONFIG_DIR', () => {
           .join('\n');
         expect.fail(
           `Found $HOME/.claude without COPILOT_CONFIG_DIR fallback:\n${details}\n` +
-          `Replace with: \${COPILOT_CONFIG_DIR:-$HOME/.claude}`
+          `Replace with: \${COPILOT_CONFIG_DIR:-$HOME/.copilot}`
         );
       }
     },
@@ -165,7 +165,7 @@ describe('skill markdown prose must not use raw ~/.claude (Contract 6, issue #21
           .join('\n');
         expect.fail(
           `Found ${violations.length} ~/.claude violations (baseline: ${baseline}, new: ${violations.length - baseline}):\n${details}\n` +
-          `Replace with: [$COPILOT_CONFIG_DIR|~/.claude] or use \${COPILOT_CONFIG_DIR:-$HOME/.claude} in code`
+          `Replace with: [$COPILOT_CONFIG_DIR|~/.claude] or use \${COPILOT_CONFIG_DIR:-$HOME/.copilot} in code`
         );
       }
     },

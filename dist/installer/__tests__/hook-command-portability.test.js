@@ -32,7 +32,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
         Object.defineProperty(process, 'platform', { value: originalPlatform });
         vi.resetModules();
     });
-    it('default config: commands use ${COPILOT_CONFIG_DIR:-$HOME/.claude} pattern', async () => {
+    it('default config: commands use ${COPILOT_CONFIG_DIR:-$HOME/.copilot} pattern', async () => {
         delete process.env.COPILOT_CONFIG_DIR;
         vi.resetModules();
         const { getHooksSettingsConfig } = await import('../../installer/hooks.js');
@@ -48,7 +48,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
         expect(commands.length).toBeGreaterThan(0);
         // On default config, all commands should use the portable env-var pattern
         for (const cmd of commands) {
-            expect(cmd).toContain('${COPILOT_CONFIG_DIR:-$HOME/.claude}');
+            expect(cmd).toContain('${COPILOT_CONFIG_DIR:-$HOME/.copilot}');
         }
     });
     it('no command contains an absolute path to a node binary', async () => {
@@ -96,7 +96,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
         if (violations.length > 0) {
             const details = violations.map(v => `  ${v.event}: ${v.command}`).join('\n');
             expect.fail(`Found hardcoded home directory paths in hook commands:\n${details}\n\n` +
-                `Hook commands must use $HOME or \${COPILOT_CONFIG_DIR:-$HOME/.claude}, not resolved absolute home paths.`);
+                `Hook commands must use $HOME or \${COPILOT_CONFIG_DIR:-$HOME/.copilot}, not resolved absolute home paths.`);
         }
     });
     it('custom config: commands use the custom absolute path', async () => {
@@ -135,7 +135,7 @@ describe('Contract 7: hook command portability (#2084, #2348)', () => {
         expect(commands.length).toBeGreaterThan(0);
         for (const cmd of commands) {
             expect(cmd).toContain('/.claude/hooks/');
-            expect(cmd).not.toContain('${COPILOT_CONFIG_DIR:-$HOME/.claude}');
+            expect(cmd).not.toContain('${COPILOT_CONFIG_DIR:-$HOME/.copilot}');
             expect(cmd).not.toContain('%USERPROFILE%');
         }
     });

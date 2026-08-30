@@ -101,7 +101,7 @@ function buildHookCommand(filename: string): string {
   }
 
   if (isDefaultClaudeConfigDir()) {
-    return `node "\${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/${filename}"`;
+    return `node "\${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/${filename}"`;
   }
 
   return `node ${quoteCommandPath(join(getCopilotConfigDir(), 'hooks', filename).replace(/\\/g, '/'))}`;

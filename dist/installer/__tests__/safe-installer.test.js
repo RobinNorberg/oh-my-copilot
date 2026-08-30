@@ -66,9 +66,9 @@ describe('isOmcHook detection', () => {
         expect(isOmcHook('node "/tmp/custom-claude/hooks/keyword-detector.mjs"')).toBe(true);
     });
     it('detects COPILOT_CONFIG_DIR-aware hook commands', () => {
-        expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/keyword-detector.mjs"')).toBe(true);
-        expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/pre-tool-use.mjs"')).toBe(true);
-        expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"')).toBe(true);
+        expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/keyword-detector.mjs"')).toBe(true);
+        expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/pre-tool-use.mjs"')).toBe(true);
+        expect(isOmcHook('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.mjs"')).toBe(true);
     });
     it('detects Windows-style OMC hook commands (issue #606)', () => {
         expect(isOmcHook('node "%USERPROFILE%\\.claude\\hooks\\keyword-detector.mjs"')).toBe(true);

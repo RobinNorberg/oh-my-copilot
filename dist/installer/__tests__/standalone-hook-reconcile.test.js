@@ -461,7 +461,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
                         hooks: [
                             {
                                 type: 'command',
-                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"',
+                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.mjs"',
                             },
                             {
                                 type: 'command',
@@ -477,7 +477,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
         const writtenSettings = JSON.parse(readFileSync(join(testClaudeDir, 'settings.json'), 'utf-8'));
         const commands = writtenSettings.hooks?.Stop?.[0]?.hooks.map(hook => hook.command) ?? [];
         expect(result.success).toBe(true);
-        expect(commands).toContain('node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/persistent-mode.mjs"');
+        expect(commands).toContain('node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/persistent-mode.mjs"');
         expect(commands).toContain('node $HOME/.claude/hooks/user-stop-hook.mjs');
         expect(existsSync(join(hooksDir, 'persistent-mode.mjs'))).toBe(true);
         expect(existsSync(join(hooksDir, 'keyword-detector.mjs'))).toBe(false);
@@ -498,7 +498,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
                     {
                         hooks: [{
                                 type: 'command',
-                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/keyword-detector.mjs"',
+                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/keyword-detector.mjs"',
                             }],
                     },
                 ],
@@ -506,7 +506,7 @@ describe('install() plugin-provided hook deduplication (#2252)', () => {
                     {
                         hooks: [{
                                 type: 'command',
-                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.claude}/hooks/code-simplifier.mjs"',
+                                command: 'node "${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hooks/code-simplifier.mjs"',
                             }],
                     },
                 ],

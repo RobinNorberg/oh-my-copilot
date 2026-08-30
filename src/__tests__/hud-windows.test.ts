@@ -200,7 +200,7 @@ describe('HUD Windows Compatibility', () => {
       // Should use path.join for constructing paths
       expect(content).toContain("p.join(d,'plugins','cache','omc','oh-my-copilot')");
       expect(content).not.toContain('ls ~/.claude/CLAUDE-*.md');
-      expect(content).toContain("find \"${COPILOT_CONFIG_DIR:-$HOME/.claude}\" -maxdepth 1 -type f -name 'CLAUDE-*.md' -print 2>/dev/null");
+      expect(content).toContain("find \"${COPILOT_CONFIG_DIR:-$HOME/.copilot}\" -maxdepth 1 -type f -name 'CLAUDE-*.md' -print 2>/dev/null");
     });
 
     it('hud skill should use cross-platform Node.js commands for plugin detection', () => {

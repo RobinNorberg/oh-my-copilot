@@ -21,7 +21,7 @@ Route code to `executor` (use `model=opus` for complex work). Uncertain SDK usag
 
 <model_routing>
 `haiku` (quick lookups), `sonnet` (standard), `opus` (architecture, deep analysis).
-Direct writes OK for: `~/.copilot/**`, `.omcp/**`, `.copilot/**`, `copilot-instructions.md`, `AGENTS.md`.
+Direct writes OK for: `~/.copilot/**`, `.omg/**`, `.copilot/**`, `copilot-instructions.md`, `AGENTS.md`.
 </model_routing>
 
 <agent_catalog>
@@ -73,7 +73,7 @@ Kill switches: `DISABLE_OMC`, `OMC_SKIP_HOOKS` (comma-separated).
 </cancellation>
 
 <worktree_paths>
-State: `.omcp/state/`, `.omcp/state/sessions/{sessionId}/`, `.omcp/notepad.md`, `.omcp/project-memory.json`, `.omcp/plans/`, `.omcp/research/`, `.omcp/logs/`
+State: `.omg/state/`, `.omg/state/sessions/{sessionId}/`, `.omg/notepad.md`, `.omg/project-memory.json`, `.omg/plans/`, `.omg/research/`, `.omg/logs/`
 </worktree_paths>
 
 ## Setup

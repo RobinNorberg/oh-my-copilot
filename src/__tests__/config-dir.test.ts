@@ -18,14 +18,14 @@ describe('getCopilotConfigDir', () => {
     }
   });
 
-  it('falls back to ~/.claude when COPILOT_CONFIG_DIR is unset', () => {
+  it('falls back to ~/.copilot when COPILOT_CONFIG_DIR is unset', () => {
     delete process.env.COPILOT_CONFIG_DIR;
-    expect(getCopilotConfigDir()).toBe(normalize(join(homedir(), '.claude')));
+    expect(getCopilotConfigDir()).toBe(normalize(join(homedir(), '.copilot')));
   });
 
-  it('falls back to ~/.claude when COPILOT_CONFIG_DIR is empty', () => {
+  it('falls back to ~/.copilot when COPILOT_CONFIG_DIR is empty', () => {
     process.env.COPILOT_CONFIG_DIR = '   ';
-    expect(getCopilotConfigDir()).toBe(normalize(join(homedir(), '.claude')));
+    expect(getCopilotConfigDir()).toBe(normalize(join(homedir(), '.copilot')));
   });
 
   it('returns an absolute custom path unchanged aside from normalization', () => {

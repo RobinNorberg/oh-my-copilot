@@ -55,7 +55,7 @@ describe('HUD stdin cache path is session-scoped', () => {
 
     writeStdinCache(stdin);
 
-    const expected = join(tmpRoot, '.omcp', 'state', 'sessions', 'test-session-aaa', 'hud-stdin-cache.json');
+    const expected = join(tmpRoot, '.omg', 'state', 'sessions', 'test-session-aaa', 'hud-stdin-cache.json');
     expect(existsSync(expected)).toBe(true);
     const loaded = JSON.parse(readFileSync(expected, 'utf-8')) as StatuslineStdin;
     expect(loaded.cwd).toBe(tmpRoot);
@@ -66,9 +66,9 @@ describe('HUD stdin cache path is session-scoped', () => {
 
     writeStdinCache(stdin);
 
-    const expected = join(tmpRoot, '.omcp', 'state', 'hud-stdin-cache.json');
+    const expected = join(tmpRoot, '.omg', 'state', 'hud-stdin-cache.json');
     expect(existsSync(expected)).toBe(true);
-    const sessionScoped = join(tmpRoot, '.omcp', 'state', 'sessions');
+    const sessionScoped = join(tmpRoot, '.omg', 'state', 'sessions');
     expect(existsSync(sessionScoped)).toBe(false);
   });
 
@@ -78,7 +78,7 @@ describe('HUD stdin cache path is session-scoped', () => {
 
     writeStdinCache(stdin);
 
-    const expected = join(tmpRoot, '.omcp', 'state', 'sessions', 'test-session-bbb', 'hud-stdin-cache.json');
+    const expected = join(tmpRoot, '.omg', 'state', 'sessions', 'test-session-bbb', 'hud-stdin-cache.json');
     expect(existsSync(expected)).toBe(true);
   });
 
@@ -100,7 +100,7 @@ describe('HUD stdin cache path is session-scoped', () => {
   });
 
   it('readStdinCache ignores a legacy flat file when a session id is set', () => {
-    const stateDir = join(tmpRoot, '.omcp', 'state');
+    const stateDir = join(tmpRoot, '.omg', 'state');
     mkdirSync(stateDir, { recursive: true });
     // Simulate a stale legacy cache written by an older build.
     const legacy = makeStdin({ cwd: '/legacy/cwd' });
@@ -131,7 +131,7 @@ describe('HUD stdin cache path is session-scoped', () => {
     writeStdinCache(stdin);
 
     // Nothing may be written to the session-scoped tree at all.
-    const sessionsDir = join(tmpRoot, '.omcp', 'state', 'sessions');
+    const sessionsDir = join(tmpRoot, '.omg', 'state', 'sessions');
     expect(existsSync(sessionsDir)).toBe(false);
 
     // And in particular, nothing outside the intended state dir.
@@ -139,7 +139,7 @@ describe('HUD stdin cache path is session-scoped', () => {
     expect(existsSync(etcProbe)).toBe(false);
 
     // Legacy flat fallback should be populated instead.
-    const legacy = join(tmpRoot, '.omcp', 'state', 'hud-stdin-cache.json');
+    const legacy = join(tmpRoot, '.omg', 'state', 'hud-stdin-cache.json');
     expect(existsSync(legacy)).toBe(true);
   });
 
@@ -149,9 +149,9 @@ describe('HUD stdin cache path is session-scoped', () => {
 
     writeStdinCache(stdin);
 
-    const sessionsDir = join(tmpRoot, '.omcp', 'state', 'sessions');
+    const sessionsDir = join(tmpRoot, '.omg', 'state', 'sessions');
     expect(existsSync(sessionsDir)).toBe(false);
-    const legacy = join(tmpRoot, '.omcp', 'state', 'hud-stdin-cache.json');
+    const legacy = join(tmpRoot, '.omg', 'state', 'hud-stdin-cache.json');
     expect(existsSync(legacy)).toBe(true);
   });
 
@@ -164,7 +164,7 @@ describe('HUD stdin cache path is session-scoped', () => {
 
     writeStdinCache(stdin);
 
-    const expected = join(tmpRoot, '.omcp', 'state', 'sessions', 'secondary-session', 'hud-stdin-cache.json');
+    const expected = join(tmpRoot, '.omg', 'state', 'sessions', 'secondary-session', 'hud-stdin-cache.json');
     expect(existsSync(expected)).toBe(true);
   });
 
@@ -180,13 +180,13 @@ describe('HUD stdin cache path is session-scoped', () => {
     writeStdinCache(stdin);
 
     const expectedSecondary = join(
-      tmpRoot, '.omcp', 'state', 'sessions', 'valid-secondary', 'hud-stdin-cache.json',
+      tmpRoot, '.omg', 'state', 'sessions', 'valid-secondary', 'hud-stdin-cache.json',
     );
     expect(existsSync(expectedSecondary)).toBe(true);
 
     // And in particular, the legacy flat path must NOT have been used —
     // otherwise concurrent sessions could still clobber each other.
-    const legacy = join(tmpRoot, '.omcp', 'state', 'hud-stdin-cache.json');
+    const legacy = join(tmpRoot, '.omg', 'state', 'hud-stdin-cache.json');
     expect(existsSync(legacy)).toBe(false);
 
     // Safety probe: traversal from primary must not have escaped.
@@ -201,9 +201,9 @@ describe('HUD stdin cache path is session-scoped', () => {
 
     writeStdinCache(stdin);
 
-    const legacy = join(tmpRoot, '.omcp', 'state', 'hud-stdin-cache.json');
+    const legacy = join(tmpRoot, '.omg', 'state', 'hud-stdin-cache.json');
     expect(existsSync(legacy)).toBe(true);
-    const sessionsDir = join(tmpRoot, '.omcp', 'state', 'sessions');
+    const sessionsDir = join(tmpRoot, '.omg', 'state', 'sessions');
     expect(existsSync(sessionsDir)).toBe(false);
   });
 });
