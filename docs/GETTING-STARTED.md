@@ -161,6 +161,14 @@ OMC automatically checks for updates every 24 hours. To update manually, re-run 
 /plugin uninstall oh-my-copilot@oh-my-copilot
 ```
 
+To also strip OMC files and hook entries from your host CLI config directory, run the Node uninstaller from the plugin root. It works on Windows, macOS, and Linux without bash or jq:
+
+```bash
+node scripts/uninstall.mjs --dry-run   # preview every change
+node scripts/uninstall.mjs             # confirm interactively
+node scripts/uninstall.mjs --yes       # no prompt
+```
+
 ---
 
 ## First Session

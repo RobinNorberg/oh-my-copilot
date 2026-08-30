@@ -1,0 +1,244 @@
+import { describe, it, expect, afterEach } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// The Node setup lifecycle must run everywhere Node runs: no bash, no jq, no
+// POSIX date. These tests exercise the scripts through the real Node binary on
+// whatever platform the suite is running on.
+
+const REPO_ROOT = join(__dirname, '..', '..');
+const SETUP_PROGRESS = join(REPO_ROOT, 'scripts', 'setup-progress.mjs');
+const UNINSTALL = join(REPO_ROOT, 'scripts', 'uninstall.mjs');
+
+const tempRoots: string[] = [];
+
+function makeWorkspace(prefix: string) {
+  const root = mkdtempSync(join(tmpdir(), prefix));
+  tempRoots.push(root);
+  const project = join(root, 'project');
+  const configDir = join(root, 'config');
+  mkdirSync(project, { recursive: true });
+  mkdirSync(configDir, { recursive: true });
+  // The state root resolver anchors workspace state at the git root, so the
+  // fixture must be a repository for setup state to stay inside the temp dir.
+  spawnSync('git', ['init', '--quiet'], { cwd: project, encoding: 'utf-8' });
+  return { root, project, configDir };
+}
+
+function runScript(script: string, args: string[], cwd: string, configDir: string) {
+  return spawnSync(process.execPath, [script, ...args], {
+    cwd,
+    encoding: 'utf-8',
+    env: { ...process.env, COPILOT_CONFIG_DIR: configDir },
+  });
+}
+
+afterEach(() => {
+  while (tempRoots.length > 0) {
+    const root = tempRoots.pop();
+    if (root) rmSync(root, { recursive: true, force: true });
+  }
+});
+
+describe('setup-progress.mjs', () => {
+  it('reports a fresh tree, then saves and resumes progress', () => {
+    const { project, configDir } = makeWorkspace('omc-progress-node-');
+
+    const fresh = runScript(SETUP_PROGRESS, ['resume'], project, configDir);
+    expect(fresh.status).toBe(0);
+    expect(fresh.stdout.trim()).toBe('fresh');
+
+    const saved = runScript(SETUP_PROGRESS, ['save', '2', 'local'], project, configDir);
+    expect(saved.status).toBe(0);
+
+    const state = JSON.parse(
+      readFileSync(join(project, '.omg', 'state', 'setup-state.json'), 'utf-8'),
+    ) as { lastCompletedStep: number; configType: string; timestamp: string };
+    expect(state.lastCompletedStep).toBe(2);
+    expect(state.configType).toBe('local');
+    expect(Number.isNaN(Date.parse(state.timestamp))).toBe(false);
+
+    const resumed = runScript(SETUP_PROGRESS, ['resume'], project, configDir);
+    expect(resumed.status).toBe(0);
+    expect(resumed.stdout).toContain('Found previous setup session (Step 2');
+    expect(resumed.stdout.trim().split(/\r?\n/).at(-1)).toBe('2');
+  });
+
+  it('carries the recorded config type forward when save omits it', () => {
+    const { project, configDir } = makeWorkspace('omc-progress-carry-');
+
+    runScript(SETUP_PROGRESS, ['save', '2', 'global'], project, configDir);
+    const saved = runScript(SETUP_PROGRESS, ['save', '3'], project, configDir);
+
+    expect(saved.status).toBe(0);
+    expect(saved.stdout).toContain('Progress saved: step 3 (global)');
+  });
+
+  it('discards state older than 24 hours', () => {
+    const { project, configDir } = makeWorkspace('omc-progress-stale-');
+    const statePath = join(project, '.omg', 'state', 'setup-state.json');
+    mkdirSync(join(project, '.omg', 'state'), { recursive: true });
+    writeFileSync(
+      statePath,
+      JSON.stringify({ lastCompletedStep: 3, timestamp: '2001-01-01T00:00:00.000Z', configType: 'local' }),
+    );
+
+    const result = runScript(SETUP_PROGRESS, ['resume'], project, configDir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('more than 24 hours old');
+    expect(result.stdout.trim().split(/\r?\n/).at(-1)).toBe('fresh');
+    expect(existsSync(statePath)).toBe(false);
+  });
+
+  it('fails closed on invalid state instead of rewriting it', () => {
+    const { project, configDir } = makeWorkspace('omc-progress-invalid-');
+    const statePath = join(project, '.omg', 'state', 'setup-state.json');
+    mkdirSync(join(project, '.omg', 'state'), { recursive: true });
+    writeFileSync(statePath, '{not json');
+
+    const result = runScript(SETUP_PROGRESS, ['resume'], project, configDir);
+
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('invalid JSON');
+    expect(readFileSync(statePath, 'utf-8')).toBe('{not json');
+  });
+
+  it('merges completion metadata into an existing config without jq', () => {
+    const { project, configDir } = makeWorkspace('omc-progress-complete-');
+    const configPath = join(configDir, '.omc-config.json');
+    writeFileSync(configPath, JSON.stringify({ existing: true }, null, 2));
+
+    const result = runScript(SETUP_PROGRESS, ['complete', 'v9.9.9'], project, configDir);
+
+    expect(result.status).toBe(0);
+    const config = JSON.parse(readFileSync(configPath, 'utf-8')) as Record<string, unknown>;
+    expect(config.existing).toBe(true);
+    expect(config.setupVersion).toBe('v9.9.9');
+    expect(config.setupCompleted).toBeTruthy();
+  });
+
+  it('preserves an unparseable config rather than truncating it', () => {
+    const { project, configDir } = makeWorkspace('omc-progress-badconfig-');
+    const configPath = join(configDir, '.omc-config.json');
+    writeFileSync(configPath, 'garbage');
+
+    const result = runScript(SETUP_PROGRESS, ['complete', 'v1.0.0'], project, configDir);
+
+    expect(result.status).not.toBe(0);
+    expect(readFileSync(configPath, 'utf-8')).toBe('garbage');
+  });
+
+  it('reads the version from the CLAUDE.md marker when complete gets no argument', () => {
+    const { project, configDir } = makeWorkspace('omc-progress-version-');
+    mkdirSync(join(project, '.claude'), { recursive: true });
+    writeFileSync(join(project, '.claude', 'CLAUDE.md'), '<!-- OMC:VERSION:5.1.2 -->\n');
+
+    const result = runScript(SETUP_PROGRESS, ['complete'], project, configDir);
+
+    expect(result.status).toBe(0);
+    const config = JSON.parse(readFileSync(join(configDir, '.omc-config.json'), 'utf-8')) as {
+      setupVersion: string;
+    };
+    expect(config.setupVersion).toBe('5.1.2');
+  });
+});
+
+describe('uninstall.mjs', () => {
+  function seedInstall(configDir: string) {
+    mkdirSync(join(configDir, 'agents'), { recursive: true });
+    mkdirSync(join(configDir, 'skills', 'git-master'), { recursive: true });
+    writeFileSync(join(configDir, 'agents', 'architect.md'), 'agent');
+    writeFileSync(join(configDir, 'skills', 'git-master', 'SKILL.md'), 'skill');
+    const settingsPath = join(configDir, 'settings.json');
+    writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          model: 'opus',
+          hooks: {
+            UserPromptSubmit: [
+              { matcher: '*', hooks: [{ type: 'command', command: 'hooks/keyword-detector.sh' }] },
+              { matcher: '*', hooks: [{ type: 'command', command: 'vendor/third-party.sh' }] },
+            ],
+            Stop: [{ matcher: '*', hooks: [{ type: 'command', command: 'hooks/stop-continuation.sh' }] }],
+          },
+        },
+        null,
+        2,
+      ),
+    );
+    return settingsPath;
+  }
+
+  it('changes nothing in dry-run mode', () => {
+    const { project, configDir } = makeWorkspace('omc-uninstall-dry-');
+    const settingsPath = seedInstall(configDir);
+    const before = readFileSync(settingsPath, 'utf-8');
+
+    const result = runScript(UNINSTALL, ['--dry-run'], project, configDir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('DRY RUN');
+    expect(result.stdout).toContain('would remove');
+    expect(existsSync(join(configDir, 'agents', 'architect.md'))).toBe(true);
+    expect(readFileSync(settingsPath, 'utf-8')).toBe(before);
+  });
+
+  it('removes OMC entries but leaves third-party hooks and settings intact', () => {
+    const { project, configDir } = makeWorkspace('omc-uninstall-run-');
+    const settingsPath = seedInstall(configDir);
+
+    const result = runScript(UNINSTALL, ['--yes'], project, configDir);
+
+    expect(result.status).toBe(0);
+    expect(existsSync(join(configDir, 'agents', 'architect.md'))).toBe(false);
+    expect(existsSync(join(configDir, 'skills', 'git-master'))).toBe(false);
+    expect(existsSync(`${settingsPath}.bak`)).toBe(true);
+
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as {
+      model: string;
+      hooks: { UserPromptSubmit: { hooks: { command: string }[] }[]; Stop?: unknown };
+    };
+    expect(settings.model).toBe('opus');
+    expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
+    expect(settings.hooks.UserPromptSubmit[0].hooks[0].command).toBe('vendor/third-party.sh');
+    expect(settings.hooks.Stop).toBeUndefined();
+  });
+
+  it('refuses to run unattended without --yes', () => {
+    const { project, configDir } = makeWorkspace('omc-uninstall-noninteractive-');
+    seedInstall(configDir);
+
+    const result = runScript(UNINSTALL, [], project, configDir);
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain('Uninstallation cancelled');
+    expect(existsSync(join(configDir, 'agents', 'architect.md'))).toBe(true);
+  });
+});
+
+describe('omc-setup skill documents the Node entry points', () => {
+  const SETUP_DOCS = [
+    join(REPO_ROOT, 'skills', 'omc-setup', 'SKILL.md'),
+    join(REPO_ROOT, 'skills', 'omc-setup', 'phases', '01-install-claude-md.md'),
+    join(REPO_ROOT, 'skills', 'omc-setup', 'phases', '02-configure.md'),
+    join(REPO_ROOT, 'skills', 'omc-setup', 'phases', '03-integrations.md'),
+    join(REPO_ROOT, 'skills', 'omc-setup', 'phases', '04-welcome.md'),
+  ];
+
+  it('never instructs the agent to shell into the bash setup scripts', () => {
+    const offenders = SETUP_DOCS.filter(doc =>
+      /\bbash\s+"?\$\{?OMC_SETUP_PLUGIN_ROOT/.test(readFileSync(doc, 'utf-8')),
+    );
+    expect(offenders).toEqual([]);
+  });
+
+  it('invokes setup-progress and setup-claude-md through node', () => {
+    const skill = readFileSync(SETUP_DOCS[0], 'utf-8');
+    expect(skill).toContain('node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs"');
+    expect(skill).toContain('node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs"');
+  });
+});

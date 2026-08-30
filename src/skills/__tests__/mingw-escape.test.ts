@@ -157,6 +157,9 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
     });
 
     it('omc-setup extracts CLAUDE.md version from OMC marker', () => {
+      // Version detection moved out of the setup markdown into
+      // scripts/setup-progress.mjs so it no longer needs grep/sed; the marker
+      // remains the source of truth, and the heading grep must stay retired.
       const setupDir = join(REPO_ROOT, 'skills', 'omc-setup');
       const files = [
         join(setupDir, 'SKILL.md'),
@@ -164,7 +167,8 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
         join(REPO_ROOT, 'scripts', 'setup-claude-md.sh'),
       ].filter(f => f.endsWith('.md') || f.endsWith('.sh'));
       const combined = files.map(f => readFileSync(f, 'utf-8')).join('\n');
-      expect(combined).toContain("grep -m1 'OMC:VERSION:'");
+      const progress = readFileSync(join(REPO_ROOT, 'scripts', 'setup-progress.mjs'), 'utf-8');
+      expect(progress).toContain('OMC:VERSION:');
       expect(combined).not.toContain('grep -m1 "^# oh-my-copilot"');
     });
 

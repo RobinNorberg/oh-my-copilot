@@ -192,28 +192,10 @@ echo ""
 
 ## Mark Completion
 
-Get the current OMC version and mark setup complete:
+Mark setup complete:
 
 ```bash
-# Get current OMC version from CLAUDE.md
-OMC_VERSION=""
-CONFIG_DIR="${COPILOT_CONFIG_DIR:-$HOME/.claude}"
-case "$CONFIG_DIR" in
-  "~") CONFIG_DIR="$HOME" ;;
-  "~/"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~/}" ;;
-  "~\\"*) CONFIG_DIR="$HOME/${CONFIG_DIR#\~\\}" ;;
-esac
-if [ -f ".claude/CLAUDE.md" ]; then
-  OMC_VERSION=$(grep -m1 'OMC:VERSION:' .claude/CLAUDE.md 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
-elif [ -f "$CONFIG_DIR/CLAUDE.md" ]; then
-  OMC_VERSION=$(grep -m1 'OMC:VERSION:' "$CONFIG_DIR/CLAUDE.md" 2>/dev/null | sed -E 's/.*OMC:VERSION:([^ ]+).*/\1/' || true)
-fi
-if [ -z "$OMC_VERSION" ]; then
-  OMC_VERSION=$(omc --version 2>/dev/null | head -1 || true)
-fi
-if [ -z "$OMC_VERSION" ]; then
-  OMC_VERSION="unknown"
-fi
-
-bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" complete "$OMC_VERSION"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" complete
 ```
+
+With no version argument, `complete` reads the `OMC:VERSION:` marker from `.claude/CLAUDE.md`, falls back to the marker in the global `CLAUDE.md` (honouring `COPILOT_CONFIG_DIR`), then to `omc --version`, and finally records `unknown`.

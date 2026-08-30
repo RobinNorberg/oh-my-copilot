@@ -30,8 +30,10 @@ Set `GLOBAL_INSTALL_STYLE=overwrite` or `preserve` based on the user's choice. I
 **MANDATORY**: Always run this command. Do NOT skip. Do NOT use the Write tool. The script is the sole plugin-cache resolver and invokes the selected plugin root's `bridge/claude-md-coordinator.cjs` with one versioned JSON request. It fails closed when required plugin assets, the canonical-source handshake, coordinator response validation, or coordinator exit/`ok` agreement fails.
 
 ```bash
-bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.sh" <CONFIG_TARGET> [GLOBAL_INSTALL_STYLE]
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" <CONFIG_TARGET> [GLOBAL_INSTALL_STYLE]
 ```
+
+This entry point needs only Node, so it works the same on Windows, macOS, and Linux. The older `scripts/setup-claude-md.sh` still exists for back-compat but requires bash and jq.
 
 Replace `<CONFIG_TARGET>` with `local` or `global`. For local installs, omit the optional style argument. For global installs, pass `overwrite` or `preserve` when you know the user's choice; otherwise let the script default to `overwrite`.
 
@@ -78,13 +80,13 @@ Note: Hooks are now managed by the plugin system automatically. No manual hook i
 ## Save Progress
 
 ```bash
-bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" save 2 <CONFIG_TARGET>
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 2 <CONFIG_TARGET>
 ```
 
 ## Early Exit for Flag Mode
 
 If `--local` or `--global` flag was used, clear state and **STOP HERE**:
 ```bash
-bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" clear
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" clear
 ```
 Do not continue to Phase 2 or other phases.

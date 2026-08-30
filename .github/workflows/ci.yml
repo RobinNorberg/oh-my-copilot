@@ -523,6 +523,10 @@ jobs:
           test -f "$SMOKE_PACKAGE_ROOT/bridge/claude-md-coordinator.cjs"
           test -f "$SMOKE_PACKAGE_ROOT/scripts/setup-claude-md.sh"
           test -f "$SMOKE_PACKAGE_ROOT/scripts/lib/config-dir.sh"
+          test -f "$SMOKE_PACKAGE_ROOT/scripts/setup-claude-md.mjs"
+          test -f "$SMOKE_PACKAGE_ROOT/scripts/setup-progress.mjs"
+          test -f "$SMOKE_PACKAGE_ROOT/scripts/uninstall.mjs"
+          test -f "$SMOKE_PACKAGE_ROOT/scripts/lib/config-dir.mjs"
           test -s "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md"
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/SKILL.md"
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/phases/01-install-claude-md.md"
@@ -537,7 +541,7 @@ jobs:
               ;;
           esac
           cd "$SMOKE_PROJECT"
-          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" bash -c 'bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.sh" local'
+          env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" bash -c 'node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" local'
           cmp "$SMOKE_PACKAGE_ROOT/docs/CLAUDE.md" "$SMOKE_PROJECT/.claude/CLAUDE.md"
           cmp "$SMOKE_PACKAGE_ROOT/skills/wiki/SKILL.md" "$SMOKE_PROJECT/.claude/skills/wiki/SKILL.md"
           COORDINATOR_SHA256=$(sha256sum "$SMOKE_PACKAGE_ROOT/bridge/claude-md-coordinator.cjs" | cut -d ' ' -f 1)

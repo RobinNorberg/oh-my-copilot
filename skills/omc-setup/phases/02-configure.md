@@ -54,9 +54,10 @@ This will:
 
 After HUD setup completes, save progress:
 ```bash
-CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omg/state/setup-state.json" 2>/dev/null || echo "unknown")
-bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" save 3 "$CONFIG_TYPE"
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 3
 ```
+
+With no config type argument, `save` carries forward the one already recorded in `.omg/state/setup-state.json`.
 
 ## Step 2.2: Repair Stale Plugin Cache References
 
@@ -275,11 +276,8 @@ echo "Task tool set to: USER_CHOICE"
 
 ## Save Progress
 
+If this phase was resumed at the Phase 2 boundary (`RESUMED_PHASE_TWO_BOUNDARY` is true), do NOT save; report `Resumed Phase 2: preserving lastCompletedStep=<RESUME_LAST_COMPLETED_STEP>` instead. Otherwise run:
+
 ```bash
-CONFIG_TYPE=$(jq -r '.configType // "unknown"' ".omg/state/setup-state.json" 2>/dev/null || echo "unknown")
-if [ "${RESUMED_PHASE_TWO_BOUNDARY:-false}" != "true" ]; then
-  bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" save 4 "$CONFIG_TYPE"
-else
-  echo "Resumed Phase 2: preserving lastCompletedStep=$RESUME_LAST_COMPLETED_STEP"
-fi
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" save 4
 ```

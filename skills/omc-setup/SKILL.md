@@ -54,13 +54,13 @@ MODES:
     - If already configured, offers quick update option
 
   Local Configuration (--local)
-    - Invokes the plugin-local coordinator through `scripts/setup-claude-md.sh`; the shell validates the coordinator response and its exit status before any post-install work
+    - Invokes the plugin-local coordinator through `scripts/setup-claude-md.mjs`; the script validates the coordinator response and its exit status before any post-install work
     - Reports coordinator-created byte-identical backups only for files that required mutation
     - Project-specific settings
     - Use this to update project config after OMC upgrades
 
   Global Configuration (--global)
-    - Invokes the plugin-local coordinator through `scripts/setup-claude-md.sh`; the shell validates the coordinator response and its exit status before any post-install work
+    - Invokes the plugin-local coordinator through `scripts/setup-claude-md.mjs`; the script validates the coordinator response and its exit status before any post-install work
     - Reports coordinator-created byte-identical backups only for changed global files
     - Default: explicitly overwrites ~/.claude/CLAUDE.md so plain `claude` also uses OMC
     - Optional preserve mode keeps the user's base `CLAUDE.md` and installs OMC into `CLAUDE-omc.md` for `omc` launches
@@ -88,8 +88,10 @@ For more info: https://github.com/Yeachan-Heo/oh-my-copilot
 Do not independently scan plugin cache directories or select a plugin root in this skill. Invoke the setup script from the plugin root supplied by the running plugin environment:
 
 ```bash
-bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.sh" <local|global> [overwrite|preserve]
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" <local|global> [overwrite|preserve]
 ```
+
+This runs unchanged on Windows, macOS, and Linux: it needs only Node, never bash or jq. (`scripts/setup-claude-md.sh` remains for back-compat with older invocations; the Node entry point above is the supported path.)
 
 The script is the sole cache resolver. It accepts only complete plugin roots (canonical `docs/CLAUDE.md`, coordinator artifact, and `wiki` skill), chooses a strict full-SemVer cache version, verifies the compiled-source handshake, and fails closed on coordinator protocol or status disagreement. Do not download configuration or mutate `CLAUDE.md` outside that coordinator.
 
@@ -141,8 +143,8 @@ Use AskUserQuestion to prompt:
 
 **If user chooses "Update CLAUDE.md and clear retired setup values":**
 - Detect if local (.claude/CLAUDE.md) or global (~/.claude/CLAUDE.md) config exists
-- If local exists, run: `bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.sh" local`
-- If only global exists, run: `bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.sh" global`
+- If local exists, run: `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" local`
+- If only global exists, run: `node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-claude-md.mjs" global`
 - Run Phase 2 Step 2.4 to clear the retired `defaultExecutionMode` key
 - Skip all other steps after the cleanup
 - Report success and exit
@@ -162,7 +164,7 @@ If user passes `--force` flag, skip this check and proceed directly to setup.
 Before starting any phase, check for existing state:
 
 ```bash
-bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" resume
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" resume
 ```
 
 If state exists (output is not "fresh"), use AskUserQuestion to prompt:
@@ -175,7 +177,7 @@ If state exists (output is not "fresh"), use AskUserQuestion to prompt:
 
 If user chooses "Start fresh":
 ```bash
-bash "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh" clear
+node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" clear
 ```
 
 ## Phase Execution
@@ -197,7 +199,7 @@ Execute phases sequentially. For each phase, read the corresponding file and fol
 
 ## Graceful Interrupt Handling
 
-**IMPORTANT**: This setup process saves progress after each phase via `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.sh`. If interrupted (Ctrl+C or connection loss), the setup can resume from where it left off.
+**IMPORTANT**: This setup process saves progress after each phase via `${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs`. If interrupted (Ctrl+C or connection loss), the setup can resume from where it left off.
 
 ## Keeping Up to Date
 

@@ -238,6 +238,11 @@ function collectManifestEntrypoints(root) {
 
   if (existsSync(join(root, 'scripts', 'setup-claude-md.sh'))) paths.add('scripts/setup-claude-md.sh');
   if (existsSync(join(root, 'scripts', 'lib', 'config-dir.sh'))) paths.add('scripts/lib/config-dir.sh');
+  // Node setup lifecycle: the documented, bash-free entry points.
+  if (existsSync(join(root, 'scripts', 'setup-claude-md.mjs'))) paths.add('scripts/setup-claude-md.mjs');
+  if (existsSync(join(root, 'scripts', 'setup-progress.mjs'))) paths.add('scripts/setup-progress.mjs');
+  if (existsSync(join(root, 'scripts', 'uninstall.mjs'))) paths.add('scripts/uninstall.mjs');
+  if (existsSync(join(root, 'scripts', 'lib', 'config-dir.mjs'))) paths.add('scripts/lib/config-dir.mjs');
   for (const path of OPTIONAL_BRIDGE_PAYLOADS) if (existsSync(join(root, path))) paths.add(path);
   return { paths, pluginJson };
 }
