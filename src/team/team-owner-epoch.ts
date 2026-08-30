@@ -122,8 +122,17 @@ export function isValidProcessStartIdentity(value: unknown, platform: NodeJS.Pla
     && value.slice(separator + 1).length > 0 && !/[\u0000-\u001f\u007f]/.test(value.slice(separator + 1));
 }
 
+/**
+ * Our own start identity cannot change while we are running, and on Windows reading it costs a
+ * PowerShell spawn (~200ms measured), which every lock acquisition would otherwise pay. Only this
+ * process is cached: a foreign pid can be recycled, so its identity must be re-read each time.
+ */
+let ownProcessStartIdentity: string | null | undefined;
+
 export function currentProcessStartIdentity(pid: number = process.pid): string | null {
-  return processStartIdentityForPlatform(pid);
+  if (pid !== process.pid) return processStartIdentityForPlatform(pid);
+  if (ownProcessStartIdentity === undefined) ownProcessStartIdentity = processStartIdentityForPlatform(pid);
+  return ownProcessStartIdentity;
 }
 function processStartIdentitiesMayMatch(recorded: string, observed: string): boolean {
   if (recorded === observed) return true;
