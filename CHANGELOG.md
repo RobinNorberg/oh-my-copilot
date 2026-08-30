@@ -88,6 +88,110 @@ and command names outright rather than aliasing them.
   aliases (e.g. `reviewer`) now resolve correctly against `team.roleRouting`
   during validation and stage routing, instead of being silently rejected or
   ignored.
+- **State-file locking works on Windows and macOS.** `flockPath()` probed only
+  `/usr/bin/flock` and `/bin/flock`, so off Linux `acquireLockAt()` returned
+  `unlocked: true` while the caller was still told the lock was acquired —
+  there was no inter-process exclusion at all. A portable lockfile fallback
+  now runs wherever `flock` is absent: `O_EXCL` temp plus `linkSync`
+  publication, an `O_EXCL` guard marker serializing reclaim and release, and
+  stale owners cleared by a PID liveness probe with a 60s age ceiling. The
+  result reports `acquired: false` rather than claiming exclusivity it does
+  not have, and `flock` stays the fast path where it exists. Applied
+  identically to `scripts/lib/atomic-write.mjs`,
+  `templates/hooks/lib/atomic-write.mjs`, and `src/lib/mode-state-io.ts`.
+  `OMC_TEST_STATE_LOCK_MODE` selects `none` or `portable` for tests.
+- **Named autopilot workflows are no longer refused off Linux.**
+  `isWorkflowRuntimeSupported()` required `process.platform === 'linux'` plus
+  an `flock` binary, and `namedWorkflowRuntimeSupported()` additionally
+  required `/proc/self/fd`, so named workflow profiles were rejected outright
+  on Windows and macOS while state writes skipped integrity validation. Both
+  gates now ask whether a working state-file lock exists rather than which
+  platform is running. The `/proc/self/fd` transcript walk is kept verbatim on
+  Linux; elsewhere each path component is rejected up front if it is a symlink
+  and the opened file is confirmed by device and inode, preserving the
+  no-follow contract.
+- **Setup and uninstall no longer require bash or jq.** `/omc-setup` drove
+  `scripts/setup-claude-md.sh` and `scripts/setup-progress.sh`, the latter
+  exiting when `jq` was missing, and `scripts/uninstall.sh` had no non-bash
+  equivalent — so a Windows user without Git Bash could never complete setup
+  and had no supported uninstall, and resume broke on a stock macOS install.
+  `scripts/setup-claude-md.mjs`, `scripts/setup-progress.mjs`, and
+  `scripts/uninstall.mjs` are the documented entry points; `uninstall.mjs`
+  takes `--dry-run` and `--yes`. The shell scripts remain for back-compat.
+- **Plugin hooks survive a marketplace update and a shared config directory.**
+  The cached `hooks/hooks.json` was rewritten at install time from
+  `process.platform`, so the manifest was locked to whichever OS ran setup: a
+  config directory used from both WSL/macOS and native Windows failed every
+  hook with `'sh' is not recognized`, and each marketplace update reinstalled
+  the unpatched form. The rewrite is now a capability probe — the portable
+  `node .../run.cjs` form everywhere it works, and the `find-node.sh` bootstrap
+  only on a POSIX host whose non-interactive `PATH` has no `node`.
+- **Skill instructions run on Windows.** Eighteen skills, across 21 markdown
+  files, embedded POSIX-only command blocks with no Windows variant — including
+  the cancel skill's emergency stop-hook escape (a sha256 shell function, GNU
+  `date -u -d`, and a python3 heredoc) and the hud install step, whose
+  `mkdir -p` and `cp` meant `omcp-hud.mjs` was never installed while
+  `statusLine` pointed at it. Those blocks are now `node -e` one-liners. The
+  cancel escape reuses `scripts/lib/state-root.mjs`, so it honours
+  `OMC_STATE_DIR` and workspace markers exactly as the state tools do.
+- **Autoresearch evaluator commands run on Windows.** Evaluator commands are
+  user-authored POSIX `sh`; running them through `spawnSync` with `shell:true`
+  handed them to `cmd.exe`, so every iteration recorded `error` and no mission
+  could pass. `src/platform/posix-shell.ts` discovers a real POSIX shell and
+  routes the command through `bash -lc`; when none exists the record carries
+  an actionable message instead of an inscrutable `cmd.exe` failure.
+- **Workflow integrity checks accept NTFS file ids.** Windows file ids
+  routinely exceed `Number.MAX_SAFE_INTEGER`, but the transcript identity was
+  built with `Number(stat.ino)` and then validated with
+  `Number.isSafeInteger`, so the producer emitted values its own validator
+  rejected and named workflow Stop handling answered
+  `workflow_descriptor_integrity_failed`. Rounding also let two distinct files
+  compare equal. Device and inode now travel as decimal strings, matching what
+  `mtimeNs` and `ctimeNs` already did; validation still accepts a legacy safe
+  integer, so existing state keeps validating.
+- **Windows path matching in team permissions, the bridge daemon, and worktree
+  cleanup.** Three defects of the same shape: `isPathAllowed` compared a
+  `relative()` result carrying backslashes against `/`-written globs, so
+  `allowedPaths` denied everything and — more seriously — `deniedPaths` stopped
+  denying anything; `validateConfigPath` built containment by concatenating
+  `homeDir + '/'`, which no resolved Windows path matches, so the bridge daemon
+  could not start at all; and `assertCleanLeaderWorktree` still filtered
+  untracked `.omc` after the runtime root was renamed, so OMC's own metadata
+  made the leader look dirty and blocked a second worker. All three now go
+  through `path.relative` with segment boundaries preserved.
+- **The OMC config directory is unified on `${COPILOT_CONFIG_DIR:-~/.copilot}`.**
+  `scripts/lib/config-dir.mjs` and `.cjs` defaulted to `~/.claude` while
+  `src/utils/config-dir.ts` and `scripts/lib/config-dir.sh` — which their own
+  header names as mirrors — defaulted to `~/.copilot`. The bash lifecycle
+  therefore wrote `.omc-config.json` where the Node hooks never looked, so
+  settings written by one half of the install were invisible to the other.
+  Setup now also adopts a stranded pre-unification `~/.claude/.omc-config.json`
+  when the resolved location has none, copying rather than moving; the
+  `omc-doctor` skill reports one it finds.
+- **Background daemons start under Volta and nvm-windows.** The rate-limit-wait
+  daemon and the notification reply-listener spawned themselves as
+  `spawn('node', ...)` with a stripped env, so where the `node` on the
+  forwarded `PATH` did not exist the spawn failed and the daemon silently never
+  started. Both now use `process.execPath`, which needs nothing from `PATH`.
+  `resolveDaemonModulePath` also follows the shape of the path it is given
+  rather than the host platform.
+- **The CLI trust check understands Windows.** Trusted prefixes were POSIX-only
+  paths joined onto `$HOME`, `OMC_TRUSTED_CLI_DIRS` was split on `:` (shredding
+  `C:\Tools\bin`), and matching was a case-sensitive `startsWith`, so every CLI
+  resolution on Windows warned about a non-standard path with no way to silence
+  it. Home now comes from `USERPROFILE` on Windows, Windows contributes its own
+  trusted roots, the override splits on the platform delimiter, and boundary
+  matching uses `path.relative`.
+- **Every tmux call goes through argv.** `tmuxShell` built a bare
+  `tmux <command>` string, skipping the win32 `.cmd`/`COMSPEC` wrapping
+  `resolveTmuxInvocation` exists to apply and forcing callers to POSIX-quote
+  format arguments — `cmd.exe` passes single quotes through literally, so
+  `-F '#{pane_id}'` came back quote-wrapped and pane matching never fired.
+  `isTmuxAvailable` also probes with `shell:false`, so an install path
+  containing a space no longer reports tmux as missing. This removes the last
+  shell-string assumptions from the tmux surface, which is what a Windows
+  tmux-compatible binary such as psmux needs; it was verified with unit tests
+  against mocked spawns rather than a live tmux session.
 
 ### Changed
 
@@ -97,6 +201,17 @@ and command names outright rather than aliasing them.
 - **Publishing is unchanged:** a `v*` tag still produces a GitHub Release and
   npm publish via `release.yml`. Upstream moved to OIDC Trusted Publishing;
   this fork deliberately did not adopt that change.
+- **Executable resolution is consolidated into `src/platform`.** The Windows
+  resolution ritual (`where`/`which`, `.cmd` shim handling, `COMSPEC`
+  fallback) had been reimplemented independently in six places, most without a
+  timeout — a hook checking for a formatter could hang on an unreachable
+  network-drive `PATH` entry. `src/platform/executable-resolution.ts` now
+  exposes `resolveExecutable`, `isExecutableAvailable`, and `probeExecutable`,
+  and the copies in `src/team/cli-detection.ts`, `src/team/model-contract.ts`,
+  `src/mcp/cli-detection.ts`, `src/hooks/plugin-patterns/index.ts`,
+  `src/tools/lsp/servers.ts`, and `src/cli/tmux-utils.ts` all delegate to it.
+  Importers are unchanged. The `COMSPEC` retry validates its arguments against
+  a closed grammar before they reach `cmd.exe`.
 
 ### Install
 

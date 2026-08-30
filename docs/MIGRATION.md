@@ -66,7 +66,7 @@ hook subsystem is gone with no replacement, and two opt-in features are
 added. Fork-exclusive skills (Azure DevOps, GitHub, and four standalone
 skills) are unaffected.
 
-### Directory moves: `.claude/` → `.copilot/`, `.omg/` → `.omg/`
+### Directory moves: `.claude/` → `.copilot/`, `.omc/` → `.omg/`
 
 **v5.0.0 does not auto-migrate either directory.** Whatever you leave behind
 in the old locations is simply ignored, not read, and not merged — you must
@@ -93,8 +93,15 @@ skills, plugins, rules, tasks, and worktrees.
 - Everything else under `.claude/` — settings, hooks, commands, skills,
   plugins, rules, tasks, worktrees — is **not** read from `.claude/` anymore
   and must be moved to `.copilot/` to keep working.
+- Your user-level OMC config, `.omc-config.json`, now resolves to
+  `${COPILOT_CONFIG_DIR:-~/.copilot}/.omc-config.json`. This one you do *not*
+  have to move: if `~/.claude/.omc-config.json` is the only copy you have,
+  `/oh-my-copilot:omc-setup` adopts it into the new location when setup
+  completes, copying rather than moving so nothing is destroyed.
+  `/oh-my-copilot:omc-doctor` reports a stranded copy and can adopt it on its
+  own, and setting `COPILOT_CONFIG_DIR` overrides the location entirely.
 
-**2. `.omg/` → `.omg/`.** All oh-my-copilot runtime files move: state,
+**2. `.omc/` → `.omg/`.** All oh-my-copilot runtime files move: state,
 sessions, logs, plans, research, `notepad.md`, `project-memory.json`,
 drafts, and autopilot/team state. Move the whole tree:
 
@@ -103,7 +110,7 @@ mv .omc .omg
 ```
 
 If you pin `planOutput.directory` explicitly in config, note its **default**
-changed from `.omg/plans` to `.omg/plans` — update an explicit pin
+changed from `.omc/plans` to `.omg/plans` — update an explicit pin
 accordingly (an unpinned config picks up the new default automatically).
 
 **Unchanged:** the multi-repo workspace marker file is still named
