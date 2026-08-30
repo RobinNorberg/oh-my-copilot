@@ -106,7 +106,21 @@ export function atomicWriteFileSync(filePath, content) {
 }
 
 const LOCK_SCHEMA_VERSION = 1;
-function flockPath() { return process.env.NODE_ENV === 'test' && process.env.OMC_TEST_FLOCK_AVAILABLE === '0' ? null : existsSync('/usr/bin/flock') ? '/usr/bin/flock' : existsSync('/bin/flock') ? '/bin/flock' : null; }
+const LOCK_OWNER_KEYS = ['createdAt', 'nonce', 'pid', 'processStart', 'version'];
+/** Reclaim a lock whose owner still looks live only once it is this old (hung holder or recycled pid). */
+const PORTABLE_LOCK_MAX_AGE_MS = 60_000;
+const PORTABLE_GUARD_MAX_AGE_MS = 5_000;
+const PORTABLE_GUARD_ATTEMPTS = 200;
+
+/** 'none' suppresses locking entirely, 'portable' forces the lockfile fallback; null means probe the platform. */
+function testLockMode() {
+  if (process.env.NODE_ENV !== 'test') return null;
+  if (process.env.OMC_TEST_STATE_LOCK_MODE === 'portable') return 'portable';
+  if (process.env.OMC_TEST_STATE_LOCK_MODE === 'none' || process.env.OMC_TEST_FLOCK_AVAILABLE === '0') return 'none';
+  return null;
+}
+function flockPath() { return testLockMode() ? null : existsSync('/usr/bin/flock') ? '/usr/bin/flock' : existsSync('/bin/flock') ? '/bin/flock' : null; }
+function portableLockingAvailable() { return testLockMode() !== 'none'; }
 const LOCK_REMOVAL_SCRIPT = String.raw`
 const fs = require('fs');
 const [operation, lockPath, expectedRaw] = process.argv.slice(1);
@@ -152,9 +166,86 @@ function processStartIdentity(pid) {
     return fields[19] && /^\d+$/.test(fields[19]) ? fields[19] : null;
   } catch (error) { return error?.code === 'ENOENT' ? 'absent' : null; }
 }
+function readLockOwnerAt(lockPath) {
+  let value;
+  try { value = JSON.parse(readFileSync(lockPath, 'utf8')); }
+  catch (error) { return error?.code === 'ENOENT' ? 'absent' : null; }
+  const actual = Object.keys(value ?? {}).sort();
+  if (actual.length !== LOCK_OWNER_KEYS.length || !actual.every((key, index) => key === LOCK_OWNER_KEYS[index]) || value.version !== LOCK_SCHEMA_VERSION || !Number.isSafeInteger(value.pid) || value.pid <= 0 || typeof value.processStart !== 'string' || !/^\d+$/.test(value.processStart) || typeof value.createdAt !== 'string' || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.nonce !== 'string' || !/^[0-9a-f-]{36}$/i.test(value.nonce)) return null;
+  return value;
+}
+
+/** true = running, false = gone, null = undecidable. */
+function pidIsLive(pid) {
+  if (pid === process.pid) return true;
+  try { process.kill(pid, 0); return true; }
+  catch (error) {
+    if (error?.code === 'ESRCH') return false;
+    if (error?.code === 'EPERM') return true;
+    return null;
+  }
+}
+
+/** Serialize reclaim/release with an O_EXCL marker; the fd is closed immediately so unlink stays portable. */
+function acquirePortableGuard(guardPath) {
+  for (let attempt = 0; attempt < PORTABLE_GUARD_ATTEMPTS; attempt += 1) {
+    let fd;
+    try {
+      fd = openSync(guardPath, 'wx', 0o600);
+      writeAllSync(fd, String(process.pid), 'lock guard publication');
+      closeSync(fd);
+      return true;
+    } catch (error) {
+      if (fd !== undefined) { try { closeSync(fd); } catch {} }
+      if (error?.code !== 'EEXIST') return false;
+      let age = null;
+      try { age = Date.now() - statSync(guardPath).mtimeMs; } catch {}
+      if (age !== null && age > PORTABLE_GUARD_MAX_AGE_MS) { try { unlinkSync(guardPath); } catch {} continue; }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+    }
+  }
+  return false;
+}
+
+function portableLockIsLive(observed) {
+  const live = pidIsLive(observed.pid);
+  if (live === null) return null;
+  return live && Date.now() - Date.parse(observed.createdAt) <= PORTABLE_LOCK_MAX_AGE_MS;
+}
+
+function portableLockRemoval(lockPath, operation, owner) {
+  // Reading the owner needs no guard; skipping it keeps the common "holder is alive" path off the filesystem.
+  if (operation !== 'release') {
+    const observed = readLockOwnerAt(lockPath);
+    if (observed && observed !== 'absent') {
+      const live = portableLockIsLive(observed);
+      if (live === null) return 'unverifiable';
+      if (live) return 'live';
+    }
+  }
+  const guardPath = `${lockPath}.reclaim.guard`;
+  if (!acquirePortableGuard(guardPath)) return 'unverifiable';
+  try {
+    const current = readLockOwnerAt(lockPath);
+    if (current === 'absent') return 'retry';
+    if (!current) return 'unverifiable';
+    if (operation === 'release') {
+      if (!owner || current.pid !== owner.pid || current.processStart !== owner.processStart || current.nonce !== owner.nonce) return 'replaced';
+    } else {
+      const live = portableLockIsLive(current);
+      if (live === null) return 'unverifiable';
+      if (live) return 'live';
+    }
+    try { unlinkSync(lockPath); return 'retry'; }
+    catch (error) { return error?.code === 'ENOENT' ? 'retry' : 'unverifiable'; }
+  } finally {
+    try { unlinkSync(guardPath); } catch {}
+  }
+}
+
 function guardedLockRemoval(lockPath, operation, owner) {
   const flock = flockPath();
-  if (!flock) return 'unverifiable';
+  if (!flock) return portableLockingAvailable() ? portableLockRemoval(lockPath, operation, owner) : 'unverifiable';
   const result = spawnSync(flock, ['-x', `${lockPath}.reclaim.guard`, process.execPath, '-e', LOCK_REMOVAL_SCRIPT, operation, lockPath, owner ? JSON.stringify(owner) : ''], { stdio: 'ignore', timeout: 2000 });
   if (result.status === 0) return 'retry';
   if (result.status === 2) return 'live';
@@ -163,18 +254,35 @@ function guardedLockRemoval(lockPath, operation, owner) {
 }
 
 export function isStateFileLockingSupported() {
-  return Boolean(flockPath());
+  return Boolean(flockPath()) || portableLockingAvailable();
+}
+
+/** Clear or wait out a lock someone else holds. Returns false when the holder cannot be adjudicated. */
+function awaitLockTurn(lockPath, attempt) {
+  const disposition = guardedLockRemoval(lockPath, 'reclaim');
+  if (disposition === 'unverifiable') {
+    console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
+    return false;
+  }
+  // Jittered backoff so contending processes do not re-collide in lockstep.
+  if (disposition === 'live') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1 + Math.floor(Math.random() * Math.min(40, 4 * (attempt + 1))));
+  return true;
 }
 
 function acquireLockAt(lockPath, attempts = 50, requireExclusive = false) {
   ensureDirSync(dirname(lockPath));
-  if (!flockPath()) return requireExclusive ? null : { unlocked: true };
+  if (!flockPath() && !portableLockingAvailable()) return requireExclusive ? null : { unlocked: true };
   const processStart = processStartIdentity(process.pid);
   if (!processStart || processStart === 'absent') {
     console.error(`[omc-lock] state_mutation_lock_owner_unverifiable: ${lockPath}`);
     return null;
   }
   for (let attempt = 0; attempt < attempts; attempt += 1) {
+    // Adjudicate a held lock before paying for owner publication.
+    if (existsSync(lockPath)) {
+      if (!awaitLockTurn(lockPath, attempt)) return null;
+      continue;
+    }
     const owner = { version: LOCK_SCHEMA_VERSION, pid: process.pid, processStart, createdAt: new Date().toISOString(), nonce: randomUUID() };
     const tempPath = `${lockPath}.${process.pid}.${owner.nonce}.tmp`;
     let fd;
@@ -189,12 +297,7 @@ function acquireLockAt(lockPath, attempts = 50, requireExclusive = false) {
       if (fd !== undefined) { try { closeSync(fd); } catch {} }
       try { unlinkSync(tempPath); } catch {}
       if (error?.code !== 'EEXIST') return null;
-      const disposition = guardedLockRemoval(lockPath, 'reclaim');
-      if (disposition === 'unverifiable') {
-        console.error(`[omc-lock] state_mutation_lock_unverifiable: ${lockPath}`);
-        return null;
-      }
-      if (disposition === 'live') Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10);
+      if (!awaitLockTurn(lockPath, attempt)) return null;
     }
   }
   return null;
