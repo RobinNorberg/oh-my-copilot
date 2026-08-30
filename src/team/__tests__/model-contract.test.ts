@@ -69,6 +69,8 @@ describe('model-contract', () => {
 
     it('resolveCliBinaryPath resolves and caches paths', () => {
       const mockSpawnSync = vi.mocked(spawnSync);
+      const restorePlatform = setProcessPlatform('linux');
+      mockSpawnSync.mockClear();
       mockSpawnSync.mockReturnValue({ status: 0, stdout: '/usr/local/bin/claude\n', stderr: '', pid: 0, output: [], signal: null });
 
       clearResolvedPathCache();
@@ -76,21 +78,25 @@ describe('model-contract', () => {
       expect(resolveCliBinaryPath('claude')).toBe('/usr/local/bin/claude');
       expect(mockSpawnSync).toHaveBeenCalledTimes(1);
       clearResolvedPathCache();
+      restorePlatform();
     });
 
     it('resolveCliBinaryPath rejects unsafe names and paths', () => {
       const mockSpawnSync = vi.mocked(spawnSync);
+      const restorePlatform = setProcessPlatform('linux');
       expect(() => resolveCliBinaryPath('../evil')).toThrow('Invalid CLI binary name');
 
       mockSpawnSync.mockReturnValue({ status: 0, stdout: '/tmp/evil/claude\n', stderr: '', pid: 0, output: [], signal: null });
       clearResolvedPathCache();
       expect(() => resolveCliBinaryPath('claude')).toThrow('untrusted location');
       clearResolvedPathCache();
+      restorePlatform();
       mockSpawnSync.mockRestore();
     });
 
     it('validateCliBinaryPath returns compatibility result object', () => {
       const mockSpawnSync = vi.mocked(spawnSync);
+      const restorePlatform = setProcessPlatform('linux');
       mockSpawnSync.mockReturnValue({ status: 0, stdout: '/usr/local/bin/claude\n', stderr: '', pid: 0, output: [], signal: null });
 
       clearResolvedPathCache();
@@ -107,19 +113,26 @@ describe('model-contract', () => {
       expect(invalid.binary).toBe('missing-cli');
       expect(invalid.reason).toContain('not found in PATH');
       clearResolvedPathCache();
+      restorePlatform();
       mockSpawnSync.mockRestore();
     });
 
     it('exposes compatibility test internals for path policy', () => {
-      expect(_testInternals.UNTRUSTED_PATH_PATTERNS.some(p => p.test('/tmp/evil'))).toBe(true);
-      expect(_testInternals.UNTRUSTED_PATH_PATTERNS.some(p => p.test('/usr/local/bin/claude'))).toBe(false);
-      const prefixes = _testInternals.getTrustedPrefixes();
-      expect(prefixes).toContain('/usr/local/bin');
-      expect(prefixes).toContain('/usr/bin');
+      const restorePlatform = setProcessPlatform('linux');
+      try {
+        expect(_testInternals.UNTRUSTED_PATH_PATTERNS.some(p => p.test('/tmp/evil'))).toBe(true);
+        expect(_testInternals.UNTRUSTED_PATH_PATTERNS.some(p => p.test('/usr/local/bin/claude'))).toBe(false);
+        const prefixes = _testInternals.getTrustedPrefixes();
+        expect(prefixes).toContain('/usr/local/bin');
+        expect(prefixes).toContain('/usr/bin');
+      } finally {
+        restorePlatform();
+      }
     });
 
     it('isTrustedPrefix enforces directory boundaries (no sibling-prefix bypass)', () => {
       const origHome = process.env.HOME;
+      const restorePlatform = setProcessPlatform('linux');
       process.env.HOME = '/home/tester';
       try {
         const { isTrustedPrefix } = _testInternals;
@@ -145,8 +158,35 @@ describe('model-contract', () => {
           else process.env.OMC_TRUSTED_CLI_DIRS = origCustom;
         }
       } finally {
+        restorePlatform();
         if (origHome === undefined) delete process.env.HOME;
         else process.env.HOME = origHome;
+      }
+    });
+
+    it('trusts standard Windows install roots and splits OMC_TRUSTED_CLI_DIRS on ;', () => {
+      const restorePlatform = setProcessPlatform('win32');
+      vi.stubEnv('USERPROFILE', 'C:\\Users\\tester');
+      vi.stubEnv('APPDATA', 'C:\\Users\\tester\\AppData\\Roaming');
+      vi.stubEnv('LOCALAPPDATA', 'C:\\Users\\tester\\AppData\\Local');
+      vi.stubEnv('ProgramFiles', 'C:\\Program Files');
+      vi.stubEnv('OMC_TRUSTED_CLI_DIRS', 'C:\\Tools\\bin;D:\\Shared\\cli');
+      try {
+        const { isTrustedPrefix } = _testInternals;
+        expect(isTrustedPrefix('C:\\Users\\tester\\AppData\\Roaming\\npm\\claude.cmd')).toBe(true);
+        expect(isTrustedPrefix('C:\\Program Files\\nodejs\\codex.cmd')).toBe(true);
+        expect(isTrustedPrefix('C:\\Users\\tester\\.cargo\\bin\\grok.exe')).toBe(true);
+        // A drive-lettered custom dir survives the split instead of being shredded into 'C'.
+        expect(isTrustedPrefix('C:\\Tools\\bin\\gemini.exe')).toBe(true);
+        expect(isTrustedPrefix('D:\\Shared\\cli\\gemini.exe')).toBe(true);
+        // Windows paths compare case-insensitively, the way the filesystem does.
+        expect(isTrustedPrefix('c:\\program files\\NODEJS\\codex.cmd')).toBe(true);
+        // Sibling directories that merely share a name prefix stay untrusted.
+        expect(isTrustedPrefix('C:\\Tools\\bin-evil\\gemini.exe')).toBe(false);
+        expect(isTrustedPrefix('C:\\Users\\tester\\Downloads\\claude.exe')).toBe(false);
+      } finally {
+        restorePlatform();
+        vi.unstubAllEnvs();
       }
     });
   });

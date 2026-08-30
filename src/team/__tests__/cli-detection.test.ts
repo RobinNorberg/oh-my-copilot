@@ -325,6 +325,7 @@ describe('cli-detection', () => {
   });
 
   it('preserves the legacy detectAllClis keys', () => {
+    restorePlatform = setProcessPlatform('linux');
     mockSpawnSync.mockReturnValue(spawnResult({ status: 1 }));
 
     expect(Object.keys(detectAllClis())).toEqual(['claude', 'codex', 'gemini', 'cursor', 'grok', 'antigravity']);

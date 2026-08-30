@@ -1,5 +1,6 @@
 import { spawnSync } from 'child_process';
-import { isAbsolute, normalize, sep, win32 as win32Path } from 'path';
+import { isAbsolute, posix as posixPath, win32 as win32Path } from 'path';
+import { homedir } from 'os';
 import { validateTeamName } from './team-name.js';
 import { normalizeToCcAlias } from '../features/delegation-enforcer.js';
 import { isBedrock, isVertexAI, isProviderSpecificModelId } from '../config/models.js';
@@ -56,43 +57,83 @@ const UNTRUSTED_PATH_PATTERNS: RegExp[] = [
   /^\/dev\/shm(\/|$)/,
 ];
 
-function getTrustedPrefixes(): string[] {
-  const trusted = [
-    '/usr/local/bin',
-    '/usr/bin',
-    '/opt/homebrew/',
-  ];
+/**
+ * Path semantics for the host platform. Selected per call rather than bound at
+ * import time so a platform-stubbed test exercises the matching rules it means to.
+ */
+function pathFlavor(): typeof posixPath {
+  return process.platform === 'win32' ? win32Path : posixPath;
+}
 
-  const home = process.env.HOME;
-  if (home) {
-    trusted.push(`${home}/.local/bin`);
-    trusted.push(`${home}/.nvm/`);
-    trusted.push(`${home}/.cargo/bin`);
-    trusted.push(`${home}/.grok/bin`);
+/**
+ * The user's home directory, resolved the way os.homedir() does but keyed to
+ * the platform under evaluation: HOME on POSIX, USERPROFILE on Windows, with
+ * the OS lookup as the fallback when neither is set.
+ */
+function trustedHome(): string {
+  const fromEnv = process.platform === 'win32' ? process.env.USERPROFILE : process.env.HOME;
+  return fromEnv?.trim() ? fromEnv : homedir();
+}
+
+function getTrustedPrefixes(): string[] {
+  const flavor = pathFlavor();
+  const home = trustedHome();
+  const trusted: string[] = [];
+
+  if (process.platform === 'win32') {
+    const appData = process.env.APPDATA;
+    const localAppData = process.env.LOCALAPPDATA;
+    const programFiles = process.env.ProgramFiles;
+    const programFilesX86 = process.env['ProgramFiles(x86)'];
+    const candidates = [
+      appData ? flavor.join(appData, 'npm') : undefined,
+      localAppData ? flavor.join(localAppData, 'npm') : undefined,
+      localAppData ? flavor.join(localAppData, 'Programs') : undefined,
+      localAppData ? flavor.join(localAppData, 'Yarn', 'bin') : undefined,
+      programFiles ? flavor.join(programFiles, 'nodejs') : undefined,
+      programFilesX86 ? flavor.join(programFilesX86, 'nodejs') : undefined,
+      home ? flavor.join(home, '.cargo', 'bin') : undefined,
+      home ? flavor.join(home, '.grok', 'bin') : undefined,
+      home ? flavor.join(home, '.local', 'bin') : undefined,
+    ];
+    trusted.push(...candidates.filter((entry): entry is string => Boolean(entry)));
+  } else {
+    trusted.push('/usr/local/bin', '/usr/bin', '/opt/homebrew');
+    if (home) {
+      trusted.push(`${home}/.local/bin`);
+      trusted.push(`${home}/.nvm`);
+      trusted.push(`${home}/.cargo/bin`);
+      trusted.push(`${home}/.grok/bin`);
+    }
+  }
+
+  // npm's configured global prefix is where `npm i -g` puts provider CLIs.
+  const npmPrefix = process.env.npm_config_prefix;
+  if (npmPrefix && flavor.isAbsolute(npmPrefix)) {
+    trusted.push(npmPrefix);
+    trusted.push(flavor.join(npmPrefix, 'bin'));
   }
 
   const custom = (process.env.OMC_TRUSTED_CLI_DIRS ?? '')
-    .split(':')
+    .split(flavor.delimiter)
     .map(part => part.trim())
     .filter(Boolean)
-    .filter(part => isAbsolute(part));
+    .filter(part => flavor.isAbsolute(part));
 
   trusted.push(...custom);
   return trusted;
 }
 
 function isTrustedPrefix(resolvedPath: string): boolean {
-  const normalized = normalize(resolvedPath);
+  const flavor = pathFlavor();
   return getTrustedPrefixes().some(prefix => {
-    // `normalize` strips trailing separators, so a plain `startsWith` would treat
-    // a sibling whose name merely begins with the prefix as trusted — e.g.
-    // `/usr/bin` would match `/usr/bin-malicious/grok`, and `~/.local/bin` would
-    // match `~/.local/bin-evil/x`. Enforce a directory boundary: the resolved
-    // path must be the trusted dir itself or a true descendant (prefix + sep).
-    const p = normalize(prefix);
-    if (normalized === p) return true;
-    const withSep = p.endsWith(sep) ? p : p + sep;
-    return normalized.startsWith(withSep);
+    // A raw startsWith would treat a sibling whose name merely begins with the
+    // prefix as trusted — `/usr/bin` would match `/usr/bin-malicious/grok`.
+    // `relative` enforces the directory boundary, and its win32 form compares
+    // case-insensitively the way the filesystem does.
+    const relative = flavor.relative(prefix, resolvedPath);
+    if (relative === '') return true;
+    return !relative.startsWith('..') && !flavor.isAbsolute(relative);
   });
 }
 
@@ -118,8 +159,8 @@ export function resolveCliBinaryPath(binary: string): string {
     throw new Error(`CLI binary '${binary}' not found in PATH`);
   }
 
-  const resolvedPath = normalize(found);
-  if (!isAbsolute(resolvedPath)) {
+  const resolvedPath = pathFlavor().normalize(found);
+  if (!pathFlavor().isAbsolute(resolvedPath)) {
     throw new Error(`Resolved CLI binary '${binary}' to relative path`);
   }
 
