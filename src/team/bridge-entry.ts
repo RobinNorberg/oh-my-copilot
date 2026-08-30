@@ -10,7 +10,7 @@
 // Config via temp file, not inline JSON argument.
 
 import { readFileSync, statSync, realpathSync } from 'fs';
-import { resolve } from 'path';
+import { relative, resolve, isAbsolute } from 'path';
 import { homedir } from 'os';
 import type { BridgeConfig } from './types.js';
 import { runBridge } from './mcp-team-bridge.js';
@@ -28,17 +28,15 @@ import { sanitizeName } from './tmux-session.js';
 export function validateConfigPath(configPath: string, homeDir: string, claudeConfigDir: string): boolean {
   // Resolve to canonical absolute path to defeat ".." traversal
   const resolved = resolve(configPath);
+  const normalizedHome = resolve(homeDir);
 
-  const isUnderHome = resolved.startsWith(homeDir + '/') || resolved === homeDir;
+  const isUnderHome = isAtOrUnder(normalizedHome, resolved);
   const normalizedConfigDir = resolve(claudeConfigDir);
   const normalizedOmcDir = resolve(homeDir, '.omg');
-  const hasOmcComponent = resolved.includes('/.omg/') || resolved.endsWith('/.omg');
   const isTrustedSubpath =
-    resolved === normalizedConfigDir ||
-    resolved.startsWith(normalizedConfigDir + '/') ||
-    resolved === normalizedOmcDir ||
-    resolved.startsWith(normalizedOmcDir + '/') ||
-    hasOmcComponent;
+    isAtOrUnder(normalizedConfigDir, resolved) ||
+    isAtOrUnder(normalizedOmcDir, resolved) ||
+    hasOmcPathSegment(resolved);
   if (!isUnderHome || !isTrustedSubpath) return false;
 
   // Additionally verify via realpathSync on the parent directory (if it exists)
@@ -46,7 +44,7 @@ export function validateConfigPath(configPath: string, homeDir: string, claudeCo
   try {
     const parentDir = resolve(resolved, '..');
     const realParent = realpathSync(parentDir);
-    if (!realParent.startsWith(homeDir + '/') && realParent !== homeDir) {
+    if (!isAtOrUnder(normalizedHome, realParent)) {
       return false;
     }
   } catch {
@@ -54,6 +52,23 @@ export function validateConfigPath(configPath: string, homeDir: string, claudeCo
   }
 
   return true;
+}
+
+/**
+ * Directory containment by path semantics rather than string prefixes: string
+ * concatenation with '/' never matches on Windows, where resolve() yields
+ * backslashes, so every path was rejected there. relative() also enforces the
+ * segment boundary, so `/home/user-evil` is not treated as under `/home/user`.
+ */
+function isAtOrUnder(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  if (rel === '') return true;
+  return !rel.startsWith('..') && !isAbsolute(rel);
+}
+
+/** True when `.omg` appears as a whole path segment, on either separator. */
+function hasOmcPathSegment(absolutePath: string): boolean {
+  return absolutePath.split(/[\\/]/).includes('.omg');
 }
 
 /**

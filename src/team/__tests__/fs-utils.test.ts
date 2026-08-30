@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { statSync, mkdirSync, rmSync, existsSync, realpathSync } from 'fs';
+import { statSync, mkdirSync, rmSync, existsSync, readFileSync, realpathSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import {
@@ -7,6 +7,17 @@ import {
 } from '../fs-utils.js';
 
 const TEST_DIR = join(tmpdir(), '__test_fs_utils__');
+
+/**
+ * NTFS does not implement POSIX mode bits — Node reports 0o666 whatever mode
+ * was requested — so the exact bits are only meaningful on POSIX. Windows gets
+ * the assertion that still means something there: the entry was created.
+ */
+function expectRestrictiveMode(path: string, posixMode: number): void {
+  expect(existsSync(path)).toBe(true);
+  if (process.platform === 'win32') return;
+  expect(statSync(path).mode & 0o777).toBe(posixMode);
+}
 
 afterEach(() => {
   if (existsSync(TEST_DIR)) {
@@ -19,9 +30,9 @@ describe('atomicWriteJson', () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'test.json');
     atomicWriteJson(filePath, { key: 'value' });
-    const stat = statSync(filePath);
-    // Check owner-only read/write (0o600)
-    expect(stat.mode & 0o777).toBe(0o600);
+    // Owner-only read/write (0o600), plus the content actually landing.
+    expectRestrictiveMode(filePath, 0o600);
+    expect(JSON.parse(readFileSync(filePath, 'utf-8'))).toEqual({ key: 'value' });
   });
 
   it('temp file names contain both PID and timestamp pattern', () => {
@@ -51,8 +62,8 @@ describe('writeFileWithMode', () => {
     mkdirSync(TEST_DIR, { recursive: true });
     const filePath = join(TEST_DIR, 'write-test.txt');
     writeFileWithMode(filePath, 'hello');
-    const stat = statSync(filePath);
-    expect(stat.mode & 0o777).toBe(0o600);
+    expectRestrictiveMode(filePath, 0o600);
+    expect(readFileSync(filePath, 'utf-8')).toBe('hello');
   });
 });
 
@@ -60,8 +71,8 @@ describe('ensureDirWithMode', () => {
   it('creates directories with 0o700 permissions', () => {
     const dirPath = join(TEST_DIR, 'secure-dir');
     ensureDirWithMode(dirPath);
-    const stat = statSync(dirPath);
-    expect(stat.mode & 0o777).toBe(0o700);
+    expectRestrictiveMode(dirPath, 0o700);
+    expect(statSync(dirPath).isDirectory()).toBe(true);
   });
 });
 

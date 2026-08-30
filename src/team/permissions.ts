@@ -103,6 +103,16 @@ function matchGlob(pattern: string, path: string): boolean {
 }
 
 /**
+ * Working-directory-relative path with forward slashes, matching how glob
+ * patterns are written. relative() yields '\' on Windows, so without this no
+ * pattern containing '/' matches — including the deny list, which would then
+ * stop denying anything.
+ */
+function toPatternPath(workingDirectory: string, filePath: string): string {
+  return relative(workingDirectory, resolve(workingDirectory, filePath)).replace(/\\/g, '/');
+}
+
+/**
  * Check if a worker is allowed to modify a given path.
  * Denied paths override allowed paths.
  */
@@ -111,9 +121,7 @@ export function isPathAllowed(
   filePath: string,
   workingDirectory: string
 ): boolean {
-  // Normalize to relative path
-  const absPath = resolve(workingDirectory, filePath);
-  const relPath = relative(workingDirectory, absPath);
+  const relPath = toPatternPath(workingDirectory, filePath);
 
   // If path escapes working directory, always deny
   if (relPath.startsWith('..')) return false;
@@ -252,8 +260,7 @@ export function findPermissionViolations(
   for (const filePath of changedPaths) {
     if (!isPathAllowed(permissions, filePath, cwd)) {
       // Determine which deny pattern matched for the reason
-      const absPath = resolve(cwd, filePath);
-      const relPath = relative(cwd, absPath);
+      const relPath = toPatternPath(cwd, filePath);
 
       let reason: string;
       if (relPath.startsWith('..')) {

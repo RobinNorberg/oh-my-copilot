@@ -20,7 +20,7 @@ import { atomicWriteJson, ensureDirWithMode, validateResolvedPath } from './fs-u
 import { validateWorktreeRemovalTarget } from '../lib/worktree-cleanup-safety.js';
 import { sanitizeName } from './tmux-session.js';
 import { withFileLockSync } from '../lib/file-lock.js';
-import { getOmcRoot } from '../lib/worktree-paths.js';
+import { getOmcRoot, OmcPaths } from '../lib/worktree-paths.js';
 
 export type TeamWorktreeMode = 'disabled' | 'detached' | 'named';
 
@@ -107,10 +107,19 @@ function isInsideGitRepo(repoRoot: string): boolean {
   }
 }
 
+/**
+ * Untracked OMC state in the leader is our own metadata, not a user edit.
+ * Built from OmcPaths.ROOT so it cannot drift from the actual state directory
+ * name; git reports porcelain paths with forward slashes on every platform.
+ */
+const UNTRACKED_OMC_STATE = new RegExp(
+  `^\\?\\? ${OmcPaths.ROOT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:/|$)`,
+);
+
 function assertCleanLeaderWorktree(repoRoot: string): void {
   const status = git(repoRoot, ['status', '--porcelain'])
     .split('\n')
-    .filter(line => line.trim() !== '' && !/^\?\? \.omc(?:\/|$)/.test(line))
+    .filter(line => line.trim() !== '' && !UNTRACKED_OMC_STATE.test(line))
     .join('\n')
     .trim();
   if (status.length > 0) {
