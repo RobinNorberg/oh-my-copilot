@@ -1690,7 +1690,7 @@ async function main() {
     }
     if (workflowInvocation.kind === 'valid') {
       try {
-        if (!isWorkflowRuntimeSupported()) throw new Error('named autopilot workflow profiles require Linux with flock');
+        if (!isWorkflowRuntimeSupported()) throw new Error('named autopilot workflow profiles require a working state file lock');
         const resumedPrompt = resumeWorkflowProfile(directory, sessionId, workflowInvocation.workflowName, omcRoot);
         if (resumedPrompt === false) throw new Error('workflow_descriptor_integrity_failed');
         if (resumedPrompt) {

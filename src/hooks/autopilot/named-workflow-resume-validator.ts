@@ -11,6 +11,7 @@ import {
 import { createHash } from "crypto";
 import { basename, join, parse, relative, resolve, sep } from "path";
 import { getCopilotConfigDir } from "../../utils/config-dir.js";
+import { isStateMutationLockingSupported } from "../../lib/mode-state-io.js";
 import { verifyWorkflowDescriptor } from "./pipeline.js";
 import type { AutopilotState } from "./types.js";
 import { TextDecoder } from "util";
@@ -81,25 +82,40 @@ function validFileIdentity(value: unknown): value is RecordValue {
   );
 }
 
-/** Named persisted state is supported only where its no-follow contract can be enforced. */
+/** True where /proc lets descriptors be reopened, which is what makes the openat-style walk possible. */
+function procSelfFdAvailable(): boolean {
+  if (
+    typeof constants.O_NOFOLLOW !== "number" ||
+    typeof constants.O_DIRECTORY !== "number"
+  )
+    return false;
+  try {
+    return lstatSync("/proc/self/fd").isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Named persisted state needs inter-process exclusion and a no-follow read of the transcript.
+ * Both are available on every platform: flock or the portable lockfile for the former, and an
+ * openat walk or a symlink-rejecting component walk for the latter.
+ */
 export function namedWorkflowRuntimeSupported(): boolean {
   return (
-    process.platform === "linux" &&
-    typeof constants.O_NOFOLLOW === "number" &&
-    typeof constants.O_DIRECTORY === "number" &&
     typeof constants.O_RDONLY === "number" &&
-    (() => {
-      try {
-        return lstatSync("/proc/self/fd").isDirectory();
-      } catch {
-        return false;
-      }
-    })() &&
     process.env.OMC_TEST_FLOCK_AVAILABLE !== "0" &&
-    (existsSync("/usr/bin/flock") || existsSync("/bin/flock"))
+    (existsSync("/usr/bin/flock") ||
+      existsSync("/bin/flock") ||
+      isStateMutationLockingSupported())
   );
 }
 
+/**
+ * Open `path` under `root` refusing to traverse any symlink. Linux reopens each descriptor
+ * through /proc/self/fd for an atomic openat walk; elsewhere every component is rejected up
+ * front if it is a link and the opened file is confirmed to be the one that was inspected.
+ */
 function noFollowCanonicalFile(
   path: string,
   root: string,
@@ -116,6 +132,8 @@ function noFollowCanonicalFile(
     return null;
   const pathRoot = parse(absolute).root;
   const components = absolute.slice(pathRoot.length).split(sep).filter(Boolean);
+  if (components.length === 0) return null;
+  if (!procSelfFdAvailable()) return openVerifiedFile(absolute, canonicalRoot, components, pathRoot);
   let fd: number | undefined;
   try {
     fd = openSync(pathRoot, constants.O_RDONLY | constants.O_DIRECTORY);
@@ -139,6 +157,54 @@ function noFollowCanonicalFile(
     if (
       canonicalPath !== absolute ||
       !canonicalPath.startsWith(canonicalRoot + sep)
+    )
+      return null;
+    const result = { fd, path: canonicalPath };
+    fd = undefined;
+    return result;
+  } catch {
+    return null;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* best-effort descriptor cleanup */
+      }
+    }
+  }
+}
+
+function openVerifiedFile(
+  absolute: string,
+  canonicalRoot: string,
+  components: string[],
+  pathRoot: string,
+): { fd: number; path: string } | null {
+  let fd: number | undefined;
+  try {
+    let walked = pathRoot;
+    let expected: { device: number; inode: number } | null = null;
+    for (let index = 0; index < components.length; index += 1) {
+      walked = join(walked, components[index]);
+      const final = index === components.length - 1;
+      const stat = lstatSync(walked);
+      if (stat.isSymbolicLink() || (final ? !stat.isFile() : !stat.isDirectory())) return null;
+      if (final) expected = { device: Number(stat.dev), inode: Number(stat.ino) };
+    }
+    const canonicalPath = realpathSync(absolute);
+    if (
+      canonicalPath !== absolute ||
+      !canonicalPath.startsWith(canonicalRoot + sep)
+    )
+      return null;
+    fd = openSync(absolute, constants.O_RDONLY);
+    const opened = fstatSync(fd);
+    if (
+      !expected ||
+      !opened.isFile() ||
+      Number(opened.dev) !== expected.device ||
+      Number(opened.ino) !== expected.inode
     )
       return null;
     const result = { fd, path: canonicalPath };

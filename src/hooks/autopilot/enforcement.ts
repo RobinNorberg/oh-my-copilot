@@ -280,7 +280,7 @@ export async function checkAutopilot(
     return {
       shouldBlock: false,
       message:
-        "[AUTOPILOT NAMED WORKFLOW UNSUPPORTED] Named workflow enforcement requires Linux with flock. State was left unchanged; use /cancel to safely stop this workflow.",
+        "[AUTOPILOT NAMED WORKFLOW UNSUPPORTED] Named workflow enforcement requires a working state file lock. State was left unchanged; use /cancel to safely stop this workflow.",
       phase: state.phase,
     };
   }

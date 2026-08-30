@@ -5,7 +5,7 @@ import { mkdirSync, rmSync, existsSync, readFileSync, readdirSync, writeFileSync
 import { basename, dirname, join } from 'path';
 import { tmpdir } from 'os';
 
-import { emergencyMutateStateFileIf, recoverEmergencyStateFile, captureModeStateCleanup, findSessionOwnedStateCandidates, writeModeState, readModeState, readModeStateWithMeta, clearModeStateFile, withStateFileMutationLock } from '../mode-state-io.js';
+import { emergencyMutateStateFileIf, recoverEmergencyStateFile, captureModeStateCleanup, findSessionOwnedStateCandidates, isStateMutationLockingSupported, writeModeState, readModeState, readModeStateWithMeta, clearModeStateFile, withStateFileMutationLock } from '../mode-state-io.js';
 import { atomicWriteJsonSync } from '../atomic-write.js';
 import { clearWorktreeCache, getOmcRoot, getProjectIdentifier } from '../worktree-paths.js';
 
@@ -1169,5 +1169,63 @@ describe('mode-state-io', () => {
         delete process.env.OMC_TEST_EMERGENCY_PROCESS_START_UNKNOWN_PID;
       }
     });
+  });
+});
+
+describe('portable state mutation locking', () => {
+  const directories: string[] = [];
+
+  afterEach(() => {
+    delete process.env.OMC_TEST_STATE_LOCK_MODE;
+    for (const directory of directories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it('reports locking as supported without flock and unsupported only when locking is disabled', () => {
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_STATE_LOCK_MODE = 'portable';
+    expect(isStateMutationLockingSupported()).toBe(true);
+    process.env.OMC_TEST_STATE_LOCK_MODE = 'none';
+    expect(isStateMutationLockingSupported()).toBe(false);
+  });
+
+  it('grants exclusivity to one holder at a time and releases the lock cleanly', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'portable-mutation-lock-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_STATE_LOCK_MODE = 'portable';
+    const filePath = join(directory, 'state.json');
+    const lockPath = `${filePath}.mutation.lock`;
+    writeFileSync(filePath, JSON.stringify({ value: 0 }));
+
+    const outer = withStateFileMutationLock(filePath, () => withStateFileMutationLock(filePath, () => 'inner', true), true);
+
+    expect(outer).toEqual({ acquired: true, value: { acquired: false, value: undefined } });
+    expect(existsSync(lockPath)).toBe(false);
+  });
+
+  it('honors a lock published by another live process instead of bypassing it', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'portable-mutation-lock-live-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_STATE_LOCK_MODE = 'portable';
+    const filePath = join(directory, 'state.json');
+    writeFileSync(`${filePath}.mutation.lock`, JSON.stringify({ version: 1, pid: process.pid, processStart: '1', createdAt: new Date().toISOString(), nonce: randomUUID() }));
+
+    expect(withStateFileMutationLock(filePath, () => 'written', true)).toEqual({ acquired: false, value: undefined });
+  });
+
+  it('reclaims a lock left behind by a dead owner', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'portable-mutation-lock-stale-'));
+    directories.push(directory);
+    process.env.NODE_ENV = 'test';
+    process.env.OMC_TEST_STATE_LOCK_MODE = 'portable';
+    const filePath = join(directory, 'state.json');
+    const lockPath = `${filePath}.mutation.lock`;
+    writeFileSync(lockPath, JSON.stringify({ version: 1, pid: 999999999, processStart: '1', createdAt: new Date().toISOString(), nonce: randomUUID() }));
+
+    expect(withStateFileMutationLock(filePath, () => 'written', true)).toEqual({ acquired: true, value: 'written' });
+    expect(existsSync(lockPath)).toBe(false);
   });
 });

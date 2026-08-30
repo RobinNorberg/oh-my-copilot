@@ -379,7 +379,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
     }
   });
 
-  it.each(HOOKS)('rejects named workflows explicitly on unsupported platforms through %s', (script) => {
+  it.each(HOOKS)('activates named workflows on platforms without /proc through %s', (script) => {
     const { cwd, configHome } = createFixture();
     try {
       const output = runHook(
@@ -390,14 +390,16 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         undefined,
         { OMC_WORKFLOW_TEST_PLATFORM: 'darwin' },
       );
-      expect(output.hookSpecificOutput?.additionalContext).toContain('named autopilot workflow profiles require Linux');
-      expect(stateBytes(cwd)).toBeNull();
+      expect(output.hookSpecificOutput?.additionalContext ?? '').not.toContain('require a working state file lock');
+      const state = stateBytes(cwd);
+      expect(state).not.toBeNull();
+      expect(JSON.parse(String(state)).workflow?.workflowName).toBe('release-flow');
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
   });
 
-  it.each(HOOKS)('rejects named workflows before mutation when flock is unavailable through %s', (script) => {
+  it.each(HOOKS)('rejects named workflows before mutation when locking is unavailable through %s', (script) => {
     const { cwd, configHome } = createFixture();
     try {
       const output = runHook(
@@ -408,7 +410,7 @@ describe('workflow profile activation hook fixtures (#3487)', () => {
         undefined,
         { OMC_WORKFLOW_TEST_FLOCK_AVAILABLE: '0' },
       );
-      expect(output.hookSpecificOutput?.additionalContext).toContain('require Linux with flock');
+      expect(output.hookSpecificOutput?.additionalContext).toContain('require a working state file lock');
       expect(stateBytes(cwd)).toBeNull();
     } finally {
       rmSync(cwd, { recursive: true, force: true });

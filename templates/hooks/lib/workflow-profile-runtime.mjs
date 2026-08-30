@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
-import { closeSync, constants as fsConstants, existsSync, fstatSync, openSync, readFileSync, readSync, realpathSync, writeFileSync } from 'fs';
+import { closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, openSync, readFileSync, readSync, realpathSync, writeFileSync } from 'fs';
 import { TextDecoder } from 'util';
 import { homedir } from 'os';
 import { basename, dirname, join, parse, resolve, sep } from 'path';
 import { getCopilotConfigDir } from './config-dir.mjs';
+import { isStateFileLockingSupported } from './atomic-write.mjs';
 import { resolveCanonicalWorkflowStagePrompt } from './workflow-stage-prompts.mjs';
 
 const SEQUENCES = Object.freeze([Object.freeze(['ralplan', 'execution']), Object.freeze(['ralplan', 'execution', 'ralph']), Object.freeze(['ralplan', 'execution', 'qa']), Object.freeze(['ralplan', 'execution', 'ralph', 'qa'])]);
@@ -21,8 +22,9 @@ function clearWorkflowTranscriptFailure(sessionId) { if (sessionId) workflowTran
 
 
 function workflowPlatform() { return process.env.NODE_ENV === 'test' && process.env.OMC_WORKFLOW_TEST_PLATFORM ? process.env.OMC_WORKFLOW_TEST_PLATFORM : process.platform; }
-export function isWorkflowRuntimeSupported() { return workflowPlatform() === 'linux' && process.env.OMC_WORKFLOW_TEST_FLOCK_AVAILABLE !== '0' && (existsSync('/usr/bin/flock') || existsSync('/bin/flock')); }
-function assertWorkflowRuntimeSupported() { if (!isWorkflowRuntimeSupported()) throw new Error('named autopilot workflow profiles require Linux with flock'); }
+/** Named workflows need inter-process exclusion, not a particular platform: flock where it exists, the portable lockfile otherwise. */
+export function isWorkflowRuntimeSupported() { return process.env.OMC_WORKFLOW_TEST_FLOCK_AVAILABLE !== '0' && (existsSync('/usr/bin/flock') || existsSync('/bin/flock') || isStateFileLockingSupported()); }
+function assertWorkflowRuntimeSupported() { if (!isWorkflowRuntimeSupported()) throw new Error('named autopilot workflow profiles require a working state file lock'); }
 function isApprovedSequence(stages) { return Array.isArray(stages) && SEQUENCES.some(sequence => stages.length === sequence.length && stages.every((stage, index) => typeof stage === 'string' && stage === sequence[index])); }
 
 function stripJsonc(value) { let result = ''; let quoted = false; let escaped = false; for (let i = 0; i < value.length; i += 1) { const char = value[i]; if (quoted) { result += char; if (escaped) escaped = false; else if (char === '\\') escaped = true; else if (char === '"') quoted = false; continue; } if (char === '"') { quoted = true; result += char; continue; } if (char === '/' && value[i + 1] === '/') { while (i < value.length && value[i] !== '\n') i += 1; result += '\n'; continue; } if (char === '/' && value[i + 1] === '*') { i += 2; while (i < value.length && !(value[i] === '*' && value[i + 1] === '/')) i += 1; i += 1; continue; } result += char; } return result.replace(/,(\s*[}\]])/g, '$1'); }
@@ -55,14 +57,44 @@ function transcriptRoot() { return realpathSync(resolve(getCopilotConfigDir(), '
 function fileIdentity(stat, contentSha256) { return { device: Number(stat.dev), inode: Number(stat.ino), size: Number(stat.size), mtimeNs: stat.mtimeNs.toString(), ctimeNs: stat.ctimeNs.toString(), contentSha256 }; }
 function hashRange(fd, start, end) { const hash = createHash('sha256'); const chunk = Buffer.allocUnsafe(TRANSCRIPT_CHUNK_BYTES); for (let offset = start; offset < end;) { const count = readSync(fd, chunk, 0, Math.min(chunk.length, end - offset), offset); if (count <= 0) return null; hash.update(chunk.subarray(0, count)); offset += count; } return hash.digest('hex'); }
 function scanJsonl(fd, start, end, sessionId, callback, hash) { const chunk = Buffer.allocUnsafe(TRANSCRIPT_CHUNK_BYTES); const record = Buffer.allocUnsafe(MAX_JSONL_RECORD_BYTES + 1); let recordBytes = 0; let byteOffset = start; let lineNumber = 0; const decodeRecord = length => { try { return new TextDecoder('utf-8', { fatal: true }).decode(record.subarray(0, length)); } catch { return null; } }; const emitRecord = crlf => { const length = recordBytes - (crlf && recordBytes > 0 && record[recordBytes - 1] === 0x0d ? 1 : 0); const line = decodeRecord(length); if (line === null) return false; return !callback || callback(line, byteOffset, lineNumber, createHash('sha256').update(record.subarray(0, length)).digest('hex')) !== false; }; for (let offset = start; offset < end;) { const maxRead = recordBytes >= MAX_JSONL_RECORD_BYTES ? 1 : MAX_JSONL_RECORD_BYTES + 1 - recordBytes; const count = readSync(fd, chunk, 0, Math.min(chunk.length, end - offset, maxRead), offset); if (count <= 0) return false; hash?.update(chunk.subarray(0, count)); for (let index = 0; index < count; index += 1) { const byte = chunk[index]; if (byte === 0x0a) { if (!emitRecord(true)) return false; byteOffset += recordBytes + 1; recordBytes = 0; lineNumber += 1; } else if ((recordBytes === MAX_JSONL_RECORD_BYTES && byte !== 0x0d) || recordBytes > MAX_JSONL_RECORD_BYTES) { workflowTranscriptFailures.set(sessionId, WORKFLOW_TRANSCRIPT_RECORD_TOO_LARGE); return false; } else { record[recordBytes++] = byte; } } offset += count; } if (recordBytes > MAX_JSONL_RECORD_BYTES) { workflowTranscriptFailures.set(sessionId, WORKFLOW_TRANSCRIPT_RECORD_TOO_LARGE); return false; } return recordBytes === 0 || emitRecord(false); }
-function readStableTranscript(path, sessionId) {
-  if (!isWorkflowRuntimeSupported() || !existsSync('/proc/self/fd') || typeof fsConstants.O_NOFOLLOW !== 'number' || typeof fsConstants.O_DIRECTORY !== 'number') return null;
-  const absolute = resolve(path); const pathRoot = parse(absolute).root; const components = absolute.slice(pathRoot.length).split(sep).filter(Boolean); if (components.length === 0) return null;
+function procSelfFdAvailable() { return workflowPlatform() === 'linux' && typeof fsConstants.O_NOFOLLOW === 'number' && typeof fsConstants.O_DIRECTORY === 'number' && existsSync('/proc/self/fd'); }
+/**
+ * Open `absolute` without traversing any symlink, fingerprinting every path component so a later
+ * read can prove no directory in the path was swapped. Linux walks descriptors through
+ * /proc/self/fd for an atomic openat; elsewhere each component is rejected up front if it is a
+ * link and the opened file is confirmed to be the one that was inspected.
+ */
+function openNoFollowFile(absolute) {
+  const pathRoot = parse(absolute).root; const components = absolute.slice(pathRoot.length).split(sep).filter(Boolean); if (components.length === 0) return null;
+  const pathIdentity = [];
+  if (!procSelfFdAvailable()) {
+    let walked = pathRoot;
+    for (let index = 0; index < components.length; index += 1) {
+      walked = join(walked, components[index]); const isFinal = index === components.length - 1; const stat = lstatSync(walked);
+      if (stat.isSymbolicLink() || (isFinal ? !stat.isFile() : !stat.isDirectory())) return null;
+      pathIdentity.push({ device: Number(stat.dev), inode: Number(stat.ino) });
+    }
+    const fd = openSync(absolute, fsConstants.O_RDONLY); const opened = fstatSync(fd); const final = pathIdentity[pathIdentity.length - 1];
+    if (!opened.isFile() || Number(opened.dev) !== final.device || Number(opened.ino) !== final.inode) { closeSync(fd); return null; }
+    return { fd, pathIdentity, canonicalPath: realpathSync(absolute) };
+  }
   let fd;
   try {
-    fd = openSync(pathRoot, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY); const pathIdentity = [];
+    fd = openSync(pathRoot, fsConstants.O_RDONLY | fsConstants.O_DIRECTORY);
     for (let index = 0; index < components.length; index += 1) { const isFinal = index === components.length - 1; const nextFd = openSync(`/proc/self/fd/${fd}/${components[index]}`, fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | (isFinal ? 0 : fsConstants.O_DIRECTORY)); const nextStat = fstatSync(nextFd); pathIdentity.push({ device: Number(nextStat.dev), inode: Number(nextStat.ino) }); if ((isFinal && !nextStat.isFile()) || (!isFinal && !nextStat.isDirectory())) { closeSync(nextFd); return null; } closeSync(fd); fd = nextFd; }
-    const before = fstatSync(fd, { bigint: true }); const size = Number(before.size); const canonicalPath = realpathSync(`/proc/self/fd/${fd}`); const root = transcriptRoot(); if (!canonicalPath.startsWith(root + sep) || basename(canonicalPath) !== `${sessionId}.jsonl`) return null;
+    const opened = { fd, pathIdentity, canonicalPath: realpathSync(`/proc/self/fd/${fd}`) };
+    fd = undefined; return opened;
+  } finally { if (fd !== undefined) { try { closeSync(fd); } catch {} } }
+}
+function readStableTranscript(path, sessionId) {
+  if (!isWorkflowRuntimeSupported()) return null;
+  const absolute = resolve(path);
+  let fd;
+  try {
+    const opened = openNoFollowFile(absolute);
+    if (!opened) return null;
+    fd = opened.fd; const { pathIdentity, canonicalPath } = opened;
+    const before = fstatSync(fd, { bigint: true }); const size = Number(before.size); const root = transcriptRoot(); if (!canonicalPath.startsWith(root + sep) || basename(canonicalPath) !== `${sessionId}.jsonl`) return null;
     const hash = createHash('sha256'); if (!scanJsonl(fd, 0, size, sessionId, undefined, hash)) return null; const contentSha256 = hash.digest('hex');
     if (process.env.NODE_ENV === 'test' && process.env.OMC_WORKFLOW_TEST_MUTATE_AFTER_READ_BASE64) writeFileSync(canonicalPath, Buffer.from(process.env.OMC_WORKFLOW_TEST_MUTATE_AFTER_READ_BASE64, 'base64'));
     const after = fstatSync(fd, { bigint: true }); if (before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) return null;
