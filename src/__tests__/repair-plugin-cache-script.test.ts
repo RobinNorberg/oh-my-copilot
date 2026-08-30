@@ -26,6 +26,26 @@ function writePluginRoot(root: string, version: string): void {
   writeFileSync(join(root, 'docs', 'CLAUDE.md'), `<!-- OMC:VERSION:${version} -->\n`);
 }
 
+/**
+ * Environment for the repair script. The hook-prefix probe deliberately refuses
+ * to trust an npm-managed PATH, so the npm lifecycle variables vitest inherits
+ * must be cleared for either branch to be reachable.
+ */
+function hookRepairEnv(
+  configDir: string,
+  { nodeOnPath, root }: { nodeOnPath: boolean; root?: string },
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, COPILOT_CONFIG_DIR: configDir };
+  delete env.npm_lifecycle_event;
+  delete env.npm_execpath;
+  if (!nodeOnPath && root) {
+    const emptyBin = join(root, 'empty-bin');
+    mkdirSync(emptyBin, { recursive: true });
+    env.PATH = emptyBin;
+  }
+  return env;
+}
+
 afterEach(() => {
   while (tempRoots.length > 0) {
     const root = tempRoots.pop();
@@ -104,7 +124,32 @@ describe('repair-plugin-cache.mjs', () => {
     });
   });
 
-  it.runIf(process.platform !== 'win32')('repairs Unix cache hooks from direct node to the find-node bootstrap', () => {
+  it.runIf(process.platform !== 'win32')('leaves the portable node run.cjs form alone when node is on PATH', () => {
+    const root = mkdtempSync(join(tmpdir(), 'omc-repair-unix-portable-hooks-'));
+    tempRoots.push(root);
+
+    const configDir = join(root, '.claude');
+    const cacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
+    const pluginRoot = join(cacheBase, '4.14.4');
+    const portable = 'node "$CLAUDE_PLUGIN_ROOT"/scripts/run.cjs "$CLAUDE_PLUGIN_ROOT"/scripts/session-end.mjs';
+    writePluginRoot(pluginRoot, '4.14.4');
+    writeFileSync(join(pluginRoot, 'hooks', 'hooks.json'), JSON.stringify({
+      hooks: {
+        SessionEnd: [{ matcher: '*', hooks: [{ type: 'command', command: portable }] }],
+      },
+    }, null, 2));
+
+    const result = spawnSync(process.execPath, [SCRIPT_PATH], {
+      env: hookRepairEnv(configDir, { nodeOnPath: true }),
+      encoding: 'utf-8',
+    });
+
+    expect(result.status).toBe(0);
+    const hooksJson = JSON.parse(readFileSync(join(pluginRoot, 'hooks', 'hooks.json'), 'utf-8'));
+    expect(hooksJson.hooks.SessionEnd[0].hooks[0].command).toBe(portable);
+  });
+
+  it.runIf(process.platform !== 'win32')('repairs Unix cache hooks to the find-node bootstrap when node is off PATH', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-repair-unix-hooks-'));
     tempRoots.push(root);
 
@@ -125,7 +170,7 @@ describe('repair-plugin-cache.mjs', () => {
     }, null, 2));
 
     const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-      env: { ...process.env, COPILOT_CONFIG_DIR: configDir },
+      env: hookRepairEnv(configDir, { nodeOnPath: false, root }),
       encoding: 'utf-8',
     });
 
@@ -137,7 +182,7 @@ describe('repair-plugin-cache.mjs', () => {
     );
   });
 
-  it.runIf(process.platform !== 'win32')('repairs every bundled direct-node hook command to find-node on Unix/macOS', () => {
+  it.runIf(process.platform !== 'win32')('repairs every bundled hook command to find-node when node is off PATH', () => {
     const root = mkdtempSync(join(tmpdir(), 'omc-repair-unix-bundled-hooks-'));
     tempRoots.push(root);
 
@@ -151,7 +196,7 @@ describe('repair-plugin-cache.mjs', () => {
     );
 
     const result = spawnSync(process.execPath, [SCRIPT_PATH], {
-      env: { ...process.env, COPILOT_CONFIG_DIR: configDir },
+      env: hookRepairEnv(configDir, { nodeOnPath: false, root }),
       encoding: 'utf-8',
     });
 
