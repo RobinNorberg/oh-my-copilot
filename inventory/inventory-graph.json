@@ -5,15 +5,15 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "3c58397b646b4c78bcbcc5191e03aeae629910a2",
-    "sourceSha256": "435b1c0ad6708cd3ec3d52551b14bcd7190ea56d622e25375db5f9514efa99b4",
+    "head": "eb416cfd778dfb69c2fb88652eb307f20ebc3143",
+    "sourceSha256": "0ba693dcb96139ddba2638bcf0c7c1c173635a4cfc6c2643ccb04eb56d7dc614",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "3c58397b646b4c78bcbcc5191e03aeae629910a2",
-  "sourceSha256": "435b1c0ad6708cd3ec3d52551b14bcd7190ea56d622e25375db5f9514efa99b4",
+  "head": "eb416cfd778dfb69c2fb88652eb307f20ebc3143",
+  "sourceSha256": "0ba693dcb96139ddba2638bcf0c7c1c173635a4cfc6c2643ccb04eb56d7dc614",
   "counts": {
     "public": {
       "skills": 46,
@@ -32,9 +32,9 @@
       "total": 1362
     },
     "generated": {
-      "distFiles": 5223,
+      "distFiles": 5215,
       "bridgeFiles": 9,
-      "total": 5232
+      "total": 5224
     },
     "prompt": {
       "promptLikeFiles": 62
@@ -1778,10 +1778,6 @@
       "dist/__tests__/skills.test.d.ts.map",
       "dist/__tests__/skills.test.js",
       "dist/__tests__/skills.test.js.map",
-      "dist/__tests__/skininthegamebros-guidance.test.d.ts",
-      "dist/__tests__/skininthegamebros-guidance.test.d.ts.map",
-      "dist/__tests__/skininthegamebros-guidance.test.js",
-      "dist/__tests__/skininthegamebros-guidance.test.js.map",
       "dist/__tests__/slack-fallback-removal.test.d.ts",
       "dist/__tests__/slack-fallback-removal.test.d.ts.map",
       "dist/__tests__/slack-fallback-removal.test.js",
@@ -2002,10 +1998,6 @@
       "dist/agents/scientist.d.ts.map",
       "dist/agents/scientist.js",
       "dist/agents/scientist.js.map",
-      "dist/agents/skininthegamebros-guidance.d.ts",
-      "dist/agents/skininthegamebros-guidance.d.ts.map",
-      "dist/agents/skininthegamebros-guidance.js",
-      "dist/agents/skininthegamebros-guidance.js.map",
       "dist/agents/tracer.d.ts",
       "dist/agents/tracer.d.ts.map",
       "dist/agents/tracer.js",
@@ -12233,26 +12225,6 @@
         "path": "dist/__tests__/skills.test.js.map"
       },
       {
-        "id": "dist/__tests__/skininthegamebros-guidance.test.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skininthegamebros-guidance.test.d.ts"
-      },
-      {
-        "id": "dist/__tests__/skininthegamebros-guidance.test.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skininthegamebros-guidance.test.d.ts.map"
-      },
-      {
-        "id": "dist/__tests__/skininthegamebros-guidance.test.js",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skininthegamebros-guidance.test.js"
-      },
-      {
-        "id": "dist/__tests__/skininthegamebros-guidance.test.js.map",
-        "kind": "generated-dist",
-        "path": "dist/__tests__/skininthegamebros-guidance.test.js.map"
-      },
-      {
         "id": "dist/__tests__/slack-fallback-removal.test.d.ts",
         "kind": "generated-dist",
         "path": "dist/__tests__/slack-fallback-removal.test.d.ts"
@@ -13351,26 +13323,6 @@
         "id": "dist/agents/scientist.js.map",
         "kind": "generated-dist",
         "path": "dist/agents/scientist.js.map"
-      },
-      {
-        "id": "dist/agents/skininthegamebros-guidance.d.ts",
-        "kind": "generated-dist",
-        "path": "dist/agents/skininthegamebros-guidance.d.ts"
-      },
-      {
-        "id": "dist/agents/skininthegamebros-guidance.d.ts.map",
-        "kind": "generated-dist",
-        "path": "dist/agents/skininthegamebros-guidance.d.ts.map"
-      },
-      {
-        "id": "dist/agents/skininthegamebros-guidance.js",
-        "kind": "generated-dist",
-        "path": "dist/agents/skininthegamebros-guidance.js"
-      },
-      {
-        "id": "dist/agents/skininthegamebros-guidance.js.map",
-        "kind": "generated-dist",
-        "path": "dist/agents/skininthegamebros-guidance.js.map"
       },
       {
         "id": "dist/agents/tracer.d.ts",
@@ -79126,12 +79078,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7162,
+      "nodeCount": 7154,
       "edgeCount": 7346,
       "importEdgeCount": 6027,
       "registerEdgeCount": 67
     }
   },
   "inventorySha256": "31e010081ab6664779db28d1fcc4e9a61e1b68ef3ffcc9a8075e814987f2f5bb",
-  "manifestSha256": "b3bbfc457cb2fa3f51013b8b9a19382772376f62f200be64f220adf019fb7a8f"
+  "manifestSha256": "ad67fc201daa57801d5314cb410e37f4e41e13ffd16d296a8548904ff2d10266"
 }
