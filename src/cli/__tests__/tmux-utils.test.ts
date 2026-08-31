@@ -190,7 +190,15 @@ describe('resolveLaunchPolicy', () => {
       1,
       'where.exe',
       ['tmux'],
-      { timeout: 5000, encoding: 'utf8', shell: false, windowsHide: true },
+      {
+        timeout: 5000,
+        encoding: 'utf8',
+        shell: false,
+        windowsHide: true,
+        // The finder runs from a directory only administrators can write to,
+        // so a planted tmux next to the CWD cannot win resolution.
+        cwd: process.env.SystemRoot || process.env.windir || 'C:\\Windows',
+      },
     );
     // shell:false keeps the space in "Program Files" from splitting the path.
     expect(mockedSpawnSync).toHaveBeenNthCalledWith(

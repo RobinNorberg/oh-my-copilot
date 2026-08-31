@@ -128,10 +128,10 @@ describe('resolveTranscriptPath', () => {
     expect(resolveTranscriptPath(normalPath)).toBe(normalPath);
   });
 
-  it('resolves via a .claude/worktrees CWD using the OS-native separator (Strategy 2)', () => {
+  it('resolves via a .copilot/worktrees CWD using the OS-native separator (Strategy 2)', () => {
     // Regression: the worktree marker and the session-filename extraction must
     // be separator-agnostic. On Windows the CWD arrives with `\`, so a
-    // hard-coded `.claude/worktrees/` marker (and lastIndexOf('/')) never
+    // hard-coded `.copilot/worktrees/` marker (and lastIndexOf('/')) never
     // matched and Strategy 2 was dead. Uses join() so the CWD carries whatever
     // separator the host OS produces, exercising the fix on that OS.
     const origClaudeConfigDir = process.env.COPILOT_CONFIG_DIR;
@@ -144,8 +144,8 @@ describe('resolveTranscriptPath', () => {
       const realTranscript = join(realDir, 'sess.jsonl');
       writeFileSync(realTranscript, '{}');
 
-      // CWD inside a Claude internal worktree (separator is OS-native here).
-      const worktreeCwd = join(projectRoot, '.claude', 'worktrees', 'wt');
+      // CWD inside a host-CLI internal worktree (separator is OS-native here).
+      const worktreeCwd = join(projectRoot, '.copilot', 'worktrees', 'wt');
       // Worktree-encoded transcript path that does not exist and does NOT carry
       // the `--claude-worktrees-` substring, so Strategy 1 is skipped and the
       // CWD-based Strategy 2 is what resolves it.

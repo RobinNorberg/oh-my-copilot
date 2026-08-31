@@ -32,7 +32,7 @@ describe('autoresearch intake draft artifacts', () => {
         seedInputs: { topic: 'Improve onboarding for first-time contributors' },
       });
 
-      expect(artifact.path).toMatch(/\.omc\/specs\/deep-interview-autoresearch-improve-onboarding-for-first-time-contributors\.md$/);
+      expect(artifact.path).toMatch(/\.omg\/specs\/deep-interview-autoresearch-improve-onboarding-for-first-time-contributors\.md$/);
       expect(artifact.launchReady).toBe(false);
       expect(artifact.content).toMatch(/## Mission Draft/);
       expect(artifact.content).toMatch(/## Evaluator Draft/);

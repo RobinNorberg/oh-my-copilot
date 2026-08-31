@@ -43,7 +43,7 @@ describe('BUG 6: team-status provider type for tmux workers', () => {
 
   it('regex correctly strips tmux- prefix', () => {
     const regex = /^(?:mcp|tmux)-/;
-    expect('tmux-copilot'.replace(regex, '')).toBe('claude');
+    expect('tmux-copilot'.replace(regex, '')).toBe('copilot');
   });
 
   it('regex correctly strips tmux-codex to codex', () => {
