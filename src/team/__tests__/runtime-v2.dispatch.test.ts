@@ -461,7 +461,7 @@ describe('runtime v2 startup inbox dispatch', () => {
     expect(inbox).toContain('The trusted runtime has provided a "REQUIRED: Structured Verdict Output" section');
     expect(inbox).toContain('do NOT edit, create, or delete any file');
     expect(inbox).toContain('The leader consumes your structured verdict to transition the task');
-    expect(inbox).toContain('do NOT run `omcp team api transition-task-status` for this reviewer assignment');
+    expect(inbox).toContain('do NOT run `omg team api transition-task-status` for this reviewer assignment');
     expect(inbox).toContain('do NOT type `/exit` unless the leader sends an explicit shutdown');
     expect(inbox).toContain('REQUIRED: Structured Verdict Output');
     expect(inbox).toContain('Review the implementation');

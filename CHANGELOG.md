@@ -48,6 +48,15 @@ and command names outright rather than aliasing them.
   state under `.omc/`, moving it to `.omg/` is a manual step.
   `WORKSPACE_MARKER` is still `.omc-workspace` (unchanged in this release),
   so multi-repo workspace anchors keep working.
+- **Short CLI command renamed `omcp` → `omg`.** The user-facing command now
+  matches the `.omg/` runtime root and `.copilot/omg.jsonc` project config, so
+  v4's `omcp <command>` becomes `omg <command>` and the bridge entrypoint
+  `omcp-cli` becomes `omg-cli`. **`omcp` is removed, not aliased** — scripts,
+  aliases, and CI steps that call it must be updated. The long-form
+  `oh-my-copilot` command is unchanged and is the only name present in every
+  version, so use it where a command has to work across the upgrade boundary.
+  Statusline users: the HUD wrapper is now `omg-hud.mjs` (was `omcp-hud.mjs`);
+  see the Migration Guide for the `statusLine` fix-up.
 
 ### Added
 
@@ -65,7 +74,7 @@ and command names outright rather than aliasing them.
   each canonical role (critic, code-reviewer, executor, planner, etc.) in
   `team.roleRouting`. Routing resolves once at team creation, persists in
   `TeamConfig.resolved_routing`, and is reused across spawn/scale-up/restart.
-  Env override via `OMCP_TEAM_ROLE_OVERRIDES`. New `omc doctor team-routing`
+  Env override via `OMC_TEAM_ROLE_OVERRIDES`. New `omg doctor team-routing`
   command probes CLI presence for every provider referenced by
   `team.roleRouting`. See `skills/team/SKILL.md` § Per-Role Provider & Model
   Routing.
@@ -133,7 +142,7 @@ and command names outright rather than aliasing them.
   files, embedded POSIX-only command blocks with no Windows variant — including
   the cancel skill's emergency stop-hook escape (a sha256 shell function, GNU
   `date -u -d`, and a python3 heredoc) and the hud install step, whose
-  `mkdir -p` and `cp` meant `omcp-hud.mjs` was never installed while
+  `mkdir -p` and `cp` meant `omg-hud.mjs` was never installed while
   `statusLine` pointed at it. Those blocks are now `node -e` one-liners. The
   cancel escape reuses `scripts/lib/state-root.mjs`, so it honours
   `OMC_STATE_DIR` and workspace markers exactly as the state tools do.

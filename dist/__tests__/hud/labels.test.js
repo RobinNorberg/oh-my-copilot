@@ -15,7 +15,7 @@ function stripAnsi(value) {
     return value.replace(ANSI_REGEX, '');
 }
 function createTempConfigDir(settings) {
-    const dir = mkdtempSync(join(tmpdir(), 'omcp-hud-labels-'));
+    const dir = mkdtempSync(join(tmpdir(), 'omg-hud-labels-'));
     tempDirs.push(dir);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, 'settings.json'), JSON.stringify(settings), 'utf8');

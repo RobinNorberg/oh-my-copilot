@@ -2119,7 +2119,7 @@ var init_omc_cli_rendering = __esm({
   "src/utils/omc-cli-rendering.ts"() {
     "use strict";
     import_child_process3 = require("child_process");
-    OMC_CLI_BINARY = "omcp";
+    OMC_CLI_BINARY = "omg";
     OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
   }
 });

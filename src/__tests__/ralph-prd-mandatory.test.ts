@@ -395,7 +395,7 @@ describe('Ralph PRD-Mandatory', () => {
       });
 
       expect(prompt).toContain('[CODEX CRITIC VERIFICATION REQUIRED');
-      expect(prompt).toContain('omcp ask codex --agent-prompt critic');
+      expect(prompt).toContain('omg ask codex --agent-prompt critic');
       expect(prompt).toContain('<ralph-approved critic="codex" request-id="req-codex">VERIFIED_COMPLETE</ralph-approved>');
     });
 

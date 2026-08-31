@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { formatOmcCliInvocation, resolveOmcCliPrefix, rewriteOmcCliInvocations, } from '../utils/omc-cli-rendering.js';
 describe('omc CLI rendering', () => {
-    it('uses omcp when the binary is available', () => {
-        expect(resolveOmcCliPrefix({ omcAvailable: true, env: {} })).toBe('omcp');
+    it('uses omg when the binary is available', () => {
+        expect(resolveOmcCliPrefix({ omcAvailable: true, env: {} })).toBe('omg');
         expect(formatOmcCliInvocation('team api claim-task', { omcAvailable: true, env: {} }))
-            .toBe('omcp team api claim-task');
+            .toBe('omg team api claim-task');
     });
     it('falls back to the plugin bridge when omc is unavailable but CLAUDE_PLUGIN_ROOT is set', () => {
         const env = { CLAUDE_PLUGIN_ROOT: '/tmp/plugin-root' };
@@ -42,8 +42,8 @@ describe('omc CLI rendering', () => {
         expect(output).toContain('`node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask codex "review"`');
         expect(output).toContain('> node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs ask gemini --prompt "improve docs"');
     });
-    it('leaves text unchanged when omcp remains the selected prefix', () => {
-        const input = 'Use `omcp team status demo` and\nomcp team wait demo';
+    it('leaves text unchanged when omg remains the selected prefix', () => {
+        const input = 'Use `omg team status demo` and\nomg team wait demo';
         expect(rewriteOmcCliInvocations(input, { omcAvailable: true, env: {} })).toBe(input);
     });
 });

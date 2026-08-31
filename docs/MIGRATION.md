@@ -46,8 +46,8 @@ locations and descendants of system temp/OS roots are never used as roots.
 
 ## v4.13.102 → v5.0.0: Fork Upgrade Guide
 
-This section is specific to **oh-my-copilot** (binaries `oh-my-copilot` and
-`omcp`), the downstream fork maintained at
+This section is specific to **oh-my-copilot** (binaries `oh-my-copilot` and,
+from v5.0.0, `omg` — `omcp` in v4), the downstream fork maintained at
 [RobinNorberg/oh-my-copilot](https://github.com/RobinNorberg/oh-my-copilot).
 It covers the concrete upgrade path from fork **v4.13.102** to fork
 **v5.0.0**. The section below it, [v4.x → v5.0: Workflow
@@ -63,8 +63,45 @@ upgrading — **moves two directories that OMC and the host CLI both read
 from, with no automatic migration.** Eleven skill names and seven command
 files are also retired outright (not aliased), three skills are new, one
 hook subsystem is gone with no replacement, and two opt-in features are
-added. Fork-exclusive skills (Azure DevOps, GitHub, and four standalone
-skills) are unaffected.
+added. The short command is renamed `omcp` → `omg`. Fork-exclusive skills
+(Azure DevOps, GitHub, and four standalone skills) are unaffected.
+
+### Command rename: `omcp` → `omg`
+
+The short user-facing command is now **`omg`**, matching the `.omg/` runtime
+root and the `.copilot/omg.jsonc` project config. The bridge entrypoint
+`omcp-cli` is likewise now `omg-cli`.
+
+**`omcp` is removed, not aliased.** Anything that invokes it — shell aliases,
+scripts, Makefiles, CI steps, editor tasks — has to be updated:
+
+```bash
+omcp update      # v4
+omg update       # v5
+```
+
+The long-form **`oh-my-copilot` command is unchanged**, and it is the only
+name present in both v4 and v5. Use it anywhere a command has to work on
+both sides of the upgrade — most importantly in scripts that run *before*
+the upgrade completes:
+
+```bash
+oh-my-copilot update    # works in v4 and v5
+```
+
+**Statusline users:** the HUD wrapper file is renamed with the command, from
+`omcp-hud.mjs` to `omg-hud.mjs` (and `omcp-hud-cache.sh` to
+`omg-hud-cache.sh`). A `statusLine` entry in `settings.json` that still
+points at the old filename will silently stop rendering the HUD after the
+upgrade, because the old file is no longer installed. Re-run setup to have
+it rewritten for you:
+
+```bash
+omg hud setup
+```
+
+Or fix the path by hand in `~/.copilot/settings.json`, replacing
+`hud/omcp-hud.mjs` with `hud/omg-hud.mjs`.
 
 ### Directory moves: `.claude/` → `.copilot/`, `.omc/` → `.omg/`
 
@@ -160,8 +197,8 @@ throttling, there is currently no equivalent in the new workflow surface.
 
 ### Upgrading
 
-oh-my-copilot is a GitHub Copilot CLI plugin (binaries `oh-my-copilot`,
-`omcp`). To upgrade:
+oh-my-copilot is a GitHub Copilot CLI plugin (binaries `oh-my-copilot` and
+`omg`; `omg` was `omcp` before v5.0.0). To upgrade:
 
 ```bash
 npm i -g oh-my-copilot@5

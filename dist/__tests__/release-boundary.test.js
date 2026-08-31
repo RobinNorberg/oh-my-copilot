@@ -64,8 +64,8 @@ function packageManifest(gitHead) {
         ...(gitHead ? { gitHead } : {}),
         bin: {
             'oh-my-copilot': 'bin/oh-my-copilot.js',
-            omc: 'bin/oh-my-copilot.js',
-            'omc-cli': 'bridge/cli.cjs',
+            omg: 'bin/oh-my-copilot.js',
+            'omg-cli': 'bridge/cli.cjs',
         },
     };
 }

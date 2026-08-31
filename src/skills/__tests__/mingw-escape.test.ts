@@ -128,9 +128,9 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
 
     it('hud SKILL.md keeps Unix statusLine guidance portable while preserving Windows-safe paths', () => {
       const content = readFileSync(join(REPO_ROOT, 'skills', 'hud', 'SKILL.md'), 'utf-8');
-      expect(content).toContain('"command": "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omcp-hud.mjs"');
-      expect(content).toContain('"command": "node C:/Users/username/.copilot/hud/omcp-hud.mjs"');
-      expect(content).not.toContain('"command": "node /home/username/.claude/hud/omcp-hud.mjs"');
+      expect(content).toContain('"command": "node ${COPILOT_CONFIG_DIR:-$HOME/.copilot}/hud/omg-hud.mjs"');
+      expect(content).toContain('"command": "node C:/Users/username/.copilot/hud/omg-hud.mjs"');
+      expect(content).not.toContain('"command": "node /home/username/.claude/hud/omg-hud.mjs"');
       expect(content).not.toContain('The command must use an absolute path, not `~`');
     });
 
@@ -138,11 +138,16 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
       const content = readFileSync(join(REPO_ROOT, 'skills', 'hud', 'SKILL.md'), 'utf-8');
       const cleanupLine = content
         .split('\n')
-        .find(l => l.includes('Removed legacy omcp-hud.js') && l.startsWith('node -e'));
+        .find(l => l.includes("'Removed legacy '") && l.startsWith('node -e'));
 
       expect(cleanupLine).toBeDefined();
-      expect(cleanupLine).toContain("t=p.join(d,'hud','omcp-hud.js')");
-      expect(cleanupLine).not.toContain("t=p.join(d,'hud','omcp-hud.mjs')");
+      // Every superseded wrapper name is swept, including the omcp-era ones.
+      expect(cleanupLine).toContain("'omcp-hud.mjs'");
+      expect(cleanupLine).toContain("'omcp-hud.js'");
+      expect(cleanupLine).toContain("'omcp-hud-cache.sh'");
+      expect(cleanupLine).toContain("'omg-hud.js'");
+      // The wrapper the installer actually writes must never be swept.
+      expect(cleanupLine).not.toContain("'omg-hud.mjs'");
     });
 
     it("omc-setup version-detect script uses v==='' not !v", () => {
@@ -187,7 +192,7 @@ describe('MINGW64 escape safety: no "!" in node -e inline scripts (issue #729)',
         'utf-8'
       );
       expect(content).toContain('Use the Skill tool to invoke: `hud` with args: `setup`');
-      expect(content).toContain('Configure `statusLine` in `~/.claude/settings.json`');
+      expect(content).toContain('Configure `statusLine` in `~/.copilot/settings.json`');
       expect(content).not.toContain('Read `~/.claude/settings.json`, then update/add the `statusLine` field.');
       expect(content).not.toContain('"statusLine": {');
       expect(content).not.toContain('C:\\Users');

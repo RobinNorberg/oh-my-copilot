@@ -68,7 +68,7 @@ describe('install() — plugin-dir-mode end-to-end filesystem shape', () => {
     install({ verbose: false, skipCopilotCheck: true, pluginDirMode: true });
 
     // HUD wrapper present and non-empty
-    const hudPath = join(testDir, 'hud', 'omcp-hud.mjs');
+    const hudPath = join(testDir, 'hud', 'omg-hud.mjs');
     expect(existsSync(hudPath)).toBe(true);
     expect(statSync(hudPath).size).toBeGreaterThan(0);
 
@@ -108,7 +108,7 @@ describe('install() — plugin-dir-mode end-to-end filesystem shape', () => {
     const { install } = await freshInstaller();
     install({ verbose: false, skipCopilotCheck: true, pluginDirMode: true });
 
-    expect(existsSync(join(testDir, 'hud', 'omcp-hud.mjs'))).toBe(true);
+    expect(existsSync(join(testDir, 'hud', 'omg-hud.mjs'))).toBe(true);
     expect(existsSync(join(testDir, 'CLAUDE.md'))).toBe(true);
     expect(existsSync(join(testDir, 'settings.json'))).toBe(true);
     expect(existsSync(join(testDir, '.omc-config.json'))).toBe(true);

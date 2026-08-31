@@ -15,7 +15,7 @@ function makeOld(path: string): void {
 
 describe('HUD cache wrapper stale render cleanup', () => {
   it('removes stale render locks and zero-byte temp files without deleting diagnostics', () => {
-    const tempRoot = mkdtempSync(join(tmpdir(), 'omcp-hud-cache-wrapper-'));
+    const tempRoot = mkdtempSync(join(tmpdir(), 'omg-hud-cache-wrapper-'));
     const cacheDir = join(tempRoot, 'cache');
     mkdirSync(cacheDir, { recursive: true });
 
