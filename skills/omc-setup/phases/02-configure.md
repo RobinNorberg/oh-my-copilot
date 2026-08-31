@@ -93,19 +93,19 @@ node -e "const p=require('path'),f=require('fs'),os=require('os'),BS=String.from
 
 ## Step 2.5: Install OMC CLI Tool
 
-The OMC CLI (`omc` command) provides standalone helper commands such as `omc hud`, `omc teleport`, and `omc team ...`.
+The OMC CLI (`omg` command) provides standalone helper commands such as `omg hud`, `omg teleport`, and `omg team ...`.
 
 First, check if the CLI is already installed:
 
 ```bash
-node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('omc',['--version'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0){console.log('OMC CLI already installed: '+((r.stdout||'').split(/\r?\n/)[0]||'installed'));console.log('OMC_CLI_INSTALLED=true')}else{console.log('OMC_CLI_INSTALLED=false')}"
+node -e "const{spawnSync}=require('node:child_process');const r=spawnSync('omg',['--version'],{encoding:'utf8',shell:process.platform==='win32'});if(r.status===0){console.log('OMC CLI already installed: '+((r.stdout||'').split(/\r?\n/)[0]||'installed'));console.log('OMC_CLI_INSTALLED=true')}else{console.log('OMC_CLI_INSTALLED=false')}"
 ```
 
 If `OMC_CLI_INSTALLED` is `"true"`, skip the rest of this step.
 
 If `OMC_CLI_INSTALLED` is `"false"`, use AskUserQuestion:
 
-**Question:** "Would you like to install the OMC CLI globally for standalone helper commands? (`omc`, `omc hud`, `omc teleport`)"
+**Question:** "Would you like to install the OMC CLI globally for standalone helper commands? (`omg`, `omg hud`, `omg teleport`)"
 
 **Options:**
 1. **Yes (Recommended)** - Install `oh-my-copilot` via `npm install -g`

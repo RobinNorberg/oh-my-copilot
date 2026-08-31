@@ -163,13 +163,13 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
       cwd,
       session_id: 'session-a',
       tool_name: 'Bash',
-      tool_input: { command: 'omc ultragoal create-goals --brief "fix issue"' },
+      tool_input: { command: 'omg ultragoal create-goals --brief "fix issue"' },
     });
     const completeGoals = runHook(preToolScript, {
       cwd,
       session_id: 'session-a',
       tool_name: 'Bash',
-      tool_input: { command: 'omc ultragoal complete-goals' },
+      tool_input: { command: 'omg ultragoal complete-goals' },
     });
 
     expect(createGoals.hookSpecificOutput?.permissionDecision).not.toBe('deny');
@@ -549,13 +549,13 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
       cwd,
       session_id: 'session-a',
       tool_name: 'Bash',
-      tool_input: { command: 'omc ultragoal checkpoint --goal-id G001 --status complete' },
+      tool_input: { command: 'omg ultragoal checkpoint --goal-id G001 --status complete' },
     });
     const blockers = runHook(preToolScript, {
       cwd,
       session_id: 'session-a',
       tool_name: 'Bash',
-      tool_input: { command: 'omc ultragoal record-review-blockers --goal-id G001' },
+      tool_input: { command: 'omg ultragoal record-review-blockers --goal-id G001' },
     });
 
     expect(checkpoint.hookSpecificOutput?.permissionDecision).not.toBe('deny');
@@ -570,7 +570,7 @@ describe('ultragoal persistence and Claude /goal enforcement', () => {
       cwd,
       session_id: 'session-a',
       tool_name: 'Bash',
-      tool_input: { command: 'omc ultragoal checkpoint --goal-id G001 --status complete && npm test' },
+      tool_input: { command: 'omg ultragoal checkpoint --goal-id G001 --status complete && npm test' },
     });
 
     expect(result.hookSpecificOutput?.permissionDecision).toBe('deny');

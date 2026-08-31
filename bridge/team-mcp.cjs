@@ -17863,16 +17863,51 @@ var StdioServerTransport = class {
 
 // src/mcp/team-server.ts
 var import_node_crypto2 = require("node:crypto");
-var import_child_process6 = require("child_process");
+var import_child_process7 = require("child_process");
 var import_path14 = require("path");
 var import_url2 = require("url");
+
+// src/utils/omc-cli-rendering.ts
+var import_child_process = require("child_process");
+var OMC_CLI_BINARY = "omg";
+var OMC_PLUGIN_BRIDGE_PREFIX = 'node "$CLAUDE_PLUGIN_ROOT"/bridge/cli.cjs';
+function commandExists(command, env) {
+  const lookupCommand = process.platform === "win32" ? "where" : "which";
+  const result = (0, import_child_process.spawnSync)(lookupCommand, [command], {
+    stdio: "ignore",
+    env
+  });
+  return result.status === 0;
+}
+function resolveOmcCliPrefix(options = {}) {
+  const env = options.env ?? process.env;
+  const omcAvailable = options.omcAvailable ?? commandExists(OMC_CLI_BINARY, env);
+  if (omcAvailable) {
+    return OMC_CLI_BINARY;
+  }
+  const pluginRoot = typeof env.CLAUDE_PLUGIN_ROOT === "string" ? env.CLAUDE_PLUGIN_ROOT.trim() : "";
+  if (pluginRoot) {
+    return OMC_PLUGIN_BRIDGE_PREFIX;
+  }
+  return OMC_CLI_BINARY;
+}
+function resolveInvocationPrefix(commandSuffix, options = {}) {
+  void commandSuffix;
+  return resolveOmcCliPrefix(options);
+}
+function formatOmcCliInvocation(commandSuffix, options = {}) {
+  const suffix = commandSuffix.trim().replace(/^omc\s+/, "");
+  return `${resolveInvocationPrefix(suffix, options)} ${suffix}`.trim();
+}
+
+// src/mcp/team-server.ts
 var import_fs14 = require("fs");
 var import_promises4 = require("fs/promises");
 
 // src/team/tmux-session.ts
 var import_fs7 = require("fs");
 var import_crypto2 = require("crypto");
-var import_child_process5 = require("child_process");
+var import_child_process6 = require("child_process");
 var import_util7 = require("util");
 var import_path7 = require("path");
 var import_promises = __toESM(require("fs/promises"), 1);
@@ -17890,7 +17925,7 @@ function validateTeamName(teamName) {
 
 // src/lib/worktree-paths.ts
 var import_crypto = require("crypto");
-var import_child_process = require("child_process");
+var import_child_process2 = require("child_process");
 var import_fs = require("fs");
 var import_os2 = require("os");
 var import_path2 = require("path");
@@ -17999,7 +18034,7 @@ function resolveSuperprojectRoot(cwd) {
   for (let depth = 0; depth < 32; depth++) {
     let superRoot;
     try {
-      superRoot = (0, import_child_process.execFileSync)("git", ["rev-parse", "--show-superproject-working-tree"], {
+      superRoot = (0, import_child_process2.execFileSync)("git", ["rev-parse", "--show-superproject-working-tree"], {
         cwd: probeCwd,
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
@@ -18327,7 +18362,7 @@ function runGitShowToplevel(cwd) {
     const result = gitShowToplevelProbeForTests(cwd);
     return Buffer.isBuffer(result) ? result.toString("utf8") : result;
   }
-  return (0, import_child_process.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
+  return (0, import_child_process2.execFileSync)("git", ["rev-parse", "--show-toplevel"], {
     cwd,
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
@@ -18384,7 +18419,7 @@ function getProjectIdentifier(worktreeRoot) {
   }
   let remoteUrl = "";
   try {
-    remoteUrl = (0, import_child_process.execFileSync)("git", ["remote", "get-url", "origin"], {
+    remoteUrl = (0, import_child_process2.execFileSync)("git", ["remote", "get-url", "origin"], {
       cwd: root,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
@@ -18394,7 +18429,7 @@ function getProjectIdentifier(worktreeRoot) {
   }
   let primaryRoot = root;
   try {
-    const commonDir = (0, import_child_process.execFileSync)("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+    const commonDir = (0, import_child_process2.execFileSync)("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
       cwd: root,
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
@@ -18517,14 +18552,14 @@ var ForeignWorkingDirectoryError = class extends Error {
 };
 
 // src/cli/tmux-utils.ts
-var import_child_process3 = require("child_process");
+var import_child_process4 = require("child_process");
 var import_path4 = require("path");
 var import_util5 = require("util");
 
 // src/platform/executable-resolution.ts
 var import_fs2 = require("fs");
 var import_path3 = __toESM(require("path"), 1);
-var import_child_process2 = require("child_process");
+var import_child_process3 = require("child_process");
 var RESOLVE_TIMEOUT_MS = 5e3;
 var SAFE_BINARY_NAME = /^[A-Za-z0-9._-]+$/;
 function platformModel(platform) {
@@ -18550,7 +18585,7 @@ function neutralFinderCwd(model) {
 function resolveCliPath(binary, model) {
   try {
     const finderCwd = neutralFinderCwd(model);
-    const result = (0, import_child_process2.spawnSync)(model.finder, [binary], {
+    const result = (0, import_child_process3.spawnSync)(model.finder, [binary], {
       timeout: RESOLVE_TIMEOUT_MS,
       encoding: "utf8",
       shell: false,
@@ -18604,7 +18639,7 @@ function resolveTmuxInvocation(args) {
 async function tmuxExecAsync(args, opts) {
   const { stripTmux: _, timeout, ...rest } = opts ?? {};
   const invocation = resolveTmuxInvocation(args);
-  return (0, import_util5.promisify)(import_child_process3.execFile)(invocation.command, invocation.args, {
+  return (0, import_util5.promisify)(import_child_process4.execFile)(invocation.command, invocation.args, {
     encoding: "utf-8",
     env: resolveEnv(opts),
     ...timeout !== void 0 ? { timeout } : {},
@@ -18639,11 +18674,11 @@ function paneLineLooksLikeIdlePrompt(line, provider) {
 }
 
 // src/platform/process-utils.ts
-var import_child_process4 = require("child_process");
+var import_child_process5 = require("child_process");
 var import_fs3 = require("fs");
 var import_util6 = require("util");
 var fsPromises = __toESM(require("fs/promises"), 1);
-var execFileAsync = (0, import_util6.promisify)(import_child_process4.execFile);
+var execFileAsync = (0, import_util6.promisify)(import_child_process5.execFile);
 function isProcessAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   try {
@@ -18932,7 +18967,7 @@ var WINDOWS_RESERVED_ENV_KEYS = new Set([...WORKER_LAUNCH_INTERNAL_ENV_KEYS, "Sy
 
 // src/team/tmux-session.ts
 var sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-var execFileAsync2 = (0, import_util7.promisify)(import_child_process5.execFile);
+var execFileAsync2 = (0, import_util7.promisify)(import_child_process6.execFile);
 function isCmuxSurfaceTarget(value) {
   return typeof value === "string" && value.trim().length > 0 && !value.trim().startsWith("%");
 }
@@ -20533,10 +20568,10 @@ var omcTeamJobs = /* @__PURE__ */ new Map();
 var OMC_JOBS_DIR = process.env.OMC_JOBS_DIR || getGlobalOmcStatePath("team-jobs");
 var DEPRECATION_CODE = "deprecated_cli_only";
 var TEAM_CLI_REPLACEMENT_HINTS = {
-  omc_run_team_start: "omc team start",
-  omc_run_team_status: "omc team status <job_id>",
-  omc_run_team_wait: "omc team wait <job_id>",
-  omc_run_team_cleanup: "omc team cleanup <job_id>"
+  omc_run_team_start: "team start",
+  omc_run_team_status: "team status <job_id>",
+  omc_run_team_wait: "team wait <job_id>",
+  omc_run_team_cleanup: "team cleanup <job_id>"
 };
 function isDeprecatedTeamToolName(name) {
   return Object.prototype.hasOwnProperty.call(TEAM_CLI_REPLACEMENT_HINTS, name);
@@ -20561,7 +20596,7 @@ function buildCliReplacement(toolName, args) {
     const tasks = Array.isArray(parsed.tasks) ? parsed.tasks.map(
       (task) => typeof task === "object" && task !== null && typeof task.description === "string" ? task.description.trim() : ""
     ).filter(Boolean) : [];
-    const flags = ["omc", "team", "start"];
+    const flags = ["team", "start"];
     if (teamName) flags.push("--name", quoteCliValue(teamName));
     if (cwd) flags.push("--cwd", quoteCliValue(cwd));
     if (newWindow) flags.push("--new-window");
@@ -20582,21 +20617,21 @@ function buildCliReplacement(toolName, args) {
     } else {
       flags.push("--task", '"<task>"');
     }
-    return flags.join(" ");
+    return formatOmcCliInvocation(flags.join(" "));
   }
   const jobId = typeof parsed.job_id === "string" ? parsed.job_id.trim() : "<job_id>";
   if (toolName === "omc_run_team_status") {
-    return `omc team status --job-id ${quoteCliValue(jobId)}`;
+    return formatOmcCliInvocation(`team status --job-id ${quoteCliValue(jobId)}`);
   }
   if (toolName === "omc_run_team_wait") {
     const timeoutMs = typeof parsed.timeout_ms === "number" && Number.isFinite(parsed.timeout_ms) ? ` --timeout-ms ${Math.floor(parsed.timeout_ms)}` : "";
-    return `omc team wait --job-id ${quoteCliValue(jobId)}${timeoutMs}`;
+    return formatOmcCliInvocation(`team wait --job-id ${quoteCliValue(jobId)}${timeoutMs}`);
   }
   if (toolName === "omc_run_team_cleanup") {
     const graceMs = typeof parsed.grace_ms === "number" && Number.isFinite(parsed.grace_ms) ? ` --grace-ms ${Math.floor(parsed.grace_ms)}` : "";
-    return `omc team cleanup --job-id ${quoteCliValue(jobId)}${graceMs}`;
+    return formatOmcCliInvocation(`team cleanup --job-id ${quoteCliValue(jobId)}${graceMs}`);
   }
-  return TEAM_CLI_REPLACEMENT_HINTS[toolName];
+  return formatOmcCliInvocation(TEAM_CLI_REPLACEMENT_HINTS[toolName]);
 }
 function createDeprecatedCliOnlyEnvelopeWithArgs(toolName, args) {
   const cliReplacement = buildCliReplacement(toolName, args);
@@ -20606,7 +20641,7 @@ function createDeprecatedCliOnlyEnvelopeWithArgs(toolName, args) {
       text: JSON.stringify({
         code: DEPRECATION_CODE,
         tool: toolName,
-        message: "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead.",
+        message: "Legacy team MCP runtime tools are deprecated. Use the omg team CLI instead.",
         cli_replacement: cliReplacement
       })
     }],
@@ -20721,7 +20756,7 @@ async function handleStart(args) {
   const runtimeCliPath = (0, import_path14.join)(__ownDir, "runtime-cli.cjs");
   const job = { status: "running", startedAt: Date.now(), teamName: input.teamName, cwd: input.cwd };
   omcTeamJobs.set(jobId, job);
-  const child = (0, import_child_process6.spawn)(process.execPath, [runtimeCliPath], {
+  const child = (0, import_child_process7.spawn)(process.execPath, [runtimeCliPath], {
     env: { ...process.env, OMC_JOB_ID: jobId, OMC_JOBS_DIR },
     stdio: ["pipe", "pipe", "pipe"]
   });
@@ -20942,7 +20977,7 @@ async function handleCleanup(args) {
 var TOOLS = [
   {
     name: "omc_run_team_start",
-    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team start`.",
+    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omg team start`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -20968,7 +21003,7 @@ var TOOLS = [
   },
   {
     name: "omc_run_team_status",
-    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team status <job_id>`.",
+    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omg team status <job_id>`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -20979,7 +21014,7 @@ var TOOLS = [
   },
   {
     name: "omc_run_team_wait",
-    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omc team wait <job_id>`.",
+    description: "[DEPRECATED] CLI-only migration required. This tool no longer executes; use `omg team wait <job_id>`.",
     inputSchema: {
       type: "object",
       properties: {
@@ -20994,7 +21029,7 @@ var TOOLS = [
   },
   {
     name: "omc_run_team_cleanup",
-    description: "[DEPRECATED COMPAT] Prefer `omc team cleanup <job_id>`; this compatibility cleanup surface preserves team state when worker liveness or worktree cleanup is not proven safe.",
+    description: "[DEPRECATED COMPAT] Prefer `omg team cleanup <job_id>`; this compatibility cleanup surface preserves team state when worker liveness or worktree cleanup is not proven safe.",
     inputSchema: {
       type: "object",
       properties: {

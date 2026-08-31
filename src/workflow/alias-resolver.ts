@@ -3,7 +3,7 @@
  *
  * Maps legacy workflow / skill / command aliases to the four Tier-0
  * canonical workflows (`plan`, `execute`, `review`, `verify`) or the
- * maintainer-only `omc release` authority. Provides:
+ * maintainer-only `omg release` authority. Provides:
  *  - one concise actionable warning per alias per session (default)
  *  - diagnostics mapping/telemetry retention
  *  - temporary automation opt-out
@@ -87,7 +87,7 @@ export const ALIAS_REGISTRY: readonly AliasEntry[] = [
   { alias: 'psm', canonical: 'project-session-manager', owner: 'workflow-registry', description: 'psm → project-session-manager', removalMilestone: 'short-name convenience alias; retained by owner direction', isWorkflowAlias: false },
 
   // ---- Maintainer-only release ----
-  { alias: 'release', canonical: 'omc-release', owner: 'maintainers', description: 'release → maintainer-only omc release', removalMilestone: 'compatibility alias during migration; never auto-removed without owner approval', isWorkflowAlias: true },
+  { alias: 'release', canonical: 'omc-release', owner: 'maintainers', description: 'release → maintainer-only omg release', removalMilestone: 'compatibility alias during migration; never auto-removed without owner approval', isWorkflowAlias: true },
 ] as const;
 
 const aliasLookup = new Map<string, AliasEntry>();
@@ -174,7 +174,7 @@ export interface AliasResolution {
 
 export function formatAliasWarning(alias: string, canonical: AliasTarget): string {
   if (canonical === 'omc-release') {
-    return `Alias "${alias}" is deprecated → use "omc release" (maintainer-only). Run "omc release --help" for the canonical path.`;
+    return `Alias "${alias}" is deprecated → use "omg release" (maintainer-only). Run "omg release --help" for the canonical path.`;
   }
   return `Alias "${alias}" is deprecated → use "${canonical}" (Tier-0). Run "/${canonical} ..." next time.`;
 }

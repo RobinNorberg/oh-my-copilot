@@ -37,7 +37,7 @@ function readConfig(configPath: string) {
   return JSON.parse(readFileSync(configPath, 'utf-8'));
 }
 
-describe('omc config-stop-callback --profile', () => {
+describe('omg config-stop-callback --profile', () => {
   it('creates a discord profile and stores it in notificationProfiles', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
     const configPath = join(homeDir, '.claude', '.omc-config.json');
@@ -184,7 +184,7 @@ describe('omc config-stop-callback --profile', () => {
   });
 });
 
-describe('omc config-notify-profile', () => {
+describe('omg config-notify-profile', () => {
   it('lists all profiles', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-profile-'));
     const configPath = join(homeDir, '.claude', '.omc-config.json');

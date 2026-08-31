@@ -472,7 +472,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
         const output = JSON.parse(result.stdout);
         const combined = `${output.systemMessage ?? ''}\n${output.hookSpecificOutput?.additionalContext ?? ''}`;
         expect(combined).not.toContain('[OMC VERSION DRIFT DETECTED]');
-        expect(combined).not.toContain("Run 'omc update'");
+        expect(combined).not.toContain("Run 'omg update'");
         expect(combined).not.toContain('4.15.5');
     });
     it('shows an npm update from unmanaged 4.15.7 local plugin roots (#3867)', () => {

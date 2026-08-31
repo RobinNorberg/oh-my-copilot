@@ -539,7 +539,7 @@ function formatUpdateNoticeForUser(updateInfo, options = {}) {
   const action = updateInfo?.source === 'marketplace'
     ? 'To update the plugin channel, run: /plugin marketplace update omc && /omc-setup'
     : (options.autoUpgradePrompt === false
-      ? 'To update later, run: omc update'
+      ? 'To update later, run: omg update'
       : 'Run /update to upgrade now, or use /plugin install oh-my-copilot');
   return `[OMC UPDATE AVAILABLE] oh-my-copilot v${latestVersion} is available (current: v${currentVersion}). ${action}`;
 }
@@ -975,7 +975,7 @@ async function main() {
       }
       driftMsg += driftInfo.source === 'marketplace'
         ? `\nRun '/plugin marketplace update omc && /omc-setup' to sync plugin-managed components.`
-        : `\nRun 'omc update' to sync all components.`;
+        : `\nRun 'omg update' to sync all components.`;
 
       messages.push(`<session-restore>\n\n${driftMsg}\n\n</session-restore>\n\n---\n`);
     }
@@ -998,7 +998,7 @@ async function main() {
         const omcConfigPath = join(configDir, '.omc-config.json');
         const omcConfig = readJsonFile(omcConfigPath);
         if (omcConfig?.silentAutoUpdate) {
-          messages.push(`<session-restore>\n\n[OMC] silentAutoUpdate is enabled in .omc-config.json but has no effect in plugin mode.\nTo update, use: /plugin marketplace update omc && /omc-setup\nOr run manually: omc update\n\n</session-restore>\n\n---\n`);
+          messages.push(`<session-restore>\n\n[OMC] silentAutoUpdate is enabled in .omc-config.json but has no effect in plugin mode.\nTo update, use: /plugin marketplace update omc && /omc-setup\nOr run manually: omg update\n\n</session-restore>\n\n---\n`);
         }
       } catch {}
     }

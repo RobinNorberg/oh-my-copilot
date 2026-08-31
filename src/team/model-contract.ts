@@ -362,7 +362,7 @@ const CONTRACTS: Record<CliAgentType, CliAgentContract> = {
       // approval bypass every other provider already passes. Without them a
       // worker pane opened on a directory cursor has not seen before stops at
       // "Workspace Trust Required" and exits; team worktrees are freshly
-      // created per worker, so they always hit that path. `omc ask cursor`
+      // created per worker, so they always hit that path. `omg ask cursor`
       // already launches with `--force --trust` for the same reason.
       const args = ['--force', '--trust'];
       const extra = extraFlags.filter(flag => !['--force', '-f', '--yolo', '--trust'].includes(flag));
@@ -633,7 +633,7 @@ export function resolveClaudeWorkerModel(
  * Antigravity (`agy`) `-p`/`--print` takes the prompt as an argv value and cannot
  * read it from stdin; on Windows that argv path is unreliable and `agy` has known
  * upstream Windows `-p` limitations. This centralizes the same platform support
- * decision the advisor (`scripts/run-provider-advisor.js`) enforces for `omc ask`.
+ * decision the advisor (`scripts/run-provider-advisor.js`) enforces for `omg ask`.
  */
 export function isHeadlessSupportedOnPlatform(
   agentType: CliAgentType,

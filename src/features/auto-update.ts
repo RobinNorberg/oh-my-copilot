@@ -973,7 +973,7 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean; skipGraceP
 
   const projectScopedPlugin = isProjectScopedPlugin();
   // Plugin installs execute hooks from <pluginRoot>/hooks/hooks.json. Re-running
-  // the standalone settings.json hook merge during `omc update` re-injects the
+  // the standalone settings.json hook merge during `omg update` re-injects the
   // legacy ~/.copilot/hooks/* entries and causes duplicate hook execution.
   //
   // Reconciliation should still refresh shared installer artifacts (CLAUDE.md,
@@ -1067,21 +1067,39 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean; skipGraceP
   };
 }
 
+/**
+ * Names this CLI may be linked under, most current first.
+ *
+ * `omg` is the v5 command. `oh-my-copilot` is the long-form name that ships in
+ * both v4 and v5, so it still resolves on a machine caught mid-upgrade where
+ * the new short shim is not linked yet — self-update re-exec would otherwise
+ * fail on exactly the installs that need it.
+ */
+const OMC_BINARY_CANDIDATES = ['omg', 'oh-my-copilot'] as const;
+
 function resolveOmcBinaryPath(): string {
-  if (process.platform === 'win32') {
-    return getFirstResolvedBinaryPath(execFileSync('where.exe', ['omc.cmd'], {
-      encoding: 'utf-8',
-      stdio: 'pipe',
-      timeout: 5000,
-      windowsHide: true,
-    }), 'omc');
+  for (const candidate of OMC_BINARY_CANDIDATES) {
+    try {
+      if (process.platform === 'win32') {
+        return getFirstResolvedBinaryPath(execFileSync('where.exe', [`${candidate}.cmd`], {
+          encoding: 'utf-8',
+          stdio: 'pipe',
+          timeout: 5000,
+          windowsHide: true,
+        }), candidate);
+      }
+
+      return getFirstResolvedBinaryPath(execSync(`which ${candidate} 2>/dev/null || where ${candidate} 2>NUL`, {
+        encoding: 'utf-8',
+        stdio: 'pipe',
+        timeout: 5000,
+      }), candidate);
+    } catch {
+      // Not linked under this name; fall through to the next candidate.
+    }
   }
 
-  return getFirstResolvedBinaryPath(execSync('which omc 2>/dev/null || where omc 2>NUL', {
-    encoding: 'utf-8',
-    stdio: 'pipe',
-    timeout: 5000,
-  }), 'omc');
+  throw new Error(`Unable to resolve ${OMC_BINARY_CANDIDATES.join(' or ')} binary path`);
 }
 
 /**
@@ -1149,7 +1167,7 @@ export async function performUpdate(options?: {
         // Set flag to prevent infinite loop
         process.env.OMC_UPDATE_RECONCILE = '1';
 
-        // Find the omc binary path
+        // Find the omg binary path
         const omcPath = resolveOmcBinaryPath();
 
         // Re-exec with reconcile subcommand

@@ -138,7 +138,7 @@ describe("team/followup-planner", () => {
                 "## Requirement coverage map",
                 "- req -> impl",
                 "",
-                'omc team 3:claude "implement auth"',
+                'omg team 3:claude "implement auth"',
                 "",
             ].join("\n"));
             const result = resolveApprovedTeamFollowupContext(testDir, "do the task");
@@ -180,7 +180,7 @@ describe("team/followup-planner", () => {
                 "## Requirement coverage map",
                 "- req -> impl",
                 "",
-                'omc team 3:claude "implement auth"',
+                'omg team 3:claude "implement auth"',
                 "",
             ].join("\n"));
             writeFileSync(join(plansDir, "test-spec-aaa.md"), [
@@ -217,7 +217,7 @@ describe("team/followup-planner", () => {
                 "## Requirement coverage map",
                 "- req -> impl",
                 "",
-                'omc team 3:claude "implement auth"',
+                'omg team 3:claude "implement auth"',
                 "",
             ].join("\n"));
             writeFileSync(join(plansDir, "test-spec-feature.md"), [
@@ -235,7 +235,7 @@ describe("team/followup-planner", () => {
             expect(result.hint.mode).toBe("team");
             expect(result.hint.task).toBe("implement auth");
             expect(result.hint.workerCount).toBe(3);
-            expect(result.launchCommand).toContain("omc team");
+            expect(result.launchCommand).toContain("omg team");
         });
         it("resolves follow-up context from OMX planning artifacts written after a deep-interview/ralplan cycle", () => {
             const omxPlansDir = join(testDir, ".omx", "plans");

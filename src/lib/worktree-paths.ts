@@ -693,7 +693,7 @@ export function warnSiblingRetrofit(workspaceAnchor: string, sessionId?: string)
     `[omc] workspace-retrofit warning: .omc-workspace anchor found at ${workspaceAnchor}\n` +
     `  but sibling repos have pre-existing local .omg/state/ content:\n${dirList}\n` +
     `  Shared state will go to: ${sharedOmc}\n` +
-    `  To migrate legacy state: OMC_MIGRATE_LEGACY_STATE=1 omc setup\n` +
+    `  To migrate legacy state: OMC_MIGRATE_LEGACY_STATE=1 omg setup\n` +
     `  Or manually copy state files to ${sharedOmc}/state/\n`
   );
 

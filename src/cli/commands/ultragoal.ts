@@ -20,16 +20,16 @@ import {
   UltragoalError,
 } from '../../ultragoal/artifacts.js';
 
-export const ULTRAGOAL_HELP = `omc ultragoal - Durable repo-native multi-goal workflow with Claude Code /goal handoff
+export const ULTRAGOAL_HELP = `omg ultragoal - Durable repo-native multi-goal workflow with Claude Code /goal handoff
 
 Usage:
-  omc ultragoal create-goals [--brief <text> | --brief-file <path> | --from-stdin] [--goal <title::objective>] [--claude-goal-mode <aggregate|per-story>] [--force] [--plan-id <id> | --auto-plan-id] [--json]
-  omc ultragoal complete-goals [<goal-id>] [--retry-failed] [--plan-id <id>] [--json]
-  omc ultragoal add-goal --title <title> --objective <text> [--evidence <text>] [--plan-id <id>] [--json]
-  omc ultragoal record-review-blockers --goal-id <id> --title <title> --objective <text> --evidence <review-findings> --claude-goal-json <active-json-or-path> [--plan-id <id>] [--json]
-  omc ultragoal checkpoint --goal-id <id> --status <complete|failed|blocked> [--evidence <text>] [--claude-goal-json <json-or-path>] [--quality-gate-json <json-or-path>] [--plan-id <id>] [--json]
-  omc ultragoal status [--claude-goal-json <json-or-path>] [--plan-id <id>] [--json]
-  omc ultragoal list-plans [--json]
+  omg ultragoal create-goals [--brief <text> | --brief-file <path> | --from-stdin] [--goal <title::objective>] [--claude-goal-mode <aggregate|per-story>] [--force] [--plan-id <id> | --auto-plan-id] [--json]
+  omg ultragoal complete-goals [<goal-id>] [--retry-failed] [--plan-id <id>] [--json]
+  omg ultragoal add-goal --title <title> --objective <text> [--evidence <text>] [--plan-id <id>] [--json]
+  omg ultragoal record-review-blockers --goal-id <id> --title <title> --objective <text> --evidence <review-findings> --claude-goal-json <active-json-or-path> [--plan-id <id>] [--json]
+  omg ultragoal checkpoint --goal-id <id> --status <complete|failed|blocked> [--evidence <text>] [--claude-goal-json <json-or-path>] [--quality-gate-json <json-or-path>] [--plan-id <id>] [--json]
+  omg ultragoal status [--claude-goal-json <json-or-path>] [--plan-id <id>] [--json]
+  omg ultragoal list-plans [--json]
 
 Aliases:
   create -> create-goals, complete|next|start-next -> complete-goals

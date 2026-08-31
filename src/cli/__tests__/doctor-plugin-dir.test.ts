@@ -1,5 +1,5 @@
 /**
- * Tests for --plugin-dir support in `omc doctor` and `omc doctor conflicts`.
+ * Tests for --plugin-dir support in `omg doctor` and `omg doctor conflicts`.
  *
  * Section 1 (applyPluginDirOption unit tests): tests the helper directly.
  * Section 2 (Commander integration tests): constructs the actual program via
@@ -81,7 +81,7 @@ describe('applyPluginDirOption', () => {
 
   it('relative path (subcommand form) is resolved to absolute', async () => {
     const { applyPluginDirOption } = await import('../index.js');
-    // Simulates: omc doctor conflicts --plugin-dir ./mydir
+    // Simulates: omg doctor conflicts --plugin-dir ./mydir
     applyPluginDirOption('./mydir');
     expect(process.env[OMC_PLUGIN_ROOT_ENV]).toBe(resolve('./mydir'));
   });

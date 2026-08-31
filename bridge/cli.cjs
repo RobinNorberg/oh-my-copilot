@@ -36341,7 +36341,7 @@ Configured autopilot team worker types include CLI-backed workers: ${requested}.
 Use one of these equivalent surfaces from the lead session:
 
 \`\`\`sh
-omc team ${agentSpec} "<implementation task from ${planPath}>"
+omg team ${agentSpec} "<implementation task from ${planPath}>"
 \`\`\`
 
 Or from Claude Code slash commands:
@@ -36387,7 +36387,7 @@ Read the implementation plan at: \`${planPath}\`
 
 ${teamRuntimeGuidance}
 
-${useCliTeamRuntime ? `1. **Launch CLI executor workers** with \`omc team\` or \`/omc-teams\` using the requested agent types.
+${useCliTeamRuntime ? `1. **Launch CLI executor workers** with \`omg team\` or \`/omc-teams\` using the requested agent types.
 2. **Decompose executor-style implementation tasks** from the implementation plan and pass them to CLI workers.
 3. **Monitor tmux/team output** and integrate completed implementation changes.
 4. **Keep review/critic/security/verdict work native**; do not assign those roles to Cursor/CLI workers.
@@ -45065,7 +45065,7 @@ function install(options = {}) {
   const targetVersion = options.version ?? VERSION;
   const installedVersionHint = getNewestInstalledVersionHint();
   if (isComparableVersion(targetVersion) && isComparableVersion(installedVersionHint) && compareVersions(targetVersion, installedVersionHint) < 0) {
-    const message2 = `Skipping install: installed OMC ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omc update" to update the CLI package, then rerun "omc setup".`;
+    const message2 = `Skipping install: installed OMC ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omg update" to update the CLI package, then rerun "omg setup".`;
     log3(message2);
     result.success = true;
     result.message = message2;
@@ -46184,19 +46184,25 @@ function reconcileUpdateRuntime(options) {
   };
 }
 function resolveOmcBinaryPath() {
-  if (process.platform === "win32") {
-    return getFirstResolvedBinaryPath((0, import_child_process19.execFileSync)("where.exe", ["omc.cmd"], {
-      encoding: "utf-8",
-      stdio: "pipe",
-      timeout: 5e3,
-      windowsHide: true
-    }), "omc");
+  for (const candidate of OMC_BINARY_CANDIDATES) {
+    try {
+      if (process.platform === "win32") {
+        return getFirstResolvedBinaryPath((0, import_child_process19.execFileSync)("where.exe", [`${candidate}.cmd`], {
+          encoding: "utf-8",
+          stdio: "pipe",
+          timeout: 5e3,
+          windowsHide: true
+        }), candidate);
+      }
+      return getFirstResolvedBinaryPath((0, import_child_process19.execSync)(`which ${candidate} 2>/dev/null || where ${candidate} 2>NUL`, {
+        encoding: "utf-8",
+        stdio: "pipe",
+        timeout: 5e3
+      }), candidate);
+    } catch {
+    }
   }
-  return getFirstResolvedBinaryPath((0, import_child_process19.execSync)("which omc 2>/dev/null || where omc 2>NUL", {
-    encoding: "utf-8",
-    stdio: "pipe",
-    timeout: 5e3
-  }), "omc");
+  throw new Error(`Unable to resolve ${OMC_BINARY_CANDIDATES.join(" or ")} binary path`);
 }
 async function performUpdate(options) {
   const installed = getInstalledVersion();
@@ -46507,7 +46513,7 @@ function initSilentAutoUpdate(config2 = {}) {
   silentAutoUpdate(config2).catch(() => {
   });
 }
-var import_fs51, import_path64, import_child_process19, REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, CLAUDE_CODE_NPM_PACKAGE, COPILOT_CONFIG_DIR2, VERSION_FILE2, CONFIG_FILE, SILENT_UPDATE_STATE_FILE;
+var import_fs51, import_path64, import_child_process19, REPO_OWNER, REPO_NAME, GITHUB_API_URL, GITHUB_RAW_URL, CLAUDE_CODE_NPM_PACKAGE, COPILOT_CONFIG_DIR2, VERSION_FILE2, CONFIG_FILE, OMC_BINARY_CANDIDATES, SILENT_UPDATE_STATE_FILE;
 var init_auto_update = __esm({
   "src/features/auto-update.ts"() {
     "use strict";
@@ -46527,6 +46533,7 @@ var init_auto_update = __esm({
     COPILOT_CONFIG_DIR2 = getCopilotConfigDir();
     VERSION_FILE2 = (0, import_path64.join)(COPILOT_CONFIG_DIR2, ".omc-version.json");
     CONFIG_FILE = (0, import_path64.join)(COPILOT_CONFIG_DIR2, OMC_CONFIG_FILE_REL);
+    OMC_BINARY_CANDIDATES = ["omg", "oh-my-copilot"];
     SILENT_UPDATE_STATE_FILE = (0, import_path64.join)(COPILOT_CONFIG_DIR2, ".omc-silent-update.json");
   }
 });
@@ -63593,7 +63600,7 @@ function renderPlanRuntimeGuidance(availability) {
   }
   return [
     "## Provider Runtime Availability",
-    'Codex CLI is installed and available. When `--architect codex` or `--critic codex` flags are present, use `omc ask codex --agent-prompt <role> "<prompt>"` for those passes. Do NOT report Codex as unavailable.'
+    'Codex CLI is installed and available. When `--architect codex` or `--critic codex` flags are present, use `omg ask codex --agent-prompt <role> "<prompt>"` for those passes. Do NOT report Codex as unavailable.'
   ].join("\n");
 }
 function renderRalphRuntimeGuidance(availability) {
@@ -63602,7 +63609,7 @@ function renderRalphRuntimeGuidance(availability) {
   }
   return [
     "## Provider Runtime Availability",
-    'Codex CLI is installed and available. When `--critic=codex` is set, use `omc ask codex --agent-prompt critic "<prompt>"` for the approval pass. Do NOT report Codex as unavailable.'
+    'Codex CLI is installed and available. When `--critic=codex` is set, use `omg ask codex --agent-prompt critic "<prompt>"` for the approval pass. Do NOT report Codex as unavailable.'
   ].join("\n");
 }
 function renderDeepInterviewRuntimeGuidance(availability) {
@@ -77210,7 +77217,7 @@ function cleanupTransientState(directory, endingSessionId) {
         /^cancel-signal/,
         /stop-breaker/,
         // HUD's stdin cache is session-scoped (see `src/hud/stdin.ts`)
-        // and consumed by `omc hud --watch` for the owning session.
+        // and consumed by `omg hud --watch` for the owning session.
         /^hud-stdin-cache\.json$/
       ];
       const isEndingSession = (sid) => typeof endingSessionId === "string" && endingSessionId.length > 0 && sid === endingSessionId;
@@ -92734,7 +92741,7 @@ async function render(context, config2) {
     if (enabledElements.updateNotification !== false && context.updateAvailable) {
       rendered.set(
         "omcLabel",
-        bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`)
+        bold(`[OMC${versionTag}] -> ${context.updateAvailable} omg update`)
       );
     } else {
       rendered.set("omcLabel", bold(`[OMC${versionTag}]`));
@@ -107513,7 +107520,7 @@ var ALIAS_REGISTRY = [
   // ---- Utility compatibility alias ----
   { alias: "psm", canonical: "project-session-manager", owner: "workflow-registry", description: "psm \u2192 project-session-manager", removalMilestone: "short-name convenience alias; retained by owner direction", isWorkflowAlias: false },
   // ---- Maintainer-only release ----
-  { alias: "release", canonical: "omc-release", owner: "maintainers", description: "release \u2192 maintainer-only omc release", removalMilestone: "compatibility alias during migration; never auto-removed without owner approval", isWorkflowAlias: true }
+  { alias: "release", canonical: "omc-release", owner: "maintainers", description: "release \u2192 maintainer-only omg release", removalMilestone: "compatibility alias during migration; never auto-removed without owner approval", isWorkflowAlias: true }
 ];
 var aliasLookup = /* @__PURE__ */ new Map();
 for (const e of ALIAS_REGISTRY) {
@@ -107562,7 +107569,7 @@ function normalizeWorkflowInput(raw) {
 }
 function formatAliasWarning(alias, canonical) {
   if (canonical === "omc-release") {
-    return `Alias "${alias}" is deprecated \u2192 use "omc release" (maintainer-only). Run "omc release --help" for the canonical path.`;
+    return `Alias "${alias}" is deprecated \u2192 use "omg release" (maintainer-only). Run "omg release --help" for the canonical path.`;
   }
   return `Alias "${alias}" is deprecated \u2192 use "${canonical}" (Tier-0). Run "/${canonical} ..." next time.`;
 }
@@ -108021,7 +108028,7 @@ var SKILL_ENTRIES = [
   entry({ name: "ultragoal", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Retained as the durable multi-goal workflow with its own .omg/ultragoal artifacts (owner direction, 5.0.0)." }),
   entry({ name: "ralph", kind: "skill", decision: "keep", riskClass: "advisory", owner: REGISTRY_OWNER, notes: "Retained: src/hooks/ralph is a live subsystem, `ralph` is a wired KeywordType and slash skill, and it is autopilot's verification engine (owner direction, 5.0.0)." }),
   // Release maintainer boundary (owner decision 2): compatibility alias to
-  // maintainer-only `omc release`; fail-closed. Explicitly exempt from the
+  // maintainer-only `omg release`; fail-closed. Explicitly exempt from the
   // 5.0.0 retirement sweep — never auto-removed without owner approval.
   entry({ name: "release", kind: "skill", decision: "alias-deprecate", canonicalTarget: "omc-release", riskClass: "release-authority", owner: REGISTRY_OWNER, maintainerOnly: true, removalMilestone: "compatibility alias during migration; never auto-removed without owner approval" }),
   entry({ name: "omc-release", kind: "skill", decision: "keep", riskClass: "release-authority", owner: REGISTRY_OWNER, maintainerOnly: true, declaredOnly: true, notes: "Maintainer-only release authority target; not a Tier-0 workflow." }),
@@ -108462,7 +108469,7 @@ function recordDispatchTelemetry(record2, worktreeRoot) {
 var PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 var PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 var WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
-var WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
+var WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cgx]\s+team\b(?!\s+api\b)/i;
 var WORKER_BLOCKED_SKILL_PATTERN = /\$(team|autopilot|ralph)\b/i;
 var TEAM_TERMINAL_VALUES = /* @__PURE__ */ new Set([
   "completed",
@@ -113371,7 +113378,7 @@ function startDaemon(config2) {
 async function runDaemonForeground(config2) {
   const cfg = getConfig(config2);
   if (isDaemonRunning2(cfg)) {
-    console.error('Daemon is already running. Use "omc wait daemon stop" first.');
+    console.error('Daemon is already running. Use "omg wait daemon stop" first.');
     process.exit(1);
   }
   writePidFile2(process.pid, cfg);
@@ -113518,8 +113525,8 @@ ${formatRateLimitStatus(rateLimitStatus)}
       console.log(source_default.gray("   apt install tmux   (Linux)\n"));
     } else if (!daemonRunning) {
       console.log(source_default.cyan("\u{1F4A1} Want to auto-resume when the limit clears?"));
-      console.log(source_default.white("   Run: ") + source_default.green("omc wait --start"));
-      console.log(source_default.gray("   (or: omc wait daemon start)\n"));
+      console.log(source_default.white("   Run: ") + source_default.green("omg wait --start"));
+      console.log(source_default.gray("   (or: omg wait daemon start)\n"));
     } else {
       console.log(source_default.green("\u2713 Auto-resume daemon is running"));
       console.log(source_default.gray("  Your session will resume automatically when the limit clears.\n"));
@@ -113537,7 +113544,7 @@ ${formatRateLimitStatus(rateLimitStatus)}
     console.log(source_default.green("\u2713 Not rate limited\n"));
     if (daemonRunning) {
       console.log(source_default.gray("Auto-resume daemon is running (not needed when not rate limited)"));
-      console.log(source_default.gray("Stop with: omc wait --stop\n"));
+      console.log(source_default.gray("Stop with: omg wait --stop\n"));
     }
   }
 }
@@ -113621,8 +113628,8 @@ async function waitDaemonCommand(action, options) {
         console.log(source_default.gray("  \u2022 Poll rate limit status every minute"));
         console.log(source_default.gray("  \u2022 Track blocked Claude Code sessions in tmux"));
         console.log(source_default.gray("  \u2022 Auto-resume sessions when rate limit clears"));
-        console.log(source_default.gray('\nUse "omc wait status" to check daemon status'));
-        console.log(source_default.gray('Use "omc wait daemon stop" to stop the daemon'));
+        console.log(source_default.gray('\nUse "omg wait status" to check daemon status'));
+        console.log(source_default.gray('Use "omg wait daemon stop" to stop the daemon'));
       } else {
         console.error(source_default.red(`\u2717 ${result.message}`));
         if (result.error) {
@@ -113662,7 +113669,7 @@ async function waitDetectCommand(options) {
   console.log(result.message);
   if (result.state?.blockedPanes && result.state.blockedPanes.length > 0) {
     console.log(source_default.gray("\nTip: Start the daemon to auto-resume when rate limit clears:"));
-    console.log(source_default.gray("  omc wait daemon start"));
+    console.log(source_default.gray("  omg wait daemon start"));
   }
   if (result.state?.rateLimitStatus) {
     console.log(source_default.bold("\nCurrent Rate Limit:"));
@@ -114442,7 +114449,7 @@ function collectCapabilitySurface(root2 = packageRoot()) {
   }).sort((a, b) => a.name.localeCompare(b.name));
   return {
     schemaVersion: CAPABILITIES_LOCK_SCHEMA_VERSION,
-    generatedBy: "omc capabilities",
+    generatedBy: "omg capabilities",
     contract: {
       runner: "deterministic-local",
       liveProbeCompatible: true,
@@ -114568,7 +114575,7 @@ function buildCapabilitiesLockfile() {
   const fixtures = defaultCapabilityFixtures(surface);
   return {
     schemaVersion: CAPABILITIES_LOCK_SCHEMA_VERSION,
-    generatedBy: "omc capabilities lock",
+    generatedBy: "omg capabilities lock",
     surfaceDigest: digestCapabilitySurface(surface),
     surface,
     fixtures,
@@ -114828,23 +114835,23 @@ var MAX_WORKER_COUNT = 20;
 var VALID_TEAM_CLI_AGENT_TYPES = /* @__PURE__ */ new Set(["claude", "codex", "gemini", "grok", "cursor", "antigravity"]);
 var DEFAULT_TEAM_CLI_AGENT_TYPE = "claude";
 var TEAM_HELP = `
-Usage: omc team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] "<task description>"
-       omc team status <team-name>
-       omc team shutdown <team-name> [--force]
-       omc team api <operation> [--input <json>] [--json]
-       omc team api --help
+Usage: omg team [N:agent-type[:role]] [--new-window] [--auto-merge] [--no-decompose] "<task description>"
+       omg team status <team-name>
+       omg team shutdown <team-name> [--force]
+       omg team api <operation> [--input <json>] [--json]
+       omg team api --help
 
 Examples:
-  omc team 3:claude "fix failing tests"
-  omc team 2:codex:architect "design auth system"
-  omc team 1:gemini:executor "implement feature"
-  omc team 1:codex,1:gemini "compare approaches"
-  omc team 1:cursor:executor "apply the implementation"
-  omc team 1:antigravity:executor "apply the implementation"
-  omc team 2:codex "review auth flow" --new-window
-  omc team status fix-failing-tests
-  omc team shutdown fix-failing-tests
-  omc team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
+  omg team 3:claude "fix failing tests"
+  omg team 2:codex:architect "design auth system"
+  omg team 1:gemini:executor "implement feature"
+  omg team 1:codex,1:gemini "compare approaches"
+  omg team 1:cursor:executor "apply the implementation"
+  omg team 1:antigravity:executor "apply the implementation"
+  omg team 2:codex "review auth flow" --new-window
+  omg team status fix-failing-tests
+  omg team shutdown fix-failing-tests
+  omg team api send-message --input '{"team_name":"my-team","from_worker":"worker-1","to_worker":"leader-fixed","body":"ACK"}' --json
 
 Worktrees (opt-in): set team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|branch to launch workers from .omg/team/<team>/worktrees/<worker>. Status includes workspace/worktree metadata.
 
@@ -114860,15 +114867,15 @@ Roles (optional): architect, executor, planner, analyst, critic, debugger, verif
   code-reviewer, security-reviewer, test-engineer, designer, writer, scientist
 `;
 var TEAM_API_HELP = `
-Usage: omc team api <operation> [--input <json>] [--json]
-       omc team api <operation> --help
+Usage: omg team api <operation> [--input <json>] [--json]
+       omg team api <operation> --help
 
 Supported operations:
   ${TEAM_API_OPERATIONS.join("\n  ")}
 
 Examples:
-  omc team api list-tasks --input '{"team_name":"my-team"}' --json
-  omc team api claim-task --input '{"team_name":"my-team","task_id":"1","worker":"worker-1","expected_version":1}' --json
+  omg team api list-tasks --input '{"team_name":"my-team"}' --json
+  omg team api claim-task --input '{"team_name":"my-team","task_id":"1","worker":"worker-1","expected_version":1}' --json
 `;
 var TEAM_API_OPERATION_REQUIRED_FIELDS = {
   "send-message": ["team_name", "from_worker", "to_worker", "body"],
@@ -114935,7 +114942,7 @@ var TEAM_API_OPERATION_NOTES = {
 };
 function shouldPrintTeamHelpForError(error2) {
   const message2 = error2 instanceof Error ? error2.message : String(error2);
-  return /^Usage:\s+omc team\b/.test(message2);
+  return /^Usage:\s+omg team\b/.test(message2);
 }
 var NUMBERED_LINE_RE = /^\s*\d+[.)]\s+(.+)$/;
 var BULLETED_LINE_RE = /^\s*[-*•]\s+(.+)$/;
@@ -115161,7 +115168,7 @@ function parseTeamArgs(tokens, defaultAgentType = "claude") {
   }
   const task = filteredArgs.join(" ").trim();
   if (!task) {
-    throw new Error('Usage: omc team [N:agent-type] "<task description>"');
+    throw new Error('Usage: omg team [N:agent-type] "<task description>"');
   }
   const teamName = slugifyTask(task);
   return { workerCount, agentTypes, workerSpecs, role, task, teamName, json, newWindow, autoMerge, explicitWorkerSpec, noDecompose };
@@ -115290,17 +115297,17 @@ Note:
   ${TEAM_API_OPERATION_NOTES[operation]}
 ` : "";
   return `
-Usage: omc team api ${operation} --input <json> [--json]
+Usage: omg team api ${operation} --input <json> [--json]
 
 Required input fields:
 ${required2}${optional2}${note}Example:
-  omc team api ${operation} --input '${sampleInputJson}' --json
+  omg team api ${operation} --input '${sampleInputJson}' --json
 `.trim();
 }
 function parseTeamApiArgs(args) {
   const operation = resolveTeamApiOperation(args[0] || "");
   if (!operation) {
-    throw new Error(`Usage: omc team api <operation> [--input <json>] [--json]
+    throw new Error(`Usage: omg team api <operation> [--input <json>] [--json]
 Supported operations: ${TEAM_API_OPERATIONS.join(", ")}`);
   }
   let input = {};
@@ -115339,7 +115346,7 @@ Supported operations: ${TEAM_API_OPERATIONS.join(", ")}`);
       }
       continue;
     }
-    throw new Error(`Unknown argument for "omc team api": ${token}`);
+    throw new Error(`Unknown argument for "omg team api": ${token}`);
   }
   return { operation, input, json };
 }
@@ -115532,7 +115539,7 @@ async function handleTeamApi(args, cwd2) {
       console.log(JSON.stringify({
         ...jsonBase,
         ok: false,
-        command: "omc team api",
+        command: "omg team api",
         operation: "unknown",
         error: {
           code: "invalid_input",
@@ -115548,7 +115555,7 @@ async function handleTeamApi(args, cwd2) {
   if (parsedApi.json) {
     console.log(JSON.stringify({
       ...jsonBase,
-      command: `omc team api ${parsedApi.operation}`,
+      command: `omg team api ${parsedApi.operation}`,
       ...envelope
     }));
     if (!envelope.ok) process.exitCode = 1;
@@ -115576,14 +115583,14 @@ async function teamCommand(args) {
   }
   if (subcommand === "status") {
     const name = args[1];
-    if (!name) throw new Error("Usage: omc team status <team-name>");
+    if (!name) throw new Error("Usage: omg team status <team-name>");
     await handleTeamStatus(name, cwd2);
     return;
   }
   if (subcommand === "shutdown") {
     const nameOrFlag = args.filter((a) => !a.startsWith("--"));
     const name = nameOrFlag[1];
-    if (!name) throw new Error("Usage: omc team shutdown <team-name> [--force]");
+    if (!name) throw new Error("Usage: omg team shutdown <team-name> [--force]");
     const force = args.includes("--force");
     await handleTeamShutdown(name, cwd2, force);
     return;
@@ -116123,7 +116130,7 @@ function startOrchestratorLoop(directory, sessionId, onEvent) {
 
 // src/cli/commands/ralphthon.ts
 var RALPHTHON_HELP = `
-Usage: omc ralphthon [options] [task]
+Usage: omg ralphthon [options] [task]
 
 Autonomous hackathon lifecycle mode.
 Generates PRD via deep-interview, executes all tasks with ralph loop,
@@ -116137,10 +116144,10 @@ Options:
   --help, -h            Show this help
 
 Examples:
-  omc ralphthon "Build a REST API for user management"
-  omc ralphthon --skip-interview "Implement auth middleware"
-  omc ralphthon --resume
-  omc ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
+  omg ralphthon "Build a REST API for user management"
+  omg ralphthon --skip-interview "Implement auth middleware"
+  omg ralphthon --resume
+  omg ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
 `;
 function parseRalphthonArgs(args) {
   const options = {
@@ -116357,7 +116364,7 @@ async function ralphthonCommand(args) {
   }
   if (!options.task) {
     console.error(
-      source_default.red('Task description required. Usage: omc ralphthon "your task"')
+      source_default.red('Task description required. Usage: omg ralphthon "your task"')
     );
     console.log(RALPHTHON_HELP);
     process.exit(1);
@@ -116365,7 +116372,7 @@ async function ralphthonCommand(args) {
   if (!isInsideTmux2()) {
     console.error(
       source_default.red(
-        "Ralphthon requires tmux. Run inside a tmux session or use `omc` to launch one."
+        "Ralphthon requires tmux. Run inside a tmux session or use `omg` to launch one."
       )
     );
     process.exit(1);
@@ -116698,7 +116705,7 @@ function assertActiveInProgressCheckpoint(plan, goal, checkpointKind) {
 function buildCompletedLegacyGoalRemediation(goal) {
   return [
     "If the active /goal condition is a different completed legacy goal, do not repeat --status complete in this session.",
-    `Record a non-terminal blocker with: omc ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks setting a new /goal in this session>" --claude-goal-json "<different completed goal snapshot JSON or path>".`,
+    `Record a non-terminal blocker with: omg ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks setting a new /goal in this session>" --claude-goal-json "<different completed goal snapshot JSON or path>".`,
     "Then continue this ultragoal in a fresh Claude Code session in the same repo/worktree and set the intended /goal there."
   ].join(" ");
 }
@@ -116765,7 +116772,7 @@ async function readUltragoalPlan(cwd2, planId) {
   try {
     raw = await (0, import_promises28.readFile)(path27, "utf-8");
   } catch {
-    const hint = planId ? `Pass --plan-id ${planId} to a previously-created plan, or run \`omc ultragoal create-goals --plan-id ${planId} ...\`.` : "Run `omc ultragoal create-goals ...` first.";
+    const hint = planId ? `Pass --plan-id ${planId} to a previously-created plan, or run \`omg ultragoal create-goals --plan-id ${planId} ...\`.` : "Run `omg ultragoal create-goals ...` first.";
     throw new UltragoalError(`No ultragoal plan found at ${repoRelative(cwd2, path27)}. ${hint}`);
   }
   const parsed = JSON.parse(raw);
@@ -117148,14 +117155,14 @@ function buildPerStoryClaudeGoalInstruction(goal, plan) {
     "- First confirm the active Claude /goal for this session; if none is active, invoke /goal <condition> with the payload below. If you cannot invoke /goal in this session (e.g. standalone Claude Code), ask the user to type it and wait; --claude-goal-json reconciles the ledger only and does not satisfy the PreToolUse /goal guard.",
     "- If a different active Claude /goal exists, finish or clear that /goal before starting this ultragoal.",
     "- If the active /goal is a different completed legacy goal and the Claude session refuses to set a new /goal, continue this ultragoal in a fresh Claude Code session (same repo/worktree) and invoke /goal there.",
-    `- To preserve the durable ledger before switching sessions, record the non-terminal blocker without failing this goal: omc ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks new /goal in this session>" --claude-goal-json "<goal snapshot JSON or path>"`,
+    `- To preserve the durable ledger before switching sessions, record the non-terminal blocker without failing this goal: omg ultragoal checkpoint --goal-id ${goal.id} --status blocked --evidence "<completed legacy Claude goal blocks new /goal in this session>" --claude-goal-json "<goal snapshot JSON or path>"`,
     "- Work only this goal until its completion audit passes.",
     finalStory ? "- Final mandatory quality gate: run ai-slop-cleaner on changed files even when it is a no-op, rerun verification, then run $code-review." : "- This is not the final ultragoal story; do not run the final ai-slop-cleaner/$code-review gate yet.",
     finalStory ? "- If final $code-review is not APPROVE with architect status CLEAR, do not clear the /goal. Record blockers with:" : "- After the goal is actually complete, clear or update the active /goal (run /goal clear once the auto-clear has not already fired), then share a fresh /goal snapshot and checkpoint the ledger with:",
-    finalStory ? `  omc ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : `  omc ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
+    finalStory ? `  omg ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
     finalStory ? "- In legacy per-story mode, the blocker story may require a fresh/available Claude /goal context because this story remains an active incomplete /goal; do not claim it is complete." : null,
     finalStory ? "- If final $code-review is clean (APPROVE + CLEAR), clear the /goal (or wait for the auto-clear), then checkpoint with --quality-gate-json:" : null,
-    finalStory ? `  omc ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : null,
+    finalStory ? `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : null,
     "- If blocked or failed, checkpoint with --status failed and the failure evidence; rerun complete-goals --retry-failed to resume.",
     "",
     "Suggested /goal payload (model-facing \u2014 invoke /goal in-session; if you cannot, e.g. standalone Claude Code, ask the user to):",
@@ -117183,10 +117190,10 @@ function buildAggregateClaudeGoalInstruction(goal, plan) {
     "- If a different active or incomplete Claude /goal exists, finish or clear that /goal before starting this ultragoal; do not claim a shell command can replace Claude /goal state.",
     finalStory ? "- This is the final pending story: run the mandatory final ai-slop-cleaner pass, rerun verification, and run $code-review before any /goal clear." : "- This is not the final story: do not clear the /goal yet; the aggregate Claude /goal must remain active while later OMC stories remain.",
     finalStory ? "- If final $code-review is not APPROVE with architect status CLEAR, do not clear the /goal. Record durable blocker work first:" : null,
-    finalStory ? `  omc ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : null,
+    finalStory ? `  omg ultragoal record-review-blockers --goal-id ${goal.id} --title "Resolve final code-review blockers" --objective "<blocker-resolution objective>" --evidence "<review findings>" --claude-goal-json "<active /goal snapshot JSON or path>"` : null,
     finalStory ? "- If final $code-review is clean (APPROVE + CLEAR), clear the /goal (or let the auto-clear fire when the condition holds), share a fresh complete /goal snapshot, then checkpoint with --quality-gate-json." : null,
     `- Checkpoint this OMC story with a fresh /goal snapshot whose objective matches the aggregate payload and whose status is ${checkpointStatus}:`,
-    finalStory ? `  omc ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : `  omc ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
+    finalStory ? `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh complete /goal snapshot JSON or path>" --quality-gate-json "<quality gate JSON or path>"` : `  omg ultragoal checkpoint --goal-id ${goal.id} --status complete --evidence "<tests/files/PR evidence>" --claude-goal-json "<fresh /goal snapshot JSON or path>"`,
     "- If blocked or failed, checkpoint with --status failed and the failure evidence; rerun complete-goals --retry-failed to resume.",
     "",
     "Suggested /goal payload (model-facing \u2014 invoke /goal in-session; if you cannot, e.g. standalone Claude Code, ask the user to):",
@@ -117201,16 +117208,16 @@ function buildAggregateClaudeGoalInstruction(goal, plan) {
 }
 
 // src/cli/commands/ultragoal.ts
-var ULTRAGOAL_HELP = `omc ultragoal - Durable repo-native multi-goal workflow with Claude Code /goal handoff
+var ULTRAGOAL_HELP = `omg ultragoal - Durable repo-native multi-goal workflow with Claude Code /goal handoff
 
 Usage:
-  omc ultragoal create-goals [--brief <text> | --brief-file <path> | --from-stdin] [--goal <title::objective>] [--claude-goal-mode <aggregate|per-story>] [--force] [--plan-id <id> | --auto-plan-id] [--json]
-  omc ultragoal complete-goals [<goal-id>] [--retry-failed] [--plan-id <id>] [--json]
-  omc ultragoal add-goal --title <title> --objective <text> [--evidence <text>] [--plan-id <id>] [--json]
-  omc ultragoal record-review-blockers --goal-id <id> --title <title> --objective <text> --evidence <review-findings> --claude-goal-json <active-json-or-path> [--plan-id <id>] [--json]
-  omc ultragoal checkpoint --goal-id <id> --status <complete|failed|blocked> [--evidence <text>] [--claude-goal-json <json-or-path>] [--quality-gate-json <json-or-path>] [--plan-id <id>] [--json]
-  omc ultragoal status [--claude-goal-json <json-or-path>] [--plan-id <id>] [--json]
-  omc ultragoal list-plans [--json]
+  omg ultragoal create-goals [--brief <text> | --brief-file <path> | --from-stdin] [--goal <title::objective>] [--claude-goal-mode <aggregate|per-story>] [--force] [--plan-id <id> | --auto-plan-id] [--json]
+  omg ultragoal complete-goals [<goal-id>] [--retry-failed] [--plan-id <id>] [--json]
+  omg ultragoal add-goal --title <title> --objective <text> [--evidence <text>] [--plan-id <id>] [--json]
+  omg ultragoal record-review-blockers --goal-id <id> --title <title> --objective <text> --evidence <review-findings> --claude-goal-json <active-json-or-path> [--plan-id <id>] [--json]
+  omg ultragoal checkpoint --goal-id <id> --status <complete|failed|blocked> [--evidence <text>] [--claude-goal-json <json-or-path>] [--quality-gate-json <json-or-path>] [--plan-id <id>] [--json]
+  omg ultragoal status [--claude-goal-json <json-or-path>] [--plan-id <id>] [--json]
+  omg ultragoal list-plans [--json]
 
 Aliases:
   create -> create-goals, complete|next|start-next -> complete-goals
@@ -117684,11 +117691,11 @@ function summarizeClosureForEvidence(report) {
 }
 
 // src/cli/commands/alias-retirement.ts
-var ALIAS_RETIREMENT_HELP = `omc alias-retirement - Alias retirement verifier and generated-closure inventory (issue #3711)
+var ALIAS_RETIREMENT_HELP = `omg alias-retirement - Alias retirement verifier and generated-closure inventory (issue #3711)
 
 Usage:
-  omc alias-retirement verify [options]   Verify all aliases against the retirement contract (default)
-  omc alias-retirement help               Show this help
+  omg alias-retirement verify [options]   Verify all aliases against the retirement contract (default)
+  omg alias-retirement help               Show this help
 
 Options:
   --json                                 Machine-readable JSON output
@@ -119410,12 +119417,12 @@ var import_path149 = require("path");
 var import_url20 = require("url");
 init_security_config();
 var ASK_USAGE = [
-  "Usage: omc ask <claude|codex|gemini|antigravity|grok|cursor> <question or task>",
-  '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> -p "<prompt>"',
-  '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> --print "<prompt>"',
-  '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> --prompt "<prompt>"',
-  '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> --agent-prompt <role> "<prompt>"',
-  '   or: omc ask <claude|codex|gemini|antigravity|grok|cursor> --agent-prompt=<role> --prompt "<prompt>"'
+  "Usage: omg ask <claude|codex|gemini|antigravity|grok|cursor> <question or task>",
+  '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> -p "<prompt>"',
+  '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> --print "<prompt>"',
+  '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> --prompt "<prompt>"',
+  '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> --agent-prompt <role> "<prompt>"',
+  '   or: omg ask <claude|codex|gemini|antigravity|grok|cursor> --agent-prompt=<role> --prompt "<prompt>"'
 ].join("\n");
 var ASK_PROVIDERS = ["claude", "codex", "gemini", "antigravity", "grok", "cursor"];
 var ASK_PROVIDER_SET = new Set(ASK_PROVIDERS);
@@ -120250,8 +120257,8 @@ function graphCommand() {
     "after",
     `
 Examples:
-  $ omc graph run ./my-graph.json
-  $ omc graph run ./my-graph.json --runs-root .omg/graph-runs
+  $ omg graph run ./my-graph.json
+  $ omg graph run ./my-graph.json --runs-root .omg/graph-runs
 
 Exit codes:
   0   run succeeded
@@ -120279,7 +120286,7 @@ function warnIfWin32() {
 }
 
 // src/cli/autoresearch.ts
-var AUTORESEARCH_HELP = `omc autoresearch - HARD DEPRECATED
+var AUTORESEARCH_HELP = `omg autoresearch - HARD DEPRECATED
 
 This command is no longer the authoritative autoresearch workflow.
 
@@ -120296,9 +120303,9 @@ Key behavior:
   - the run stops at an explicit max-runtime ceiling
 
 Legacy CLI examples such as:
-  omc autoresearch --mission "..." --eval "..."
-  omc autoresearch init ...
-  omc autoresearch --resume ...
+  omg autoresearch --mission "..." --eval "..."
+  omg autoresearch init ...
+  omg autoresearch --resume ...
 are hard-deprecated shims and no longer launch the old runtime.
 `;
 function renderDeprecationMessage(args) {
@@ -120438,15 +120445,15 @@ async function defaultAction() {
   }
   await launchCommand(args);
 }
-program2.name("omc").description("Multi-agent orchestration system for Claude Agent SDK").version(version2).allowUnknownOption().action(defaultAction);
+program2.name("omg").description("Multi-agent orchestration system for Claude Agent SDK").version(version2).allowUnknownOption().action(defaultAction);
 program2.command("launch [args...]").description("Launch Claude Code with native tmux shell integration").allowUnknownOption().addHelpText("after", `
 Examples:
-  $ omc                                Launch Claude Code
-  $ omc --madmax                       Launch with permissions bypass
-  $ omc --yolo                         Launch with permissions bypass (alias)
-  $ omc --notify false                 Launch without CCNotifier events
-  $ omc launch                         Explicit launch subcommand (same as bare omc)
-  $ omc launch --madmax                Explicit launch with flags
+  $ omg                                Launch Claude Code
+  $ omg --madmax                       Launch with permissions bypass
+  $ omg --yolo                         Launch with permissions bypass (alias)
+  $ omg --notify false                 Launch without CCNotifier events
+  $ omg launch                         Explicit launch subcommand (same as bare omg)
+  $ omg launch --madmax                Explicit launch with flags
 
 Options:
   --notify <bool>   Enable/disable CCNotifier events. false sets OMC_NOTIFY=0
@@ -120471,9 +120478,9 @@ ${ASK_USAGE}`).action(async (args) => {
 });
 program2.command("config").description("Show current configuration").option("-v, --validate", "Validate configuration").option("-p, --paths", "Show configuration file paths").addHelpText("after", `
 Examples:
-  $ omc config                   Show current configuration
-  $ omc config --validate        Validate configuration files
-  $ omc config --paths           Show config file locations
+  $ omg config                   Show current configuration
+  $ omg config --validate        Validate configuration files
+  $ omg config --paths           Show config file locations
 
   }`).action(async (options) => {
   if (options.paths) {
@@ -120526,16 +120533,16 @@ Profile types (use with --profile):
   webhook      Generic webhook (POST with JSON body)
 
 Examples:
-  $ omc config-stop-callback file --enable --path ${(0, import_path161.join)(getCopilotConfigDir(), "logs/{date}.md")}
-  $ omc config-stop-callback telegram --enable --token <token> --chat <id>
-  $ omc config-stop-callback discord --enable --webhook <url>
-  $ omc config-stop-callback file --disable
-  $ omc config-stop-callback file --show
+  $ omg config-stop-callback file --enable --path ${(0, import_path161.join)(getCopilotConfigDir(), "logs/{date}.md")}
+  $ omg config-stop-callback telegram --enable --token <token> --chat <id>
+  $ omg config-stop-callback discord --enable --webhook <url>
+  $ omg config-stop-callback file --disable
+  $ omg config-stop-callback file --show
 
   # Named profiles (stored in notificationProfiles):
-  $ omc config-stop-callback discord --profile work --enable --webhook <url>
-  $ omc config-stop-callback telegram --profile work --enable --token <tk> --chat <id>
-  $ omc config-stop-callback discord-bot --profile ops --enable --token <tk> --channel-id <id>
+  $ omg config-stop-callback discord --profile work --enable --webhook <url>
+  $ omg config-stop-callback telegram --profile work --enable --token <tk> --chat <id>
+  $ omg config-stop-callback discord-bot --profile ops --enable --token <tk> --channel-id <id>
 
   # Select profile at launch:
   $ OMC_NOTIFY_PROFILE=work claude`).action(async (type, options) => {
@@ -120775,12 +120782,12 @@ Examples:
 });
 program2.command("config-notify-profile [name]").description("Manage notification profiles").option("--list", "List all profiles").option("--show", "Show profile configuration").option("--delete", "Delete a profile").addHelpText("after", `
 Examples:
-  $ omc config-notify-profile --list
-  $ omc config-notify-profile work --show
-  $ omc config-notify-profile work --delete
+  $ omg config-notify-profile --list
+  $ omg config-notify-profile work --show
+  $ omg config-notify-profile work --delete
 
   # Create/update profiles via config-stop-callback --profile:
-  $ omc config-stop-callback discord --profile work --enable --webhook <url>
+  $ omg config-stop-callback discord --profile work --enable --webhook <url>
 
   # Select profile at launch:
   $ OMC_NOTIFY_PROFILE=work claude`).action(async (name, options) => {
@@ -120790,7 +120797,7 @@ Examples:
     const names = Object.keys(profiles);
     if (names.length === 0) {
       console.log(source_default.yellow("No notification profiles configured."));
-      console.log(source_default.gray("Create one with: omc config-stop-callback <type> --profile <name> --enable ..."));
+      console.log(source_default.gray("Create one with: omg config-stop-callback <type> --profile <name> --enable ..."));
     } else {
       console.log(source_default.blue("Notification profiles:"));
       for (const pName of names) {
@@ -120840,12 +120847,12 @@ Active profile (OMC_NOTIFY_PROFILE): ${activeProfile}`));
     console.log(JSON.stringify(profiles[name], null, 2));
   } else {
     console.log(source_default.yellow(`Profile "${name}" not found.`));
-    console.log(source_default.gray("Create it with: omc config-stop-callback <type> --profile " + name + " --enable ..."));
+    console.log(source_default.gray("Create it with: omg config-stop-callback <type> --profile " + name + " --enable ..."));
   }
 });
 program2.command("info").description("Show system and agent information").addHelpText("after", `
 Examples:
-  $ omc info                     Show agents, features, and MCP servers`).action(async () => {
+  $ omg info                     Show agents, features, and MCP servers`).action(async () => {
   const session = createOmcSession();
   console.log(source_default.blue.bold("\nOh-My-Copilot System Information\n"));
   console.log(source_default.gray("\u2501".repeat(50)));
@@ -120877,8 +120884,8 @@ Examples:
 });
 program2.command("test-prompt <prompt>").description("Test how a prompt would be enhanced").addHelpText("after", `
 Examples:
-  $ omc test-prompt "analyze this code"     See how magic keywords are detected
-  $ omc test-prompt "analyze this code"     Test prompt enhancement`).action(async (prompt) => {
+  $ omg test-prompt "analyze this code"     See how magic keywords are detected
+  $ omg test-prompt "analyze this code"     Test prompt enhancement`).action(async (prompt) => {
   const session = createOmcSession();
   console.log(source_default.blue("Original prompt:"));
   console.log(source_default.gray(prompt));
@@ -120892,10 +120899,10 @@ Examples:
 });
 program2.command("update").description("Check for and install updates").option("-c, --check", "Only check for updates, do not install").option("-f, --force", "Force reinstall even if up to date").option("-q, --quiet", "Suppress output except for errors").option("--standalone", "Force npm update even in plugin context").option("--clean", "Purge old plugin cache versions immediately (bypass 24h grace period)").addHelpText("after", `
 Examples:
-  $ omc update                   Check and install updates
-  $ omc update --check           Only check, don't install
-  $ omc update --force           Force reinstall
-  $ omc update --standalone      Force npm update in plugin context`).action(async (options) => {
+  $ omg update                   Check and install updates
+  $ omg update --check           Only check, don't install
+  $ omg update --force           Force reinstall
+  $ omg update --standalone      Force npm update in plugin context`).action(async (options) => {
   if (!options.quiet) {
     console.log(source_default.blue("Oh-My-Copilot Update\n"));
   }
@@ -120947,7 +120954,7 @@ Examples:
   } catch (error2) {
     const message2 = error2 instanceof Error ? error2.message : String(error2);
     console.error(source_default.red(`Update failed: ${message2}`));
-    console.error(source_default.gray('Try again with "omc update --force", or reinstall with "omc install --force".'));
+    console.error(source_default.gray('Try again with "omg update --force", or reinstall with "omg install --force".'));
     process.exit(1);
   }
 });
@@ -120972,7 +120979,7 @@ program2.command("update-reconcile").description("Internal: Reconcile runtime st
 });
 program2.command("version").description("Show detailed version information").addHelpText("after", `
 Examples:
-  $ omc version                  Show version, install method, and commit hash`).action(async () => {
+  $ omg version                  Show version, install method, and commit hash`).action(async () => {
   const installed = getInstalledVersion();
   console.log(source_default.blue.bold("\nOh-My-Copilot Version Information\n"));
   console.log(source_default.gray("\u2501".repeat(50)));
@@ -120997,10 +121004,10 @@ Examples:
 });
 program2.command("install").description("Install OMC agents and commands to Claude Code config directory (default: ~/.copilot/)").option("-f, --force", "Overwrite existing files").option("-q, --quiet", "Suppress output except for errors").option("--skip-claude-check", "Skip checking if Claude Code is installed").addHelpText("after", `
 Examples:
-  $ omc install                  Install to config directory (default: ~/.copilot/)
-  $ omc install --force          Reinstall, overwriting existing files
-  $ omc install --quiet          Silent install for scripts
-  $ COPILOT_CONFIG_DIR=$HOME/.claude-isolated-workspace omc install  Isolated config directory`).action(async (options) => {
+  $ omg install                  Install to config directory (default: ~/.copilot/)
+  $ omg install --force          Reinstall, overwriting existing files
+  $ omg install --quiet          Silent install for scripts
+  $ COPILOT_CONFIG_DIR=$HOME/.claude-isolated-workspace omg install  Isolated config directory`).action(async (options) => {
   if (!options.quiet) {
     console.log(source_default.blue("\u2554\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2557"));
     console.log(source_default.blue("\u2551         Oh-My-Copilot Installer                        \u2551"));
@@ -121084,18 +121091,18 @@ Examples:
     if (result.errors.length > 0) {
       result.errors.forEach((err) => console.error(source_default.red(`  - ${err}`)));
     }
-    console.error(source_default.gray('\nTry "omc install --force" to overwrite existing files.'));
-    console.error(source_default.gray('For more diagnostics, run "omc doctor conflicts".'));
+    console.error(source_default.gray('\nTry "omg install --force" to overwrite existing files.'));
+    console.error(source_default.gray('For more diagnostics, run "omg doctor conflicts".'));
     process.exit(1);
   }
 });
-var waitCmd = program2.command("wait").description('Rate limit wait and auto-resume (just run "omc wait" to get started)').option("--json", "Output as JSON").option("--start", "Start the auto-resume daemon").option("--stop", "Stop the auto-resume daemon").addHelpText("after", `
+var waitCmd = program2.command("wait").description('Rate limit wait and auto-resume (just run "omg wait" to get started)').option("--json", "Output as JSON").option("--start", "Start the auto-resume daemon").option("--stop", "Stop the auto-resume daemon").addHelpText("after", `
 Examples:
-  $ omc wait                     Show status and suggestions
-  $ omc wait --start             Start auto-resume daemon
-  $ omc wait --stop              Stop auto-resume daemon
-  $ omc wait status              Show detailed rate limit status
-  $ omc wait detect              Scan for blocked tmux sessions`).action(async (options) => {
+  $ omg wait                     Show status and suggestions
+  $ omg wait --start             Start auto-resume daemon
+  $ omg wait --stop              Stop auto-resume daemon
+  $ omg wait status              Show detailed rate limit status
+  $ omg wait detect              Scan for blocked tmux sessions`).action(async (options) => {
   await waitCommand(options);
 });
 waitCmd.command("status").description("Show detailed rate limit and daemon status").option("--json", "Output as JSON").action(async (options) => {
@@ -121103,12 +121110,12 @@ waitCmd.command("status").description("Show detailed rate limit and daemon statu
 });
 waitCmd.command("daemon <action>").description("Start or stop the auto-resume daemon").option("-v, --verbose", "Enable verbose logging").option("-f, --foreground", "Run in foreground (blocking)").option("-i, --interval <seconds>", "Poll interval in seconds", "60").addHelpText("after", `
 Examples:
-  $ omc wait daemon start            Start background daemon
-  $ omc wait daemon stop             Stop the daemon
-  $ omc wait daemon start -f         Run in foreground`).action(async (action, options) => {
+  $ omg wait daemon start            Start background daemon
+  $ omg wait daemon stop             Stop the daemon
+  $ omg wait daemon start -f         Run in foreground`).action(async (action, options) => {
   if (action !== "start" && action !== "stop") {
     console.error(source_default.red(`Invalid action "${action}". Valid options: start, stop`));
-    console.error(source_default.gray("Example: omc wait daemon start"));
+    console.error(source_default.gray("Example: omg wait daemon start"));
     process.exit(1);
   }
   await waitDaemonCommand(action, {
@@ -121123,21 +121130,21 @@ waitCmd.command("detect").description("Scan for blocked Claude Code sessions in 
     lines: parseInt(options.lines)
   });
 });
-var teleportCmd = program2.command("teleport [ref]").description("Create git worktree for isolated development (e.g., omc teleport '#123')").option("--worktree", "Create worktree (default behavior, flag kept for compatibility)").option("-p, --path <path>", "Custom worktree path (default: ~/Workspace/omc-worktrees/)").option("-b, --base <branch>", "Base branch to create from (default: main)").option("--json", "Output as JSON").addHelpText("after", `
+var teleportCmd = program2.command("teleport [ref]").description("Create git worktree for isolated development (e.g., omg teleport '#123')").option("--worktree", "Create worktree (default behavior, flag kept for compatibility)").option("-p, --path <path>", "Custom worktree path (default: ~/Workspace/omc-worktrees/)").option("-b, --base <branch>", "Base branch to create from (default: main)").option("--json", "Output as JSON").addHelpText("after", `
 Examples:
-  $ omc teleport '#42'           Create worktree for issue/PR #42
-  $ omc teleport add-auth        Create worktree for a feature branch
-  $ omc teleport list            List existing worktrees
-  $ omc teleport remove ./path   Remove a worktree
+  $ omg teleport '#42'           Create worktree for issue/PR #42
+  $ omg teleport add-auth        Create worktree for a feature branch
+  $ omg teleport list            List existing worktrees
+  $ omg teleport remove ./path   Remove a worktree
 
 Note:
-  In many shells, # starts a comment. Quote refs: omc teleport '#42'`).action(async (ref, options) => {
+  In many shells, # starts a comment. Quote refs: omg teleport '#42'`).action(async (ref, options) => {
   if (!ref) {
     console.log(source_default.blue("Teleport - Quick worktree creation\n"));
     console.log("Usage:");
-    console.log("  omc teleport <ref>           Create worktree for issue/PR/feature");
-    console.log("  omc teleport list            List existing worktrees");
-    console.log("  omc teleport remove <path>   Remove a worktree");
+    console.log("  omg teleport <ref>           Create worktree for issue/PR/feature");
+    console.log("  omg teleport list            List existing worktrees");
+    console.log("  omg teleport remove <path>   Remove a worktree");
     console.log("");
     console.log("Reference formats:");
     console.log("  '#123'                       Issue/PR in current repo (quoted for shell safety)");
@@ -121145,11 +121152,11 @@ Note:
     console.log("  my-feature                   Feature branch name");
     console.log("  https://github.com/...       GitHub URL");
     console.log("");
-    console.log(source_default.yellow("Note: In many shells, # starts a comment. Quote refs: omc teleport '#42'"));
+    console.log(source_default.yellow("Note: In many shells, # starts a comment. Quote refs: omg teleport '#42'"));
     console.log("");
     console.log("Examples:");
-    console.log("  omc teleport '#42'           Create worktree for issue #42");
-    console.log('  omc teleport add-auth        Create worktree for feature "add-auth"');
+    console.log("  omg teleport '#42'           Create worktree for issue #42");
+    console.log('  omg teleport add-auth        Create worktree for feature "add-auth"');
     console.log("");
     return;
   }
@@ -121170,11 +121177,11 @@ teleportCmd.command("remove <path>").alias("rm").description("Remove a worktree"
 });
 var sessionCmd = program2.command("session").alias("sessions").description("Inspect prior local session history").addHelpText("after", `
 Examples:
-  $ omc session search "team leader stale"
-  $ omc session search notify-hook --since 7d
-  $ omc session search provider-routing --project all --json
-  $ omc session friction report --since 24h
-  $ omc session friction report --json`);
+  $ omg session search "team leader stale"
+  $ omg session search notify-hook --since 7d
+  $ omg session search provider-routing --project all --json
+  $ omg session friction report --since 24h
+  $ omg session friction report --json`);
 sessionCmd.command("search <query>").description("Search prior local session transcripts and OMC session artifacts").option("-l, --limit <number>", "Maximum number of matches to return", "10").option("-s, --session <id>", "Restrict search to a specific session id").option("--since <duration|date>", "Only include matches since a duration (e.g. 7d, 24h) or absolute date").option("--project <scope>", 'Project scope. Defaults to current project. Use "all" to search all local projects').option("--json", "Output results as JSON").option("--case-sensitive", "Match query case-sensitively").option("--context <chars>", "Approximate snippet context on each side of a match", "120").action(async (query2, options) => {
   await sessionSearchCommand(query2, {
     limit: parseInt(options.limit, 10),
@@ -121199,9 +121206,9 @@ sessionCmd.command("friction").description("Report local session context-bloat a
 });
 var capabilitiesCmd = program2.command("capabilities").description("Create or verify deterministic tool/skill/capability lockfiles").addHelpText("after", `
 Examples:
-  $ omc capabilities lock
-  $ omc capabilities lock --json --lockfile .omg/capabilities.lock.json
-  $ omc capabilities check --json`);
+  $ omg capabilities lock
+  $ omg capabilities lock --json --lockfile .omg/capabilities.lock.json
+  $ omg capabilities check --json`);
 capabilitiesCmd.command("lock").description("Write the current deterministic tool/skill/capability lockfile").option("--json", "Output as JSON").option("--lockfile <path>", "Lockfile path (default: omc-capabilities.lock.json)").action(async (options) => {
   const exitCode = await capabilitiesLockCommand(options);
   process.exit(exitCode);
@@ -121212,10 +121219,10 @@ capabilitiesCmd.command("check").description("Check current deterministic tool/s
 });
 var doctorCmd = program2.command("doctor").description("Diagnostic tools for troubleshooting OMC installation").option("--plugin-dir <path>", "Override OMC plugin root directory (sets OMC_PLUGIN_ROOT)").option("--team-routing", "Probe CLI presence for every provider referenced by team.roleRouting").option("--json", "Output as JSON (used with --team-routing)").addHelpText("after", `
 Examples:
-  $ omc doctor conflicts                        Check for plugin conflicts
-  $ omc doctor team-routing                     Probe /team role-routing provider CLIs
-  $ omc doctor --team-routing                   Same as above (flag form)
-  $ omc doctor --plugin-dir /path/to/plugin     Run diagnostics against a specific plugin dir`).hook("preAction", (thisCommand) => {
+  $ omg doctor conflicts                        Check for plugin conflicts
+  $ omg doctor team-routing                     Probe /team role-routing provider CLIs
+  $ omg doctor --team-routing                   Same as above (flag form)
+  $ omg doctor --plugin-dir /path/to/plugin     Run diagnostics against a specific plugin dir`).hook("preAction", (thisCommand) => {
   applyPluginDirOption(thisCommand.opts().pluginDir);
 }).action(async (options) => {
   if (options.teamRouting) {
@@ -121226,29 +121233,29 @@ Examples:
 });
 doctorCmd.command("team-routing").description("Probe CLI presence for every provider referenced by team.roleRouting").option("--json", "Output as JSON").addHelpText("after", `
 Examples:
-  $ omc doctor team-routing                     Probe configured providers
-  $ omc doctor team-routing --json              Output results as JSON`).action(async (_options, command) => {
+  $ omg doctor team-routing                     Probe configured providers
+  $ omg doctor team-routing --json              Output results as JSON`).action(async (_options, command) => {
   const exitCode = await doctorTeamRoutingCommand({ json: command.optsWithGlobals().json ?? false });
   process.exit(exitCode);
 });
 doctorCmd.command("conflicts").description("Check for plugin coexistence issues and configuration conflicts").option("--json", "Output as JSON").option("--plugin-dir <path>", "Override OMC plugin root directory (sets OMC_PLUGIN_ROOT)").addHelpText("after", `
 Examples:
-  $ omc doctor conflicts                        Check for configuration issues
-  $ omc doctor conflicts --json                 Output results as JSON
-  $ omc doctor conflicts --plugin-dir /tmp/foo  Check against a specific plugin dir`).action(async (options) => {
+  $ omg doctor conflicts                        Check for configuration issues
+  $ omg doctor conflicts --json                 Output results as JSON
+  $ omg doctor conflicts --plugin-dir /tmp/foo  Check against a specific plugin dir`).action(async (options) => {
   applyPluginDirOption(options.pluginDir);
   const exitCode = await doctorConflictsCommand(options);
   process.exit(exitCode);
 });
 program2.command("setup").description("Run OMC setup to sync all components (hooks, agents, skills)").option("-f, --force", "Force reinstall even if already up to date").option("-q, --quiet", "Suppress output except for errors").option("--no-plugin", "Install bundled skills from the current package instead of relying on plugin-provided skills").option("--plugin-dir-mode", "Treat OMC as launched via --plugin-dir at runtime (skip agent/skill copy; HUD + hooks + CLAUDE.md still installed)").option("--skip-hooks", "Skip hook installation").option("--force-hooks", "Force reinstall hooks even if unchanged").addHelpText("after", `
 Examples:
-  $ omc setup                     Sync all OMC components
-  $ omc setup --force             Force reinstall everything
-  $ omc setup --no-plugin         Force local bundled skill installation
-  $ omc setup --plugin-dir-mode   Skip agent/skill copy (used with claude --plugin-dir)
-  $ omc setup --quiet             Silent setup for scripts
-  $ omc setup --skip-hooks        Install without hooks
-  $ omc setup --force-hooks       Force reinstall hooks`).action(async (options) => {
+  $ omg setup                     Sync all OMC components
+  $ omg setup --force             Force reinstall everything
+  $ omg setup --no-plugin         Force local bundled skill installation
+  $ omg setup --plugin-dir-mode   Skip agent/skill copy (used with claude --plugin-dir)
+  $ omg setup --quiet             Silent setup for scripts
+  $ omg setup --skip-hooks        Install without hooks
+  $ omg setup --force-hooks       Force reinstall hooks`).action(async (options) => {
   if (!options.quiet) {
     console.log(source_default.blue("Oh-My-Copilot Setup\n"));
   }
@@ -121369,7 +121376,7 @@ program2.command("autoresearch").description("Hard-deprecated shim that redirect
 program2.command("ralphthon").description("Autonomous hackathon lifecycle: interview -> execute -> harden -> done").helpOption(false).allowUnknownOption(true).allowExcessArguments(true).argument("[args...]", "ralphthon arguments").action(async (args) => {
   await ralphthonCommand(args);
 });
-program2.command("ultragoal").description("Durable repo-native multi-goal workflow with Claude Code /goal handoff (see omc ultragoal help)").helpOption(false).allowUnknownOption(true).allowExcessArguments(true).argument("[args...]", "ultragoal subcommand arguments").addHelpText("after", `
+program2.command("ultragoal").description("Durable repo-native multi-goal workflow with Claude Code /goal handoff (see omg ultragoal help)").helpOption(false).allowUnknownOption(true).allowExcessArguments(true).argument("[args...]", "ultragoal subcommand arguments").addHelpText("after", `
 ${ULTRAGOAL_HELP}`).action(async (args) => {
   await ultragoalCommand(args);
 });

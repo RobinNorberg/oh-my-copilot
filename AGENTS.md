@@ -352,7 +352,7 @@ oh-my-copilot uses the `.omg/` directory for persistent state:
 
 Multi-repo workspaces: drop a `.omc-workspace` marker file (JSON, can be `{}` or `{"id":"name"}`) in the parent directory when it is not itself a git repo. OMC will anchor `.omg/` at the marker from any sub-directory. This lets parallel Claude sessions in sibling repos share one `.omg/`. The session-start hook uses PID-aware liveness — a dead owner no longer blocks state restore. See `docs/REFERENCE.md#multi-repo-workspaces-with-omc-workspace` for full details.
 
-Tools are available via MCP when configured (`omc setup` registers all servers):
+Tools are available via MCP when configured (`omg setup` registers all servers):
 
 State & Memory:
 - `state_read`, `state_write`, `state_clear`, `state_list_active`, `state_get_status`
@@ -392,7 +392,7 @@ Recommended mode fields:
 
 ## Setup
 
-Run `omc setup` to install all components. Run `omc doctor` to verify installation.
+Run `omg setup` to install all components. Run `omg doctor` to verify installation.
 
 ---
 

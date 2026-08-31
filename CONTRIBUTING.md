@@ -90,28 +90,28 @@ All TypeScript and bundling steps are handled. The output goes to `dist/` and `b
 
 Once built, you need to tell Claude Code to use your local checkout. Here are three flows:
 
-### Bootstrap: make the `omc` command available
+### Bootstrap: make the `omg` command available
 
-All three flows below use the `omc` CLI. If you don't have it installed globally (via `npm i -g oh-my-copilot`), create a symlink from your checkout:
+All three flows below use the `omg` CLI. If you don't have it installed globally (via `npm i -g oh-my-copilot`), create a symlink from your checkout:
 
 ```bash
 # Create ~/.local/bin if it doesn't exist
 mkdir -p ~/.local/bin
 
-# Symlink omc to the checkout's bridge entry point
+# Symlink omg to the checkout's bridge entry point
 ln -sf "$PWD/bridge/cli.cjs" ~/.local/bin/omc
 
 # Verify (you may need ~/.local/bin on your PATH)
-omc --version
+omg --version
 ```
 
-### Flow A: `omc --plugin-dir` + `omc setup --plugin-dir-mode` (recommended — lowest friction)
+### Flow A: `omg --plugin-dir` + `omg setup --plugin-dir-mode` (recommended — lowest friction)
 
 **Advantages**: Single command, automatic env var handling, matches the OMC philosophy.
 
 ```bash
 # From your checkout directory
-omc --plugin-dir "$PWD" setup --plugin-dir-mode
+omg --plugin-dir "$PWD" setup --plugin-dir-mode
 ```
 
 Then launch Claude Code normally — it will use your local checkout.
@@ -134,7 +134,7 @@ This tells Claude Code to ignore the repo's `.mcp.json` entry and use the plugin
 **Rebuilding**: After code changes:
 ```bash
 npm run build
-omc setup --plugin-dir-mode  # or just re-run build and restart Claude Code
+omg setup --plugin-dir-mode  # or just re-run build and restart Claude Code
 ```
 
 ### Flow B: Marketplace lifecycle (if you prefer plugin system isolation)
@@ -160,12 +160,12 @@ claude plugin update oh-my-copilot@oh-my-copilot
 /setup
 ```
 
-### Flow C: `omc setup --no-plugin` (fallback, bundled skills)
+### Flow C: `omg setup --no-plugin` (fallback, bundled skills)
 
 **Advantages**: Forces local bundled skills to `~/.claude/skills/`, no plugin system.
 
 ```bash
-omc --plugin-dir "$PWD" setup --no-plugin
+omg --plugin-dir "$PWD" setup --no-plugin
 ```
 
 This skips the plugin system entirely and installs agents/skills to your home directory.
@@ -174,9 +174,9 @@ This skips the plugin system entirely and installs agents/skills to your home di
 
 | Flow | Command | Plugin system? | Files location | Rebuild cost | Use when |
 |------|---------|---|---|---|---|
-| **A (recommended)** | `omc --plugin-dir "$PWD" setup --plugin-dir-mode` | Yes, via `--plugin-dir` | Live from checkout | Low (no copy on rebuild) | Developing OMC itself |
+| **A (recommended)** | `omg --plugin-dir "$PWD" setup --plugin-dir-mode` | Yes, via `--plugin-dir` | Live from checkout | Low (no copy on rebuild) | Developing OMC itself |
 | **B** | `claude plugin marketplace add` + `install` | Yes, full marketplace | Plugin cache | Medium (marketplace update) | Testing plugin isolation |
-| **C** | `omc setup --no-plugin` | No | `~/.claude/skills/` | Low (direct copy) | Fallback / troubleshooting |
+| **C** | `omg setup --no-plugin` | No | `~/.claude/skills/` | Low (direct copy) | Fallback / troubleshooting |
 
 ---
 
@@ -189,7 +189,7 @@ Add these to your `.bashrc` / `.zshrc` for a smoother dev workflow:
 export OMC_DEV_ROOT="$HOME/_Git/_Claude/oh-my-copilot"
 
 # Run OMC from your local checkout
-alias omcdev='omc --plugin-dir "$OMC_DEV_ROOT"'
+alias omgdev='omg --plugin-dir "$OMC_DEV_ROOT"'
 
 # Build quickly
 alias omcbuild='(cd "$OMC_DEV_ROOT" && npm run build)'
@@ -204,7 +204,7 @@ alias omcwatch='(cd "$OMC_DEV_ROOT" && npm run dev:full)'
 Then you can use:
 ```bash
 omcbuild                                # Rebuild in 10–15 seconds
-omcdev setup --plugin-dir-mode          # Link your checkout
+omgdev setup --plugin-dir-mode          # Link your checkout
 omcwatch                                # Auto-rebuild on file changes
 omctest                                 # Run test suite
 ```
@@ -233,7 +233,7 @@ After editing markdown files in `agents/`, `skills/`, or `commands/`:
 
 ```bash
 npm run build
-omc setup --plugin-dir-mode
+omg setup --plugin-dir-mode
 ```
 
 The setup command re-reads the markdown files and refreshes the in-session command registry.
@@ -371,17 +371,17 @@ npm run test:run
 
 ### "OMC_PLUGIN_ROOT is not set"
 
-You're using `claude --plugin-dir` directly without the `omc` shim. Export it:
+You're using `claude --plugin-dir` directly without the `omg` shim. Export it:
 
 ```bash
 export OMC_PLUGIN_ROOT=/path/to/oh-my-copilot
 claude --plugin-dir /path/to/oh-my-copilot
 ```
 
-Or use the `omc` shim which sets it automatically:
+Or use the `omg` shim which sets it automatically:
 
 ```bash
-omc --plugin-dir /path/to/oh-my-copilot
+omg --plugin-dir /path/to/oh-my-copilot
 ```
 
 ### "Skills/agents not showing up after rebuild"
@@ -389,7 +389,7 @@ omc --plugin-dir /path/to/oh-my-copilot
 After `npm run build`, you must re-run setup to refresh the in-session command registry:
 
 ```bash
-omc setup --plugin-dir-mode
+omg setup --plugin-dir-mode
 ```
 
 Then restart Claude Code.
@@ -423,7 +423,7 @@ The plugin cache may need a refresh:
 
 ```bash
 npm run build
-omc setup --plugin-dir-mode
+omg setup --plugin-dir-mode
 # Restart Claude Code
 ```
 
@@ -432,9 +432,9 @@ omc setup --plugin-dir-mode
 Run the diagnostics tool:
 
 ```bash
-omc doctor
-omc doctor conflicts
-omc doctor --plugin-dir /path/to/oh-my-copilot
+omg doctor
+omg doctor conflicts
+omg doctor --plugin-dir /path/to/oh-my-copilot
 ```
 
 Or check the troubleshooting sections in:

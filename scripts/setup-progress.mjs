@@ -206,11 +206,11 @@ function versionFromClaudeMd(path) {
 }
 
 /**
- * Absolute path of `omc` on PATH, or '' when it is not installed.
+ * Absolute path of `omg` on PATH, or '' when it is not installed.
  *
  * Resolved by walking PATH rather than by asking a shell or `where.exe`: both
  * of those search the current directory first, so running setup inside a cloned
- * repository that happens to contain an `omc.cmd` would execute it. Relative
+ * repository that happens to contain an `omg.cmd` would execute it. Relative
  * PATH entries are skipped for the same reason.
  */
 function resolveOmcBinary() {
@@ -224,7 +224,7 @@ function resolveOmcBinary() {
     const dir = entry.trim().replace(/^"|"$/g, '');
     if (!dir || !isAbsolute(dir)) continue;
     for (const extension of extensions) {
-      const candidate = join(dir, `omc${extension}`);
+      const candidate = join(dir, `omg${extension}`);
       try {
         if (statSync(candidate).isFile()) return candidate;
       } catch {
@@ -260,7 +260,7 @@ function validatedComspec() {
   return undefined;
 }
 
-/** `omc --version`, run from an absolute path and never through a shell. */
+/** `omg --version`, run from an absolute path and never through a shell. */
 function probeOmcVersion(binary) {
   const isBatch = /\.(cmd|bat)$/i.test(binary);
   if (!isBatch) {
@@ -292,7 +292,7 @@ function probeOmcVersion(binary) {
   return run.status === 0 ? (run.stdout ?? '').split(/\r?\n/)[0].trim() : '';
 }
 
-/** Installed OMC version: the CLAUDE.md marker first, then the `omc` CLI. */
+/** Installed OMC version: the CLAUDE.md marker first, then the `omg` CLI. */
 function resolveOmcVersion() {
   const localMarker = versionFromClaudeMd(join(process.cwd(), '.claude', 'CLAUDE.md'));
   if (localMarker) return localMarker;

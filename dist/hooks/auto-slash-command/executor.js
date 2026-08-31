@@ -235,7 +235,7 @@ function renderDeepInterviewAutoresearchGuidance(args) {
         '- Treat evaluator clarity as a required readiness gate before launch.',
         '- When the mission and evaluator are ready, write setup artifacts and hand off with:',
         '  `Skill("oh-my-copilot:autoresearch")`',
-        '- Do **not** hand off to `omc-plan`, `autopilot`, `ralph`, `team`, or the hard-deprecated `omc autoresearch` CLI in this mode.',
+        '- Do **not** hand off to `omc-plan`, `autopilot`, `ralph`, `team`, or the hard-deprecated `omg autoresearch` CLI in this mode.',
     ];
     if (missionSeed) {
         lines.push('', `Mission seed from invocation: \`${missionSeed}\``);

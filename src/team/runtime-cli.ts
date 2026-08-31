@@ -631,7 +631,7 @@ export function buildTerminalCliResult(
   return {
     output: buildCliOutput(stateRoot, teamName, status, workerCount, startTimeMs),
     exitCode: status === 'completed' ? 0 : 1,
-    notice: `[runtime-cli] phase=${phase} reached terminal state; preserving team state for inspection. Run "omc team shutdown ${teamName}" when explicit cleanup is desired.\n`,
+    notice: `[runtime-cli] phase=${phase} reached terminal state; preserving team state for inspection. Run "omg team shutdown ${teamName}" when explicit cleanup is desired.\n`,
   };
 }
 

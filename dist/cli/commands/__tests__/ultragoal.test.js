@@ -45,7 +45,7 @@ function captureConsole() {
         },
     };
 }
-describe('omc ultragoal CLI', () => {
+describe('omg ultragoal CLI', () => {
     let captured;
     beforeEach(() => {
         captured = captureConsole();
@@ -58,7 +58,7 @@ describe('omc ultragoal CLI', () => {
     it('prints help when invoked with no subcommand', async () => {
         await ultragoalCommand([]);
         const joined = captured.out.join('\n');
-        expect(joined).toMatch(/omc ultragoal/);
+        expect(joined).toMatch(/omg ultragoal/);
         expect(joined).toMatch(/Artifacts[^\n]*[\s\S]*\.omg\/ultragoal\/brief\.md/);
         expect(joined).toMatch(/Claude \/goal integration/);
         expect(joined).not.toMatch(/\bomx\b/);

@@ -1,12 +1,12 @@
 /**
- * omc ralphthon CLI subcommand
+ * omg ralphthon CLI subcommand
  *
  * Autonomous hackathon lifecycle:
- *   omc ralphthon "task"                  Start new ralphthon session
- *   omc ralphthon --resume                Resume existing session
- *   omc ralphthon --skip-interview "task" Skip deep-interview, use task directly
- *   omc ralphthon --max-waves 5           Set max hardening waves
- *   omc ralphthon --poll-interval 60      Set poll interval in seconds
+ *   omg ralphthon "task"                  Start new ralphthon session
+ *   omg ralphthon --resume                Resume existing session
+ *   omg ralphthon --skip-interview "task" Skip deep-interview, use task directly
+ *   omg ralphthon --max-waves 5           Set max hardening waves
+ *   omg ralphthon --poll-interval 60      Set poll interval in seconds
  */
 import type { RalphthonCliOptions, RalphthonPlanningContext, RalphthonStory } from "../../ralphthon/types.js";
 /**

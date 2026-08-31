@@ -255,7 +255,7 @@ function formatUpdateNoticeForUser(updateInfo, options = {}) {
   const latestVersion = updateInfo?.latestVersion || 'latest';
   const currentVersion = updateInfo?.currentVersion || 'unknown';
   const action = options.autoUpgradePrompt === false
-    ? 'To update later, run: omc update'
+    ? 'To update later, run: omg update'
     : 'Run /update to upgrade now, or use /plugin install oh-my-copilot';
   return `[OMC UPDATE AVAILABLE] oh-my-copilot v${latestVersion} is available (current: v${currentVersion}). ${action}`;
 }

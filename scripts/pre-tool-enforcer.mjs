@@ -1177,7 +1177,7 @@ function extractClaudeGoalSnapshot(data, sessionId, cwd) {
 
 // A bootstrap/exit bypass must apply to one indivisible command only. Reject shell
 // chaining/expansion so a recognized token cannot smuggle other commands past the guard
-// (e.g. `omc ultragoal checkpoint ... && npm test`). See PR review on #3465.
+// (e.g. `omg ultragoal checkpoint ... && npm test`). See PR review on #3465.
 function isSingleShellCommand(command) {
   return typeof command === 'string'
     && command.trim().length > 0

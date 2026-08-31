@@ -124,7 +124,7 @@ async function runAction(descriptorPath: string, runsRoot: string): Promise<void
   const sealed = await loadSealedDescriptor(descriptorPath, runsRoot);
   if (sealed === null) return;
 
-  // runGraph is imported lazily so `omc graph --help` does not load the whole
+  // runGraph is imported lazily so `omg graph --help` does not load the whole
   // runtime, and so this adapter stays decoupled from runtime module order.
   const [{ runGraph }] = await Promise.all([import('../graph/runtime/runner.js')]);
 
@@ -155,7 +155,7 @@ async function runAction(descriptorPath: string, runsRoot: string): Promise<void
 /**
  * Returns the `graph` command:
  *
- *   omc graph run <descriptorPath> [--runs-root <dir>]
+ *   omg graph run <descriptorPath> [--runs-root <dir>]
  */
 export function graphCommand(): Command {
   const command = new Command('graph');
@@ -169,8 +169,8 @@ export function graphCommand(): Command {
       'after',
       `
 Examples:
-  $ omc graph run ./my-graph.json
-  $ omc graph run ./my-graph.json --runs-root .omg/graph-runs
+  $ omg graph run ./my-graph.json
+  $ omg graph run ./my-graph.json --runs-root .omg/graph-runs
 
 Exit codes:
   0   run succeeded

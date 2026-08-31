@@ -119,8 +119,10 @@ function decodeQuotedValue(raw) {
 }
 function launchHintPattern(mode) {
     return mode === "team"
-        ? /(?<command>(?:om[cx]\s+team|\$team)(?:\s+ralph)?(?:\s+(?<count>\d+)(?::(?<role>[a-z][a-z0-9-]*))?)?\s+(?<task>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(?<flags>(?:\s+--[\w-]+)*))/gi
-        : /(?<command>(?:om[cx]\s+ralph|\$ralph)\s+(?<task>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(?<flags>(?:\s+--[\w-]+)*))/gi;
+        // omg is this fork's command; omc still appears in PRDs written before the
+        // rename, and omx is the sibling tool. All three must keep resolving.
+        ? /(?<command>(?:om[cgx]\s+team|\$team)(?:\s+ralph)?(?:\s+(?<count>\d+)(?::(?<role>[a-z][a-z0-9-]*))?)?\s+(?<task>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(?<flags>(?:\s+--[\w-]+)*))/gi
+        : /(?<command>(?:om[cgx]\s+ralph|\$ralph)\s+(?<task>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(?<flags>(?:\s+--[\w-]+)*))/gi;
 }
 function collectLaunchHintMatches(content, mode) {
     return [...content.matchAll(launchHintPattern(mode))];

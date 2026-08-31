@@ -3,7 +3,7 @@
  *
  * Maps legacy workflow / skill / command aliases to the four Tier-0
  * canonical workflows (`plan`, `execute`, `review`, `verify`) or the
- * maintainer-only `omc release` authority. Provides:
+ * maintainer-only `omg release` authority. Provides:
  *  - one concise actionable warning per alias per session (default)
  *  - diagnostics mapping/telemetry retention
  *  - temporary automation opt-out
