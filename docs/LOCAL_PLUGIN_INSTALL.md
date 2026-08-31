@@ -7,7 +7,7 @@ How to install oh-my-copilot from a local development directory as a Claude Code
 Use this document for **local development checkouts and git worktrees** where you want Claude Code to load the plugin from your current repo state.
 
 - **Marketplace/plugin users**: prefer the README quick-start flow
-- **npm users**: prefer `npm i -g oh-my-copilot@latest`; npm installs expose both `oh-my-copilot` and `omc` command aliases
+- **npm users**: prefer `npm i -g oh-my-copilot@latest`; npm installs expose both `oh-my-copilot` and `omg` command aliases
 - **Local-dev/worktree users**: use this guide so the installed plugin matches the branch/worktree you are editing
 
 ## Quick Install
@@ -105,22 +105,22 @@ If you prefer not to use the marketplace system, you can launch Claude Code dire
 ```bash
 export OMC_PLUGIN_ROOT=/path/to/oh-my-copilot
 claude --plugin-dir /path/to/oh-my-copilot
-omc setup --plugin-dir-mode
+omg setup --plugin-dir-mode
 ```
 
-Or use the npm CLI shim (`omc`, or `oh-my-copilot` if you prefer the long alias) which handles `--plugin-dir` automatically:
+Or use the npm CLI shim (`omg`, or `oh-my-copilot` if you prefer the long alias) which handles `--plugin-dir` automatically:
 
 ```bash
-omc --plugin-dir /path/to/oh-my-copilot setup --plugin-dir-mode
+omg --plugin-dir /path/to/oh-my-copilot setup --plugin-dir-mode
 # Equivalent long alias:
 oh-my-copilot --plugin-dir /path/to/oh-my-copilot setup --plugin-dir-mode
 ```
 
 **Key differences from marketplace:**
 - Plugin is loaded directly from your filesystem (no cache)
-- Changes to agent/skill files take effect after re-running `omc setup`
+- Changes to agent/skill files take effect after re-running `omg setup`
 - No marketplace update step needed — just rebuild and re-run setup
-- Requires manual `OMC_PLUGIN_ROOT` export if using `claude` directly (the `omc` / `oh-my-copilot` shims set it for you)
+- Requires manual `OMC_PLUGIN_ROOT` export if using `claude` directly (the `omg` / `oh-my-copilot` shims set it for you)
 
 For the full decision matrix and authoritative plugin-dir documentation, see the [Plugin directory flags section in REFERENCE.md](./REFERENCE.md#plugin-directory-flags).
 
@@ -137,5 +137,5 @@ For the full decision matrix and authoritative plugin-dir documentation, see the
 
 **Using `--plugin-dir` or `--plugin-dir-mode`?**
 - Verify `OMC_PLUGIN_ROOT` is set: `echo $OMC_PLUGIN_ROOT`
-- If using `claude --plugin-dir` directly (not `omc --plugin-dir`), export `OMC_PLUGIN_ROOT` manually
-- Run `omc doctor --plugin-dir /path/to/oh-my-copilot` (or `oh-my-copilot doctor --plugin-dir /path/to/oh-my-copilot`) to diagnose issues
+- If using `claude --plugin-dir` directly (not `omg --plugin-dir`), export `OMC_PLUGIN_ROOT` manually
+- Run `omg doctor --plugin-dir /path/to/oh-my-copilot` (or `oh-my-copilot doctor --plugin-dir /path/to/oh-my-copilot`) to diagnose issues
