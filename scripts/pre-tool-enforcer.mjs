@@ -1209,7 +1209,7 @@ function isCancelSkillBootstrapTool(toolName, toolInput) {
   // Basename is constrained to oh-my-copilot.js; arbitrary node scripts stay denied.
   // isSingleShellCommand above rejects chaining/expansion so a recognized token cannot
   // smuggle other commands past the guard (e.g. `... cancel && npm test`).
-  return /^(?:(?:node|nodejs)\s+(?:"[^"\n]*[/\\]oh-my-copilot\.js"|'[^'\n]*[/\\]oh-my-copilot\.js'|[^\s;|&`]*[/\\]oh-my-copilot\.js)\s+|(?:omc|oh-my-copilot|gjc)\s+)(?:state\s+(?:clear|read|write|list-active|get-status)|cancel)\b/.test(command.trim());
+  return /^(?:(?:node|nodejs)\s+(?:"[^"\n]*[/\\]oh-my-copilot\.js"|'[^'\n]*[/\\]oh-my-copilot\.js'|[^\s;|&`]*[/\\]oh-my-copilot\.js)\s+|(?:omg|omc|oh-my-copilot|gjc)\s+)(?:state\s+(?:clear|read|write|list-active|get-status)|cancel)\b/.test(command.trim());
 }
 
 function isUltragoalBootstrapTool(toolName, toolInput) {
@@ -1217,7 +1217,10 @@ function isUltragoalBootstrapTool(toolName, toolInput) {
   if (toolName !== 'Bash') return false;
   const command = typeof toolInput.command === 'string' ? toolInput.command : '';
   if (!isSingleShellCommand(command)) return false;
-  return /^(?:omc|oh-my-copilot)\s+ultragoal\s+(?:create(?:-goals)?|complete(?:-goals)?|next|start-next|status|checkpoint|record-review-blockers)\b/.test(command.trim());
+  // omg is the command the ultragoal artifacts now tell the agent to run; omc
+  // and the long name stay accepted so a session resumed from pre-rename
+  // guidance is not denied the bootstrap it was instructed to use.
+  return /^(?:omg|omc|oh-my-copilot)\s+ultragoal\s+(?:create(?:-goals)?|complete(?:-goals)?|next|start-next|status|checkpoint|record-review-blockers)\b/.test(command.trim());
 }
 
 function evaluateUltragoalPreToolEnforcement(stateDir, directory, sessionId, data) {
