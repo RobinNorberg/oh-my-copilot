@@ -335,7 +335,7 @@ blocks.
 ```json
 {
   "code": "deprecated_cli_only",
-  "message": "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead."
+  "message": "Legacy team MCP runtime tools are deprecated. Use the omg team CLI instead."
 }
 ```
 

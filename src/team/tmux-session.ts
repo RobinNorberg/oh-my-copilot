@@ -185,7 +185,7 @@ async function cmuxSendSurface(surfaceId: string, text: string): Promise<void> {
   // `send-surface` subcommand. `cmux send --surface ...` is parsed as the
   // focused-surface form plus an unknown option in current cmux builds, which
   // makes worker startup fail after the split/worktree has already been
-  // created. The top-level `omc team` catch then prints generic usage and the
+  // created. The top-level `omg team` catch then prints generic usage and the
   // startup rollback tears the empty worktree down. (#3325)
   await cmuxExecPrimaryWithLegacyFallback(
     ['send-surface', '--surface', surfaceId, text],
