@@ -49,7 +49,7 @@ function addRule(
   projectDir: string,
   name: string,
   content: string,
-  subdir = '.claude/rules',
+  subdir = '.copilot/rules',
 ): void {
   const rulesDir = join(projectDir, subdir);
   mkdirSync(rulesDir, { recursive: true });
@@ -164,10 +164,10 @@ describe('Bug 3 – nested worktree isolation: only worktree rules are injected'
   beforeEach(() => {
     // Layout:
     //   base/               ← main repo (.git/ directory)
-    //     .claude/rules/main.md
+    //     .copilot/rules/main.md
     //     src/main.ts
     //     feature/          ← nested git worktree (.git FILE)
-    //       .claude/rules/feature.md
+    //       .copilot/rules/feature.md
     //       src/feature.ts
     base = tmpDir();
     mainRepo = base;

@@ -9,7 +9,7 @@ import { readdirSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { loadAgentPrompt } from './utils.js';
-import { appendSkininthegamebrosGuidance } from './skininthegamebros-guidance.js';
+import { appendStrictModeGuidance } from './strict-mode-guidance.js';
 
 /**
  * Build-time injected agent roles list.
@@ -148,7 +148,7 @@ export function resolveSystemPrompt(
       console.warn(`[prompt-injection] Agent role "${role}" prompt not found, skipping injection`);
       return undefined;
     }
-    return appendSkininthegamebrosGuidance(prompt, 'agent');
+    return appendStrictModeGuidance(prompt, 'agent');
   }
 
   return undefined;

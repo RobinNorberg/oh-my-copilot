@@ -4,7 +4,7 @@
  *
  * findRuleFiles(projectRoot, currentFile) used to ascend from the current
  * file's directory all the way to the filesystem root whenever projectRoot
- * was null, so unrelated ancestor .cursor/rules, .claude/rules, and
+ * was null, so unrelated ancestor .cursor/rules, .copilot/rules, and
  * .github/instructions directories were treated as project rules. With no
  * project root, only the current file's own directory's project-rule
  * subdirectories are in scope; the explicit user-level
@@ -16,13 +16,8 @@ import { mkdirSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { findProjectRoot, findRuleFiles } from './finder.js';
+import { PROJECT_RULE_SUBDIRS } from './constants.js';
 import type { RuleFileCandidate } from './types.js';
-
-const PROJECT_RULE_SUBDIRS: [string, string][] = [
-  ['.github', 'instructions'],
-  ['.cursor', 'rules'],
-  ['.claude', 'rules'],
-];
 
 function tmpDir(): string {
   const p = join(
@@ -122,9 +117,9 @@ describe('findRuleFiles with no project root (issue #3653)', () => {
     const originalConfigDir = process.env.COPILOT_CONFIG_DIR;
 
     try {
-      // Unrelated ancestor .claude/rules that must NOT be treated as project
+      // Unrelated ancestor .copilot/rules that must NOT be treated as project
       // rules when no project root exists.
-      addRule(join(base, 'ancestor'), '.claude', 'rules', 'ancestor.mdc');
+      addRule(join(base, 'ancestor'), '.copilot', 'rules', 'ancestor.mdc');
       const currentFile = addFile(base, 'sub/no-marker/src/current.ts');
 
       const configDir = join(base, 'config');
@@ -166,7 +161,7 @@ describe('findRuleFiles with a project root (unchanged bounded walk)', () => {
 
     const project = join(base, 'parent', 'project');
     mkdirSync(join(project, '.git'), { recursive: true });
-    const projectRule = addRule(project, '.claude', 'rules', 'project.mdc');
+    const projectRule = addRule(project, '.copilot', 'rules', 'project.mdc');
 
     const currentFile = addFile(project, 'src/deep/current.ts');
 

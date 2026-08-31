@@ -14,12 +14,12 @@ export const ALLOWED_PATH_PREFIX = '.omg/';
 /** Path patterns that orchestrator IS allowed to modify directly.
  *  Paths are normalized to forward slashes before matching (via toForwardSlash). */
 export const ALLOWED_PATH_PATTERNS = [
-  /^\.omc\//,                    // .omg/**
-  /^\.claude\//,                 // .copilot/** (local)
-  /^~?\/\.claude\//,             // legacy ~/.copilot/** references
-  /\/\.claude\//,                // any /.copilot/ path
-  /CLAUDE\.md$/,                 // **/CLAUDE.md
-  /AGENTS\.md$/,                 // **/AGENTS.md
+  /^\.omg\//,                        // .omg/**
+  /^\.(?:copilot|claude)\//,         // .copilot/** and .claude/** (local)
+  /^~?\/\.(?:copilot|claude)\//,     // ~/.copilot/** and ~/.claude/** references
+  /\/\.(?:copilot|claude)\//,        // any /.copilot/ or /.claude/ path
+  /CLAUDE\.md$/,                     // **/CLAUDE.md
+  /AGENTS\.md$/,                     // **/AGENTS.md
 ];
 
 /** Source file extensions that should trigger delegation warnings */
