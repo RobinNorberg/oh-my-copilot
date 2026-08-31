@@ -73,7 +73,7 @@ describe('release generation', () => {
       { number: '2129', title: 'fix(hud): replace misleading CLI error with installation diagnostic', author: 'DdangJin', headRefName: 'fix/hud-cli-diagnostic' },
       { number: '2137', title: 'Fix team tmux pane geometry collapse and bundled agent path resolution', author: 'Yeachan-Heo', headRefName: 'fix-issue-2135-pane-geometry' },
       { number: '2144', title: 'fix: preserve existing global CLAUDE.md during setup', author: 'Yeachan-Heo', headRefName: 'issue-2143-safe-setup-config' },
-      { number: '2146', title: 'fix: follow up #2143 with explicit overwrite choice + omg launch profile', author: 'Yeachan-Heo', headRefName: 'issue-2143-omc-launch-followup' },
+      { number: '2146', title: 'fix: follow up #2143 with explicit overwrite choice + omc launch profile', author: 'Yeachan-Heo', headRefName: 'issue-2143-omc-launch-followup' },
       { number: '2149', title: 'fix: resolve global HUD npm package lookup outside Node projects', author: 'Yeachan-Heo', headRefName: 'fix/issue-2148-hud-global-npm' },
       { number: '2151', title: 'feat(hud): make call-count icon rendering configurable', author: 'Yeachan-Heo', headRefName: 'issue-2150-hud-call-count-icons' },
     ];
@@ -125,7 +125,7 @@ describe('release generation', () => {
 
     expect(body).toContain('The npm CLI and the Claude Code marketplace/plugin are separate install tracks');
     expect(body).toContain('if you have both installed, update both');
-    expect(body).toContain('CLI-dependent skill paths such as `ask` and CLI-backed `team` require the `omc` CLI');
+    expect(body).toContain('CLI-dependent skill paths such as `ask` and CLI-backed `team` require the `omg` CLI');
     expect(body).toContain('npm install -g oh-my-copilot@4.10.2');
     expect(body).toContain('/plugin marketplace update omc');
     expect(body).toContain('https://github.com/RobinNorberg/oh-my-copilot/compare/v4.10.1...v4.10.2');
