@@ -84,7 +84,7 @@ description: Worktree-first manager
 aliases: [psm]
 ---
 
-> **Quick Start (worktree-first):** Start with \`omc teleport\` before tmux sessions.`
+> **Quick Start (worktree-first):** Start with \`omcp teleport\` before tmux sessions.`
     );
 
     const { executeSlashCommand } = await loadExecutor();
@@ -96,7 +96,7 @@ aliases: [psm]
 
     expect(result.success).toBe(true);
     expect(result.replacementText).toContain('Quick Start (worktree-first)');
-    expect(result.replacementText).toContain('`omc teleport`');
+    expect(result.replacementText).toContain('`omcp teleport`');
     expect(result.replacementText).toContain('Deprecated Alias');
   });
 
@@ -278,10 +278,10 @@ Nested metadata skill body`
     expect(result.replacementText).not.toContain('Nested environment description');
   });
 
-  it('discovers workspace-local Claude Code skills from .claude/skills before OMC compatibility skills', async () => {
-    mkdirSync(join(tempProjectDir, '.claude', 'skills', 'workspace-skill', 'references'), { recursive: true });
+  it('discovers workspace-local Copilot CLI skills from .copilot/skills before OMC compatibility skills', async () => {
+    mkdirSync(join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'references'), { recursive: true });
     writeFileSync(
-      join(tempProjectDir, '.claude', 'skills', 'workspace-skill', 'SKILL.md'),
+      join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'SKILL.md'),
       `---
 name: workspace-skill
 description: Workspace Claude skill
@@ -290,7 +290,7 @@ description: Workspace Claude skill
 Workspace Claude skill body`
     );
     writeFileSync(
-      join(tempProjectDir, '.claude', 'skills', 'workspace-skill', 'references', 'example.md'),
+      join(tempProjectDir, '.copilot', 'skills', 'workspace-skill', 'references', 'example.md'),
       'example'
     );
 
@@ -307,7 +307,7 @@ Compatibility duplicate body`
 
     const { findCommand, executeSlashCommand, listAvailableCommands } = await loadExecutor();
 
-    expect(findCommand('workspace-skill')?.path).toContain(join('.claude', 'skills', 'workspace-skill', 'SKILL.md'));
+    expect(findCommand('workspace-skill')?.path).toContain(join('.copilot', 'skills', 'workspace-skill', 'SKILL.md'));
     expect(listAvailableCommands().some((command) => command.name === 'workspace-skill')).toBe(true);
 
     const result = executeSlashCommand({
@@ -319,7 +319,7 @@ Compatibility duplicate body`
     expect(result.success).toBe(true);
     expect(result.replacementText).toContain('Workspace Claude skill body');
     expect(result.replacementText).toContain('## Skill Resources');
-    expect(result.replacementText).toContain('.claude/skills/workspace-skill');
+    expect(result.replacementText).toContain('.copilot/skills/workspace-skill');
     expect(result.replacementText).toContain('`references/`');
     expect(result.replacementText).not.toContain('Compatibility duplicate body');
   });

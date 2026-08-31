@@ -69,10 +69,10 @@ describe('Builtin Skills', () => {
   });
 
   describe('createBuiltinSkills()', () => {
-    it('should return correct number of skills (32 canonical + 2 aliases)', () => {
+    it('should return correct number of skills (46 canonical + 2 aliases)', () => {
       const skills = createBuiltinSkills();
-      // 34 entries: 32 canonical skills + 2 aliases (cancel-ralph, psm)
-      expect(skills).toHaveLength(34);
+      // 48 entries: 46 canonical skills + 2 aliases (cancel-ralph, psm)
+      expect(skills).toHaveLength(48);
     });
 
     it('should return an array of BuiltinSkill objects', () => {
@@ -131,20 +131,34 @@ describe('Builtin Skills', () => {
         'cancel',
         'cancel-ralph',
         'configure-notifications',
+        'critique',
         'debug',
         'deep-interview',
+        'deep-review',
         'deepinit',
+        'discover',
         'execute',
         'external-context',
         'graph',
         'hud',
+        'omc-ado-auto-review',
+        'omc-ado-review',
+        'omc-ado-setup',
+        'omc-ado-sprint',
+        'omc-ado-triage',
         'omc-doctor',
+        'omc-gh-auto-review',
+        'omc-gh-project',
+        'omc-gh-review',
+        'omc-gh-setup',
+        'omc-gh-triage',
         'omc-plan',
         'omc-review',
         'omc-setup',
         'project-session-manager',
         'psm',
         'ralph',
+        'ralph-experiment',
         'ralplan',
         'release',
         'remember',
@@ -221,14 +235,14 @@ describe('Builtin Skills', () => {
       expect(skill).toBeDefined();
       expect(skill?.description).toContain('Worktree-first');
       expect(skill?.template).toContain('Quick Start (worktree-first)');
-      expect(skill?.template).toContain('`omc teleport`');
+      expect(skill?.template).toContain('`omcp teleport`');
     });
 
     it('should keep ask as the canonical process-first advisor wrapper', () => {
       const skill = getBuiltinSkill('ask');
       expect(skill).toBeDefined();
       expect(skill?.description).toContain('Process-first advisor routing');
-      expect(skill?.template).toContain('omc ask {{ARGUMENTS}}');
+      expect(skill?.template).toContain('omcp ask {{ARGUMENTS}}');
       expect(skill?.template).toContain('Do NOT manually construct raw provider CLI commands');
     });
 
@@ -321,9 +335,9 @@ describe('Builtin Skills', () => {
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.15 } } }),
       );
 
-      mkdirSync(join(projectDir, '.claude'), { recursive: true });
+      mkdirSync(join(projectDir, '.copilot'), { recursive: true });
       writeFileSync(
-        join(projectDir, '.claude', 'settings.json'),
+        join(projectDir, '.copilot', 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.12 } } }),
       );
 
@@ -333,12 +347,12 @@ describe('Builtin Skills', () => {
       const skill = getBuiltinSkill('deep-interview');
       expect(skill).toBeDefined();
       expect(skill?.template).toContain('Phase 0: Resolve Ambiguity Threshold (blocking prerequisite)');
-      expect(skill?.template).toContain('Deep Interview threshold: 12% (source: ./.claude/settings.json)');
+      expect(skill?.template).toContain('Deep Interview threshold: 12% (source: ./.copilot/settings.json)');
       expect(skill?.template).toContain('"threshold": 0.12,');
-      expect(skill?.template).toContain('"threshold_source": "./.claude/settings.json",');
+      expect(skill?.template).toContain('"threshold_source": "./.copilot/settings.json",');
       expect(skill?.template).toContain('drops below 12%.');
-      expect(skill?.template).toContain('- Threshold Source: ./.claude/settings.json');
-      expect(skill?.template).not.toContain('3.5. **Load runtime settings** from `~/.claude/settings.json`');
+      expect(skill?.template).toContain('- Threshold Source: ./.copilot/settings.json');
+      expect(skill?.template).not.toContain('3.5. **Load runtime settings** from `~/.copilot/settings.json`');
       expect(skill?.template).toContain('settings files were read, threshold was resolved');
       expect(skill?.template?.indexOf('Phase 0: Resolve Ambiguity Threshold')).toBeLessThan(
         skill?.template?.indexOf('Initialize state') ?? Number.POSITIVE_INFINITY,
@@ -349,28 +363,28 @@ describe('Builtin Skills', () => {
       const projectDir = mkdtempSync(join(tmpdir(), 'omc-skill-cache-refresh-'));
       tempDirs.push(projectDir);
 
-      mkdirSync(join(projectDir, '.claude'), { recursive: true });
+      mkdirSync(join(projectDir, '.copilot'), { recursive: true });
       process.chdir(projectDir);
 
       writeFileSync(
-        join(projectDir, '.claude', 'settings.json'),
+        join(projectDir, '.copilot', 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.12 } } }),
       );
 
       const first = getBuiltinSkill('deep-interview');
-      expect(first?.template).toContain('Deep Interview threshold: 12% (source: ./.claude/settings.json)');
+      expect(first?.template).toContain('Deep Interview threshold: 12% (source: ./.copilot/settings.json)');
       expect(first?.template).toContain('"threshold": 0.12,');
-      expect(first?.template).toContain('"threshold_source": "./.claude/settings.json",');
+      expect(first?.template).toContain('"threshold_source": "./.copilot/settings.json",');
 
       writeFileSync(
-        join(projectDir, '.claude', 'settings.json'),
+        join(projectDir, '.copilot', 'settings.json'),
         JSON.stringify({ omc: { deepInterview: { ambiguityThreshold: 0.33 } } }),
       );
 
       const second = getBuiltinSkill('deep-interview');
-      expect(second?.template).toContain('Deep Interview threshold: 33% (source: ./.claude/settings.json)');
+      expect(second?.template).toContain('Deep Interview threshold: 33% (source: ./.copilot/settings.json)');
       expect(second?.template).toContain('"threshold": 0.33,');
-      expect(second?.template).toContain('"threshold_source": "./.claude/settings.json",');
+      expect(second?.template).toContain('"threshold_source": "./.copilot/settings.json",');
       expect(second?.template).not.toContain('Deep Interview threshold: 12%');
       expect(second?.template).not.toContain('"threshold": 0.12,');
     });
@@ -632,7 +646,7 @@ describe('Builtin Skills', () => {
       expect(skill?.template).toContain('only when the Claude CLI is resolvable');
       expect(skill?.template).toContain('no runnable fallback exists');
       expect(skill?.template).toContain('orchestration/startup is unavailable');
-      expect(skill?.template).toContain('omc doctor --team-routing');
+      expect(skill?.template).toContain('omcp doctor --team-routing');
     });
 
 
@@ -659,7 +673,7 @@ describe('Builtin Skills', () => {
     it('should return canonical skill names by default', () => {
       const names = listBuiltinSkillNames();
 
-      expect(names).toHaveLength(32);
+      expect(names).toHaveLength(46);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('ask');
       expect(names).toContain('autopilot');
@@ -693,7 +707,7 @@ describe('Builtin Skills', () => {
       const names = listBuiltinSkillNames({ includeAliases: true });
 
       // swarm alias removed in #1131; learner retired in 5.0.0; cancel-ralph and psm remain
-      expect(names).toHaveLength(34);
+      expect(names).toHaveLength(48);
       expect(names).toContain('ai-slop-cleaner');
       expect(names).toContain('autoresearch');
       expect(names).toContain('self-improve');
