@@ -8,12 +8,12 @@ const root = resolve(__dirname, '..', '..', '..');
 const wrapperSource = join(root, 'scripts', 'lib', 'hud-cache-wrapper.sh');
 
 function stageWrapper() {
-  const dir = mkdtempSync(join(tmpdir(), 'omcp-hud-cache-wrapper-'));
+  const dir = mkdtempSync(join(tmpdir(), 'omg-hud-cache-wrapper-'));
   const hudDir = join(dir, 'hud');
   const cacheDir = join(hudDir, 'cache');
   mkdirSync(cacheDir, { recursive: true });
-  const wrapperPath = join(hudDir, 'omcp-hud-cache.sh');
-  const hudPath = join(hudDir, 'omcp-hud.mjs');
+  const wrapperPath = join(hudDir, 'omg-hud-cache.sh');
+  const hudPath = join(hudDir, 'omg-hud.mjs');
   writeFileSync(wrapperPath, readFileSync(wrapperSource, 'utf8'), 'utf8');
   chmodSync(wrapperPath, 0o755);
   return { dir, hudDir, cacheDir, wrapperPath, hudPath };
