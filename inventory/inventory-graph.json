@@ -5,14 +5,14 @@
   "provenance": {
     "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
     "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-    "head": "eb416cfd778dfb69c2fb88652eb307f20ebc3143",
+    "head": "d540cfb903bb5b7877f513524fa46b5e544690a9",
     "sourceSha256": "0ba693dcb96139ddba2638bcf0c7c1c173635a4cfc6c2643ccb04eb56d7dc614",
     "generatedAt": null,
     "generator": "scripts/generate-inventory-graph.mjs"
   },
   "base": "05c800f40d1ad53b42a78609d2667ef4f726808b",
   "planningHead": "0a91273e61dbbd47eb0af4c02844409251e08398",
-  "head": "eb416cfd778dfb69c2fb88652eb307f20ebc3143",
+  "head": "d540cfb903bb5b7877f513524fa46b5e544690a9",
   "sourceSha256": "0ba693dcb96139ddba2638bcf0c7c1c173635a4cfc6c2643ccb04eb56d7dc614",
   "counts": {
     "public": {
@@ -32,9 +32,9 @@
       "total": 1362
     },
     "generated": {
-      "distFiles": 5215,
+      "distFiles": 5219,
       "bridgeFiles": 9,
-      "total": 5224
+      "total": 5228
     },
     "prompt": {
       "promptLikeFiles": 62
@@ -1998,6 +1998,10 @@
       "dist/agents/scientist.d.ts.map",
       "dist/agents/scientist.js",
       "dist/agents/scientist.js.map",
+      "dist/agents/strict-mode-guidance.d.ts",
+      "dist/agents/strict-mode-guidance.d.ts.map",
+      "dist/agents/strict-mode-guidance.js",
+      "dist/agents/strict-mode-guidance.js.map",
       "dist/agents/tracer.d.ts",
       "dist/agents/tracer.d.ts.map",
       "dist/agents/tracer.js",
@@ -13323,6 +13327,26 @@
         "id": "dist/agents/scientist.js.map",
         "kind": "generated-dist",
         "path": "dist/agents/scientist.js.map"
+      },
+      {
+        "id": "dist/agents/strict-mode-guidance.d.ts",
+        "kind": "generated-dist",
+        "path": "dist/agents/strict-mode-guidance.d.ts"
+      },
+      {
+        "id": "dist/agents/strict-mode-guidance.d.ts.map",
+        "kind": "generated-dist",
+        "path": "dist/agents/strict-mode-guidance.d.ts.map"
+      },
+      {
+        "id": "dist/agents/strict-mode-guidance.js",
+        "kind": "generated-dist",
+        "path": "dist/agents/strict-mode-guidance.js"
+      },
+      {
+        "id": "dist/agents/strict-mode-guidance.js.map",
+        "kind": "generated-dist",
+        "path": "dist/agents/strict-mode-guidance.js.map"
       },
       {
         "id": "dist/agents/tracer.d.ts",
@@ -79078,12 +79102,12 @@
       }
     ],
     "stats": {
-      "nodeCount": 7154,
+      "nodeCount": 7158,
       "edgeCount": 7346,
       "importEdgeCount": 6027,
       "registerEdgeCount": 67
     }
   },
   "inventorySha256": "31e010081ab6664779db28d1fcc4e9a61e1b68ef3ffcc9a8075e814987f2f5bb",
-  "manifestSha256": "ad67fc201daa57801d5314cb410e37f4e41e13ffd16d296a8548904ff2d10266"
+  "manifestSha256": "5669b16967a8f20669a47dd60ee14fa4806c982f070df0fd2eccc838320fd367"
 }
