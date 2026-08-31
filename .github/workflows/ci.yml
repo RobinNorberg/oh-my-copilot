@@ -532,11 +532,11 @@ jobs:
           test -f "$SMOKE_PACKAGE_ROOT/skills/omc-setup/phases/01-install-claude-md.md"
           test "$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omcp" --version)" = "$VERSION"
           env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omcp" --help
-          API_HELP=$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omc-cli" team api --help)
+          API_HELP=$(env -i PATH="$PATH" HOME="$SMOKE_HOME" COPILOT_CONFIG_DIR="$SMOKE_COPILOT_CONFIG_DIR" GJC_CONFIG_DIR="$SMOKE_GJC_CONFIG_DIR" OMC_SETUP_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" CLAUDE_PLUGIN_ROOT="$SMOKE_PACKAGE_ROOT" "$SMOKE_PREFIX/node_modules/.bin/omcp-cli" team api --help)
           case "$API_HELP" in
             *recover-worker*write-task-checkpoint*read-recovery-result*) ;;
             *)
-              echo "omc-cli team api help is missing required recovery commands" >&2
+              echo "omcp-cli team api help is missing required recovery commands" >&2
               exit 1
               ;;
           esac
