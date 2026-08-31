@@ -96,8 +96,8 @@ function packageManifest(gitHead?: string): Record<string, unknown> {
     ...(gitHead ? { gitHead } : {}),
     bin: {
       'oh-my-copilot': 'bin/oh-my-copilot.js',
-      omc: 'bin/oh-my-copilot.js',
-      'omc-cli': 'bridge/cli.cjs',
+      omcp: 'bin/oh-my-copilot.js',
+      'omcp-cli': 'bridge/cli.cjs',
     },
   };
 }
