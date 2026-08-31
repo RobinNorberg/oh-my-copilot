@@ -56,9 +56,9 @@ HUD STATUSLINE:
 The status bar now shows OMC state. Restart Claude Code to see it.
 
 OMC CLI HELPERS (if installed):
-- omc hud         - Render the current HUD statusline
-- omc teleport    - Create an isolated git worktree
-- omc team status - Inspect a running team job
+- omg hud         - Render the current HUD statusline
+- omg teleport    - Create an isolated git worktree
+- omg team status - Inspect a running team job
 - Session summaries are written to `.omg/sessions/*.json`
 
 That's it! Just use Claude Code normally.
@@ -107,9 +107,9 @@ HUD STATUSLINE:
 The status bar now shows OMC state. Restart Claude Code to see it.
 
 OMC CLI HELPERS (if installed):
-- omc hud         - Render the current HUD statusline
-- omc teleport    - Create an isolated git worktree
-- omc team status - Inspect a running team job
+- omg hud         - Render the current HUD statusline
+- omg teleport    - Create an isolated git worktree
+- omg team status - Inspect a running team job
 - Session summaries are written to `.omg/sessions/*.json`
 
 Your configuration is preserved; retired commands are not recreated.
@@ -191,4 +191,4 @@ Mark setup complete:
 node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" complete
 ```
 
-With no version argument, `complete` reads the `OMC:VERSION:` marker from `.claude/CLAUDE.md`, falls back to the marker in the global `CLAUDE.md` (honouring `COPILOT_CONFIG_DIR`), then to `omc --version`, and finally records `unknown`.
+With no version argument, `complete` reads the `OMC:VERSION:` marker from `.claude/CLAUDE.md`, falls back to the marker in the global `CLAUDE.md` (honouring `COPILOT_CONFIG_DIR`), then to `omg --version`, and finally records `unknown`.
