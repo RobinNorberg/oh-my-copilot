@@ -189,7 +189,7 @@ Add these to your `.bashrc` / `.zshrc` for a smoother dev workflow:
 export OMC_DEV_ROOT="$HOME/_Git/_Claude/oh-my-copilot"
 
 # Run OMC from your local checkout
-alias omcdev='omg --plugin-dir "$OMC_DEV_ROOT"'
+alias omgdev='omg --plugin-dir "$OMC_DEV_ROOT"'
 
 # Build quickly
 alias omcbuild='(cd "$OMC_DEV_ROOT" && npm run build)'
@@ -204,7 +204,7 @@ alias omcwatch='(cd "$OMC_DEV_ROOT" && npm run dev:full)'
 Then you can use:
 ```bash
 omcbuild                                # Rebuild in 10–15 seconds
-omcdev setup --plugin-dir-mode          # Link your checkout
+omgdev setup --plugin-dir-mode          # Link your checkout
 omcwatch                                # Auto-rebuild on file changes
 omctest                                 # Run test suite
 ```
