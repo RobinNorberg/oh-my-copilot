@@ -2,6 +2,8 @@
 
 All notable changes to oh-my-copilot will be documented in this file.
 
+# oh-my-copilot v5.0.0
+
 ## [5.0.0] - 2026-08-31
 
 The fork was at v4.13.102. It has now been rebased onto upstream
