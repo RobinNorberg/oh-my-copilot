@@ -261,7 +261,7 @@ describe('model-contract', () => {
       expect(() => getContract('unknown' as any)).toThrow('Unknown agent type');
     });
 
-    describe('antigravity Windows headless guard (omc team)', () => {
+    describe('antigravity Windows headless guard (omg team)', () => {
       it('reports antigravity headless unsupported on win32, supported elsewhere', () => {
         expect(isHeadlessSupportedOnPlatform('antigravity', 'win32')).toBe(false);
         expect(isHeadlessSupportedOnPlatform('antigravity', 'darwin')).toBe(true);

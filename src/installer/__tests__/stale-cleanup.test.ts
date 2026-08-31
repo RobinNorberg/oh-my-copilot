@@ -663,7 +663,7 @@ describe('prunePluginDuplicateSkills', () => {
     mkdirSync(skillsDir, { recursive: true });
 
     // Create a standalone copy of 'ultragoal' (which the plugin also provides)
-    // and mark it as OMC-owned — this is what a prior `omc setup` would have done
+    // and mark it as OMC-owned — this is what a prior `omg setup` would have done
     createSkillDir(skillsDir, 'ultragoal', 'ultragoal');
     createManagedSkillMarker(skillsDir, 'ultragoal');
 

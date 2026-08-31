@@ -973,7 +973,7 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean; skipGraceP
 
   const projectScopedPlugin = isProjectScopedPlugin();
   // Plugin installs execute hooks from <pluginRoot>/hooks/hooks.json. Re-running
-  // the standalone settings.json hook merge during `omc update` re-injects the
+  // the standalone settings.json hook merge during `omg update` re-injects the
   // legacy ~/.copilot/hooks/* entries and causes duplicate hook execution.
   //
   // Reconciliation should still refresh shared installer artifacts (CLAUDE.md,
@@ -1069,19 +1069,19 @@ export function reconcileUpdateRuntime(options?: { verbose?: boolean; skipGraceP
 
 function resolveOmcBinaryPath(): string {
   if (process.platform === 'win32') {
-    return getFirstResolvedBinaryPath(execFileSync('where.exe', ['omc.cmd'], {
+    return getFirstResolvedBinaryPath(execFileSync('where.exe', ['omg.cmd'], {
       encoding: 'utf-8',
       stdio: 'pipe',
       timeout: 5000,
       windowsHide: true,
-    }), 'omc');
+    }), 'omg');
   }
 
-  return getFirstResolvedBinaryPath(execSync('which omc 2>/dev/null || where omc 2>NUL', {
+  return getFirstResolvedBinaryPath(execSync('which omg 2>/dev/null || where omg 2>NUL', {
     encoding: 'utf-8',
     stdio: 'pipe',
     timeout: 5000,
-  }), 'omc');
+  }), 'omg');
 }
 
 /**
@@ -1149,7 +1149,7 @@ export async function performUpdate(options?: {
         // Set flag to prevent infinite loop
         process.env.OMC_UPDATE_RECONCILE = '1';
 
-        // Find the omc binary path
+        // Find the omg binary path
         const omcPath = resolveOmcBinaryPath();
 
         // Re-exec with reconcile subcommand

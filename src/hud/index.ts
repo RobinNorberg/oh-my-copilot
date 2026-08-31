@@ -602,7 +602,7 @@ async function main(watchMode = false, skipInit = false): Promise<void> {
   }
 }
 
-// Export for programmatic use (e.g., omc hud --watch loop)
+// Export for programmatic use (e.g., omg hud --watch loop)
 export { main };
 
 // Auto-run (unconditional so dynamic import() via omg-hud.mjs wrapper works correctly)

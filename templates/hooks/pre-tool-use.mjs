@@ -408,7 +408,9 @@ const FILE_MODIFY_PATTERNS = [
 // Source file pattern for command inspection
 const SOURCE_EXT_PATTERN = /\.(ts|tsx|js|jsx|mjs|cjs|py|pyw|go|rs|java|kt|scala|c|cpp|cc|h|hpp|rb|php|svelte|vue|graphql|gql|sh|bash|zsh)(?!\w)/i;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+(split-window|new-session|new-window|join-pane)\b/i;
-const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
+// omg is this fork's command, omc the pre-rename name, omx the sibling tool.
+// All three must stay blocked or a worker can re-enter team orchestration.
+const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cgx]\s+team\b(?!\s+api\b)/i;
 const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|autopilot|ralph)\b/i;
 
 function teamWorkerIdentity() {

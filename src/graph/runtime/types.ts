@@ -247,7 +247,7 @@ export interface RunResult {
 }
 
 /**
- * Normative process exit codes for `omc graph run`. The CLI maps runner
+ * Normative process exit codes for `omg graph run`. The CLI maps runner
  * outcomes to these; e2e tests assert on them.
  */
 export const EXIT_CODES = {

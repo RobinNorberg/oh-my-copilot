@@ -323,7 +323,7 @@ describe('parseAskArgs', () => {
   });
 });
 
-describe('omc ask command', () => {
+describe('omg ask command', () => {
   it('accepts canonical advisor env and forwards prompt/task to advisor', () => {
     const wd = mkdtempSync(join(tmpdir(), 'omc-ask-canonical-'));
     try {

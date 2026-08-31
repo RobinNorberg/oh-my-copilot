@@ -142,7 +142,9 @@ import {
 const PKILL_F_FLAG_PATTERN = /\bpkill\b.*\s-f\b/;
 const PKILL_FULL_FLAG_PATTERN = /\bpkill\b.*--full\b/;
 const WORKER_BLOCKED_TMUX_PATTERN = /\btmux\s+/i;
-const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cx]\s+team\b(?!\s+api\b)/i;
+// omg is this fork's command, omc the pre-rename name, omx the sibling tool.
+// All three must stay blocked or a worker can re-enter team orchestration.
+const WORKER_BLOCKED_TEAM_CLI_PATTERN = /\bom[cgx]\s+team\b(?!\s+api\b)/i;
 const WORKER_BLOCKED_SKILL_PATTERN = /\$(team|autopilot|ralph)\b/i;
 
 const TEAM_TERMINAL_VALUES = new Set([

@@ -1,4 +1,4 @@
-export const AUTORESEARCH_HELP = `omc autoresearch - HARD DEPRECATED
+export const AUTORESEARCH_HELP = `omg autoresearch - HARD DEPRECATED
 
 This command is no longer the authoritative autoresearch workflow.
 
@@ -15,9 +15,9 @@ Key behavior:
   - the run stops at an explicit max-runtime ceiling
 
 Legacy CLI examples such as:
-  omc autoresearch --mission "..." --eval "..."
-  omc autoresearch init ...
-  omc autoresearch --resume ...
+  omg autoresearch --mission "..." --eval "..."
+  omg autoresearch init ...
+  omg autoresearch --resume ...
 are hard-deprecated shims and no longer launch the old runtime.
 `;
 

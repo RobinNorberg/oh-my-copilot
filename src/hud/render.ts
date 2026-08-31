@@ -316,7 +316,7 @@ export async function render(
     if (enabledElements.updateNotification !== false && context.updateAvailable) {
       rendered.set(
         "omcLabel",
-        bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`),
+        bold(`[OMC${versionTag}] -> ${context.updateAvailable} omg update`),
       );
     } else {
       rendered.set("omcLabel", bold(`[OMC${versionTag}]`));

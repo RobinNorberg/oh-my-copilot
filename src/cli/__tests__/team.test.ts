@@ -341,7 +341,7 @@ describe('team cli', () => {
         '## Requirement coverage map',
         '- req -> impl',
         '',
-        'omc team 4:codex "execute approved plan"',
+        'omg team 4:codex "execute approved plan"',
         '',
       ].join('\n'),
     );
@@ -397,7 +397,7 @@ describe('team cli', () => {
         '## Requirement coverage map',
         '- req -> impl',
         '',
-        'omc team 4:codex "execute draft plan"',
+        'omg team 4:codex "execute draft plan"',
         '',
       ].join('\n'),
     );
@@ -425,8 +425,8 @@ describe('team cli', () => {
         '## Requirement coverage map',
         '- req -> impl',
         '',
-        'omc team 2:claude "execute alpha"',
-        'omc team 4:codex "execute beta"',
+        'omg team 2:claude "execute alpha"',
+        'omg team 4:codex "execute beta"',
         '',
       ].join('\n'),
     );

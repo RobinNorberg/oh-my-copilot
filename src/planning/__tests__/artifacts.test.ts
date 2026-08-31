@@ -52,7 +52,7 @@ describe("planning/artifacts", () => {
         "## Requirement coverage map",
         "- req -> impl",
         "",
-        'omc team 3:claude "implement auth"',
+        'omg team 3:claude "implement auth"',
         "",
       ].join("\n"),
     );
@@ -449,7 +449,7 @@ describe("planning/artifacts", () => {
           "## Requirement coverage map",
           "- req -> impl",
           "",
-          'omc team 3:claude "implement auth"',
+          'omg team 3:claude "implement auth"',
           "",
         ].join("\n"),
       );
@@ -489,7 +489,7 @@ describe("planning/artifacts", () => {
           "## Requirement coverage map",
           "- req -> impl",
           "",
-          'Run: omc team "implement the feature"',
+          'Run: omg team "implement the feature"',
           "",
         ].join("\n"),
       );
@@ -501,8 +501,8 @@ describe("planning/artifacts", () => {
     });
 
     it("resolves exact team launch hints by command when tasks repeat", () => {
-      const firstCommand = 'omc team 2:claude "ship it"';
-      const secondCommand = 'omc team 4:codex "ship it"';
+      const firstCommand = 'omg team 2:claude "ship it"';
+      const secondCommand = 'omg team 4:codex "ship it"';
       writeFileSync(
         join(plansDir, "prd-feature.md"),
         [
@@ -617,7 +617,7 @@ describe("planning/artifacts", () => {
           "## Requirement coverage map",
           "- req -> impl",
           "",
-          'omc team 2:codex "fix the bug" --linked-ralph',
+          'omg team 2:codex "fix the bug" --linked-ralph',
           "",
         ].join("\n"),
       );
@@ -657,7 +657,7 @@ describe("planning/artifacts", () => {
     it("still parses launch hints even when quality gates fail", () => {
       writeFileSync(
         join(plansDir, "prd-feature.md"),
-        '# PRD\n\nRun: omc team "new task"\n',
+        '# PRD\n\nRun: omg team "new task"\n',
       );
       writeFileSync(
         join(plansDir, "test-spec-feature.md"),
