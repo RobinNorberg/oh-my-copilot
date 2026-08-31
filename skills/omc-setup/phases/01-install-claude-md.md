@@ -20,8 +20,8 @@ If `CONFIG_TARGET=global` and `~/.claude/CLAUDE.md` already exists without OMC m
 **Question:** "Global setup will change your base Claude config. Which behavior do you want?"
 
 **Options (default first):**
-1. **Overwrite base CLAUDE.md (Recommended)** - plain `claude` and `omc` both use OMC globally.
-2. **Keep base CLAUDE.md; use OMC only through `omc`** - preserve the user's base file, install OMC into `CLAUDE-omc.md`, and let `omc` force-load that companion config at launch.
+1. **Overwrite base CLAUDE.md (Recommended)** - plain `claude` and `omg` both use OMC globally.
+2. **Keep base CLAUDE.md; use OMC only through `omg`** - preserve the user's base file, install OMC into `CLAUDE-omc.md`, and let `omg` force-load that companion config at launch.
 
 Set `GLOBAL_INSTALL_STYLE=overwrite` or `preserve` based on the user's choice. If you did not ask this question, default `GLOBAL_INSTALL_STYLE=overwrite`.
 

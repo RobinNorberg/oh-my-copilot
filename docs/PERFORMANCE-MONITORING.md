@@ -96,7 +96,7 @@ The supported monitoring surfaces on current builds are:
 #### Supported Inspection Commands
 
 ```bash
-omc hud
+omg hud
 tail -20 .omg/state/agent-replay-*.jsonl
 ls .omg/sessions/*.json
 ```

@@ -140,7 +140,7 @@ Compatibility owner for all public workflow aliases is the workflow registry own
 | `learner` | Merge into memory utility | alias and migration docs |
 | `writer-memory` | Merge into memory utility | alias and migration docs |
 | `configure-notifications` | Keep opt-in integration utility | secrets/privacy tests |
-| `release` | Alias-deprecate to maintainer-only `omc release` authority | no release/tag/publish mutation in this epic; hard release boundary tests |
+| `release` | Alias-deprecate to maintainer-only `omg release` authority | no release/tag/publish mutation in this epic; hard release boundary tests |
 
 The table is intentionally explicit even where the final implementation owner may refine a mapping. No removal is authorized by this planning PR. The implementation issue must attach invocation counts and compatibility proof before changing a row.
 
@@ -165,7 +165,7 @@ The table is intentionally explicit even where the final implementation owner ma
 | `omc-teams` | Alias-deprecate | team |
 | `project-session-manager` | Keep | session utility |
 | `psm` | Alias-deprecate | project-session-manager |
-| `release` | Alias-deprecate | maintainer-only `omc release` authority; no mutation in this epic |
+| `release` | Alias-deprecate | maintainer-only `omg release` authority; no mutation in this epic |
 | `remember` | Keep | memory |
 | `sciomc` | Alias-deprecate | research |
 | `self-improve` | Keep opt-in | learning utility |
@@ -177,7 +177,7 @@ The table is intentionally explicit even where the final implementation owner ma
 | `wiki` | Keep | docs/reference |
 | `writer-memory` | Alias-deprecate | memory |
 
-Command aliases must resolve to one implementation and emit one concise, actionable warning per session by default; diagnostics retain full mapping and telemetry, with a temporary automation-noise opt-out. Removal requires at least two minor releases and 90 days (whichever is longer), ≥95% canonical-use share over two consecutive releases, and zero known critical integrations; otherwise extend. Tier-0 names are exactly `plan`, `execute`, `review`, and `verify`. `release` is not a general public workflow and remains only as a compatibility alias to maintainer-only `omc release`.
+Command aliases must resolve to one implementation and emit one concise, actionable warning per session by default; diagnostics retain full mapping and telemetry, with a temporary automation-noise opt-out. Removal requires at least two minor releases and 90 days (whichever is longer), ≥95% canonical-use share over two consecutive releases, and zero known critical integrations; otherwise extend. Tier-0 names are exactly `plan`, `execute`, `review`, and `verify`. `release` is not a general public workflow and remains only as a compatibility alias to maintainer-only `omg release`.
 
 ## 5. Workflow gate taxonomy
 
@@ -285,7 +285,7 @@ Each child issue must include: exact files/symbols, baseline/target metric, pari
 The owner has resolved the six planning choices. They are now contract, not blockers:
 
 1. Tier-0 public workflows are exactly `plan`, `execute`, `review`, and `verify`; Tier-0 roles are `planner`, `executor`, `reviewer`, and `verifier`. Specialists remain internal/routable.
-2. `release` is maintainer-only `omc release`, with a compatibility alias during migration; this epic performs no release/tag/publish mutation.
+2. `release` is maintainer-only `omg release`, with a compatibility alias during migration; this epic performs no release/tag/publish mutation.
 3. Alias warnings are concise/actionable, visible once per session by default; diagnostics retain full mapping/telemetry; automation may temporarily opt out.
 4. Alias retirement requires at least two minor releases and 90 days (whichever is longer), ≥95% canonical-use share over two consecutive releases, and zero known critical integrations; otherwise extend.
 5. Workflow files reduce to the smallest proven set, targeting five and accepting six only for required permissions/triggers/security separation.

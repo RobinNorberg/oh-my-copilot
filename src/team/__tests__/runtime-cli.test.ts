@@ -436,7 +436,7 @@ describe('runtime-cli terminal preservation helper', () => {
         },
       ]);
       expect(result.notice).toContain('preserving team state');
-      expect(result.notice).toContain(`omc team shutdown ${teamName}`);
+      expect(result.notice).toContain(`omg team shutdown ${teamName}`);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }
@@ -473,7 +473,7 @@ describe('runtime-cli terminal preservation helper', () => {
         },
       ]);
       expect(result.notice).toContain('phase=cancelled');
-      expect(result.notice).toContain(`omc team shutdown ${teamName}`);
+      expect(result.notice).toContain(`omg team shutdown ${teamName}`);
     } finally {
       rmSync(cwd, { recursive: true, force: true });
     }

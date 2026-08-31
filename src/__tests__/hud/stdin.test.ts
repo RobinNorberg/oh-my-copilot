@@ -678,7 +678,7 @@ describe('readStdinCache — env-less reader fallback to most recent session cac
     // Regression: the env-less fallback previously assembled the sessions
     // directory from `join(root, '.omg', 'state', 'sessions')` directly,
     // which bypasses `OMC_STATE_DIR`-backed centralized state and made
-    // `omc hud --watch` miss the active cache in that deployment shape.
+    // `omg hud --watch` miss the active cache in that deployment shape.
     const centralRoot = mkdtempSync(join(tmpdir(), 'omg-hud-stdin-central-'));
     const prevStateDir = process.env.OMC_STATE_DIR;
     process.env.OMC_STATE_DIR = centralRoot;

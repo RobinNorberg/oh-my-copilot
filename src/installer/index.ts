@@ -145,7 +145,7 @@ function currentSkillsDir(): string {
 /**
  * Detects the newest installed OMC version from persistent metadata or
  * existing CLAUDE.md markers so an older CLI package cannot overwrite a
- * newer installation during `omc setup`.
+ * newer installation during `omg setup`.
  */
 function isComparableVersion(version: string | null | undefined): version is string {
   return !!version && /^\d+\.\d+\.\d+(?:[-+][\w.-]+)?$/.test(version);
@@ -307,7 +307,7 @@ export interface InstallOptions {
   /**
    * Dev plugin-dir mode: skip copying agents and bundled skills into
    * `<configDir>` because the user is launching OMC via
-   * `claude --plugin-dir <path>` (or `omc --plugin-dir <path>`) and the
+   * `claude --plugin-dir <path>` (or `omg --plugin-dir <path>`) and the
    * plugin already provides them at runtime. HUD, hooks, CLAUDE.md, and
    * `.omc-config.json` are still installed. Mutually exclusive with
    * `noPlugin` (the CLI gives `noPlugin` precedence).
@@ -1221,7 +1221,7 @@ export function cleanupStaleSkills(
  * Remove standalone skill directories that duplicate plugin-provided skills.
  *
  * When the plugin is the canonical skill source, standalone copies in
- * ~/.claude/skills/ from a prior `omc setup` cause every command to appear
+ * ~/.claude/skills/ from a prior `omg setup` cause every command to appear
  * twice (#2252). This function removes standalone copies whose SKILL.md
  * content-hashes match any installed plugin version, preserving user-authored
  * skills that happen to share a name.
@@ -2404,7 +2404,7 @@ export function install(options: InstallOptions = {}): InstallResult {
   if (isComparableVersion(targetVersion)
     && isComparableVersion(installedVersionHint)
     && compareVersions(targetVersion, installedVersionHint) < 0) {
-    const message = `Skipping install: installed OMC ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omc update" to update the CLI package, then rerun "omc setup".`;
+    const message = `Skipping install: installed OMC ${installedVersionHint} is newer than CLI package ${targetVersion}. Run "omg update" to update the CLI package, then rerun "omg setup".`;
     log(message);
     result.success = true;
     result.message = message;
@@ -2442,7 +2442,7 @@ export function install(options: InstallOptions = {}): InstallResult {
   const pluginProvidesHookFiles = hasPluginProvidedHookFiles();
   const enabledOmcPlugin = hasEnabledOmcPlugin();
   // Dev plugin-dir mode: user launched OMC via `claude --plugin-dir <path>` or
-  // `omc --plugin-dir <path>`. The plugin already exposes agents/skills at runtime,
+  // `omg --plugin-dir <path>`. The plugin already exposes agents/skills at runtime,
   // so skip copying them into <configDir>. Auto-detected via OMC_PLUGIN_ROOT in CLI.
   // `noPlugin` still wins (CLI enforces precedence and warns), so we ignore
   // `pluginDirMode` whenever `noPlugin` is set.

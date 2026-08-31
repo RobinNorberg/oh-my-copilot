@@ -288,7 +288,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
     });
 
     const output = JSON.parse(result.stdout) as { systemMessage?: string };
-    expect(output.systemMessage).toContain('To update later, run: omc update');
+    expect(output.systemMessage).toContain('To update later, run: omg update');
     expect(output.systemMessage).not.toContain('Run /update to upgrade now');
   });
 

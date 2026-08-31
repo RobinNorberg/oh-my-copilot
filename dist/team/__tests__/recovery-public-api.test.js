@@ -164,7 +164,7 @@ describe('public dead-worker recovery facade', () => {
         await expect(executeSecondaryTeamApiOperation('not-real', {}, '/workspace')).resolves.toEqual({
             ok: false,
             operation: 'not-real',
-            error: { code: 'UNSUPPORTED_OPERATION', message: 'Unsupported omc team api operation: not-real' },
+            error: { code: 'UNSUPPORTED_OPERATION', message: 'Unsupported omg team api operation: not-real' },
         });
     });
     it('retrieves a durable final result by request id after the initiating call has returned', async () => {

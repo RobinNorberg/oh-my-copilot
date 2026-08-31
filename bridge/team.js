@@ -19163,7 +19163,7 @@ function decodeQuotedValue(raw) {
   }
 }
 function launchHintPattern(mode) {
-  return mode === "team" ? /(?<command>(?:om[cx]\s+team|\$team)(?:\s+ralph)?(?:\s+(?<count>\d+)(?::(?<role>[a-z][a-z0-9-]*))?)?\s+(?<task>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(?<flags>(?:\s+--[\w-]+)*))/gi : /(?<command>(?:om[cx]\s+ralph|\$ralph)\s+(?<task>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(?<flags>(?:\s+--[\w-]+)*))/gi;
+  return mode === "team" ? /(?<command>(?:om[cgx]\s+team|\$team)(?:\s+ralph)?(?:\s+(?<count>\d+)(?::(?<role>[a-z][a-z0-9-]*))?)?\s+(?<task>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(?<flags>(?:\s+--[\w-]+)*))/gi : /(?<command>(?:om[cgx]\s+ralph|\$ralph)\s+(?<task>"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')(?<flags>(?:\s+--[\w-]+)*))/gi;
 }
 function collectLaunchHintMatches(content, mode) {
   return [...content.matchAll(launchHintPattern(mode))];
@@ -19265,7 +19265,7 @@ var SUPPORTED_API_OPERATIONS = /* @__PURE__ */ new Set([
 ]);
 var TEAM_API_USAGE = `
 Usage:
-  omc team api <operation> --input '<json>' [--json] [--cwd DIR]
+  omg team api <operation> --input '<json>' [--json] [--cwd DIR]
 
 Supported operations:
   ${Array.from(SUPPORTED_API_OPERATIONS).join(", ")}
@@ -19755,7 +19755,7 @@ async function executeTeamApiOperation2(operation, input, cwd = process.cwd()) {
       operation,
       error: {
         code: "UNSUPPORTED_OPERATION",
-        message: `Unsupported omc team api operation: ${operation}`
+        message: `Unsupported omg team api operation: ${operation}`
       }
     };
   }
@@ -19813,14 +19813,14 @@ async function teamCleanupCommand(jobId, cleanupOptions = {}, options = {}) {
 }
 var TEAM_USAGE = `
 Usage:
-  omc team start --agent <claude|codex|gemini|cursor|grok|antigravity>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--auto-merge] [--json]
-  omc team status <job_id|team_name> [--json] [--cwd DIR]
-  omc team wait <job_id> [--timeout-ms MS] [--json]
-  omc team cleanup <job_id> [--grace-ms MS] [--json]
-  omc team resume <team_name> [--json] [--cwd DIR]
-  omc team shutdown <team_name> [--force] [--json] [--cwd DIR]
-  omc team api <operation> [--input '<json>'] [--json] [--cwd DIR]
-  omc team [ralph] <N:agent-type[:role]> "task" [--json] [--cwd DIR] [--new-window]
+  omg team start --agent <claude|codex|gemini|cursor|grok|antigravity>[,<agent>...] --task "<task>" [--count N] [--name TEAM] [--cwd DIR] [--new-window] [--auto-merge] [--json]
+  omg team status <job_id|team_name> [--json] [--cwd DIR]
+  omg team wait <job_id> [--timeout-ms MS] [--json]
+  omg team cleanup <job_id> [--grace-ms MS] [--json]
+  omg team resume <team_name> [--json] [--cwd DIR]
+  omg team shutdown <team_name> [--force] [--json] [--cwd DIR]
+  omg team api <operation> [--input '<json>'] [--json] [--cwd DIR]
+  omg team [ralph] <N:agent-type[:role]> "task" [--json] [--cwd DIR] [--new-window]
 
 Worktrees:
   Native per-worker git worktree mode is opt-in/config-gated with team.ops.worktreeMode or OMC_TEAM_WORKTREE_MODE=detached|named.
@@ -19834,13 +19834,13 @@ Auto-merge (v2-only):
                         Equivalent to OMC_TEAMS_AUTO_MERGE=1.
 
 Examples:
-  omc team start --agent codex --count 2 --task "review auth flow" --new-window
-  omc team status omc-abc123
-  omc team status auth-review
-  omc team resume auth-review
-  omc team shutdown auth-review --force
-  omc team api list-tasks --input '{"teamName":"auth-review"}' --json
-  omc team 3:codex "refactor launch command"
+  omg team start --agent codex --count 2 --task "review auth flow" --new-window
+  omg team status omc-abc123
+  omg team status auth-review
+  omg team resume auth-review
+  omg team shutdown auth-review --force
+  omg team api list-tasks --input '{"teamName":"auth-review"}' --json
+  omg team 3:codex "refactor launch command"
 
 Worktree mode:
   Native worker worktrees are opt-in/config-gated for runtime-v2.
@@ -19964,7 +19964,7 @@ function parseStartArgs(args) {
       sentinelGatePollIntervalMs = toInt(token.slice("--sentinel-gate-poll-interval-ms=".length), "--sentinel-gate-poll-interval-ms");
       continue;
     }
-    throw new Error(`Unknown argument for "omc team start": ${token}`);
+    throw new Error(`Unknown argument for "omg team start": ${token}`);
   }
   if (count < 1) throw new Error("--count must be >= 1");
   if (agentValues.length === 0) throw new Error("Missing required --agent");
@@ -20058,10 +20058,10 @@ function parseCommonJobArgs(args, command) {
         continue;
       }
     }
-    throw new Error(`Unknown argument for "omc team ${command}": ${token}`);
+    throw new Error(`Unknown argument for "omg team ${command}": ${token}`);
   }
   if (!target) {
-    throw new Error(`Missing required target for "omc team ${command}".`);
+    throw new Error(`Missing required target for "omg team ${command}".`);
   }
   return {
     target,
@@ -20101,10 +20101,10 @@ function parseTeamTargetArgs(args, command) {
       force = true;
       continue;
     }
-    throw new Error(`Unknown argument for "omc team ${command}": ${token}`);
+    throw new Error(`Unknown argument for "omg team ${command}": ${token}`);
   }
   if (!teamName) {
-    throw new Error(`Missing required <team_name> for "omc team ${command}".`);
+    throw new Error(`Missing required <team_name> for "omg team ${command}".`);
   }
   return {
     teamName,
@@ -20149,10 +20149,10 @@ function parseApiArgs(args) {
       cwd = token.slice("--cwd=".length);
       continue;
     }
-    throw new Error(`Unknown argument for "omc team api": ${token}`);
+    throw new Error(`Unknown argument for "omg team api": ${token}`);
   }
   if (!operation) {
-    throw new Error(`Missing required <operation> for "omc team api"
+    throw new Error(`Missing required <operation> for "omg team api"
 
 ${TEAM_API_USAGE}`);
   }
@@ -20232,7 +20232,7 @@ function parseLegacyStartAlias(args) {
       ralph = approvedHintOutcome.hint.linkedRalph === true ? true : ralph;
     }
   } else {
-    const command = `omc team ${ralph ? "ralph " : ""}${spec} ${JSON.stringify(task)}`;
+    const command = `omg team ${ralph ? "ralph " : ""}${spec} ${JSON.stringify(task)}`;
     const approvedHintOutcome = readApprovedExecutionLaunchHintOutcome(cwd, "team", {
       task,
       command

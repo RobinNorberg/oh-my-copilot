@@ -10,9 +10,9 @@ const cliIndexSource = readFileSync(
 
 describe('teleport help text (issue #968)', () => {
   it('uses quoted #N references in teleport invocation examples', () => {
-    expect(cliIndexSource).toContain("omc teleport '#123'");
-    expect(cliIndexSource).toContain("omc teleport '#42'");
-    expect(cliIndexSource).not.toMatch(/omc teleport #\d+/);
+    expect(cliIndexSource).toContain("omg teleport '#123'");
+    expect(cliIndexSource).toContain("omg teleport '#42'");
+    expect(cliIndexSource).not.toMatch(/omg teleport #\d+/);
   });
 
   it('documents shell comment behavior in both help surfaces', () => {

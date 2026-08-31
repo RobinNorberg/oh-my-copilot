@@ -263,12 +263,12 @@ function readTeamStateRootFromEnv(env: NodeJS.ProcessEnv = process.env): string 
   return candidate || null;
 }
 
-export function resolveTeamApiCliCommand(env: NodeJS.ProcessEnv = process.env): 'omc team api' | 'omx team api' {
+export function resolveTeamApiCliCommand(env: NodeJS.ProcessEnv = process.env): 'omg team api' | 'omx team api' {
   const hasOmcContext = (
     (typeof env.OMC_TEAM_WORKER === 'string' && env.OMC_TEAM_WORKER.trim() !== '')
     || (typeof env.OMC_TEAM_STATE_ROOT === 'string' && env.OMC_TEAM_STATE_ROOT.trim() !== '')
   );
-  if (hasOmcContext) return 'omc team api';
+  if (hasOmcContext) return 'omg team api';
 
   const hasOmxContext = (
     (typeof env.OMX_TEAM_WORKER === 'string' && env.OMX_TEAM_WORKER.trim() !== '')
@@ -276,7 +276,7 @@ export function resolveTeamApiCliCommand(env: NodeJS.ProcessEnv = process.env): 
   );
   if (hasOmxContext) return 'omx team api';
 
-  return 'omc team api';
+  return 'omg team api';
 }
 
 /**

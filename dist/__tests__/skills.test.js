@@ -466,7 +466,7 @@ describe('Builtin Skills', () => {
             process.env.CLAUDE_PLUGIN_ROOT = '/plugin-root';
             process.env.PATH = '';
             // Simulate a non-Claude-session context: the ask-skill rewriter only keeps
-            // `omc ask` form when running *inside* an active Claude session, so we must
+            // `omg ask` form when running *inside* an active Claude session, so we must
             // clear the session-detection vars that may leak in from the test runner.
             const savedClaudeCode = process.env.CLAUDECODE;
             const savedSessionId = process.env.CLAUDE_SESSION_ID;

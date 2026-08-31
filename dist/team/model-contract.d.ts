@@ -102,7 +102,7 @@ export declare function resolveClaudeWorkerModel(env?: NodeJS.ProcessEnv): strin
  * Antigravity (`agy`) `-p`/`--print` takes the prompt as an argv value and cannot
  * read it from stdin; on Windows that argv path is unreliable and `agy` has known
  * upstream Windows `-p` limitations. This centralizes the same platform support
- * decision the advisor (`scripts/run-provider-advisor.js`) enforces for `omc ask`.
+ * decision the advisor (`scripts/run-provider-advisor.js`) enforces for `omg ask`.
  */
 export declare function isHeadlessSupportedOnPlatform(agentType: CliAgentType, platform?: NodeJS.Platform): boolean;
 /** Throw a clear, actionable error if the agent's headless mode is unsupported here. */

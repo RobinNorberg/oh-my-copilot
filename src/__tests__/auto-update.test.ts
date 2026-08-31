@@ -1680,7 +1680,7 @@ describe('auto-update reconciliation', () => {
     delete process.env.OMC_UPDATE_RECONCILE;
   });
 
-  it('re-execs with omc.cmd on Windows and persists metadata after reconciliation', async () => {
+  it('re-execs with omg.cmd on Windows and persists metadata after reconciliation', async () => {
     mockPlatform('win32');
 
     mockedExistsSync.mockImplementation((path: Parameters<typeof existsSync>[0]) => {
@@ -1722,9 +1722,9 @@ describe('auto-update reconciliation', () => {
 
     mockedExecFileSync.mockImplementation((command: string) => {
       if (command === 'where.exe') {
-        return 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\omc.cmd\r\n';
+        return 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\omg.cmd\r\n';
       }
-      if (command === 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\omc.cmd') {
+      if (command === 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\omg.cmd') {
         return '';
       }
       throw new Error(`Unexpected execFileSync command: ${command}`);
@@ -1736,13 +1736,13 @@ describe('auto-update reconciliation', () => {
     expect(mockedExecSync).toHaveBeenCalledWith('npm install -g oh-my-copilot@latest', expect.objectContaining({
       windowsHide: true,
     }));
-    expect(mockedExecFileSync).toHaveBeenCalledWith('where.exe', ['omc.cmd'], expect.objectContaining({
+    expect(mockedExecFileSync).toHaveBeenCalledWith('where.exe', ['omg.cmd'], expect.objectContaining({
       encoding: 'utf-8',
       stdio: 'pipe',
       timeout: 5000,
       windowsHide: true,
     }));
-    expect(mockedExecFileSync).toHaveBeenCalledWith('C:\\Users\\bellman\\AppData\\Roaming\\npm\\omc.cmd', ['update-reconcile'], expect.objectContaining({
+    expect(mockedExecFileSync).toHaveBeenCalledWith('C:\\Users\\bellman\\AppData\\Roaming\\npm\\omg.cmd', ['update-reconcile'], expect.objectContaining({
       encoding: 'utf-8',
       stdio: 'pipe',
       timeout: 60000,
@@ -1783,10 +1783,10 @@ describe('auto-update reconciliation', () => {
     mockedExecSync.mockReturnValue('');
     mockedExecFileSync.mockImplementation((command: string) => {
       if (command === 'where.exe') {
-        return 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\omc.cmd\r\n';
+        return 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\omg.cmd\r\n';
       }
-      if (command === 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\omc.cmd') {
-        const error = Object.assign(new Error('spawnSync C:\\Users\\bellman\\AppData\\Roaming\\npm\\omc.cmd ENOENT'), {
+      if (command === 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\omg.cmd') {
+        const error = Object.assign(new Error('spawnSync C:\\Users\\bellman\\AppData\\Roaming\\npm\\omg.cmd ENOENT'), {
           code: 'ENOENT',
         });
         throw error;
@@ -1798,13 +1798,70 @@ describe('auto-update reconciliation', () => {
 
     expect(result.success).toBe(false);
     expect(result.message).toBe('Updated to 4.1.6, but runtime reconciliation failed');
-    expect(result.errors).toEqual(['spawnSync C:\\Users\\bellman\\AppData\\Roaming\\npm\\omc.cmd ENOENT']);
-    expect(mockedExecFileSync).toHaveBeenCalledWith('C:\\Users\\bellman\\AppData\\Roaming\\npm\\omc.cmd', ['update-reconcile'], expect.objectContaining({
+    expect(result.errors).toEqual(['spawnSync C:\\Users\\bellman\\AppData\\Roaming\\npm\\omg.cmd ENOENT']);
+    expect(mockedExecFileSync).toHaveBeenCalledWith('C:\\Users\\bellman\\AppData\\Roaming\\npm\\omg.cmd', ['update-reconcile'], expect.objectContaining({
       shell: true,
       windowsHide: true,
       env: expect.objectContaining({ OMC_UPDATE_RECONCILE: '1' }),
     }));
     expect(mockedWriteFileSync).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the oh-my-copilot shim when the omg shim is not linked yet', async () => {
+    // A machine caught mid-upgrade can carry the long-form name from v4 without
+    // the v5 short shim. oh-my-copilot ships in both, so re-exec must still
+    // resolve rather than failing on exactly the installs that need updating.
+    mockPlatform('win32');
+
+    mockedExistsSync.mockImplementation((path: Parameters<typeof existsSync>[0]) => {
+      const normalized = String(path).replace(/\\/g, '/');
+      if (normalized.endsWith('/.claude-plugin/plugin.json')) {
+        return true;
+      }
+      if (normalized.endsWith('/plugins/marketplaces/omc')) {
+        return false;
+      }
+      return true;
+    });
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v4.1.6',
+        name: '4.1.6',
+        published_at: '2026-02-10T00:00:00.000Z',
+        html_url: 'https://example.com/release',
+        body: 'notes',
+        prerelease: false,
+        draft: false,
+      }),
+    }));
+
+    const longNamePath = 'C:\\Users\\bellman\\AppData\\Roaming\\npm\\oh-my-copilot.cmd';
+    mockedExecSync.mockReturnValue('');
+    mockedExecFileSync.mockImplementation((command: string, args?: readonly string[]) => {
+      if (command === 'where.exe') {
+        if (args?.[0] === 'omg.cmd') throw new Error('INFO: Could not find files for the given pattern(s).');
+        if (args?.[0] === 'oh-my-copilot.cmd') return `${longNamePath}\r\n`;
+        throw new Error(`Unexpected where.exe lookup: ${String(args?.[0])}`);
+      }
+      if (command === longNamePath) {
+        return '';
+      }
+      throw new Error(`Unexpected execFileSync command: ${command}`);
+    });
+
+    const result = await performUpdate({ verbose: false });
+
+    expect(result.success).toBe(true);
+    // omg is probed first; oh-my-copilot is reached only after it misses.
+    const lookups = mockedExecFileSync.mock.calls
+      .filter((call) => call[0] === 'where.exe')
+      .map((call) => (call[1] as readonly string[])[0]);
+    expect(lookups).toEqual(['omg.cmd', 'oh-my-copilot.cmd']);
+    expect(mockedExecFileSync).toHaveBeenCalledWith(longNamePath, ['update-reconcile'], expect.objectContaining({
+      env: expect.objectContaining({ OMC_UPDATE_RECONCILE: '1' }),
+    }));
   });
 
   it('uses standalone reconciliation flags outside plugin runtime', () => {

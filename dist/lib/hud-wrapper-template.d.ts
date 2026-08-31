@@ -2,7 +2,7 @@
  * HUD wrapper template reader (TS side).
  *
  * Single source of truth for the `omg-hud.mjs` statusline wrapper body
- * used by `src/installer/index.ts` (Path A: `omc setup` / npm).
+ * used by `src/installer/index.ts` (Path A: `omg setup` / npm).
  *
  * The JS mirror lives at `scripts/lib/hud-wrapper-template.mjs` and is
  * used by `scripts/plugin-setup.mjs` (Path B: Claude Code plugin

@@ -50,15 +50,15 @@ Spawn coordinated agents with shared task lists and real-time messaging:
 Teams use Claude Code's implicit agent team (spawn teammates directly with distinct `name` values; no TeamCreate/TeamDelete in Claude Code 2.1.178+). Team orchestration is explicit via /team — there is no bare "team" keyword.
 
 MCP SERVERS:
-Register extra MCP servers (web search, GitHub, etc.) through Claude Code's native MCP config (`claude mcp add ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`; by default, the sibling `.claude.json` next to `${COPILOT_CONFIG_DIR:-$HOME/.claude}`). OMC's bundled MCP server is already registered via the plugin's .mcp.json.
+Register extra MCP servers (web search, GitHub, etc.) through Claude Code's native MCP config (`claude mcp add ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`; by default, the sibling `.claude.json` next to `${CLAUDE_CONFIG_DIR:-$HOME/.claude}`). OMC's bundled MCP server is already registered via the plugin's .mcp.json.
 
 HUD STATUSLINE:
 The status bar now shows OMC state. Restart Claude Code to see it.
 
 OMC CLI HELPERS (if installed):
-- omc hud         - Render the current HUD statusline
-- omc teleport    - Create an isolated git worktree
-- omc team status - Inspect a running team job
+- omg hud         - Render the current HUD statusline
+- omg teleport    - Create an isolated git worktree
+- omg team status - Inspect a running team job
 - Session summaries are written to `.omg/sessions/*.json`
 
 That's it! Just use Claude Code normally.
@@ -107,9 +107,9 @@ HUD STATUSLINE:
 The status bar now shows OMC state. Restart Claude Code to see it.
 
 OMC CLI HELPERS (if installed):
-- omc hud         - Render the current HUD statusline
-- omc teleport    - Create an isolated git worktree
-- omc team status - Inspect a running team job
+- omg hud         - Render the current HUD statusline
+- omg teleport    - Create an isolated git worktree
+- omg team status - Inspect a running team job
 - Session summaries are written to `.omg/sessions/*.json`
 
 Your configuration is preserved; retired commands are not recreated.
@@ -191,4 +191,4 @@ Mark setup complete:
 node "${OMC_SETUP_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT}}/scripts/setup-progress.mjs" complete
 ```
 
-With no version argument, `complete` reads the `OMC:VERSION:` marker from `.claude/CLAUDE.md`, falls back to the marker in the global `CLAUDE.md` (honouring `COPILOT_CONFIG_DIR`), then to `omc --version`, and finally records `unknown`.
+With no version argument, `complete` reads the `OMC:VERSION:` marker from `.claude/CLAUDE.md`, falls back to the marker in the global `CLAUDE.md` (honouring `COPILOT_CONFIG_DIR`), then to `omg --version`, and finally records `unknown`.

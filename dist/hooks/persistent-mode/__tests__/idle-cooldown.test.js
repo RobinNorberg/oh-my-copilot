@@ -89,7 +89,7 @@ describe('getIdleNotificationCooldownSeconds', () => {
         expect(getIdleNotificationCooldownSeconds()).toBe(120);
         expect(readFileSync).toHaveBeenCalledWith(configPath, 'utf-8');
     });
-    it('falls back to legacy ~/.omc config when XDG config is absent', () => {
+    it('falls back to legacy ~/.omg config when XDG config is absent', () => {
         const candidates = getConfigPaths();
         // On macOS, XDG primary and legacy resolve to the same path, so
         // dedupePaths collapses them to a single entry. Use the last candidate

@@ -1,5 +1,5 @@
 /**
- * Real commander-pipeline tests for `omc setup --plugin-dir-mode` and the
+ * Real commander-pipeline tests for `omg setup --plugin-dir-mode` and the
  * OMC_PLUGIN_ROOT auto-detection precedence.
  *
  * These tests drive the *actual* commander program built by `src/cli/index.ts`

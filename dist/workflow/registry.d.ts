@@ -8,7 +8,7 @@
  *     and command, with canonical target, risk class, owner, warning, and
  *     removal milestone
  *   - the release maintainer-only boundary (`release` -> maintainer-only
- *     `omc release`; this epic performs no tag/publish/release mutation)
+ *     `omg release`; this epic performs no tag/publish/release mutation)
  *   - the structured alias retirement evidence policy
  *
  * This module builds on the merged #3706 alias resolver (alias-resolver.ts):

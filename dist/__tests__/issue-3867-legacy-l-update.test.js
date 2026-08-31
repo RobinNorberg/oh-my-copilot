@@ -76,7 +76,7 @@ describe('issue #3867 4.15.7L update display', () => {
         const output = await render(ctx, createMinimalConfig());
         expect(output).toContain('[OMC#4.15.7L]');
         expect(output).toContain('-> 5.0.0');
-        expect(output).toContain('omc update');
+        expect(output).toContain('omg update');
     });
     it('does not invent an L-suffixed package version in the update arrow', async () => {
         const ctx = createMinimalContext({

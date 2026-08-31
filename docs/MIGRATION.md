@@ -268,7 +268,7 @@ names no longer resolve. Use the replacement in the table below.
 | `deep-dive`            | `/oh-my-copilot:research`             |                                                               |
 | `sciomc`               | `/oh-my-copilot:research`             |                                                               |
 | `ccg`                  | `/oh-my-copilot:ask` + `/team`        | Run `/ask codex` and `/ask antigravity`, then synthesize      |
-| `omc-teams`            | `/oh-my-copilot:team` or `omc team`   |                                                               |
+| `omc-teams`            | `/oh-my-copilot:team` or `omg team`   |                                                               |
 | `setup`                | `/oh-my-copilot:omc-setup`            |                                                               |
 | `mcp-setup`            | Claude Code native MCP configuration     | Use `claude mcp add <name> ...` or the path selected by `CLAUDE_MCP_CONFIG_PATH`. |
 | `omc-reference`        | `/oh-my-copilot:wiki`                 | Model-routing reference moved into the wiki skill             |
@@ -288,7 +288,7 @@ These were **not** retired, despite routing into the canonical workflows:
 - **Independent Tier-0 planning**: `deep-interview`, `ralplan`
 - **Directly invocable workflows**: `autopilot`, `autoresearch`, `ultragoal`, `ralph`
 - **Internal lanes**: `team`, `research`
-- **Surviving aliases**: `psm` → `project-session-manager`, `release` → maintainer-only `omc release`
+- **Surviving aliases**: `psm` → `project-session-manager`, `release` → maintainer-only `omg release`
 
 ### Newly available to everyone
 
@@ -310,7 +310,7 @@ Claude Code native commands:
 ### Migration Steps
 
 1. Update any scripts, docs, or prompts that invoke a removed name.
-2. Run `omc setup` (or `/oh-my-copilot:omc-setup`). The installer prunes the
+2. Run `omg setup` (or `/oh-my-copilot:omc-setup`). The installer prunes the
    retired skill directories automatically — no manual cleanup needed.
 3. If you pinned a removed skill in `.claude/settings.json` or a project
    `CLAUDE.md`, replace it using the table above.
@@ -335,25 +335,25 @@ blocks.
 ```json
 {
   "code": "deprecated_cli_only",
-  "message": "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead."
+  "message": "Legacy team MCP runtime tools are deprecated. Use the omg team CLI instead."
 }
 ```
 
 Use CLI commands instead:
 
-- `omc team [N:agent-type] "<task>"`
-- `omc team status <team-name>`
-- `omc team shutdown <team-name> [--force]`
-- `omc team api <operation> --input '<json>' --json`
+- `omg team [N:agent-type] "<task>"`
+- `omg team status <team-name>`
+- `omg team shutdown <team-name> [--force]`
+- `omg team api <operation> --input '<json>' --json`
 
-### `omc ask` env alias sunset (Phase-1 compatibility)
+### `omg ask` env alias sunset (Phase-1 compatibility)
 
 `OMC_ASK_*` is now canonical for advisor execution. Phase-1 accepts `OMX_ASK_ADVISOR_SCRIPT` and `OMX_ASK_ORIGINAL_TASK` with deprecation warnings. Planned hard sunset for alias removal: **2026-06-30**.
 
 ### How to Migrate
 
 1. Replace MCP runtime tool calls with CLI equivalents.
-2. Update skills/prompts from `/omc-teams ...` to `omc team ...` syntax.
+2. Update skills/prompts from `/omc-teams ...` to `omg team ...` syntax.
 3. Legacy Team MCP runtime is now opt-in only (not enabled by default). If you enable it manually, treat responses as deprecation-only compatibility output.
 
 ### Example mapping
@@ -366,10 +366,10 @@ mcp__team__omc_run_team_wait({ job_id: ... })
 mcp__team__omc_run_team_cleanup({ job_id: ... })
 
 # New (CLI-first)
-omc team 2:codex "review auth flow"
-omc team status review-auth-flow
-omc team shutdown review-auth-flow --force
-omc team api list-tasks --input '{"team_name":"review-auth-flow"}' --json
+omg team 2:codex "review auth flow"
+omg team status review-auth-flow
+omg team shutdown review-auth-flow --force
+omg team api list-tasks --input '{"team_name":"review-auth-flow"}' --json
 ```
 
 ---
@@ -378,7 +378,7 @@ omc team api list-tasks --input '{"team_name":"review-auth-flow"}' --json
 
 ### TL;DR
 
-`omc team` runtime-v2 is gaining an opt-in worker worktree mode. Worktree-backed workers run from dedicated git worktrees while task lifecycle, mailbox, status, and manifest files stay under the leader workspace's team-specific coordination root (`<repo>/.omg/state/team/<team-name>`).
+`omg team` runtime-v2 is gaining an opt-in worker worktree mode. Worktree-backed workers run from dedicated git worktrees while task lifecycle, mailbox, status, and manifest files stay under the leader workspace's team-specific coordination root (`<repo>/.omg/state/team/<team-name>`).
 
 ### Contract
 
@@ -650,7 +650,7 @@ npm uninstall -g oh-my-copilot
 /plugin install oh-my-copilot
 ```
 
-> **Note**: npm/bun global installs no longer provide the in-session plugin surface by themselves. Use the plugin system for slash commands, hooks, and skills; use the published npm package `oh-my-copilot` when you need the terminal `omc` CLI.
+> **Note**: npm/bun global installs no longer provide the in-session plugin surface by themselves. Use the plugin system for slash commands, hooks, and skills; use the published npm package `oh-my-copilot` when you need the terminal `omg` CLI.
 
 #### 3. Preserve Existing OMC Directories
 

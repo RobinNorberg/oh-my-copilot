@@ -57,7 +57,7 @@ Configured autopilot team worker types include CLI-backed workers: ${requested}.
 Use one of these equivalent surfaces from the lead session:
 
 \`\`\`sh
-omc team ${agentSpec} "<implementation task from ${planPath}>"
+omg team ${agentSpec} "<implementation task from ${planPath}>"
 \`\`\`
 
 Or from Claude Code slash commands:
@@ -104,7 +104,7 @@ Read the implementation plan at: \`${planPath}\`
 
 ${teamRuntimeGuidance}
 
-${useCliTeamRuntime ? `1. **Launch CLI executor workers** with \`omc team\` or \`/omc-teams\` using the requested agent types.
+${useCliTeamRuntime ? `1. **Launch CLI executor workers** with \`omg team\` or \`/omc-teams\` using the requested agent types.
 2. **Decompose executor-style implementation tasks** from the implementation plan and pass them to CLI workers.
 3. **Monitor tmux/team output** and integrate completed implementation changes.
 4. **Keep review/critic/security/verdict work native**; do not assign those roles to Cursor/CLI workers.

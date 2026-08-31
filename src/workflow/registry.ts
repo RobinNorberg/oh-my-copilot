@@ -8,7 +8,7 @@
  *     and command, with canonical target, risk class, owner, warning, and
  *     removal milestone
  *   - the release maintainer-only boundary (`release` -> maintainer-only
- *     `omc release`; this epic performs no tag/publish/release mutation)
+ *     `omg release`; this epic performs no tag/publish/release mutation)
  *   - the structured alias retirement evidence policy
  *
  * This module builds on the merged #3706 alias resolver (alias-resolver.ts):
@@ -170,7 +170,7 @@ const SKILL_ENTRIES: readonly WorkflowEntry[] = [
   entry({ name: 'ralph', kind: 'skill', decision: 'keep', riskClass: 'advisory', owner: REGISTRY_OWNER, notes: 'Retained: src/hooks/ralph is a live subsystem, `ralph` is a wired KeywordType and slash skill, and it is autopilot\'s verification engine (owner direction, 5.0.0).' }),
 
   // Release maintainer boundary (owner decision 2): compatibility alias to
-  // maintainer-only `omc release`; fail-closed. Explicitly exempt from the
+  // maintainer-only `omg release`; fail-closed. Explicitly exempt from the
   // 5.0.0 retirement sweep — never auto-removed without owner approval.
   entry({ name: 'release', kind: 'skill', decision: 'alias-deprecate', canonicalTarget: 'omc-release', riskClass: 'release-authority', owner: REGISTRY_OWNER, maintainerOnly: true, removalMilestone: 'compatibility alias during migration; never auto-removed without owner approval' }),
   entry({ name: 'omc-release', kind: 'skill', decision: 'keep', riskClass: 'release-authority', owner: REGISTRY_OWNER, maintainerOnly: true, declaredOnly: true, notes: 'Maintainer-only release authority target; not a Tier-0 workflow.' }),

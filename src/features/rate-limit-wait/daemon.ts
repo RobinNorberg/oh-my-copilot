@@ -546,7 +546,7 @@ export async function runDaemonForeground(config?: DaemonConfig): Promise<void> 
 
   // Check if already running
   if (isDaemonRunning(cfg)) {
-    console.error('Daemon is already running. Use "omc wait daemon stop" first.');
+    console.error('Daemon is already running. Use "omg wait daemon stop" first.');
     process.exit(1);
   }
 

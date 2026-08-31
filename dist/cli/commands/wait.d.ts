@@ -4,16 +4,16 @@
  * CLI commands for rate limit wait and auto-resume functionality.
  *
  * Design Philosophy (aligned with oh-my-copilot values):
- * - Zero learning curve: `omc wait` just works
+ * - Zero learning curve: `omg wait` just works
  * - Smart defaults: Auto-detects tmux and daemon status
- * - Minimal commands: Most users only need `omc wait`
+ * - Minimal commands: Most users only need `omg wait`
  *
  * Commands:
- *   omc wait               - Smart command: shows status, offers to start daemon if needed
- *   omc wait status        - Show current rate limit and daemon status
- *   omc wait daemon start  - Start the background daemon
- *   omc wait daemon stop   - Stop the daemon
- *   omc wait detect        - Scan for blocked Claude Code sessions
+ *   omg wait               - Smart command: shows status, offers to start daemon if needed
+ *   omg wait status        - Show current rate limit and daemon status
+ *   omg wait daemon start  - Start the background daemon
+ *   omg wait daemon stop   - Stop the daemon
+ *   omg wait detect        - Scan for blocked Claude Code sessions
  */
 export interface WaitOptions {
     json?: boolean;

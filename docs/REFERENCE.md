@@ -28,7 +28,7 @@ Complete reference for oh-my-copilot. For quick start, see the main [README.md](
 
 ## Installation
 
-OMC has two supported public surfaces. Use the Claude Code plugin for in-session slash commands, hooks, agents, skills, and statusline behavior. Use the npm-installed `omc` CLI for terminal commands, setup/update automation, and CI-safe checks.
+OMC has two supported public surfaces. Use the Claude Code plugin for in-session slash commands, hooks, agents, skills, and statusline behavior. Use the npm-installed `omg` CLI for terminal commands, setup/update automation, and CI-safe checks.
 
 ### Claude Code Plugin
 
@@ -46,10 +46,10 @@ This integrates directly with Claude Code's plugin system and uses Node.js hooks
 
 ```bash
 npm i -g oh-my-copilot@latest
-omc setup
+omg setup
 ```
 
-The npm package exposes both `oh-my-copilot` and `omc`; examples prefer `omc` unless troubleshooting needs the long alias. The CLI does not make in-session slash skills available by itself; install the plugin for `/autopilot`, `/ralph`, `/execute`, `/team`, and other interactive skills.
+The npm package exposes both `oh-my-copilot` and `omg`; examples prefer `omg` unless troubleshooting needs the long alias. The CLI does not make in-session slash skills available by itself; install the plugin for `/autopilot`, `/ralph`, `/execute`, `/team`, and other interactive skills.
 
 ### Requirements
 
@@ -86,7 +86,7 @@ Configure omc for all Claude Code sessions:
 - Creates `~/.claude/CLAUDE.md` globally
 - Configuration applies to all projects
 - **Default**: explicitly overwrites existing `~/.claude/CLAUDE.md`
-- **Optional preserve mode**: keeps the base file, writes OMC to `~/.claude/CLAUDE-omc.md`, and lets `omc` force-load that companion config at launch while plain `claude` stays unchanged
+- **Optional preserve mode**: keeps the base file, writes OMC to `~/.claude/CLAUDE-omc.md`, and lets `omg` force-load that companion config at launch while plain `claude` stays unchanged
 
 ### What Configuration Enables
 
@@ -271,7 +271,7 @@ Default layout (single plan, monorepo / single session):
 .omg/ultragoal/ledger.jsonl
 ```
 
-Multi-plan layout, enabled by `--plan-id <id>` or `--auto-plan-id` on `omc ultragoal create-goals`:
+Multi-plan layout, enabled by `--plan-id <id>` or `--auto-plan-id` on `omg ultragoal create-goals`:
 
 ```
 .omg/ultragoal/plans/{planId}/brief.md
@@ -279,7 +279,7 @@ Multi-plan layout, enabled by `--plan-id <id>` or `--auto-plan-id` on `omc ultra
 .omg/ultragoal/plans/{planId}/ledger.jsonl
 ```
 
-`--auto-plan-id` derives `{epochMs}-{slug}` from the brief title, so two parallel sessions running `omc ultragoal create-goals --auto-plan-id ...` never collide. Subsequent commands (`status`, `add-goal`, `complete-goals`, `checkpoint`, `record-review-blockers`) auto-resolve the plan when there is exactly one; when there are multiple, they require `--plan-id <id>`. `omc ultragoal list-plans` enumerates the available plan ids.
+`--auto-plan-id` derives `{epochMs}-{slug}` from the brief title, so two parallel sessions running `omg ultragoal create-goals --auto-plan-id ...` never collide. Subsequent commands (`status`, `add-goal`, `complete-goals`, `checkpoint`, `record-review-blockers`) auto-resolve the plan when there is exactly one; when there are multiple, they require `--plan-id <id>`. `omg ultragoal list-plans` enumerates the available plan ids.
 
 ### When to Re-run Setup
 
@@ -381,21 +381,21 @@ This is a TypeScript monorepo using:
 
 ### Stop Callback Notification Tags
 
-Configure tags for Telegram/Discord stop callbacks with `omc config-stop-callback`.
+Configure tags for Telegram/Discord stop callbacks with `omg config-stop-callback`.
 
 ```bash
 # Set/replace tags
-omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omg config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omg config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
 
 # Incremental updates
-omc config-stop-callback telegram --add-tag charlie
-omc config-stop-callback discord --remove-tag @here
-omc config-stop-callback discord --clear-tags
+omg config-stop-callback telegram --add-tag charlie
+omg config-stop-callback discord --remove-tag @here
+omg config-stop-callback discord --clear-tags
 
 # Inspect current callback config
-omc config-stop-callback telegram --show
-omc config-stop-callback discord --show
+omg config-stop-callback telegram --show
+omg config-stop-callback discord --show
 ```
 
 Tag behavior:
@@ -428,7 +428,7 @@ Use these names when writing docs or handoffs so the same concept remains portab
 | Approved execution plan | `.omg/plans/<slug>.md`                                                     | `.omx/plans/<slug>.md`                                                     | Reviewed implementation plan consumed by execution workflows such as team or ralph.                                                                                                |
 | Task/runtime state      | `.omg/state/<mode>.json` or `.omg/state/sessions/<session-id>/<mode>.json` | `.omx/state/<mode>.json` or `.omx/state/sessions/<session-id>/<mode>.json` | Machine-readable workflow state. Session-scoped state wins over legacy flat files when present.                                                                                    |
 | Team coordination state | `.omg/state/team/<team-name>/...`                                          | `.omx/state/team/<team-name>/...`                                          | Worker task files, mailbox, status, events, and dispatch metadata. Worktree-backed workers should use `OMC_TEAM_STATE_ROOT`/compat env to find the leader-owned coordination root. |
-| Ask/advisor artifacts   | `.omg/artifacts/ask/<provider>-<slug>-<timestamp>.md`                      | `.omx/artifacts/ask/<provider>-<slug>-<timestamp>.md`                      | Persisted advisor output from `omc ask` or compatibility wrappers.                                                                                                                 |
+| Ask/advisor artifacts   | `.omg/artifacts/ask/<provider>-<slug>-<timestamp>.md`                      | `.omx/artifacts/ask/<provider>-<slug>-<timestamp>.md`                      | Persisted advisor output from `omg ask` or compatibility wrappers.                                                                                                                 |
 | Plan-scoped notepad     | `.omg/notepads/<plan-name>/`                                               | `.omx/notepads/<plan-name>/`                                               | Durable notes gathered while planning or executing a named goal.                                                                                                                   |
 | Project memory          | `.omg/project-memory.json` and `.omg/notepad.md`                           | `.omx/project-memory.json` and `.omx/notepad.md`                           | Reusable project facts and session notes.                                                                                                                                          |
 
@@ -451,25 +451,25 @@ For cross-runtime handoffs:
 
 When you launch OMC via a local development checkout instead of the marketplace plugin, you can configure how OMC discovers agents, skills, and commands.
 
-> **Recommended for local development**: Use `omc --plugin-dir <path>` (paired with `omc setup --plugin-dir-mode`). Unlike `claude plugin marketplace add`, this flow loads agents/skills directly from your checkout with **no plugin cache**, so edits are picked up on the next session without `marketplace update` / `plugin update` round-trips — much faster iteration.
+> **Recommended for local development**: Use `omg --plugin-dir <path>` (paired with `omg setup --plugin-dir-mode`). Unlike `claude plugin marketplace add`, this flow loads agents/skills directly from your checkout with **no plugin cache**, so edits are picked up on the next session without `marketplace update` / `plugin update` round-trips — much faster iteration.
 
-### `omc --plugin-dir <path>`
+### `omg --plugin-dir <path>`
 
 **Usage**: Non-consuming launcher flag that captures your local checkout path.
 
 ```bash
-omc --plugin-dir /path/to/oh-my-copilot setup --plugin-dir-mode
+omg --plugin-dir /path/to/oh-my-copilot setup --plugin-dir-mode
 ```
 
 - **What it does**: Parses `--plugin-dir <path>` (or `--plugin-dir=<path>`), resolves it to an absolute path, sets `OMC_PLUGIN_ROOT` environment variable, then passes the flag through to Claude Code untouched.
 - **Non-consuming**: The flag stays in the argument list so Claude Code's plugin loader still sees it.
 - **Precedence**: Explicit `--plugin-dir` flag wins over any pre-existing `OMC_PLUGIN_ROOT` env var (with a warning if they disagree).
 - **Resolution**: Relative paths are resolved to absolute via `path.resolve()`. Note: `~` is **not** expanded — use `$HOME` or an absolute path instead.
-- **Pair with setup**: `--plugin-dir` alone only affects the current Claude session. You must **also** run `omc setup --plugin-dir-mode` (or let auto-detection kick in from `OMC_PLUGIN_ROOT`) so HUD, hooks, and CLAUDE.md are installed for the linked checkout. Skipping this step leaves `~/.claude/` pointing at a stale plugin root.
+- **Pair with setup**: `--plugin-dir` alone only affects the current Claude session. You must **also** run `omg setup --plugin-dir-mode` (or let auto-detection kick in from `OMC_PLUGIN_ROOT`) so HUD, hooks, and CLAUDE.md are installed for the linked checkout. Skipping this step leaves `~/.claude/` pointing at a stale plugin root.
 
 ### `claude --plugin-dir <path>` (direct)
 
-**Usage**: When you launch Claude Code directly without the `omc` shim.
+**Usage**: When you launch Claude Code directly without the `omg` shim.
 
 ```bash
 export OMC_PLUGIN_ROOT=/path/to/oh-my-copilot
@@ -478,14 +478,14 @@ claude --plugin-dir /path/to/oh-my-copilot
 
 - **Requirement**: You must manually set `OMC_PLUGIN_ROOT` environment variable so the HUD wrapper and other env-aware components can resolve the same path as the plugin loader.
 - **Why**: The HUD bundle needs to know where agents/skills/commands are located so they stay in sync with the plugin instance.
-- **Note**: Plain `claude` (without `omc`) does not automatically capture `--plugin-dir` for you.
+- **Note**: Plain `claude` (without `omg`) does not automatically capture `--plugin-dir` for you.
 
-### `omc setup --plugin-dir-mode`
+### `omg setup --plugin-dir-mode`
 
 **Usage**: Explicit flag to enable dev plugin-dir mode during setup.
 
 ```bash
-omc setup --plugin-dir-mode
+omg setup --plugin-dir-mode
 ```
 
 - **What it does**: Skips copying agents and bundled skills into `~/.claude/` because the plugin already provides them at runtime via `--plugin-dir`.
@@ -497,18 +497,18 @@ omc setup --plugin-dir-mode
 - **Conflicts with `--no-plugin`**: If both flags are set, `--no-plugin` takes precedence (with a warning).
 - **Auto-detection**: If `OMC_PLUGIN_ROOT` is already set in the environment, `--plugin-dir-mode` is auto-enabled (unless `--no-plugin` overrides it).
 
-### `omc doctor --plugin-dir <path>` (NEW)
+### `omg doctor --plugin-dir <path>` (NEW)
 
 **Usage**: Run diagnostics with a specific plugin directory.
 
 ```bash
-omc doctor --plugin-dir /path/to/oh-my-copilot
-omc doctor conflicts --plugin-dir /path/to/oh-my-copilot
+omg doctor --plugin-dir /path/to/oh-my-copilot
+omg doctor conflicts --plugin-dir /path/to/oh-my-copilot
 ```
 
 - **What it does**: Resolves the provided path to absolute, sets `OMC_PLUGIN_ROOT` before the doctor action runs, matching `launch.ts` semantics.
 - **Precedence**: Explicit `--plugin-dir` flag wins over pre-existing `OMC_PLUGIN_ROOT` env var (with a warning if they disagree).
-- **Subcommand support**: Works with both `omc doctor` and `omc doctor conflicts`.
+- **Subcommand support**: Works with both `omg doctor` and `omg doctor conflicts`.
 - **Output**: Diagnostic results reflect the plugin directory you specified.
 
 ### `OMC_PLUGIN_ROOT` environment variable
@@ -520,34 +520,34 @@ export OMC_PLUGIN_ROOT=/path/to/oh-my-copilot
 claude --plugin-dir /path/to/oh-my-copilot
 ```
 
-- **Set by**: `omc --plugin-dir <path>` launcher (via `src/cli/launch.ts`).
+- **Set by**: `omg --plugin-dir <path>` launcher (via `src/cli/launch.ts`).
 - **Read by**: HUD wrapper, setup auto-detect, doctor diagnostics.
-- **Required when**: Using `claude --plugin-dir` directly (without the `omc` shim), so downstream components can resolve the same path.
+- **Required when**: Using `claude --plugin-dir` directly (without the `omg` shim), so downstream components can resolve the same path.
 - **Precedence**: Explicit CLI flags override this env var (with warnings).
 
 ### Decision matrix: which flag/mode to use?
 
 | Your setup                            | Launch command                                               | Setup command                   | Expected behavior                                                   |
 | ------------------------------------- | ------------------------------------------------------------ | ------------------------------- | ------------------------------------------------------------------- |
-| **Marketplace plugin** (recommended)  | `omc` or `claude` (default)                                  | `omc setup`                     | Normal: agents/skills copied to `~/.claude/`                        |
-| **Local dev checkout, want OMC shim** | `omc --plugin-dir /path`                                     | `omc setup --plugin-dir-mode`   | Dev mode: agents/skills loaded from `/path`, not copied             |
-| **Local dev checkout, no OMC shim**   | `claude --plugin-dir /path` + `export OMC_PLUGIN_ROOT=/path` | `omc setup --plugin-dir-mode`   | Dev mode + manual env: agents/skills loaded from `/path`            |
-| **Local dev, want bundled skills**    | `omc --plugin-dir /path`                                     | `omc setup --no-plugin`         | Forces local bundled skills to `~/.claude/skills/`, ignoring plugin |
-| **Troubleshooting a specific path**   | N/A                                                          | `omc doctor --plugin-dir /path` | Diagnostics show status for `/path`                                 |
+| **Marketplace plugin** (recommended)  | `omg` or `claude` (default)                                  | `omg setup`                     | Normal: agents/skills copied to `~/.claude/`                        |
+| **Local dev checkout, want OMC shim** | `omg --plugin-dir /path`                                     | `omg setup --plugin-dir-mode`   | Dev mode: agents/skills loaded from `/path`, not copied             |
+| **Local dev checkout, no OMC shim**   | `claude --plugin-dir /path` + `export OMC_PLUGIN_ROOT=/path` | `omg setup --plugin-dir-mode`   | Dev mode + manual env: agents/skills loaded from `/path`            |
+| **Local dev, want bundled skills**    | `omg --plugin-dir /path`                                     | `omg setup --no-plugin`         | Forces local bundled skills to `~/.claude/skills/`, ignoring plugin |
+| **Troubleshooting a specific path**   | N/A                                                          | `omg doctor --plugin-dir /path` | Diagnostics show status for `/path`                                 |
 
 ---
 
 ## CLI Commands: ask/team/session
 
-### `omc ask`
+### `omg ask`
 
 ```bash
-omc ask claude "review this patch"
-omc ask codex "review this patch from a security perspective"
-omc ask gemini --prompt "suggest UX improvements"
-omc ask antigravity --prompt "suggest UX improvements"
-omc ask cursor --prompt "apply this implementation plan"
-omc ask claude --agent-prompt executor --prompt "create an implementation plan"
+omg ask claude "review this patch"
+omg ask codex "review this patch from a security perspective"
+omg ask gemini --prompt "suggest UX improvements"
+omg ask antigravity --prompt "suggest UX improvements"
+omg ask cursor --prompt "apply this implementation plan"
+omg ask claude --agent-prompt executor --prompt "create an implementation plan"
 ```
 
 - Provider matrix: `claude | codex | gemini | antigravity | grok | cursor`
@@ -556,16 +556,16 @@ omc ask claude --agent-prompt executor --prompt "create an implementation plan"
 - Phase-1 aliases (deprecated warning): `OMX_ASK_ADVISOR_SCRIPT`, `OMX_ASK_ORIGINAL_TASK`
 - Skill entrypoint: `/oh-my-copilot:ask <claude|codex|gemini|antigravity|grok|cursor> <prompt>` routes to this command
 
-### `omc team` (CLI runtime surface)
+### `omg team` (CLI runtime surface)
 
 ```bash
-omc team 2:codex "review auth flow"
-omc team status review-auth-flow
-omc team shutdown review-auth-flow --force
-omc team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
+omg team 2:codex "review auth flow"
+omg team status review-auth-flow
+omg team shutdown review-auth-flow --force
+omg team api claim-task --input '{"team_name":"auth-review","task_id":"1","worker":"worker-1"}' --json
 ```
 
-Supported entrypoints: direct start (`omc team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
+Supported entrypoints: direct start (`omg team [N:agent] "<task>"`), `status`, `shutdown`, and `api`.
 
 Native team worker worktrees are an opt-in/config-gated runtime-v2 rollout. See [Native Team Worktree Mode](TEAM-WORKTREE-MODE.md) for the worktree path contract, canonical `OMC_TEAM_STATE_ROOT` behavior, status fields, and dirty-worktree cleanup policy.
 
@@ -575,12 +575,12 @@ Topology behavior:
 - inside cmux (`CMUX_SURFACE_ID` without `$TMUX`): create native cmux splits for visible team workers
 - plain terminal: launch a detached tmux session for team workers
 
-### `omc session search`
+### `omg session search`
 
 ```bash
-omc session search "team leader stale"
-omc session search notify-hook --since 7d
-omc session search provider-routing --project all --json
+omg session search "team leader stale"
+omg session search notify-hook --since 7d
+omg session search provider-routing --project all --json
 ```
 
 - Defaults to the current project/worktree scope
@@ -588,11 +588,11 @@ omc session search provider-routing --project all --json
 - Supports `--limit`, `--session`, `--since`, `--context`, `--case-sensitive`, and `--json`
 - MCP/tool surface: `session_search` returns structured JSON for agents and automations
 
-### `omc session friction report`
+### `omg session friction report`
 
 ```bash
-omc session friction report --since 24h
-omc session friction report --project all --json
+omg session friction report --since 24h
+omg session friction report --project all --json
 ```
 
 - Local-only/offline report over Claude transcript files, `.omg/sessions/*.json`, and `.omg/state/agent-replay-*.jsonl`
@@ -604,8 +604,8 @@ omc session friction report --project all --json
 
 Use OMC's terminal and library surfaces in non-interactive environments:
 
-- Run CLI commands that have deterministic exit codes, for example `omc setup`, `omc ask ...`, `omc session search ... --json`, or repo-owned verification scripts such as `npm run sync-metadata:verify`.
-- Provide authentication through runner environment variables (`ANTHROPIC_API_KEY`) or pre-authenticated provider CLIs for `codex`, `gemini`, `antigravity`, `grok`, or `cursor` when using `omc ask` / `omc team`.
+- Run CLI commands that have deterministic exit codes, for example `omg setup`, `omg ask ...`, `omg session search ... --json`, or repo-owned verification scripts such as `npm run sync-metadata:verify`.
+- Provide authentication through runner environment variables (`ANTHROPIC_API_KEY`) or pre-authenticated provider CLIs for `codex`, `gemini`, `antigravity`, `grok`, or `cursor` when using `omg ask` / `omg team`.
 - Keep state explicit for ephemeral runners by setting `OMC_STATE_DIR` when state must survive worktree deletion or checkout replacement.
 - Avoid interactive slash skills (`/autopilot`, `/ralph`, `/execute`, `/deep-interview`, `/team`) in CI jobs; they require an active Claude Code session and user-visible conversation loop.
 - OMC does not currently provide a VS Code extension or VS Code-specific automation contract. The documented IDE path is to use Claude Code's own integrations, then install OMC through the Claude Code plugin surface.
@@ -620,18 +620,18 @@ The Team MCP runtime server is **not enabled by default**. If manually enabled, 
 ```json
 {
   "code": "deprecated_cli_only",
-  "message": "Legacy team MCP runtime tools are deprecated. Use the omc team CLI instead."
+  "message": "Legacy team MCP runtime tools are deprecated. Use the omg team CLI instead."
 }
 ```
 
-Use `omc team ...` replacements instead:
+Use `omg team ...` replacements instead:
 
 | Tool                   | Purpose                                                    |
 | ---------------------- | ---------------------------------------------------------- |
-| `omc_run_team_start`   | **Deprecated** → `omc team [N:agent-type] "<task>"`        |
-| `omc_run_team_status`  | **Deprecated** → `omc team status <team-name>`             |
-| `omc_run_team_wait`    | **Deprecated** → monitor via `omc team status <team-name>` |
-| `omc_run_team_cleanup` | **Deprecated** → `omc team shutdown <team-name> [--force]` |
+| `omc_run_team_start`   | **Deprecated** → `omg team [N:agent-type] "<task>"`        |
+| `omc_run_team_status`  | **Deprecated** → `omg team status <team-name>`             |
+| `omc_run_team_wait`    | **Deprecated** → monitor via `omg team status <team-name>` |
+| `omc_run_team_cleanup` | **Deprecated** → `omg team shutdown <team-name> [--force]` |
 
 Optional compatibility enablement (manual only):
 
@@ -844,7 +844,7 @@ V1 deliberately defers `stageModels` and all model/provider/role routing, inline
 
 Includes bundled workflow, utility, domain, and compatibility skills. Runtime truth comes from the builtin skill loader scanning `skills/*/SKILL.md` and expanding aliases declared in frontmatter.
 
-Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files during `omc setup`: Claude Code receives concise registry descriptions for every bundled skill, while the full on-demand instructions are preserved under `skill-bodies/*/SKILL.md` and loaded by OMC when a skill is invoked. Source checkouts and standalone installs keep the full `skills/*/SKILL.md` bodies in place.
+Marketplace/plugin installs compact the native plugin `skills/*/SKILL.md` files during `omg setup`: Claude Code receives concise registry descriptions for every bundled skill, while the full on-demand instructions are preserved under `skill-bodies/*/SKILL.md` and loaded by OMC when a skill is invoked. Source checkouts and standalone installs keep the full `skills/*/SKILL.md` bodies in place.
 
 
 
@@ -1188,14 +1188,14 @@ For complete documentation, see **[Performance Monitoring Guide](./PERFORMANCE-M
 | **Agent Observatory**     | Real-time agent status, efficiency, bottlenecks       | HUD / API                              |
 | **Session-End Summaries** | Persisted per-session summaries and callback payloads | `.omg/sessions/*.json`, `session-end`  |
 | **Session Replay**        | Event timeline for post-session analysis              | `.omg/state/agent-replay-*.jsonl`      |
-| **Session Search**        | Search prior local transcript/session artifacts       | `omc session search`, `session_search` |
+| **Session Search**        | Search prior local transcript/session artifacts       | `omg session search`, `session_search` |
 | **Intervention System**   | Auto-detection of stale agents, cost overruns         | Automatic                              |
 
 ### CLI Commands
 
 ```bash
-omc hud                              # Render the current HUD statusline
-omc team status <team-name>          # Inspect a running team job
+omg hud                              # Render the current HUD statusline
+omg team status <team-name>          # Inspect a running team job
 tail -20 .omg/state/agent-replay-*.jsonl
 ls .omg/sessions/*.json
 ```

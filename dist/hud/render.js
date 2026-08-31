@@ -252,7 +252,7 @@ export async function render(context, config) {
             ? `#${context.omcVersion}${localSuffix}`
             : (localSuffix ? `#${localSuffix}` : "");
         if (enabledElements.updateNotification !== false && context.updateAvailable) {
-            rendered.set("omcLabel", bold(`[OMC${versionTag}] -> ${context.updateAvailable} omc update`));
+            rendered.set("omcLabel", bold(`[OMC${versionTag}] -> ${context.updateAvailable} omg update`));
         }
         else {
             rendered.set("omcLabel", bold(`[OMC${versionTag}]`));

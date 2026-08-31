@@ -42,7 +42,7 @@ interface CapabilitySkillSurface {
 }
 interface CapabilitySurface {
     schemaVersion: string;
-    generatedBy: 'omc capabilities';
+    generatedBy: 'omg capabilities';
     contract: {
         runner: 'deterministic-local';
         liveProbeCompatible: true;
@@ -54,7 +54,7 @@ interface CapabilitySurface {
 }
 export interface CapabilitiesLockfile {
     schemaVersion: string;
-    generatedBy: 'omc capabilities lock';
+    generatedBy: 'omg capabilities lock';
     surfaceDigest: string;
     surface: CapabilitySurface;
     fixtures: CapabilityFixture[];

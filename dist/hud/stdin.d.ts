@@ -14,7 +14,7 @@ export declare function writeStdinCache(stdin: StatuslineStdin): void;
  * Read the last cached stdin JSON.
  *
  * When a session id is available in the environment, the session-scoped
- * path is authoritative. Otherwise — e.g. `omc hud --watch` running as a
+ * path is authoritative. Otherwise — e.g. `omg hud --watch` running as a
  * detached CLI/tmux process that never inherited the parent's session
  * env — we still need a way to surface the active session's cache; we
  * prefer the most recently updated valid `state/sessions/{id}/hud-stdin-cache.json`

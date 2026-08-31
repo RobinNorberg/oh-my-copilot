@@ -5,8 +5,8 @@ import {
 } from '../api-interop.js';
 
 describe('team api command dialect resolution', () => {
-  it('defaults to omc team api', () => {
-    expect(resolveTeamApiCliCommand({} as NodeJS.ProcessEnv)).toBe('omc team api');
+  it('defaults to omg team api', () => {
+    expect(resolveTeamApiCliCommand({} as NodeJS.ProcessEnv)).toBe('omg team api');
   });
 
   it('uses omx team api when running in OMX worker context', () => {
@@ -19,11 +19,11 @@ describe('team api command dialect resolution', () => {
     } as NodeJS.ProcessEnv)).toBe('omx team api');
   });
 
-  it('prefers omc team api when both contexts are present', () => {
+  it('prefers omg team api when both contexts are present', () => {
     expect(resolveTeamApiCliCommand({
       OMC_TEAM_WORKER: 'demo-team/worker-1',
       OMX_TEAM_WORKER: 'demo-team/worker-2',
-    } as NodeJS.ProcessEnv)).toBe('omc team api');
+    } as NodeJS.ProcessEnv)).toBe('omg team api');
   });
 
   it('builds legacy deprecation hint with omx command in OMX context', () => {

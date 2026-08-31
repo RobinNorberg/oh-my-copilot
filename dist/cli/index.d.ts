@@ -22,7 +22,7 @@ export declare function applyPluginDirOption(rawPath: string | undefined): void;
  * Returns the fully-configured commander program.
  *
  * Exported so tests can drive the real CLI pipeline (e.g.
- * `await buildProgram().parseAsync(['node','omc','setup','--plugin-dir-mode'], { from: 'user' })`)
+ * `await buildProgram().parseAsync(['node','omg','setup','--plugin-dir-mode'], { from: 'user' })`)
  * without spawning a subprocess. The program is built once at module load
  * (commander does not support re-registration), so this just returns the
  * singleton.

@@ -1,12 +1,12 @@
 /**
- * omc ralphthon CLI subcommand
+ * omg ralphthon CLI subcommand
  *
  * Autonomous hackathon lifecycle:
- *   omc ralphthon "task"                  Start new ralphthon session
- *   omc ralphthon --resume                Resume existing session
- *   omc ralphthon --skip-interview "task" Skip deep-interview, use task directly
- *   omc ralphthon --max-waves 5           Set max hardening waves
- *   omc ralphthon --poll-interval 60      Set poll interval in seconds
+ *   omg ralphthon "task"                  Start new ralphthon session
+ *   omg ralphthon --resume                Resume existing session
+ *   omg ralphthon --skip-interview "task" Skip deep-interview, use task directly
+ *   omg ralphthon --max-waves 5           Set max hardening waves
+ *   omg ralphthon --poll-interval 60      Set poll interval in seconds
  */
 
 import chalk from "chalk";
@@ -38,7 +38,7 @@ import { RALPHTHON_DEFAULTS } from "../../ralphthon/types.js";
 // ============================================================================
 
 const RALPHTHON_HELP = `
-Usage: omc ralphthon [options] [task]
+Usage: omg ralphthon [options] [task]
 
 Autonomous hackathon lifecycle mode.
 Generates PRD via deep-interview, executes all tasks with ralph loop,
@@ -52,10 +52,10 @@ Options:
   --help, -h            Show this help
 
 Examples:
-  omc ralphthon "Build a REST API for user management"
-  omc ralphthon --skip-interview "Implement auth middleware"
-  omc ralphthon --resume
-  omc ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
+  omg ralphthon "Build a REST API for user management"
+  omg ralphthon --skip-interview "Implement auth middleware"
+  omg ralphthon --resume
+  omg ralphthon --max-waves 5 --poll-interval 60 "Add caching layer"
 `;
 
 // ============================================================================
@@ -332,7 +332,7 @@ export async function ralphthonCommand(args: string[]): Promise<void> {
   // New session — need task description
   if (!options.task) {
     console.error(
-      chalk.red('Task description required. Usage: omc ralphthon "your task"'),
+      chalk.red('Task description required. Usage: omg ralphthon "your task"'),
     );
     console.log(RALPHTHON_HELP);
     process.exit(1);
@@ -342,7 +342,7 @@ export async function ralphthonCommand(args: string[]): Promise<void> {
   if (!isInsideTmux()) {
     console.error(
       chalk.red(
-        "Ralphthon requires tmux. Run inside a tmux session or use `omc` to launch one.",
+        "Ralphthon requires tmux. Run inside a tmux session or use `omg` to launch one.",
       ),
     );
     process.exit(1);

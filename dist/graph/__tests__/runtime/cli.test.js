@@ -1,5 +1,5 @@
 /**
- * CLI adapter tests for `omc graph run` (worker-8).
+ * CLI adapter tests for `omg graph run` (worker-8).
  *
  * Drives the commander Command object directly — never spawns the full bin.
  * The runner module is mocked so this suite isolates the CLI's own contract:

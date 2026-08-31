@@ -216,7 +216,7 @@ describe('runClaude OMC HUD behavior', () => {
         vi.resetAllMocks();
         execFileSync.mockReturnValue(Buffer.from(''));
     });
-    it('does not build an omc hud --watch command inside tmux', () => {
+    it('does not build an omg hud --watch command inside tmux', () => {
         resolveLaunchPolicy.mockReturnValue('inside-tmux');
         runClaude('/tmp/cwd', [], 'test-session');
         const calls = vi.mocked(buildTmuxShellCommand).mock.calls;

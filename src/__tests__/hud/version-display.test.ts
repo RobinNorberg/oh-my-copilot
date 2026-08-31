@@ -91,7 +91,7 @@ describe('HUD version display and update notification', () => {
       const output = await render(ctx, config);
       expect(output).toContain('[OMC#4.1.10]');
       expect(output).not.toContain('->');
-      expect(output).not.toContain('omc update');
+      expect(output).not.toContain('omg update');
     });
   });
 
@@ -102,7 +102,7 @@ describe('HUD version display and update notification', () => {
       const output = await render(ctx, config);
       expect(output).toContain('[OMC#4.1.10]');
       expect(output).toContain('-> 4.2.0');
-      expect(output).toContain('omc update');
+      expect(output).toContain('omg update');
     });
 
     it('keeps OMC version label but hides update notification when updateNotification is false', async () => {
@@ -111,7 +111,7 @@ describe('HUD version display and update notification', () => {
       const output = await render(ctx, config);
       expect(output).toContain('[OMC#4.1.10]');
       expect(output).not.toContain('-> 4.2.0');
-      expect(output).not.toContain('omc update');
+      expect(output).not.toContain('omg update');
     });
 
     it('renders update notification without version when omcVersion is null', async () => {
@@ -129,7 +129,7 @@ describe('HUD version display and update notification', () => {
       const config = createMinimalConfig({ omcLabel: false });
       const output = await render(ctx, config);
       expect(output).not.toContain('[OMC');
-      expect(output).not.toContain('omc update');
+      expect(output).not.toContain('omg update');
     });
   });
 });

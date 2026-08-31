@@ -87,10 +87,10 @@ npm i -g oh-my-copilot@latest
 /omc-setup
 
 # From your terminal
-omc setup
+omg setup
 ```
 
-If you run OMC via `omc --plugin-dir <path>` or `claude --plugin-dir <path>`, add `--plugin-dir-mode` to `omc setup` (or export `OMC_PLUGIN_ROOT` before running it) so the installer doesn't duplicate skills/agents that the plugin already provides at runtime. See the [Plugin directory flags section in REFERENCE.md](./docs/REFERENCE.md#plugin-directory-flags) for a complete decision matrix and all available flags.
+If you run OMC via `omg --plugin-dir <path>` or `claude --plugin-dir <path>`, add `--plugin-dir-mode` to `omg setup` (or export `OMC_PLUGIN_ROOT` before running it) so the installer doesn't duplicate skills/agents that the plugin already provides at runtime. See the [Plugin directory flags section in REFERENCE.md](./docs/REFERENCE.md#plugin-directory-flags) for a complete decision matrix and all available flags.
 
 **Step 3: Build something**
 
@@ -138,22 +138,22 @@ That's it. Everything else is automatic.
 
 OMC exposes two different surfaces:
 
-- **Terminal CLI commands**: run `omc ...` from your shell after installing the npm/runtime path (`npm i -g oh-my-copilot@latest`) or from a local checkout.
+- **Terminal CLI commands**: run `omg ...` from your shell after installing the npm/runtime path (`npm i -g oh-my-copilot@latest`) or from a local checkout.
 - **In-session skills**: run `/...` inside a Claude Code session after installing the plugin/setup flow.
 
 | Feature                                        | Terminal CLI                                  | In-session skill                                                        | Notes                                                                                                                                |
 | ---------------------------------------------- | --------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Setup                                          | `omc setup`                                   | `/omc-setup`                                                            | Both are real entrypoints.                                                                                                            |
-| Ask providers                                  | `omc ask codex "review this patch"`           | `/ask codex "review this patch"`                                        | Both route through the same advisor flow. Providers: `claude`, `codex`, `gemini`, `antigravity`, `grok`, `cursor`.                                            |
-| Team orchestration                             | `omc team 2:codex "review auth flow"`         | `/team 3:executor "fix all TypeScript errors"`                          | Both exist, but they are different runtimes: `omc team` launches tmux CLI workers; `/team` runs the in-session native team workflow. |
-| Autopilot / Ralph / Execute / Deep Interview   | —                                             | `/autopilot ...`, `/ralph ...`, `/execute ...`, `/deep-interview ...`   | These are in-session skills. There is no `omc autopilot` / `omc ralph` / `omc execute` CLI subcommand in this repo.                  |
-| Autoresearch                                   | `omc autoresearch` (**hard-deprecated shim**) | `/deep-interview --autoresearch ...` + `/oh-my-copilot:autoresearch` | Setup stays in deep-interview; execution now belongs to the stateful skill.                                                          |
+| Setup                                          | `omg setup`                                   | `/omc-setup`                                                            | Both are real entrypoints.                                                                                                            |
+| Ask providers                                  | `omg ask codex "review this patch"`           | `/ask codex "review this patch"`                                        | Both route through the same advisor flow. Providers: `claude`, `codex`, `gemini`, `antigravity`, `grok`, `cursor`.                                            |
+| Team orchestration                             | `omg team 2:codex "review auth flow"`         | `/team 3:executor "fix all TypeScript errors"`                          | Both exist, but they are different runtimes: `omg team` launches tmux CLI workers; `/team` runs the in-session native team workflow. |
+| Autopilot / Ralph / Execute / Deep Interview   | —                                             | `/autopilot ...`, `/ralph ...`, `/execute ...`, `/deep-interview ...`   | These are in-session skills. There is no `omg autopilot` / `omg ralph` / `omg execute` CLI subcommand in this repo.                  |
+| Autoresearch                                   | `omg autoresearch` (**hard-deprecated shim**) | `/deep-interview --autoresearch ...` + `/oh-my-copilot:autoresearch` | Setup stays in deep-interview; execution now belongs to the stateful skill.                                                          |
 
 ### VS Code, Agent SDK, and automation scope
 
 - **VS Code / IDE extension**: OMC does not ship a VS Code extension and does not document extension-specific install or automation flows. Use the Claude Code plugin or terminal CLI surfaces above; IDE integrations are only an optional way to access Claude Code itself.
 - **Agent SDK / programmatic usage**: the npm package exports TypeScript helpers such as `createOmcSession()` and prompt expansion utilities for local Node.js programs using `@anthropic-ai/claude-agent-sdk`. This is a library surface, not a replacement for the Claude Code plugin UI.
-- **CI/CD and headless automation**: prefer deterministic terminal commands (`omc setup`, `omc ask`, `omc session search`, repository scripts such as `npm run sync-metadata:verify`) and set `ANTHROPIC_API_KEY` or provider-specific CLI auth in the runner environment. Do not rely on interactive slash commands (`/autopilot`, `/ralph`, `/execute`, `/team`) in CI; they require an active Claude Code session.
+- **CI/CD and headless automation**: prefer deterministic terminal commands (`omg setup`, `omg ask`, `omg session search`, repository scripts such as `npm run sync-metadata:verify`) and set `ANTHROPIC_API_KEY` or provider-specific CLI auth in the runner environment. Do not rely on interactive slash commands (`/autopilot`, `/ralph`, `/execute`, `/team`) in CI; they require an active Claude Code session.
 
 ### Not Sure Where to Start?
 
@@ -173,7 +173,7 @@ Starting in **v4.1.7**, **Team** is the canonical orchestration surface in OMC. 
 /team 3:executor "fix all TypeScript errors"
 ```
 
-Use `/team ...` when you want Claude Code's in-session native team workflow. Use `omc team ...` when you want terminal-launched tmux CLI workers (`claude` / `codex` / `gemini` panes).
+Use `/team ...` when you want Claude Code's in-session native team workflow. Use `omg team ...` when you want terminal-launched tmux CLI workers (`claude` / `codex` / `gemini` panes).
 
 Team runs as a staged pipeline:
 
@@ -193,16 +193,16 @@ Enable Claude Code native teams in `~/.claude/settings.json`:
 
 ### tmux CLI Workers — Codex, Gemini & Antigravity (v4.4.0+)
 
-**v4.4.0 removes the Codex/Gemini MCP servers** (`x`, `g` providers). Use the CLI-first Team runtime (`omc team ...`) to spawn real tmux worker panes:
+**v4.4.0 removes the Codex/Gemini MCP servers** (`x`, `g` providers). Use the CLI-first Team runtime (`omg team ...`) to spawn real tmux worker panes:
 
 ```bash
-omc team 2:codex "review auth module for security issues"
-omc team 2:gemini "redesign UI components for accessibility"
-omc team 2:antigravity "redesign UI components for accessibility"
-omc team 1:claude "implement the payment flow"
-omc team 1:cursor "implement the payment flow"
-omc team status auth-review
-omc team shutdown auth-review
+omg team 2:codex "review auth module for security issues"
+omg team 2:gemini "redesign UI components for accessibility"
+omg team 2:antigravity "redesign UI components for accessibility"
+omg team 1:claude "implement the payment flow"
+omg team 1:cursor "implement the payment flow"
+omg team status auth-review
+omg team shutdown auth-review
 ```
 
 For mixed Codex + Antigravity work in one command, run `/ask codex` and `/ask antigravity` and have Claude synthesize the results (Gemini remains available as an enterprise/API-key fallback):
@@ -214,12 +214,12 @@ For mixed Codex + Antigravity work in one command, run `/ask codex` and `/ask an
 
 | Surface                         | Workers                       | Best For                                     |
 | ------------------------------- | ----------------------------- | -------------------------------------------- |
-| `omc team N:codex "..."`        | N Codex CLI panes             | Code review, security analysis, architecture |
-| `omc team N:gemini "..."`       | N Gemini CLI panes            | UI/UX design, docs, large-context tasks (enterprise/API-key) |
-| `omc team N:antigravity "..."`  | N Antigravity (`agy`) panes   | UI/UX design, docs, large-context tasks                      |
-| `omc team N:grok "..."`         | N Grok Build CLI panes        | Code review, analysis cross-check            |
-| `omc team N:cursor "..."`       | N Cursor agent panes          | Executor-style implementation tasks          |
-| `omc team N:claude "..."`       | N Claude CLI panes            | General tasks via Claude CLI in tmux         |
+| `omg team N:codex "..."`        | N Codex CLI panes             | Code review, security analysis, architecture |
+| `omg team N:gemini "..."`       | N Gemini CLI panes            | UI/UX design, docs, large-context tasks (enterprise/API-key) |
+| `omg team N:antigravity "..."`  | N Antigravity (`agy`) panes   | UI/UX design, docs, large-context tasks                      |
+| `omg team N:grok "..."`         | N Grok Build CLI panes        | Code review, analysis cross-check            |
+| `omg team N:cursor "..."`       | N Cursor agent panes          | Executor-style implementation tasks          |
+| `omg team N:claude "..."`       | N Claude CLI panes            | General tasks via Claude CLI in tmux         |
 | `/ask codex` + `/ask antigravity` | Tri-model advisor synthesis | Mixed Codex + Antigravity review in one pass |
 
 Workers spawn on-demand and die when their task completes — no idle resource usage. Requires the selected CLI (`codex`, `gemini`, `agy` (antigravity), `grok`, or `cursor-agent`) installed/authenticated and an active tmux session.
@@ -235,11 +235,11 @@ Autopilot can prefer Cursor executor workers during team execution via `.claude/
 }
 ```
 
-This config makes the autopilot execution stage use `omc team 1:cursor "..."` or `/team 1:cursor "..."` for executor-style implementation work. Reviewer, critic, security-review, validation verdict, and final approval roles remain native Claude/OMC reviewer roles; Cursor requires an installed/authenticated `cursor-agent`.
+This config makes the autopilot execution stage use `omg team 1:cursor "..."` or `/team 1:cursor "..."` for executor-style implementation work. Reviewer, critic, security-review, validation verdict, and final approval roles remain native Claude/OMC reviewer roles; Cursor requires an installed/authenticated `cursor-agent`.
 
 Native team worker worktrees are being added behind an opt-in/config gate. See [Native Team Worktree Mode](docs/TEAM-WORKTREE-MODE.md) for the workspace contract, canonical state-root rules, dirty-worktree preservation policy, and verification checklist.
 
-> **Note: Package naming** — The project is branded as **oh-my-copilot** (repo, plugin, commands), but the npm package is published as [`oh-my-copilot`](https://www.npmjs.com/package/oh-my-copilot). If you install or upgrade the CLI tools via npm/bun, use `npm i -g oh-my-copilot@latest`; the package installs both `oh-my-copilot` and the short `omc` command aliases.
+> **Note: Package naming** — The project is branded as **oh-my-copilot** (repo, plugin, commands), but the npm package is published as [`oh-my-copilot`](https://www.npmjs.com/package/oh-my-copilot). If you install or upgrade the CLI tools via npm/bun, use `npm i -g oh-my-copilot@latest`; the package installs both `oh-my-copilot` and the short `omg` command aliases.
 
 ### Updating
 
@@ -249,7 +249,7 @@ If you installed OMC via npm, upgrade with the published package name:
 npm i -g oh-my-copilot@latest
 ```
 
-> **Package naming note:** the repo, plugin, and commands are branded **oh-my-copilot**, but the published npm package name remains `oh-my-copilot`. npm installs expose both `oh-my-copilot` and `omc`; examples prefer `omc` for brevity.
+> **Package naming note:** the repo, plugin, and commands are branded **oh-my-copilot**, but the published npm package name remains `oh-my-copilot`. npm installs expose both `oh-my-copilot` and `omg`; examples prefer `omg` for brevity.
 
 If you installed OMC via the Claude Code marketplace/plugin flow, update with:
 
@@ -301,7 +301,7 @@ Multiple strategies for different use cases — from Team-backed orchestration t
 | Mode                        | What it is                                                                              | Use For                                                                 |
 | --------------------------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | **Team (recommended)**      | Canonical staged pipeline (`team-plan → team-prd → team-exec → team-verify → team-fix`) | Coordinated Claude agents on a shared task list                         |
-| **omc team (CLI)**          | tmux CLI workers — real `claude`/`codex`/`gemini`/`antigravity`/`grok`/`cursor-agent` processes in split-panes       | Codex/Gemini/Antigravity/Grok/Cursor CLI tasks; on-demand spawn, die when done             |
+| **omg team (CLI)**          | tmux CLI workers — real `claude`/`codex`/`gemini`/`antigravity`/`grok`/`cursor-agent` processes in split-panes       | Codex/Gemini/Antigravity/Grok/Cursor CLI tasks; on-demand spawn, die when done             |
 | **Tri-model advisor (`/ask codex` + `/ask antigravity`)** | Claude synthesizes both advisors' output                                 | Mixed backend+UI work needing both Codex and Antigravity                     |
 | **Autopilot**               | Autonomous execution (single lead agent)                                                | End-to-end feature work with minimal ceremony                           |
 | **Execute**                 | Persistent execution with verify/fix loops, from plan to working code                   | Tasks that must complete fully (no silent partials)                     |
@@ -326,7 +326,7 @@ For `/goal` behavior, rely on Claude Code/Anthropic sources: the [Claude Code `/
 
 - **Prompt triggers** - `ralph`, `ralplan`; Team stays explicit via `/team`
 - **HUD statusline** - Real-time orchestration metrics in your status bar
-  - If you launch Claude Code directly with `claude --plugin-dir <path>` (bypassing the `omc` shim), export `OMC_PLUGIN_ROOT=<path>` in your shell so the HUD bundle resolves to the same checkout as the plugin loader. See the [Plugin directory flags section in REFERENCE.md](./docs/REFERENCE.md#plugin-directory-flags) for details.
+  - If you launch Claude Code directly with `claude --plugin-dir <path>` (bypassing the `omg` shim), export `OMC_PLUGIN_ROOT=<path>` in your shell so the HUD bundle resolves to the same checkout as the plugin loader. See the [Plugin directory flags section in REFERENCE.md](./docs/REFERENCE.md#plugin-directory-flags) for details.
 - **Skill learning** - Extract reusable patterns from your sessions
 - **Analytics & cost tracking** - Understand token usage across all sessions
 
@@ -380,8 +380,8 @@ cd /path/to/parent-dir-with-many-repos
 echo '{"id":"my-workspace"}' > .omc-workspace
 # Sessions inside any sub-repo now share /path/.omc/
 # For parallel ultragoal runs:
-cd repo-A && omc ultragoal create-goals --auto-plan-id --brief "..."
-cd ../repo-B && omc ultragoal create-goals --auto-plan-id --brief "..."
+cd repo-A && omg ultragoal create-goals --auto-plan-id --brief "..."
+cd ../repo-B && omg ultragoal create-goals --auto-plan-id --brief "..."
 ```
 
 See [Multi-repo workspaces in REFERENCE.md](docs/REFERENCE.md#multi-repo-workspaces-with-omc-workspace) for resolution order, `OMC_STATE_DIR`, and workspace identifier options.
@@ -390,7 +390,7 @@ See [Multi-repo workspaces in REFERENCE.md](docs/REFERENCE.md#multi-repo-workspa
 
 ## In-session shortcuts
 
-These shortcuts run **inside a Claude Code / OMC session**, not as terminal CLI commands. For shell commands, use the `omc ...` forms shown above. Team mode is explicit: use `/team ...` in-session or `omc team ...` from your shell rather than expecting a bare `team` keyword trigger.
+These shortcuts run **inside a Claude Code / OMC session**, not as terminal CLI commands. For shell commands, use the `omg ...` forms shown above. Team mode is explicit: use `/team ...` in-session or `omg team ...` from your shell rather than expecting a bare `team` keyword trigger.
 
 | In-session form            | Kind                   | Effect                                 | Example                                        |
 | -------------------------- | ---------------------- | -------------------------------------- | ---------------------------------------------- |
@@ -412,19 +412,19 @@ These shortcuts run **inside a Claude Code / OMC session**, not as terminal CLI 
 
 ## Utilities
 
-### Provider Advisor (`omc ask` / `/ask`)
+### Provider Advisor (`omg ask` / `/ask`)
 
 Run local provider CLIs and save a markdown artifact under `.omc/artifacts/ask/`.
 
 ```bash
 # Terminal CLI
-omc ask claude "review this migration plan"
-omc ask codex --prompt "identify architecture risks"
-omc ask gemini --prompt "propose UI polish ideas"
-omc ask antigravity --prompt "propose UI polish ideas"
-omc ask grok --prompt "cross-check this code review"
-omc ask cursor --prompt "apply this implementation plan"
-omc ask claude --agent-prompt executor --prompt "draft implementation steps"
+omg ask claude "review this migration plan"
+omg ask codex --prompt "identify architecture risks"
+omg ask gemini --prompt "propose UI polish ideas"
+omg ask antigravity --prompt "propose UI polish ideas"
+omg ask grok --prompt "cross-check this code review"
+omg ask cursor --prompt "apply this implementation plan"
+omg ask claude --agent-prompt executor --prompt "draft implementation steps"
 
 # Inside a Claude Code / OMC session
 /ask claude "review this migration plan"
@@ -442,7 +442,7 @@ Phase-1 aliases `OMX_ASK_ADVISOR_SCRIPT` and `OMX_ASK_ORIGINAL_TASK` are accepte
 
 ### Autoresearch (stateful skill)
 
-`omc autoresearch` is now a **hard-deprecated shim**. The authoritative workflow is:
+`omg autoresearch` is now a **hard-deprecated shim**. The authoritative workflow is:
 
 ```bash
 /deep-interview --autoresearch improve startup performance
@@ -460,9 +460,9 @@ Phase-1 aliases `OMX_ASK_ADVISOR_SCRIPT` and `OMX_ASK_ORIGINAL_TASK` are accepte
 Auto-resume Claude Code sessions when rate limits reset.
 
 ```bash
-omc wait          # Check status, get guidance
-omc wait --start  # Enable auto-resume daemon
-omc wait --stop   # Disable daemon
+omg wait          # Check status, get guidance
+omg wait --start  # Enable auto-resume daemon
+omg wait --stop   # Disable daemon
 ```
 
 **Requires:** tmux (for session detection)
@@ -474,8 +474,8 @@ Use the HUD for live observability and the current session/replay artifacts for 
 - HUD preset: `/oh-my-copilot:hud setup` then use a supported preset such as `"omcHud": { "preset": "focused" }`
 - Session summaries: `.omc/sessions/*.json`
 - Replay logs: `.omc/state/agent-replay-*.jsonl`
-- Live HUD rendering: `omc hud`
-- Local friction reports: `omc session friction report --since 24h` summarizes context-bloat and operator-friction signals from local session artifacts without printing raw prompts or tool output; add `--json` for automation.
+- Live HUD rendering: `omg hud`
+- Local friction reports: `omg session friction report --since 24h` summarizes context-bloat and operator-friction signals from local session artifacts without printing raw prompts or tool output; add `--json` for automation.
 
 ### Notification Tags (Telegram/Discord/Slack)
 
@@ -483,14 +483,14 @@ You can configure who gets tagged when stop callbacks send session summaries.
 
 ```bash
 # Set/replace tag list
-omc config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
-omc config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
-omc config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
+omg config-stop-callback telegram --enable --token <bot_token> --chat <chat_id> --tag-list "@alice,bob"
+omg config-stop-callback discord --enable --webhook <url> --tag-list "@here,123456789012345678,role:987654321098765432"
+omg config-stop-callback slack --enable --webhook <url> --tag-list "<!here>,<@U1234567890>"
 
 # Incremental updates
-omc config-stop-callback telegram --add-tag charlie
-omc config-stop-callback discord --remove-tag @here
-omc config-stop-callback discord --clear-tags
+omg config-stop-callback telegram --add-tag charlie
+omg config-stop-callback discord --remove-tag @here
+omg config-stop-callback discord --clear-tags
 ```
 
 Tag behavior:
@@ -573,7 +573,7 @@ See `scripts/openclaw-gateway-demo.mjs` for a reference gateway that relays Open
 ## Documentation
 
 - **[Full Reference](docs/REFERENCE.md)** - Complete feature documentation
-- **[CLI Reference](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#cli-reference)** - All `omc` commands, flags, and tools
+- **[CLI Reference](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#cli-reference)** - All `omg` commands, flags, and tools
 - **[Notifications Guide](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#notifications)** - Discord, Telegram, Slack, and webhook setup
 - **[Recommended Workflows](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#workflows)** - Battle-tested skill chains for common tasks
 - **[Release Notes](https://yeachan-heo.github.io/oh-my-copilot-website/docs/#release-notes)** - What's new in each version
@@ -593,7 +593,7 @@ See `scripts/openclaw-gateway-demo.mjs` for a reference gateway that relays Open
 
 ### Platform & tmux
 
-OMC features like `omc team` and rate-limit detection require **tmux**:
+OMC features like `omg team` and rate-limit detection require **tmux**:
 
 | Platform       | tmux provider                                         | Install                 |
 | -------------- | ----------------------------------------------------- | ----------------------- |
@@ -617,7 +617,7 @@ OMC can optionally orchestrate external AI providers for cross-validation and de
 | [Codex CLI](https://github.com/openai/codex)                            | `npm install -g @openai/codex`                               | Architecture validation, code review cross-check                          |
 | [Grok Build](https://build.grok.com)                                    | Download from build.grok.com (`grok` at `~/.grok/bin/grok`) | Code review, analysis cross-check                                         |
 
-> **Migrating from Gemini CLI:** Per Google's announcement, the Gemini CLI is being superseded by the Antigravity CLI (`agy`); see the [official Antigravity docs](https://antigravity.google). Use `omc team N:antigravity` and `omc ask antigravity` wherever you previously used `gemini`. Windows headless support for `agy` is unknown/untested — report issues upstream.
+> **Migrating from Gemini CLI:** Per Google's announcement, the Gemini CLI is being superseded by the Antigravity CLI (`agy`); see the [official Antigravity docs](https://antigravity.google). Use `omg team N:antigravity` and `omg ask antigravity` wherever you previously used `gemini`. Windows headless support for `agy` is unknown/untested — report issues upstream.
 
 **Cost:** 3 Pro plans (Claude + Antigravity/Gemini + ChatGPT) cover everything for ~$60/month.
 

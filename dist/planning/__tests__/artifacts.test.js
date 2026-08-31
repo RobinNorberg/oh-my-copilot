@@ -39,7 +39,7 @@ describe("planning/artifacts", () => {
             "## Requirement coverage map",
             "- req -> impl",
             "",
-            'omc team 3:claude "implement auth"',
+            'omg team 3:claude "implement auth"',
             "",
         ].join("\n"));
         writeFileSync(join(plansDir, specName), [
@@ -323,7 +323,7 @@ describe("planning/artifacts", () => {
                 "## Requirement coverage map",
                 "- req -> impl",
                 "",
-                'omc team 3:claude "implement auth"',
+                'omg team 3:claude "implement auth"',
                 "",
             ].join("\n"));
             expect(readApprovedExecutionLaunchHint(testDir, "team").task).toBe("implement auth");
@@ -349,7 +349,7 @@ describe("planning/artifacts", () => {
                 "## Requirement coverage map",
                 "- req -> impl",
                 "",
-                'Run: omc team "implement the feature"',
+                'Run: omg team "implement the feature"',
                 "",
             ].join("\n"));
             const result = readApprovedExecutionLaunchHint(testDir, "team");
@@ -359,8 +359,8 @@ describe("planning/artifacts", () => {
             expect(result.agentType).toBeUndefined();
         });
         it("resolves exact team launch hints by command when tasks repeat", () => {
-            const firstCommand = 'omc team 2:claude "ship it"';
-            const secondCommand = 'omc team 4:codex "ship it"';
+            const firstCommand = 'omg team 2:claude "ship it"';
+            const secondCommand = 'omg team 4:codex "ship it"';
             writeFileSync(join(plansDir, "prd-feature.md"), [
                 "# PRD",
                 "",
@@ -450,7 +450,7 @@ describe("planning/artifacts", () => {
                 "## Requirement coverage map",
                 "- req -> impl",
                 "",
-                'omc team 2:codex "fix the bug" --linked-ralph',
+                'omg team 2:codex "fix the bug" --linked-ralph',
                 "",
             ].join("\n"));
             const result = readApprovedExecutionLaunchHint(testDir, "team");
@@ -481,7 +481,7 @@ describe("planning/artifacts", () => {
             expect(result).toBeNull();
         });
         it("still parses launch hints even when quality gates fail", () => {
-            writeFileSync(join(plansDir, "prd-feature.md"), '# PRD\n\nRun: omc team "new task"\n');
+            writeFileSync(join(plansDir, "prd-feature.md"), '# PRD\n\nRun: omg team "new task"\n');
             writeFileSync(join(plansDir, "test-spec-feature.md"), [
                 "# Test Spec",
                 "",

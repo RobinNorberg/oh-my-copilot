@@ -556,7 +556,7 @@ ${'- oversized startup guidance\n'.repeat(700)}
     };
     const combined = `${output.systemMessage ?? ''}\n${output.hookSpecificOutput?.additionalContext ?? ''}`;
     expect(combined).not.toContain('[OMC VERSION DRIFT DETECTED]');
-    expect(combined).not.toContain("Run 'omc update'");
+    expect(combined).not.toContain("Run 'omg update'");
     expect(combined).not.toContain('4.15.5');
   });
 

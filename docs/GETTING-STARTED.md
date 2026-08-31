@@ -28,11 +28,11 @@ OMC ships two surfaces and they are designed to coexist:
 | Surface | What you get | Recommended install |
 |---|---|---|
 | **Claude Code plugin** (`oh-my-copilot@omc`) | In-session skills, agents, hooks, statusline, MCP servers — the `/autopilot`, `/ralph`, `/execute`, `/team` slash commands | Marketplace plugin install (Step 1–2 below) |
-| **Terminal CLI** (`omc` binary, package `oh-my-copilot`) | Shell commands: `omc setup`, `omc update`, `omc team`, `omc ask`, and a hard-deprecated `omc autoresearch` shim | `npm i -g oh-my-copilot@latest` |
+| **Terminal CLI** (`omg` binary, package `oh-my-copilot`) | Shell commands: `omg setup`, `omg update`, `omg team`, `omg ask`, and a hard-deprecated `omg autoresearch` shim | `npm i -g oh-my-copilot@latest` |
 
-Most users want **both**: the plugin for the in-session experience, and the npm CLI for shell-side automation and updates. Running them in parallel is fully supported — `omc update` and `omc setup` are idempotent and detect the plugin install to avoid duplicating in-session skills (#2252).
+Most users want **both**: the plugin for the in-session experience, and the npm CLI for shell-side automation and updates. Running them in parallel is fully supported — `omg update` and `omg setup` are idempotent and detect the plugin install to avoid duplicating in-session skills (#2252).
 
-> Older versions of this doc said OMC was "plugin-only". That was incorrect: the `omc` CLI is the canonical entry point for `omc setup`/`omc update` and is published on npm as `oh-my-copilot`. See the [Quick Start in README.md](../README.md#quick-start) for the same two-path layout.
+> Older versions of this doc said OMC was "plugin-only". That was incorrect: the `omg` CLI is the canonical entry point for `omg setup`/`omg update` and is published on npm as `oh-my-copilot`. See the [Quick Start in README.md](../README.md#quick-start) for the same two-path layout.
 
 ### Step 1: Add the marketplace source
 
@@ -52,7 +52,7 @@ After adding the marketplace, install the plugin:
 
 ### Step 2b (optional but recommended): install the terminal CLI
 
-If you want `omc setup`, `omc update`, `omc team`, `omc ask`, etc. on your shell:
+If you want `omg setup`, `omg update`, `omg team`, `omg ask`, etc. on your shell:
 
 ```bash
 npm i -g oh-my-copilot@latest
@@ -65,7 +65,7 @@ npm i -g oh-my-copilot@latest
 > yet. The warning is tracked in [#2913](https://github.com/Yeachan-Heo/oh-my-claudecode/issues/2913)
 > and does not by itself mean the OMC CLI install failed.
 
-Both can be installed at the same time. The CLI auto-detects the plugin install and will not double-register skills under `~/.claude/skills/` (if you previously hit the duplicate-skill bug, run `omc update` once on 4.11.2+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).
+Both can be installed at the same time. The CLI auto-detects the plugin install and will not double-register skills under `~/.claude/skills/` (if you previously hit the duplicate-skill bug, run `omg update` once on 4.11.2+ — it self-heals leftover standalone skills that the plugin now provides via `prunePluginDuplicateSkills`).
 
 ### Step 3: Run initial setup
 
@@ -111,7 +111,7 @@ Applies OMC to all Claude Code sessions:
 - Settings are saved to `~/.claude/CLAUDE.md`
 - Applied across all projects
 
-> ⚠️ **Warning:** Global setup now asks explicitly before changing your base `~/.claude/CLAUDE.md`. The default choice is still overwrite. If you choose preserve mode instead, plain `claude` stays on your base config and `omc` force-loads the OMC companion config.
+> ⚠️ **Warning:** Global setup now asks explicitly before changing your base `~/.claude/CLAUDE.md`. The default choice is still overwrite. If you choose preserve mode instead, plain `claude` stays on your base config and `omg` force-loads the OMC companion config.
 
 ### Verifying the installation
 
@@ -134,7 +134,7 @@ This checks the following:
 If you're developing OMC or want to test unreleased features from a specific branch, you can launch Claude Code with your local checkout as the plugin:
 
 ```bash
-omc --plugin-dir /path/to/oh-my-copilot setup --plugin-dir-mode
+omg --plugin-dir /path/to/oh-my-copilot setup --plugin-dir-mode
 ```
 
 This loads agents, skills, and commands directly from your checkout without copying them to `~/.claude/`. For detailed instructions and alternative flows, see [LOCAL_PLUGIN_INSTALL.md](./LOCAL_PLUGIN_INSTALL.md). For a complete decision matrix of plugin-dir flags and modes, see the [Plugin directory flags section in REFERENCE.md](./REFERENCE.md#plugin-directory-flags).

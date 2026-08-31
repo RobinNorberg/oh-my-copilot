@@ -5,9 +5,9 @@ import { describe, expect, it } from 'vitest';
 const cliIndexSource = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'index.ts'), 'utf-8');
 describe('teleport help text (issue #968)', () => {
     it('uses quoted #N references in teleport invocation examples', () => {
-        expect(cliIndexSource).toContain("omc teleport '#123'");
-        expect(cliIndexSource).toContain("omc teleport '#42'");
-        expect(cliIndexSource).not.toMatch(/omc teleport #\d+/);
+        expect(cliIndexSource).toContain("omg teleport '#123'");
+        expect(cliIndexSource).toContain("omg teleport '#42'");
+        expect(cliIndexSource).not.toMatch(/omg teleport #\d+/);
     });
     it('documents shell comment behavior in both help surfaces', () => {
         const matches = cliIndexSource.match(/In many shells, # starts a comment/g) ?? [];

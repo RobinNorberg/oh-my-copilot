@@ -716,7 +716,7 @@ export interface StartTeamV2Config {
 
 /**
  * Build the initial task instruction for v2 workers.
- * Workers use `omc team api` CLI commands for all lifecycle transitions.
+ * Workers use `omg team api` CLI commands for all lifecycle transitions.
  */
 function buildV2TaskInstruction(
   teamName: string,

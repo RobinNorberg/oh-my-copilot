@@ -64,7 +64,7 @@ function readConfig(configPath: string) {
   };
 }
 
-describe('omc config-stop-callback tag options', () => {
+describe('omg config-stop-callback tag options', () => {
   it('updates telegram tagList options and preserves existing config fields', () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'omc-cli-stop-callback-home-'));
     const configPath = join(homeDir, '.claude', '.omc-config.json');

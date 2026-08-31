@@ -102,7 +102,7 @@ describe('alias-resolver — Tier-0 routing', () => {
     const r = resolveWorkflowAlias('release');
     expect(r.canonical).toBe('omc-release');
     expect(r.isRelease).toBe(true);
-    expect(r.warning).toContain('omc release');
+    expect(r.warning).toContain('omg release');
     expect(r.tier0).toBe(null);
   });
 
@@ -163,7 +163,7 @@ describe('alias-resolver — warnings once/session + diagnostics', () => {
     expect(w).toContain('psm');
     expect(w).toContain('project-session-manager');
     const rw = formatAliasWarning('release', 'omc-release');
-    expect(rw).toContain('omc release');
+    expect(rw).toContain('omg release');
   });
 
   it('getAliasMapping retains full mapping/telemetry even when warnings suppressed', () => {
