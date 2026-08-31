@@ -563,6 +563,10 @@ jobs:
           retention-days: 30
 
       - name: Publish exact archive and verify registry
+        env:
+          # Fork decision: classic token auth (Trusted Publishing deferred).
+          # Provenance still attests via the job's id-token grant.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           set -o pipefail
