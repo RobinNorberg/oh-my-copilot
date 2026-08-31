@@ -282,7 +282,7 @@ function isOmcHudCommand(command) {
 export function isOmcStatusLine(statusLine) {
     if (!statusLine)
         return false;
-    // Legacy string format (pre-v4.5): "~/.claude/hud/omg-hud.mjs"
+    // Legacy string format (pre-v4.5), e.g. "~/.claude/hud/omc-hud.mjs"
     if (typeof statusLine === 'string') {
         return isOmcHudCommand(statusLine);
     }

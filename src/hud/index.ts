@@ -58,6 +58,17 @@ import { getOmcRoot } from "../lib/worktree-paths.js";
 import { getCopilotConfigDir, getUpdateCheckCachePath } from "../utils/config-dir.js";
 
 /**
+ * HUD wrapper filenames this release recognises, current first.
+ *
+ * Only the first entry is ever written. The others are what earlier releases
+ * wrote into this same config dir (4.13.x shipped omcp-hud.mjs with an
+ * omcp-hud.js legacy slot) and exist for DETECTION only, so the diagnostic does
+ * not report a working-but-unrefreshed install as missing.
+ */
+const HUD_SCRIPT_NAMES = ["omg-hud.mjs", "omcp-hud.mjs", "omcp-hud.js"] as const;
+const HUD_COMMAND_MARKERS = ["omg-hud", "omcp-hud"];
+
+/**
  * Extract session ID (UUID) from a transcript path.
  */
 function extractSessionIdFromPath(transcriptPath: string): string | null {
@@ -217,19 +228,21 @@ async function calculateSessionHealth(
 function showDiagnostic(): void {
   const version = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = join(configDir, "hud", "omg-hud.mjs");
+  const hudScript = join(configDir, "hud", HUD_SCRIPT_NAMES[0]);
   const settingsFile = join(configDir, "settings.json");
 
-  const hudExists = existsSync(hudScript);
+  // Detection accepts every wrapper name we have shipped into this config dir so
+  // an install that predates the omg rename still reports as installed; only
+  // HUD_SCRIPT_NAMES[0] is ever written.
+  const hudExists = HUD_SCRIPT_NAMES.some(name => existsSync(join(configDir, "hud", name)));
   let statusLineOk = false;
   try {
     const settings = JSON.parse(readFileSync(settingsFile, "utf-8"));
     const sl = settings.statusLine;
-    if (sl && typeof sl === "object" && typeof (sl as Record<string, unknown>).command === "string") {
-      statusLineOk = ((sl as Record<string, unknown>).command as string).includes("omg-hud");
-    } else if (typeof sl === "string") {
-      statusLineOk = sl.includes("omg-hud");
-    }
+    const command = sl && typeof sl === "object" && typeof (sl as Record<string, unknown>).command === "string"
+      ? (sl as Record<string, unknown>).command as string
+      : typeof sl === "string" ? sl : null;
+    statusLineOk = command !== null && HUD_COMMAND_MARKERS.some(marker => command.includes(marker));
   } catch {
     /* settings.json missing or invalid */
   }

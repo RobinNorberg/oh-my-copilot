@@ -93298,18 +93298,15 @@ async function calculateSessionHealth(sessionStart, contextPercent) {
 function showDiagnostic() {
   const version3 = getRuntimePackageVersion();
   const configDir = getCopilotConfigDir();
-  const hudScript = (0, import_path160.join)(configDir, "hud", "omg-hud.mjs");
+  const hudScript = (0, import_path160.join)(configDir, "hud", HUD_SCRIPT_NAMES[0]);
   const settingsFile = (0, import_path160.join)(configDir, "settings.json");
-  const hudExists = (0, import_fs138.existsSync)(hudScript);
+  const hudExists = HUD_SCRIPT_NAMES.some((name) => (0, import_fs138.existsSync)((0, import_path160.join)(configDir, "hud", name)));
   let statusLineOk = false;
   try {
     const settings = JSON.parse((0, import_fs138.readFileSync)(settingsFile, "utf-8"));
     const sl = settings.statusLine;
-    if (sl && typeof sl === "object" && typeof sl.command === "string") {
-      statusLineOk = sl.command.includes("omg-hud");
-    } else if (typeof sl === "string") {
-      statusLineOk = sl.includes("omg-hud");
-    }
+    const command = sl && typeof sl === "object" && typeof sl.command === "string" ? sl.command : typeof sl === "string" ? sl : null;
+    statusLineOk = command !== null && HUD_COMMAND_MARKERS.some((marker) => command.includes(marker));
   } catch {
   }
   const config2 = readHudConfig();
@@ -93537,7 +93534,7 @@ async function main2(watchMode = false, skipInit = false) {
     }
   }
 }
-var import_fs138, import_promises31, import_path160, import_child_process43, import_url21, lastSummarySpawnTimestamp, summaryProcessPid;
+var import_fs138, import_promises31, import_path160, import_child_process43, import_url21, HUD_SCRIPT_NAMES, HUD_COMMAND_MARKERS, lastSummarySpawnTimestamp, summaryProcessPid;
 var init_hud = __esm({
   "src/hud/index.ts"() {
     "use strict";
@@ -93562,6 +93559,8 @@ var init_hud = __esm({
     import_url21 = require("url");
     init_worktree_paths();
     init_config_dir();
+    HUD_SCRIPT_NAMES = ["omg-hud.mjs", "omcp-hud.mjs", "omcp-hud.js"];
+    HUD_COMMAND_MARKERS = ["omg-hud", "omcp-hud"];
     lastSummarySpawnTimestamp = 0;
     summaryProcessPid = null;
     main2();

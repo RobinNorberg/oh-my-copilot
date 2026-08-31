@@ -21,6 +21,19 @@ const __dirname = dirname(__filename);
 /** Claude config directory (respects COPILOT_CONFIG_DIR env var) */
 const configDir = getCopilotConfigDir();
 
+/**
+ * HUD wrapper filenames this release recognises, current first.
+ *
+ * Only `omg-hud.mjs` is ever written. The others are what earlier releases wrote
+ * into this same config dir -- 4.13.x shipped `omcp-hud.mjs` with an
+ * `omcp-hud.js` legacy slot -- and are matched for DETECTION only, so an install
+ * that has not been refreshed yet is not reported as missing or unconfigured.
+ * (Pre-4.10 `omc-hud.*` is deliberately absent: those releases used ~/.claude,
+ * so they never wrote into this directory.)
+ */
+const HUD_SCRIPT_NAMES = ['omg-hud.mjs', 'omcp-hud.mjs', 'omcp-hud.js'];
+const HUD_COMMAND_MARKERS = ['omg-hud', 'omcp-hud'];
+
 // Import timeout-protected stdin reader (prevents hangs on Linux/Windows, see issue #240, #524)
 let readStdin;
 try {
@@ -805,16 +818,19 @@ async function checkNpmUpdate(currentVersion) {
 // Check if HUD is properly installed (with retry for race conditions)
 async function checkHudInstallation(retryCount = 0) {
   const hudDir = join(configDir, 'hud');
-  // Support current and legacy script names
-  const hudScriptOmc = join(hudDir, 'omg-hud.mjs');
-  const hudScriptLegacy = join(hudDir, 'omg-hud.js');
+  // Only omg-hud.mjs is ever written. The rest are names earlier releases wrote
+  // into this same config dir (4.13.x shipped omcp-hud.mjs with an omcp-hud.js
+  // legacy slot), so a user who has not re-run the installer still has a working
+  // HUD and must not be told it is missing. Detection keeps old names; emission
+  // is omg-only.
+  const hudScriptCandidates = HUD_SCRIPT_NAMES.map(name => join(hudDir, name));
   const settingsFile = join(configDir, 'settings.json');
 
   const MAX_RETRIES = 2;
   const RETRY_DELAY_MS = 100;
 
-  // Check if HUD script exists (either naming convention)
-  const hudScriptExists = existsSync(hudScriptOmc) || existsSync(hudScriptLegacy);
+  // Check if HUD script exists (any naming convention we have shipped)
+  const hudScriptExists = hudScriptCandidates.some(candidate => existsSync(candidate));
   if (!hudScriptExists) {
     return { installed: false, reason: 'HUD script missing' };
   }
@@ -849,7 +865,7 @@ async function checkHudInstallation(retryCount = 0) {
           : null);
 
       // If OMC HUD wrapper is configured, ensure at least one plugin cache version is built.
-      if (statusLineCommand?.includes('omg-hud')) {
+      if (statusLineCommand && HUD_COMMAND_MARKERS.some(marker => statusLineCommand.includes(marker))) {
         const pluginCacheBase = join(configDir, 'plugins', 'cache', 'omc', 'oh-my-copilot');
         if (existsSync(pluginCacheBase)) {
           const versions = readdirSync(pluginCacheBase)
